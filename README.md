@@ -53,8 +53,4 @@ See [ROADMAP.md](./ROADMAP.md).
 Early and moving fast — open an issue to discuss before large changes. Given the
 subject matter, security- and privacy-minded review is especially welcome.
 
-## License
 
-[GNU AGPL-3.0](./LICENSE). If you run a modified version as a network service,
-you must release your source too — so no one can rebuild the closed middleman
-this project exists to replace.
