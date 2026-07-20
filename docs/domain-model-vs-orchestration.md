@@ -1,6 +1,6 @@
 # A Trained Domain Model vs. Orchestration Rules
 
-**Status:** Draft · **Last updated:** 2026-07-19 · **Prompted by:** Vishnu's challenge to ADR-001 — "instead of writing orchestration rules (find balances, tally numbers, notice the missing Feb bill), why not train a model that already *knows* what an insurance or broker statement is? Look at River AI."
+**Status:** Draft · **Last updated:** 2026-07-19 · **Origin:** a challenge raised against ADR-001 — "instead of writing orchestration rules (find balances, tally numbers, notice the missing Feb bill), why not train a model that already *knows* what an insurance or broker statement is? Look at River AI."
 
 ## Untangling the question
 
@@ -24,7 +24,7 @@ There's also a calibration point: a fine-tuned model is *still* uncalibrated abo
 
 ## Where the idea genuinely wins: the specialization flywheel
 
-Here's the strongest version of Vishnu's thought, and it's worth adopting: **OrionViva's verification layer will manufacture exactly the training data a specialized model needs.** Every extraction that passes deterministic verification is a *labeled, ground-truth example* — document in, verified JSON out — accumulated as a side effect of normal use, at zero extra cost, entirely on the user's machine.
+Here's the strongest version of that challenge, and it's worth adopting: **OrionViva's verification layer will manufacture exactly the training data a specialized model needs.** Every extraction that passes deterministic verification is a *labeled, ground-truth example* — document in, verified JSON out — accumulated as a side effect of normal use, at zero extra cost, entirely on the user's machine.
 
 That creates a flywheel unavailable to anyone without a verification layer:
 

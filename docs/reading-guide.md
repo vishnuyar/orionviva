@@ -19,6 +19,7 @@ Read in this order if arriving fresh. Each entry: what it is, and when you'd ret
 
 - [discovery-plan.md](discovery-plan.md) — the discovery process and the open-questions register (the heartbeat).
 - [discovery-map-and-reversibility.md](discovery-map-and-reversibility.md) — the master map: full discovery inventory, and the one-way/sticky/two-way door classification that governs when each decision gets made.
+- [design-invariants.md](design-invariants.md) — the standing checklist (trust, internationalization, experience) every new design doc and ADR must answer to.
 
 **3 · What we learned about the world — landscape research**
 
@@ -31,11 +32,24 @@ Read these together; they are one argument in four parts:
 
 - [extraction-and-confidence.md](extraction-and-confidence.md) — the hard problem: confidence constructed by verification, not reported by models.
 - [model-trust-policy.md](model-trust-policy.md) — the layer above: models are never believed; autonomy is earned statistically, guardrails bound the blast radius, feedback loops make it learnable.
+- [benchmark-harness-design.md](benchmark-harness-design.md) — the trust policy's instrument: the permanent admission exam (corpus, answer key, proctor rules, grading rubric) every model must pass and keep passing.
+- [benchmark-harness-architecture.md](benchmark-harness-architecture.md) — how the exam is built: the `viva-bench` utility in `bench/`, two-adapter model access (OpenAI-compatible + Anthropic), and the two product-embryo modules (verify/, models/).
 - [domain-model-vs-orchestration.md](domain-model-vs-orchestration.md) — why checking stays out of model weights, and the specialization flywheel that turns verification into training data.
 - [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) — where truth lives: encrypted storage, key custody, tamper-evidence.
+- [own-chain-vs-borrowed-trust.md](own-chain-vs-borrowed-trust.md) — why we anchor to existing fortresses instead of building a chain: the ION and Sovrin precedents, the node-churn physics, and where "every app is a node" honestly fits (verification, not storage).
+
+**4b · The experience — what all the machinery is for**
+
+- [experience-vision.md](experience-vision.md) — a day with Viva: dashboard-first, speak-only-when-spoken-to, four capture surfaces, text + voice; the parts inventory that becomes the v0 component list.
+- [agent-toolset.md](agent-toolset.md) — the twelve verbs Viva may ever use, the forbidden list that makes her safe, and the scaling law: tools grow with verbs, never with accounts.
+- [data-model-considerations.md](data-model-considerations.md) — three layers (claims/facts/projections), the ten universal primitives, the trust spine (observations, corrections, transfer links, completeness, bitemporality), and what the spike must stress.
+- [knowledge-and-expectations.md](knowledge-and-expectations.md) — where domain rules live: mechanisms in code, a jurisdiction-tagged knowledge registry as data, model suggestions graded like claims. Documents are evidence that other documents exist.
+- [format-commons.md](format-commons.md) — frontier models read a format once, distill its shape into a shareable profile (knowledge, never documents); cheap models answer pointed questions thereafter. Self-healing, privacy-linted, contributed as PRs.
 
 **5 · Deliberately open**
 
+- [adoption-and-distribution.md](adoption-and-distribution.md) — local-first without the friction tax: the onboarding ladder, model access without API keys, and the verified-private-cloud pattern. Shapes the architecture phase.
+- [multi-device-and-remote-access.md](multi-device-and-remote-access.md) — the ledger follows you, documents stay put: blind-relay sync, browser access with a passkey, and the one hosted architecture we never build.
 - [form-factor-and-stack.md](form-factor-and-stack.md) — CLI vs local web vs desktop; Python vs TypeScript. Options framed, decision deliberately deferred to post-experiment architecture phase.
 
 **6 · What's been decided**

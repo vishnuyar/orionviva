@@ -11,3 +11,5 @@ Every doc carries a status header: **Draft** (actively being shaped), **Stable**
 ## Ground rules (restated so they're never out of sight)
 
 Every extracted figure carries a source and a confidence signal. Arithmetic is deterministic, never done "in the model's head." Local-first from commit one. No per-institution parsers. No chain, token, or on-chain anything for authenticity. When unsure, apply the decision heuristic: does it increase trust in an answer, keep data and keys with the user, stay honest about what it knows, and is it the simplest thing that works?
+
+The full cross-cutting checklist — including the internationalization invariants — lives in **[design-invariants.md](design-invariants.md)**; every new design doc and ADR states which invariants it touches.
