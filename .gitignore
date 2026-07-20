@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Editor / tooling local state
+.claude/settings.local.json
+.idea/
+.vscode/
+
+# Environments and secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Never commit real financial data — the benchmark corpus stays local
+/corpus/
+/statements/
