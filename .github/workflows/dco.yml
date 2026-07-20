@@ -1,0 +1,44 @@
+name: DCO
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Checks that every commit in the PR carries a Signed-off-by trailer matching
+# its author, per ADR-009. Written inline rather than pulling a third-party
+# action: a project about provenance shouldn't add a supply-chain dependency
+# to save fifteen lines of shell.
+jobs:
+  check-sign-off:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Signed-off-by on every commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          failed=0
+          for sha in $(git rev-list "$BASE_SHA".."$HEAD_SHA"); do
+            author="$(git show -s --format='%an <%ae>' "$sha")"
+            subject="$(git show -s --format='%s' "$sha")"
+            if git show -s --format='%B' "$sha" | grep -qiF "Signed-off-by: $author"; then
+              continue
+            fi
+            failed=1
+            echo "::error::Missing or mismatched sign-off on $(git rev-parse --short "$sha") — $subject"
+            echo "  expected: Signed-off-by: $author"
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo ""
+            echo "Every commit needs a Signed-off-by line matching its author."
+            echo "Fix the most recent commit with:  git commit --amend -s"
+            echo "Fix a whole branch with:          git rebase --signoff main"
+            echo "See CONTRIBUTING.md for what the sign-off certifies."
+            exit 1
+          fi
+          echo "All commits signed off."
