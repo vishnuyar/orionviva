@@ -37,6 +37,15 @@ We are deliberately in a discovery/research phase before writing product code. T
 | Q8 | Local model floor: at what point do on-device VLMs make local-only extraction honest to offer? | agent-landscape + extraction docs | Extraction benchmark, re-run periodically |
 | Q9 | Specialization flywheel: how many verified extraction pairs before a personal LoRA beats frontier on the user's own formats? | the domain-model doc | Extraction benchmark baseline, then accumulation |
 | Q10 | River AI trajectory: does auditable parametric personalization become viable? | the domain-model doc | Ongoing watch |
+| Q11 | Subscription-OAuth for third-party apps (Sign in with Claude/ChatGPT/Gemini): when, and on what terms? | adoption doc | Ongoing watch; gates onboarding rung 2 |
+| Q12 | Attested-cloud inference (PCC pattern): compatible with the promise inventory's language? | adoption doc | Dedicated analysis before any such tier is announced |
+| Q13 | On-device-class model capability floor (AFM-tier) for zero-setup extraction | adoption doc | Extraction benchmark (include one) |
+| Q14 | Blind-relay design: build tiny vs adapt existing E2EE sync; double as backup target? | multi-device doc | Architecture phase |
+| Q15 | Browser-rung crypto integrity (signed bundles etc.) + honest caveat wording | multi-device doc | Before any web client ships |
+| Q16 | Own-device-hub option (Route A) at v1 or later? | multi-device doc | Architecture phase |
+| Q17 | Phase 4 registry: join existing utility vs Sidetree-class overlay on Bitcoin vs diverse consortium chain | own-chain doc | Phase 4 entry, not before |
+| Q18 | Internationalization sequencing: which locales after US, and what triggers each (community pack? demand signal?) | design-invariants (I1–I6) | Post-v0; invariants ensure nothing blocks it |
+| Q19 | Email capture: local mailbox-watcher design (IMAP/Gmail API/label conventions); hosted forwarding deferred to attested-enclave territory | experience-vision | Architecture phase |
 
 ## Scope note
 

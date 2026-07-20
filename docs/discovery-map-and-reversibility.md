@@ -32,7 +32,7 @@ These are the decisions that cannot be reinstated later. Each is small to implem
 
 **D6 · Public promise inventory.** Every public commitment — never bluff a number, data never leaves without consent, ad-free, open source — is a trust ratchet: it can be added to but never withdrawn. Maintain the inventory explicitly; adding to it is a deliberate act, not a marketing slip. The README and site already contain several; they should be enumerated and treated as constraints on all future decisions.
 
-**D7 · Contribution policy before the first external PR.** DCO or CLA, decided now. License changes (even fixing the MIT/AGPL inconsistency currently on the site vs. repo — see below) require agreement of all copyright holders; the day the first outside contribution merges, that set stops being "just Vishnu." Cheap today, near-impossible later.
+**D7 · Contribution policy before the first external PR.** DCO or CLA, decided now. License changes (even fixing the MIT/AGPL inconsistency currently on the site vs. repo — see below) require agreement of all copyright holders; the day the first outside contribution merges, that set stops being a single person. Cheap today, near-impossible later.
 
 **D8 · Verification never moves into model weights.** Elevated to principle in the domain-model doc. Listed here because it's a one-way door in reverse: the day answers depend on unauditable internal model arithmetic, the provable-trust thesis is unfalsifiable and the product is ordinary.
 

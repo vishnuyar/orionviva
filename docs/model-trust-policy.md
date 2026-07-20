@@ -1,6 +1,6 @@
 # Model Trust Policy — guardrails, graduated autonomy, feedback
 
-**Status:** Draft · **Last updated:** 2026-07-19 · **Prompted by:** Vishnu's question — how do we decide we're at a position to completely believe models; what guardrails; what feedback systems?
+**Status:** Draft · **Last updated:** 2026-07-19 · **Origin question:** how do we decide we're at a position to completely believe models; what guardrails; what feedback systems?
 
 ## The stance
 
