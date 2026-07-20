@@ -53,4 +53,10 @@ See [ROADMAP.md](./ROADMAP.md).
 Early and moving fast — open an issue to discuss before large changes. Given the
 subject matter, security- and privacy-minded review is especially welcome.
 
+## License
+
+[MIT](./LICENSE). Maximally permissive on purpose: the promise here is that you
+never have to take anything on faith, and that's strongest when nothing stands
+between you and reading, running, or reusing the code.
+
 
