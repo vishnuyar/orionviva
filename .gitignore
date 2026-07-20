@@ -6,6 +6,11 @@
 .idea/
 .vscode/
 
+# Internal working files — deliberately not published
+CLAUDE.md
+docs/TODO.md
+docs/phases.md
+
 # Environments and secrets
 .env
 .env.*
