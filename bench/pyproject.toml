@@ -1,0 +1,31 @@
+[project]
+name = "vivabench"
+version = "0.1.0"
+description = "viva-bench — the admission exam for models that want to read your financial documents. Part of OrionViva."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Vishnu Yarmaneni" }]
+dependencies = [
+    # Deliberately minimal — see docs/benchmark-harness-architecture.md.
+    "httpx>=0.27",       # the only HTTP client; both adapters are plain HTTP
+    "PyYAML>=6.0",       # configs and manifests
+    "pypdfium2>=4.28",   # PDF -> page images (no system dependencies)
+    "Pillow>=10.0",      # image encoding/resizing for multimodal calls
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+viva-bench = "vivabench.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["vivabench*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

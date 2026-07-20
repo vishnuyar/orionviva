@@ -20,3 +20,10 @@ docs/phases.md
 # Never commit real financial data — the benchmark corpus stays local
 /corpus/
 /statements/
+/bench-data/
+
+# viva-bench local artifacts
+bench/.venv/
+bench/__pycache__/
+bench/**/__pycache__/
+bench/.pytest_cache/
