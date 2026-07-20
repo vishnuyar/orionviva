@@ -1,0 +1,45 @@
+# viva-bench corpus manifest — copy to corpus.yaml and edit.
+# Files live under bench-data/ (gitignored). Locale and currency are REQUIRED
+# on every document (invariants I1/I4): they cannot be retrofitted into
+# ground truth later.
+#
+# Approved corpus shape (design D-a): 12–18 documents across seven types —
+# checking/savings, credit card, brokerage, retirement, insurance, pay stub,
+# loan — plus one bad scan and one unusual layout; optionally 1–2 non-US
+# documents you can personally verify.
+
+corpus_version: 1
+
+documents:
+  - id: chk-2026-06
+    file: ../bench-data/corpus/checking-2026-06.pdf
+    doc_type: checking_statement
+    locale: en-US
+    currency: USD
+    quality: clean
+    notes: primary checking, typical month
+
+  - id: card-2026-06
+    file: ../bench-data/corpus/card-2026-06.pdf
+    doc_type: credit_card_statement
+    locale: en-US
+    currency: USD
+    quality: clean
+
+  - id: scan-ugly-01
+    file: ../bench-data/corpus/scanned-statement.jpg
+    doc_type: checking_statement
+    locale: en-US
+    currency: USD
+    quality: scan
+    notes: deliberately bad phone photo — skew, shadow
+
+  # ... continue for the rest of the approved seven-type spread.
+
+  # Non-US stretch example (only if you can personally verify it):
+  # - id: in-savings-2026-05
+  #   file: ../bench-data/corpus/hdfc-2026-05.pdf
+  #   doc_type: savings_statement
+  #   locale: en-IN
+  #   currency: INR
+  #   quality: clean

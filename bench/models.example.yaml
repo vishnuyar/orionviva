@@ -1,0 +1,49 @@
+# viva-bench candidate roster — copy to models.yaml and edit.
+# Keys come from environment variables, never from this file.
+# Unpinned aliases ("latest") are refused by design (trust policy T8).
+
+config_version: 1
+budget_usd: 100          # hard ceiling (approved design D-b); run stops loudly at it
+runs_per_document: 5     # N (approved design D-d)
+data_dir: ../bench-data  # documents, page cache, raw run logs (gitignored)
+
+candidates:
+  - name: claude
+    adapter: anthropic
+    model: claude-fable-5            # pin the dated version you actually run
+    api_key_env: ANTHROPIC_API_KEY
+    temperature: 0.2
+    max_tokens: 16000
+    cost_per_mtok_in: 3.00           # check current pricing before running
+    cost_per_mtok_out: 15.00
+
+  - name: gpt
+    adapter: openai-compatible
+    base_url: https://api.openai.com/v1
+    model: gpt-5.2-2026-05-01        # pin the dated version you actually run
+    api_key_env: OPENAI_API_KEY
+    temperature: 0.2
+    max_tokens: 16000
+    cost_per_mtok_in: 2.50
+    cost_per_mtok_out: 10.00
+
+  - name: qwen-local
+    adapter: openai-compatible
+    base_url: http://localhost:11434/v1     # Ollama
+    model: qwen3-vl:32b-instruct-q4_K_M     # pin size AND quantization
+    api_key_env: null                       # local: no key
+    temperature: 0.2
+    max_tokens: 16000
+    # local models cost compute, not dollars:
+    cost_per_mtok_in: 0
+    cost_per_mtok_out: 0
+
+  - name: tiny
+    adapter: openai-compatible
+    base_url: http://localhost:11434/v1
+    model: qwen3-vl:4b-instruct-q4_K_M      # phone-class stand-in for Q13
+    api_key_env: null
+    temperature: 0.2
+    max_tokens: 16000
+    cost_per_mtok_in: 0
+    cost_per_mtok_out: 0
