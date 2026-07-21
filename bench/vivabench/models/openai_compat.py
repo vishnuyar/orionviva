@@ -49,10 +49,20 @@ class OpenAICompatAdapter:
             "messages": [{"role": "user", "content": content}],
         }
 
+        is_openrouter = "openrouter.ai" in (c.base_url or "")
+        if is_openrouter:
+            # Ask OpenRouter to return the exact charged cost, so the budget guard
+            # runs on actuals rather than configured estimates.
+            body["usage"] = {"include": True}
+
         headers = {}
         key = c.api_key()
         if key:
             headers["Authorization"] = f"Bearer {key}"
+        if is_openrouter:
+            # OpenRouter courtesy headers (identify the app; harmless).
+            headers["HTTP-Referer"] = "https://orionviva.com"
+            headers["X-Title"] = "viva-bench"
 
         started = time.monotonic()
         try:
@@ -78,9 +88,16 @@ class OpenAICompatAdapter:
         usage = data.get("usage") or {}
         in_tok = int(usage.get("prompt_tokens", 0))
         out_tok = int(usage.get("completion_tokens", 0))
-        cost = (
-            in_tok * c.cost_per_mtok_in + out_tok * c.cost_per_mtok_out
-        ) / 1_000_000.0
+        # Prefer a provider-reported exact cost (OpenRouter returns usage.cost in
+        # USD when asked); fall back to configured per-Mtoken rates otherwise.
+        reported_cost = usage.get("cost")
+        if reported_cost is not None:
+            try:
+                cost = float(reported_cost)
+            except (TypeError, ValueError):
+                cost = (in_tok * c.cost_per_mtok_in + out_tok * c.cost_per_mtok_out) / 1_000_000.0
+        else:
+            cost = (in_tok * c.cost_per_mtok_in + out_tok * c.cost_per_mtok_out) / 1_000_000.0
 
         return ModelResult(
             text=text,
