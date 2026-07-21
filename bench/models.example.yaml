@@ -1,49 +1,65 @@
 # viva-bench candidate roster — copy to models.yaml and edit.
 # Keys come from environment variables, never from this file.
 # Unpinned aliases ("latest") are refused by design (trust policy T8).
+#
+# THIS EXAMPLE USES OPENROUTER: one key (OPENROUTER_API_KEY), one base_url,
+# many models — pinned by their OpenRouter slug. When OpenRouter is the
+# provider, viva-bench asks it for the exact charged cost, so the budget
+# guard runs on actuals, not estimates (cost_per_mtok_* are then ignored).
+#
+# Pick vision-capable model slugs (they must accept page images).
+# Confirm current slugs and prices at https://openrouter.ai/models.
 
 config_version: 1
 budget_usd: 100          # hard ceiling (approved design D-b); run stops loudly at it
 runs_per_document: 5     # N (approved design D-d)
-data_dir: ../bench-data  # documents, page cache, raw run logs (gitignored)
+data_dir: ./bench-data   # documents, page cache, raw run logs (gitignored)
 
 candidates:
+  # Two independent frontier families = the answer-key drafters (cross-model
+  # agreement needs different families). Pin exact/dated slugs, not aliases.
   - name: claude
-    adapter: anthropic
-    model: claude-fable-5            # pin the dated version you actually run
-    api_key_env: ANTHROPIC_API_KEY
-    temperature: 0.2
-    max_tokens: 16000
-    cost_per_mtok_in: 3.00           # check current pricing before running
-    cost_per_mtok_out: 15.00
-
-  - name: gpt
     adapter: openai-compatible
-    base_url: https://api.openai.com/v1
-    model: gpt-5.2-2026-05-01        # pin the dated version you actually run
-    api_key_env: OPENAI_API_KEY
+    base_url: https://openrouter.ai/api/v1
+    model: anthropic/claude-opus-4.1          # replace with the exact slug you run
+    api_key_env: OPENROUTER_API_KEY
     temperature: 0.2
     max_tokens: 16000
-    cost_per_mtok_in: 2.50
-    cost_per_mtok_out: 10.00
 
-  - name: qwen-local
+  - name: gemini
     adapter: openai-compatible
-    base_url: http://localhost:11434/v1     # Ollama
-    model: qwen3-vl:32b-instruct-q4_K_M     # pin size AND quantization
-    api_key_env: null                       # local: no key
+    base_url: https://openrouter.ai/api/v1
+    model: google/gemini-2.5-pro               # a different family, for cross-check
+    api_key_env: OPENROUTER_API_KEY
     temperature: 0.2
     max_tokens: 16000
-    # local models cost compute, not dollars:
-    cost_per_mtok_in: 0
-    cost_per_mtok_out: 0
 
+  # An open model as a capability proxy for the "local floor" (Q8). NOTE: served
+  # by OpenRouter this measures capability, not the true on-device experience —
+  # re-run it against your own Ollama later for the real local-floor answer.
+  - name: qwen-vl
+    adapter: openai-compatible
+    base_url: https://openrouter.ai/api/v1
+    model: qwen/qwen3-vl-32b-instruct          # replace with an available vision slug
+    api_key_env: OPENROUTER_API_KEY
+    temperature: 0.2
+    max_tokens: 16000
+
+  # A small/cheap model as the phone-class proxy (Q13).
   - name: tiny
     adapter: openai-compatible
-    base_url: http://localhost:11434/v1
-    model: qwen3-vl:4b-instruct-q4_K_M      # phone-class stand-in for Q13
-    api_key_env: null
+    base_url: https://openrouter.ai/api/v1
+    model: qwen/qwen3-vl-4b-instruct           # replace with an available small vision slug
+    api_key_env: OPENROUTER_API_KEY
     temperature: 0.2
     max_tokens: 16000
-    cost_per_mtok_in: 0
-    cost_per_mtok_out: 0
+
+  # --- OPTIONAL: true local run via Ollama (no key, no network egress). ---
+  # Uncomment to measure the genuine on-device floor on your own hardware.
+  # - name: qwen-local
+  #   adapter: openai-compatible
+  #   base_url: http://localhost:11434/v1
+  #   model: qwen3-vl:32b-instruct-q4_K_M       # pin size AND quantization
+  #   api_key_env: null                         # local: no key
+  #   temperature: 0.2
+  #   max_tokens: 16000

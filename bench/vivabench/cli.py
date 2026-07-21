@@ -31,10 +31,15 @@ def cmd_validate(args) -> int:
     config, corpus, store = _load(args)
     print(f"candidates ({len(config.candidates)}):")
     for c in config.candidates:
-        cost = (
-            "local/free" if c.cost_per_mtok_in == 0 and c.cost_per_mtok_out == 0
-            else f"${c.cost_per_mtok_in}/M in, ${c.cost_per_mtok_out}/M out"
-        )
+        base = c.base_url or ""
+        if "openrouter.ai" in base:
+            cost = "OpenRouter — billed at runtime (exact cost read per call)"
+        elif "localhost" in base or "127.0.0.1" in base:
+            cost = "local/free"
+        elif c.cost_per_mtok_in == 0 and c.cost_per_mtok_out == 0:
+            cost = "cost unset (0/M) — budget guard will undercount"
+        else:
+            cost = f"${c.cost_per_mtok_in}/M in, ${c.cost_per_mtok_out}/M out"
         print(f"  {c.name:<12} {c.adapter:<18} {c.model}  [{cost}]")
     print(f"documents ({len(corpus.documents)}):")
     missing = 0

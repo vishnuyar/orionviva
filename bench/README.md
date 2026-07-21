@@ -32,11 +32,24 @@ cp corpus.example.yaml corpus.yaml     # your documents (paths into bench-data/)
 
 Candidates are pure config. Two adapters cover effectively every provider:
 
-- `anthropic` — Anthropic's Messages API.
-- `openai-compatible` — one adapter, many base_urls: OpenAI
-  (`https://api.openai.com/v1`), OpenRouter (`https://openrouter.ai/api/v1`),
+- `openai-compatible` — one adapter, many base_urls: OpenRouter
+  (`https://openrouter.ai/api/v1`), OpenAI (`https://api.openai.com/v1`),
   Ollama on your machine (`http://localhost:11434/v1`), Hugging Face's router,
   LM Studio, vLLM.
+- `anthropic` — Anthropic's Messages API directly (only needed if you skip
+  OpenRouter and want Claude via a native key).
+
+**Recommended: OpenRouter.** One key (`OPENROUTER_API_KEY`), one base_url, many
+models — pick vision-capable slugs from https://openrouter.ai/models and pin
+them (the `models.example.yaml` shows the pattern). When the provider is
+OpenRouter, viva-bench asks it for the exact charged cost per call, so the
+budget guard runs on actuals — you don't have to hand-enter prices. A single
+key covers the two frontier drafters, an open model as the local-capability
+proxy, and a small model as the phone-class proxy.
+
+To measure the *true* on-device floor (not just capability), add an Ollama
+candidate (`http://localhost:11434/v1`, no key) later — that run never leaves
+your machine.
 
 API keys come from environment variables only. Unpinned model aliases
 ("latest") are refused — pin exact versions; the exam grades a model that
