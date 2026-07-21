@@ -46,6 +46,9 @@ We are deliberately in a discovery/research phase before writing product code. T
 | Q17 | Phase 4 registry: join existing utility vs Sidetree-class overlay on Bitcoin vs diverse consortium chain | own-chain doc | Phase 4 entry, not before |
 | Q18 | Internationalization sequencing: which locales after US, and what triggers each (community pack? demand signal?) | design-invariants (I1–I6) | Post-v0; invariants ensure nothing blocks it |
 | Q19 | Email capture: local mailbox-watcher design (IMAP/Gmail API/label conventions); hosted forwarding deferred to attested-enclave territory | experience-vision | Architecture phase |
+| Q20 | Input-mode benchmark: implement `text` + `text+image`, measure accuracy/recall/cost/provenance vs `image` on real corpus | document-preprocessing | Next viva-bench iteration |
+| Q21 | Product local pipeline: which local OCR tool (Marker/Docling/olmOCR/native) for scans | document-preprocessing | Later `parsed`-mode benchmark |
+| Q22 | Provenance under text-first: carry tool char/box coordinates as region anchor vs VLM self-reported regions | document-preprocessing | With Q20 |
 
 ## Scope note
 

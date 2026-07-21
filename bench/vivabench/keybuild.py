@@ -21,7 +21,7 @@ from .claims import AnswerKey, Claim, KeyEntry, parse_claims
 from .config import BenchConfig, Document
 from .corpus import render_pages
 from .models import adapter_for
-from .prompts import EXTRACTION_PROMPT
+from .runner import extract_by_page
 from .verify.match import match_amount, match_date, match_text
 from .verify.normalize import RULES_VERSION
 
@@ -60,22 +60,50 @@ def draft_key(
     for name in drafter_names:
         cand = config.candidate(name)
         log(f"  drafting with {name} ({cand.model}) ...")
-        result = adapter_for(cand).extract(pages, EXTRACTION_PROMPT)
-        claims, err = parse_claims(result.text)
+        _, fields = extract_by_page(adapter_for(cand), pages, log)
+        claims, err = parse_claims(fields["text"])
         if err:
             log(f"    WARNING: {name} output did not parse ({err}); skipping its draft")
             claims = []
+        # A drafter that was cut off saw only part of the document. Say so loudly:
+        # a key drafted from a truncated read would look corroborated while
+        # silently missing everything past the cut.
+        if fields["pages_truncated"]:
+            log(f"    WARNING: {name} was TRUNCATED on pages "
+                f"{fields['pages_truncated']} — its draft is incomplete.")
+        if fields["pages_unparsed"]:
+            log(f"    WARNING: {name} output unparsable on pages "
+                f"{fields['pages_unparsed']} — those pages contributed nothing.")
         extractions[name] = claims
 
-    # Merge by (type, normalized label).
-    def norm(s: str) -> str:
-        import re
-        return re.sub(r"\s+", " ", (s or "").strip().lower())
+    return merge_drafts(doc, extractions, drafter_names, log)
+
+
+def _norm_label(s: str) -> str:
+    import re
+    return re.sub(r"\s+", " ", (s or "").strip().lower())
+
+
+def merge_drafts(
+    doc: Document,
+    extractions: dict[str, list[Claim]],
+    drafter_names: list[str],
+    log=print,
+) -> tuple[AnswerKey, list[DraftEntry]]:
+    """Merge two+ drafters' claims into a draft key by (type, normalized label).
+
+    Pure and network-free: the extractions come from wherever the caller got
+    them — a live run, or the raw log (draft-key --from-log). Where every
+    drafter agrees on a value, it is auto-corroborated (verified_by=cross-model);
+    everything else becomes a disagreement for human audit. This is the one
+    place cross-model agreement becomes ground truth, so it stays deterministic.
+    """
+    from .corpus import file_sha256
 
     indexed: dict[tuple[str, str], dict[str, str]] = defaultdict(dict)
     for name, claims in extractions.items():
         for c in claims:
-            indexed[(c.type, norm(c.label))].setdefault(name, c.value_raw)
+            indexed[(c.type, _norm_label(c.label))].setdefault(name, c.value_raw)
 
     drafts: list[DraftEntry] = []
     entries: list[KeyEntry] = []
@@ -87,7 +115,7 @@ def draft_key(
         )
         label = next(
             (c.label for c in extractions[drafter_names[0]]
-             if (c.type, norm(c.label)) == (ctype, nlabel)),
+             if (c.type, _norm_label(c.label)) == (ctype, nlabel)),
             nlabel,
         )
         drafts.append(DraftEntry(type=ctype, label=label, values=values, agree=agree))
