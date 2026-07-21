@@ -59,6 +59,14 @@ class BenchConfig:
     budget_usd: float
     data_dir: Path
     runs_per_document: int = 5
+    # Pages of one document extracted in parallel. Pages are independent calls,
+    # so this changes only wall-clock, never what is measured. Kept modest so a
+    # provider's rate limiter is not mistaken for a candidate's failure.
+    page_concurrency: int = 6
+    # What the model is shown: "image" (page pixels), "text" (the issuer's own
+    # embedded PDF text), or "text+image" (both). A benchmark dimension, not a
+    # setting to guess at — see docs/document-preprocessing.md.
+    input_mode: str = "image"
 
     def candidate(self, name: str) -> Candidate:
         for c in self.candidates:
@@ -69,6 +77,7 @@ class BenchConfig:
 
 _FORBIDDEN_ALIAS_FRAGMENTS = ("latest",)
 _VALID_ADAPTERS = ("anthropic", "openai-compatible")
+_VALID_INPUT_MODES = ("image", "text", "text+image")
 
 
 def _validate_candidate(raw: dict) -> Candidate:
@@ -129,6 +138,12 @@ def load_bench_config(path: Path) -> BenchConfig:
             "models.yaml needs a positive 'budget_usd' — the hard spending ceiling "
             "is a design requirement, not an option."
         )
+    input_mode = str(raw.get("input_mode", "image"))
+    if input_mode not in _VALID_INPUT_MODES:
+        raise ConfigError(
+            f"models.yaml has input_mode {input_mode!r}; expected one of "
+            f"{_VALID_INPUT_MODES}."
+        )
     data_dir = Path(raw.get("data_dir", "../bench-data")).expanduser()
     if not data_dir.is_absolute():
         data_dir = (path.parent / data_dir).resolve()
@@ -137,6 +152,8 @@ def load_bench_config(path: Path) -> BenchConfig:
         budget_usd=budget,
         data_dir=data_dir,
         runs_per_document=int(raw.get("runs_per_document", 5)),
+        page_concurrency=max(1, int(raw.get("page_concurrency", 6))),
+        input_mode=input_mode,
     )
 
 

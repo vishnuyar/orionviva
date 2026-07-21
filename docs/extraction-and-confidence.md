@@ -32,6 +32,28 @@ The user-facing principle: confidence language in answers maps 1:1 to verificati
 - Can models reliably report source regions (page + bounding area) for click-through provenance?
 - Cost/latency of N-sample extraction per statement at current API prices — what N buys what error rate.
 
+## First measured finding (2026-07-21, viva-bench bake-off)
+
+**Cross-model agreement must be matched on VALUE + POSITION, not on model-generated
+labels.** The first key-drafting pass merged two frontier drafters' claims by
+`(type, normalized label)`. It reported only ~21% agreement (55 of 266 claims on
+the Fidelity 1099) — alarming, until inspection showed it as an *artifact of
+labelling*, not disagreement: Claude writes `"<ticker> proceeds"` where Gemini writes
+`"proceeds"`, so identical values land in different buckets and count as
+conflicts. Re-matched by value (the Decimal-exact verifier), the same two models
+agree on **99–100%** of amounts. Consequence for the product's claims layer and
+answer-key design: **a claim's identity is its (value, page, region), and its
+label is a free-text annotation, never a join key.** Matching on labels
+manufactures false conflicts and would bury the human auditor in phantom work.
+Recorded here because it directly shapes the "structured-output discipline" and
+"cross-model agreement" signals above.
+
+_(Second-order: on the corroborated subset, both frontier models score ~100%
+recall in every input mode; the only real discrimination is among small/open
+models, and at N=1 it is directional, not conclusive — a full N=5 run is needed
+before any accuracy verdict. See docs/document-preprocessing.md for the mode
+results.)_
+
 ## Open questions
 
 - Q1 (the register's headline question) — everything above is hypothesis until the benchmark runs.

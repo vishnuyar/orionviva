@@ -30,20 +30,32 @@ class RunStore:
     def __post_init__(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._last_hash = GENESIS
-        self._completed: set[tuple[str, str, int]] = set()
+        self._completed: set[tuple[str, str, int, str]] = set()
         self._spent_usd = 0.0
         if self.path.exists():
             for record in self.iter_records():
                 self._last_hash = record["record_hash"]
                 if record.get("status") == "ok":
-                    self._completed.add(
-                        (record["doc_id"], record["candidate"], record["run_index"])
-                    )
+                    self._completed.add(self._cell(record))
                 self._spent_usd += float(record.get("cost_usd", 0.0))
+
+    @staticmethod
+    def _cell(record: dict) -> tuple[str, str, int, str]:
+        """A cell's identity. input_mode is part of it: the same document read by
+        the same model in a different mode is a different answer, not a repeat.
+        Records written before modes existed were all image mode."""
+        return (
+            record["doc_id"],
+            record["candidate"],
+            record["run_index"],
+            record.get("input_mode", "image"),
+        )
 
     # ---------------------------------------------------------------- reading
 
     def iter_records(self) -> Iterator[dict]:
+        if not self.path.exists():
+            return          # no log yet is an empty history, not an error
         with self.path.open() as f:
             for line in f:
                 line = line.strip()
@@ -70,8 +82,10 @@ class RunStore:
 
     # ---------------------------------------------------------------- writing
 
-    def is_done(self, doc_id: str, candidate: str, run_index: int) -> bool:
-        return (doc_id, candidate, run_index) in self._completed
+    def is_done(
+        self, doc_id: str, candidate: str, run_index: int, input_mode: str = "image"
+    ) -> bool:
+        return (doc_id, candidate, run_index, input_mode) in self._completed
 
     @property
     def spent_usd(self) -> float:
@@ -88,8 +102,6 @@ class RunStore:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._last_hash = record_hash
         if record.get("status") == "ok":
-            self._completed.add(
-                (record["doc_id"], record["candidate"], record["run_index"])
-            )
+            self._completed.add(self._cell(record))
         self._spent_usd += float(record.get("cost_usd", 0.0))
         return record
