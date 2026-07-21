@@ -17,10 +17,17 @@ docs/phases.md
 *.key
 *.pem
 
-# Never commit real financial data — the benchmark corpus stays local
+# Never commit real financial data — the benchmark corpus stays local.
+# Match bench-data anywhere (repo root OR bench/bench-data), plus common doc types.
+bench-data/
 /corpus/
 /statements/
-/bench-data/
+*.pdf
+*.PDF
+
+# viva-bench live configs (may reference institution names) — examples are committed
+bench/corpus.yaml
+bench/models.yaml
 
 # viva-bench local artifacts
 bench/.venv/
