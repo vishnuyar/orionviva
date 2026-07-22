@@ -24,6 +24,17 @@ records**, and every answer carries a **grade** (`verified` / `corroborated` /
 - `viva/ledger/postings.py` — double-entry builders (single + amount-split).
 - `viva/ledger/store.py` — the encrypted, hash-chained `EventStore`.
 - `viva/ledger/projection.py` — `LedgerProjection.balance()` → figure + grade + source.
+- `viva/ingest/raw_store.py` — encrypted, content-addressed raw capture (every file, always).
+- `viva/ingest/statement.py` — a model read → canonical `StatementFacts` (or a refusal).
+- `viva/ingest/pipeline.py` — capture → classify → reconcile → post, or park (never discard).
+- `viva/ingest/reader.py` — the one live model edge (text+image); left unrun until a real statement.
+
+## Ingest, in one line
+
+Every uploaded file is captured raw and encrypted first; a model *proposes* a
+read; a recognized checking statement is posted only if it reconciles to the
+cent (the gate), and everything else is *parked* — held and acknowledged, lit up
+later when a projector for its type arrives, with no re-upload.
 
 ## Categorization: two mechanisms (design, deferred to a later increment)
 

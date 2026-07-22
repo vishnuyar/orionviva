@@ -184,6 +184,21 @@ def closing_balance_observed(account_id: str, amount: Decimal | str,
     )
 
 
+def document_captured(doc_id: str, filename: str, byte_len: int,
+                      doc_type: str, doc_type_confidence: float,
+                      occurred_at: str, provenance: Provenance | None = None) -> Event:
+    """We now hold this file (raw-captured, encrypted). Recorded for *every*
+    upload before any judgment about what it is (ADR-003 / T3). ``doc_type`` is a
+    classification claim carrying confidence — it can be wrong, and a wrong label
+    degrades to a visible conflict downstream, never a silent discard."""
+    return Event(
+        "DocumentCaptured", occurred_at,
+        body={"doc_id": doc_id, "filename": filename, "byte_len": byte_len,
+              "doc_type": doc_type, "doc_type_confidence": doc_type_confidence},
+        provenance=provenance or Provenance(doc_id=doc_id),
+    )
+
+
 def transaction_recorded(postings: list[Posting], description: str,
                          occurred_at: str, tags: list[str] | None = None,
                          provenance: Provenance | None = None) -> Event:

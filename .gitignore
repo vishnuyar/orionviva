@@ -32,6 +32,8 @@ bench/models.yaml
 # Never commit a real ledger vault (encrypted, but still the user's data).
 *.vault
 product/**/*.jsonl
+*.blob
+raw-header.json
 
 # viva-bench local artifacts
 bench/.venv/

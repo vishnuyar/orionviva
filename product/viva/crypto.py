@@ -110,3 +110,36 @@ def open_sealed(key: bytes, sealed: dict, aad: bytes = b"") -> bytes:
         return AESGCM(key).decrypt(_b64d(sealed["nonce"]), _b64d(sealed["ct"]), aad)
     except Exception as e:  # InvalidTag and friends — wrong key or tampering
         raise CryptoError("decryption failed: wrong passphrase or tampered data") from e
+
+
+# ------------------------------------------------------------------ vault header
+
+# One passphrase protects a whole vault (the event log and the raw-blob store
+# alike). These two helpers are the shared discipline: mint a header that records
+# the KDF and a check token, and re-derive + verify the key on open. Fail fast on
+# a wrong passphrase, even before a single record is read.
+
+CHECK_TOKEN = b"viva-vault-ok"
+CHECK_AAD = b"header"
+
+
+def new_vault_header(passphrase: str) -> tuple[dict, bytes]:
+    """Create a fresh vault header and return (header, derived_key)."""
+    kdf = KdfParams.new()
+    key = derive_key(passphrase, kdf)
+    header = {"v": VERSION, "kdf": kdf.to_dict(),
+              "check": seal(key, CHECK_TOKEN, CHECK_AAD)}
+    return header, key
+
+
+def open_vault_header(header: dict, passphrase: str) -> bytes:
+    """Re-derive the key from a stored header, verifying the passphrase."""
+    if header.get("v") != VERSION:
+        raise CryptoError(
+            f"header written with envelope {header.get('v')!r}; "
+            f"this build reads {VERSION!r}"
+        )
+    key = derive_key(passphrase, KdfParams.from_dict(header["kdf"]))
+    if open_sealed(key, header["check"], CHECK_AAD) != CHECK_TOKEN:
+        raise CryptoError("wrong passphrase")
+    return key
