@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from vivabench.verify.normalize import parse_amount, parse_date
+from vivacore.verify.normalize import parse_amount, parse_date
 
 
 # ---------------------------------------------------------------- amounts: US

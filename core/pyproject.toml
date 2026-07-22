@@ -1,0 +1,24 @@
+[project]
+name = "vivacore"
+version = "0.1.0"
+description = "OrionViva core — the crown-jewel modules shared by the product and viva-bench: deterministic verification, provider-agnostic model access, the claim schema, and the extraction prompt."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Vishnu Yarmaneni" }]
+dependencies = [
+    "httpx>=0.27",       # the only HTTP client; both model adapters are plain HTTP
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["vivacore*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

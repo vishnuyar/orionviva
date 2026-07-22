@@ -3,7 +3,7 @@
 import json
 
 from vivabench.capture import RunStore
-from vivabench.verify.match import match_amount, match_date, match_text
+from vivacore.verify.match import match_amount, match_date, match_text
 
 
 # ------------------------------------------------------------------ matching

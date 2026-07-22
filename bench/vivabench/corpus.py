@@ -19,7 +19,7 @@ import io
 from pathlib import Path
 
 from .config import Document
-from .models.base import PageImage
+from vivacore.models.base import PageImage
 
 # A page with no text layer is only a problem if something is PRINTED on it.
 # "Intentionally left blank" pages and true blanks have no claims to miss; a
