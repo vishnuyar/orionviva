@@ -31,13 +31,11 @@ import time
 from pathlib import Path
 from typing import Iterator
 
-from ..crypto import (KdfParams, CryptoError, derive_key, open_sealed, seal,
-                      VERSION)
+from ..crypto import (KdfParams, CryptoError, new_vault_header,
+                      open_vault_header, open_sealed, seal)
 from .events import Event
 
 GENESIS = "0" * 64
-_CHECK_TOKEN = b"viva-vault-ok"
-_CHECK_AAD = b"header"
 
 
 def _canonical(obj) -> str:
@@ -81,27 +79,15 @@ class EventStore:
             if not header_line.strip():
                 raise CryptoError(f"{path} exists but has no header")
             header = json.loads(header_line)
-            if header.get("v") != VERSION:
-                raise CryptoError(
-                    f"{path} was written with envelope {header.get('v')!r}; "
-                    f"this build reads {VERSION!r}"
-                )
-            kdf = KdfParams.from_dict(header["kdf"])
-            key = derive_key(passphrase, kdf)
-            # Fail fast on a wrong passphrase.
-            if open_sealed(key, header["check"], _CHECK_AAD) != _CHECK_TOKEN:
-                raise CryptoError("wrong passphrase")
-            return cls(path, key, kdf)
+            key = open_vault_header(header, passphrase)   # fails fast on wrong pass
+            return cls(path, key, KdfParams.from_dict(header["kdf"]))
 
-        # New store: mint a KDF salt, derive the key, write the header.
+        # New store: mint a header (KDF salt + check token) and write it as line 0.
         path.parent.mkdir(parents=True, exist_ok=True)
-        kdf = KdfParams.new()
-        key = derive_key(passphrase, kdf)
-        header = {"v": VERSION, "kdf": kdf.to_dict(),
-                  "check": seal(key, _CHECK_TOKEN, _CHECK_AAD)}
+        header, key = new_vault_header(passphrase)
         with path.open("w") as f:
             f.write(json.dumps(header, ensure_ascii=False) + "\n")
-        return cls(path, key, kdf)
+        return cls(path, key, KdfParams.from_dict(header["kdf"]))
 
     # ------------------------------------------------------------------ append
 

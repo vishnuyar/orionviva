@@ -66,8 +66,10 @@ class BalanceAnswer:
 class _AccountState:
     balance: Decimal = Decimal("0")            # running sum of all postings
     opening: Decimal | None = None
+    opening_date: str = ""
     opening_prov: Provenance = field(default_factory=Provenance)
     closing: Decimal | None = None
+    closing_date: str = ""
     closing_prov: Provenance = field(default_factory=Provenance)
     period_deltas: list[Decimal] = field(default_factory=list)  # non-opening postings
     seen: bool = False
@@ -97,8 +99,12 @@ class LedgerProjection:
             amount = Decimal(event.body["amount"])
             st = self._state(acct)
             st.seen = True
-            st.opening = amount
-            st.opening_prov = event.provenance
+            # The earliest opening is the true start of history; keep it for
+            # reporting. The OBE seed itself is booked once (ingest emits one).
+            if st.opening is None or event.occurred_at < st.opening_date:
+                st.opening = amount
+                st.opening_date = event.occurred_at
+                st.opening_prov = event.provenance
             # Seed the Opening Balance Equity pair: the account gets the money,
             # equity holds the mirror ("unexplained history"). Only the account
             # leg moves this account's balance.
@@ -109,8 +115,12 @@ class LedgerProjection:
             acct = event.body["account_id"]
             st = self._state(acct)
             st.seen = True
-            st.closing = Decimal(event.body["amount"])
-            st.closing_prov = event.provenance
+            # Across stitched months the latest-dated closing is the current
+            # balance to answer with; earlier closings were true when written.
+            if st.closing is None or event.occurred_at >= st.closing_date:
+                st.closing = Decimal(event.body["amount"])
+                st.closing_date = event.occurred_at
+                st.closing_prov = event.provenance
 
         elif et == "TransactionRecorded":
             for p in postings_of(event):
@@ -126,6 +136,23 @@ class LedgerProjection:
 
     def accounts(self) -> list[str]:
         return sorted(a for a, s in self._acct.items() if s.seen)
+
+    def seen_account(self, account: str) -> bool:
+        st = self._acct.get(account)
+        return bool(st and st.seen)
+
+    def is_seeded(self, account: str) -> bool:
+        """True once an opening balance has been booked — i.e. the account's
+        history has a starting point and later statements continue from it rather
+        than re-seeding it."""
+        st = self._acct.get(account)
+        return bool(st and st.opening is not None)
+
+    def running_balance(self, account: str) -> Decimal | None:
+        """The replayed balance, or None if the account is unseen. Used by ingest
+        to check that a new statement's opening continues from where we left off."""
+        st = self._acct.get(account)
+        return st.balance if (st and st.seen) else None
 
     def balance(self, account: str) -> BalanceAnswer:
         st = self._acct.get(account)
