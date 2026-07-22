@@ -49,6 +49,16 @@ We are deliberately in a discovery/research phase before writing product code. T
 | Q20 | Input-mode benchmark: implement `text` + `text+image`, measure accuracy/recall/cost/provenance vs `image` on real corpus | document-preprocessing | Next viva-bench iteration |
 | Q21 | Product local pipeline: which local OCR tool (Marker/Docling/olmOCR/native) for scans | document-preprocessing | Later `parsed`-mode benchmark |
 | Q22 | Provenance under text-first: carry tool char/box coordinates as region anchor vs VLM self-reported regions | document-preprocessing | With Q20 |
+| Q24 | Own-account registry: how the user's own accounts get fingerprinted; auto-detect internal transfer vs ask | data-model-spike | Architecture phase |
+| Q25 | StatementFacts vs Transaction boundary: dividend-as-transaction vs 1099-summary-as-fact must reconcile not double-count | data-model-spike | Architecture phase |
+| Q26 | v2 corpus: add monthly mortgage stmt + brokerage positions stmt + insurance declarations to test escrow/holdings/provisions | data-model-spike | Before build v0 |
+| Q27 | Double-entry plug postings: how an un-attestable balancing leg is graded and surfaced (never silently balanced) | data-model-spike | Architecture phase |
+| Q28 | Spotlighting delimiter spec + a viva-bench red-team mode (inject instruction into a test PDF, confirm it never actuates and is caught) | threat-model | Architecture phase |
+| Q29 | Format-commons/knowledge-registry governance: review bar + privacy lint that make contribution safe at scale | threat-model | Community phase (E5) |
+| Q30 | Live-session malware: how far OS sandboxing shrinks the unlocked-window exposure per platform | threat-model | Build v0 |
+| Q31 | Eval case-set curation: how many adversarial cases, who reviews additions (the eval set needs the two-drafter+audit rigor too) | eval-harness | Build v0 |
+| Q32 | Eval alarm thresholds: what confidently-wrong movement blocks a commit vs warns | eval-harness | After frozen-key baseline |
+| Q33 | Eval regression triage/attribution: red light points at cause (model/prompt/verify/tool) | eval-harness | Build v0 |
 
 ## Scope note
 

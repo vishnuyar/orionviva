@@ -35,8 +35,10 @@ Read these together; they are one argument in four parts:
 - [benchmark-harness-design.md](benchmark-harness-design.md) — the trust policy's instrument: the permanent admission exam (corpus, answer key, proctor rules, grading rubric) every model must pass and keep passing.
 - [benchmark-harness-architecture.md](benchmark-harness-architecture.md) — how the exam is built: the `viva-bench` utility in `bench/`, two-adapter model access (OpenAI-compatible + Anthropic), and the two product-embryo modules (verify/, models/).
 - [document-preprocessing.md](document-preprocessing.md) — should we parse PDFs before the model reads them? Input modes (image / text / text+image / tool-parsed) as a benchmark dimension; why local OCR strengthens local-first; why verification catches preprocessing data loss.
+- [eval-harness-design.md](eval-harness-design.md) — the continuous honesty test: how "never bluff a number" is measured on every change forever; seeded free from frozen keys + user corrections; the confidently-wrong rate as the alarm.
 - [domain-model-vs-orchestration.md](domain-model-vs-orchestration.md) — why checking stays out of model weights, and the specialization flywheel that turns verification into training data.
 - [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) — where truth lives: encrypted storage, key custody, tamper-evidence.
+- [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) — adversaries by ruin-vs-bad-day; document prompt injection and why the extraction model is powerless by design (the CaMeL pattern, arrived at independently).
 - [own-chain-vs-borrowed-trust.md](own-chain-vs-borrowed-trust.md) — why we anchor to existing fortresses instead of building a chain: the ION and Sovrin precedents, the node-churn physics, and where "every app is a node" honestly fits (verification, not storage).
 
 **4b · The experience — what all the machinery is for**
@@ -44,6 +46,7 @@ Read these together; they are one argument in four parts:
 - [experience-vision.md](experience-vision.md) — a day with Viva: dashboard-first, speak-only-when-spoken-to, four capture surfaces, text + voice; the parts inventory that becomes the v0 component list.
 - [agent-toolset.md](agent-toolset.md) — the twelve verbs Viva may ever use, the forbidden list that makes her safe, and the scaling law: tools grow with verbs, never with accounts.
 - [data-model-considerations.md](data-model-considerations.md) — three layers (claims/facts/projections), the ten universal primitives, the trust spine (observations, corrections, transfer links, completeness, bitemporality), and what the spike must stress.
+- [data-model-spike-findings.md](data-model-spike-findings.md) — experiment 2: the ontology tested against real documents. Double-entry (postings) adopted; transfer-linking splits into own-account netting + Party attribution; tax docs become fact bundles; classification-by-filename disproven.
 - [knowledge-and-expectations.md](knowledge-and-expectations.md) — where domain rules live: mechanisms in code, a jurisdiction-tagged knowledge registry as data, model suggestions graded like claims. Documents are evidence that other documents exist.
 - [format-commons.md](format-commons.md) — frontier models read a format once, distill its shape into a shareable profile (knowledge, never documents); cheap models answer pointed questions thereafter. Self-healing, privacy-linted, contributed as PRs.
 
