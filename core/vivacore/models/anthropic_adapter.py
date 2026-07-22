@@ -12,7 +12,7 @@ import time
 
 import httpx
 
-from ..config import Candidate
+from .spec import ModelSpec
 from .base import AdapterError, ModelResult, PageImage, elide_images
 
 _API_URL = "https://api.anthropic.com/v1/messages"
@@ -20,7 +20,7 @@ _API_VERSION = "2023-06-01"
 
 
 class AnthropicAdapter:
-    def __init__(self, candidate: Candidate):
+    def __init__(self, candidate: ModelSpec):
         self.candidate = candidate
 
     def extract(self, pages: list[PageImage], prompt: str) -> ModelResult:

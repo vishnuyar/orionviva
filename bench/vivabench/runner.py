@@ -26,12 +26,12 @@ from pathlib import Path
 from typing import Any
 
 from .capture import RunStore
-from .claims import parse_claims
+from vivacore.claims import parse_claims
 from .config import BenchConfig, Corpus
 from .corpus import file_sha256, page_texts, render_pages, text_gaps
-from .models import AdapterError, adapter_for
-from .models.base import ModelResult, PageImage
-from .prompts import PROMPT_VERSIONS, page_prompt
+from vivacore.models import AdapterError, adapter_for
+from vivacore.models.base import ModelResult, PageImage
+from vivacore.prompts import PROMPT_VERSIONS, page_prompt
 
 
 class BudgetExceeded(Exception):

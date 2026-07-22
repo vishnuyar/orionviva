@@ -16,8 +16,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from statistics import mean
 
-from .claims import AnswerKey, Claim, KeyEntry, parse_claims
-from .verify.match import match_amount, match_date, match_text
+from vivacore.claims import AnswerKey, Claim, KeyEntry, parse_claims
+from vivacore.verify.match import match_amount, match_date, match_text
 
 
 # --------------------------------------------------------------- matching one run

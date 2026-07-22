@@ -8,6 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "Vishnu Yarmaneni" }]
 dependencies = [
     # Deliberately minimal — see docs/benchmark-harness-architecture.md.
+    "vivacore",          # the shared crown-jewel core (verify/, models/, claims, prompts)
     "httpx>=0.27",       # the only HTTP client; both adapters are plain HTTP
     "PyYAML>=6.0",       # configs and manifests
     "pypdfium2>=4.28",   # PDF -> page images (no system dependencies)

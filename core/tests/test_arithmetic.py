@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from vivabench.verify.arithmetic import check_balance_identity, check_sum
+from vivacore.verify.arithmetic import check_balance_identity, check_sum
 
 
 def test_balance_identity_passes():

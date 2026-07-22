@@ -21,10 +21,10 @@ from .base import AdapterError, ModelAdapter, ModelResult, PageImage
 from .anthropic_adapter import AnthropicAdapter
 from .openai_compat import OpenAICompatAdapter
 
-from ..config import Candidate
+from .spec import ModelSpec
 
 
-def adapter_for(candidate: Candidate) -> ModelAdapter:
+def adapter_for(candidate: ModelSpec) -> ModelAdapter:
     if candidate.adapter == "anthropic":
         return AnthropicAdapter(candidate)
     if candidate.adapter == "openai-compatible":

@@ -36,3 +36,11 @@ bench/**/__pycache__/
 bench/.pytest_cache/
 bench/*.egg-info/
 bench/**/*.egg-info/
+
+# Python build artifacts (any package)
+__pycache__/
+**/__pycache__/
+*.egg-info/
+**/*.egg-info/
+.pytest_cache/
+**/.pytest_cache/

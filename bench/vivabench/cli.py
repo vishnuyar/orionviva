@@ -132,7 +132,7 @@ def cmd_verify_log(args) -> int:
 
 def cmd_draft_key(args) -> int:
     from .keybuild import draft_key, merge_drafts
-    from .claims import save_key, parse_claims
+    from vivacore.claims import save_key, parse_claims
     import json as _json
 
     config, corpus, store = _load(args)
@@ -179,7 +179,7 @@ def cmd_draft_key(args) -> int:
 
 
 def cmd_freeze_key(args) -> int:
-    from .claims import load_key, save_key, KeyEntry
+    from vivacore.claims import load_key, save_key, KeyEntry
     from .keybuild import freeze
     import json as _json
 
@@ -206,7 +206,7 @@ def cmd_freeze_key(args) -> int:
 
 
 def cmd_score(args) -> int:
-    from .claims import load_key
+    from vivacore.claims import load_key
     from .score import grade_run, build_scorecards
     from .report import write_reports
 

@@ -17,13 +17,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from .claims import AnswerKey, Claim, KeyEntry, parse_claims
+from vivacore.claims import AnswerKey, Claim, KeyEntry, parse_claims
 from .config import BenchConfig, Document
 from .corpus import render_pages
-from .models import adapter_for
+from vivacore.models import adapter_for
 from .runner import extract_by_page
-from .verify.match import match_amount, match_date, match_text
-from .verify.normalize import RULES_VERSION
+from vivacore.verify.match import match_amount, match_date, match_text
+from vivacore.verify.normalize import RULES_VERSION
 
 
 @dataclass

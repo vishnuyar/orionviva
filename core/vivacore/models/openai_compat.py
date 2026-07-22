@@ -19,12 +19,12 @@ import time
 
 import httpx
 
-from ..config import Candidate
+from .spec import ModelSpec
 from .base import AdapterError, ModelResult, PageImage, elide_images
 
 
 class OpenAICompatAdapter:
-    def __init__(self, candidate: Candidate):
+    def __init__(self, candidate: ModelSpec):
         self.candidate = candidate
         assert candidate.base_url, "openai-compatible candidates carry a base_url"
         self.url = candidate.base_url.rstrip("/") + "/chat/completions"

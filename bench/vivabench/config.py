@@ -13,44 +13,21 @@ Design rules enforced here rather than politely suggested:
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
+# The model spec and shared error live in the core (vivacore), so the product
+# and the bench describe models to call the same way. In bench, a "candidate"
+# (a model sitting the admission exam) is exactly a ModelSpec.
+from vivacore.errors import ConfigError
+from vivacore.models import ModelSpec
 
-class ConfigError(Exception):
-    """A configuration problem the user must fix. Message is the fix."""
+Candidate = ModelSpec
 
 
 # --------------------------------------------------------------------------- models.yaml
-
-
-@dataclass(frozen=True)
-class Candidate:
-    name: str
-    adapter: str                      # "anthropic" | "openai-compatible"
-    model: str                        # pinned model identifier
-    base_url: str | None = None       # required for openai-compatible
-    api_key_env: str | None = None    # env var name holding the key (None = keyless, e.g. Ollama)
-    temperature: float = 0.2
-    max_tokens: int = 8192
-    cost_per_mtok_in: float = 0.0     # USD per million input tokens (0 for local)
-    cost_per_mtok_out: float = 0.0
-    timeout_s: float = 300.0
-    notes: str = ""
-
-    def api_key(self) -> str | None:
-        if self.api_key_env is None:
-            return None
-        key = os.environ.get(self.api_key_env, "").strip()
-        if not key:
-            raise ConfigError(
-                f"Candidate '{self.name}' needs the environment variable "
-                f"{self.api_key_env} to be set (keys never live in config files)."
-            )
-        return key
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@
 
 import json
 
-from vivabench.claims import AnswerKey, KeyEntry, parse_claims
+from vivacore.claims import AnswerKey, KeyEntry, parse_claims
 from vivabench.score import grade_run, build_scorecards
 
 
