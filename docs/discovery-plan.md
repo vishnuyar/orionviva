@@ -59,6 +59,12 @@ We are deliberately in a discovery/research phase before writing product code. T
 | Q31 | Eval case-set curation: how many adversarial cases, who reviews additions (the eval set needs the two-drafter+audit rigor too) | eval-harness | Build v0 |
 | Q32 | Eval alarm thresholds: what confidently-wrong movement blocks a commit vs warns | eval-harness | After frozen-key baseline |
 | Q33 | Eval regression triage/attribution: red light points at cause (model/prompt/verify/tool) | eval-harness | Build v0 |
+| Q34 | Opening-balance confidence + explaining "unexplained history" (OBE) to a non-accountant without the word equity | individual-as-enterprise | Architecture phase |
+| Q35 | How far back the butler pursues history (recency/materiality/goal bounds) without badgering | individual-as-enterprise | Build v0 |
+| Q36 | Cash/accrual boundary: which obligations modeled as accrual vs left cash-only | individual-as-enterprise | Architecture phase |
+| Q37 | v0 event store engine: encrypted SQLite (SQLCipher) vs append-only encrypted JSONL vs embedded event-store lib | v0-scope | Build step 2 |
+| Q38 | v0 double-entry posting shape for a checking statement + Opening Balance Equity seeding | v0-scope | Build step 2 |
+| Q39 | v0 minimal viewer tech (plain HTML+JS vs small framework) | v0-scope | Build step 5 |
 
 ## Scope note
 

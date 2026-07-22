@@ -12,6 +12,8 @@ Read in this order if arriving fresh. Each entry: what it is, and when you'd ret
 
 **1 · Orientation — why this exists and where it's going**
 
+- [discovery-synthesis.md](discovery-synthesis.md) — **start here: the forest on one page.** The thesis, what we measured, what's locked, where every concern sits in the architecture, and the accepted risks. The bridge from discovery into Architecture.
+- [v0-scope.md](v0-scope.md) — **the first thing we build**: "one honest answer" (your checking balance, verified, tap-to-source), trust-core-first with no LLM in the answer path. The minimal slice and its build sequence.
 - [`../README.md`](../README.md) (repo root) — what OrionViva is, and the principles everything else reasons from.
 - [`../ROADMAP.md`](../ROADMAP.md) — the product phases and what each one has to deliver.
 
@@ -47,6 +49,7 @@ Read these together; they are one argument in four parts:
 - [agent-toolset.md](agent-toolset.md) — the twelve verbs Viva may ever use, the forbidden list that makes her safe, and the scaling law: tools grow with verbs, never with accounts.
 - [data-model-considerations.md](data-model-considerations.md) — three layers (claims/facts/projections), the ten universal primitives, the trust spine (observations, corrections, transfer links, completeness, bitemporality), and what the spike must stress.
 - [data-model-spike-findings.md](data-model-spike-findings.md) — experiment 2: the ontology tested against real documents. Double-entry (postings) adopted; transfer-linking splits into own-account netting + Party attribution; tax docs become fact bundles; classification-by-filename disproven.
+- [individual-as-enterprise.md](individual-as-enterprise.md) — the individual as a company with zero-effort books (a democratized personal CFO); why the books are permanently incomplete and honest about it; how Opening Balance Equity + reconciliation make any-order ingestion and lifelong onboarding fall out for free.
 - [knowledge-and-expectations.md](knowledge-and-expectations.md) — where domain rules live: mechanisms in code, a jurisdiction-tagged knowledge registry as data, model suggestions graded like claims. Documents are evidence that other documents exist.
 - [format-commons.md](format-commons.md) — frontier models read a format once, distill its shape into a shareable profile (knowledge, never documents); cheap models answer pointed questions thereafter. Self-healing, privacy-linted, contributed as PRs.
 
