@@ -34,3 +34,5 @@ bench/.venv/
 bench/__pycache__/
 bench/**/__pycache__/
 bench/.pytest_cache/
+bench/*.egg-info/
+bench/**/*.egg-info/
