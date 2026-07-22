@@ -30,6 +30,15 @@ Finance everywhere reduces to ~10 primitives. Regional variety is **attributes o
 | **Document / Claim / Fact** | the trust spine (below) | locale + currency on Document from ingestion (I4) |
 | **Tag/Category** | the personal taxonomy: learned, corrected, hierarchical ("son" tag) | seeded minimal; grown from corrections (the moat) |
 
+## Categorization is two mechanisms, not one (a deliberate feature)
+
+A user does not categorize a purchase into one bucket, and forcing that would be a lie about how people think about money. One Walmart purchase can be, at once, "an expense," "groceries," "Walmart," and "birthday-related." Two distinct mechanisms serve this, and keeping them separate is what lets rich categorization coexist with a ledger that still balances:
+
+1. **Split by amount → double-entry.** When one purchase genuinely divides across categories by *money* — a $100 receipt that is $70 groceries + $30 a gift — it is a single transaction whose counter-side has *multiple postings that sum to the whole* ($70 to `Expenses:Groceries`, $30 to `Expenses:Gifts`). This is native double-entry (the same shape as the mortgage-escrow split, leak candidate #1): the books still balance, and each part carries its own grade. A `Transaction` is therefore a *list of postings*, never a fixed pair.
+2. **Overlapping labels → the Tag/Category overlay.** When the *same* money wears several labels at once (nature = expense, category = groceries, merchant = Walmart, occasion = birthday), these are orthogonal *dimensions* of one purchase, not competing buckets. They live in the `Tag/Category` primitive as a **many-to-many, hierarchical overlay** on the transaction. This layer is *descriptive, not financial* — it never has to balance — which is exactly why a transaction can carry as many tags as the user likes without touching the ledger's integrity. It answers "how much on birthdays, across every merchant?"
+
+The rule that keeps trust intact: **double-entry governs the money (one balanced truth, verifiable); tags govern the meaning (freely multiple, user-owned, the moat).** v0 seeds neither (categorization is deferred), but the ledger is built so both are already possible without a rewrite: multi-posting transactions and an (initially empty) `tags` field on every transaction.
+
 ## The trust spine (what no PFM schema has, and we exist for)
 
 - **Observations accumulate; they don't just dedup.** The same real transaction seen on an overlapping statement, a re-upload, or two document types (card statement + bank autopay) merges by fingerprint (ADR-007) into one fact with *multiple observations* — and corroboration raises the grade. Conflicting observations → `conflicted`, surfaced, never averaged.

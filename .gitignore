@@ -29,6 +29,10 @@ bench-data/
 bench/corpus.yaml
 bench/models.yaml
 
+# Never commit a real ledger vault (encrypted, but still the user's data).
+*.vault
+product/**/*.jsonl
+
 # viva-bench local artifacts
 bench/.venv/
 bench/__pycache__/

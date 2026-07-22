@@ -1,0 +1,25 @@
+[project]
+name = "viva"
+version = "0.1.0"
+description = "OrionViva — the product: an encrypted, append-only, double-entry ledger that answers questions about your money honestly, with a cited source and a confidence signal on every figure."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Vishnu Yarmaneni" }]
+dependencies = [
+    "vivacore",          # the shared crown jewels (verify/, models/, claims)
+    "cryptography>=42",  # AES-256-GCM + scrypt for encryption at rest (ADR-005)
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["viva*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
