@@ -107,6 +107,51 @@ def account_id_for(facts: StatementFacts) -> str:
     return f"acct:{slug or 'unknown'}"
 
 
+def _posted_doc_ids(store: EventStore) -> set[str]:
+    ids: set[str] = set()
+    for e in store.events():
+        if e.event_type in ("TransactionRecorded", "ClosingBalanceObserved",
+                            "OpeningBalanceObserved") and e.provenance.doc_id:
+            ids.add(e.provenance.doc_id)
+    return ids
+
+
+def heal_gaps(store: EventStore) -> int:
+    """Re-post gap-held statements that now stitch onto their account's chain.
+
+    Ingestion is order-independent in the forward direction: a statement whose
+    opening didn't match the balance we held is parked as a *gap*, and when the
+    connecting statement later posts (raising the balance to that opening), this
+    sweep slots the waiting one in — cascading down a run. Returns how many
+    posted. Only ``gap`` holds are retried (they already reconcile internally);
+    conflict holds wait for a human."""
+    posted_total = 0
+    attempted: set[str] = set()
+    while True:
+        proj = LedgerProjection(store.events())
+        resolved = _posted_doc_ids(store)
+        candidate = None
+        for e in store.events():
+            if e.event_type != "StatementHeld" or e.body.get("reason") != "gap":
+                continue
+            doc_id = e.body["doc_id"]
+            if doc_id in resolved or doc_id in attempted:
+                continue
+            facts = StatementFacts.from_dict(e.body["facts"])
+            bal = proj.running_balance(account_id_for(facts))
+            if bal is not None and facts.opening_amount == bal:
+                candidate = (doc_id, facts)
+                break
+        if candidate is None:
+            return posted_total
+        doc_id, facts = candidate
+        attempted.add(doc_id)
+        log.info("heal: previously-held %s now stitches — re-posting", doc_id[:12])
+        if post_statement(store, facts).action == POSTED:
+            posted_total += 1
+    # (loop returns from inside)
+
+
 def _is_resolved(store: EventStore, doc_id: str) -> bool:
     """A document is 'done' only once it reached a terminal state — posted, or
     held for review. A document that merely *parked* (captured but not read into
@@ -283,6 +328,10 @@ def capture_and_ingest(raw: RawStore, store: EventStore, data: bytes,
     # (3) route by type — v0 projects checking statements, parks the rest.
     if rr.facts is not None and rr.doc_type in CHECKING_DOC_TYPES:
         res = post_statement(store, rr.facts)    # (4) the reconciliation gate
+        if res.action == POSTED:
+            healed = heal_gaps(store)            # a new post may unblock waiting statements
+            if healed:
+                log.info("ingest: healed %d previously-held statement(s)", healed)
         log.info("ingest done: doc_id=%s -> %s (%s)", doc_id[:12], res.action, res.grade)
         return res
 

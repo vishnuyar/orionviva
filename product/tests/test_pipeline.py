@@ -8,7 +8,7 @@ import pytest
 
 from viva.ingest import (CONFLICT, DUPLICATE, GAP, PARKED, POSTED, IngestResult,
                          ReadResult, RawStore, StatementFacts, TxnFact,
-                         account_id_for, capture_and_ingest)
+                         account_id_for, capture_and_ingest, held_items)
 from viva.ledger import EventStore, LedgerProjection, UnknownAccountError
 
 PW = "pipeline passphrase"
@@ -237,6 +237,51 @@ def test_stub_read_records_no_claims_layer(tmp_path):
                        _reader({data: ReadResult("checking_statement", 0.98, JAN)}),
                        captured_at="2026-02-01")
     assert _events_of_type(store, "ReadRecorded") == []
+
+
+def _up(raw, store, data, facts):
+    return capture_and_ingest(raw, store, data,
+                              _reader({data: ReadResult("checking_statement", 0.98, facts)}),
+                              captured_at="2026-04-01")
+
+
+def test_out_of_order_uploads_self_heal(tmp_path):
+    raw, store = _stores(tmp_path)
+    jan = _facts("1000.00", [("2026-01-10", "Pay", "500.00"),
+                             ("2026-01-15", "Coffee", "-42.42")], "1457.58",
+                 o_date="2026-01-01", c_date="2026-01-31")
+    feb = _facts("1457.58", [("2026-02-05", "Refund", "100.00")], "1557.58",
+                 o_date="2026-02-01", c_date="2026-02-28")
+    mar = _facts("1557.58", [("2026-03-05", "Dep", "50.00")], "1607.58",
+                 o_date="2026-03-01", c_date="2026-03-31")
+
+    assert _up(raw, store, b"jan", jan).action == POSTED
+    assert _up(raw, store, b"mar", mar).action == GAP       # can't chain yet
+    assert len(held_items(store.events())) == 1
+    _up(raw, store, b"feb", feb)                            # posts feb, heals mar
+    assert held_items(store.events()) == []                # nothing stranded
+    assert LedgerProjection(store.events()).balance(account_id_for(jan)).amount \
+        == Decimal("1607.58")
+
+
+def test_gap_held_item_reports_the_held_balance(tmp_path):
+    raw, store = _stores(tmp_path)
+    jan = _facts("1000.00", [("2026-01-10", "Pay", "500.00"),
+                             ("2026-01-15", "Coffee", "-42.42")], "1457.58",
+                 o_date="2026-01-01", c_date="2026-01-31",
+                 ref="Chase Total Checking 000000556079591")
+    mar = _facts("2000.00", [("2026-03-05", "Dep", "50.00")], "2050.00",
+                 o_date="2026-03-01", c_date="2026-03-31",
+                 ref="Chase Total Checking 000000556079591")
+    _up(raw, store, b"jan", jan)
+    _up(raw, store, b"mar", mar)
+    items = held_items(store.events())
+    assert len(items) == 1
+    d = items[0].to_dict()
+    assert d["reason"] == "gap"
+    assert d["held_balance"] == "1457.58" and d["opening_amount"] == "2000.00"
+    assert "····9591" in d["account_label"]     # long number masked
+    assert d["period"] == "2026-03-01 – 2026-03-31"
 
 
 def test_unreadable_document_is_parked(tmp_path):
