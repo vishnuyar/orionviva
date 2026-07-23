@@ -34,6 +34,7 @@ bench/models.yaml
 product/**/*.jsonl
 *.blob
 raw-header.json
+.viva-vault/
 
 # viva-bench local artifacts
 bench/.venv/

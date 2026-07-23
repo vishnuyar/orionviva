@@ -12,6 +12,7 @@ from .pipeline import (CHECKING_DOC_TYPES, CONFLICT, DUPLICATE, GAP, PARKED,
                        POSTED, IngestResult, ReadResult, account_id_for,
                        capture_and_ingest, post_statement)
 from .raw_store import RawStore
+from .review import HeldItem, apply_human_correction, held_items
 from .statement import StatementFacts, TxnFact, from_model_json
 
 __all__ = [
@@ -19,6 +20,7 @@ __all__ = [
     "StatementFacts", "TxnFact", "from_model_json",
     "ReadResult", "IngestResult", "capture_and_ingest", "post_statement",
     "account_id_for",
+    "HeldItem", "held_items", "apply_human_correction",
     "diagnose", "ReconciliationFinding", "DIAGNOSIS_VERSION",
     "FORCED", "SUGGESTED", "UNLOCALIZED",
     "CHECKING_DOC_TYPES",

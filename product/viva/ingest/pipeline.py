@@ -36,7 +36,7 @@ from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
 from ..ledger.events import (Provenance, account_opened,
                              closing_balance_observed, document_captured,
-                             opening_balance_observed)
+                             opening_balance_observed, statement_held)
 from ..ledger.postings import simple_transaction
 from ..ledger.projection import LedgerProjection
 from ..ledger.store import EventStore
@@ -120,17 +120,21 @@ def _apply_forced(facts: StatementFacts,
     return facts
 
 
-def post_statement(store: EventStore, facts: StatementFacts) -> IngestResult:
+def post_statement(store: EventStore, facts: StatementFacts,
+                   confirmed_by: str = "") -> IngestResult:
     """Reconcile a checking statement and, only if it holds, post it. The gate.
 
     On failure, diagnose deterministically (no model call). A *forced* correction
     — one an independent identity implies and which closes the reconciliation —
     is auto-applied and posted at `corroborated`, and reported. Anything merely
-    *suggested* or unlocalized is held with its finding, never posted."""
+    *suggested* or unlocalized is *held for review* (persisted, never posted).
+
+    ``confirmed_by='human'`` (used when a person has ruled on a held statement)
+    posts the closing at `verified`."""
     recon = _reconciles(facts)
     if recon.passed:
         return _post_reconciled(store, facts, recon, finding=None,
-                                auto_corrected=False)
+                                auto_corrected=False, confirmed_by=confirmed_by)
 
     finding = diagnose(facts)
     if finding.status == FORCED:
@@ -143,16 +147,19 @@ def post_statement(store: EventStore, facts: StatementFacts) -> IngestResult:
                 res.message = f"{finding.message} {res.message}"
             return res
 
+    store.append(statement_held(
+        facts.doc_id, facts.to_dict(), finding.to_dict(), "conflict",
+        facts.closing_date, Provenance(doc_id=facts.doc_id)))
     return IngestResult(
         doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
         account=account_id_for(facts), grade="conflicted",
         reconciliation=recon, finding=finding,
-        message=f"Not posted; held for review. {finding.message}")
+        message=f"Not posted; held for your review. {finding.message}")
 
 
 def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResult,
                      finding: ReconciliationFinding | None,
-                     auto_corrected: bool) -> IngestResult:
+                     auto_corrected: bool, confirmed_by: str = "") -> IngestResult:
     """Write a statement that reconciles: seed a new account or stitch onto an
     existing one (surfacing a gap rather than inventing it), then post."""
     account = account_id_for(facts)
@@ -160,14 +167,18 @@ def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResul
     if proj.is_seeded(account):
         prior = proj.running_balance(account)
         if facts.opening_amount != prior:
+            store.append(statement_held(
+                facts.doc_id, facts.to_dict(),
+                finding.to_dict() if finding else None, "gap",
+                facts.closing_date, Provenance(doc_id=facts.doc_id)))
             return IngestResult(
                 doc_id=facts.doc_id, action=GAP, doc_type=facts.doc_type,
                 account=account, grade="conflicted", reconciliation=recon,
                 finding=finding,
                 message=(f"This statement opens at {facts.opening_amount}, but "
                          f"the last balance I hold is {prior}. Likely a missing "
-                         "statement between them — not posted, so I don't invent "
-                         "the gap."))
+                         "statement between them — held for your review, so I "
+                         "don't invent the gap."))
     else:
         store.append(account_opened(
             account, "depository", facts.account_ref or account,
@@ -182,11 +193,12 @@ def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResul
             provenance=t.provenance(facts.doc_id)))
     store.append(closing_balance_observed(
         account, facts.closing_amount, facts.closing_date,
-        facts.closing_provenance()))
+        facts.closing_provenance(), confirmed_by=confirmed_by))
 
+    grade = "verified" if confirmed_by == "human" else "corroborated"
     return IngestResult(
         doc_id=facts.doc_id, action=POSTED, doc_type=facts.doc_type,
-        account=account, grade="corroborated", reconciliation=recon,
+        account=account, grade=grade, reconciliation=recon,
         finding=finding, auto_corrected=auto_corrected,
         message=(f"Posted and reconciled: balance {facts.closing_amount} as of "
                  f"{facts.closing_date}."))

@@ -36,6 +36,19 @@ class TxnFact:
     def provenance(self, doc_id: str) -> Provenance:
         return Provenance(doc_id=doc_id, page=self.page)
 
+    def to_dict(self) -> dict:
+        return {"date": self.date, "description": self.description,
+                "amount": str(self.amount), "page": self.page,
+                "running_balance": (None if self.running_balance is None
+                                    else str(self.running_balance))}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TxnFact":
+        rb = d.get("running_balance")
+        return cls(date=d["date"], description=d.get("description", ""),
+                   amount=Decimal(d["amount"]), page=d.get("page"),
+                   running_balance=(None if rb is None else Decimal(rb)))
+
 
 @dataclass
 class StatementFacts:
@@ -59,6 +72,32 @@ class StatementFacts:
     def closing_provenance(self) -> Provenance:
         return Provenance(doc_id=self.doc_id, page=self.closing_page,
                           note="closing balance")
+
+    def to_dict(self) -> dict:
+        return {
+            "doc_id": self.doc_id, "doc_type": self.doc_type,
+            "doc_type_confidence": self.doc_type_confidence,
+            "account_ref": self.account_ref, "currency": self.currency,
+            "opening_amount": str(self.opening_amount),
+            "opening_date": self.opening_date,
+            "closing_amount": str(self.closing_amount),
+            "closing_date": self.closing_date,
+            "opening_page": self.opening_page, "closing_page": self.closing_page,
+            "transactions": [t.to_dict() for t in self.transactions],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StatementFacts":
+        return cls(
+            doc_id=d["doc_id"], doc_type=d["doc_type"],
+            doc_type_confidence=d.get("doc_type_confidence", 0.0),
+            account_ref=d.get("account_ref", ""), currency=d["currency"],
+            opening_amount=Decimal(d["opening_amount"]),
+            opening_date=d["opening_date"],
+            closing_amount=Decimal(d["closing_amount"]),
+            closing_date=d["closing_date"],
+            transactions=[TxnFact.from_dict(t) for t in d.get("transactions", [])],
+            opening_page=d.get("opening_page"), closing_page=d.get("closing_page"))
 
 
 def _find_json(text: str) -> str | None:
