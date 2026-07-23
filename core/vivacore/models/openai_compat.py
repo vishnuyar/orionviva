@@ -48,6 +48,11 @@ class OpenAICompatAdapter:
             "temperature": c.temperature,
             "messages": [{"role": "user", "content": content}],
         }
+        if c.json_mode:
+            # Providers that support it then GUARANTEE syntactically valid JSON,
+            # eliminating the 'unescaped char / missing comma' failures that a
+            # model emitting free-form JSON produces on long statements.
+            body["response_format"] = {"type": "json_object"}
 
         is_openrouter = "openrouter.ai" in (c.base_url or "")
         if is_openrouter:

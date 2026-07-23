@@ -7,9 +7,10 @@ from decimal import Decimal
 
 import pytest
 
-from viva.ingest import (CONFLICT, DUPLICATE, GAP, PARKED, POSTED, IngestResult,
-                         ReadResult, RawStore, StatementFacts, TxnFact,
-                         account_id_for, capture_and_ingest, held_items)
+from viva.ingest import (CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED, POSTED,
+                         IngestResult, ReadResult, RawStore, StatementFacts,
+                         TxnFact, account_id_for, apply_identity_ruling,
+                         capture_and_ingest, held_items)
 from viva.ledger import (EventStore, Ledger, LedgerProjection,
                          UnknownAccountError)
 
@@ -368,6 +369,64 @@ def test_same_number_different_labels_are_one_account(tmp_path):
     proj = ledger.projection()
     assert proj.balance(account_id_for(jan)).amount == Decimal("1600.00")
     assert held_items(proj) == []                                   # stitched, nothing stranded
+
+
+def _acct_facts(number, names, opening, txns, closing, o="2026-01-01",
+                c="2026-01-31", inst="Acme", ref="Acme Checking"):
+    f = _facts(opening, txns, closing, o_date=o, c_date=c, ref=ref)
+    f.account_number, f.institution, f.account_names = number, inst, names
+    return f
+
+
+def test_ambiguous_identity_is_held_then_learned_as_new(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    a = _acct_facts("000000001111", ["Jane Public"], "1000.00",
+                    [("2026-01-10", "Pay", "500.00")], "1500.00")
+    _up(raw, ledger, b"a", a)
+    # Different number, SAME holder name -> ambiguous, held (not silently split/merged).
+    b = _acct_facts("000000002222", ["Jane Public"], "200.00",
+                    [("2026-02-10", "Dep", "50.00")], "250.00",
+                    o="2026-02-01", c="2026-02-28")
+    res = _up(raw, ledger, b"b", b)
+    assert res.action == IDENTITY
+    assert held_items(ledger.projection())[0].reason == "identity"
+    # Rule "new account" -> learned; posts as its own account; never asks again.
+    r2 = apply_identity_ruling(ledger, res.doc_id, "new")
+    assert r2.action == POSTED and held_items(ledger.projection()) == []
+    depo = [i for i in ledger.projection().account_infos() if i.kind == "depository"]
+    assert len(depo) == 2                                   # Jane has two accounts
+
+
+def test_ambiguous_identity_merge_learns_the_alias(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    a = _acct_facts("000000001111", ["Jane Public"], "1000.00",
+                    [("2026-01-10", "Pay", "500.00")], "1500.00")
+    _up(raw, ledger, b"a", a)
+    # A continuation of the SAME real account but printed with a different number
+    # (opening continues from A's balance). Different number -> ambiguous.
+    b = _acct_facts("000000002222", ["Jane Public"], "1500.00",
+                    [("2026-02-10", "Dep", "100.00")], "1600.00",
+                    o="2026-02-01", c="2026-02-28")
+    res = _up(raw, ledger, b"b", b)
+    assert res.action == IDENTITY
+    # Rule "same" -> merges into A, learns the alias, and it stitches.
+    r2 = apply_identity_ruling(ledger, res.doc_id, "same")
+    assert r2.action == POSTED
+    proj = ledger.projection()
+    depo = [i for i in proj.account_infos() if i.kind == "depository"]
+    assert len(depo) == 1                                   # one account, merged
+    assert proj.balance(account_id_for(a)).amount == Decimal("1600.00")
+
+
+def test_transactions_sorted_by_date_after_backfill(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    f = _run_facts()
+    _up(raw, ledger, b"mar", f["mar"])          # newest first
+    _up(raw, ledger, b"jan", f["jan"])          # backfilled (appended last)
+    _up(raw, ledger, b"feb", f["feb"])
+    lines = ledger.projection().transactions(account_id_for(f["jan"]))
+    dates = [ln.date for ln in lines]
+    assert dates == sorted(dates)               # chronological, not append order
 
 
 def test_cached_projection_matches_a_fresh_replay(tmp_path):

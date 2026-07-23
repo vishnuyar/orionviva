@@ -47,7 +47,8 @@ def main() -> None:
         name="debug", adapter=os.environ["VIVA_MODEL_ADAPTER"],
         model=os.environ["VIVA_MODEL"],
         base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
-        api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "OPENROUTER_API_KEY"))
+        api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "OPENROUTER_API_KEY"),
+        json_mode=True)
 
     data = pathlib.Path(pdf_path).read_bytes()
     pages, text = _render_and_read_text(data)

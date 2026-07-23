@@ -155,11 +155,15 @@ class Event:
 
 def account_opened(account_id: str, kind: str, name: str, currency: str,
                    occurred_at: str, jurisdiction: str = "US",
+                   institution: str = "", account_number: str = "",
+                   account_names: list[str] | None = None,
                    provenance: Provenance | None = None) -> Event:
     return Event(
         "AccountOpened", occurred_at,
         body={"account_id": account_id, "kind": kind, "name": name,
-              "currency": currency, "jurisdiction": jurisdiction},
+              "currency": currency, "jurisdiction": jurisdiction,
+              "institution": institution, "account_number": account_number,
+              "account_names": list(account_names or [])},
         provenance=provenance or Provenance(),
     )
 
@@ -227,6 +231,21 @@ def document_captured(doc_id: str, filename: str, byte_len: int,
         "DocumentCaptured", occurred_at,
         body={"doc_id": doc_id, "filename": filename, "byte_len": byte_len,
               "doc_type": doc_type, "doc_type_confidence": doc_type_confidence},
+        provenance=provenance or Provenance(doc_id=doc_id),
+    )
+
+
+def account_alias_confirmed(alias_key: str, account_id: str, doc_id: str,
+                            occurred_at: str, by: str = "human",
+                            provenance: Provenance | None = None) -> Event:
+    """A person ruled on an ambiguous account identity: the signal ``alias_key``
+    resolves to ``account_id`` (which may be an existing account — a merge — or
+    the key's own account — a confirmed 'new'). The identity map learns it, so
+    the same pattern never asks again (T4: the ruling is an event, not an edit)."""
+    return Event(
+        "AccountAliasConfirmed", occurred_at,
+        body={"alias_key": alias_key, "account_id": account_id,
+              "doc_id": doc_id, "by": by},
         provenance=provenance or Provenance(doc_id=doc_id),
     )
 

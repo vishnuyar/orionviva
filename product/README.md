@@ -77,7 +77,17 @@ The surface auto-loads `./.env` (git-ignored), so you don't have to export
 anything — a `.env` with `VIVA_PASSPHRASE` (and, for live reading,
 `VIVA_MODEL_ADAPTER` / `VIVA_MODEL` / `VIVA_MODEL_KEY_ENV` / the key) is enough.
 Set `VIVA_SAMPLE=1` to seed fabricated data. Uploads park until a model is
-configured, so nothing leaves the machine until you choose the real run.
+configured, so nothing leaves the machine until you choose the real run. The
+picker takes **multiple files** — each is read in its own model call (nothing
+batched). The reader uses **JSON mode** plus a one-shot parse-retry so long
+statements come back as valid JSON.
+
+Re-read every already-captured document into a fresh vault (e.g. after a prompt
+change) without re-uploading:
+
+```
+PYTHONPATH=../core:. python3 -m viva.reingest  [dest_dir]
+```
 - `viva/ingest/raw_store.py` — encrypted, content-addressed raw capture (every file, always).
 - `viva/ingest/statement.py` — a model read → canonical `StatementFacts` (or a refusal).
 - `viva/ingest/pipeline.py` — capture → classify → reconcile → post, or park (never discard).

@@ -62,23 +62,46 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
     prompt = (STATEMENT_EXTRACTION_PROMPT
               + "\n\n[The issuer's own embedded text for these pages follows; "
                 "use it together with the images.]\n" + embedded_text)
-    log.info("reader: calling model %s (%s) ...", spec.model, spec.adapter)
-    result = adapter_for(spec).extract(pages, prompt)
-    log.info("reader: model %s replied %d chars, cost $%.4f (%d in / %d out tokens)",
-             result.resolved_model, len(result.text), result.cost_usd,
-             result.input_tokens, result.output_tokens)
+    adapter = adapter_for(spec)
+    log.info("reader: calling model %s (%s, json_mode=%s) ...",
+             spec.model, spec.adapter, spec.json_mode)
+    return read_with_retry(lambda p: adapter.extract(pages, p), prompt,
+                           doc_id, locale, currency)
+
+
+def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
+                    currency: str, max_retries: int = 1) -> ReadResult:
+    """Call the model and parse; if the JSON doesn't parse, re-ask once with the
+    error (belt-and-suspenders alongside JSON mode). ``extract(prompt) ->
+    ModelResult`` is injected so this is testable without the network."""
+    result = extract(prompt)
+    facts, err = from_model_json(result.text, doc_id, locale, currency)
+    total_cost = result.cost_usd
+    tries = 0
+    while err is not None and tries < max_retries:
+        tries += 1
+        log.warning("reader: parse FAILED (%s); re-asking the model (retry %d)",
+                    err, tries)
+        retry_prompt = (prompt + "\n\nYour previous reply was NOT valid JSON "
+                        f"({err}). Return ONLY one valid JSON object: escape "
+                        "quotes and newlines inside strings, no trailing commas.")
+        result = extract(retry_prompt)
+        total_cost += result.cost_usd
+        facts, err = from_model_json(result.text, doc_id, locale, currency)
+
+    log.info("reader: model %s replied %d chars, cost $%.4f (parse_ok=%s%s)",
+             result.resolved_model, len(result.text), total_cost, err is None,
+             f", {tries} retr{'y' if tries == 1 else 'ies'}" if tries else "")
     log.debug("reader: RAW model output:\n%s", result.text)
 
-    facts, err = from_model_json(result.text, doc_id, locale, currency)
     common = dict(raw_text=result.text, model=result.resolved_model,
                   prompt_version=PROMPT_VERSION, input_mode="text+image",
-                  cost_usd=result.cost_usd, input_tokens=result.input_tokens,
+                  cost_usd=total_cost, input_tokens=result.input_tokens,
                   output_tokens=result.output_tokens)
     if err is not None:
-        # Surface the model's own classification even when the statement parse
-        # failed (it may have correctly said "this is a pay stub").
         doc_type, conf = _peek_classification(result.text)
-        log.warning("reader: parse FAILED (%s); classified as %r", err, doc_type)
+        log.warning("reader: parse still FAILED after retry (%s); classified %r",
+                    err, doc_type)
         return ReadResult(doc_type=doc_type, doc_type_confidence=conf,
                           facts=None, error=err, **common)
     log.info("reader: parsed %s (%s) with %d transactions",

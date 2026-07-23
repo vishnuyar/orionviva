@@ -31,10 +31,12 @@ _Delivered: backward-prepend + bidirectional cascading heal (any upload order �
 
 ---
 
-## Slice 1.5 — Account identity & entity resolution (learning)  ← NEXT
+## Slice 1.5 — Account identity & entity resolution (learning)  ✅ DONE
 **Blocks seeded:** Account (identity set) · Party (names/joint) · the universal entity-resolution matcher · identity-map projection · per-format registry (seed).
 
-Added after the first real run: the same account arrived under different labels (product name vs holder name), so a free-text account id didn't stitch. Fix is a *learning* identity block — signals → graded match → ask only when ambiguous → learn the ruling, for **all** account types. Full spec: [account-identity-and-entity-resolution.md](account-identity-and-entity-resolution.md). Prerequisite for Slice 2. (Also bundles the transaction date-sort — the visible half of bitemporality.)
+Added after the first real run: the same account arrived under different labels (product name vs holder name), so a free-text account id didn't stitch. Fix is a *learning* identity block — signals → graded match → ask only when ambiguous → learn the ruling, for **all** account types. Full spec: [account-identity-and-entity-resolution.md](account-identity-and-entity-resolution.md).
+
+_Delivered: identity signals (number/institution/names) extracted + persisted + shown (masked); number-anchored account id (last-4); a matcher raising an identity Finding on ambiguity; ask-once-and-learn confirmation (AccountAliasConfirmed → merge or new); transactions sorted by date. Shipped alongside: multi-file upload (one model call per file), and JSON-mode + a bounded parse-retry so the model returns valid JSON on long statements. A `reingest-from-raw` tool re-reads stored PDFs into a fresh vault when the prompt improves._
 
 ## Slice 2 — Doc-type registry + credit card & savings
 **Block seeded:** Account-type registry (doc_type → {extraction profile, identity check, account kind}).
