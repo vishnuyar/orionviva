@@ -24,6 +24,7 @@ records**, and every answer carries a **grade** (`verified` / `corroborated` /
 - `viva/ledger/postings.py` — double-entry builders (single + amount-split).
 - `viva/ledger/store.py` — the encrypted, hash-chained `EventStore`.
 - `viva/ledger/projection.py` — `LedgerProjection.balance()` → figure + grade + source.
+- `viva/answer.py` — the answer path: `answer_balance` / `answer_total` / `coverage_summary`, with honest refusal (no LLM).
 - `viva/ingest/raw_store.py` — encrypted, content-addressed raw capture (every file, always).
 - `viva/ingest/statement.py` — a model read → canonical `StatementFacts` (or a refusal).
 - `viva/ingest/pipeline.py` — capture → classify → reconcile → post, or park (never discard).
