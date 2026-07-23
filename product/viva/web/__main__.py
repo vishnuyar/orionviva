@@ -28,6 +28,39 @@ def _parking_reader(data, doc_id):
     return ReadResult("unknown", 0.0, None, "no model configured for live reading")
 
 
+def build_reader():
+    """Return (read_fn, is_live). A live reader is wired only when a model is
+    configured in the environment — until then uploads park, so nothing leaves
+    the machine by accident.
+
+    Env to enable live reading:
+      VIVA_MODEL_ADAPTER   'anthropic' or 'openai-compatible'
+      VIVA_MODEL           a PINNED model id (never a 'latest' alias)
+      VIVA_MODEL_KEY_ENV   name of the env var holding the API key
+      VIVA_MODEL_BASE_URL  (openai-compatible only, e.g. OpenRouter)
+      VIVA_LOCALE          default 'en-US'      VIVA_CURRENCY default 'USD'
+    """
+    adapter = os.environ.get("VIVA_MODEL_ADAPTER")
+    model = os.environ.get("VIVA_MODEL")
+    if not (adapter and model):
+        return _parking_reader, False
+
+    from vivacore.models import ModelSpec
+    from ..ingest.reader import read_statement
+
+    spec = ModelSpec(
+        name="viva-reader", adapter=adapter, model=model,
+        base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
+        api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "ANTHROPIC_API_KEY"))
+    locale = os.environ.get("VIVA_LOCALE", "en-US")
+    currency = os.environ.get("VIVA_CURRENCY", "USD")
+
+    def reader(data, doc_id):
+        return read_statement(data, doc_id, spec, locale, currency)
+
+    return reader, True
+
+
 def main() -> None:
     passphrase = os.environ.get("VIVA_PASSPHRASE")
     if not passphrase:
@@ -37,9 +70,12 @@ def main() -> None:
     if os.environ.get("VIVA_SAMPLE") == "1":
         seed_sample(vault)
 
+    read_fn, is_live = build_reader()
     host, port = "127.0.0.1", 8765
-    httpd = serve(vault, _parking_reader, host, port)
+    httpd = serve(vault, read_fn, host, port)
+    mode = "live model reading ON" if is_live else "uploads park (no model configured)"
     print(f"Viva is at http://{host}:{port}   (vault: {vault_dir})")
+    print(f"  {mode}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

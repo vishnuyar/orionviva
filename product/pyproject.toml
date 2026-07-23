@@ -13,6 +13,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Only needed for the live document reader (a real model run). The whole tested
+# core runs without these — they render a real PDF's pages and read its text.
+reader = ["pypdfium2>=4.28", "Pillow>=10.0"]
 
 [build-system]
 requires = ["setuptools>=68"]

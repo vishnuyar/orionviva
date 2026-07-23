@@ -51,6 +51,20 @@ def test_unknown_account_view_is_honest(tmp_path):
     assert d["error"] == "unknown_account"
 
 
+def test_reader_factory_gates_on_env(monkeypatch):
+    from viva.web.__main__ import build_reader
+    for k in ("VIVA_MODEL_ADAPTER", "VIVA_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    read_fn, live = build_reader()
+    assert live is False                       # no model configured -> parks
+
+    monkeypatch.setenv("VIVA_MODEL_ADAPTER", "anthropic")
+    monkeypatch.setenv("VIVA_MODEL", "claude-pinned-2026")
+    monkeypatch.setenv("VIVA_MODEL_KEY_ENV", "SOME_KEY")
+    read_fn, live = build_reader()
+    assert live is True and callable(read_fn)   # built, but no call made here
+
+
 def test_live_server_serves_overview(tmp_path):
     v = _vault(tmp_path)
     httpd = serve(v, lambda data, doc_id: None, "127.0.0.1", 0)
