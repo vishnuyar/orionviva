@@ -31,6 +31,7 @@ class TxnFact:
     description: str
     amount: Decimal      # signed: positive = money in, negative = money out
     page: int | None = None
+    running_balance: Decimal | None = None   # the printed balance after this line
 
     def provenance(self, doc_id: str) -> Provenance:
         return Provenance(doc_id=doc_id, page=self.page)
@@ -137,8 +138,16 @@ def from_model_json(text: str, doc_id: str, locale: str,
                           f"'debit', got {direction!r}")
         # amount_raw is a positive magnitude; direction gives the sign.
         signed = abs(mag) if direction == "credit" else -abs(mag)
+        # Running balance is an *aid* (a second identity for diagnosis), not core:
+        # if it's present but unreadable, degrade it to None rather than failing
+        # the whole statement over a column we only use to localize errors.
+        running = None
+        if rt.get("running_balance_raw") not in (None, ""):
+            rb, rberr = _amount(rt["running_balance_raw"], locale, currency)
+            running = rb if rberr is None else None
         txns.append(TxnFact(date=d, description=str(rt.get("description", "")),
-                            amount=signed, page=rt.get("page")))
+                            amount=signed, page=rt.get("page"),
+                            running_balance=running))
 
     facts = StatementFacts(
         doc_id=doc_id,

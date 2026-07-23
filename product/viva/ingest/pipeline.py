@@ -29,7 +29,7 @@ with fixtures. Only the real reader touches the network.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from vivacore.verify.arithmetic import CheckResult, check_balance_identity
@@ -40,6 +40,7 @@ from ..ledger.events import (Provenance, account_opened,
 from ..ledger.postings import simple_transaction
 from ..ledger.projection import LedgerProjection
 from ..ledger.store import EventStore
+from .diagnose import FORCED, ReconciliationFinding, diagnose
 from .raw_store import RawStore
 from .statement import StatementFacts
 
@@ -76,6 +77,8 @@ class IngestResult:
     account: str | None = None
     grade: str | None = None
     reconciliation: CheckResult | None = None
+    finding: ReconciliationFinding | None = None   # why it failed / how it was fixed
+    auto_corrected: bool = False
     message: str = ""
 
 
@@ -96,20 +99,63 @@ def _already_captured(store: EventStore, doc_id: str) -> bool:
     return False
 
 
-def post_statement(store: EventStore, facts: StatementFacts) -> IngestResult:
-    """Reconcile a checking statement and, only if it holds, post it. The gate."""
-    account = account_id_for(facts)
-    recon = check_balance_identity(
+def _reconciles(facts: StatementFacts) -> CheckResult:
+    return check_balance_identity(
         facts.opening_amount, [t.amount for t in facts.transactions],
         facts.closing_amount)
 
-    if not recon.passed:
-        return IngestResult(
-            doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
-            account=account, grade="conflicted", reconciliation=recon,
-            message=("Statement did not reconcile, so nothing was posted: "
-                     f"{recon.explain()}. Held for review."))
 
+def _apply_forced(facts: StatementFacts,
+                  finding: ReconciliationFinding) -> StatementFacts:
+    """Return a copy of the facts with a forced correction applied. Only ever
+    called on a FORCED finding — a correction an independent identity implies."""
+    from decimal import Decimal
+    if finding.kind == "amount_misread" and finding.target_index is not None:
+        txns = list(facts.transactions)
+        i = finding.target_index
+        txns[i] = replace(txns[i], amount=Decimal(finding.implied))
+        return replace(facts, transactions=txns)
+    if finding.kind == "balance_misread":
+        return replace(facts, closing_amount=Decimal(finding.implied))
+    return facts
+
+
+def post_statement(store: EventStore, facts: StatementFacts) -> IngestResult:
+    """Reconcile a checking statement and, only if it holds, post it. The gate.
+
+    On failure, diagnose deterministically (no model call). A *forced* correction
+    — one an independent identity implies and which closes the reconciliation —
+    is auto-applied and posted at `corroborated`, and reported. Anything merely
+    *suggested* or unlocalized is held with its finding, never posted."""
+    recon = _reconciles(facts)
+    if recon.passed:
+        return _post_reconciled(store, facts, recon, finding=None,
+                                auto_corrected=False)
+
+    finding = diagnose(facts)
+    if finding.status == FORCED:
+        corrected = _apply_forced(facts, finding)
+        recon2 = _reconciles(corrected)
+        if recon2.passed:
+            res = _post_reconciled(store, corrected, recon2, finding=finding,
+                                   auto_corrected=True)
+            if res.action == POSTED:
+                res.message = f"{finding.message} {res.message}"
+            return res
+
+    return IngestResult(
+        doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
+        account=account_id_for(facts), grade="conflicted",
+        reconciliation=recon, finding=finding,
+        message=f"Not posted; held for review. {finding.message}")
+
+
+def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResult,
+                     finding: ReconciliationFinding | None,
+                     auto_corrected: bool) -> IngestResult:
+    """Write a statement that reconciles: seed a new account or stitch onto an
+    existing one (surfacing a gap rather than inventing it), then post."""
+    account = account_id_for(facts)
     proj = LedgerProjection(store.events())
     if proj.is_seeded(account):
         prior = proj.running_balance(account)
@@ -117,13 +163,12 @@ def post_statement(store: EventStore, facts: StatementFacts) -> IngestResult:
             return IngestResult(
                 doc_id=facts.doc_id, action=GAP, doc_type=facts.doc_type,
                 account=account, grade="conflicted", reconciliation=recon,
+                finding=finding,
                 message=(f"This statement opens at {facts.opening_amount}, but "
                          f"the last balance I hold is {prior}. Likely a missing "
                          "statement between them — not posted, so I don't invent "
                          "the gap."))
     else:
-        # First statement for this account: register it and seed Opening Balance
-        # Equity from the attested opening figure.
         store.append(account_opened(
             account, "depository", facts.account_ref or account,
             facts.currency, facts.opening_date))
@@ -142,6 +187,7 @@ def post_statement(store: EventStore, facts: StatementFacts) -> IngestResult:
     return IngestResult(
         doc_id=facts.doc_id, action=POSTED, doc_type=facts.doc_type,
         account=account, grade="corroborated", reconciliation=recon,
+        finding=finding, auto_corrected=auto_corrected,
         message=(f"Posted and reconciled: balance {facts.closing_amount} as of "
                  f"{facts.closing_date}."))
 
