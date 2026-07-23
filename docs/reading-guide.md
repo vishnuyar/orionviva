@@ -14,6 +14,7 @@ Read in this order if arriving fresh. Each entry: what it is, and when you'd ret
 
 - [discovery-synthesis.md](discovery-synthesis.md) — **start here: the forest on one page.** The thesis, what we measured, what's locked, where every concern sits in the architecture, and the accepted risks. The bridge from discovery into Architecture.
 - [v0-scope.md](v0-scope.md) — **the first thing we build**: "one honest answer" (your checking balance, verified, tap-to-source), trust-core-first with no LLM in the answer path. The minimal slice and its build sequence.
+- [implementation-roadmap.md](implementation-roadmap.md) — **the whole path after v0**: 14 data-first slices, each seeding a reusable lego block, written as fact statements (open state → implementation → final state → done-tests → why). From consolidating a full financial life, to Viva's voice, to proving a claim to a counterparty (the endgame).
 - [`../README.md`](../README.md) (repo root) — what OrionViva is, and the principles everything else reasons from.
 - [`../ROADMAP.md`](../ROADMAP.md) — the product phases and what each one has to deliver.
 
