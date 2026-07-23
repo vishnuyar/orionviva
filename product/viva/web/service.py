@@ -9,20 +9,17 @@ picture and the interactions, and only surfaces a source on request.
 
 from __future__ import annotations
 
-from decimal import Decimal
-
-from ..answer import answer_balance, answer_total, coverage_summary
+from ..answer import answer_total, coverage_summary
 from ..ingest import (apply_human_correction, capture_and_ingest, held_items)
-from ..ledger import LedgerProjection, UnknownAccountError
+from ..ledger import UnknownAccountError
 from ..vault import Vault
 
 
 def overview(vault: Vault) -> dict:
     """The dashboard payload: total, each account with a quiet grade, coverage,
     and the count of items awaiting the person's review."""
-    events = list(vault.events())
-    proj = LedgerProjection(events)
-    total = answer_total(events)
+    proj = vault.ledger.projection()             # the cached live projection
+    total = answer_total(proj)
     accounts = []
     for info in proj.account_infos():
         if info.kind != "depository":
@@ -35,16 +32,15 @@ def overview(vault: Vault) -> dict:
     return {
         "total": total.to_dict(),
         "accounts": accounts,
-        "coverage": coverage_summary(events).text,
-        "review_count": len(held_items(events)),
+        "coverage": coverage_summary(proj).text,
+        "review_count": len(held_items(proj)),
     }
 
 
 def account_view(vault: Vault, account: str) -> dict:
     """One account: its balance and its transactions (provenance rides along,
     for the quiet 'source' affordance)."""
-    events = list(vault.events())
-    proj = LedgerProjection(events)
+    proj = vault.ledger.projection()
     try:
         info = proj.account_info(account)
         ba = proj.balance(account)
@@ -61,13 +57,13 @@ def account_view(vault: Vault, account: str) -> dict:
 
 def review_list(vault: Vault) -> dict:
     """Everything held awaiting a human ruling."""
-    return {"items": [h.to_dict() for h in held_items(vault.events())]}
+    return {"items": [h.to_dict() for h in held_items(vault.ledger.projection())]}
 
 
 def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
                        target_index: int | None = None) -> dict:
     """Apply a person's ruling on a held statement and re-post it."""
-    res = apply_human_correction(vault.store, doc_id, field, value, target_index)
+    res = apply_human_correction(vault.ledger, doc_id, field, value, target_index)
     return {
         "action": res.action, "grade": res.grade, "account": res.account,
         "message": res.message,
@@ -76,7 +72,7 @@ def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:
     """Ingest an uploaded file (capture → read → post/park/hold)."""
-    res = capture_and_ingest(vault.raw, vault.store, data, read_fn,
+    res = capture_and_ingest(vault.raw, vault.ledger, data, read_fn,
                              filename=filename, captured_at=_today())
     return {
         "action": res.action, "grade": res.grade, "doc_type": res.doc_type,

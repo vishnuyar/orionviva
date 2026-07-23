@@ -14,6 +14,7 @@ from .events import (CONFLICTED, CORROBORATED, GRADES, UNVERIFIED, VERIFIED,
 from .postings import (EQUITY_OPENING, EXPENSE_UNCATEGORIZED,
                        INCOME_UNCATEGORIZED, simple_transaction,
                        split_transaction, transaction_balances)
+from .ledger import Ledger
 from .projection import (AccountInfo, BalanceAnswer, LedgerProjection, TxnLine,
                          UnknownAccountError)
 from .store import EventStore
@@ -27,7 +28,7 @@ __all__ = [
     "statement_held", "correction_applied", "read_recorded",
     "simple_transaction", "split_transaction", "transaction_balances",
     "EQUITY_OPENING", "INCOME_UNCATEGORIZED", "EXPENSE_UNCATEGORIZED",
-    "EventStore",
+    "EventStore", "Ledger",
     "LedgerProjection", "BalanceAnswer", "AccountInfo", "TxnLine",
     "UnknownAccountError",
 ]

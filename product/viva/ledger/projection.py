@@ -29,7 +29,7 @@ from typing import Iterable
 from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
 from .events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED, Event,
-                     Posting, Provenance, postings_of)
+                     Provenance, postings_of)
 from .postings import EQUITY_OPENING
 
 
@@ -107,21 +107,42 @@ class _AccountState:
 
 
 class LedgerProjection:
-    """Replay events into per-account state, then answer balance queries."""
+    """Replay events into per-account state, then answer balance queries.
+
+    The read model for the whole ledger: per-account balances AND ingest state
+    (what's captured, posted, held). Built once and updated incrementally via
+    ``apply`` — the `Ledger` facade keeps one live instance so reads never
+    re-replay the whole encrypted log.
+
+    Opening Balance Equity is the *earliest known* opening (individual-as-
+    enterprise.md): the injection is computed from ``st.opening`` at query time,
+    not accumulated per opening — so a backfilled older statement simply re-seats
+    the earliest opening, with no double-count and no event to reverse.
+    """
 
     def __init__(self, events: Iterable[Event], as_of: str | None = None) -> None:
         self.as_of = as_of
         self._acct: dict[str, _AccountState] = {}
+        # Ingest read-model, maintained incrementally alongside balances.
+        self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
+        self._posted: set[str] = set()           # doc_ids with posting events
+        self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
         for event in events:
-            if as_of is not None and event.occurred_at > as_of:
-                continue     # ISO dates sort lexically; skip the future
-            self._apply(event)
+            self.apply(event)
+
+    def apply(self, event: Event) -> None:
+        """Fold one event into the projection (respecting an as_of horizon)."""
+        if self.as_of is not None and event.occurred_at > self.as_of:
+            return          # ISO dates sort lexically; skip the future
+        self._apply(event)
 
     def _state(self, account: str) -> _AccountState:
         return self._acct.setdefault(account, _AccountState())
 
     def _apply(self, event: Event) -> None:
         et = event.event_type
+        did = event.provenance.doc_id
+
         if et == "AccountOpened":
             st = self._state(event.body["account_id"])
             st.seen = True
@@ -134,22 +155,28 @@ class LedgerProjection:
             amount = Decimal(event.body["amount"])
             st = self._state(acct)
             st.seen = True
-            # The earliest opening is the true start of history; keep it for
-            # reporting. The OBE seed itself is booked once (ingest emits one).
+            if did:
+                self._posted.add(did)
+            # The Opening Balance Equity is the EARLIEST known opening: keep the
+            # earliest, and inject it once at query time (never accumulate each
+            # opening, so a backfilled older statement re-seats it cleanly).
             if st.opening is None or event.occurred_at < st.opening_date:
                 st.opening = amount
                 st.opening_date = event.occurred_at
                 st.opening_prov = event.provenance
-            # Seed the Opening Balance Equity pair: the account gets the money,
-            # equity holds the mirror ("unexplained history"). Only the account
-            # leg moves this account's balance.
-            st.balance += amount
-            self._state(EQUITY_OPENING).balance += -amount
+
+        elif et == "DocumentCaptured":
+            self._captured[event.body["doc_id"]] = event.body.get("doc_type", "")
+
+        elif et == "StatementHeld":
+            self._held[event.body["doc_id"]] = event.body
 
         elif et == "ClosingBalanceObserved":
             acct = event.body["account_id"]
             st = self._state(acct)
             st.seen = True
+            if did:
+                self._posted.add(did)
             # Across stitched months the latest-dated closing is the current
             # balance to answer with; earlier closings were true when written.
             if st.closing is None or event.occurred_at >= st.closing_date:
@@ -159,10 +186,12 @@ class LedgerProjection:
                 st.closing_confirmed = event.body.get("confirmed_by") == "human"
 
         elif et == "TransactionRecorded":
+            if did:
+                self._posted.add(did)
             for p in postings_of(event):
                 st = self._state(p.account)
                 st.seen = True
-                st.balance += p.amount
+                st.balance += p.amount           # transaction postings only (no OBE)
                 st.lines.append(TxnLine(
                     date=event.occurred_at,
                     description=event.body.get("description", ""),
@@ -188,11 +217,43 @@ class LedgerProjection:
         st = self._acct.get(account)
         return bool(st and st.opening is not None)
 
+    @staticmethod
+    def _effective(st: _AccountState) -> Decimal:
+        """Account balance = earliest opening (the OBE injection) + transaction
+        postings. The opening is injected here, once, from the earliest known
+        opening — never accumulated per opening event."""
+        return (st.opening or Decimal("0")) + st.balance
+
     def running_balance(self, account: str) -> Decimal | None:
         """The replayed balance, or None if the account is unseen. Used by ingest
         to check that a new statement's opening continues from where we left off."""
         st = self._acct.get(account)
-        return st.balance if (st and st.seen) else None
+        return self._effective(st) if (st and st.seen) else None
+
+    def earliest_opening(self, account: str) -> Decimal | None:
+        """The account's earliest known opening — the balance a still-older
+        statement must *close* at to backfill in front of the chain."""
+        st = self._acct.get(account)
+        return st.opening if st else None
+
+    # ------------------------------------------------------ ingest read-model
+
+    def is_resolved(self, doc_id: str) -> bool:
+        """A document has reached a terminal state — posted, or held for review."""
+        return doc_id in self._posted or doc_id in self._held
+
+    def posted_doc_ids(self) -> set[str]:
+        return set(self._posted)
+
+    def captured_docs(self) -> dict[str, str]:
+        return dict(self._captured)
+
+    def open_holds(self) -> list[dict]:
+        """StatementHeld bodies for documents not since posted."""
+        return [b for did, b in self._held.items() if did not in self._posted]
+
+    def gap_holds(self) -> list[dict]:
+        return [b for b in self.open_holds() if b.get("reason") == "gap"]
 
     def account_info(self, account: str) -> AccountInfo:
         st = self._acct.get(account)
@@ -218,7 +279,7 @@ class LedgerProjection:
         # No attested closing: the balance is a bare replayed sum.
         if st.closing is None:
             ans = BalanceAnswer(
-                account=account, amount=st.balance, grade=UNVERIFIED,
+                account=account, amount=self._effective(st), grade=UNVERIFIED,
                 as_of=self.as_of, provenance=st.opening_prov, reconciliation=None,
                 explanation=("Computed by replaying opening balance and "
                              "transactions; no closing figure was attested to "

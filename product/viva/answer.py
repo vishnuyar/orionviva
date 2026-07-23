@@ -31,6 +31,14 @@ TRUSTWORTHY = (VERIFIED, CORROBORATED)
 DEPOSITORY = "depository"
 
 
+def _projection(source, as_of: str | None = None) -> LedgerProjection:
+    """Accept a live projection (the Ledger's cache) or an iterable of events.
+    A live projection already has its as_of baked in; events build one on demand."""
+    if isinstance(source, LedgerProjection):
+        return source
+    return LedgerProjection(source, as_of)
+
+
 @dataclass
 class Answer:
     question: str
@@ -71,10 +79,9 @@ def _money(amount: Decimal, currency: str) -> str:
     return f"{currency + ' ' if currency else ''}{amount}"
 
 
-def answer_balance(events, account: str, as_of: str | None = None) -> Answer:
+def answer_balance(source, account: str, as_of: str | None = None) -> Answer:
     """One account's balance — with grade and source, or an honest refusal."""
-    events = list(events)
-    proj = LedgerProjection(events, as_of)
+    proj = _projection(source, as_of)
     q = f"balance of {account}" + (f" as of {as_of}" if as_of else "")
 
     try:
@@ -111,10 +118,9 @@ def answer_balance(events, account: str, as_of: str | None = None) -> Answer:
               + f" ({ba.grade})."))
 
 
-def answer_total(events, as_of: str | None = None) -> Answer:
+def answer_total(source, as_of: str | None = None) -> Answer:
     """Coverage-aware total across checking accounts, per currency (no FX)."""
-    events = list(events)
-    proj = LedgerProjection(events, as_of)
+    proj = _projection(source, as_of)
     q = "total across checking accounts" + (f" as of {as_of}" if as_of else "")
 
     infos = [i for i in proj.account_infos() if i.kind == DEPOSITORY]
@@ -169,18 +175,11 @@ def answer_total(events, as_of: str | None = None) -> Answer:
               "Each is the sum of that currency's checking accounts."))
 
 
-def coverage_summary(events) -> Coverage:
-    """What we hold vs. what is answerable — derived from the ledger alone."""
-    events = list(events)
-    captured: dict[str, str] = {}
-    posted_docs: set[str] = set()
-    for e in events:
-        if e.event_type == "DocumentCaptured":
-            captured[e.body["doc_id"]] = e.body.get("doc_type", "unknown")
-        elif e.event_type in ("TransactionRecorded", "ClosingBalanceObserved",
-                              "OpeningBalanceObserved"):
-            if e.provenance.doc_id:
-                posted_docs.add(e.provenance.doc_id)
+def coverage_summary(source) -> Coverage:
+    """What we hold vs. what is answerable — read straight from the projection."""
+    proj = _projection(source)
+    captured = proj.captured_docs()
+    posted_docs = proj.posted_doc_ids()
 
     held = [dt for did, dt in captured.items() if did not in posted_docs]
     awaiting_types: dict[str, int] = defaultdict(int)

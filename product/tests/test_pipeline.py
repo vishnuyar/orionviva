@@ -2,6 +2,7 @@
 
 The model read is stubbed, so the whole trust path is exercised offline."""
 
+import itertools
 from decimal import Decimal
 
 import pytest
@@ -9,14 +10,17 @@ import pytest
 from viva.ingest import (CONFLICT, DUPLICATE, GAP, PARKED, POSTED, IngestResult,
                          ReadResult, RawStore, StatementFacts, TxnFact,
                          account_id_for, capture_and_ingest, held_items)
-from viva.ledger import EventStore, LedgerProjection, UnknownAccountError
+from viva.ledger import (EventStore, Ledger, LedgerProjection,
+                         UnknownAccountError)
 
 PW = "pipeline passphrase"
 
 
 def _stores(tmp_path):
+    """Returns (raw, ledger). The ledger wraps the event store with its cached
+    projection — the unit ingest now operates on."""
     return (RawStore.open(tmp_path / "raw", PW),
-            EventStore.open(tmp_path / "events.jsonl", PW))
+            Ledger(EventStore.open(tmp_path / "events.jsonl", PW)))
 
 
 def _facts(opening, txns, closing, o_date="2026-01-01", c_date="2026-01-31",
@@ -293,3 +297,66 @@ def test_unreadable_document_is_parked(tmp_path):
                              captured_at="2026-02-01")
     assert res.action == PARKED
     assert raw.has(RawStore.fingerprint(data))
+
+
+# ----------------------------------------------------- Slice 1: any-order / backfill
+
+def _run_facts():
+    """A continuous 3-month run: Jan 1000->1500, Feb 1500->1600, Mar 1600->1650."""
+    return {
+        "jan": _facts("1000.00", [("2026-01-10", "Pay", "500.00")], "1500.00",
+                      o_date="2026-01-01", c_date="2026-01-31"),
+        "feb": _facts("1500.00", [("2026-02-10", "Pay", "100.00")], "1600.00",
+                      o_date="2026-02-01", c_date="2026-02-28"),
+        "mar": _facts("1600.00", [("2026-03-10", "Pay", "50.00")], "1650.00",
+                      o_date="2026-03-01", c_date="2026-03-31"),
+    }
+
+
+def test_any_upload_order_yields_the_same_chain(tmp_path):
+    for i, order in enumerate(itertools.permutations(["jan", "feb", "mar"])):
+        raw, ledger = _stores(tmp_path / f"perm{i}")
+        f = _run_facts()
+        for name in order:
+            _up(raw, ledger, name.encode(), f[name])
+        proj = ledger.projection()
+        acct = account_id_for(f["jan"])
+        assert proj.balance(acct).amount == Decimal("1650.00"), order
+        assert proj.balance(acct).grade == "corroborated", order
+        assert proj.earliest_opening(acct) == Decimal("1000.00"), order
+        assert held_items(proj) == [], order
+
+
+def test_backfill_prepends_older_statements(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    f = _run_facts()
+    _up(raw, ledger, b"mar", f["mar"])          # seeds at Mar's opening
+    _up(raw, ledger, b"feb", f["feb"])          # backward prepend
+    _up(raw, ledger, b"jan", f["jan"])          # backward prepend again
+    proj = ledger.projection()
+    acct = account_id_for(f["jan"])
+    assert proj.earliest_opening(acct) == Decimal("1000.00")  # OBE re-seated to the oldest
+    assert proj.balance(acct).amount == Decimal("1650.00")
+    assert held_items(proj) == []
+
+
+def test_middle_gap_heals_both_sides(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    f = _run_facts()
+    _up(raw, ledger, b"jan", f["jan"])          # posts, seeds
+    assert _up(raw, ledger, b"mar", f["mar"]).action == GAP   # connects to neither yet
+    assert len(held_items(ledger.projection())) == 1
+    _up(raw, ledger, b"feb", f["feb"])          # posts Feb; heal then posts Mar
+    assert held_items(ledger.projection()) == []
+    assert ledger.projection().balance(account_id_for(f["jan"])).amount == Decimal("1650.00")
+
+
+def test_cached_projection_matches_a_fresh_replay(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    f = _run_facts()
+    for name in ["feb", "jan", "mar"]:          # deliberately out of order
+        _up(raw, ledger, name.encode(), f[name])
+    acct = account_id_for(f["jan"])
+    cached = ledger.projection().balance(acct).amount
+    fresh = LedgerProjection(ledger.events()).balance(acct).amount
+    assert cached == fresh == Decimal("1650.00")

@@ -135,7 +135,7 @@ def _txn_date(raw, locale: str, open_iso: str, close_iso: str
     if n.ok:
         return n.value, None
     oy, om = int(open_iso[:4]), int(open_iso[5:7])
-    cy, cm = int(close_iso[:4]), int(close_iso[5:7])
+    cy = int(close_iso[:4])
     n = parse_date(str(raw), locale, default_year=oy)
     if not n.ok:
         return None, f"date {raw!r}: {n.status} ({n.reason})"

@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from viva.answer import answer_balance, answer_total, coverage_summary
 from viva.ingest import RawStore, ReadResult, StatementFacts, TxnFact, capture_and_ingest
-from viva.ledger import (EventStore, Provenance, account_opened,
+from viva.ledger import (EventStore, Ledger, Provenance, account_opened,
                          closing_balance_observed, opening_balance_observed,
                          simple_transaction)
 
@@ -103,7 +103,7 @@ def test_total_excludes_an_untrustworthy_account():
 
 def test_coverage_summary_counts_posted_and_awaiting(tmp_path):
     raw = RawStore.open(tmp_path / "raw", "pw")
-    store = EventStore.open(tmp_path / "events.jsonl", "pw")
+    store = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
     facts = StatementFacts(
         doc_id="", doc_type="checking_statement", doc_type_confidence=0.98,
         account_ref="Chase Checking", currency="USD",

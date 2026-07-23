@@ -19,8 +19,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from ..ledger.events import Provenance, correction_applied
+from ..ledger.ledger import Ledger
 from ..ledger.projection import LedgerProjection
-from ..ledger.store import EventStore
 from .pipeline import (IngestResult, account_id_for, heal_gaps, post_statement)
 from .statement import StatementFacts
 
@@ -59,49 +59,32 @@ class HeldItem:
         }
 
 
-def _posted_docs(events) -> set[str]:
-    posted: set[str] = set()
-    for e in events:
-        if e.event_type in ("TransactionRecorded", "ClosingBalanceObserved",
-                            "OpeningBalanceObserved") and e.provenance.doc_id:
-            posted.add(e.provenance.doc_id)
-    return posted
+def held_items(source) -> list[HeldItem]:
+    """The statements awaiting a human ruling — held and not since resolved.
 
-
-def held_items(events) -> list[HeldItem]:
-    """The statements awaiting a human ruling — held and not since resolved."""
-    events = list(events)
-    posted = _posted_docs(events)
-    proj = LedgerProjection(events)
-    latest: dict[str, dict] = {}
-    for e in events:
-        if e.event_type == "StatementHeld":
-            latest[e.body["doc_id"]] = e.body
+    ``source`` may be a live ``LedgerProjection`` (from the Ledger's cache) or an
+    iterable of events (from which a projection is built)."""
+    proj = source if isinstance(source, LedgerProjection) else LedgerProjection(source)
     items: list[HeldItem] = []
-    for doc_id, body in latest.items():
-        if doc_id in posted:
-            continue                     # already resolved and posted
+    for body in proj.open_holds():
         facts = StatementFacts.from_dict(body["facts"])
         held_bal = proj.running_balance(account_id_for(facts))
         items.append(HeldItem(
-            doc_id=doc_id, reason=body.get("reason", ""),
+            doc_id=body["doc_id"], reason=body.get("reason", ""),
             account_ref=facts.account_ref, facts=facts,
             finding=body.get("finding"),
             held_balance=None if held_bal is None else str(held_bal)))
     return items
 
 
-def _held_facts(store: EventStore, doc_id: str) -> StatementFacts:
-    body = None
-    for e in store.events():
-        if e.event_type == "StatementHeld" and e.body["doc_id"] == doc_id:
-            body = e.body
-    if body is None:
-        raise ValueError(f"no held statement for {doc_id}")
-    return StatementFacts.from_dict(body["facts"])
+def _held_facts(ledger: Ledger, doc_id: str) -> StatementFacts:
+    for body in ledger.projection().open_holds():
+        if body["doc_id"] == doc_id:
+            return StatementFacts.from_dict(body["facts"])
+    raise ValueError(f"no held statement for {doc_id}")
 
 
-def apply_human_correction(store: EventStore, doc_id: str, field: str,
+def apply_human_correction(ledger: Ledger, doc_id: str, field: str,
                            value: str, target_index: int | None = None
                            ) -> IngestResult:
     """Apply a person's ruling to a held statement, then re-post it.
@@ -111,7 +94,7 @@ def apply_human_correction(store: EventStore, doc_id: str, field: str,
     correction event; if it now reconciles, the statement posts at `verified`.
     If it still doesn't, it is held again — we don't post what we can't verify."""
     from dataclasses import replace
-    facts = _held_facts(store, doc_id)
+    facts = _held_facts(ledger, doc_id)
     to_value = str(Decimal(value))
 
     if field == "amount":
@@ -132,10 +115,10 @@ def apply_human_correction(store: EventStore, doc_id: str, field: str,
 
     log.info("correction: doc_id=%s %s: %s -> %s (by human)",
              doc_id[:12], target, from_value, to_value)
-    store.append(correction_applied(
+    ledger.append(correction_applied(
         doc_id, target, from_value, to_value, facts.closing_date, by="human",
         provenance=Provenance(doc_id=doc_id)))
-    res = post_statement(store, corrected, confirmed_by="human")
+    res = post_statement(ledger, corrected, confirmed_by="human")
     if res.action == "posted":
-        heal_gaps(store)             # this post may unblock statements waiting on it
+        heal_gaps(ledger)            # this post may unblock statements waiting on it
     return res
