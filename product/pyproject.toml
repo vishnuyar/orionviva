@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Vishnu Yarmaneni" }]
 dependencies = [
-    "vivacore",          # the shared crown jewels (verify/, models/, claims)
+    "vivacore @ file://localhost/Users/vishnu/orionviva/core",          # the shared crown jewels (verify/, models/, claims)
     "cryptography>=42",  # AES-256-GCM + scrypt for encryption at rest (ADR-005)
 ]
 
