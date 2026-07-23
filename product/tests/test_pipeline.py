@@ -273,10 +273,10 @@ def test_gap_held_item_reports_the_held_balance(tmp_path):
     jan = _facts("1000.00", [("2026-01-10", "Pay", "500.00"),
                              ("2026-01-15", "Coffee", "-42.42")], "1457.58",
                  o_date="2026-01-01", c_date="2026-01-31",
-                 ref="Chase Total Checking 000000556079591")
+                 ref="Northwind Total Checking 000000000005678")
     mar = _facts("2000.00", [("2026-03-05", "Dep", "50.00")], "2050.00",
                  o_date="2026-03-01", c_date="2026-03-31",
-                 ref="Chase Total Checking 000000556079591")
+                 ref="Northwind Total Checking 000000000005678")
     _up(raw, store, b"jan", jan)
     _up(raw, store, b"mar", mar)
     items = held_items(store.events())
@@ -284,7 +284,7 @@ def test_gap_held_item_reports_the_held_balance(tmp_path):
     d = items[0].to_dict()
     assert d["reason"] == "gap"
     assert d["held_balance"] == "1457.58" and d["opening_amount"] == "2000.00"
-    assert "····9591" in d["account_label"]     # long number masked
+    assert "····5678" in d["account_label"]     # long number masked
     assert d["period"] == "2026-03-01 – 2026-03-31"
 
 
@@ -349,6 +349,25 @@ def test_middle_gap_heals_both_sides(tmp_path):
     _up(raw, ledger, b"feb", f["feb"])          # posts Feb; heal then posts Mar
     assert held_items(ledger.projection()) == []
     assert ledger.projection().balance(account_id_for(f["jan"])).amount == Decimal("1650.00")
+
+
+def test_same_number_different_labels_are_one_account(tmp_path):
+    # Slice 1.5: the model labels the two months differently (product name vs
+    # holder name) but the account number is the same (full vs masked) — they
+    # must resolve to ONE account and stitch, not split into two.
+    raw, ledger = _stores(tmp_path)
+    jan = _facts("1000.00", [("2026-01-10", "Pay", "500.00")], "1500.00",
+                 o_date="2026-01-01", c_date="2026-01-31", ref="Chase Total Checking")
+    jan.account_number, jan.institution = "000000000001234", "Northwind"
+    feb = _facts("1500.00", [("2026-02-10", "Pay", "100.00")], "1600.00",
+                 o_date="2026-02-01", c_date="2026-02-28", ref="Jane Q Public")
+    feb.account_number, feb.institution = "xxxxxxxxx1234", "Northwind"   # masked, same last-4
+    _up(raw, ledger, b"jan", jan)
+    _up(raw, ledger, b"feb", feb)
+    assert account_id_for(jan) == account_id_for(feb)               # one identity
+    proj = ledger.projection()
+    assert proj.balance(account_id_for(jan)).amount == Decimal("1600.00")
+    assert held_items(proj) == []                                   # stitched, nothing stranded
 
 
 def test_cached_projection_matches_a_fresh_replay(tmp_path):

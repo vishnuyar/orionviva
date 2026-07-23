@@ -14,8 +14,10 @@ this doc is the *sequence*.
 
 ---
 
-## Slice 1 — Backfill / any-order ingestion
+## Slice 1 — Backfill / any-order ingestion  ✅ DONE (commit f8393fd)
 **Block seeded:** completes the *stitch/identity* block (bidirectional).
+
+_Delivered: backward-prepend + bidirectional cascading heal (any upload order → identical chain); Option A projection (OBE = earliest opening); and the `Ledger` facade (cached incremental projection — first perf optimization)._
 
 **Open state:** a statement *older* than the one that seeded an account can't slot in *before* it — it strands as a "gap," even when its closing connects to the seed's opening. *Proof:* upload May (seeds), then April (April closing = May opening) → April held as a gap (a red test asserting this).
 
@@ -28,6 +30,11 @@ this doc is the *sequence*.
 **Why now + future use:** unblocks currently-stranded statements; turns order-independence into an **invariant every future doc type inherits for free**; precondition for trustworthy net worth (S7), which can't have order-dependent holes.
 
 ---
+
+## Slice 1.5 — Account identity & entity resolution (learning)  ← NEXT
+**Blocks seeded:** Account (identity set) · Party (names/joint) · the universal entity-resolution matcher · identity-map projection · per-format registry (seed).
+
+Added after the first real run: the same account arrived under different labels (product name vs holder name), so a free-text account id didn't stitch. Fix is a *learning* identity block — signals → graded match → ask only when ambiguous → learn the ruling, for **all** account types. Full spec: [account-identity-and-entity-resolution.md](account-identity-and-entity-resolution.md). Prerequisite for Slice 2. (Also bundles the transaction date-sort — the visible half of bitemporality.)
 
 ## Slice 2 — Doc-type registry + credit card & savings
 **Block seeded:** Account-type registry (doc_type → {extraction profile, identity check, account kind}).
