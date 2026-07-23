@@ -29,7 +29,6 @@ with fixtures. Only the real reader touches the network.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Callable
@@ -43,6 +42,7 @@ from ..ledger.events import (Provenance, account_opened,
 from ..ledger.ledger import Ledger
 from ..ledger.postings import simple_transaction
 from .diagnose import FORCED, ReconciliationFinding, diagnose
+from .identity import account_key
 from .raw_store import RawStore
 from .statement import StatementFacts
 
@@ -101,10 +101,11 @@ ReadFn = Callable[[bytes, str], ReadResult]
 
 
 def account_id_for(facts: StatementFacts) -> str:
-    """A stable account id from how the statement names the account, so every
-    month of the same account maps to the same ledger account."""
-    slug = re.sub(r"[^a-z0-9]+", "-", facts.account_ref.strip().lower()).strip("-")
-    return f"acct:{slug or 'unknown'}"
+    """A stable account id anchored to the account number (institution + last-4),
+    falling back to the label only when no number was extracted — so every month
+    of the same account maps to the same ledger account regardless of how the
+    statement labels it (Slice 1.5)."""
+    return account_key(facts.institution, facts.account_number, facts.account_ref)
 
 
 def _connects(facts: StatementFacts, proj) -> str:

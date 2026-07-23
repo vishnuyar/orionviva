@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from vivacore.verify.normalize import parse_amount, parse_date
@@ -64,6 +64,12 @@ class StatementFacts:
     transactions: list[TxnFact]
     opening_page: int | None = None
     closing_page: int | None = None
+    # Identity signals (Slice 1.5): extracted separately so account identity is
+    # anchored to the stable number, not a free-text label. Names is a list —
+    # joint accounts have two.
+    account_number: str = ""
+    institution: str = ""
+    account_names: list[str] = field(default_factory=list)
 
     def opening_provenance(self) -> Provenance:
         return Provenance(doc_id=self.doc_id, page=self.opening_page,
@@ -84,6 +90,9 @@ class StatementFacts:
             "closing_date": self.closing_date,
             "opening_page": self.opening_page, "closing_page": self.closing_page,
             "transactions": [t.to_dict() for t in self.transactions],
+            "account_number": self.account_number,
+            "institution": self.institution,
+            "account_names": list(self.account_names),
         }
 
     @classmethod
@@ -97,7 +106,10 @@ class StatementFacts:
             closing_amount=Decimal(d["closing_amount"]),
             closing_date=d["closing_date"],
             transactions=[TxnFact.from_dict(t) for t in d.get("transactions", [])],
-            opening_page=d.get("opening_page"), closing_page=d.get("closing_page"))
+            opening_page=d.get("opening_page"), closing_page=d.get("closing_page"),
+            account_number=d.get("account_number", ""),
+            institution=d.get("institution", ""),
+            account_names=list(d.get("account_names", [])))
 
 
 def _find_json(text: str) -> str | None:
@@ -208,6 +220,14 @@ def from_model_json(text: str, doc_id: str, locale: str,
                             amount=signed, page=rt.get("page"),
                             running_balance=running))
 
+    raw_names = data.get("account_names")
+    if isinstance(raw_names, list):
+        names = [str(n).strip() for n in raw_names if str(n).strip()]
+    elif raw_names:
+        names = [str(raw_names).strip()]
+    else:
+        names = []
+
     facts = StatementFacts(
         doc_id=doc_id,
         doc_type=str(data.get("doc_type", "unknown")).strip().lower(),
@@ -219,5 +239,8 @@ def from_model_json(text: str, doc_id: str, locale: str,
         transactions=txns,
         opening_page=data["opening"].get("page"),
         closing_page=data["closing"].get("page"),
+        account_number=str(data.get("account_number", "")),
+        institution=str(data.get("institution", "")),
+        account_names=names,
     )
     return facts, None

@@ -9,7 +9,7 @@ reconciliation gate decide. It is told to say so when a document is not a
 checking statement rather than forcing one.
 """
 
-PROMPT_VERSION = "stmt-v1"
+PROMPT_VERSION = "stmt-v2"
 
 STATEMENT_EXTRACTION_PROMPT = """\
 You are reading one financial statement. Return ONLY a JSON object, no prose.
@@ -25,7 +25,10 @@ For a checking/bank statement, extract:
 {
   "doc_type": "checking_statement",
   "doc_type_confidence": 0.0-1.0,
-  "account_ref": "how the statement identifies the account (name + masked number)",
+  "account_number": "the account number AS PRINTED (full or masked, e.g. ...1234); '' if none visible",
+  "institution": "the bank/institution name, e.g. 'Chase', 'SBI'",
+  "account_names": ["each account-holder name printed on the statement — usually one, two for a joint account"],
+  "account_ref": "a short human label for the account (e.g. 'Chase Total Checking ...1234')",
   "opening": {"amount_raw": "the opening/beginning balance AS PRINTED", "date_raw": "the period start date AS PRINTED", "page": <page number>},
   "closing": {"amount_raw": "the closing/ending balance AS PRINTED", "date_raw": "the period end date AS PRINTED", "page": <page number>},
   "transactions": [
@@ -34,6 +37,9 @@ For a checking/bank statement, extract:
 }
 
 Rules:
+- "account_number", "institution", "account_names" identify WHOSE account this is
+  — extract them as printed; they let the same account be recognized across
+  statements even when labelled differently. Include every holder name.
 - Copy amounts and dates EXACTLY as printed. Do not reformat, convert, or do math.
 - "direction" is "credit" for money INTO the account (deposits, credits) and
   "debit" for money OUT (withdrawals, payments, fees, checks).
