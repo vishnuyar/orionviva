@@ -25,6 +25,20 @@ records**, and every answer carries a **grade** (`verified` / `corroborated` /
 - `viva/ledger/store.py` — the encrypted, hash-chained `EventStore`.
 - `viva/ledger/projection.py` — `LedgerProjection.balance()` → figure + grade + source.
 - `viva/answer.py` — the answer path: `answer_balance` / `answer_total` / `coverage_summary`, with honest refusal (no LLM).
+- `viva/ingest/review.py` — held-statement review + human correction-as-event (posts at `verified`).
+- `viva/vault.py` — a vault: one directory + passphrase holding the event log and raw blobs.
+- `viva/web/` — the local surface: a stdlib HTTP server + a single self-contained page (dashboard, review/confirm, account drill-down, upload). Provenance built in, kept quiet.
+
+## Running the surface
+
+```
+VIVA_PASSPHRASE=... VIVA_SAMPLE=1 PYTHONPATH=../core:. python3 -m viva.web
+# then open http://127.0.0.1:8765
+```
+
+`VIVA_SAMPLE=1` seeds fabricated data so the page is alive to look at. The live
+document reader (a real model call) is not wired by default — uploads park until
+a model is configured, so nothing leaves the machine until you choose the real run.
 - `viva/ingest/raw_store.py` — encrypted, content-addressed raw capture (every file, always).
 - `viva/ingest/statement.py` — a model read → canonical `StatementFacts` (or a refusal).
 - `viva/ingest/pipeline.py` — capture → classify → reconcile → post, or park (never discard).

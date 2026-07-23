@@ -75,6 +75,20 @@ class AccountInfo:
 
 
 @dataclass
+class TxnLine:
+    date: str
+    description: str
+    amount: Decimal
+    grade: str
+    provenance: Provenance
+
+    def to_dict(self) -> dict:
+        return {"date": self.date, "description": self.description,
+                "amount": str(self.amount), "grade": self.grade,
+                "provenance": self.provenance.to_dict()}
+
+
+@dataclass
 class _AccountState:
     balance: Decimal = Decimal("0")            # running sum of all postings
     opening: Decimal | None = None
@@ -88,6 +102,8 @@ class _AccountState:
     kind: str = ""
     currency: str = ""
     name: str = ""
+    closing_confirmed: bool = False            # a human attested the closing
+    lines: list = field(default_factory=list)  # TxnLine per posting on this account
 
 
 class LedgerProjection:
@@ -140,12 +156,17 @@ class LedgerProjection:
                 st.closing = Decimal(event.body["amount"])
                 st.closing_date = event.occurred_at
                 st.closing_prov = event.provenance
+                st.closing_confirmed = event.body.get("confirmed_by") == "human"
 
         elif et == "TransactionRecorded":
             for p in postings_of(event):
                 st = self._state(p.account)
                 st.seen = True
                 st.balance += p.amount
+                st.lines.append(TxnLine(
+                    date=event.occurred_at,
+                    description=event.body.get("description", ""),
+                    amount=p.amount, grade=p.grade, provenance=event.provenance))
                 # Period deltas exclude the opening seed (that's tracked apart),
                 # so reconciliation is opening + period == closing.
                 if p.account != EQUITY_OPENING:
@@ -183,6 +204,12 @@ class LedgerProjection:
     def account_infos(self) -> list[AccountInfo]:
         return [self.account_info(a) for a in self.accounts()]
 
+    def transactions(self, account: str) -> list[TxnLine]:
+        st = self._acct.get(account)
+        if st is None or not st.seen:
+            raise UnknownAccountError(account)
+        return list(st.lines)
+
     def balance(self, account: str) -> BalanceAnswer:
         st = self._acct.get(account)
         if st is None or not st.seen:
@@ -207,13 +234,17 @@ class LedgerProjection:
             # Closing + opening + transactions: reconcile the two routes.
             recon = check_balance_identity(st.opening, st.period_deltas, st.closing)
             if recon.passed:
+                # A human who ruled on the figure is our highest attestation.
+                grade = VERIFIED if st.closing_confirmed else CORROBORATED
+                note = ("confirmed by you and reconciled"
+                        if st.closing_confirmed
+                        else "opening plus the period's transactions reconcile "
+                             "to it to the cent")
                 ans = BalanceAnswer(
-                    account=account, amount=st.closing, grade=CORROBORATED,
+                    account=account, amount=st.closing, grade=grade,
                     as_of=self.as_of, provenance=st.closing_prov,
                     reconciliation=recon,
-                    explanation=("Attested closing balance, corroborated: opening "
-                                 "plus the period's transactions reconcile to it "
-                                 "to the cent."))
+                    explanation=f"Attested closing balance, {note}.")
             else:
                 ans = BalanceAnswer(
                     account=account, amount=st.closing, grade=CONFLICTED,

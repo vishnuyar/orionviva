@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Viva</title>
+<style>
+  :root{
+    --bg:#faf9f7; --card:#ffffff; --ink:#1d1d1f; --muted:#6b6b70;
+    --line:#e9e7e2; --accent:#3a5a40;
+    --ok:#3a7d44; --warn:#b8860b; --bad:#b23a48;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 80px}
+  header{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+  header h1{font-size:22px;margin:0;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:13px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:18px 20px;margin:14px 0}
+  .total .amt{font-size:34px;font-weight:600;letter-spacing:-.5px}
+  .total .lbl{color:var(--muted);font-size:13px;margin-bottom:2px}
+  .coverage{color:var(--muted);font-size:13px;margin-top:10px}
+  .acct{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 6px;border-bottom:1px solid var(--line);cursor:pointer}
+  .acct:last-child{border-bottom:none}
+  .acct .nm{font-weight:500}
+  .acct .rt{display:flex;align-items:center;gap:10px}
+  .acct .as{color:var(--muted);font-size:12px}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .g-verified,.g-corroborated{background:var(--ok)}
+  .g-unverified{background:var(--warn)}
+  .g-conflicted{background:var(--bad)}
+  .review{border-color:#e7dcc2;background:#fdfaf1}
+  .review h3{margin:0 0 4px;font-size:15px}
+  .held{border-top:1px solid var(--line);padding:12px 0}
+  .held .msg{font-size:14px;color:#5a4b2a;margin-bottom:8px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:14px}
+  select,input[type=text]{font:inherit;padding:7px 9px;border:1px solid var(--line);
+    border-radius:8px;background:#fff}
+  button{font:inherit;padding:7px 14px;border:1px solid var(--accent);
+    background:var(--accent);color:#fff;border-radius:8px;cursor:pointer}
+  button.ghost{background:#fff;color:var(--accent)}
+  a.back{color:var(--accent);text-decoration:none;font-size:14px;cursor:pointer}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+  td,th{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
+  td.amt{text-align:right;font-variant-numeric:tabular-nums}
+  .src{color:var(--muted);font-size:11px}
+  .muted{color:var(--muted)}
+  .flash{font-size:13px;color:var(--accent);min-height:18px;margin-top:8px}
+  .up{display:flex;align-items:center;gap:10px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Viva</h1>
+    <span class="sub">your money, held honestly</span>
+  </header>
+  <div id="view"></div>
+</div>
+
+<script>
+const $ = (h)=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstChild};
+const view = document.getElementById('view');
+const money = (a,c)=> a==null? '' : (c? c+' ':'')+a;
+const dot = (g)=>`<span class="dot g-${g||'unverified'}" title="${g||''}"></span>`;
+
+async function get(u){return (await fetch(u)).json()}
+async function post(u,b,extra){return (await fetch(u,{method:'POST',body:b,headers:extra||{}})).json()}
+
+async function home(){
+  const d = await get('/api/overview');
+  const t = d.total;
+  let totalHtml;
+  if(t.answered && t.amount!=null){
+    totalHtml = `<div class="lbl">Total across your checking accounts</div>
+      <div class="amt">${money(t.amount,t.currency)}</div>`;
+  } else if(t.answered){
+    totalHtml = `<div class="lbl">Across currencies (not converted)</div>
+      <div class="amt" style="font-size:22px">${Object.entries(t.subtotals).map(([c,v])=>c+' '+v).join(' · ')}</div>`;
+  } else {
+    totalHtml = `<div class="lbl">Total</div><div class="muted">${t.text}</div>`;
+  }
+  const accts = d.accounts.map(a=>`
+    <div class="acct" onclick="account('${a.account}')">
+      <span class="nm">${a.name}</span>
+      <span class="rt"><span class="as">as of ${a.as_of||'—'}</span>
+        ${dot(a.grade)}<strong>${money(a.amount,a.currency)}</strong></span>
+    </div>`).join('');
+
+  view.replaceChildren($(`<div>
+    <div class="card total">${totalHtml}<div class="coverage">${d.coverage}</div></div>
+    ${d.review_count>0? `<div class="card review" id="reviewcard">
+        <h3>${d.review_count} statement${d.review_count>1?'s':''} need${d.review_count>1?'':'s'} your eyes</h3>
+        <div class="muted" style="font-size:13px">A figure didn't reconcile, so it's held — not guessed.</div>
+        <div id="held"></div></div>` : ''}
+    <div class="card">${accts || '<div class="muted">No accounts yet. Upload a statement below.</div>'}</div>
+    <div class="card up">
+      <label>Add a statement: <input type="file" id="file"></label>
+      <button class="ghost" onclick="upload()">Upload</button>
+      <span class="flash" id="flash"></span>
+    </div>
+  </div>`));
+  if(d.review_count>0) loadReview();
+}
+
+async function loadReview(){
+  const {items} = await get('/api/review');
+  const box = document.getElementById('held'); if(!box) return;
+  box.replaceChildren(...items.map(renderHeld));
+}
+
+function renderHeld(it){
+  const f = it.finding||{};
+  const opts = it.transactions.map((t,i)=>`<option value="amount:${i}">line ${i}: ${t.description} (${t.amount})</option>`).join('')
+    + `<option value="closing:">closing balance (${it.closing_amount})</option>`;
+  const pre = (f.status==='suggested'||f.status==='forced') && f.target_index!=null ? `amount:${f.target_index}`
+             : (f.kind==='balance_misread'? 'closing:' : '');
+  const el = $(`<div class="held">
+    <div class="msg">${it.account_ref} — ${f.message || 'Did not reconcile.'}</div>
+    <div class="row">
+      <span>Fix</span>
+      <select class="what">${opts}</select>
+      <span>to</span>
+      <input type="text" class="val" placeholder="correct amount" size="12">
+      <button>Confirm</button>
+      <span class="flash fl"></span>
+    </div></div>`);
+  const sel = el.querySelector('.what'); if(pre) sel.value = pre;
+  el.querySelector('button').onclick = async ()=>{
+    const [field,idx] = sel.value.split(':');
+    const val = el.querySelector('.val').value.trim();
+    if(!val){el.querySelector('.fl').textContent='Enter the correct figure.';return}
+    const body = {doc_id:it.doc_id, field, value:val};
+    if(field==='amount') body.target_index = parseInt(idx,10);
+    const r = await post('/api/confirm', JSON.stringify(body), {'Content-Type':'application/json'});
+    el.querySelector('.fl').textContent = r.message || r.error || '';
+    if(r.action==='posted') setTimeout(home,700);
+  };
+  return el;
+}
+
+async function account(id){
+  const d = await get('/api/account?id='+encodeURIComponent(id));
+  if(d.error){view.replaceChildren($(`<div class="card">Unknown account. <a class="back" onclick="home()">Back</a></div>`));return}
+  const rows = d.transactions.map(t=>`<tr>
+    <td>${t.date}</td><td>${t.description}
+      ${t.provenance&&t.provenance.doc_id?`<div class="src">source: ${t.provenance.doc_id.slice(0,10)}… p${t.provenance.page||'?'}</div>`:''}</td>
+    <td class="amt">${t.amount}</td><td>${dot(t.grade)}</td></tr>`).join('');
+  view.replaceChildren($(`<div>
+    <div class="card">
+      <a class="back" onclick="home()">← back</a>
+      <div style="margin-top:10px" class="lbl muted">${d.name}</div>
+      <div class="amt" style="font-size:28px;font-weight:600">${dot(d.balance.grade)} ${money(d.balance.amount,d.currency)}</div>
+      <div class="muted" style="font-size:13px">${d.balance.explanation||''}</div>
+      <table><thead><tr><th>Date</th><th>Description</th><th class="amt">Amount</th><th></th></tr></thead>
+        <tbody>${rows||'<tr><td colspan=4 class="muted">No transactions.</td></tr>'}</tbody></table>
+    </div></div>`));
+}
+
+async function upload(){
+  const f = document.getElementById('file').files[0];
+  const flash = document.getElementById('flash');
+  if(!f){flash.textContent='Choose a file first.';return}
+  flash.textContent='Reading…';
+  const buf = await f.arrayBuffer();
+  const r = await post('/api/upload', buf, {'X-Filename':f.name,'Content-Type':'application/octet-stream'});
+  flash.textContent = r.message || r.error || '';
+  setTimeout(home, 900);
+}
+
+home();
+</script>
+</body>
+</html>

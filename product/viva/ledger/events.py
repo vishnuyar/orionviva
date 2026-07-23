@@ -176,11 +176,43 @@ def opening_balance_observed(account_id: str, amount: Decimal | str,
 
 def closing_balance_observed(account_id: str, amount: Decimal | str,
                              occurred_at: str,
-                             provenance: Provenance | None = None) -> Event:
+                             provenance: Provenance | None = None,
+                             confirmed_by: str = "") -> Event:
+    """``confirmed_by='human'`` marks a figure a person attested (e.g. after
+    reviewing a held statement) — the projection grades that `verified`, the
+    highest trust, above an arithmetic-only `corroborated`."""
     return Event(
         "ClosingBalanceObserved", occurred_at,
-        body={"account_id": account_id, "amount": str(Decimal(amount))},
+        body={"account_id": account_id, "amount": str(Decimal(amount)),
+              "confirmed_by": confirmed_by},
         provenance=provenance or Provenance(),
+    )
+
+
+def statement_held(doc_id: str, facts_dict: dict, finding_dict: dict | None,
+                   reason: str, occurred_at: str,
+                   provenance: Provenance | None = None) -> Event:
+    """A statement we read but did not post (it did not reconcile, or a gap).
+    Persisted so the person can review and rule on it later — the claims-layer
+    record of a read that is awaiting a human (T4: nothing lost, all replayable)."""
+    return Event(
+        "StatementHeld", occurred_at,
+        body={"doc_id": doc_id, "reason": reason, "facts": facts_dict,
+              "finding": finding_dict},
+        provenance=provenance or Provenance(doc_id=doc_id),
+    )
+
+
+def correction_applied(doc_id: str, target: str, from_value: str,
+                       to_value: str, occurred_at: str, by: str = "human",
+                       provenance: Provenance | None = None) -> Event:
+    """A person (or a forced identity) ruled on a figure. The correction is an
+    event, never an overwrite — the full history stays replayable (T4)."""
+    return Event(
+        "CorrectionApplied", occurred_at,
+        body={"doc_id": doc_id, "target": target, "from": from_value,
+              "to": to_value, "by": by},
+        provenance=provenance or Provenance(doc_id=doc_id),
     )
 
 
