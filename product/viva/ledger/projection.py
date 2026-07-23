@@ -48,18 +48,30 @@ class BalanceAnswer:
     provenance: Provenance
     reconciliation: CheckResult | None
     explanation: str
+    currency: str = ""
+    dated: str = ""            # the value-time date this balance is as of
 
     def to_dict(self) -> dict:
         return {
             "account": self.account,
             "amount": str(self.amount),
+            "currency": self.currency,
             "grade": self.grade,
             "as_of": self.as_of,
+            "dated": self.dated,
             "provenance": self.provenance.to_dict(),
             "reconciliation": (self.reconciliation.explain()
                                if self.reconciliation else None),
             "explanation": self.explanation,
         }
+
+
+@dataclass
+class AccountInfo:
+    account: str
+    kind: str = ""
+    currency: str = ""
+    name: str = ""
 
 
 @dataclass
@@ -73,6 +85,9 @@ class _AccountState:
     closing_prov: Provenance = field(default_factory=Provenance)
     period_deltas: list[Decimal] = field(default_factory=list)  # non-opening postings
     seen: bool = False
+    kind: str = ""
+    currency: str = ""
+    name: str = ""
 
 
 class LedgerProjection:
@@ -92,7 +107,11 @@ class LedgerProjection:
     def _apply(self, event: Event) -> None:
         et = event.event_type
         if et == "AccountOpened":
-            self._state(event.body["account_id"]).seen = True
+            st = self._state(event.body["account_id"])
+            st.seen = True
+            st.kind = event.body.get("kind", "")
+            st.currency = event.body.get("currency", "")
+            st.name = event.body.get("name", "")
 
         elif et == "OpeningBalanceObserved":
             acct = event.body["account_id"]
@@ -154,6 +173,16 @@ class LedgerProjection:
         st = self._acct.get(account)
         return st.balance if (st and st.seen) else None
 
+    def account_info(self, account: str) -> AccountInfo:
+        st = self._acct.get(account)
+        if st is None or not st.seen:
+            raise UnknownAccountError(account)
+        return AccountInfo(account=account, kind=st.kind,
+                           currency=st.currency, name=st.name)
+
+    def account_infos(self) -> list[AccountInfo]:
+        return [self.account_info(a) for a in self.accounts()]
+
     def balance(self, account: str) -> BalanceAnswer:
         st = self._acct.get(account)
         if st is None or not st.seen:
@@ -161,36 +190,38 @@ class LedgerProjection:
 
         # No attested closing: the balance is a bare replayed sum.
         if st.closing is None:
-            return BalanceAnswer(
+            ans = BalanceAnswer(
                 account=account, amount=st.balance, grade=UNVERIFIED,
                 as_of=self.as_of, provenance=st.opening_prov, reconciliation=None,
                 explanation=("Computed by replaying opening balance and "
                              "transactions; no closing figure was attested to "
-                             "check it against."),
-            )
-
+                             "check it against."))
         # Closing attested but no opening to reconcile from: a lone snapshot.
-        if st.opening is None:
-            return BalanceAnswer(
+        elif st.opening is None:
+            ans = BalanceAnswer(
                 account=account, amount=st.closing, grade=VERIFIED,
                 as_of=self.as_of, provenance=st.closing_prov, reconciliation=None,
                 explanation=("Attested closing balance; no opening figure or "
-                             "transactions to corroborate it against."),
-            )
-
-        # Closing + opening + transactions: reconcile the two routes.
-        recon = check_balance_identity(st.opening, st.period_deltas, st.closing)
-        if recon.passed:
-            return BalanceAnswer(
-                account=account, amount=st.closing, grade=CORROBORATED,
-                as_of=self.as_of, provenance=st.closing_prov, reconciliation=recon,
-                explanation=("Attested closing balance, corroborated: opening "
-                             "plus the period's transactions reconcile to it "
-                             "to the cent."),
-            )
-        return BalanceAnswer(
-            account=account, amount=st.closing, grade=CONFLICTED,
-            as_of=self.as_of, provenance=st.closing_prov, reconciliation=recon,
-            explanation=("The attested closing balance and the transactions "
-                         f"disagree: {recon.explain()}. Surfaced, not averaged."),
-        )
+                             "transactions to corroborate it against."))
+        else:
+            # Closing + opening + transactions: reconcile the two routes.
+            recon = check_balance_identity(st.opening, st.period_deltas, st.closing)
+            if recon.passed:
+                ans = BalanceAnswer(
+                    account=account, amount=st.closing, grade=CORROBORATED,
+                    as_of=self.as_of, provenance=st.closing_prov,
+                    reconciliation=recon,
+                    explanation=("Attested closing balance, corroborated: opening "
+                                 "plus the period's transactions reconcile to it "
+                                 "to the cent."))
+            else:
+                ans = BalanceAnswer(
+                    account=account, amount=st.closing, grade=CONFLICTED,
+                    as_of=self.as_of, provenance=st.closing_prov,
+                    reconciliation=recon,
+                    explanation=("The attested closing balance and the "
+                                 f"transactions disagree: {recon.explain()}. "
+                                 "Surfaced, not averaged."))
+        ans.currency = st.currency
+        ans.dated = st.closing_date or st.opening_date
+        return ans

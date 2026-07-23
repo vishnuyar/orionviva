@@ -1,0 +1,219 @@
+"""The v0 answer path — deterministic, and honest about what it doesn't know.
+
+No model sits here (the v0 decision). A "question" is a fixed function call over
+the projection, and the whole job of this layer is the *honesty envelope* around
+the number: a cited source, a confidence grade, a coverage statement, and — the
+part that is the actual product — a clean refusal when the honest answer is "I
+can't tell you that reliably" rather than a bluffed figure (principle 2).
+
+Three questions, and their refusals:
+  - ``answer_balance``  — one account's balance, or a refusal (unknown account,
+                          no data as of a date, or a conflicted figure we won't
+                          assert). An unverified figure is given but flagged.
+  - ``answer_total``    — the coverage-aware sum across checking accounts, per
+                          currency (no FX — cross-currency totals are not faked).
+  - ``coverage_summary``— what is answerable vs. what is held awaiting review
+                          ("5 posted, 2 not yet readable"), from the ledger alone.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass, field
+from decimal import Decimal
+
+from .ledger import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
+                     LedgerProjection, Provenance, UnknownAccountError)
+
+# Grades safe to assert as an answer and to include in a total. Conflicted is
+# never asserted; unverified is asserted only with a visible caveat.
+TRUSTWORTHY = (VERIFIED, CORROBORATED)
+DEPOSITORY = "depository"
+
+
+@dataclass
+class Answer:
+    question: str
+    answered: bool
+    text: str                                  # one honest sentence
+    amount: Decimal | None = None
+    currency: str | None = None
+    grade: str | None = None
+    as_of: str | None = None
+    provenance: list[Provenance] = field(default_factory=list)
+    subtotals: dict[str, str] = field(default_factory=dict)  # currency -> total
+    coverage: str = ""
+    caveats: list[str] = field(default_factory=list)
+    reason: str = ""                           # machine tag when answered is False
+
+    def to_dict(self) -> dict:
+        return {
+            "question": self.question, "answered": self.answered,
+            "text": self.text,
+            "amount": None if self.amount is None else str(self.amount),
+            "currency": self.currency, "grade": self.grade, "as_of": self.as_of,
+            "provenance": [p.to_dict() for p in self.provenance],
+            "subtotals": self.subtotals, "coverage": self.coverage,
+            "caveats": self.caveats, "reason": self.reason,
+        }
+
+
+@dataclass
+class Coverage:
+    documents_held: int
+    posted: int
+    awaiting: int
+    awaiting_types: dict[str, int]
+    text: str
+
+
+def _money(amount: Decimal, currency: str) -> str:
+    return f"{currency + ' ' if currency else ''}{amount}"
+
+
+def answer_balance(events, account: str, as_of: str | None = None) -> Answer:
+    """One account's balance — with grade and source, or an honest refusal."""
+    events = list(events)
+    proj = LedgerProjection(events, as_of)
+    q = f"balance of {account}" + (f" as of {as_of}" if as_of else "")
+
+    try:
+        ba = proj.balance(account)
+    except UnknownAccountError:
+        return Answer(
+            question=q, answered=False, reason="unknown_account",
+            text=(f"I don't have an account '{account}' on file, so I can't give "
+                  "you its balance — I'd rather say so than make one up."),
+            coverage=_accounts_line(proj))
+
+    info = proj.account_info(account)
+    name = info.name or account
+
+    if ba.grade == CONFLICTED:
+        return Answer(
+            question=q, answered=False, reason="conflicted", grade=CONFLICTED,
+            as_of=ba.dated, provenance=[ba.provenance],
+            text=(f"I can't give you a trustworthy balance for {name}: its "
+                  f"statement doesn't reconcile ({ba.reconciliation.explain()}). "
+                  "Here's the conflict rather than a number I don't believe."))
+
+    caveats: list[str] = []
+    if ba.grade == UNVERIFIED:
+        caveats.append("Computed from transactions; no closing statement has "
+                       "confirmed this figure yet.")
+
+    return Answer(
+        question=q, answered=True, amount=ba.amount, currency=ba.currency,
+        grade=ba.grade, as_of=ba.dated, provenance=[ba.provenance],
+        caveats=caveats,
+        text=(f"Your {name} balance is {_money(ba.amount, ba.currency)}"
+              + (f" as of {ba.dated}" if ba.dated else "")
+              + f" ({ba.grade})."))
+
+
+def answer_total(events, as_of: str | None = None) -> Answer:
+    """Coverage-aware total across checking accounts, per currency (no FX)."""
+    events = list(events)
+    proj = LedgerProjection(events, as_of)
+    q = "total across checking accounts" + (f" as of {as_of}" if as_of else "")
+
+    infos = [i for i in proj.account_infos() if i.kind == DEPOSITORY]
+    if not infos:
+        return Answer(question=q, answered=False, reason="no_accounts",
+                      text="I don't have any checking accounts on file yet.")
+
+    sums: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    included: dict[str, list] = defaultdict(list)
+    excluded: list[str] = []
+    provenance: list[Provenance] = []
+
+    for info in infos:
+        ba = proj.balance(info.account)
+        cur = info.currency or "?"
+        if ba.grade in TRUSTWORTHY:
+            sums[cur] += ba.amount
+            included[cur].append((info, ba))
+            provenance.append(ba.provenance)
+        else:
+            excluded.append(f"{info.name or info.account} "
+                            f"({ba.grade}, not counted)")
+
+    if not sums:                       # nothing trustworthy to total
+        return Answer(
+            question=q, answered=False, reason="nothing_trustworthy",
+            caveats=excluded,
+            text=("I can't total your checking accounts — none currently has a "
+                  "balance I'd stand behind. " + "; ".join(excluded)))
+
+    subtotals = {cur: str(total) for cur, total in sums.items()}
+    coverage = _total_coverage(included, excluded)
+
+    if len(sums) == 1:
+        cur, total = next(iter(sums.items()))
+        n = len(included[cur])
+        return Answer(
+            question=q, answered=True, amount=total, currency=cur,
+            grade=CORROBORATED, as_of=as_of, provenance=provenance,
+            subtotals=subtotals, coverage=coverage, caveats=excluded,
+            text=(f"Your total across {n} checking account"
+                  f"{'s' if n != 1 else ''} is {_money(total, cur)}, as of each "
+                  "account's latest statement."))
+
+    # Multiple currencies: report subtotals, never a faked converted sum.
+    parts = "; ".join(f"{cur} {tot}" for cur, tot in subtotals.items())
+    return Answer(
+        question=q, answered=True, amount=None, currency=None,
+        grade=CORROBORATED, as_of=as_of, provenance=provenance,
+        subtotals=subtotals, coverage=coverage, caveats=excluded,
+        text=(f"Across currencies (I don't convert between them): {parts}. "
+              "Each is the sum of that currency's checking accounts."))
+
+
+def coverage_summary(events) -> Coverage:
+    """What we hold vs. what is answerable — derived from the ledger alone."""
+    events = list(events)
+    captured: dict[str, str] = {}
+    posted_docs: set[str] = set()
+    for e in events:
+        if e.event_type == "DocumentCaptured":
+            captured[e.body["doc_id"]] = e.body.get("doc_type", "unknown")
+        elif e.event_type in ("TransactionRecorded", "ClosingBalanceObserved",
+                              "OpeningBalanceObserved"):
+            if e.provenance.doc_id:
+                posted_docs.add(e.provenance.doc_id)
+
+    held = [dt for did, dt in captured.items() if did not in posted_docs]
+    awaiting_types: dict[str, int] = defaultdict(int)
+    for dt in held:
+        awaiting_types[dt] += 1
+    posted = len(captured) - len(held)
+
+    text = f"{len(captured)} document(s) held; {posted} posted to accounts"
+    if held:
+        types = ", ".join(f"{n} {t}" for t, n in sorted(awaiting_types.items()))
+        text += f"; {len(held)} awaiting review ({types})"
+    return Coverage(documents_held=len(captured), posted=posted,
+                    awaiting=len(held), awaiting_types=dict(awaiting_types),
+                    text=text + ".")
+
+
+# ------------------------------------------------------------------ helpers
+
+
+def _accounts_line(proj: LedgerProjection) -> str:
+    names = [i.name or i.account for i in proj.account_infos()]
+    if not names:
+        return "I don't have any accounts on file yet."
+    return "Accounts I do have: " + ", ".join(names) + "."
+
+
+def _total_coverage(included: dict, excluded: list) -> str:
+    parts = []
+    for cur, rows in included.items():
+        for info, ba in rows:
+            parts.append(f"{info.name or info.account}: "
+                         f"{_money(ba.amount, cur)} (as of {ba.dated})")
+    line = "Included — " + "; ".join(parts) if parts else ""
+    if excluded:
+        line += ". Excluded — " + "; ".join(excluded)
+    return line
