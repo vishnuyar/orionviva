@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 from ..crypto import (new_vault_header, open_sealed, open_vault_header, seal)
 
 _HEADER = "raw-header.json"
+log = logging.getLogger(__name__)
 
 
 class RawStore:
@@ -55,6 +57,9 @@ class RawStore:
         if not path.exists():
             sealed = seal(self._key, data, aad=doc_id.encode("utf-8"))
             path.write_text(json.dumps(sealed, ensure_ascii=False))
+            log.debug("raw put: stored %d bytes as %s", len(data), doc_id[:12])
+        else:
+            log.debug("raw put: %s already stored (dedup)", doc_id[:12])
         return doc_id
 
     def has(self, doc_id: str) -> bool:

@@ -7,11 +7,14 @@ unit the surface (and later the agent) works against.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from .ingest.raw_store import RawStore
 from .ledger.store import EventStore
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,6 +27,7 @@ class Vault:
     def open(cls, directory: Path, passphrase: str) -> "Vault":
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
+        log.info("opening vault at %s", directory)
         return cls(
             store=EventStore.open(directory / "events.jsonl", passphrase),
             raw=RawStore.open(directory / "raw", passphrase),

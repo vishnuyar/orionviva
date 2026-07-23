@@ -19,12 +19,14 @@ import pathlib
 import sys
 
 from .env import load_dotenv
+from .logs import configure as configure_logging
 
 
 def main() -> None:
     if len(sys.argv) < 2:
         raise SystemExit("usage: python -m viva.debug_read <pdf> [locale] [currency]")
     load_dotenv()
+    configure_logging()
 
     from vivacore.models import ModelSpec, adapter_for
     from vivacore.verify.arithmetic import check_balance_identity

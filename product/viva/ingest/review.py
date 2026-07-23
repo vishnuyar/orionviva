@@ -13,6 +13,7 @@ same reconciliation gate decides whether it now holds.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -20,6 +21,8 @@ from ..ledger.events import Provenance, correction_applied
 from ..ledger.store import EventStore
 from .pipeline import IngestResult, account_id_for, post_statement
 from .statement import StatementFacts
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -110,6 +113,8 @@ def apply_human_correction(store: EventStore, doc_id: str, field: str,
     else:
         raise ValueError(f"unknown correction field {field!r}")
 
+    log.info("correction: doc_id=%s %s: %s -> %s (by human)",
+             doc_id[:12], target, from_value, to_value)
     store.append(correction_applied(
         doc_id, target, from_value, to_value, facts.closing_date, by="human",
         provenance=Provenance(doc_id=doc_id)))

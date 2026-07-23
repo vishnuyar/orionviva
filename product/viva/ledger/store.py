@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Iterator
@@ -36,6 +37,7 @@ from ..crypto import (KdfParams, CryptoError, new_vault_header,
 from .events import Event
 
 GENESIS = "0" * 64
+log = logging.getLogger(__name__)
 
 
 def _canonical(obj) -> str:
@@ -63,6 +65,7 @@ class EventStore:
         for _seq, prev, sealed, rec_hash in self._iter_raw():
             self._last_hash = rec_hash
             self._count += 1
+        log.debug("EventStore opened %s with %d events", self.path, self._count)
 
     # --------------------------------------------------------------- lifecycle
 
@@ -109,6 +112,7 @@ class EventStore:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._last_hash = rec_hash
         self._count += 1
+        log.debug("append seq=%d type=%s", seq, event.event_type)
         return record
 
     # ------------------------------------------------------------------- reads
