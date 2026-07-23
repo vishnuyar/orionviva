@@ -27,6 +27,7 @@ records**, and every answer carries a **grade** (`verified` / `corroborated` /
 - `viva/ingest/raw_store.py` — encrypted, content-addressed raw capture (every file, always).
 - `viva/ingest/statement.py` — a model read → canonical `StatementFacts` (or a refusal).
 - `viva/ingest/pipeline.py` — capture → classify → reconcile → post, or park (never discard).
+- `viva/ingest/diagnose.py` — when reconciliation fails, localize it deterministically into a typed finding (forced / suggested / unlocalized).
 - `viva/ingest/reader.py` — the one live model edge (text+image); left unrun until a real statement.
 
 ## Ingest, in one line
@@ -35,6 +36,12 @@ Every uploaded file is captured raw and encrypted first; a model *proposes* a
 read; a recognized checking statement is posted only if it reconciles to the
 cent (the gate), and everything else is *parked* — held and acknowledged, lit up
 later when a projector for its type arrives, with no re-upload.
+
+When a statement does not reconcile, deterministic diagnosis localizes it (no
+model call): a correction an independent identity *forces* (the running-balance
+chain) is auto-applied at `corroborated` and reported; a merely *suggested* one
+is held for the human, shown against the source. See
+[docs/verification-findings-and-correction.md](../docs/verification-findings-and-correction.md).
 
 ## Categorization: two mechanisms (design, deferred to a later increment)
 

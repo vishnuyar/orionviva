@@ -126,6 +126,44 @@ def test_gap_between_months_is_surfaced_not_invented(tmp_path):
     assert ans.amount == Decimal("1457.58")
 
 
+def test_forced_correction_auto_applies_and_posts(tmp_path):
+    raw, store = _stores(tmp_path)
+    # Coffee is misread as -42.33, but its running balance (1457.58) is correct,
+    # so diagnosis forces -42.42 and the statement posts, reconciled.
+    txns = [TxnFact("2026-01-10", "Pay", Decimal("500.00"),
+                    running_balance=Decimal("1500.00")),
+            TxnFact("2026-01-15", "Coffee", Decimal("-42.33"),
+                    running_balance=Decimal("1457.58"))]
+    f = StatementFacts(
+        doc_id="", doc_type="checking_statement", doc_type_confidence=0.9,
+        account_ref="Chase Checking 1234", currency="USD",
+        opening_amount=Decimal("1000.00"), opening_date="2026-01-01",
+        closing_amount=Decimal("1457.58"), closing_date="2026-01-31",
+        transactions=txns)
+    data = b"misread-stmt"
+    res = capture_and_ingest(raw, store, data,
+                             _reader({data: ReadResult("checking_statement", 0.9, f)}),
+                             captured_at="2026-02-01")
+    assert res.action == POSTED and res.auto_corrected
+    assert res.finding is not None and res.finding.status == "forced"
+    ans = LedgerProjection(store.events()).balance(account_id_for(f))
+    assert ans.amount == Decimal("1457.58") and ans.grade == "corroborated"
+
+
+def test_unforced_conflict_carries_a_finding(tmp_path):
+    raw, store = _stores(tmp_path)
+    # No running balances and the gap equals a line -> suggested, not forced.
+    bad = _facts("1000.00", [("2026-01-10", "Pay", "500.00"),
+                             ("2026-01-11", "Rent", "-100.00")], "1500.00")
+    data = b"suggested-conflict"
+    res = capture_and_ingest(raw, store, data,
+                             _reader({data: ReadResult("checking_statement", 0.9, bad)}),
+                             captured_at="2026-02-01")
+    assert res.action == CONFLICT and res.finding is not None
+    assert res.finding.status == "suggested"
+    assert LedgerProjection(store.events()).accounts() == []
+
+
 def test_unreadable_document_is_parked(tmp_path):
     raw, store = _stores(tmp_path)
     data = b"garbled"

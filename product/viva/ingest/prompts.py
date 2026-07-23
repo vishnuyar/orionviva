@@ -29,7 +29,7 @@ For a checking/bank statement, extract:
   "opening": {"amount_raw": "the opening/beginning balance AS PRINTED", "date_raw": "the period start date AS PRINTED", "page": <page number>},
   "closing": {"amount_raw": "the closing/ending balance AS PRINTED", "date_raw": "the period end date AS PRINTED", "page": <page number>},
   "transactions": [
-    {"date_raw": "AS PRINTED", "description": "AS PRINTED", "amount_raw": "the POSITIVE magnitude AS PRINTED", "direction": "credit" or "debit", "page": <page number>}
+    {"date_raw": "AS PRINTED", "description": "AS PRINTED", "amount_raw": "the POSITIVE magnitude AS PRINTED", "direction": "credit" or "debit", "running_balance_raw": "the running/ledger balance printed on this line, if any", "page": <page number>}
   ]
 }
 
@@ -38,6 +38,9 @@ Rules:
 - "direction" is "credit" for money INTO the account (deposits, credits) and
   "debit" for money OUT (withdrawals, payments, fees, checks).
 - "amount_raw" is always the positive magnitude; the sign comes from "direction".
+- "running_balance_raw": if the statement prints a running/ledger balance on each
+  line, copy it AS PRINTED. If there is no such column, omit the field. It is a
+  cross-check that lets a misread line be pinpointed — worth capturing when present.
 - List EVERY transaction in the statement period. Completeness matters more than
   anything: a missing transaction will break reconciliation and be caught.
 - If a value is genuinely unreadable, write it exactly as best you can see it —
