@@ -36,7 +36,7 @@ def _facts(ref, opening, rows, closing, currency="USD",
 
 
 def _ingest(vault, data, rr, filename, captured_at):
-    return capture_and_ingest(vault.raw, vault.store, data, _reader(rr),
+    return capture_and_ingest(vault.raw, vault.ledger, data, _reader(rr),
                               filename=filename, captured_at=captured_at)
 
 

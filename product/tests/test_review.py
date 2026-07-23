@@ -4,12 +4,12 @@ from decimal import Decimal
 
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          apply_human_correction, capture_and_ingest, held_items)
-from viva.ledger import EventStore, LedgerProjection
+from viva.ledger import EventStore, Ledger, LedgerProjection
 
 
 def _stores(tmp):
     return (RawStore.open(tmp / "raw", "pw"),
-            EventStore.open(tmp / "events.jsonl", "pw"))
+            Ledger(EventStore.open(tmp / "events.jsonl", "pw")))
 
 
 def _reader(facts):

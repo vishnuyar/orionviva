@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from typing import Callable
 
 from vivacore.verify.arithmetic import CheckResult, check_balance_identity
@@ -39,9 +40,8 @@ from ..ledger.events import (Provenance, account_opened,
                              closing_balance_observed, document_captured,
                              opening_balance_observed, read_recorded,
                              statement_held)
+from ..ledger.ledger import Ledger
 from ..ledger.postings import simple_transaction
-from ..ledger.projection import LedgerProjection
-from ..ledger.store import EventStore
 from .diagnose import FORCED, ReconciliationFinding, diagnose
 from .raw_store import RawStore
 from .statement import StatementFacts
@@ -107,64 +107,47 @@ def account_id_for(facts: StatementFacts) -> str:
     return f"acct:{slug or 'unknown'}"
 
 
-def _posted_doc_ids(store: EventStore) -> set[str]:
-    ids: set[str] = set()
-    for e in store.events():
-        if e.event_type in ("TransactionRecorded", "ClosingBalanceObserved",
-                            "OpeningBalanceObserved") and e.provenance.doc_id:
-            ids.add(e.provenance.doc_id)
-    return ids
+def _connects(facts: StatementFacts, proj) -> str:
+    """How a reconciled statement attaches to its account's existing chain:
+    'forward' (its opening = the current balance), 'backward' (its closing = the
+    earliest opening — a backfill), or '' (a gap)."""
+    account = account_id_for(facts)
+    if facts.opening_amount == proj.running_balance(account):
+        return "forward"
+    if facts.closing_amount == proj.earliest_opening(account):
+        return "backward"
+    return ""
 
 
-def heal_gaps(store: EventStore) -> int:
+def heal_gaps(ledger: Ledger) -> int:
     """Re-post gap-held statements that now stitch onto their account's chain.
 
-    Ingestion is order-independent in the forward direction: a statement whose
-    opening didn't match the balance we held is parked as a *gap*, and when the
-    connecting statement later posts (raising the balance to that opening), this
-    sweep slots the waiting one in — cascading down a run. Returns how many
-    posted. Only ``gap`` holds are retried (they already reconcile internally);
-    conflict holds wait for a human."""
+    Ingestion is order-independent *both ways*: a statement parked as a gap posts
+    as soon as it connects — **forward** (its opening = the current balance) or
+    **backward** (its closing = the earliest opening, a backfill). One post can
+    unblock a neighbour, so this cascades until nothing more connects. Only gap
+    holds are retried (they reconcile internally); conflict holds wait for a
+    human."""
     posted_total = 0
     attempted: set[str] = set()
     while True:
-        proj = LedgerProjection(store.events())
-        resolved = _posted_doc_ids(store)
+        proj = ledger.projection()
         candidate = None
-        for e in store.events():
-            if e.event_type != "StatementHeld" or e.body.get("reason") != "gap":
+        for body in proj.gap_holds():
+            doc_id = body["doc_id"]
+            if doc_id in attempted:
                 continue
-            doc_id = e.body["doc_id"]
-            if doc_id in resolved or doc_id in attempted:
-                continue
-            facts = StatementFacts.from_dict(e.body["facts"])
-            bal = proj.running_balance(account_id_for(facts))
-            if bal is not None and facts.opening_amount == bal:
-                candidate = (doc_id, facts)
+            facts = StatementFacts.from_dict(body["facts"])
+            if _connects(facts, proj):
+                candidate = facts
+                attempted.add(doc_id)
                 break
         if candidate is None:
             return posted_total
-        doc_id, facts = candidate
-        attempted.add(doc_id)
-        log.info("heal: previously-held %s now stitches — re-posting", doc_id[:12])
-        if post_statement(store, facts).action == POSTED:
+        log.info("heal: previously-held %s now stitches — re-posting",
+                 candidate.doc_id[:12])
+        if post_statement(ledger, candidate).action == POSTED:
             posted_total += 1
-    # (loop returns from inside)
-
-
-def _is_resolved(store: EventStore, doc_id: str) -> bool:
-    """A document is 'done' only once it reached a terminal state — posted, or
-    held for review. A document that merely *parked* (captured but not read into
-    anything) is NOT done: re-uploading it should re-read it, since the reader or
-    parser may have improved. This is what lets a fixed parse heal a parked doc."""
-    for e in store.events():
-        did = e.provenance.doc_id
-        if e.event_type in ("TransactionRecorded", "ClosingBalanceObserved",
-                            "OpeningBalanceObserved") and did == doc_id:
-            return True
-        if e.event_type == "StatementHeld" and e.body.get("doc_id") == doc_id:
-            return True
-    return False
 
 
 def _reconciles(facts: StatementFacts) -> CheckResult:
@@ -177,7 +160,6 @@ def _apply_forced(facts: StatementFacts,
                   finding: ReconciliationFinding) -> StatementFacts:
     """Return a copy of the facts with a forced correction applied. Only ever
     called on a FORCED finding — a correction an independent identity implies."""
-    from decimal import Decimal
     if finding.kind == "amount_misread" and finding.target_index is not None:
         txns = list(facts.transactions)
         i = finding.target_index
@@ -188,7 +170,7 @@ def _apply_forced(facts: StatementFacts,
     return facts
 
 
-def post_statement(store: EventStore, facts: StatementFacts,
+def post_statement(ledger: Ledger, facts: StatementFacts,
                    confirmed_by: str = "") -> IngestResult:
     """Reconcile a checking statement and, only if it holds, post it. The gate.
 
@@ -205,7 +187,7 @@ def post_statement(store: EventStore, facts: StatementFacts,
     recon = _reconciles(facts)
     if recon.passed:
         log.info("post_statement: reconciles on first read")
-        return _post_reconciled(store, facts, recon, finding=None,
+        return _post_reconciled(ledger, facts, recon, finding=None,
                                 auto_corrected=False, confirmed_by=confirmed_by)
 
     finding = diagnose(facts)
@@ -216,14 +198,14 @@ def post_statement(store: EventStore, facts: StatementFacts,
         recon2 = _reconciles(corrected)
         if recon2.passed:
             log.info("post_statement: forced correction applied -> reconciles")
-            res = _post_reconciled(store, corrected, recon2, finding=finding,
+            res = _post_reconciled(ledger, corrected, recon2, finding=finding,
                                    auto_corrected=True)
             if res.action == POSTED:
                 res.message = f"{finding.message} {res.message}"
             return res
 
     log.info("post_statement: holding for review (doc_id=%s)", facts.doc_id[:12])
-    store.append(statement_held(
+    ledger.append(statement_held(
         facts.doc_id, facts.to_dict(), finding.to_dict(), "conflict",
         facts.closing_date, Provenance(doc_id=facts.doc_id)))
     return IngestResult(
@@ -233,47 +215,58 @@ def post_statement(store: EventStore, facts: StatementFacts,
         message=f"Not posted; held for your review. {finding.message}")
 
 
-def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResult,
+def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                      finding: ReconciliationFinding | None,
                      auto_corrected: bool, confirmed_by: str = "") -> IngestResult:
-    """Write a statement that reconciles: seed a new account or stitch onto an
-    existing one (surfacing a gap rather than inventing it), then post."""
+    """Write a statement that reconciles: seed a new account, stitch onto the end
+    (forward), backfill in front (backward), or — if it connects to neither —
+    hold it as a gap (never invent the gap)."""
     account = account_id_for(facts)
-    proj = LedgerProjection(store.events())
-    if proj.is_seeded(account):
-        prior = proj.running_balance(account)
-        log.info("_post_reconciled: stitching onto %s (held=%s, new opening=%s)",
-                 account, prior, facts.opening_amount)
-        if facts.opening_amount != prior:
-            log.info("_post_reconciled: GAP — opening %s != held %s; holding",
-                     facts.opening_amount, prior)
-            store.append(statement_held(
-                facts.doc_id, facts.to_dict(),
-                finding.to_dict() if finding else None, "gap",
+    proj = ledger.projection()
+
+    if not proj.is_seeded(account):
+        log.info("_post_reconciled: opening new account %s (%s %s) seeded at %s",
+                 account, facts.account_ref, facts.currency, facts.opening_amount)
+        ledger.append(account_opened(
+            account, "depository", facts.account_ref or account,
+            facts.currency, facts.opening_date))
+        ledger.append(opening_balance_observed(
+            account, facts.opening_amount, facts.opening_date,
+            facts.opening_provenance()))
+    else:
+        how = _connects(facts, proj)
+        if how == "forward":
+            log.info("_post_reconciled: forward-stitching onto %s at %s",
+                     account, facts.opening_amount)
+            # no opening event — the prior closing already is this opening
+        elif how == "backward":
+            log.info("_post_reconciled: backfilling %s in front (opening %s "
+                     "re-seats the OBE)", account, facts.opening_amount)
+            ledger.append(opening_balance_observed(
+                account, facts.opening_amount, facts.opening_date,
+                facts.opening_provenance()))
+        else:
+            prior = proj.running_balance(account)
+            log.info("_post_reconciled: GAP — opening %s / closing %s connect to "
+                     "neither (held=%s, earliest=%s); holding", facts.opening_amount,
+                     facts.closing_amount, prior, proj.earliest_opening(account))
+            ledger.append(statement_held(
+                facts.doc_id, facts.to_dict(), None, "gap",
                 facts.closing_date, Provenance(doc_id=facts.doc_id)))
             return IngestResult(
                 doc_id=facts.doc_id, action=GAP, doc_type=facts.doc_type,
                 account=account, grade="conflicted", reconciliation=recon,
-                finding=finding,
-                message=(f"This statement opens at {facts.opening_amount}, but "
-                         f"the last balance I hold is {prior}. Likely a missing "
-                         "statement between them — held for your review, so I "
-                         "don't invent the gap."))
-    else:
-        log.info("_post_reconciled: opening new account %s (%s %s) seeded at %s",
-                 account, facts.account_ref, facts.currency, facts.opening_amount)
-        store.append(account_opened(
-            account, "depository", facts.account_ref or account,
-            facts.currency, facts.opening_date))
-        store.append(opening_balance_observed(
-            account, facts.opening_amount, facts.opening_date,
-            facts.opening_provenance()))
+                message=(f"This statement ({facts.opening_date} – "
+                         f"{facts.closing_date}) opens at {facts.opening_amount}, "
+                         f"which doesn't continue from the balance I hold ({prior}). "
+                         "A statement between them looks missing — held, so I don't "
+                         "invent the gap; it will slot in when the connector arrives."))
 
     for t in facts.transactions:
-        store.append(simple_transaction(
+        ledger.append(simple_transaction(
             account, t.amount, t.description, t.date,
             provenance=t.provenance(facts.doc_id)))
-    store.append(closing_balance_observed(
+    ledger.append(closing_balance_observed(
         account, facts.closing_amount, facts.closing_date,
         facts.closing_provenance(), confirmed_by=confirmed_by))
     log.info("_post_reconciled: posted %d transactions + closing %s to %s%s",
@@ -289,14 +282,14 @@ def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResul
                  f"{facts.closing_date}."))
 
 
-def capture_and_ingest(raw: RawStore, store: EventStore, data: bytes,
+def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                        read_fn: ReadFn, filename: str = "",
                        captured_at: str = "") -> IngestResult:
     """Raw-capture a file, read it, and either post it or park it — never lose it."""
     doc_id = raw.put(data)                       # (1) capture first, always
     log.info("ingest start: %s (%d bytes) doc_id=%s",
              filename or "<upload>", len(data), doc_id[:12])
-    if _is_resolved(store, doc_id):
+    if ledger.projection().is_resolved(doc_id):
         log.info("ingest: doc_id=%s already posted/held — skipping", doc_id[:12])
         return IngestResult(doc_id=doc_id, action=DUPLICATE, doc_type="",
                             message="Already posted or held (same content); no change.")
@@ -311,13 +304,13 @@ def capture_and_ingest(raw: RawStore, store: EventStore, data: bytes,
              doc_id[:12], rr.doc_type, rr.doc_type_confidence,
              rr.facts is not None, rr.error)
 
-    store.append(document_captured(              # record that we hold it
+    ledger.append(document_captured(             # record that we hold it
         doc_id, filename, len(data), rr.doc_type, rr.doc_type_confidence,
         captured_at, Provenance(doc_id=doc_id)))
 
     # The claims layer: persist the verbatim model output for any real read.
     if rr.model:
-        store.append(read_recorded(
+        ledger.append(read_recorded(
             doc_id, rr.model, rr.prompt_version, rr.input_mode, rr.raw_text,
             rr.cost_usd, rr.input_tokens, rr.output_tokens,
             rr.facts is not None, rr.error, captured_at, Provenance(doc_id=doc_id)))
@@ -327,9 +320,9 @@ def capture_and_ingest(raw: RawStore, store: EventStore, data: bytes,
 
     # (3) route by type — v0 projects checking statements, parks the rest.
     if rr.facts is not None and rr.doc_type in CHECKING_DOC_TYPES:
-        res = post_statement(store, rr.facts)    # (4) the reconciliation gate
+        res = post_statement(ledger, rr.facts)   # (4) the reconciliation gate
         if res.action == POSTED:
-            healed = heal_gaps(store)            # a new post may unblock waiting statements
+            healed = heal_gaps(ledger)           # a new post may unblock waiting statements
             if healed:
                 log.info("ingest: healed %d previously-held statement(s)", healed)
         log.info("ingest done: doc_id=%s -> %s (%s)", doc_id[:12], res.action, res.grade)

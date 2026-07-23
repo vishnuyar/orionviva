@@ -25,7 +25,6 @@ def main() -> None:
     configure_logging()
     from .answer import coverage_summary
     from .ingest import held_items
-    from .ledger import LedgerProjection
     from .vault import Vault
 
     passphrase = os.environ.get("VIVA_PASSPHRASE") or (sys.argv[1] if len(sys.argv) > 1 else None)
@@ -43,14 +42,14 @@ def main() -> None:
         print(f"    {etype}: {n}")
     print(f"raw blobs (captured files): {len(vault.raw.doc_ids())}")
 
-    proj = LedgerProjection(events)
+    proj = vault.ledger.projection()
     infos = proj.account_infos()
     print(f"accounts posted: {len(infos)}")
     for i in infos:
         ba = proj.balance(i.account)
         print(f"    {i.name} [{i.kind} {i.currency}] = {ba.amount} ({ba.grade})")
 
-    held = held_items(events)
+    held = held_items(proj)
     print(f"held for review: {len(held)}")
     for h in held:
         if h.reason == "gap":
@@ -62,7 +61,7 @@ def main() -> None:
                   f"{(f.get('message') or '')[:120]}")
 
     # Documents captured but not posted (parked) — checking-classified or not.
-    print(f"coverage: {coverage_summary(events).text}")
+    print(f"coverage: {coverage_summary(proj).text}")
 
     captured = [(e.body.get('doc_id', '')[:10], e.body.get('doc_type'))
                 for e in events if e.event_type == "DocumentCaptured"]

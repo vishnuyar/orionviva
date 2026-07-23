@@ -74,7 +74,7 @@ def main() -> None:
     vault = Vault.open(vault_dir, passphrase)
     if os.environ.get("VIVA_SAMPLE") == "1":
         seed_sample(vault)
-    healed = heal_gaps(vault.store)     # resolve any gaps that can now stitch
+    healed = heal_gaps(vault.ledger)    # resolve any gaps that can now stitch
     if healed:
         print(f"  healed {healed} previously-held statement(s)")
 
