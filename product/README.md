@@ -29,11 +29,47 @@ records**, and every answer carries a **grade** (`verified` / `corroborated` /
 - `viva/vault.py` — a vault: one directory + passphrase holding the event log and raw blobs.
 - `viva/web/` — the local surface: a stdlib HTTP server + a single self-contained page (dashboard, review/confirm, account drill-down, upload). Provenance built in, kept quiet.
 
+## Development setup
+
+Two packages, `vivacore` (in `../core`) and `viva` (here), that the product
+imports. Pick **one** way to make them importable, and be consistent:
+
+**Editable install (recommended for ongoing work).** From the repo root:
+
+```
+pip install -e core
+pip install -e product
+```
+
+Editable (`-e`) links the installed package to your source, so every edit takes
+effect immediately with no rebuild. Then just `python3 -m viva.web` / `pytest`
+work with no `PYTHONPATH`.
+
+**Or run against the source path** without installing:
+
+```
+cd product && PYTHONPATH=../core:. python3 -m viva.web
+```
+
+**Gotcha — a stale install shadows your edits.** If you ever ran a plain
+`pip install core` / `pip install product` (non-editable), a *copy* landed in
+site-packages and Python will import that, not your source — so a fix in the repo
+appears to have no effect (e.g. `parse_date() got an unexpected keyword argument`
+after the code already has it). Check which copy is live:
+
+```
+python3 -c "import vivacore; print(vivacore.__file__)"   # should be inside repo core/, not site-packages
+```
+
+If it points at site-packages, `pip uninstall -y vivacore viva` and use one of
+the two methods above. (Never `pip install` the non-editable way for dev — and
+`build/` and `dist/` are git-ignored so a stray build can't be committed.)
+
 ## Running the surface
 
 ```
 # put VIVA_PASSPHRASE and (optionally) the model vars in product/.env, then:
-PYTHONPATH=../core:. python3 -m viva.web
+PYTHONPATH=../core:. python3 -m viva.web        # or just: python3 -m viva.web  (if editable-installed)
 # then open http://127.0.0.1:8765
 ```
 
