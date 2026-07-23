@@ -35,6 +35,7 @@ class ModelResult:
     latency_s: float
     request: dict[str, Any]      # verbatim request body (images elided by hash)
     response: dict[str, Any]     # verbatim response body
+    finish_reason: str = ""      # "stop" | "length" (truncated) | ...
 
 
 class ModelAdapter(Protocol):
