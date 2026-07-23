@@ -16,23 +16,11 @@ import os
 import pathlib
 import sys
 
-
-def _load_dotenv() -> None:
-    if os.environ.get("VIVA_PASSPHRASE"):
-        return
-    p = pathlib.Path(".env")
-    if not p.exists():
-        return
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k, v.strip().strip("'").strip('"'))
+from .env import load_dotenv
 
 
 def main() -> None:
-    _load_dotenv()
+    load_dotenv()
     from .answer import coverage_summary
     from .ingest import held_items
     from .ledger import LedgerProjection
