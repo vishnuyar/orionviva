@@ -10,7 +10,7 @@ from .events import (CONFLICTED, CORROBORATED, GRADES, UNVERIFIED, VERIFIED,
                      Event, Posting, Provenance, account_opened,
                      closing_balance_observed, correction_applied,
                      document_captured, opening_balance_observed, postings_of,
-                     statement_held, transaction_recorded)
+                     read_recorded, statement_held, transaction_recorded)
 from .postings import (EQUITY_OPENING, EXPENSE_UNCATEGORIZED,
                        INCOME_UNCATEGORIZED, simple_transaction,
                        split_transaction, transaction_balances)
@@ -24,7 +24,7 @@ __all__ = [
     "VERIFIED", "CORROBORATED", "UNVERIFIED", "CONFLICTED", "GRADES",
     "account_opened", "opening_balance_observed", "closing_balance_observed",
     "transaction_recorded", "postings_of", "document_captured",
-    "statement_held", "correction_applied",
+    "statement_held", "correction_applied", "read_recorded",
     "simple_transaction", "split_transaction", "transaction_balances",
     "EQUITY_OPENING", "INCOME_UNCATEGORIZED", "EXPENSE_UNCATEGORIZED",
     "EventStore",

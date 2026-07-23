@@ -9,6 +9,7 @@ the logic and its tests live in ``service``.
 from __future__ import annotations
 
 import json
+import logging
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -16,6 +17,7 @@ from urllib.parse import parse_qs, urlparse
 from . import service
 
 _INDEX = (Path(__file__).parent / "index.html").read_text()
+log = logging.getLogger(__name__)
 
 
 def make_handler(vault, read_fn):
@@ -41,6 +43,7 @@ def make_handler(vault, read_fn):
 
         def do_GET(self):
             u = urlparse(self.path)
+            log.info("GET %s", self.path)
             if u.path == "/":
                 return self._html()
             if u.path == "/api/overview":
@@ -56,6 +59,7 @@ def make_handler(vault, read_fn):
             u = urlparse(self.path)
             n = int(self.headers.get("Content-Length", "0") or 0)
             raw = self.rfile.read(n) if n else b""
+            log.info("POST %s (%d bytes)", u.path, n)
             try:
                 if u.path == "/api/confirm":
                     d = json.loads(raw or b"{}")

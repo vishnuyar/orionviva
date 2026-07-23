@@ -18,6 +18,7 @@ from pathlib import Path
 
 from ..env import load_dotenv
 from ..ingest import ReadResult
+from ..logs import configure as configure_logging
 from ..vault import Vault
 from .sample import seed_sample
 from .server import serve
@@ -64,6 +65,7 @@ def build_reader():
 
 def main() -> None:
     load_dotenv()          # pick up VIVA_PASSPHRASE / VIVA_MODEL_* from ./.env
+    configure_logging()    # chatty console logs (VIVA_LOG_LEVEL=DEBUG for more)
     passphrase = os.environ.get("VIVA_PASSPHRASE")
     if not passphrase:
         raise SystemExit("Set VIVA_PASSPHRASE (it is never stored), in your "

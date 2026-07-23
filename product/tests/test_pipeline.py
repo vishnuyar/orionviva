@@ -189,6 +189,56 @@ def test_posted_doc_is_not_reprocessed(tmp_path):
                               captured_at="2026-02-02").action == DUPLICATE
 
 
+def _events_of_type(store, etype):
+    return [e for e in store.events() if e.event_type == etype]
+
+
+def test_real_read_stores_the_claims_layer(tmp_path):
+    raw, store = _stores(tmp_path)
+    data = b"real-read"
+
+    def reader(data, doc_id):
+        JAN.doc_id = doc_id
+        return ReadResult("checking_statement", 0.98, JAN,
+                          raw_text='{"doc_type":"checking_statement",...}',
+                          model="google/gemini-3.5-flash", prompt_version="stmt-v1",
+                          cost_usd=0.051, input_tokens=1200, output_tokens=800)
+
+    capture_and_ingest(raw, store, data, reader, captured_at="2026-02-01")
+    reads = _events_of_type(store, "ReadRecorded")
+    assert len(reads) == 1
+    b = reads[0].body
+    assert b["model"] == "google/gemini-3.5-flash" and b["parse_ok"] is True
+    assert b["response_text"].startswith('{"doc_type"') and b["cost_usd"] == 0.051
+
+
+def test_read_that_throws_is_recorded_not_orphaned(tmp_path):
+    raw, store = _stores(tmp_path)
+    data = b"boom"
+
+    def reader(data, doc_id):
+        raise RuntimeError("network exploded")
+
+    res = capture_and_ingest(raw, store, data, reader, captured_at="2026-02-01")
+    assert res.action == PARKED
+    # Captured, and the failure is auditable — nothing orphaned.
+    assert raw.has(RawStore.fingerprint(data))
+    assert len(_events_of_type(store, "DocumentCaptured")) == 1
+    reads = _events_of_type(store, "ReadRecorded")
+    assert len(reads) == 1 and reads[0].body["parse_ok"] is False
+    assert "network exploded" in reads[0].body["parse_error"]
+
+
+def test_stub_read_records_no_claims_layer(tmp_path):
+    # A stub with no model set must not pollute the log with a ReadRecorded.
+    raw, store = _stores(tmp_path)
+    data = b"stub"
+    capture_and_ingest(raw, store, data,
+                       _reader({data: ReadResult("checking_statement", 0.98, JAN)}),
+                       captured_at="2026-02-01")
+    assert _events_of_type(store, "ReadRecorded") == []
+
+
 def test_unreadable_document_is_parked(tmp_path):
     raw, store = _stores(tmp_path)
     data = b"garbled"

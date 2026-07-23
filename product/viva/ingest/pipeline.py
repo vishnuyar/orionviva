@@ -28,6 +28,7 @@ with fixtures. Only the real reader touches the network.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, replace
 from typing import Callable
@@ -36,13 +37,16 @@ from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
 from ..ledger.events import (Provenance, account_opened,
                              closing_balance_observed, document_captured,
-                             opening_balance_observed, statement_held)
+                             opening_balance_observed, read_recorded,
+                             statement_held)
 from ..ledger.postings import simple_transaction
 from ..ledger.projection import LedgerProjection
 from ..ledger.store import EventStore
 from .diagnose import FORCED, ReconciliationFinding, diagnose
 from .raw_store import RawStore
 from .statement import StatementFacts
+
+log = logging.getLogger(__name__)
 
 # v0's single projector keys off these classified types. This set is the seed of
 # the type registry (data, not code) that later slices grow.
@@ -62,11 +66,22 @@ GAP = "gap"              # opening does not continue from the balance we hold
 class ReadResult:
     """What a reader returns for one document: its classification, and — if it is
     a statement — the structured facts. A reader for a non-statement returns
-    ``facts=None`` with the type it recognized (e.g. 'pay_stub')."""
+    ``facts=None`` with the type it recognized (e.g. 'pay_stub').
+
+    The ``raw_*`` fields carry the verbatim model output and call metadata so the
+    pipeline can persist the claims layer (a real read sets ``model``; a stub
+    leaves it empty and nothing extra is recorded)."""
     doc_type: str
     doc_type_confidence: float
     facts: StatementFacts | None = None
     error: str | None = None
+    raw_text: str = ""
+    model: str = ""
+    prompt_version: str = ""
+    input_mode: str = "text+image"
+    cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 @dataclass
@@ -139,22 +154,30 @@ def post_statement(store: EventStore, facts: StatementFacts,
 
     ``confirmed_by='human'`` (used when a person has ruled on a held statement)
     posts the closing at `verified`."""
+    log.info("post_statement: account=%s opening=%s closing=%s txns=%d",
+             account_id_for(facts), facts.opening_amount, facts.closing_amount,
+             len(facts.transactions))
     recon = _reconciles(facts)
     if recon.passed:
+        log.info("post_statement: reconciles on first read")
         return _post_reconciled(store, facts, recon, finding=None,
                                 auto_corrected=False, confirmed_by=confirmed_by)
 
     finding = diagnose(facts)
+    log.info("post_statement: did NOT reconcile (%s); diagnosis=%s/%s: %s",
+             recon.explain(), finding.status, finding.kind, finding.message)
     if finding.status == FORCED:
         corrected = _apply_forced(facts, finding)
         recon2 = _reconciles(corrected)
         if recon2.passed:
+            log.info("post_statement: forced correction applied -> reconciles")
             res = _post_reconciled(store, corrected, recon2, finding=finding,
                                    auto_corrected=True)
             if res.action == POSTED:
                 res.message = f"{finding.message} {res.message}"
             return res
 
+    log.info("post_statement: holding for review (doc_id=%s)", facts.doc_id[:12])
     store.append(statement_held(
         facts.doc_id, facts.to_dict(), finding.to_dict(), "conflict",
         facts.closing_date, Provenance(doc_id=facts.doc_id)))
@@ -174,7 +197,11 @@ def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResul
     proj = LedgerProjection(store.events())
     if proj.is_seeded(account):
         prior = proj.running_balance(account)
+        log.info("_post_reconciled: stitching onto %s (held=%s, new opening=%s)",
+                 account, prior, facts.opening_amount)
         if facts.opening_amount != prior:
+            log.info("_post_reconciled: GAP — opening %s != held %s; holding",
+                     facts.opening_amount, prior)
             store.append(statement_held(
                 facts.doc_id, facts.to_dict(),
                 finding.to_dict() if finding else None, "gap",
@@ -188,6 +215,8 @@ def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResul
                          "statement between them — held for your review, so I "
                          "don't invent the gap."))
     else:
+        log.info("_post_reconciled: opening new account %s (%s %s) seeded at %s",
+                 account, facts.account_ref, facts.currency, facts.opening_amount)
         store.append(account_opened(
             account, "depository", facts.account_ref or account,
             facts.currency, facts.opening_date))
@@ -202,6 +231,9 @@ def _post_reconciled(store: EventStore, facts: StatementFacts, recon: CheckResul
     store.append(closing_balance_observed(
         account, facts.closing_amount, facts.closing_date,
         facts.closing_provenance(), confirmed_by=confirmed_by))
+    log.info("_post_reconciled: posted %d transactions + closing %s to %s%s",
+             len(facts.transactions), facts.closing_amount, account,
+             " (human-confirmed)" if confirmed_by == "human" else "")
 
     grade = "verified" if confirmed_by == "human" else "corroborated"
     return IngestResult(
@@ -217,20 +249,45 @@ def capture_and_ingest(raw: RawStore, store: EventStore, data: bytes,
                        captured_at: str = "") -> IngestResult:
     """Raw-capture a file, read it, and either post it or park it — never lose it."""
     doc_id = raw.put(data)                       # (1) capture first, always
+    log.info("ingest start: %s (%d bytes) doc_id=%s",
+             filename or "<upload>", len(data), doc_id[:12])
     if _is_resolved(store, doc_id):
+        log.info("ingest: doc_id=%s already posted/held — skipping", doc_id[:12])
         return IngestResult(doc_id=doc_id, action=DUPLICATE, doc_type="",
                             message="Already posted or held (same content); no change.")
 
-    rr = read_fn(data, doc_id)                   # (2) the model read (a proposal)
+    try:
+        rr = read_fn(data, doc_id)               # (2) the model read (a proposal)
+    except Exception as e:                       # a read that threw is recorded, not orphaned
+        log.warning("ingest: read raised for doc_id=%s: %s", doc_id[:12], e)
+        rr = ReadResult("unknown", 0.0, None, error=f"read failed: {e}",
+                        model="(read error)")
+    log.info("ingest: read doc_id=%s -> doc_type=%r conf=%.2f facts=%s error=%s",
+             doc_id[:12], rr.doc_type, rr.doc_type_confidence,
+             rr.facts is not None, rr.error)
+
     store.append(document_captured(              # record that we hold it
         doc_id, filename, len(data), rr.doc_type, rr.doc_type_confidence,
         captured_at, Provenance(doc_id=doc_id)))
 
+    # The claims layer: persist the verbatim model output for any real read.
+    if rr.model:
+        store.append(read_recorded(
+            doc_id, rr.model, rr.prompt_version, rr.input_mode, rr.raw_text,
+            rr.cost_usd, rr.input_tokens, rr.output_tokens,
+            rr.facts is not None, rr.error, captured_at, Provenance(doc_id=doc_id)))
+        log.info("ingest: stored ReadRecorded (model=%s cost=$%.4f parse_ok=%s "
+                 "resp_chars=%d)", rr.model, rr.cost_usd, rr.facts is not None,
+                 len(rr.raw_text))
+
     # (3) route by type — v0 projects checking statements, parks the rest.
     if rr.facts is not None and rr.doc_type in CHECKING_DOC_TYPES:
-        return post_statement(store, rr.facts)   # (4) the reconciliation gate
+        res = post_statement(store, rr.facts)    # (4) the reconciliation gate
+        log.info("ingest done: doc_id=%s -> %s (%s)", doc_id[:12], res.action, res.grade)
+        return res
 
     reason = rr.error or f"no projector yet for '{rr.doc_type or 'unknown'}'"
+    log.info("ingest done: doc_id=%s -> parked (%s)", doc_id[:12], reason)
     return IngestResult(
         doc_id=doc_id, action=PARKED, doc_type=rr.doc_type,
         message=(f"Captured and held; not yet readable ({reason}). It will be "

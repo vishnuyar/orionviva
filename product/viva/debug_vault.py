@@ -17,10 +17,12 @@ import pathlib
 import sys
 
 from .env import load_dotenv
+from .logs import configure as configure_logging
 
 
 def main() -> None:
     load_dotenv()
+    configure_logging()
     from .answer import coverage_summary
     from .ingest import held_items
     from .ledger import LedgerProjection
@@ -63,6 +65,16 @@ def main() -> None:
     print("captured documents (id, model's doc_type):")
     for did, dt in captured:
         print(f"    {did}…  {dt}")
+
+    reads = [e for e in events if e.event_type == "ReadRecorded"]
+    if reads:
+        print("model reads recorded (claims layer):")
+        for e in reads:
+            b = e.body
+            print(f"    {b.get('doc_id','')[:10]}…  model={b.get('model')}  "
+                  f"prompt={b.get('prompt_version')}  cost=${b.get('cost_usd',0):.4f}  "
+                  f"parse_ok={b.get('parse_ok')}  resp_chars={len(b.get('response_text') or '')}"
+                  + (f"  error={b.get('parse_error')}" if not b.get('parse_ok') else ""))
 
 
 if __name__ == "__main__":
