@@ -32,13 +32,16 @@ records**, and every answer carries a **grade** (`verified` / `corroborated` /
 ## Running the surface
 
 ```
-VIVA_PASSPHRASE=... VIVA_SAMPLE=1 PYTHONPATH=../core:. python3 -m viva.web
+# put VIVA_PASSPHRASE and (optionally) the model vars in product/.env, then:
+PYTHONPATH=../core:. python3 -m viva.web
 # then open http://127.0.0.1:8765
 ```
 
-`VIVA_SAMPLE=1` seeds fabricated data so the page is alive to look at. The live
-document reader (a real model call) is not wired by default — uploads park until
-a model is configured, so nothing leaves the machine until you choose the real run.
+The surface auto-loads `./.env` (git-ignored), so you don't have to export
+anything — a `.env` with `VIVA_PASSPHRASE` (and, for live reading,
+`VIVA_MODEL_ADAPTER` / `VIVA_MODEL` / `VIVA_MODEL_KEY_ENV` / the key) is enough.
+Set `VIVA_SAMPLE=1` to seed fabricated data. Uploads park until a model is
+configured, so nothing leaves the machine until you choose the real run.
 - `viva/ingest/raw_store.py` — encrypted, content-addressed raw capture (every file, always).
 - `viva/ingest/statement.py` — a model read → canonical `StatementFacts` (or a refusal).
 - `viva/ingest/pipeline.py` — capture → classify → reconcile → post, or park (never discard).

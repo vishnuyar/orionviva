@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from ..env import load_dotenv
 from ..ingest import ReadResult
 from ..vault import Vault
 from .sample import seed_sample
@@ -62,9 +63,11 @@ def build_reader():
 
 
 def main() -> None:
+    load_dotenv()          # pick up VIVA_PASSPHRASE / VIVA_MODEL_* from ./.env
     passphrase = os.environ.get("VIVA_PASSPHRASE")
     if not passphrase:
-        raise SystemExit("Set VIVA_PASSPHRASE (it is never stored) to open the vault.")
+        raise SystemExit("Set VIVA_PASSPHRASE (it is never stored), in your "
+                         "environment or in a ./.env file, to open the vault.")
     vault_dir = os.environ.get("VIVA_VAULT_DIR", str(Path.home() / ".viva-vault"))
     vault = Vault.open(vault_dir, passphrase)
     if os.environ.get("VIVA_SAMPLE") == "1":

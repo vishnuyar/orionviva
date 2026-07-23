@@ -18,26 +18,13 @@ import os
 import pathlib
 import sys
 
-
-def _load_dotenv() -> None:
-    """Load ./.env into the environment if a model isn't already configured."""
-    if os.environ.get("VIVA_MODEL"):
-        return
-    p = pathlib.Path(".env")
-    if not p.exists():
-        return
-    for line in p.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k, v.strip().strip("'").strip('"'))
+from .env import load_dotenv
 
 
 def main() -> None:
     if len(sys.argv) < 2:
         raise SystemExit("usage: python -m viva.debug_read <pdf> [locale] [currency]")
-    _load_dotenv()
+    load_dotenv()
 
     from vivacore.models import ModelSpec, adapter_for
     from vivacore.verify.arithmetic import check_balance_identity
