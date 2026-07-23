@@ -38,8 +38,10 @@ Added after the first real run: the same account arrived under different labels 
 
 _Delivered: identity signals (number/institution/names) extracted + persisted + shown (masked); number-anchored account id (last-4); a matcher raising an identity Finding on ambiguity; ask-once-and-learn confirmation (AccountAliasConfirmed → merge or new); transactions sorted by date. Shipped alongside: multi-file upload (one model call per file), and JSON-mode + a bounded parse-retry so the model returns valid JSON on long statements. A `reingest-from-raw` tool re-reads stored PDFs into a fresh vault when the prompt improves._
 
-## Slice 2 — Doc-type registry + credit card & savings
-**Block seeded:** Account-type registry (doc_type → {extraction profile, identity check, account kind}).
+## Slice 2 — Doc-type registry + credit card & savings  ← NEXT
+**Block seeded:** the format-profile registry (doc_type → {kind, extraction profile, identity}) + account kind (asset/liability) + the classify→profile→extract structure.
+
+**Full spec + locked architecture:** [doc-type-registry-and-format-profiles.md](doc-type-registry-and-format-profiles.md). Decisions: **A1** sign reframe (effect-on-balance, prompt→v3, value-preserving for checking); **we own the schema, the model assists authoring**; versioned, personal-data-free profiles; **two kinds of learned data** (personal=local, format=shareable); re-read via reingest when a profile gains fields. That doc also carries forward-notes for S3/S6/S7/S8 and the format-commons slice.
 
 **Open state:** only checking posts; a card/savings statement classifies but parks. *Proof:* ingest a card statement → parked, no balance (red test).
 
@@ -101,6 +103,8 @@ _Delivered: identity signals (number/institution/names) extracted + persisted + 
 ## Slice 6 — Positions & investments
 **Block seeded:** Asset (valuation class) / Position (subtype + cost basis/lots).
 
+> _Note (from doc-type-registry design): brokerage is the first **divergent profile** — its own extraction schema + identity `positions×price + cash = total`. Because Slice 2 builds classify→profile→extract, this is a new profile + the Position primitive, not new plumbing._
+
 **Open state:** brokerage/retirement holdings aren't modeled; a brokerage statement parks or only its cash reconciles; net worth can't include investments. *Proof:* positions query empty (red test).
 
 **Implementation:** a Position primitive (units + instrument + value at statement date = a **measurement**, dated) with a **cost-basis/lots** attribute; a brokerage projector (positions + transactions + dividends + fees — the dense cross-check); a **valuation class** (measured / valued / estimated) so a statement value is never dressed as live. Asset generalization slot for property/vehicles seeded here with securities.
@@ -116,6 +120,8 @@ _Delivered: identity signals (number/institution/names) extracted + persisted + 
 ## Slice 7 — Net worth
 **Block seeded:** Net-worth projection (compose assets − liabilities, bitemporal).
 
+> _Note (from doc-type-registry design): liability netting (assets − liabilities) is a **projection over posted data — zero data impact**. Slice 2 shows cards as "owed"; net worth composes them here with no migration._
+
 **Open state:** no single "what am I worth" figure; balances and positions live apart. *Proof:* net-worth query unsupported (red test).
 
 **Implementation:** a projection summing depository + investment assets − liabilities (cards, loans), **per currency** (no FX faking), each figure carrying grade + as-of date; coverage-aware (states included/missing); bitemporal so "net worth as of date X" and "as I knew it on date Y" both work.
@@ -130,6 +136,8 @@ _Delivered: identity signals (number/institution/names) extracted + persisted + 
 
 ## Slice 8 — Obligations & proactive alerts
 **Block seeded:** Obligation (bills/recurring) + Proactive trigger + Finding *reused*.
+
+> _Note (from doc-type-registry design): card-specific fields (credit limit, minimum payment, due date) feed Obligations here. When needed, **bump the card profile version and targeted-re-read** only the affected statements (the claims layer records which profile version read each doc) via reingest — not a redesign._
 
 **Open state:** bills/recurring aren't tracked; fees, duplicate subscriptions, anomalies pass silently; the system never volunteers. *Proof:* no obligations list; a fee posts unremarked (red test).
 
