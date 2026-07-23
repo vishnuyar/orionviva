@@ -53,9 +53,13 @@ def main() -> None:
     held = held_items(events)
     print(f"held for review: {len(held)}")
     for h in held:
-        f = h.finding or {}
-        print(f"    {h.account_ref}: reason={h.reason} — "
-              f"{f.get('kind')}/{f.get('status')}: {(f.get('message') or '')[:140]}")
+        if h.reason == "gap":
+            print(f"    {h.account_ref}: GAP — opens {h.facts.opening_amount} "
+                  f"({h.facts.opening_date}); chain held at {h.held_balance}")
+        else:
+            f = h.finding or {}
+            print(f"    {h.account_ref}: CONFLICT — {f.get('kind')}/{f.get('status')}: "
+                  f"{(f.get('message') or '')[:120]}")
 
     # Documents captured but not posted (parked) — checking-classified or not.
     print(f"coverage: {coverage_summary(events).text}")

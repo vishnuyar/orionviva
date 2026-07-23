@@ -94,7 +94,7 @@ async function home(){
     <div class="card total">${totalHtml}<div class="coverage">${d.coverage}</div></div>
     ${d.review_count>0? `<div class="card review" id="reviewcard">
         <h3>${d.review_count} statement${d.review_count>1?'s':''} need${d.review_count>1?'':'s'} your eyes</h3>
-        <div class="muted" style="font-size:13px">A figure didn't reconcile, so it's held — not guessed.</div>
+        <div class="muted" style="font-size:13px">These didn't slot in cleanly — nothing was guessed or dropped.</div>
         <div id="held"></div></div>` : ''}
     <div class="card">${accts || '<div class="muted">No accounts yet. Upload a statement below.</div>'}</div>
     <div class="card up">
@@ -113,18 +113,36 @@ async function loadReview(){
 }
 
 function renderHeld(it){
+  const title = `${it.account_label||it.account_ref} · ${it.period}`;
+
+  // A gap is not a fixable figure — it's a missing link in the chain.
+  if(it.reason === 'gap'){
+    const held = it.held_balance!=null
+      ? `I last have this account at <strong>${money(it.held_balance,it.currency)}</strong>, but this statement opens at <strong>${money(it.opening_amount,it.currency)}</strong>.`
+      : `This statement opens at <strong>${money(it.opening_amount,it.currency)}</strong>, which doesn't continue from another statement I hold.`;
+    return $(`<div class="held">
+      <div class="nm" style="font-weight:600">${title}</div>
+      <div class="msg">${held} A statement between them looks missing — upload it and this one slots in automatically. (No figure to fix here.)</div>
+    </div>`);
+  }
+
+  // A conflict: a figure looks wrong. Offer the correction.
   const f = it.finding||{};
   const opts = it.transactions.map((t,i)=>`<option value="amount:${i}">line ${i}: ${t.description} (${t.amount})</option>`).join('')
     + `<option value="closing:">closing balance (${it.closing_amount})</option>`;
   const pre = (f.status==='suggested'||f.status==='forced') && f.target_index!=null ? `amount:${f.target_index}`
              : (f.kind==='balance_misread'? 'closing:' : '');
+  const ask = f.observed!=null && f.implied!=null
+    ? `Line ${f.target_index} looks wrong — should it be <strong>${f.implied}</strong> instead of ${f.observed}?`
+    : (f.message || "This statement is off; a figure looks wrong.");
   const el = $(`<div class="held">
-    <div class="msg">${it.account_ref} — ${f.message || 'Did not reconcile.'}</div>
+    <div class="nm" style="font-weight:600">${title}</div>
+    <div class="msg">${ask}</div>
     <div class="row">
       <span>Fix</span>
       <select class="what">${opts}</select>
       <span>to</span>
-      <input type="text" class="val" placeholder="correct amount" size="12">
+      <input type="text" class="val" placeholder="correct amount" size="12" value="${f.implied||''}">
       <button>Confirm</button>
       <span class="flash fl"></span>
     </div></div>`);

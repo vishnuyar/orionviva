@@ -14,15 +14,22 @@ same reconciliation gate decides whether it now holds.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 
 from ..ledger.events import Provenance, correction_applied
+from ..ledger.projection import LedgerProjection
 from ..ledger.store import EventStore
-from .pipeline import IngestResult, account_id_for, post_statement
+from .pipeline import (IngestResult, account_id_for, heal_gaps, post_statement)
 from .statement import StatementFacts
 
 log = logging.getLogger(__name__)
+
+
+def _mask(account_ref: str) -> str:
+    """Mask a long account number in a label: keep the last 4 digits."""
+    return re.sub(r"\d{5,}", lambda m: "····" + m.group(0)[-4:], account_ref)
 
 
 @dataclass
@@ -32,15 +39,21 @@ class HeldItem:
     account_ref: str
     facts: StatementFacts
     finding: dict | None
+    held_balance: str | None = None    # for a gap: the balance the chain left off at
 
     def to_dict(self) -> dict:
         f = self.facts
         return {
             "doc_id": self.doc_id, "reason": self.reason,
-            "account_ref": self.account_ref, "currency": f.currency,
+            "account_ref": self.account_ref,
+            "account_label": _mask(self.account_ref),
+            "currency": f.currency,
             "opening_amount": str(f.opening_amount),
+            "opening_date": f.opening_date,
             "closing_amount": str(f.closing_amount),
             "closing_date": f.closing_date,
+            "period": f"{f.opening_date} – {f.closing_date}",
+            "held_balance": self.held_balance,
             "transactions": [t.to_dict() for t in f.transactions],
             "finding": self.finding,
         }
@@ -59,6 +72,7 @@ def held_items(events) -> list[HeldItem]:
     """The statements awaiting a human ruling — held and not since resolved."""
     events = list(events)
     posted = _posted_docs(events)
+    proj = LedgerProjection(events)
     latest: dict[str, dict] = {}
     for e in events:
         if e.event_type == "StatementHeld":
@@ -68,9 +82,12 @@ def held_items(events) -> list[HeldItem]:
         if doc_id in posted:
             continue                     # already resolved and posted
         facts = StatementFacts.from_dict(body["facts"])
-        items.append(HeldItem(doc_id=doc_id, reason=body.get("reason", ""),
-                              account_ref=facts.account_ref, facts=facts,
-                              finding=body.get("finding")))
+        held_bal = proj.running_balance(account_id_for(facts))
+        items.append(HeldItem(
+            doc_id=doc_id, reason=body.get("reason", ""),
+            account_ref=facts.account_ref, facts=facts,
+            finding=body.get("finding"),
+            held_balance=None if held_bal is None else str(held_bal)))
     return items
 
 
@@ -118,4 +135,7 @@ def apply_human_correction(store: EventStore, doc_id: str, field: str,
     store.append(correction_applied(
         doc_id, target, from_value, to_value, facts.closing_date, by="human",
         provenance=Provenance(doc_id=doc_id)))
-    return post_statement(store, corrected, confirmed_by="human")
+    res = post_statement(store, corrected, confirmed_by="human")
+    if res.action == "posted":
+        heal_gaps(store)             # this post may unblock statements waiting on it
+    return res
