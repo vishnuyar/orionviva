@@ -126,6 +126,26 @@ def _date(raw, locale: str) -> tuple[str | None, str | None]:
     return n.value, None
 
 
+def _txn_date(raw, locale: str, open_iso: str, close_iso: str
+              ) -> tuple[str | None, str | None]:
+    """A transaction date, whose year may be absent (statements print "04/17").
+    The year is taken from the statement period, handling a year boundary
+    (a December→January statement)."""
+    n = parse_date(str(raw), locale)          # the model may have included a year
+    if n.ok:
+        return n.value, None
+    oy, om = int(open_iso[:4]), int(open_iso[5:7])
+    cy, cm = int(close_iso[:4]), int(close_iso[5:7])
+    n = parse_date(str(raw), locale, default_year=oy)
+    if not n.ok:
+        return None, f"date {raw!r}: {n.status} ({n.reason})"
+    # If the period crosses a year boundary, months before the opening month
+    # belong to the closing year.
+    if oy != cy and int(n.value[5:7]) < om:
+        n = parse_date(str(raw), locale, default_year=cy)
+    return n.value, None
+
+
 def from_model_json(text: str, doc_id: str, locale: str,
                     currency: str) -> tuple[StatementFacts | None, str | None]:
     """Parse a model's statement read into canonical StatementFacts.
@@ -168,7 +188,7 @@ def from_model_json(text: str, doc_id: str, locale: str,
         mag, err = _amount(rt.get("amount_raw"), locale, currency)
         if err:
             return None, f"transaction {i} {err}"
-        d, err = _date(rt.get("date_raw"), locale)
+        d, err = _txn_date(rt.get("date_raw"), locale, open_date, close_date)
         if err:
             return None, f"transaction {i} {err}"
         direction = str(rt.get("direction", "")).strip().lower()

@@ -92,9 +92,17 @@ def account_id_for(facts: StatementFacts) -> str:
     return f"acct:{slug or 'unknown'}"
 
 
-def _already_captured(store: EventStore, doc_id: str) -> bool:
+def _is_resolved(store: EventStore, doc_id: str) -> bool:
+    """A document is 'done' only once it reached a terminal state — posted, or
+    held for review. A document that merely *parked* (captured but not read into
+    anything) is NOT done: re-uploading it should re-read it, since the reader or
+    parser may have improved. This is what lets a fixed parse heal a parked doc."""
     for e in store.events():
-        if e.event_type == "DocumentCaptured" and e.body.get("doc_id") == doc_id:
+        did = e.provenance.doc_id
+        if e.event_type in ("TransactionRecorded", "ClosingBalanceObserved",
+                            "OpeningBalanceObserved") and did == doc_id:
+            return True
+        if e.event_type == "StatementHeld" and e.body.get("doc_id") == doc_id:
             return True
     return False
 
@@ -209,9 +217,9 @@ def capture_and_ingest(raw: RawStore, store: EventStore, data: bytes,
                        captured_at: str = "") -> IngestResult:
     """Raw-capture a file, read it, and either post it or park it — never lose it."""
     doc_id = raw.put(data)                       # (1) capture first, always
-    if _already_captured(store, doc_id):
+    if _is_resolved(store, doc_id):
         return IngestResult(doc_id=doc_id, action=DUPLICATE, doc_type="",
-                            message="Already ingested (same content); no change.")
+                            message="Already posted or held (same content); no change.")
 
     rr = read_fn(data, doc_id)                   # (2) the model read (a proposal)
     store.append(document_captured(              # record that we hold it
