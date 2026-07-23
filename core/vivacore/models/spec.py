@@ -26,6 +26,7 @@ class ModelSpec:
     cost_per_mtok_in: float = 0.0     # USD per million input tokens (0 for local)
     cost_per_mtok_out: float = 0.0
     timeout_s: float = 300.0
+    json_mode: bool = False           # ask the provider for guaranteed-valid JSON
     notes: str = ""
 
     def api_key(self) -> str | None:

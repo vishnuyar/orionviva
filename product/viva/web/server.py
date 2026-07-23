@@ -66,6 +66,10 @@ def make_handler(vault, read_fn):
                     return self._send(service.confirm_correction(
                         vault, d["doc_id"], d["field"], d["value"],
                         d.get("target_index")))
+                if u.path == "/api/confirm-identity":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.confirm_identity(
+                        vault, d["doc_id"], d["decision"]))
                 if u.path == "/api/upload":
                     fn = self.headers.get("X-Filename", "upload.bin")
                     return self._send(service.upload(vault, fn, raw, read_fn))

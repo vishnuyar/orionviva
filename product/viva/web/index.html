@@ -83,9 +83,14 @@ async function home(){
   } else {
     totalHtml = `<div class="lbl">Total</div><div class="muted">${t.text}</div>`;
   }
+  const idline = (a)=>{
+    const bits = [a.institution, a.number].filter(Boolean).join(' ');
+    const who = (a.holders&&a.holders.length)? ' · '+a.holders.join(', ') : '';
+    return (bits||who)? `<div class="src">${bits}${who}</div>` : '';
+  };
   const accts = d.accounts.map(a=>`
     <div class="acct" onclick="account('${a.account}')">
-      <span class="nm">${a.name}</span>
+      <span class="nm">${a.name}${idline(a)}</span>
       <span class="rt"><span class="as">as of ${a.as_of||'—'}</span>
         ${dot(a.grade)}<strong>${money(a.amount,a.currency)}</strong></span>
     </div>`).join('');
@@ -97,10 +102,11 @@ async function home(){
         <div class="muted" style="font-size:13px">These didn't slot in cleanly — nothing was guessed or dropped.</div>
         <div id="held"></div></div>` : ''}
     <div class="card">${accts || '<div class="muted">No accounts yet. Upload a statement below.</div>'}</div>
-    <div class="card up">
-      <label>Add a statement: <input type="file" id="file"></label>
+    <div class="card up" style="flex-wrap:wrap">
+      <label>Add statements: <input type="file" id="file" multiple></label>
       <button class="ghost" onclick="upload()">Upload</button>
       <span class="flash" id="flash"></span>
+      <div id="uplog" style="width:100%"></div>
     </div>
   </div>`));
   if(d.review_count>0) loadReview();
@@ -114,6 +120,28 @@ async function loadReview(){
 
 function renderHeld(it){
   const title = `${it.account_label||it.account_ref} · ${it.period}`;
+
+  // An identity question: whose account is this? Learn the answer once.
+  if(it.reason === 'identity'){
+    const f = it.finding||{};
+    const el = $(`<div class="held">
+      <div class="nm" style="font-weight:600">${title}</div>
+      <div class="msg">Whose account is this? ${f.message||''}.
+        Is it the <strong>same</strong> account as ${f.candidate_name||'the matching one'}, or a <strong>new</strong> account?</div>
+      <div class="row">
+        <button data-d="same">Same account</button>
+        <button class="ghost" data-d="new">New account</button>
+        <span class="flash fl"></span>
+      </div></div>`);
+    el.querySelectorAll('button').forEach(btn=>btn.onclick=async ()=>{
+      const r = await post('/api/confirm-identity',
+        JSON.stringify({doc_id:it.doc_id, decision:btn.dataset.d}),
+        {'Content-Type':'application/json'});
+      el.querySelector('.fl').textContent = r.message || r.error || '';
+      if(r.action==='posted') setTimeout(home,700);
+    });
+    return el;
+  }
 
   // A gap is not a fixable figure — it's a missing link in the chain.
   if(it.reason === 'gap'){
@@ -171,6 +199,7 @@ async function account(id){
     <div class="card">
       <a class="back" onclick="home()">← back</a>
       <div style="margin-top:10px" class="lbl muted">${d.name}</div>
+      <div class="src">${[d.institution, d.number].filter(Boolean).join(' ')}${(d.holders&&d.holders.length)? ' · '+d.holders.join(', ') : ''}</div>
       <div class="amt" style="font-size:28px;font-weight:600">${dot(d.balance.grade)} ${money(d.balance.amount,d.currency)}</div>
       <div class="muted" style="font-size:13px">${d.balance.explanation||''}</div>
       <table><thead><tr><th>Date</th><th>Description</th><th class="amt">Amount</th><th></th></tr></thead>
@@ -179,14 +208,25 @@ async function account(id){
 }
 
 async function upload(){
-  const f = document.getElementById('file').files[0];
+  const files = Array.from(document.getElementById('file').files);
   const flash = document.getElementById('flash');
-  if(!f){flash.textContent='Choose a file first.';return}
-  flash.textContent='Reading…';
-  const buf = await f.arrayBuffer();
-  const r = await post('/api/upload', buf, {'X-Filename':f.name,'Content-Type':'application/octet-stream'});
-  flash.textContent = r.message || r.error || '';
-  setTimeout(home, 900);
+  const uplog = document.getElementById('uplog');
+  if(!files.length){flash.textContent='Choose one or more files first.';return}
+  uplog.replaceChildren();
+  // One file per request → one model call each; sequential so calls don't
+  // overlap and each read stays clean (nothing batched together).
+  for(let i=0;i<files.length;i++){
+    const f = files[i];
+    flash.textContent = `Reading ${i+1}/${files.length}: ${f.name} …`;
+    let r;
+    try{
+      const buf = await f.arrayBuffer();
+      r = await post('/api/upload', buf, {'X-Filename':f.name,'Content-Type':'application/octet-stream'});
+    }catch(e){ r = {action:'error', message:String(e)}; }
+    uplog.appendChild($(`<div class="src">${f.name} → <strong>${r.action||'?'}</strong> ${r.message||r.error||''}</div>`));
+  }
+  flash.textContent = `Done — ${files.length} file(s) processed.`;
+  setTimeout(home, 1200);
 }
 
 home();

@@ -30,6 +30,7 @@ from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
 from .events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED, Event,
                      Provenance, postings_of)
+from .identity import account_key, names_overlap
 from .postings import EQUITY_OPENING
 
 
@@ -72,6 +73,20 @@ class AccountInfo:
     kind: str = ""
     currency: str = ""
     name: str = ""
+    institution: str = ""
+    number: str = ""                       # as extracted (mask for display)
+    names: list[str] = field(default_factory=list)   # account holder name(s)
+
+
+@dataclass
+class Resolution:
+    """How a statement's identity signals resolve against known accounts."""
+    account_id: str            # the account this statement belongs to
+    key: str                   # the raw number/label key for these signals
+    verdict: str               # "same" | "new" | "ambiguous"
+    candidate: str = ""        # for ambiguous: the existing account it might be
+    candidate_name: str = ""
+    reason: str = ""           # human-readable why (for the ask)
 
 
 @dataclass
@@ -102,6 +117,9 @@ class _AccountState:
     kind: str = ""
     currency: str = ""
     name: str = ""
+    institution: str = ""
+    number: str = ""
+    names: list = field(default_factory=list)
     closing_confirmed: bool = False            # a human attested the closing
     lines: list = field(default_factory=list)  # TxnLine per posting on this account
 
@@ -127,6 +145,7 @@ class LedgerProjection:
         self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
         self._posted: set[str] = set()           # doc_ids with posting events
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
+        self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
         for event in events:
             self.apply(event)
 
@@ -149,6 +168,9 @@ class LedgerProjection:
             st.kind = event.body.get("kind", "")
             st.currency = event.body.get("currency", "")
             st.name = event.body.get("name", "")
+            st.institution = event.body.get("institution", "")
+            st.number = event.body.get("account_number", "")
+            st.names = list(event.body.get("account_names", []))
 
         elif et == "OpeningBalanceObserved":
             acct = event.body["account_id"]
@@ -170,6 +192,9 @@ class LedgerProjection:
 
         elif et == "StatementHeld":
             self._held[event.body["doc_id"]] = event.body
+
+        elif et == "AccountAliasConfirmed":
+            self._aliases[event.body["alias_key"]] = event.body["account_id"]
 
         elif et == "ClosingBalanceObserved":
             acct = event.body["account_id"]
@@ -255,12 +280,39 @@ class LedgerProjection:
     def gap_holds(self) -> list[dict]:
         return [b for b in self.open_holds() if b.get("reason") == "gap"]
 
+    # ------------------------------------------------- identity resolution
+
+    def resolve(self, institution: str, account_number: str, account_ref: str,
+                names: list[str]) -> Resolution:
+        """Resolve a statement's identity signals against known accounts:
+        'same' (a learned alias or an account with this key), 'new', or
+        'ambiguous' (a holder name matches an existing account but the number
+        differs — ask the person once, then learn it)."""
+        key = account_key(institution, account_number, account_ref)
+        if key in self._aliases:                       # learned
+            return Resolution(self._aliases[key], key, "same")
+        st = self._acct.get(key)
+        if st is not None and st.seen:                 # already this account
+            return Resolution(key, key, "same")
+        for aid, s in self._acct.items():              # name overlaps another account?
+            if not s.seen or s.kind != "depository" or aid == key:
+                continue
+            if s.names and names_overlap(names, s.names):
+                who = s.name or aid
+                return Resolution(
+                    key, key, "ambiguous", candidate=aid, candidate_name=who,
+                    reason=(f"a holder name matches {who}, but the account "
+                            "number is different"))
+        return Resolution(key, key, "new")
+
     def account_info(self, account: str) -> AccountInfo:
         st = self._acct.get(account)
         if st is None or not st.seen:
             raise UnknownAccountError(account)
         return AccountInfo(account=account, kind=st.kind,
-                           currency=st.currency, name=st.name)
+                           currency=st.currency, name=st.name,
+                           institution=st.institution, number=st.number,
+                           names=list(st.names))
 
     def account_infos(self) -> list[AccountInfo]:
         return [self.account_info(a) for a in self.accounts()]
@@ -269,7 +321,10 @@ class LedgerProjection:
         st = self._acct.get(account)
         if st is None or not st.seen:
             raise UnknownAccountError(account)
-        return list(st.lines)
+        # Sorted by value-time date: the log is append-only in knowledge-time
+        # (a backfilled older statement lands last), but a person reads a
+        # statement chronologically. Bitemporality made visible.
+        return sorted(st.lines, key=lambda ln: ln.date)
 
     def balance(self, account: str) -> BalanceAnswer:
         st = self._acct.get(account)

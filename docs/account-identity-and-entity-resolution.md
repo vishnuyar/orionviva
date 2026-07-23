@@ -1,6 +1,6 @@
 # Account Identity & Entity Resolution — a learning building block
 
-**Status:** Design (Slice 1.5) · **Last updated:** 2026-07-23 · **Origin:** real-run finding — the same checking account arrived sometimes labelled by product name, sometimes by holder name, so a free-text `account_ref` produced different account ids and statements failed to stitch. The fix is not a smarter label; it is a *learning* identity block.
+**Status:** Implemented (Slice 1.5) · **Last updated:** 2026-07-23 · **Origin:** real-run finding — the same checking account arrived sometimes labelled by product name, sometimes by holder name, so a free-text `account_ref` produced different account ids and statements failed to stitch. The fix is not a smarter label; it is a *learning* identity block. Code: `viva/ledger/identity.py` (keys + name matching), `LedgerProjection.resolve` (the matcher), `viva/ingest/review.apply_identity_ruling` (ask-once-and-learn via `AccountAliasConfirmed`).
 **Invariants touched:** T1 (provenance on every identity signal), T2 (a match is graded, never guessed), T4 (identity rulings are correction-events, append-only), T7 (honest about ambiguity), I5 (no country-shaped identity table — format specifics are data). Serves the moat: identity learned per-user, per-institution, forever.
 
 ## The multi-problem, and why we don't enumerate it in code

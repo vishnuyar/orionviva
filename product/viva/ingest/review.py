@@ -18,7 +18,9 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
-from ..ledger.events import Provenance, correction_applied
+from ..ledger.events import (Provenance, account_alias_confirmed,
+                             correction_applied)
+from ..ledger.identity import account_key
 from ..ledger.ledger import Ledger
 from ..ledger.projection import LedgerProjection
 from .pipeline import (IngestResult, account_id_for, heal_gaps, post_statement)
@@ -75,6 +77,40 @@ def held_items(source) -> list[HeldItem]:
             finding=body.get("finding"),
             held_balance=None if held_bal is None else str(held_bal)))
     return items
+
+
+def apply_identity_ruling(ledger: Ledger, doc_id: str, decision: str) -> IngestResult:
+    """The person rules on an ambiguous account identity, and we *learn* it.
+
+    ``decision='same'`` merges the statement into the candidate account it matched
+    by name; ``decision='new'`` confirms it is its own account. Either way the
+    ruling is an `AccountAliasConfirmed` event, so the same pattern never asks
+    again — then the statement is re-posted (it resolves cleanly now)."""
+    body = next((b for b in ledger.projection().open_holds()
+                 if b["doc_id"] == doc_id and b.get("reason") == "identity"), None)
+    if body is None:
+        raise ValueError(f"no identity-held statement for {doc_id}")
+    facts = StatementFacts.from_dict(body["facts"])
+    fnd = body.get("finding") or {}
+    key = fnd.get("key") or account_key(facts.institution, facts.account_number,
+                                        facts.account_ref)
+    if decision == "same":
+        target = fnd.get("candidate")
+        if not target:
+            raise ValueError("no candidate account to merge into")
+    elif decision == "new":
+        target = key
+    else:
+        raise ValueError("decision must be 'same' or 'new'")
+
+    log.info("identity ruling: doc_id=%s key=%s -> %s (%s)",
+             doc_id[:12], key, target, decision)
+    ledger.append(account_alias_confirmed(key, target, doc_id, facts.closing_date,
+                                          by="human"))
+    res = post_statement(ledger, facts)     # resolves cleanly now (alias learned)
+    if res.action == "posted":
+        heal_gaps(ledger)
+    return res
 
 
 def _held_facts(ledger: Ledger, doc_id: str) -> StatementFacts:

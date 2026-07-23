@@ -10,7 +10,9 @@ picture and the interactions, and only surfaces a source on request.
 from __future__ import annotations
 
 from ..answer import answer_total, coverage_summary
-from ..ingest import (apply_human_correction, capture_and_ingest, held_items)
+from ..ingest import (apply_human_correction, apply_identity_ruling,
+                      capture_and_ingest, held_items)
+from ..ingest.identity import masked
 from ..ledger import UnknownAccountError
 from ..vault import Vault
 
@@ -28,7 +30,9 @@ def overview(vault: Vault) -> dict:
         accounts.append({
             "account": info.account, "name": info.name or info.account,
             "currency": info.currency, "amount": str(ba.amount),
-            "grade": ba.grade, "as_of": ba.dated})
+            "grade": ba.grade, "as_of": ba.dated,
+            "institution": info.institution, "number": masked(info.number),
+            "holders": info.names})
     return {
         "total": total.to_dict(),
         "accounts": accounts,
@@ -50,6 +54,8 @@ def account_view(vault: Vault, account: str) -> dict:
     return {
         "account": account, "name": info.name or account,
         "currency": info.currency,
+        "institution": info.institution, "number": masked(info.number),
+        "holders": info.names,
         "balance": ba.to_dict(),
         "transactions": [ln.to_dict() for ln in lines],
     }
@@ -68,6 +74,13 @@ def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
         "action": res.action, "grade": res.grade, "account": res.account,
         "message": res.message,
     }
+
+
+def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
+    """Apply a person's ruling on an ambiguous account identity ('same' / 'new')."""
+    res = apply_identity_ruling(vault.ledger, doc_id, decision)
+    return {"action": res.action, "grade": res.grade, "account": res.account,
+            "message": res.message}
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:

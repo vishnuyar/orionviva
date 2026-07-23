@@ -42,21 +42,27 @@ def main() -> None:
         print(f"    {etype}: {n}")
     print(f"raw blobs (captured files): {len(vault.raw.doc_ids())}")
 
+    from .ingest.identity import masked
     proj = vault.ledger.projection()
     infos = proj.account_infos()
     print(f"accounts posted: {len(infos)}")
     for i in infos:
         ba = proj.balance(i.account)
         print(f"    {i.name} [{i.kind} {i.currency}] = {ba.amount} ({ba.grade})")
+        print(f"        id={i.account}  institution={i.institution!r}  "
+              f"number={masked(i.number)}  holders={i.names}")
 
     held = held_items(proj)
     print(f"held for review: {len(held)}")
     for h in held:
+        f = h.finding or {}
         if h.reason == "gap":
             print(f"    {h.account_ref}: GAP — opens {h.facts.opening_amount} "
                   f"({h.facts.opening_date}); chain held at {h.held_balance}")
+        elif h.reason == "identity":
+            print(f"    {h.account_ref}: IDENTITY — {f.get('message')} "
+                  f"(candidate: {f.get('candidate_name')})")
         else:
-            f = h.finding or {}
             print(f"    {h.account_ref}: CONFLICT — {f.get('kind')}/{f.get('status')}: "
                   f"{(f.get('message') or '')[:120]}")
 

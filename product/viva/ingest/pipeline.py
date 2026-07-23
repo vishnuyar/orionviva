@@ -60,6 +60,7 @@ PARKED = "parked"        # captured and acknowledged; no projector for it yet
 DUPLICATE = "duplicate"  # already ingested (same content hash)
 CONFLICT = "conflict"    # recognized, but did not reconcile — not posted
 GAP = "gap"              # opening does not continue from the balance we hold
+IDENTITY = "identity"    # reconciles, but whose account is ambiguous — ask
 
 
 @dataclass
@@ -108,11 +109,15 @@ def account_id_for(facts: StatementFacts) -> str:
     return account_key(facts.institution, facts.account_number, facts.account_ref)
 
 
-def _connects(facts: StatementFacts, proj) -> str:
+def _resolve(proj, facts: StatementFacts):
+    return proj.resolve(facts.institution, facts.account_number,
+                        facts.account_ref, facts.account_names)
+
+
+def _connects(facts: StatementFacts, proj, account: str) -> str:
     """How a reconciled statement attaches to its account's existing chain:
     'forward' (its opening = the current balance), 'backward' (its closing = the
     earliest opening — a backfill), or '' (a gap)."""
-    account = account_id_for(facts)
     if facts.opening_amount == proj.running_balance(account):
         return "forward"
     if facts.closing_amount == proj.earliest_opening(account):
@@ -139,7 +144,7 @@ def heal_gaps(ledger: Ledger) -> int:
             if doc_id in attempted:
                 continue
             facts = StatementFacts.from_dict(body["facts"])
-            if _connects(facts, proj):
+            if _connects(facts, proj, _resolve(proj, facts).account_id):
                 candidate = facts
                 attempted.add(doc_id)
                 break
@@ -219,23 +224,40 @@ def post_statement(ledger: Ledger, facts: StatementFacts,
 def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                      finding: ReconciliationFinding | None,
                      auto_corrected: bool, confirmed_by: str = "") -> IngestResult:
-    """Write a statement that reconciles: seed a new account, stitch onto the end
-    (forward), backfill in front (backward), or — if it connects to neither —
-    hold it as a gap (never invent the gap)."""
-    account = account_id_for(facts)
+    """Write a statement that reconciles: resolve whose account it is (holding
+    for confirmation if that's ambiguous), then seed a new account, stitch onto
+    the end (forward), backfill in front (backward), or hold it as a gap."""
     proj = ledger.projection()
+    res = _resolve(proj, facts)
+    if res.verdict == "ambiguous":
+        log.info("_post_reconciled: identity AMBIGUOUS for %s — holding (%s)",
+                 res.key, res.reason)
+        ledger.append(statement_held(
+            facts.doc_id, facts.to_dict(),
+            {"kind": "identity", "candidate": res.candidate,
+             "candidate_name": res.candidate_name, "key": res.key,
+             "message": res.reason}, "identity",
+            facts.closing_date, Provenance(doc_id=facts.doc_id)))
+        return IngestResult(
+            doc_id=facts.doc_id, action=IDENTITY, doc_type=facts.doc_type,
+            account=res.candidate, grade="conflicted",
+            message=(f"I read this statement, but whose account it is is unclear: "
+                     f"{res.reason}. Held for you to confirm."))
+    account = res.account_id
 
     if not proj.is_seeded(account):
         log.info("_post_reconciled: opening new account %s (%s %s) seeded at %s",
                  account, facts.account_ref, facts.currency, facts.opening_amount)
         ledger.append(account_opened(
             account, "depository", facts.account_ref or account,
-            facts.currency, facts.opening_date))
+            facts.currency, facts.opening_date,
+            institution=facts.institution, account_number=facts.account_number,
+            account_names=facts.account_names))
         ledger.append(opening_balance_observed(
             account, facts.opening_amount, facts.opening_date,
             facts.opening_provenance()))
     else:
-        how = _connects(facts, proj)
+        how = _connects(facts, proj, account)
         if how == "forward":
             log.info("_post_reconciled: forward-stitching onto %s at %s",
                      account, facts.opening_amount)
