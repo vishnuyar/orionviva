@@ -164,6 +164,31 @@ def test_unforced_conflict_carries_a_finding(tmp_path):
     assert LedgerProjection(store.events()).accounts() == []
 
 
+def test_parked_doc_reprocesses_after_a_fix(tmp_path):
+    raw, store = _stores(tmp_path)
+    data = b"jul-statement"
+    # First read fails to parse -> parks.
+    r1 = _reader({data: ReadResult("checking_statement", 1.0, None, "parse failed")})
+    assert capture_and_ingest(raw, store, data, r1, captured_at="2026-02-01").action == PARKED
+    assert LedgerProjection(store.events()).accounts() == []
+    # Re-upload the SAME file after the reader/parser improved -> re-reads, posts.
+    good = _facts("1000.00", [("2026-01-10", "Pay", "500.00"),
+                              ("2026-01-15", "Coffee", "-42.42")], "1457.58")
+    r2 = _reader({data: ReadResult("checking_statement", 1.0, good)})
+    res = capture_and_ingest(raw, store, data, r2, captured_at="2026-02-02")
+    assert res.action == POSTED
+    assert LedgerProjection(store.events()).balance(account_id_for(good)).amount == Decimal("1457.58")
+
+
+def test_posted_doc_is_not_reprocessed(tmp_path):
+    raw, store = _stores(tmp_path)
+    data = b"jan-statement-pdf"
+    reader = _reader({data: ReadResult("checking_statement", 0.98, JAN)})
+    capture_and_ingest(raw, store, data, reader, captured_at="2026-02-01")
+    assert capture_and_ingest(raw, store, data, reader,
+                              captured_at="2026-02-02").action == DUPLICATE
+
+
 def test_unreadable_document_is_parked(tmp_path):
     raw, store = _stores(tmp_path)
     data = b"garbled"

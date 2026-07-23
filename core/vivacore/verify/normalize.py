@@ -234,12 +234,18 @@ _MONTHS = {
 _MONTH_FIRST_LOCALES = ("en-US", "en-PH")
 
 
-def parse_date(raw: str, locale: str | None = None) -> Normalized:
+def parse_date(raw: str, locale: str | None = None,
+               default_year: int | None = None) -> Normalized:
     """Parse a printed date to ISO yyyy-mm-dd.
 
     The infamous trap — "03/04/2025" — is March 4 in the US and April 3 in
     most of the world. With a locale we resolve it and record the assumption;
     without one, if both readings are valid, the answer is "ambiguous".
+
+    ``default_year`` supplies the year for a date printed WITHOUT one (bank
+    statements print transaction lines as "04/17"); the caller derives it from
+    the statement period. Without it, a year-less date stays invalid — we never
+    invent a year.
     """
     if raw is None or not str(raw).strip():
         return Normalized(status="invalid", reason="empty value")
@@ -290,6 +296,30 @@ def parse_date(raw: str, locale: str | None = None) -> Normalized:
             status="ambiguous",
             reason=f"{raw!r}: both month-first and day-first readings are valid; no locale to decide",
         )
+
+    # Year-less numeric: "04/17", "4-17" — common on statement transaction lines.
+    # Only resolvable with a default_year the caller derived from the period.
+    m = re.fullmatch(r"(\d{1,2})[-/.](\d{1,2})", text)
+    if m and default_year is not None:
+        a, b = int(m.group(1)), int(m.group(2))
+        y = default_year
+        note = f"no year printed; used statement-period year {y}"
+        a_month, b_month = 1 <= a <= 12, 1 <= b <= 12
+        if a_month and not b_month:
+            return _make_date(y, a, b, assumptions + [note, "first field is month"])
+        if b_month and not a_month:
+            return _make_date(y, b, a, assumptions + [note, "second field is month"])
+        if not a_month and not b_month:
+            return Normalized(status="invalid", reason=f"no valid month reading of {raw!r}")
+        if a == b:
+            return _make_date(y, a, b, assumptions + [note])
+        if locale in _MONTH_FIRST_LOCALES:
+            return _make_date(y, a, b, assumptions + [note, f"locale {locale} month-first"])
+        if locale:
+            return _make_date(y, b, a, assumptions + [note, f"locale {locale} day-first"])
+        return Normalized(
+            status="ambiguous",
+            reason=f"{raw!r}: month/day order unresolved and no locale given")
 
     return Normalized(status="invalid", reason=f"unrecognized date format: {raw!r}")
 

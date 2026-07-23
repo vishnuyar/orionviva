@@ -168,3 +168,10 @@ def test_leap_year_accepted():
 def test_assumption_recorded_for_locale_resolution():
     r = parse_date("03/04/2025", "en-US")
     assert any("month-first" in a for a in r.assumptions)
+
+
+def test_yearless_date_needs_default_year():
+    from vivacore.verify.normalize import parse_date
+    assert parse_date("04/17", "en-US").status == "invalid"          # no year -> refuse
+    n = parse_date("04/17", "en-US", default_year=2024)
+    assert n.ok and n.value == "2024-04-17"                          # year supplied
