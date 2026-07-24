@@ -95,12 +95,17 @@ async function home(){
         ${dot(a.grade)}<strong>${money(a.amount,a.currency)}</strong></span>
     </div>`).join('');
 
+  const spend = d.spending && d.spending.text ? `<div class="coverage">${d.spending.text}</div>` : '';
   view.replaceChildren($(`<div>
-    <div class="card total">${totalHtml}<div class="coverage">${d.coverage}</div></div>
+    <div class="card total">${totalHtml}<div class="coverage">${d.coverage}</div>${spend}</div>
     ${d.review_count>0? `<div class="card review" id="reviewcard">
         <h3>${d.review_count} statement${d.review_count>1?'s':''} need${d.review_count>1?'':'s'} your eyes</h3>
         <div class="muted" style="font-size:13px">These didn't slot in cleanly — nothing was guessed or dropped.</div>
         <div id="held"></div></div>` : ''}
+    ${d.transfer_review_count>0? `<div class="card review" id="transfercard">
+        <h3>${d.transfer_review_count} possible transfer${d.transfer_review_count>1?'s':''} to confirm</h3>
+        <div class="muted" style="font-size:13px">Moving your own money isn't spending — confirm and I'll stop counting it.</div>
+        <div id="transfers"></div></div>` : ''}
     <div class="card">${accts || '<div class="muted">No accounts yet. Upload a statement below.</div>'}</div>
     <div class="card up" style="flex-wrap:wrap">
       <label>Add statements: <input type="file" id="file" multiple></label>
@@ -110,12 +115,36 @@ async function home(){
     </div>
   </div>`));
   if(d.review_count>0) loadReview();
+  if(d.transfer_review_count>0) loadTransfers();
 }
 
 async function loadReview(){
   const {items} = await get('/api/review');
   const box = document.getElementById('held'); if(!box) return;
   box.replaceChildren(...items.map(renderHeld));
+}
+
+async function loadTransfers(){
+  const {items} = await get('/api/transfers');
+  const box = document.getElementById('transfers'); if(!box) return;
+  box.replaceChildren(...items.map(renderTransfer));
+}
+
+function renderTransfer(it){
+  const s = it.source, ev = it.evidence||{};
+  const opts = it.candidates.map(c=>
+    `<button data-b="${c.key}">${c.account} · ${c.date} · ${c.amount} (${c.description})</button>`).join('');
+  const el = $(`<div class="held">
+    <div class="msg">Is <strong>${s.description||s.account}</strong> (${ev.currency||''} ${ev.amount||''}, ${s.date}) a transfer to one of your own accounts?</div>
+    <div class="acts">${opts || '<span class="muted">No matching account is loaded yet.</span>'}
+      <button class="ghost" data-reject="1">Not a transfer</button></div></div>`);
+  el.querySelectorAll('button[data-b]').forEach(b=>b.onclick=async()=>{
+    await post('/api/confirm-transfer', JSON.stringify({a:s.key, b:b.dataset.b}), {'Content-Type':'application/json'});
+    home();
+  });
+  const rj = el.querySelector('button[data-reject]');
+  if(rj) rj.onclick=async()=>{ await post('/api/reject-transfer', JSON.stringify({a:s.key}), {'Content-Type':'application/json'}); home(); };
+  return el;
 }
 
 function renderHeld(it){

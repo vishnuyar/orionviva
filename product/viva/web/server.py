@@ -50,6 +50,8 @@ def make_handler(vault, read_fn):
                 return self._send(service.overview(vault))
             if u.path == "/api/review":
                 return self._send(service.review_list(vault))
+            if u.path == "/api/transfers":
+                return self._send(service.transfer_review(vault))
             if u.path == "/api/account":
                 acct = parse_qs(u.query).get("id", [""])[0]
                 return self._send(service.account_view(vault, acct))
@@ -70,6 +72,14 @@ def make_handler(vault, read_fn):
                     d = json.loads(raw or b"{}")
                     return self._send(service.confirm_identity(
                         vault, d["doc_id"], d["decision"]))
+                if u.path == "/api/confirm-transfer":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.confirm_transfer_link(
+                        vault, d["a"], d["b"]))
+                if u.path == "/api/reject-transfer":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.reject_transfer_link(
+                        vault, d["a"], d.get("b", "")))
                 if u.path == "/api/upload":
                     fn = self.headers.get("X-Filename", "upload.bin")
                     return self._send(service.upload(vault, fn, raw, read_fn))

@@ -1,6 +1,6 @@
 # Transfer Links & Cross-Document Corroboration — one movement, two witnesses
 
-**Status:** Design (Slice 3) · **Last updated:** 2026-07-24 · **Origin:** Slice 2 lets a person hold several of their own accounts. The moment they do, an internal payment (checking → their own card) appears on *two* statements, so "how much did I spend" counts the same money twice. Real ingests surfaced a second, deeper case: a statement whose reconciliation gap is *exactly* a movement the counterparty document already attests (a card missing a payment that the checking statement plainly shows). Both are the same recognition — **two legs, one movement** — so this slice builds them together.
+**Status:** Implemented (Slice 3, core) · **Last updated:** 2026-07-24 · **Origin:** Slice 2 lets a person hold several of their own accounts. The moment they do, an internal payment (checking → their own card) appears on *two* statements, so "how much did I spend" counts the same money twice. Real ingests surfaced a second, deeper case: a statement whose reconciliation gap is *exactly* a movement the counterparty document already attests (a card missing a payment that the checking statement plainly shows). Both are the same recognition — **two legs, one movement** — so this slice builds them together.
 
 **Invariants touched:** T1 (every posting carries provenance — a link cites *both* source lines; a corroborated leg cites the issuer that actually attested it), T2 (verification: cross-document corroboration is a *second, independent* reconciliation identity, run by deterministic code), T4 (a link/correction is an append-only event, reversible, nothing overwritten). Principle 2 (**never bluff a number** — a gap is never closed on a non-decisive link) and principle 7 (autonomous where safe, deferential where it counts) are the load-bearing constraints. This is the verification layer — "the actual hard problem" — getting a new, cheap, strong rung.
 
@@ -64,6 +64,43 @@ Netting is only correct if both accounts are the user's. Most of this is already
 ## Grades & provenance
 
 The link is a graded fact: **`verified`** (a person confirmed it), **`corroborated`** (auto-linked on decisive evidence, or closed by cross-document corroboration), **`suggested`** (a Finding awaiting confirmation). Provenance cites *both* source movements (each with its own document provenance); a corroborated repair additionally records the counterparty document as the attesting source and the "incomplete primary read" marker.
+
+## Implementation status (as built, 2026-07-24)
+
+Core built and tested (`ingest/transfers.py`, projection transfer overlay,
+`pipeline._try_corroboration` / `heal_corroboration`, `answer_spending`):
+
+- ✅ **Overlay link, never a re-post** — `TransferLinked` / `TransferUnlinked` /
+  `TransferSuggested` events (append-only, reversible); each statement still
+  reconciles on its own. Links reference the **stable movement key**
+  (`doc_id|account|date|amount|description|occurrence`), which survives a replay
+  (a reingest) — proven by a test.
+- ✅ **Netting = exclusion** — `spending_by_currency()` excludes linked
+  movements; `answer_spending` reports external spending with transfers removed.
+  The kind-aware *economic sign* / self-netting clearing account stays deferred
+  to S7 (only a minimal source/destination read is used, for matching).
+- ✅ **Decisive auto-link, ambiguous asks** — decisive (unique magnitude+currency
+  match within the date window, with a strong own-account hint) auto-links at
+  `corroborated`; ambiguous/weak surfaces a `TransferSuggested`; confirm →
+  `verified`, reject dismisses. Currency is matched, never a bare amount (I1).
+- ✅ **Cross-document corroboration rung** — a decisive counterparty leg supplies
+  what a statement's read dropped; the supplied posting cites the **counterparty
+  document** (provenance) at grade `corroborated`, with an explicit
+  incomplete-read note; heals in **either ingest order** (`heal_corroboration`).
+  A gap with no decisive counterpart is **not** closed — it holds for a human
+  (tested). This is the H-E-B missing-payment case, rescued.
+- ✅ **Surfaces** — `debug_vault` and the web overview/review show transfers,
+  suggestions, and transfers-excluded spending; confirm/reject endpoints wired.
+
+Deferred (noted, not built — a clean v1 boundary):
+
+- ⏳ **One-sided own-account ask + learned patterns.** v1 links only when **both**
+  legs are ingested own accounts. A transfer that *names* an unseen destination
+  ("payment to card …9876") is not yet turned into an own-account question, and a
+  confirmed transfer is not yet **learned** so future look-alikes auto-link. The
+  event vocabulary and the entity-resolution block it will reuse are in place;
+  this is the next increment. Until then a one-sided transfer degrades gracefully
+  (counts as spending until the other account is ingested, then auto-nets).
 
 ## Notes for future slices (read these when you build them)
 

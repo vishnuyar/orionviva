@@ -9,9 +9,10 @@ picture and the interactions, and only surfaces a source on request.
 
 from __future__ import annotations
 
-from ..answer import answer_total, coverage_summary
+from ..answer import answer_spending, answer_total, coverage_summary
 from ..ingest import (apply_human_correction, apply_identity_ruling,
-                      capture_and_ingest, held_items)
+                      capture_and_ingest, confirm_transfer, held_items,
+                      reject_transfer)
 from ..ingest.identity import masked
 from ..ledger import UnknownAccountError
 from ..vault import Vault
@@ -42,8 +43,43 @@ def overview(vault: Vault) -> dict:
         "total": total.to_dict(),
         "accounts": accounts,
         "coverage": coverage_summary(proj).text,
+        "spending": answer_spending(proj).to_dict(),
         "review_count": len(held_items(proj)),
+        "transfer_review_count": len(proj.transfer_suggestions()),
     }
+
+
+def transfer_review(vault: Vault) -> dict:
+    """Suggested internal transfers awaiting a ruling, in human-readable form."""
+    proj = vault.ledger.projection()
+    by_key = {m.key: m for m in proj.movements()}
+
+    def _describe(key: str) -> dict:
+        m = by_key.get(key)
+        if m is None:
+            return {"key": key, "label": key}
+        return {"key": key, "account": m.account, "date": m.date,
+                "amount": str(m.amount), "description": m.description}
+
+    items = []
+    for s in proj.transfer_suggestions():
+        items.append({
+            "source": _describe(s["a"]),
+            "candidates": [_describe(k) for k in s.get("candidates", [])],
+            "evidence": s.get("evidence", {})})
+    return {"items": items}
+
+
+def confirm_transfer_link(vault: Vault, movement_a: str, movement_b: str) -> dict:
+    """A person confirms two movements are one transfer (netted, `verified`)."""
+    confirm_transfer(vault.ledger, movement_a, movement_b)
+    return {"ok": True}
+
+
+def reject_transfer_link(vault: Vault, movement_a: str, movement_b: str = "") -> dict:
+    """A person dismisses a suggested transfer (not the same money)."""
+    reject_transfer(vault.ledger, movement_a, movement_b)
+    return {"ok": True}
 
 
 def account_view(vault: Vault, account: str) -> dict:

@@ -278,6 +278,50 @@ def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
     )
 
 
+def transfer_linked(movement_a: str, movement_b: str, grade: str,
+                    evidence: dict, occurred_at: str, by: str = "auto",
+                    provenance: Provenance | None = None) -> Event:
+    """Assert that two movements (referenced by stable movement key) are one
+    internal transfer — a graded, evidenced *relationship* over two existing
+    postings (data-model-considerations.md). It is an OVERLAY: neither leg is
+    re-posted, so each statement still reconciles on its own. Aggregates that
+    measure spending exclude a linked movement. ``by='auto'`` for a decisive
+    match, ``'human'`` for a confirmed one (which the projection grades higher).
+    Reversible via ``transfer_unlinked`` (T4 — a ruling is an event, not an edit)."""
+    return Event(
+        "TransferLinked", occurred_at,
+        body={"a": movement_a, "b": movement_b, "grade": grade,
+              "evidence": evidence, "by": by, "status": "linked"},
+        provenance=provenance or Provenance(),
+    )
+
+
+def transfer_unlinked(movement_a: str, movement_b: str, occurred_at: str,
+                      by: str = "human", provenance: Provenance | None = None) -> Event:
+    """Revoke a transfer link (a person said 'these are not the same money').
+    Append-only: the link's history stays replayable; the projection stops
+    treating the pair as a transfer."""
+    return Event(
+        "TransferUnlinked", occurred_at,
+        body={"a": movement_a, "b": movement_b, "by": by, "status": "unlinked"},
+        provenance=provenance or Provenance(),
+    )
+
+
+def transfer_suggested(movement_a: str, candidates: list[str], evidence: dict,
+                       occurred_at: str, provenance: Provenance | None = None) -> Event:
+    """A transfer we suspect but cannot force — ``movement_a`` looks like an
+    internal transfer, but the counterpart is ambiguous (several candidates) or
+    the destination account isn't confirmed yours. Surfaced for a human ruling;
+    NOTHING is netted until confirmed (never bluff — principle 2)."""
+    return Event(
+        "TransferSuggested", occurred_at,
+        body={"a": movement_a, "candidates": list(candidates),
+              "evidence": evidence, "status": "suggested"},
+        provenance=provenance or Provenance(),
+    )
+
+
 def transaction_recorded(postings: list[Posting], description: str,
                          occurred_at: str, tags: list[str] | None = None,
                          provenance: Provenance | None = None) -> Event:

@@ -183,6 +183,36 @@ def answer_total(source, as_of: str | None = None) -> Answer:
               "Each is the sum of that currency's checking accounts."))
 
 
+def answer_spending(source, as_of: str | None = None) -> Answer:
+    """Real external spending, per currency — money that left your asset accounts
+    to the outside world, with internal transfers (moving your own money)
+    EXCLUDED (Slice 3). A minimal seed of the S5 spending view; its point here is
+    to prove transfers don't inflate the number."""
+    proj = _projection(source, as_of)
+    q = "external spending" + (f" as of {as_of}" if as_of else "")
+    sums = proj.spending_by_currency()
+    if not sums:
+        return Answer(question=q, answered=True, amount=Decimal("0"),
+                      text="No external spending recorded yet.")
+    pending = len(proj.transfer_suggestions())
+    caveat = ([f"{pending} possible transfer(s) await your confirmation — "
+               "confirming them would exclude that money from spending."]
+              if pending else [])
+    if len(sums) == 1:
+        cur, total = next(iter(sums.items()))
+        return Answer(
+            question=q, answered=True, amount=total, currency=cur,
+            subtotals={cur: str(total)}, caveats=caveat,
+            text=(f"You spent {_money(total, cur)} externally"
+                  f"{f' as of {as_of}' if as_of else ''} — internal transfers "
+                  "between your own accounts are excluded."))
+    parts = "; ".join(f"{c} {t}" for c, t in sums.items())
+    return Answer(question=q, answered=True, amount=None,
+                  subtotals={c: str(t) for c, t in sums.items()}, caveats=caveat,
+                  text=(f"External spending (transfers excluded), per currency: "
+                        f"{parts}."))
+
+
 def coverage_summary(source) -> Coverage:
     """What we hold vs. what is answerable — read straight from the projection."""
     proj = _projection(source)

@@ -61,19 +61,22 @@ def _require_balanced(postings: list[Posting]) -> list[Posting]:
 
 def simple_transaction(account: str, amount: Decimal | str, description: str,
                        occurred_at: str, tags: list[str] | None = None,
-                       provenance=None) -> Event:
+                       provenance=None, account_grade: str = VERIFIED) -> Event:
     """A single-category movement on ``account``.
 
     ``amount`` > 0 is money in (deposit), < 0 is money out (withdrawal). The
-    named account's leg is ``verified`` (the statement attests the movement); the
-    Uncategorized counter-leg mirrors the amount but is ``unverified`` — its
-    category is not yet inferred."""
+    named account's leg is ``verified`` by default (the statement attests the
+    movement); the Uncategorized counter-leg mirrors the amount but is
+    ``unverified`` — its category is not yet inferred. A leg *supplied by
+    cross-document corroboration* (Slice 3) passes ``account_grade=CORROBORATED``:
+    a second issuer attested it, so it is not `verified` (which is reserved for a
+    figure this document itself states or a human confirms)."""
     amt = Decimal(amount)
     if amt == 0:
         raise ValueError("a transaction of zero is not a movement")
     counter = INCOME_UNCATEGORIZED if amt > 0 else EXPENSE_UNCATEGORIZED
     postings = _require_balanced([
-        Posting(account, amt, VERIFIED),
+        Posting(account, amt, account_grade),
         Posting(counter, -amt, UNVERIFIED),
     ])
     return transaction_recorded(postings, description, occurred_at, tags, provenance)

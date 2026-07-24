@@ -67,6 +67,23 @@ def main() -> None:
             print(f"    {h.account_ref}: CONFLICT — {f.get('kind')}/{f.get('status')}: "
                   f"{(f.get('message') or '')[:120]}")
 
+    # Transfers (Slice 3): recognized internal movements + anything suggested.
+    links = proj.transfer_links()
+    print(f"transfer links: {len(links)}")
+    for lk in links:
+        print(f"    [{lk.get('grade')}/{lk.get('by')}] {lk['a']}  <->  {lk['b']}")
+    sugg = proj.transfer_suggestions()
+    if sugg:
+        print(f"transfer suggestions (awaiting your ruling): {len(sugg)}")
+        for s in sugg:
+            ev = s.get("evidence", {})
+            print(f"    {s['a']}  ~  {len(s.get('candidates', []))} candidate(s) "
+                  f"({ev.get('currency','')} {ev.get('amount','')})")
+    spend = proj.spending_by_currency()
+    if spend:
+        print("external spending (transfers excluded): "
+              + ", ".join(f"{c} {v}" for c, v in spend.items()))
+
     # Documents captured but not posted (parked) — checking-classified or not.
     print(f"coverage: {coverage_summary(proj).text}")
 

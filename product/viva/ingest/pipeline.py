@@ -37,7 +37,7 @@ from typing import Callable
 
 from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
-from ..ledger.events import (Provenance, account_opened,
+from ..ledger.events import (CORROBORATED, VERIFIED, Provenance, account_opened,
                              closing_balance_observed, document_captured,
                              opening_balance_observed, read_recorded,
                              statement_held)
@@ -47,7 +47,7 @@ from .diagnose import FORCED, ReconciliationFinding, diagnose
 from .identity import account_key
 from .raw_store import RawStore
 from .registry import account_kind_for, can_project
-from .statement import StatementFacts
+from .statement import StatementFacts, TxnFact
 
 log = logging.getLogger(__name__)
 
@@ -181,6 +181,44 @@ def _reconciles(facts: StatementFacts) -> CheckResult:
         facts.closing_amount)
 
 
+def _gap_delta(facts: StatementFacts) -> Decimal:
+    total = sum((t.amount for t in facts.transactions), start=Decimal("0"))
+    return facts.closing_amount - (facts.opening_amount + total)
+
+
+def heal_corroboration(ledger: Ledger) -> int:
+    """Re-attempt conflict-held statements that a newly-arrived counterparty can
+    now corroborate. The mirror of ``heal_gaps`` for the cross-document rung: a
+    card held because its read dropped a payment posts as soon as the checking
+    statement that attests the payment lands (order-independent, Slice 1 spirit).
+    Only conflict holds with an available decisive partner are retried, so a
+    genuine misread with no counterpart keeps waiting for a human."""
+    from .transfers import find_corroborating_leg
+    posted_total = 0
+    attempted: set[str] = set()
+    while True:
+        proj = ledger.projection()
+        candidate = None
+        for body in proj.open_holds():
+            doc_id = body["doc_id"]
+            if body.get("reason") != "conflict" or doc_id in attempted:
+                continue
+            facts = StatementFacts.from_dict(body["facts"])
+            if find_corroborating_leg(
+                    proj, account_id_for(facts), account_kind_for(facts.doc_type),
+                    _gap_delta(facts), facts.currency, facts.opening_date,
+                    facts.closing_date) is not None:
+                candidate = facts
+                attempted.add(doc_id)
+                break
+        if candidate is None:
+            return posted_total
+        log.info("heal: conflict-held %s now corroborated — re-posting",
+                 candidate.doc_id[:12])
+        if post_statement(ledger, candidate).action == POSTED:
+            posted_total += 1
+
+
 def _apply_forced(facts: StatementFacts,
                   finding: ReconciliationFinding) -> StatementFacts:
     """Return a copy of the facts with a forced correction applied. Only ever
@@ -229,6 +267,13 @@ def post_statement(ledger: Ledger, facts: StatementFacts,
                 res.message = f"{finding.message} {res.message}"
             return res
 
+    # Cross-document corroboration rung (Slice 3): before asking a human, see if a
+    # decisive counterparty movement on another own account attests the missing
+    # line. Cheaper than a re-read (no model call), stronger (two issuers agree).
+    corroborated = _try_corroboration(ledger, facts)
+    if corroborated is not None:
+        return corroborated
+
     log.info("post_statement: holding for review (doc_id=%s)", facts.doc_id[:12])
     ledger.append(statement_held(
         facts.doc_id, facts.to_dict(), finding.to_dict(), "conflict",
@@ -238,6 +283,57 @@ def post_statement(ledger: Ledger, facts: StatementFacts,
         account=account_id_for(facts), grade="conflicted",
         reconciliation=recon, finding=finding,
         message=f"Not posted; held for your review. {finding.message}")
+
+
+def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | None:
+    """The cross-document corroboration rung. If the statement's reconciliation
+    gap is exactly a decisive unmatched counterparty movement on another of the
+    user's own accounts, supply that missing leg — provenance pointing at the
+    counterparty document, graded `corroborated`, and marked as an incomplete
+    primary read (so the crutch never hides a model-recall problem) — then post.
+    The subsequent transfer scan nets the pair. Returns None (→ hold for a human)
+    unless the match is decisive; a gap is never closed on a guess."""
+    from .transfers import find_corroborating_leg, link_transfers
+
+    proj = ledger.projection()
+    account = account_id_for(facts)
+    kind = account_kind_for(facts.doc_type)
+    total = sum((t.amount for t in facts.transactions), start=Decimal("0"))
+    delta = facts.closing_amount - (facts.opening_amount + total)
+    cp = find_corroborating_leg(proj, account, kind, delta, facts.currency,
+                                facts.opening_date, facts.closing_date)
+    if cp is None:
+        return None
+    try:
+        cp_name = proj.account_info(cp.account).name or cp.account
+    except Exception:
+        cp_name = cp.account
+    supplied = TxnFact(
+        date=cp.date, description=f"Payment (corroborated by {cp_name})",
+        amount=delta, source_doc_id=cp.provenance.doc_id, grade=CORROBORATED,
+        note=("supplied by cross-document corroboration; attested by the "
+              "counterparty statement, not read from this document"))
+    corrected = replace(facts, transactions=list(facts.transactions) + [supplied])
+    recon2 = _reconciles(corrected)
+    if not recon2.passed:                         # defensive: only post if it closes
+        return None
+    finding = ReconciliationFinding(
+        reconciles=False, kind="cross_document", status=FORCED, delta=str(delta),
+        target=f"missing leg supplied from {cp_name}", implied=str(delta),
+        confidence=0.95,
+        message=(f"This statement was off by {delta}; a matching {cp.currency} "
+                 f"{abs(delta)} movement on your {cp_name} attests the missing "
+                 "line. I supplied it from that statement (corroborated) and "
+                 "linked the two as one transfer — this document's own read was "
+                 "incomplete."))
+    log.info("post_statement: cross-document corroboration closes the gap for %s "
+             "from %s (delta=%s)", facts.doc_id[:12], cp.account, delta)
+    res = _post_reconciled(ledger, corrected, recon2, finding=finding,
+                           auto_corrected=True)
+    if res.action == POSTED:
+        res.message = f"{finding.message} {res.message}"
+        link_transfers(ledger)                    # net the newly-completed pair
+    return res
 
 
 def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
@@ -307,9 +403,13 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                          "invent the gap; it will slot in when the connector arrives."))
 
     for t in facts.transactions:
+        # A corroboration-supplied leg carries its own provenance (the
+        # counterparty document) and grade (`corroborated`); an ordinary line
+        # defaults to this statement and `verified`.
         ledger.append(simple_transaction(
             account, t.amount, t.description, t.date,
-            provenance=t.provenance(facts.doc_id)))
+            provenance=t.provenance(facts.doc_id),
+            account_grade=(t.grade or VERIFIED)))
     ledger.append(closing_balance_observed(
         account, facts.closing_amount, facts.closing_date,
         facts.closing_provenance(), confirmed_by=confirmed_by))
@@ -379,8 +479,15 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         res = post_statement(ledger, rr.facts)   # (4) the reconciliation gate
         if res.action == POSTED:
             healed = heal_gaps(ledger)           # a new post may unblock waiting statements
+            # a newly-arrived counterparty may corroborate a conflict-held statement
+            healed += heal_corroboration(ledger)
             if healed:
                 log.info("ingest: healed %d previously-held statement(s)", healed)
+            # (5) a new account's movements may complete an internal transfer with
+            # movements already held — detect and net (Slice 3). Deferred import
+            # avoids an ingest→ingest cycle at module load.
+            from .transfers import link_transfers
+            link_transfers(ledger)
         log.info("ingest done: doc_id=%s -> %s (%s)", doc_id[:12], res.action, res.grade)
         return res
 

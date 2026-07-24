@@ -32,22 +32,34 @@ class TxnFact:
     amount: Decimal      # signed by effect on printed balance: + raises it, - lowers it
     page: int | None = None
     running_balance: Decimal | None = None   # the printed balance after this line
+    # A leg SUPPLIED by cross-document corroboration (Slice 3) sets these: its
+    # source is the counterparty document (not this statement), and its grade is
+    # `corroborated` (a second issuer attested it), never `verified`. Empty means
+    # an ordinary line read from this statement.
+    source_doc_id: str = ""
+    grade: str = ""
+    note: str = ""
 
     def provenance(self, doc_id: str) -> Provenance:
-        return Provenance(doc_id=doc_id, page=self.page)
+        return Provenance(doc_id=self.source_doc_id or doc_id, page=self.page,
+                          note=self.note)
 
     def to_dict(self) -> dict:
         return {"date": self.date, "description": self.description,
                 "amount": str(self.amount), "page": self.page,
                 "running_balance": (None if self.running_balance is None
-                                    else str(self.running_balance))}
+                                    else str(self.running_balance)),
+                "source_doc_id": self.source_doc_id, "grade": self.grade,
+                "note": self.note}
 
     @classmethod
     def from_dict(cls, d: dict) -> "TxnFact":
         rb = d.get("running_balance")
         return cls(date=d["date"], description=d.get("description", ""),
                    amount=Decimal(d["amount"]), page=d.get("page"),
-                   running_balance=(None if rb is None else Decimal(rb)))
+                   running_balance=(None if rb is None else Decimal(rb)),
+                   source_doc_id=d.get("source_doc_id", ""),
+                   grade=d.get("grade", ""), note=d.get("note", ""))
 
 
 @dataclass

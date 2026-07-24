@@ -17,6 +17,7 @@ from .registry import (BALANCE_IDENTITY, DEPOSITORY, LIABILITY, DocProfile,
 from .review import (HeldItem, apply_human_correction, apply_identity_ruling,
                      held_items)
 from .statement import StatementFacts, TxnFact, from_model_json
+from .transfers import (confirm_transfer, link_transfers, reject_transfer)
 
 __all__ = [
     "RawStore",
