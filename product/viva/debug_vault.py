@@ -88,7 +88,10 @@ def main() -> None:
         ranked = sorted(by_cat.items(), key=lambda x: x[1], reverse=True)
         print("spending by category (transfers excluded): "
               + ", ".join(f"{c} {v}" for c, v in ranked))
-        print(f"    uncategorized expense movements: {len(proj.uncategorized_expenses())}")
+        mcat = proj.merchant_categories()
+        unknown = proj.uncategorized_merchants()
+        print(f"    merchants categorized: {len(mcat)}; unknown merchants "
+              f"awaiting: {len(unknown)} ({len(proj.uncategorized_expenses())} txns)")
     income = proj.income_by_currency()
     if income:
         print("recognized income (gross): "

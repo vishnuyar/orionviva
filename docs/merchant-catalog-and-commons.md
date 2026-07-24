@@ -1,6 +1,6 @@
 # Merchant Catalog & the Categorization Commons — categorize the merchant, once, for everyone
 
-**Status:** Design (Slice 5.5) · **Last updated:** 2026-07-24 · **Origin:** Slice 5 ships per-transaction categorization, and real use immediately showed the flaw: you categorize one Amazon charge and the next Amazon charge (a different transaction) asks again — twenty Amazon purchases, twenty asks. The fix is to categorize the **merchant**, not the transaction. A vault has thousands of transactions but ~hundreds of distinct merchants; a merchant→category mapping is the small, *impersonal* unit — so batching turns categorization from an O(transactions) model cost into an O(new-merchants) one, and the mapping is exactly the artifact a **commons** can share. This is Vishnu's batched-catalog idea, refined.
+**Status:** Implemented (Slice 5.5, core) · **Last updated:** 2026-07-24 · **Origin:** Slice 5 ships per-transaction categorization, and real use immediately showed the flaw: you categorize one Amazon charge and the next Amazon charge (a different transaction) asks again — twenty Amazon purchases, twenty asks. The fix is to categorize the **merchant**, not the transaction. A vault has thousands of transactions but ~hundreds of distinct merchants; a merchant→category mapping is the small, *impersonal* unit — so batching turns categorization from an O(transactions) model cost into an O(new-merchants) one, and the mapping is exactly the artifact a **commons** can share. This is Vishnu's batched-catalog idea, refined.
 
 **Invariants touched:** T1 (a derived category carries a grade + points to the merchant rule behind it), T4 (merchant rulings are append-only events; the catalog is a *projection* over them, the source of truth stays the encrypted log), **T5 (personal data never leaves the encrypted layer — the raw descriptor, with its order-ids and peer names, stays encrypted; only an impersonal, privacy-linted merchant→category catalog is ever unencrypted or shared)**, T6 (contributing to the commons is an opt-in *decision*, never silent), T8 (the batched categorizer is a pinned, injected model edge), I3/I5/I6 (merchants are locale-sharded, categories are open data, the commons is pack-extensible). Principle 2 (a merchant category is a *graded prior*, always overridable), principle 7 (known merchants auto-fill safely and reversibly; unknown ones wait and are shown as unknown).
 
@@ -29,6 +29,41 @@
 ## The privacy line (get this right)
 
 The raw descriptor never leaves the encrypted ledger. The unencrypted catalog holds only `merchant → category` for **commercial** merchants — no amounts, no dates, no per-transaction linkage. Even so, the *set* of merchants you frequent is mildly identifying, so: local-unencrypted is fine (on your device), but **contribution is opt-in and biased to popular merchants** — share "Amazon", never "Joe's Corner Store, Plano" which could fingerprint you. Same privacy-lint discipline as format profiles; a peer-payment or person-name descriptor is filtered out entirely.
+
+## Implementation status (as built, 2026-07-24)
+
+- ✅ **Deterministic, versioned normalizer.** `ledger/merchants.py`
+  `normalize_merchant` (strips store #, order-ids `US*…`, phones, POS prefixes,
+  punctuation; `NORMALIZER_VERSION`) + `is_shareable` (peer-payment / PII lint).
+  Not fuzzy matching. Lives in the ledger layer so the projection derives through
+  it; re-exported from ingest.
+- ✅ **Catalog projection + derivation.** `MerchantCategorized` event;
+  `projection._merchant_categories` (highest-grade ruling wins);
+  `derived_category(m) = override ?? catalog[normalize(descriptor)] ?? None`.
+  `spending_by_category` and `uncategorized_expenses` derive through it, so a
+  merchant ruling fills every transaction **retrospectively** — proven by test.
+  Survives a replay (content-keyed).
+- ✅ **Prior vs override.** The Slice-5 per-transaction overlay is the override
+  (`verified`); a merchant rule is the prior (`corroborated` from a batch,
+  `verified` from a human "categorize everywhere"). Override wins — tested.
+- ✅ **Batched, retrospective categorizer.** `ingest.categorize_merchants_batch`
+  makes ONE injected `categorize_fn` call over the deduped unknown-merchant set
+  above a threshold, recording `corroborated` merchant rules; offline-testable,
+  live model edge swappable. `uncategorized_merchants()` is the pending set +
+  the surface's unit.
+- ✅ **The linted export.** `export_catalog` returns commercial merchants only
+  (peer-payment filtered), `{merchant: {category, grade}}` — no amounts, dates,
+  or transaction links — the content a commons contribution is hashed from
+  (T5/T6). Tested that PII is filtered and no financial data leaks.
+- ✅ **Surface.** The categorization card is now per-**merchant** ("N merchants to
+  categorize", "categorize everywhere"), `/api/merchants` + `/api/assign-merchant`;
+  private (peer) merchants are marked. `debug_vault` shows catalog size + unknowns.
+
+Honest edges (deferred): the live model edge behind `categorize_fn` (injected,
+not yet wired to a real batched call — a thin follow-on, like the reader was);
+the actual commons *registry* (git repo, corroborated-by-count, import/merge,
+self-healing) — `export_catalog` is its input; merchant-as-Party + per-location
+analytics. Tests: `test_merchants.py` (7); full suite 234 green.
 
 ## Notes for future slices (read these when you build them)
 

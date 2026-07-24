@@ -12,8 +12,8 @@ from __future__ import annotations
 from ..answer import answer_spending, answer_total, coverage_summary
 from ..ingest import (SEED_CATEGORIES, apply_human_correction,
                       apply_identity_ruling, assign_category,
-                      capture_and_ingest, confirm_transfer, held_items,
-                      reject_transfer)
+                      assign_merchant_category, capture_and_ingest,
+                      confirm_transfer, held_items, reject_transfer)
 from ..ingest.identity import masked
 from ..ledger import UnknownAccountError
 from ..vault import Vault
@@ -56,6 +56,7 @@ def overview(vault: Vault) -> dict:
         "transfer_review_count": len(proj.transfer_suggestions()),
         "paystub_review_count": len(pending_paystubs),
         "uncategorized_count": len(proj.uncategorized_expenses()),
+        "unknown_merchant_count": len(proj.uncategorized_merchants()),
     }
 
 
@@ -93,6 +94,23 @@ def assign_category_to(vault: Vault, movement_key: str, category: str) -> dict:
     """A person assigns a category to a movement (`verified` — the moat)."""
     ok = assign_category(vault.ledger, movement_key, category, by="human")
     return {"ok": ok}
+
+
+def merchant_review(vault: Vault, limit: int = 50) -> dict:
+    """The categorization queue, by MERCHANT (Slice 5.5): deduped unknown
+    merchants with how many transactions each covers, so one ruling clears many."""
+    proj = vault.ledger.projection()
+    rows = sorted(proj.uncategorized_merchants().items(),
+                  key=lambda kv: kv[1]["count"], reverse=True)
+    items = [{"merchant": k, "example": r["example"], "count": r["count"],
+              "shareable": r["shareable"]} for k, r in rows[:limit]]
+    return {"items": items, "categories": list(SEED_CATEGORIES)}
+
+
+def assign_merchant(vault: Vault, merchant: str, category: str) -> dict:
+    """Categorize a whole merchant (`verified`) — fills all its transactions."""
+    assign_merchant_category(vault.ledger, merchant, category, by="human")
+    return {"ok": True}
 
 
 def paystub_review(vault: Vault) -> dict:
