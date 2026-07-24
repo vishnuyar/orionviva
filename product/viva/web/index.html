@@ -90,8 +90,8 @@ async function home(){
   };
   const accts = d.accounts.map(a=>`
     <div class="acct" onclick="account('${a.account}')">
-      <span class="nm">${a.name}${idline(a)}</span>
-      <span class="rt"><span class="as">as of ${a.as_of||'—'}</span>
+      <span class="nm">${a.name}${a.liability?' <span class="muted" style="font-size:11px">card</span>':''}${idline(a)}</span>
+      <span class="rt"><span class="as">${a.liability?'owed':''} as of ${a.as_of||'—'}</span>
         ${dot(a.grade)}<strong>${money(a.amount,a.currency)}</strong></span>
     </div>`).join('');
 

@@ -48,7 +48,8 @@ def main() -> None:
     print(f"accounts posted: {len(infos)}")
     for i in infos:
         ba = proj.balance(i.account)
-        print(f"    {i.name} [{i.kind} {i.currency}] = {ba.amount} ({ba.grade})")
+        owed = " owed" if i.kind == "liability" else ""
+        print(f"    {i.name} [{i.kind} {i.currency}] = {ba.amount}{owed} ({ba.grade})")
         print(f"        id={i.account}  institution={i.institution!r}  "
               f"number={masked(i.number)}  holders={i.names}")
 

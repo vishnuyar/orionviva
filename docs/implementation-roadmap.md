@@ -38,10 +38,12 @@ Added after the first real run: the same account arrived under different labels 
 
 _Delivered: identity signals (number/institution/names) extracted + persisted + shown (masked); number-anchored account id (last-4); a matcher raising an identity Finding on ambiguity; ask-once-and-learn confirmation (AccountAliasConfirmed → merge or new); transactions sorted by date. Shipped alongside: multi-file upload (one model call per file), and JSON-mode + a bounded parse-retry so the model returns valid JSON on long statements. A `reingest-from-raw` tool re-reads stored PDFs into a fresh vault when the prompt improves._
 
-## Slice 2 — Doc-type registry + credit card & savings  ← NEXT
+## Slice 2 — Doc-type registry + credit card & savings  ✅ DONE
 **Block seeded:** the format-profile registry (doc_type → {kind, extraction profile, identity}) + account kind (asset/liability) + the classify→profile→extract structure.
 
 **Full spec + locked architecture:** [doc-type-registry-and-format-profiles.md](doc-type-registry-and-format-profiles.md). Decisions: **A1** sign reframe (effect-on-balance, prompt→v3, value-preserving for checking); **we own the schema, the model assists authoring**; versioned, personal-data-free profiles; **two kinds of learned data** (personal=local, format=shareable); re-read via reingest when a profile gains fields. That doc also carries forward-notes for S3/S6/S7/S8 and the format-commons slice.
+
+_Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings = depository, credit card = liability, all sharing the one `balance` identity); the pipeline routes by `profile_for`/`can_project` instead of a hardcoded checking set, and opens accounts with the profile's kind. Prompt bumped to `stmt-v3`: the balance family reads through one shape with per-line `balance_effect` (A1); the parser prefers it and falls back to the legacy `direction`, so stored reads reparse unchanged (value-preserving for checking). Identity ambiguity is scoped to same-kind. Display is kind-aware: a card reads as "owed" in the answer path, the web overview, and debug_vault. Net-worth netting deferred to S7. Tests: card reconciles as a liability shown owed; savings interest reconciles; same-holder card+checking stay two accounts; a brand-new balance type posts via a registry row alone (no gate change)._
 
 **Open state:** only checking posts; a card/savings statement classifies but parks. *Proof:* ingest a card statement → parked, no balance (red test).
 

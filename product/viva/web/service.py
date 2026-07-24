@@ -24,12 +24,17 @@ def overview(vault: Vault) -> dict:
     total = answer_total(proj)
     accounts = []
     for info in proj.account_infos():
-        if info.kind != "depository":
+        if info.kind not in ("depository", "liability"):
             continue
         ba = proj.balance(info.account)
+        liability = info.kind == "liability"
         accounts.append({
             "account": info.account, "name": info.name or info.account,
-            "currency": info.currency, "amount": str(ba.amount),
+            "currency": info.currency,
+            # A liability's balance is money owed; show a positive owed figure and
+            # let the page label it, so the sign convention never confuses a person.
+            "amount": str(abs(ba.amount) if liability else ba.amount),
+            "kind": info.kind, "liability": liability,
             "grade": ba.grade, "as_of": ba.dated,
             "institution": info.institution, "number": masked(info.number),
             "holders": info.names})
