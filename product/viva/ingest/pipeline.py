@@ -31,7 +31,7 @@ with fixtures. Only the real reader touches the network.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Callable
 
@@ -61,14 +61,32 @@ IDENTITY = "identity"    # reconciles, but whose account is ambiguous — ask
 
 
 @dataclass
+class ModelPhase:
+    """One model interaction in a read — the classify pass or the extract pass —
+    captured verbatim for the claims layer (T3). A two-phase real read produces
+    two of these; each is persisted as its own ReadRecorded."""
+    phase: str                       # "classify" | "extract"
+    model: str
+    prompt_version: str
+    raw_text: str
+    cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    input_mode: str = "text+image"
+    parse_ok: bool = True
+    error: str | None = None
+
+
+@dataclass
 class ReadResult:
     """What a reader returns for one document: its classification, and — if it is
     a statement — the structured facts. A reader for a non-statement returns
     ``facts=None`` with the type it recognized (e.g. 'pay_stub').
 
-    The ``raw_*`` fields carry the verbatim model output and call metadata so the
-    pipeline can persist the claims layer (a real read sets ``model``; a stub
-    leaves it empty and nothing extra is recorded)."""
+    ``phases`` carries the per-call model records (classify, extract) that the
+    pipeline persists to the claims layer. The flat ``raw_*``/``model`` fields are
+    the legacy single-call view, kept so offline stubs stay terse; a real
+    two-phase read populates ``phases`` instead."""
     doc_type: str
     doc_type_confidence: float
     facts: StatementFacts | None = None
@@ -80,6 +98,7 @@ class ReadResult:
     cost_usd: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
+    phases: list[ModelPhase] = field(default_factory=list)
 
 
 @dataclass
@@ -333,8 +352,19 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         doc_id, filename, len(data), rr.doc_type, rr.doc_type_confidence,
         captured_at, Provenance(doc_id=doc_id)))
 
-    # The claims layer: persist the verbatim model output for any real read.
-    if rr.model:
+    # The claims layer: persist the verbatim model output for any real read. A
+    # two-phase read records one ReadRecorded per phase (classify + extract); a
+    # legacy single-call reader (or stub) records one via the flat fields.
+    if rr.phases:
+        for ph in rr.phases:
+            ledger.append(read_recorded(
+                doc_id, ph.model, ph.prompt_version, ph.input_mode, ph.raw_text,
+                ph.cost_usd, ph.input_tokens, ph.output_tokens, ph.parse_ok,
+                ph.error, captured_at, Provenance(doc_id=doc_id), phase=ph.phase))
+            log.info("ingest: stored ReadRecorded phase=%s (model=%s cost=$%.4f "
+                     "parse_ok=%s resp_chars=%d)", ph.phase, ph.model, ph.cost_usd,
+                     ph.parse_ok, len(ph.raw_text))
+    elif rr.model:
         ledger.append(read_recorded(
             doc_id, rr.model, rr.prompt_version, rr.input_mode, rr.raw_text,
             rr.cost_usd, rr.input_tokens, rr.output_tokens,

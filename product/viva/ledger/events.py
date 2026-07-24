@@ -253,11 +253,16 @@ def account_alias_confirmed(alias_key: str, account_id: str, doc_id: str,
 def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
                   response_text: str, cost_usd: float, input_tokens: int,
                   output_tokens: int, parse_ok: bool, parse_error: str | None,
-                  occurred_at: str, provenance: Provenance | None = None) -> Event:
+                  occurred_at: str, provenance: Provenance | None = None,
+                  phase: str = "extract") -> Event:
     """The claims layer (data-model-considerations.md): what a model asserted,
     verbatim, on one read — model + prompt version (T8), the raw response, and
     cost. Immutable and append-only. This is the raw-capture doctrine (ADR-003)
     applied to the reader's output, and the training-pair mine for the flywheel.
+
+    A two-phase read records one of these per phase: ``phase='classify'`` (the
+    cheap type decision) and ``phase='extract'`` (the figures). Each carries its
+    own prompt version and cost, so nothing a model did is thrown away.
 
     The request is not stored: it is reconstructable from the captured raw
     document plus the versioned prompt, so we keep the response without
@@ -268,7 +273,7 @@ def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
               "input_mode": input_mode, "response_text": response_text,
               "cost_usd": cost_usd, "input_tokens": input_tokens,
               "output_tokens": output_tokens, "parse_ok": parse_ok,
-              "parse_error": parse_error},
+              "parse_error": parse_error, "phase": phase},
         provenance=provenance or Provenance(doc_id=doc_id),
     )
 
