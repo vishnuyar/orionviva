@@ -27,9 +27,16 @@ def test_whole_balance_family_shares_one_identity():
 
 
 def test_unknown_type_has_no_projector():
-    assert profile_for("pay_stub") is None
-    assert not can_project("pay_stub")
-    assert account_kind_for("pay_stub") == DEPOSITORY   # safe default
+    assert profile_for("brokerage_statement") is None
+    assert not can_project("brokerage_statement")
+    assert account_kind_for("brokerage_statement") == DEPOSITORY   # safe default
+
+
+def test_pay_stub_is_a_divergent_projectable_profile():
+    p = profile_for("pay_stub")
+    assert p is not None and p.identity == "paystub"    # not the balance family
+    assert can_project("pay_stub")                       # it has a projector
+    assert profile_for("payslip") is p                   # alias resolves
 
 
 def test_registering_a_new_balance_type_is_data_only():

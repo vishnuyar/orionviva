@@ -69,7 +69,12 @@ def held_items(source) -> list[HeldItem]:
     proj = source if isinstance(source, LedgerProjection) else LedgerProjection(source)
     items: list[HeldItem] = []
     for body in proj.open_holds():
-        facts = StatementFacts.from_dict(body["facts"])
+        fdict = body.get("facts", {})
+        if "opening_amount" not in fdict:
+            # A non-balance hold (e.g. a pay stub awaiting its deposit, Slice 4).
+            # Surfaced minimally here; a shape-specific review view comes later.
+            continue
+        facts = StatementFacts.from_dict(fdict)
         held_bal = proj.running_balance(account_id_for(facts))
         items.append(HeldItem(
             doc_id=body["doc_id"], reason=body.get("reason", ""),

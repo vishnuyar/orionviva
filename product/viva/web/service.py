@@ -39,14 +39,59 @@ def overview(vault: Vault) -> dict:
             "grade": ba.grade, "as_of": ba.dated,
             "institution": info.institution, "number": masked(info.number),
             "holders": info.names})
+    income = proj.income_by_currency()
+    pending_paystubs = [b for b in proj.open_holds()
+                        if "gross" in b.get("facts", {})]
     return {
         "total": total.to_dict(),
         "accounts": accounts,
         "coverage": coverage_summary(proj).text,
         "spending": answer_spending(proj).to_dict(),
+        "income": {c: str(v) for c, v in income.items()},
+        "income_breakdown": _income_breakdown(proj),
         "review_count": len(held_items(proj)),
         "transfer_review_count": len(proj.transfer_suggestions()),
+        "paystub_review_count": len(pending_paystubs),
     }
+
+
+def _income_breakdown(proj) -> list[dict]:
+    """Where recognized pay went — the universal deduction buckets that carry a
+    balance, so the dashboard can show gross → net decomposition (Slice 4)."""
+    from ..ledger.postings import DEDUCTION_ACCOUNTS
+    rows = []
+    for label, account in [("Retirement", DEDUCTION_ACCOUNTS["retirement"]),
+                           ("Tax", DEDUCTION_ACCOUNTS["tax"]),
+                           ("Insurance", DEDUCTION_ACCOUNTS["insurance"]),
+                           ("Other withheld", DEDUCTION_ACCOUNTS["other"])]:
+        try:
+            amt = proj.balance(account).amount
+        except UnknownAccountError:
+            continue
+        if amt:
+            rows.append({"label": label, "amount": str(amt)})
+    return rows
+
+
+def paystub_review(vault: Vault) -> dict:
+    """Pay stubs read but not fully posted — awaiting their deposit, or held
+    because gross − deductions did not equal net (Slice 4)."""
+    from ..ingest import PayStubFacts
+    proj = vault.ledger.projection()
+    items = []
+    for b in proj.open_holds():
+        f = b.get("facts", {})
+        if "gross" not in f:
+            continue
+        facts = PayStubFacts.from_dict(f)
+        items.append({
+            "doc_id": b["doc_id"], "reason": b.get("reason", ""),
+            "employer": facts.employer, "currency": facts.currency,
+            "pay_date": facts.pay_date,
+            "gross": str(facts.gross), "net": str(facts.net),
+            "deductions": [d.to_dict() for d in facts.deductions],
+            "finding": b.get("finding")})
+    return {"items": items}
 
 
 def transfer_review(vault: Vault) -> dict:

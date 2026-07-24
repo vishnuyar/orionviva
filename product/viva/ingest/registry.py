@@ -35,10 +35,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# The identities a profile can name. v0 has exactly one; the point of naming it
-# is that a divergent type (brokerage: positions×price + cash = total) registers
-# its own without the balance family knowing.
+# The identities a profile can name. The point of naming them is that a divergent
+# type registers its own without the others knowing. The balance family shares
+# one; a pay stub is the first that doesn't (Slice 4). Brokerage
+# (positions×price + cash = total), 1099 (box sums) join later, each as data.
 BALANCE_IDENTITY = "balance"      # opening + Σ(effect on balance) = closing
+PAYSTUB_IDENTITY = "paystub"      # gross − Σ(deductions) = net
+
+# Identities the pipeline has a projector for. Adding a projector is what turns a
+# parked type into a posted one — a registry concern, not a routing rewrite.
+PROJECTABLE_IDENTITIES = frozenset({BALANCE_IDENTITY, PAYSTUB_IDENTITY})
 
 # Account kinds — our interpretation, not the model's.
 DEPOSITORY = "depository"         # an asset; balance = money held
@@ -89,6 +95,16 @@ _SEED: tuple[DocProfile, ...] = (
             "credit_card", "card_statement", "creditcard_statement",
             "credit_card_account_statement",
         })),
+    # The first DIVERGENT profile: a different shape AND a different identity, as
+    # data. `account_kind` is empty — a pay stub is an income document, not an
+    # account. (Slice 4.)
+    DocProfile(
+        "pay_stub", "", identity=PAYSTUB_IDENTITY,
+        extract_base="paystub-base-v1", type_fragment="paystub-v1",
+        aliases=frozenset({
+            "paystub", "pay_slip", "payslip", "salary_slip", "earnings_statement",
+            "wage_statement", "payroll_statement",
+        })),
 )
 
 # Flat index: canonical name and every alias resolve to the same profile.
@@ -122,9 +138,9 @@ def account_kind_for(doc_type: str) -> str:
 
 
 def can_project(doc_type: str) -> bool:
-    """True when a balance-identity projector can handle this type."""
+    """True when the pipeline has a projector for this type's identity."""
     p = profile_for(doc_type)
-    return p is not None and p.identity == BALANCE_IDENTITY
+    return p is not None and p.identity in PROJECTABLE_IDENTITIES
 
 
 def extraction_prompt_for(doc_type: str) -> tuple[str, str] | None:

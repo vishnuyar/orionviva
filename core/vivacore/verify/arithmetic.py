@@ -66,6 +66,35 @@ def check_balance_identity(
     )
 
 
+def check_paystub_identity(
+    gross: Decimal | str,
+    deductions: Iterable[Decimal | str],
+    net: Decimal | str,
+    tolerance: Decimal | str = "0",
+) -> CheckResult:
+    """gross - sum(deductions) == net.
+
+    A pay stub's self-check, the divergent sibling of the balance identity: if it
+    passes, the gross, every deduction, and the net corroborate each other at
+    once. The universal gate runs it; the formula is the pay stub profile's data
+    (the registry's 'code universal, per-type formula is data' claim, Slice 4).
+    """
+    gross_d = _as_decimal(gross)
+    net_d = _as_decimal(net)
+    tol = _as_decimal(tolerance)
+    total_ded = sum((_as_decimal(d) for d in deductions), start=Decimal("0"))
+    expected_net = gross_d - total_ded
+    delta = net_d - expected_net
+    return CheckResult(
+        passed=abs(delta) <= tol,
+        check="pay-stub identity (gross - deductions = net)",
+        expected=str(expected_net),
+        actual=str(net_d),
+        delta=str(delta),
+        tolerance=str(tol),
+    )
+
+
 def check_sum(
     items: Iterable[Decimal | str],
     total: Decimal | str,

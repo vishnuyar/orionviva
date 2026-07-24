@@ -35,18 +35,21 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Callable
 
-from vivacore.verify.arithmetic import CheckResult, check_balance_identity
+from vivacore.verify.arithmetic import (CheckResult, check_balance_identity,
+                                        check_paystub_identity)
 
 from ..ledger.events import (CORROBORATED, VERIFIED, Provenance, account_opened,
                              closing_balance_observed, document_captured,
                              opening_balance_observed, read_recorded,
                              statement_held)
 from ..ledger.ledger import Ledger
-from ..ledger.postings import simple_transaction
-from .diagnose import FORCED, ReconciliationFinding, diagnose
+from ..ledger.postings import paystub_decomposition, simple_transaction
+from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, diagnose
 from .identity import account_key
+from .paystub import PayStubFacts
 from .raw_store import RawStore
-from .registry import account_kind_for, can_project
+from .registry import (PAYSTUB_IDENTITY, account_kind_for, can_project,
+                       profile_for)
 from .statement import StatementFacts, TxnFact
 
 log = logging.getLogger(__name__)
@@ -58,6 +61,7 @@ DUPLICATE = "duplicate"  # already ingested (same content hash)
 CONFLICT = "conflict"    # recognized, but did not reconcile — not posted
 GAP = "gap"              # opening does not continue from the balance we hold
 IDENTITY = "identity"    # reconciles, but whose account is ambiguous — ask
+AWAITING = "awaiting"    # a pay stub read + verified, waiting for its net-pay deposit
 
 
 @dataclass
@@ -236,6 +240,7 @@ def sweep(ledger: Ledger) -> dict:
     links0, sugg0 = len(p0.transfer_links()), len(p0.transfer_suggestions())
     gaps = heal_gaps(ledger)
     corroborated = heal_corroboration(ledger)
+    gaps += heal_paystubs(ledger)         # awaiting pay stubs whose deposit is here
     link_transfers(ledger)
     p1 = ledger.projection()
     auto = len(p1.transfer_links()) - links0
@@ -465,6 +470,123 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                  f"{facts.closing_date}."))
 
 
+def _paystub_diagnose(facts: PayStubFacts) -> ReconciliationFinding:
+    """Localize a pay-stub identity failure with arithmetic alone — the same
+    finding contract as a statement, a different formula (Slice 4)."""
+    recon = check_paystub_identity(
+        facts.gross, [d.amount for d in facts.deductions], facts.net)
+    if recon.passed:
+        return ReconciliationFinding(reconciles=True, kind="ok", status="none",
+                                     delta="0", message="Pay stub reconciles.",
+                                     confidence=1.0)
+    delta = Decimal(recon.delta)
+    for i, d in enumerate(facts.deductions):
+        if abs(d.amount) == abs(delta):
+            return ReconciliationFinding(
+                reconciles=False, kind="deduction_missing_or_extra",
+                status=SUGGESTED, delta=str(delta),
+                target=f"deduction {i} ({d.label})", target_index=i,
+                observed=str(d.amount), confidence=0.5,
+                message=(f"gross − deductions is off by {delta}, which equals "
+                         f"'{d.label}' ({d.amount}) — a deduction may be missing "
+                         "or duplicated. Please check the stub."))
+    return ReconciliationFinding(
+        reconciles=False, kind="unknown", status=UNLOCALIZED, delta=str(delta),
+        confidence=0.1,
+        message=(f"gross {facts.gross} − deductions ≠ net {facts.net} (off by "
+                 f"{delta}), with no clean explanation. Held for review."))
+
+
+def _net_pay_deposit(proj, net: Decimal, currency: str, pay_date: str):
+    """The checking deposit a pay stub's net explains: a depository inflow equal
+    to the net, within a couple of weeks of the pay date."""
+    from .transfers import _days_apart
+    for m in proj.movements():
+        if (m.kind == "depository" and m.currency == currency
+                and m.amount == net and not m.linked
+                and (not pay_date or _days_apart(m.date, pay_date) <= 10)):
+            return m
+    return None
+
+
+def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
+    """Verify a pay stub and, only if it holds, decompose the matching deposit.
+
+    The divergent gate (Slice 4): `gross − deductions = net`. On failure the pay
+    stub is held with a localized finding (never guessed — principle 2). On
+    success, it *decomposes* the checking deposit its net explains — gross booked
+    as income, deductions into universal buckets, the net counted once — reusing
+    the deposit already on the ledger. If the deposit hasn't been ingested yet,
+    the income is read and held until it arrives (order-independent, healed)."""
+    finding = _paystub_diagnose(facts)
+    when = facts.pay_date or facts.period_end or facts.period_start
+    if not finding.reconciles:
+        log.info("post_paystub: identity FAILED (%s); holding %s",
+                 finding.message, facts.doc_id[:12])
+        ledger.append(statement_held(facts.doc_id, facts.to_dict(),
+                                     finding.to_dict(), "conflict", when,
+                                     Provenance(doc_id=facts.doc_id)))
+        return IngestResult(
+            doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
+            grade="conflicted", finding=finding,
+            message=f"Not posted; held for your review. {finding.message}")
+
+    proj = ledger.projection()
+    deposit = _net_pay_deposit(proj, facts.net, facts.currency, facts.pay_date)
+    if deposit is None:
+        log.info("post_paystub: no matching net-pay deposit for %s — awaiting",
+                 facts.doc_id[:12])
+        ledger.append(statement_held(facts.doc_id, facts.to_dict(), None,
+                                     "awaiting_deposit", when,
+                                     Provenance(doc_id=facts.doc_id)))
+        return IngestResult(
+            doc_id=facts.doc_id, action=AWAITING, doc_type=facts.doc_type,
+            grade="unverified",
+            message=(f"Read your pay from {facts.employer or 'your employer'} "
+                     f"(net {facts.currency} {facts.net}); holding until the "
+                     "matching deposit is ingested, then I'll break it down."))
+
+    ledger.append(paystub_decomposition(
+        facts.gross, facts.net, facts.deductions,
+        f"Pay from {facts.employer or 'employer'}", when,
+        provenance=facts.provenance("net-pay decomposition")))
+    log.info("post_paystub: decomposed pay from %r gross=%s net=%s deductions=%d "
+             "against deposit on %s", facts.employer, facts.gross, facts.net,
+             len(facts.deductions), deposit.account)
+    return IngestResult(
+        doc_id=facts.doc_id, action=POSTED, doc_type=facts.doc_type,
+        account="Income:Salary", grade="corroborated",
+        message=(f"Income posted: gross {facts.currency} {facts.gross}, net "
+                 f"{facts.net} matches your deposit — tax, retirement, and "
+                 "insurance are now itemized."))
+
+
+def heal_paystubs(ledger: Ledger) -> int:
+    """Post pay stubs that were held awaiting a deposit which has now arrived —
+    the pay-stub mirror of the gap/corroboration heals (order-independent)."""
+    posted = 0
+    attempted: set[str] = set()
+    while True:
+        proj = ledger.projection()
+        candidate = None
+        for body in proj.open_holds():
+            if (body.get("reason") != "awaiting_deposit"
+                    or body["doc_id"] in attempted):
+                continue
+            facts = PayStubFacts.from_dict(body["facts"])
+            if _net_pay_deposit(proj, facts.net, facts.currency,
+                                facts.pay_date) is not None:
+                candidate = facts
+                attempted.add(body["doc_id"])
+                break
+        if candidate is None:
+            return posted
+        log.info("heal: awaiting pay stub %s now has its deposit — posting",
+                 candidate.doc_id[:12])
+        if post_paystub(ledger, candidate).action == POSTED:
+            posted += 1
+
+
 def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                        read_fn: ReadFn, filename: str = "",
                        captured_at: str = "") -> IngestResult:
@@ -515,11 +637,19 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
     # (3) route by type — the registry decides what has a projector (data, not
     # code): the balance family (checking / savings / card) posts; the rest parks.
     if rr.facts is not None and can_project(rr.doc_type):
-        res = post_statement(ledger, rr.facts)   # (4) the reconciliation gate
+        # (4) route by the profile's identity to the right gate + post-projector
+        # (the divergent-profile dispatch, Slice 4): a pay stub is not a balance.
+        profile = profile_for(rr.doc_type)
+        if profile is not None and profile.identity == PAYSTUB_IDENTITY:
+            res = post_paystub(ledger, rr.facts)
+        else:
+            res = post_statement(ledger, rr.facts)
         if res.action == POSTED:
             healed = heal_gaps(ledger)           # a new post may unblock waiting statements
             # a newly-arrived counterparty may corroborate a conflict-held statement
             healed += heal_corroboration(ledger)
+            # a newly-arrived deposit may let a waiting pay stub decompose it (Slice 4)
+            healed += heal_paystubs(ledger)
             if healed:
                 log.info("ingest: healed %d previously-held statement(s)", healed)
             # (5) a new account's movements may complete an internal transfer with

@@ -29,10 +29,12 @@ def main() -> None:
     configure_logging()
 
     from vivacore.models import ModelSpec, adapter_for
-    from vivacore.verify.arithmetic import check_balance_identity
-    from .ingest import from_model_json
+    from vivacore.verify.arithmetic import (check_balance_identity,
+                                            check_paystub_identity)
+    from .ingest import from_model_json, from_paystub_json
     from .ingest.diagnose import diagnose
-    from .ingest.registry import extraction_prompt_for
+    from .ingest.registry import (PAYSTUB_IDENTITY, extraction_prompt_for,
+                                  profile_for)
     from .ingest.reader import _render_and_read_text, _with_embedded, classify
 
     pdf_path = sys.argv[1]
@@ -73,6 +75,23 @@ def main() -> None:
     print("=" * 30 + " RAW MODEL OUTPUT " + "=" * 30)
     print(res.text)
     print("=" * 78)
+
+    profile = profile_for(doc_type)
+    is_paystub = profile is not None and profile.identity == PAYSTUB_IDENTITY
+
+    if is_paystub:
+        facts, err = from_paystub_json(res.text, "debug", locale, currency)
+        if err:
+            print(f"[parse] FAILED: {err}\n        -> would PARK.")
+            return
+        print(f"[parse] ok — pay stub from {facts.employer!r}  {facts.currency}")
+        print(f"        gross {facts.gross} − deductions -> net {facts.net}; "
+              f"{len(facts.deductions)} deduction(s)")
+        r = check_paystub_identity(facts.gross, [d.amount for d in facts.deductions],
+                                   facts.net)
+        print(f"[verify] {'PASS -> would POST (income decomposed)' if r.passed else 'FAIL -> would HOLD'}"
+              f". {r.explain()}")
+        return
 
     facts, err = from_model_json(res.text, "debug", locale, currency)
     if err:

@@ -25,9 +25,10 @@ import logging
 from vivacore.models import ModelSpec, adapter_for
 from vivacore.models.base import PageImage
 
+from .paystub import from_paystub_json
 from .pipeline import ModelPhase, ReadResult
 from .prompt_library import classify_prompt
-from .registry import extraction_prompt_for
+from .registry import PAYSTUB_IDENTITY, extraction_prompt_for, profile_for
 from .statement import from_model_json
 
 log = logging.getLogger(__name__)
@@ -105,11 +106,17 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
                           phases=[classify_phase])
 
     prompt_text, prompt_version = composed
+    # The profile's identity selects the facts parser — a pay stub is not a
+    # balance statement (Slice 4). Same two-phase read, different shape.
+    profile = profile_for(doc_type)
+    parse_fn = (from_paystub_json if profile and profile.identity == PAYSTUB_IDENTITY
+                else from_model_json)
     log.info("reader: extract with profile prompt %s via %s (json_mode=%s) ...",
              prompt_version, spec.model, spec.json_mode)
     rr = read_with_retry(lambda p: adapter.extract(pages, p),
                          _with_embedded(prompt_text, embedded_text),
-                         doc_id, locale, currency, prompt_version=prompt_version)
+                         doc_id, locale, currency, prompt_version=prompt_version,
+                         parse_fn=parse_fn)
     # Classification is authoritative for the type (the extract prompt no longer
     # asks the model to re-decide it); stamp it onto the facts and the result.
     rr.doc_type = doc_type
@@ -123,13 +130,14 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
 
 def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
                     currency: str, prompt_version: str = "",
-                    max_retries: int = 1) -> ReadResult:
+                    max_retries: int = 1, parse_fn=from_model_json) -> ReadResult:
     """The extract phase: call the model and parse; if the JSON doesn't parse,
     re-ask once with the error (belt-and-suspenders alongside JSON mode).
     ``extract(prompt) -> ModelResult`` is injected so this is testable without the
-    network. Populates ``phases`` with the single extract record."""
+    network. ``parse_fn`` is the type's facts parser (statement or pay stub).
+    Populates ``phases`` with the single extract record."""
     result = extract(prompt)
-    facts, err = from_model_json(result.text, doc_id, locale, currency)
+    facts, err = parse_fn(result.text, doc_id, locale, currency)
     total_cost = result.cost_usd
     tries = 0
     while err is not None and tries < max_retries:
@@ -141,7 +149,7 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
                         "quotes and newlines inside strings, no trailing commas.")
         result = extract(retry_prompt)
         total_cost += result.cost_usd
-        facts, err = from_model_json(result.text, doc_id, locale, currency)
+        facts, err = parse_fn(result.text, doc_id, locale, currency)
 
     log.info("reader: model %s replied %d chars, cost $%.4f (parse_ok=%s%s)",
              result.resolved_model, len(result.text), total_cost, err is None,
@@ -163,8 +171,8 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
                     err, doc_type)
         return ReadResult(doc_type=doc_type, doc_type_confidence=conf,
                           facts=None, error=err, **common)
-    log.info("reader: parsed %s (%s) with %d transactions",
-             facts.doc_type, facts.account_ref, len(facts.transactions))
+    log.info("reader: parsed %s (%d line(s))", facts.doc_type,
+             len(getattr(facts, "transactions", getattr(facts, "deductions", []))))
     return ReadResult(doc_type=facts.doc_type,
                       doc_type_confidence=facts.doc_type_confidence,
                       facts=facts, **common)

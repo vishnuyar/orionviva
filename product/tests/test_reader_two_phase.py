@@ -36,7 +36,7 @@ def test_classify_uses_only_the_first_page_and_records_a_phase():
     doc_type, conf, phase = classify(adapter, _pages(5), "embedded text")
     assert doc_type == "credit_card_statement" and conf == 0.97
     assert adapter.image_counts == [1]            # cheap: one image, not all five
-    assert phase.phase == "classify" and phase.prompt_version == "classify-v1"
+    assert phase.phase == "classify" and phase.prompt_version == "classify-v2"
     assert phase.parse_ok and phase.cost_usd == 0.01
 
 
