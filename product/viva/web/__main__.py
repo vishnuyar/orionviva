@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 
 from ..env import load_dotenv
-from ..ingest import ReadResult, heal_gaps
+from ..ingest import ReadResult, sweep
 from ..logs import configure as configure_logging
 from ..vault import Vault
 from .sample import seed_sample
@@ -75,9 +75,11 @@ def main() -> None:
     vault = Vault.open(vault_dir, passphrase)
     if os.environ.get("VIVA_SAMPLE") == "1":
         seed_sample(vault)
-    healed = heal_gaps(vault.ledger)    # resolve any gaps that can now stitch
-    if healed:
-        print(f"  healed {healed} previously-held statement(s)")
+    swept = sweep(vault.ledger)         # stitch gaps, corroborate, link transfers
+    if any(swept.values()):
+        print(f"  startup sweep: {swept['gaps']} healed, "
+              f"{swept['corroborated']} corroborated, {swept.get('auto', 0)} "
+              f"transfers linked, {swept.get('suggested', 0)} to confirm")
 
     read_fn, is_live = build_reader()
     host, port = "127.0.0.1", 8765

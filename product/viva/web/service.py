@@ -50,9 +50,13 @@ def overview(vault: Vault) -> dict:
 
 
 def transfer_review(vault: Vault) -> dict:
-    """Suggested internal transfers awaiting a ruling, in human-readable form."""
+    """Suggested internal transfers awaiting a ruling, in human-readable form.
+    Candidates already linked (confirmed under another suggestion) are dropped, so
+    a movement never appears as an option twice, and a suggestion with no
+    remaining candidates disappears."""
     proj = vault.ledger.projection()
     by_key = {m.key: m for m in proj.movements()}
+    linked = proj.linked_keys()
 
     def _describe(key: str) -> dict:
         m = by_key.get(key)
@@ -63,17 +67,21 @@ def transfer_review(vault: Vault) -> dict:
 
     items = []
     for s in proj.transfer_suggestions():
+        cands = [k for k in s.get("candidates", []) if k not in linked]
+        if not cands:
+            continue                     # nothing left to match → not a question
         items.append({
             "source": _describe(s["a"]),
-            "candidates": [_describe(k) for k in s.get("candidates", [])],
+            "candidates": [_describe(k) for k in cands],
             "evidence": s.get("evidence", {})})
     return {"items": items}
 
 
 def confirm_transfer_link(vault: Vault, movement_a: str, movement_b: str) -> dict:
-    """A person confirms two movements are one transfer (netted, `verified`)."""
-    confirm_transfer(vault.ledger, movement_a, movement_b)
-    return {"ok": True}
+    """A person confirms two movements are one transfer (netted, `verified`).
+    A no-op if either was already linked — a movement joins at most one transfer."""
+    made = confirm_transfer(vault.ledger, movement_a, movement_b)
+    return {"ok": made}
 
 
 def reject_transfer_link(vault: Vault, movement_a: str, movement_b: str = "") -> dict:

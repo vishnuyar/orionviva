@@ -370,8 +370,12 @@ class LedgerProjection:
         return out
 
     def transfer_suggestions(self) -> list[dict]:
-        """Pending transfer suggestions awaiting a human ruling (not yet linked)."""
-        return list(self._transfer_suggestions.values())
+        """Pending transfer suggestions awaiting a human ruling — with the source
+        not yet linked (a suggestion whose money was since confirmed elsewhere is
+        no longer a question)."""
+        linked = self.linked_keys()
+        return [s for s in self._transfer_suggestions.values()
+                if s["a"] not in linked]
 
     def transfer_links(self) -> list[dict]:
         """Live transfer links (the recognized internal transfers), with grade."""
