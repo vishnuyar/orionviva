@@ -41,6 +41,23 @@ invoice, etc.), set "doc_type" to your best short snake_case label for it.
 Judge from the whole document (the first page and its embedded text usually
 suffice). Do NOT extract balances or transactions — that is a separate step.
 """,
+    "classify-v2": """\
+You are classifying ONE financial document — deciding only WHAT it is, not
+reading any figures. Return ONLY a JSON object, no prose:
+
+{"doc_type": "<type>", "doc_type_confidence": 0.0-1.0}
+
+Set "doc_type" to exactly one of:
+  - "checking_statement"     — a checking / current / bank account statement
+  - "savings_statement"      — a savings / money-market account statement
+  - "credit_card_statement"  — a credit-card account statement
+  - "pay_stub"               — a payslip / earnings statement (gross pay, deductions, net pay)
+If it is none of these (tax form like a 1099/W-2, brokerage statement, loan
+statement, invoice, etc.), set "doc_type" to your best short snake_case label.
+
+Judge from the whole document (the first page and its embedded text usually
+suffice). Do NOT extract figures — that is a separate step.
+""",
 }
 
 # ----------------------------------------------------------------- extract phase
@@ -79,6 +96,41 @@ Universal rules:
   never invent a figure to make things add up.
 
 Account-type guidance (what the balance means, and how to sign each line):
+""",
+    "paystub-base-v1": """\
+You are reading one pay stub (payslip / earnings statement). Return ONLY a JSON
+object, no prose.
+
+Extract exactly this shape:
+
+{
+  "doc_type_confidence": 0.0-1.0,
+  "employer": "the employer / payer name AS PRINTED",
+  "employee_names": ["each employee name printed on the stub"],
+  "pay_date_raw": "the pay date AS PRINTED",
+  "period_start_raw": "the pay-period start date AS PRINTED ('' if none)",
+  "period_end_raw": "the pay-period end date AS PRINTED ('' if none)",
+  "gross_raw": "GROSS pay for THIS pay period AS PRINTED (not year-to-date)",
+  "net_raw": "NET / take-home pay for THIS pay period AS PRINTED (not year-to-date)",
+  "deductions": [
+    {"label": "the deduction name AS PRINTED", "amount_raw": "the amount for THIS period AS PRINTED", "category": "tax" | "retirement" | "insurance" | "other"}
+  ]
+}
+
+Universal rules:
+- Use the CURRENT-PERIOD column, never year-to-date. Copy amounts and dates
+  EXACTLY as printed; do not reformat, convert, or do math.
+- "gross_raw" is total earnings before deductions; "net_raw" is take-home after
+  all deductions. They must satisfy gross − (sum of deductions) = net; list EVERY
+  deduction so they do.
+- "category" sorts each deduction into a universal bucket — this is the ONLY
+  interpretation you add:
+    - "tax"        — income tax, social security, medicare, national insurance, PF tax, any statutory withholding
+    - "retirement" — 401k, 403b, pension, EPF, NPS, superannuation, any retirement contribution
+    - "insurance"  — health / dental / vision / life / disability premiums
+    - "other"      — anything else (union dues, garnishments, loan repayments, ...)
+- If a value is genuinely unreadable, write it exactly as best you can see it —
+  never invent a figure to make gross − deductions equal net.
 """,
 }
 
@@ -124,6 +176,15 @@ as a "decrease" line — do not stop at the purchases list. If opening + the sig
 effects does not land exactly on the closing balance, you have almost certainly
 missed a line (most often a payment) — look again before answering.
 """,
+    "paystub-v1": """\
+This is a pay stub: it records ONE pay period's earnings and what was withheld.
+The identity is gross − (sum of deductions) = net. Read the CURRENT-PERIOD
+figures, never year-to-date. List EVERY deduction so the three numbers reconcile,
+and sort each into its universal bucket (tax / retirement / insurance / other) —
+that bucket is jurisdiction-free (a US 401k, an Indian EPF, a UK pension are all
+"retirement"). Completeness matters most: a missing deduction breaks the identity
+and will be caught.
+""",
 }
 
 
@@ -132,8 +193,8 @@ missed a line (most often a payment) — look again before answering.
 _ALL: dict[str, str] = {**CLASSIFY_PROMPTS, **EXTRACT_BASE, **TYPE_FRAGMENTS}
 
 
-def classify_prompt(version: str = "classify-v1") -> tuple[str, str]:
-    """The classification prompt text and its version id."""
+def classify_prompt(version: str = "classify-v2") -> tuple[str, str]:
+    """The classification prompt text and its version id (v2 knows pay stubs)."""
     return CLASSIFY_PROMPTS[version], version
 
 

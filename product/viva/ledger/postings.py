@@ -35,6 +35,46 @@ EQUITY_OPENING = "Equity:OpeningBalance"      # the "unexplained history" bucket
 INCOME_UNCATEGORIZED = "Income:Uncategorized"
 EXPENSE_UNCATEGORIZED = "Expenses:Uncategorized"
 
+# Pay-stub decomposition targets (Slice 4). Universal buckets — jurisdiction is an
+# attribute, never a per-country table (I5): a US 401k and an Indian EPF both land
+# in Assets:Retirement. Retirement is an ASSET (money moved to your retirement),
+# not spending; tax and insurance are expenses.
+INCOME_SALARY = "Income:Salary"
+DEDUCTION_ACCOUNTS = {
+    "tax": "Expenses:Tax",
+    "retirement": "Assets:Retirement",
+    "insurance": "Expenses:Insurance",
+    "other": "Expenses:Other",
+}
+
+
+def paystub_decomposition(gross: Decimal | str, net: Decimal | str,
+                          deductions: list, description: str, occurred_at: str,
+                          provenance=None) -> Event:
+    """Decompose a net-pay deposit into what the bank couldn't see (Slice 4).
+
+    The pay stub *explains* a checking deposit already booked as uncategorized
+    income. This posts: gross recognized as salary income; each deduction into its
+    universal bucket (graded ``unverified`` — the category is the model's proposal
+    until confirmed, X2); and a reversal of the deposit's ``Income:Uncategorized``
+    placeholder for the net, so the net is counted ONCE (the checking inflow stays;
+    its placeholder income is replaced by the real gross-and-deductions picture).
+    The legs sum to zero: −gross + net + Σdeductions = 0, since gross − Σ = net.
+
+    ``deductions`` is a list of objects with ``.amount`` and ``.category``.
+    """
+    gross_d, net_d = Decimal(gross), Decimal(net)
+    postings = [
+        Posting(INCOME_SALARY, -gross_d, VERIFIED),          # the employer attests gross
+        Posting(INCOME_UNCATEGORIZED, net_d, UNVERIFIED),    # cancel the deposit's placeholder
+    ]
+    for d in deductions:
+        acct = DEDUCTION_ACCOUNTS.get(getattr(d, "category", "other"),
+                                      DEDUCTION_ACCOUNTS["other"])
+        postings.append(Posting(acct, abs(Decimal(d.amount)), UNVERIFIED))
+    return transaction_recorded(_require_balanced(postings), description,
+                                occurred_at, None, provenance)
+
 
 def transaction_balances(postings: list[Posting],
                          tolerance: Decimal | str = "0") -> CheckResult:

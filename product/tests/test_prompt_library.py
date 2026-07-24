@@ -14,11 +14,14 @@ from viva.ingest import prompt_library as pl
 # the number here — it is to add a new version id and leave the old text intact.
 FROZEN = {
     "classify-v1": "78d4a6f76dda419c",
+    "classify-v2": "b0068911c228303a",
     "base-v1": "93c67860a6626894",
     "balance-generic-v1": "b7c12fe0406a602e",
     "checking-v1": "2bda917dce1ee26f",
     "savings-v1": "222ae6d74f94e8f6",
     "card-v1": "1fb3e7b3dfb1c9c9",
+    "paystub-base-v1": "0c6d6940246743c5",
+    "paystub-v1": "03b31eadbe878505",
 }
 
 
@@ -34,7 +37,8 @@ def test_active_versions_are_frozen():
 
 def test_classify_prompt_carries_its_version():
     text, version = pl.classify_prompt()
-    assert version == "classify-v1" and "doc_type" in text
+    assert version == "classify-v2" and "doc_type" in text
+    assert "pay_stub" in text                          # v2 knows pay stubs
 
 
 def test_compose_extraction_yields_self_describing_version():

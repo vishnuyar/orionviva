@@ -52,6 +52,8 @@ def make_handler(vault, read_fn):
                 return self._send(service.review_list(vault))
             if u.path == "/api/transfers":
                 return self._send(service.transfer_review(vault))
+            if u.path == "/api/paystubs":
+                return self._send(service.paystub_review(vault))
             if u.path == "/api/account":
                 acct = parse_qs(u.query).get("id", [""])[0]
                 return self._send(service.account_view(vault, acct))

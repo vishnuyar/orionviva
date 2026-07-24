@@ -74,18 +74,20 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 ---
 
-## Slice 4 — Pay stub + income
-**Block seeded:** pay-stub projector (registry) + Obligation *inbound* (recurring income) + cross-document corroboration seed.
+## Slice 4 — Pay stub + income  ✅ DONE (core)
+**Block seeded:** the **divergent-profile pattern** (a document type with its own facts shape + identity + post-projector, selected by the registry) + **Income** (gross decomposed into net + deductions).
 
-**Open state:** income isn't modeled; a pay stub parks; salary isn't recognized; cash flow has no inflow side. *Proof:* pay stub parks; no income in any view (red test).
+**Full spec + locked architecture:** [pay-stubs-and-income.md](pay-stubs-and-income.md). Decisions: pay stub is the **first divergent profile** (identity `gross − deductions = net`, its own shape — proves the registry generalizes past the balance family); **decompose the deposit** (the net corroborates + links to the checking deposit — Slice 3 reuse, no double-count, order-independent; deductions become their own legs); **income is not one shape** (a 1099 is a *sibling profile*, not a subtype — annual total, no deduction identity, corroborates the SUM of many deposits; do NOT build a generic income abstraction); deductions into **universal buckets** (tax/retirement/insurance/other) as model-proposed graded attributes, jurisdiction as data (I5); **Core scope** — recurring→Obligation (S8), 401k-as-retirement-asset (S6), employer Party graph (S5), and 1099 all deferred.
 
-**Implementation:** pay-stub identity *gross − deductions = net*; each deduction a fact (tax, 401k, insurance) — some *also* other facts (401k → a retirement observation); recurring detection → an inbound **Obligation** (expected salary cadence); the net deposit corroborates the checking deposit (transfer-link / cross-doc reuse).
+**Open state:** the pipeline only reads balance-shaped statements; a pay stub parks, and a net-pay deposit sits in checking as undifferentiated income (the withheld tax/retirement/insurance invisible). *Proofs (red tests):* a pay stub parks (no projector for its shape); a net-pay deposit is only "uncategorized income", with no gross or deductions anywhere.
 
-**Final state:** income modeled; salary a recognized recurring inflow; deductions itemized; net-pay deposit corroborates checking.
+**Implementation:** generalize the ingest path along the registry seam — a `DocProfile` names its facts-shape + identity + post-projector; the reader dispatches after classify to the pay-stub prompt + a `from_paystub_json` parser (`PayStubFacts`); a deterministic `check_paystub_identity` (`gross − Σ deductions = net`) with the same forced/suggested/unlocalized finding contract; post the decomposition (gross → income, deductions → universal buckets graded by model-proposed category, net → a leg corroborated + linked to the checking deposit); income recognized once, order-independent via the heal pass.
 
-**Done criteria / tests:** a pay stub reconciles (gross−deductions=net); the net deposit matches a checking transaction (cross-doc → higher grade); recurring salary detected as an Obligation; a deduction (401k) stored ready to corroborate a retirement statement.
+**Final state:** a pay stub posts and reconciles on `gross − deductions = net`; its net links to the checking deposit so income is counted once; withheld tax/retirement/insurance are recorded (retirement not miscounted as spending); a pay stub that doesn't balance is held, not guessed; a different-shaped income doc (1099) can be added later as its own profile without touching this one.
 
-**Why now + future use:** income is half of cash flow (needed for budgets/goals S10); the deduction facts seed the first **two-doc-corroborates-one-fact** test; recurring-income reuses the bills primitive inbound.
+**Done criteria / tests:** a real pay stub reconciles and posts; a misread deduction is held with a localized finding; the net links to the checking deposit in either ingest order and income is counted **once**; deductions land in universal buckets from the model's graded proposal and a retirement deduction is not counted as spending; registering a synthetic different-shaped type via a profile row alone routes to its own parser/gate (the divergent-profile proof); existing balance-family tests stay green.
+
+**Why now + future use:** proves the registry generalizes beyond the balance family (first divergent shape + identity as data — inherited by brokerage/tax/insurance); recognizes **income**, the missing half; reuses Slice 3's corroboration (net ↔ deposit) rather than new plumbing; seeds the employer-Party (S5) and recurring-Obligation (S8) threads.
 
 ---
 
@@ -94,7 +96,7 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 **Open state:** every non-checking leg is "Uncategorized"; "where did my money go?" is unanswerable. *Proof:* spending-by-category returns all-Uncategorized (red test).
 
-**Implementation:** the two mechanisms — `split_transaction` (amount across categories) + a `tags` overlay; a spending projection (by category/tag/merchant/time); categorization via **correction-as-event** (user or model assigns; grade rises on confirmation); a minimal, aggressively-overridable seed taxonomy. Model *suggestions* are graded like claims; user corrections are the moat.
+**Implementation:** _First job (a Slice-4 real-data finding): make the Uncategorized counter-leg **kind-aware** — a liability's purchase is an expense, its payment a liability reduction — so the Income/Expenses buckets stop being sign-inverted for cards and income/spending totals become trustworthy._ Then the two mechanisms — `split_transaction` (amount across categories) + a `tags` overlay; a spending projection (by category/tag/merchant/time); categorization via **correction-as-event** (user or model assigns; grade rises on confirmation); a minimal, aggressively-overridable seed taxonomy. Model *suggestions* are graded like claims; user corrections are the moat.
 
 **Final state:** transactions carry categories/tags; "spending on groceries in March" answers with grade + provenance; corrections teach the system.
 

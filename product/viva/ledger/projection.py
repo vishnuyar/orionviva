@@ -31,7 +31,7 @@ from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 from .events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED, Event,
                      Provenance, postings_of)
 from .identity import account_key, names_overlap
-from .postings import EQUITY_OPENING
+from .postings import EQUITY_OPENING, INCOME_UNCATEGORIZED
 
 
 class UnknownAccountError(KeyError):
@@ -382,6 +382,35 @@ class LedgerProjection:
         return [{"a": min(p), "b": max(p), **info}
                 for p, info in self._links.items()
                 if info.get("status") == "linked"]
+
+    def income_by_currency(self) -> dict[str, Decimal]:
+        """RECOGNIZED income (income we have actually attributed), per currency —
+        the sum of `Income:*` accounts as a positive magnitude, **excluding the
+        `Income:Uncategorized` placeholder**. Today the only attributed income is
+        a decomposed pay stub (`Income:Salary` at gross, Slice 4).
+
+        We deliberately do NOT report `Income:Uncategorized`: it is the undiffer-
+        entiated inflow bucket, and — until categorization (Slice 5) makes the
+        counter-leg *kind-aware* — it is also polluted, because a liability's
+        counter-leg sign is inverted (a card purchase currently lands here as if
+        it were income). Reporting it would be a number we can't stand behind
+        (principle 2); attributed income is the honest figure.
+
+        Income buckets carry no currency of their own; with exactly one account
+        currency we attribute income to it, otherwise '?' (I1)."""
+        held = {s.currency for a, s in self._acct.items()
+                if s.seen and s.kind in ("depository", "liability") and s.currency}
+        default = next(iter(held)) if len(held) == 1 else "?"
+        out: dict[str, Decimal] = {}
+        for account, st in self._acct.items():
+            if (not st.seen or not account.startswith("Income:")
+                    or account == INCOME_UNCATEGORIZED):
+                continue
+            amt = -self._effective(st)          # credits are negative; report positive
+            if amt != 0:
+                cur = st.currency or default
+                out[cur] = out.get(cur, Decimal("0")) + amt
+        return out
 
     def spending_by_currency(self) -> dict[str, Decimal]:
         """Minimal external-spending seed (S5 builds the real one): money that

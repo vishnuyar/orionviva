@@ -96,8 +96,11 @@ async function home(){
     </div>`).join('');
 
   const spend = d.spending && d.spending.text ? `<div class="coverage">${d.spending.text}</div>` : '';
+  const incParts = Object.entries(d.income||{}).map(([c,v])=>`${money(v,c)}`).join('; ');
+  const brk = (d.income_breakdown||[]).map(b=>`${b.label} ${b.amount}`).join(' · ');
+  const inc = incParts ? `<div class="coverage">Income recognized: ${incParts}${brk?` (withheld — ${brk})`:''}</div>` : '';
   view.replaceChildren($(`<div>
-    <div class="card total">${totalHtml}<div class="coverage">${d.coverage}</div>${spend}</div>
+    <div class="card total">${totalHtml}<div class="coverage">${d.coverage}</div>${spend}${inc}</div>
     ${d.review_count>0? `<div class="card review" id="reviewcard">
         <h3>${d.review_count} statement${d.review_count>1?'s':''} need${d.review_count>1?'':'s'} your eyes</h3>
         <div class="muted" style="font-size:13px">These didn't slot in cleanly — nothing was guessed or dropped.</div>
@@ -106,6 +109,10 @@ async function home(){
         <h3>${d.transfer_review_count} possible transfer${d.transfer_review_count>1?'s':''} to confirm</h3>
         <div class="muted" style="font-size:13px">Moving your own money isn't spending — confirm and I'll stop counting it.</div>
         <div id="transfers"></div></div>` : ''}
+    ${d.paystub_review_count>0? `<div class="card review" id="paystubcard">
+        <h3>${d.paystub_review_count} pay stub${d.paystub_review_count>1?'s':''} in progress</h3>
+        <div class="muted" style="font-size:13px">Read your pay; some are waiting on the matching deposit or need a look.</div>
+        <div id="paystubs"></div></div>` : ''}
     <div class="card">${accts || '<div class="muted">No accounts yet. Upload a statement below.</div>'}</div>
     <div class="card up" style="flex-wrap:wrap">
       <label>Add statements: <input type="file" id="file" multiple></label>
@@ -116,6 +123,24 @@ async function home(){
   </div>`));
   if(d.review_count>0) loadReview();
   if(d.transfer_review_count>0) loadTransfers();
+  if(d.paystub_review_count>0) loadPaystubs();
+}
+
+async function loadPaystubs(){
+  const {items} = await get('/api/paystubs');
+  const box = document.getElementById('paystubs'); if(!box) return;
+  box.replaceChildren(...items.map(renderPaystub));
+}
+
+function renderPaystub(it){
+  const ded = (it.deductions||[]).map(x=>`${x.label||x.category} ${x.amount}`).join(', ');
+  const status = it.reason==='awaiting_deposit'
+    ? `Waiting for the matching deposit (net ${money(it.net,it.currency)}) — it will post automatically when that statement is in.`
+    : (it.finding && it.finding.message) || 'Needs a look.';
+  return $(`<div class="held">
+    <div class="msg"><strong>${it.employer||'Pay'}</strong> · ${it.pay_date||''} — gross ${money(it.gross,it.currency)} → net ${money(it.net,it.currency)}
+      ${ded?`<div class="src">withheld: ${ded}</div>`:''}
+      <div class="src">${status}</div></div></div>`);
 }
 
 async function loadReview(){

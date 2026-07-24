@@ -83,6 +83,13 @@ def main() -> None:
     if spend:
         print("external spending (transfers excluded): "
               + ", ".join(f"{c} {v}" for c, v in spend.items()))
+    income = proj.income_by_currency()
+    if income:
+        print("recognized income (gross): "
+              + ", ".join(f"{c} {v}" for c, v in income.items()))
+    awaiting = [b for b in proj.open_holds() if b.get("reason") == "awaiting_deposit"]
+    if awaiting:
+        print(f"pay stubs awaiting their deposit: {len(awaiting)}")
 
     # Documents captured but not posted (parked) — checking-classified or not.
     print(f"coverage: {coverage_summary(proj).text}")

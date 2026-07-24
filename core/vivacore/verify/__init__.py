@@ -21,7 +21,8 @@ from .normalize import (
     parse_amount,
     parse_date,
 )
-from .arithmetic import CheckResult, check_balance_identity, check_sum
+from .arithmetic import (CheckResult, check_balance_identity,
+                         check_paystub_identity, check_sum)
 from .match import MatchResult, match_amount, match_date, match_text
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "parse_date",
     "CheckResult",
     "check_balance_identity",
+    "check_paystub_identity",
     "check_sum",
     "MatchResult",
     "match_amount",

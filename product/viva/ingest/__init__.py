@@ -8,10 +8,11 @@ or network dependencies.
 
 from .diagnose import (DIAGNOSIS_VERSION, FORCED, SUGGESTED, UNLOCALIZED,
                        ReconciliationFinding, diagnose)
-from .pipeline import (CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED, POSTED,
-                       IngestResult, ReadResult, account_id_for,
+from .pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED,
+                       POSTED, IngestResult, ReadResult, account_id_for,
                        capture_and_ingest, heal_corroboration, heal_gaps,
-                       post_statement, sweep)
+                       heal_paystubs, post_paystub, post_statement, sweep)
+from .paystub import Deduction, PayStubFacts, from_paystub_json
 from .raw_store import RawStore
 from .registry import (BALANCE_IDENTITY, DEPOSITORY, LIABILITY, DocProfile,
                        account_kind_for, can_project, profile_for, register)
@@ -24,7 +25,9 @@ __all__ = [
     "RawStore",
     "StatementFacts", "TxnFact", "from_model_json",
     "ReadResult", "IngestResult", "capture_and_ingest", "post_statement",
-    "account_id_for", "heal_gaps", "heal_corroboration", "sweep",
+    "post_paystub", "account_id_for", "heal_gaps", "heal_corroboration",
+    "heal_paystubs", "sweep", "AWAITING",
+    "PayStubFacts", "Deduction", "from_paystub_json",
     "HeldItem", "held_items", "apply_human_correction", "apply_identity_ruling",
     "diagnose", "ReconciliationFinding", "DIAGNOSIS_VERSION",
     "FORCED", "SUGGESTED", "UNLOCALIZED",
