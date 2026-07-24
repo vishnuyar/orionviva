@@ -16,8 +16,10 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from ..ledger.events import UNVERIFIED, VERIFIED, category_assigned
+from ..ledger.events import (CORROBORATED, UNVERIFIED, VERIFIED,
+                             category_assigned, merchant_categorized)
 from ..ledger.ledger import Ledger
+from ..ledger.merchants import is_shareable, normalize_merchant
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +55,56 @@ def assign_category(ledger: Ledger, movement_key: str, category: str,
                                     normalize_category(category), grade,
                                     when, by=by))
     return m is not None
+
+
+def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
+                             by: str = "human") -> None:
+    """Categorize a whole MERCHANT (Slice 5.5) — 'this merchant is X, everywhere'.
+    ``by='human'`` is `verified` (fills every transaction from it, past and
+    future, unless a per-transaction override says otherwise)."""
+    grade = VERIFIED if by == "human" else UNVERIFIED
+    log.info("merchant: %s %r -> %r (%s)", by, merchant, normalize_category(category), grade)
+    ledger.append(merchant_categorized(normalize_merchant(merchant),
+                                       normalize_category(category), grade,
+                                       date.today().isoformat(), by=by))
+
+
+def categorize_merchants_batch(ledger: Ledger, categorize_fn,
+                               threshold: int = 1) -> int:
+    """Batched merchant categorization (the cost win, Slice 5.5): gather the
+    deduped UNKNOWN merchants, and if there are at least ``threshold`` of them,
+    make ONE call — ``categorize_fn({merchant: example}) -> {merchant: category}``
+    — recording each as a `corroborated` merchant rule (a model batch agreeing is
+    stronger than a lone guess, but not a human `verified`). Every past and future
+    transaction from those merchants fills in retrospectively. ``categorize_fn``
+    is injected, so this is offline-testable and the live model edge is swappable.
+    Returns the number of merchants categorized."""
+    pending = ledger.projection().uncategorized_merchants()
+    if len(pending) < threshold:
+        return 0
+    examples = {mkey: row["example"] for mkey, row in pending.items()}
+    results = categorize_fn(examples) or {}
+    n = 0
+    for mkey, category in results.items():
+        if not category:
+            continue
+        ledger.append(merchant_categorized(mkey, normalize_category(category),
+                                           CORROBORATED, date.today().isoformat(),
+                                           by="model"))
+        n += 1
+    if n:
+        log.info("merchant: batched-categorized %d merchant(s)", n)
+    return n
+
+
+def export_catalog(ledger: Ledger) -> dict:
+    """The privacy-linted, shareable merchant catalog (Slice 5.5): commercial
+    merchants only (peer-payment / PII filtered), category + grade, and NOTHING
+    else — no amounts, dates, or transaction links. This is the content the
+    commons contribution is hashed from (T5/T6)."""
+    cat = ledger.projection().merchant_categories()
+    return {merchant: {"category": r["category"], "grade": r.get("grade", "")}
+            for merchant, r in cat.items() if is_shareable(merchant)}
 
 
 def suggest_categories(ledger: Ledger, suggest_fn) -> int:

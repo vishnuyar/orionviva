@@ -117,9 +117,9 @@ async function home(){
         <h3>${d.paystub_review_count} pay stub${d.paystub_review_count>1?'s':''} in progress</h3>
         <div class="muted" style="font-size:13px">Read your pay; some are waiting on the matching deposit or need a look.</div>
         <div id="paystubs"></div></div>` : ''}
-    ${d.uncategorized_count>0? `<div class="card review" id="categorizecard">
-        <h3>${d.uncategorized_count} transaction${d.uncategorized_count>1?'s':''} to categorize</h3>
-        <div class="muted" style="font-size:13px">Tell me what each is once — later this learns to fill itself in.</div>
+    ${d.unknown_merchant_count>0? `<div class="card review" id="categorizecard">
+        <h3>${d.unknown_merchant_count} merchant${d.unknown_merchant_count>1?'s':''} to categorize</h3>
+        <div class="muted" style="font-size:13px">Categorize each merchant once — it fills every transaction from it, past and future.</div>
         <div id="categorize"></div></div>` : ''}
     <div class="card">${accts || '<div class="muted">No accounts yet. Upload a statement below.</div>'}</div>
     <div class="card up" style="flex-wrap:wrap">
@@ -132,26 +132,27 @@ async function home(){
   if(d.review_count>0) loadReview();
   if(d.transfer_review_count>0) loadTransfers();
   if(d.paystub_review_count>0) loadPaystubs();
-  if(d.uncategorized_count>0) loadCategorize();
+  if(d.unknown_merchant_count>0) loadCategorize();
 }
 
 async function loadCategorize(){
-  const {items, categories} = await get('/api/categorize');
+  const {items, categories} = await get('/api/merchants');
   const box = document.getElementById('categorize'); if(!box) return;
-  box.replaceChildren(...items.slice(0,15).map(it=>renderCategorize(it, categories)));
+  box.replaceChildren(...items.slice(0,15).map(it=>renderMerchant(it, categories)));
 }
 
-function renderCategorize(it, categories){
+function renderMerchant(it, categories){
   const opts = categories.map(c=>`<option value="${c}">${c}</option>`).join('');
   const el = $(`<div class="held">
-    <div class="msg"><strong>${it.descriptor||'(no description)'}</strong> · ${it.date} · ${money(it.amount,it.currency)}
+    <div class="msg"><strong>${it.merchant||'(unknown)'}</strong>
+      <span class="muted" style="font-size:12px">${it.count} transaction${it.count>1?'s':''}${it.shareable?'':' · private'}</span>
       <div class="acts">
         <select class="val">${opts}</select>
-        <button data-assign="1">Assign</button>
+        <button data-assign="1">Categorize everywhere</button>
       </div></div></div>`);
   el.querySelector('button[data-assign]').onclick=async()=>{
     const cat = el.querySelector('select').value;
-    await post('/api/assign-category', JSON.stringify({key:it.key, category:cat}), {'Content-Type':'application/json'});
+    await post('/api/assign-merchant', JSON.stringify({merchant:it.merchant, category:cat}), {'Content-Type':'application/json'});
     home();
   };
   return el;

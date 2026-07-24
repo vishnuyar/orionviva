@@ -340,6 +340,23 @@ def category_assigned(movement_key: str, descriptor: str, category: str,
     )
 
 
+def merchant_categorized(merchant: str, category: str, grade: str,
+                         occurred_at: str, by: str = "model",
+                         provenance: Provenance | None = None) -> Event:
+    """Categorize a normalized MERCHANT (Slice 5.5) — the prior that fills every
+    transaction from it, past and future. ``by='model'`` (a batched call) is a
+    graded suggestion (`unverified`/`corroborated`); ``by='human'`` ("categorize
+    this merchant everywhere") is `verified`. A per-transaction CategoryAssigned
+    override still wins. Append-only; the merchant catalog is a projection over
+    these + imported commons priors, and the source of truth stays the log."""
+    return Event(
+        "MerchantCategorized", occurred_at,
+        body={"merchant": merchant, "category": category, "grade": grade,
+              "by": by},
+        provenance=provenance or Provenance(),
+    )
+
+
 def transaction_recorded(postings: list[Posting], description: str,
                          occurred_at: str, tags: list[str] | None = None,
                          provenance: Provenance | None = None) -> Event:

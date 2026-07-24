@@ -31,6 +31,7 @@ from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 from .events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED, Event,
                      Provenance, postings_of)
 from .identity import account_key, names_overlap
+from .merchants import normalize_merchant
 from .postings import EQUITY_OPENING, INCOME_UNCATEGORIZED
 
 
@@ -101,6 +102,13 @@ class TxnLine:
         return {"date": self.date, "description": self.description,
                 "amount": str(self.amount), "grade": self.grade,
                 "provenance": self.provenance.to_dict()}
+
+
+_GRADE_RANK = {VERIFIED: 3, CORROBORATED: 2, UNVERIFIED: 1}
+
+
+def _grade_rank(grade: str | None) -> int:
+    return _GRADE_RANK.get(grade or "", 0)
 
 
 def movement_key(doc_id: str, account: str, date: str, amount: Decimal | str,
@@ -182,6 +190,10 @@ class LedgerProjection:
         # descriptor}. A human confirmation (verified) supersedes a model
         # suggestion (unverified); we keep the highest-trust ruling.
         self._categories: dict[str, dict] = {}
+        # Merchant catalog (Slice 5.5): normalized merchant -> {category, grade,
+        # by}. The prior a transaction's category derives from when it has no
+        # per-movement override. Highest-trust ruling wins.
+        self._merchant_categories: dict[str, dict] = {}
         for event in events:
             self.apply(event)
 
@@ -256,6 +268,13 @@ class LedgerProjection:
             # A verified (human) ruling wins; otherwise the latest applies.
             if prior is None or event.body.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
                 self._categories[key] = event.body
+
+        elif et == "MerchantCategorized":
+            merchant = event.body["merchant"]
+            prior = self._merchant_categories.get(merchant)
+            # Keep the highest-trust ruling; a later equal-or-higher grade wins.
+            if prior is None or _grade_rank(event.body.get("grade")) >= _grade_rank(prior.get("grade")):
+                self._merchant_categories[merchant] = event.body
 
         elif et == "ClosingBalanceObserved":
             acct = event.body["account_id"]
@@ -445,17 +464,29 @@ class LedgerProjection:
         return ((m.kind == "depository" and m.amount < 0)
                 or (m.kind == "liability" and m.amount > 0))
 
+    def derived_category(self, m: "MovementInfo") -> dict | None:
+        """A movement's effective category (Slice 5.5): a per-transaction override
+        wins; else the merchant catalog (by normalized descriptor); else None.
+        Returns the ruling dict ({category, grade, ...}) or None if unknown."""
+        override = self._categories.get(m.key)
+        if override is not None:
+            return override
+        return self._merchant_categories.get(normalize_merchant(m.description))
+
     def category_of(self, key: str) -> dict | None:
-        """The category ruling on a movement (category, grade, by, descriptor), or
-        None if uncategorized."""
+        """The per-transaction override ruling on a movement, or None (the raw
+        overlay; ``derived_category`` resolves the merchant prior too)."""
         return self._categories.get(key)
+
+    def merchant_categories(self) -> dict[str, dict]:
+        """The merchant catalog: normalized merchant -> ruling (Slice 5.5)."""
+        return dict(self._merchant_categories)
 
     def spending_by_category(self, currency: str | None = None) -> dict[str, Decimal]:
         """Real spending, grouped by category (Slice 5): every expense movement —
         card purchases included — **excluding transfers**, bucketed by its
-        assigned category (``Uncategorized`` if none). Positive magnitudes. If
-        ``currency`` is given, only that currency; otherwise all summed (the
-        answer layer keeps currency honest)."""
+        *derived* category (override → merchant catalog → ``Uncategorized``, per
+        Slice 5.5). Positive magnitudes; ``currency`` filters if given."""
         linked = self.linked_keys()
         out: dict[str, Decimal] = {}
         for m in self.movements():
@@ -463,17 +494,33 @@ class LedgerProjection:
                 continue
             if currency is not None and m.currency != currency:
                 continue
-            cat = (self._categories.get(m.key) or {}).get("category", "Uncategorized")
+            cat = (self.derived_category(m) or {}).get("category", "Uncategorized")
             out[cat] = out.get(cat, Decimal("0")) + abs(m.amount)
         return out
 
     def uncategorized_expenses(self) -> list["MovementInfo"]:
-        """Expense movements with no category yet — the categorization queue.
-        Transfers are excluded (they are not spending to categorize)."""
+        """Expense movements whose *derived* category is still unknown — no
+        override and no merchant-catalog entry. The categorization queue;
+        transfers excluded."""
         linked = self.linked_keys()
         return [m for m in self.movements()
                 if self._is_expense(m) and m.key not in linked
-                and m.key not in self._categories]
+                and self.derived_category(m) is None]
+
+    def uncategorized_merchants(self) -> dict[str, dict]:
+        """Unknown merchants across the uncategorized expense queue, deduped by
+        normalized key (Slice 5.5): {merchant -> {count, example, shareable}}.
+        This is the batched categorizer's pending set and the surface's unit."""
+        from .merchants import is_shareable
+        out: dict[str, dict] = {}
+        for m in self.uncategorized_expenses():
+            key = normalize_merchant(m.description)
+            if not key:
+                continue
+            row = out.setdefault(key, {"count": 0, "example": m.description,
+                                       "shareable": is_shareable(m.description)})
+            row["count"] += 1
+        return out
 
     # ------------------------------------------------- identity resolution
 

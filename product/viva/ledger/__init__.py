@@ -9,10 +9,11 @@ from ..crypto import CryptoError
 from .events import (CONFLICTED, CORROBORATED, GRADES, UNVERIFIED, VERIFIED,
                      Event, Posting, Provenance, account_opened,
                      category_assigned, closing_balance_observed,
-                     correction_applied, document_captured,
+                     correction_applied, document_captured, merchant_categorized,
                      opening_balance_observed, postings_of, read_recorded,
                      statement_held, transaction_recorded, transfer_linked,
                      transfer_suggested, transfer_unlinked)
+from .merchants import (NORMALIZER_VERSION, is_shareable, normalize_merchant)
 from .postings import (EQUITY_OPENING, EXPENSE_UNCATEGORIZED,
                        INCOME_UNCATEGORIZED, TRANSFERS_UNCATEGORIZED,
                        counter_account, simple_transaction, split_transaction,
@@ -31,7 +32,8 @@ __all__ = [
     "transaction_recorded", "postings_of", "document_captured",
     "statement_held", "correction_applied", "read_recorded",
     "transfer_linked", "transfer_unlinked", "transfer_suggested",
-    "category_assigned",
+    "category_assigned", "merchant_categorized",
+    "normalize_merchant", "is_shareable", "NORMALIZER_VERSION",
     "simple_transaction", "split_transaction", "transaction_balances",
     "counter_account",
     "EQUITY_OPENING", "INCOME_UNCATEGORIZED", "EXPENSE_UNCATEGORIZED",
