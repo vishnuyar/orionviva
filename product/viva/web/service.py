@@ -10,7 +10,8 @@ picture and the interactions, and only surfaces a source on request.
 from __future__ import annotations
 
 from ..answer import answer_spending, answer_total, coverage_summary
-from ..ingest import (apply_human_correction, apply_identity_ruling,
+from ..ingest import (SEED_CATEGORIES, apply_human_correction,
+                      apply_identity_ruling, assign_category,
                       capture_and_ingest, confirm_transfer, held_items,
                       reject_transfer)
 from ..ingest.identity import masked
@@ -47,11 +48,14 @@ def overview(vault: Vault) -> dict:
         "accounts": accounts,
         "coverage": coverage_summary(proj).text,
         "spending": answer_spending(proj).to_dict(),
+        "spending_by_category": {c: str(a) for c, a
+                                 in proj.spending_by_category().items()},
         "income": {c: str(v) for c, v in income.items()},
         "income_breakdown": _income_breakdown(proj),
         "review_count": len(held_items(proj)),
         "transfer_review_count": len(proj.transfer_suggestions()),
         "paystub_review_count": len(pending_paystubs),
+        "uncategorized_count": len(proj.uncategorized_expenses()),
     }
 
 
@@ -71,6 +75,24 @@ def _income_breakdown(proj) -> list[dict]:
         if amt:
             rows.append({"label": label, "amount": str(amt)})
     return rows
+
+
+def categorize_review(vault: Vault, limit: int = 50) -> dict:
+    """The categorization queue: uncategorized expense movements, with the seed
+    categories to choose from. Provenance rides along quietly."""
+    proj = vault.ledger.projection()
+    items = []
+    for m in proj.uncategorized_expenses()[:limit]:
+        items.append({"key": m.key, "descriptor": m.description,
+                      "amount": str(abs(m.amount)), "currency": m.currency,
+                      "date": m.date, "account": m.account})
+    return {"items": items, "categories": list(SEED_CATEGORIES)}
+
+
+def assign_category_to(vault: Vault, movement_key: str, category: str) -> dict:
+    """A person assigns a category to a movement (`verified` — the moat)."""
+    ok = assign_category(vault.ledger, movement_key, category, by="human")
+    return {"ok": ok}
 
 
 def paystub_review(vault: Vault) -> dict:

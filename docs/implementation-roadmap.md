@@ -91,8 +91,10 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 ---
 
-## Slice 5 — Categorization & spending
+## Slice 5 — Categorization & spending  ✅ DONE (core)
 **Block seeded:** Tag/Category (many-to-many overlay) + amount-split (double-entry) + spending projection + correction-as-event.
+
+**Full spec + locked architecture:** [categorization-and-spending.md](categorization-and-spending.md). Core scope (Vishnu, 2026-07-24): **first job** = kind-aware counter-leg (card purchase→expense, card payment→transfers — fixes the Slice-4 sign-inverted buckets); **category = a graded overlay** via correction-as-event (`CategoryAssigned(movement_key, descriptor, category, grade, by)`, model `unverified` → human `verified`, movement-keyed so it survives reingest); **single-category, suggest-and-confirm** (no auto-apply); minimal jurisdiction-neutral **seed taxonomy** (I5); real **spending-by-category/time** excluding transfers (S3 reuse). **The forward seam:** every categorization captures the merchant descriptor → merchant normalization + a lazy, locale-sharded, override-able **merchant→category commons** (format-commons-style *prior*) + learned auto-apply are all a *later projection over the recorded correction events* — nothing wasted, no re-ingest. Deferred: merchant learning/commons, amount-splits, tags overlay, external Party.
 
 **Open state:** every non-checking leg is "Uncategorized"; "where did my money go?" is unanswerable. *Proof:* spending-by-category returns all-Uncategorized (red test).
 

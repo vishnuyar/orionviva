@@ -95,7 +95,11 @@ async function home(){
         ${dot(a.grade)}<strong>${money(a.amount,a.currency)}</strong></span>
     </div>`).join('');
 
-  const spend = d.spending && d.spending.text ? `<div class="coverage">${d.spending.text}</div>` : '';
+  const cats = d.spending_by_category||{};
+  const catRows = Object.entries(cats).sort((a,b)=>parseFloat(b[1])-parseFloat(a[1]))
+    .map(([c,a])=>`${c} ${money(a, (d.spending&&d.spending.currency)||'')}`).join(' · ');
+  const spend = d.spending && d.spending.text
+    ? `<div class="coverage">${d.spending.text}</div>${catRows?`<div class="coverage" style="font-size:12px">${catRows}</div>`:''}` : '';
   const incParts = Object.entries(d.income||{}).map(([c,v])=>`${money(v,c)}`).join('; ');
   const brk = (d.income_breakdown||[]).map(b=>`${b.label} ${b.amount}`).join(' · ');
   const inc = incParts ? `<div class="coverage">Income recognized: ${incParts}${brk?` (withheld — ${brk})`:''}</div>` : '';
@@ -113,6 +117,10 @@ async function home(){
         <h3>${d.paystub_review_count} pay stub${d.paystub_review_count>1?'s':''} in progress</h3>
         <div class="muted" style="font-size:13px">Read your pay; some are waiting on the matching deposit or need a look.</div>
         <div id="paystubs"></div></div>` : ''}
+    ${d.uncategorized_count>0? `<div class="card review" id="categorizecard">
+        <h3>${d.uncategorized_count} transaction${d.uncategorized_count>1?'s':''} to categorize</h3>
+        <div class="muted" style="font-size:13px">Tell me what each is once — later this learns to fill itself in.</div>
+        <div id="categorize"></div></div>` : ''}
     <div class="card">${accts || '<div class="muted">No accounts yet. Upload a statement below.</div>'}</div>
     <div class="card up" style="flex-wrap:wrap">
       <label>Add statements: <input type="file" id="file" multiple></label>
@@ -124,6 +132,29 @@ async function home(){
   if(d.review_count>0) loadReview();
   if(d.transfer_review_count>0) loadTransfers();
   if(d.paystub_review_count>0) loadPaystubs();
+  if(d.uncategorized_count>0) loadCategorize();
+}
+
+async function loadCategorize(){
+  const {items, categories} = await get('/api/categorize');
+  const box = document.getElementById('categorize'); if(!box) return;
+  box.replaceChildren(...items.slice(0,15).map(it=>renderCategorize(it, categories)));
+}
+
+function renderCategorize(it, categories){
+  const opts = categories.map(c=>`<option value="${c}">${c}</option>`).join('');
+  const el = $(`<div class="held">
+    <div class="msg"><strong>${it.descriptor||'(no description)'}</strong> · ${it.date} · ${money(it.amount,it.currency)}
+      <div class="acts">
+        <select class="val">${opts}</select>
+        <button data-assign="1">Assign</button>
+      </div></div></div>`);
+  el.querySelector('button[data-assign]').onclick=async()=>{
+    const cat = el.querySelector('select').value;
+    await post('/api/assign-category', JSON.stringify({key:it.key, category:cat}), {'Content-Type':'application/json'});
+    home();
+  };
+  return el;
 }
 
 async function loadPaystubs(){

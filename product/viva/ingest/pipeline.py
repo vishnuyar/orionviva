@@ -446,6 +446,7 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                          "A statement between them looks missing — held, so I don't "
                          "invent the gap; it will slot in when the connector arrives."))
 
+    kind = account_kind_for(facts.doc_type)   # picks the kind-aware counter-leg
     for t in facts.transactions:
         # A corroboration-supplied leg carries its own provenance (the
         # counterparty document) and grade (`corroborated`); an ordinary line
@@ -453,7 +454,7 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
         ledger.append(simple_transaction(
             account, t.amount, t.description, t.date,
             provenance=t.provenance(facts.doc_id),
-            account_grade=(t.grade or VERIFIED)))
+            account_grade=(t.grade or VERIFIED), kind=kind))
     ledger.append(closing_balance_observed(
         account, facts.closing_amount, facts.closing_date,
         facts.closing_provenance(), confirmed_by=confirmed_by))
