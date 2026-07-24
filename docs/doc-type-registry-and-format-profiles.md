@@ -1,6 +1,6 @@
 # Doc-Type Registry & Format Profiles — how new statement types become data
 
-**Status:** Design (Slice 2) · **Last updated:** 2026-07-23 · **Origin:** v0 hardcoded one projector (checking). To hold a whole financial life we need many statement types — but adding one must be *data*, not a code change. This doc sets the architecture for that, and it is deliberately written to serve *every* future type, not just credit card + savings.
+**Status:** Implemented (Slice 2) · **Last updated:** 2026-07-24 · **Origin:** v0 hardcoded one projector (checking). To hold a whole financial life we need many statement types — but adding one must be *data*, not a code change. This doc sets the architecture for that, and it is deliberately written to serve *every* future type, not just credit card + savings.
 **Invariants touched:** T1 (provenance per extracted field), T2 (verification identity per type, run by universal code), T4 (profiles are versioned; a re-read is an event, nothing overwritten), I5 (no country/institution-shaped tables — format specifics are profile data), X2 (types the model can't yet read are parked honestly). Serves the "code universal, specifics are data" doctrine.
 
 ## The architecture (decisions locked with Vishnu, 2026-07-23)
@@ -10,8 +10,14 @@ classifying, because the shapes genuinely diverge (checking = balance +
 transactions; brokerage = positions × price + cash; pay stub = gross −
 deductions = net; 1099 = boxes; insurance = provisions). A single mega-prompt
 gets worse at each type as more are added. So: a cheap classification, then the
-type's own extraction profile. *For the balance family (checking/savings/card),
-one shared profile serves all three, so it is effectively one read.*
+type's own extraction profile. The balance family (checking/savings/card) shares
+one *base shape* but each type contributes its own prompt *fragment* (what the
+balance means, its completeness traps), composed at read time — so a card's
+"payments live in a separate section" guidance never pollutes a checking read.
+_As built (two model calls): a cheap **classify** pass (first page + embedded
+text, no figures) names the type; then the **extract** pass runs the profile's
+composed prompt. A type with no projector yet is parked after the cheap classify —
+we don't pay for an extraction we can't use._
 
 **2. We own the schema; the model owns the reading.** The ADR-010 / CaMeL split,
 one level up: the model *perceives* (pixels/text → the fields WE asked for) and
@@ -48,6 +54,34 @@ not a redesign. The claims layer already records which profile/prompt version
 read each doc, enabling **surgical re-reads** (only the docs read by an outdated
 profile) via `reingest-from-raw` (the raw-capture payoff) when a profile gains
 fields.
+
+## Implementation status (as built, 2026-07-24) — audit vs the six decisions
+
+- **D1 (classify → per-type extract):** ✅ Built two-phase. `reader.classify`
+  (prompt `classify-v1`, first page + text) names the type; `reader.read_statement`
+  looks up the profile and runs the extract pass with the composed prompt; an
+  unprojectable type parks after classify. _First implementation shipped a single
+  combined call — corrected here to match the decision._
+- **D2 (we own the schema):** ✅ The extraction shape lives in
+  `prompt_library.EXTRACT_BASE` (our schema); the model fills it. The schema is
+  data (a versioned prompt piece), not code.
+- **D3 (model-assisted authoring, then ratified):** ⏳ Not built — a forward
+  capability (format-authoring, a later slice). The versioning it depends on now
+  exists; authoring a profile is still done by hand.
+- **D4 (universal identity, per-type formula as data):** ✅ `opening + Σ(effect) =
+  closing` runs for all three balance types via the A1 sign reframe; `identity`
+  is a profile field, so a divergent formula (brokerage, pay stub) is a new
+  profile, not new gate code.
+- **D5 (personal vs format knowledge):** ✅ `registry.py` + `prompt_library.py`
+  are format knowledge and carry **no personal data** (verified: profiles are
+  type/prompt-version ids only). Personal knowledge (aliases, corrections) stays
+  in the encrypted event log.
+- **D6 (versioned, self-contained, personal-data-free profiles):** ✅ Prompts are
+  retained, addressable versions (`prompt_library.resolve`, frozen-hash test);
+  each read records its prompt version *per phase* (`ReadRecorded.phase`), so a
+  read is reproducible and its profile version is known. ⏳ The *surgical* re-read
+  (re-read only docs on an outdated version) is not yet built — `reingest` is
+  still whole-vault; the per-doc version capture that unblocks it now exists.
 
 ## Notes for future slices (read these when you build them)
 

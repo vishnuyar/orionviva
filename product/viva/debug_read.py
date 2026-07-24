@@ -32,8 +32,8 @@ def main() -> None:
     from vivacore.verify.arithmetic import check_balance_identity
     from .ingest import from_model_json
     from .ingest.diagnose import diagnose
-    from .ingest.prompts import STATEMENT_EXTRACTION_PROMPT
-    from .ingest.reader import _render_and_read_text
+    from .ingest.registry import extraction_prompt_for
+    from .ingest.reader import _render_and_read_text, _with_embedded, classify
 
     pdf_path = sys.argv[1]
     locale = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("VIVA_LOCALE", "en-US")
@@ -54,9 +54,21 @@ def main() -> None:
     pages, text = _render_and_read_text(data)
     print(f"[render] {len(pages)} pages, {len(text)} chars of embedded text  ({locale}/{currency})")
 
-    prompt = (STATEMENT_EXTRACTION_PROMPT
-              + "\n\n[The issuer's own embedded text for these pages follows.]\n" + text)
-    res = adapter_for(spec).extract(pages, prompt)
+    adapter = adapter_for(spec)
+
+    # Phase 1: classify (cheap — first page + embedded text).
+    doc_type, conf, cphase = classify(adapter, pages, text)
+    print(f"[classify] {doc_type!r} (conf={conf:.2f}, {cphase.model}, cost=${cphase.cost_usd:.4f})")
+    composed = extraction_prompt_for(doc_type)
+    if composed is None:
+        print(f"        -> no projector for {doc_type!r}; this document would PARK "
+              "(captured, not posted) until a profile for its type exists.")
+        return
+
+    # Phase 2: extract with the type's own composed prompt.
+    prompt_text, prompt_version = composed
+    print(f"[extract] prompt {prompt_version}")
+    res = adapter.extract(pages, _with_embedded(prompt_text, text))
     print(f"[model] {res.resolved_model}  cost=${res.cost_usd:.4f}")
     print("=" * 30 + " RAW MODEL OUTPUT " + "=" * 30)
     print(res.text)
@@ -69,6 +81,7 @@ def main() -> None:
               "shows what the model returned; the fix is usually a prompt/schema nudge.")
         return
 
+    facts.doc_type = doc_type            # classification is authoritative (extract prompt doesn't re-ask)
     print(f"[parse] ok — doc_type={facts.doc_type!r}  account={facts.account_ref!r}  {facts.currency}")
     print(f"        opening {facts.opening_amount} ({facts.opening_date}) -> "
           f"closing {facts.closing_amount} ({facts.closing_date}); {len(facts.transactions)} transactions")

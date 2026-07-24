@@ -47,13 +47,22 @@ LIABILITY = "liability"          # a card/loan; balance = money owed
 
 @dataclass(frozen=True)
 class DocProfile:
-    """What the pipeline needs to project one classified document type. Data."""
+    """What the pipeline needs to project one classified document type. Data.
+
+    ``extract_base`` / ``type_fragment`` are version ids into the prompt library:
+    the profile *owns* the prompt used to read it (composed from a shared base +
+    its own fragment), which is what makes a profile self-contained enough to
+    version and, later, share. ``type_fragment`` defaults to the generic balance
+    fragment, so registering a new balance type stays a data-only row even before
+    it authors bespoke guidance."""
 
     doc_type: str                 # canonical type (e.g. 'credit_card_statement')
     account_kind: str             # DEPOSITORY | LIABILITY
     identity: str = BALANCE_IDENTITY
     profile_version: str = "bal-v1"
     aliases: frozenset[str] = field(default_factory=frozenset)
+    extract_base: str = "base-v1"
+    type_fragment: str = "balance-generic-v1"
 
     @property
     def is_liability(self) -> bool:
@@ -64,18 +73,18 @@ class DocProfile:
 # distinguished only by kind. Adding a fourth balance-shaped type is a row here.
 _SEED: tuple[DocProfile, ...] = (
     DocProfile(
-        "checking_statement", DEPOSITORY,
+        "checking_statement", DEPOSITORY, type_fragment="checking-v1",
         aliases=frozenset({
             "checking", "bank_statement", "combined_bank_statement",
             "checking_account_statement", "bank_account_statement",
         })),
     DocProfile(
-        "savings_statement", DEPOSITORY,
+        "savings_statement", DEPOSITORY, type_fragment="savings-v1",
         aliases=frozenset({
             "savings", "savings_account_statement", "money_market_statement",
         })),
     DocProfile(
-        "credit_card_statement", LIABILITY,
+        "credit_card_statement", LIABILITY, type_fragment="card-v1",
         aliases=frozenset({
             "credit_card", "card_statement", "creditcard_statement",
             "credit_card_account_statement",
@@ -116,3 +125,14 @@ def can_project(doc_type: str) -> bool:
     """True when a balance-identity projector can handle this type."""
     p = profile_for(doc_type)
     return p is not None and p.identity == BALANCE_IDENTITY
+
+
+def extraction_prompt_for(doc_type: str) -> tuple[str, str] | None:
+    """Compose the extraction prompt (text, version) a classified type's profile
+    owns, or None if there is no projector for it yet. The version is the
+    self-describing ``extract:<base>+<fragment>`` composite (T8)."""
+    from .prompt_library import compose_extraction
+    p = profile_for(doc_type)
+    if p is None:
+        return None
+    return compose_extraction(p.extract_base, p.type_fragment)
