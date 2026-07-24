@@ -103,6 +103,33 @@ class TxnLine:
                 "provenance": self.provenance.to_dict()}
 
 
+def movement_key(doc_id: str, account: str, date: str, amount: Decimal | str,
+                 description: str, occurrence: int = 0) -> str:
+    """A stable reference to one posted movement, for transfer links (Slice 3).
+
+    Anchored to content — document, account, date, amount, description — plus an
+    occurrence index that disambiguates identical siblings in the same document.
+    It survives a reingest (which mints new event ids) because it depends on what
+    was read, not on the event's identity. `occurrence` is assigned by the
+    projection's canonical enumeration so the same movement always keys the same."""
+    return f"{doc_id}|{account}|{date}|{amount}|{description}|{occurrence}"
+
+
+@dataclass
+class MovementInfo:
+    """One posted movement on a real (asset/liability) account, with the stable
+    key a transfer link references. Fed to the transfer matcher."""
+    key: str
+    account: str
+    kind: str
+    date: str
+    amount: Decimal
+    description: str
+    currency: str
+    provenance: Provenance
+    linked: bool = False
+
+
 @dataclass
 class _AccountState:
     balance: Decimal = Decimal("0")            # running sum of all postings
@@ -146,6 +173,11 @@ class LedgerProjection:
         self._posted: set[str] = set()           # doc_ids with posting events
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
         self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
+        # Transfer overlay (Slice 3): links between two movement keys, and
+        # unresolved suggestions awaiting a human ruling. Links are ledger-wide,
+        # not per-account (a transfer spans two accounts).
+        self._links: dict[frozenset, dict] = {}         # {a,b} -> {status,grade,by}
+        self._transfer_suggestions: dict[str, dict] = {}  # movement key -> body
         for event in events:
             self.apply(event)
 
@@ -195,6 +227,24 @@ class LedgerProjection:
 
         elif et == "AccountAliasConfirmed":
             self._aliases[event.body["alias_key"]] = event.body["account_id"]
+
+        elif et == "TransferLinked":
+            pair = frozenset({event.body["a"], event.body["b"]})
+            self._links[pair] = {"status": "linked", "grade": event.body.get("grade", ""),
+                                 "by": event.body.get("by", "")}
+            # A confirmed/auto link resolves any pending suggestion on either leg.
+            self._transfer_suggestions.pop(event.body["a"], None)
+            self._transfer_suggestions.pop(event.body["b"], None)
+
+        elif et == "TransferUnlinked":
+            pair = frozenset({event.body["a"], event.body["b"]})
+            self._links[pair] = {"status": "unlinked"}
+            # A rejection also dismisses any pending suggestion on either leg.
+            self._transfer_suggestions.pop(event.body["a"], None)
+            self._transfer_suggestions.pop(event.body["b"], None)
+
+        elif et == "TransferSuggested":
+            self._transfer_suggestions[event.body["a"]] = event.body
 
         elif et == "ClosingBalanceObserved":
             acct = event.body["account_id"]
@@ -279,6 +329,68 @@ class LedgerProjection:
 
     def gap_holds(self) -> list[dict]:
         return [b for b in self.open_holds() if b.get("reason") == "gap"]
+
+    # ------------------------------------------------------- transfers (Slice 3)
+
+    def linked_keys(self) -> set[str]:
+        """Movement keys that are part of a *live* transfer link (not unlinked)."""
+        out: set[str] = set()
+        for pair, info in self._links.items():
+            if info.get("status") == "linked":
+                out.update(pair)
+        return out
+
+    def is_linked(self, key: str) -> bool:
+        return key in self.linked_keys()
+
+    def movements(self) -> list["MovementInfo"]:
+        """Every posted movement on a real (asset/liability) account, each with
+        its stable transfer key. Occurrence indices are assigned here, once, so
+        the matcher and the projection agree on every key. Uncategorized
+        counter-legs are excluded — they are not transfer candidates."""
+        linked = self.linked_keys()
+        out: list[MovementInfo] = []
+        counts: dict[tuple, int] = {}
+        for account in self.accounts():
+            st = self._acct[account]
+            if st.kind not in ("depository", "liability"):
+                continue
+            for ln in sorted(st.lines, key=lambda l: (l.date, l.description, str(l.amount))):
+                did = ln.provenance.doc_id
+                sig = (did, account, ln.date, str(ln.amount), ln.description)
+                occ = counts.get(sig, 0)
+                counts[sig] = occ + 1
+                key = movement_key(did, account, ln.date, ln.amount,
+                                   ln.description, occ)
+                out.append(MovementInfo(
+                    key=key, account=account, kind=st.kind, date=ln.date,
+                    amount=ln.amount, description=ln.description,
+                    currency=st.currency, provenance=ln.provenance,
+                    linked=key in linked))
+        return out
+
+    def transfer_suggestions(self) -> list[dict]:
+        """Pending transfer suggestions awaiting a human ruling (not yet linked)."""
+        return list(self._transfer_suggestions.values())
+
+    def transfer_links(self) -> list[dict]:
+        """Live transfer links (the recognized internal transfers), with grade."""
+        return [{"a": min(p), "b": max(p), **info}
+                for p, info in self._links.items()
+                if info.get("status") == "linked"]
+
+    def spending_by_currency(self) -> dict[str, Decimal]:
+        """Minimal external-spending seed (S5 builds the real one): money that
+        left an asset account to the outside world — i.e. depository outflows,
+        **excluding** movements that are part of a transfer (moving your own
+        money is not spending). Positive magnitudes, per currency."""
+        linked = self.linked_keys()
+        out: dict[str, Decimal] = {}
+        for m in self.movements():
+            if m.kind != "depository" or m.amount >= 0 or m.key in linked:
+                continue
+            out[m.currency] = out.get(m.currency, Decimal("0")) + (-m.amount)
+        return out
 
     # ------------------------------------------------- identity resolution
 

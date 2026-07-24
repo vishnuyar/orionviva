@@ -10,13 +10,15 @@ from .events import (CONFLICTED, CORROBORATED, GRADES, UNVERIFIED, VERIFIED,
                      Event, Posting, Provenance, account_opened,
                      closing_balance_observed, correction_applied,
                      document_captured, opening_balance_observed, postings_of,
-                     read_recorded, statement_held, transaction_recorded)
+                     read_recorded, statement_held, transaction_recorded,
+                     transfer_linked, transfer_suggested, transfer_unlinked)
 from .postings import (EQUITY_OPENING, EXPENSE_UNCATEGORIZED,
                        INCOME_UNCATEGORIZED, simple_transaction,
                        split_transaction, transaction_balances)
 from .ledger import Ledger
-from .projection import (AccountInfo, BalanceAnswer, LedgerProjection, TxnLine,
-                         UnknownAccountError)
+from .projection import (AccountInfo, BalanceAnswer, LedgerProjection,
+                         MovementInfo, TxnLine, UnknownAccountError,
+                         movement_key)
 from .store import EventStore
 
 __all__ = [
@@ -26,9 +28,10 @@ __all__ = [
     "account_opened", "opening_balance_observed", "closing_balance_observed",
     "transaction_recorded", "postings_of", "document_captured",
     "statement_held", "correction_applied", "read_recorded",
+    "transfer_linked", "transfer_unlinked", "transfer_suggested",
     "simple_transaction", "split_transaction", "transaction_balances",
     "EQUITY_OPENING", "INCOME_UNCATEGORIZED", "EXPENSE_UNCATEGORIZED",
     "EventStore", "Ledger",
     "LedgerProjection", "BalanceAnswer", "AccountInfo", "TxnLine",
-    "UnknownAccountError",
+    "MovementInfo", "movement_key", "UnknownAccountError",
 ]

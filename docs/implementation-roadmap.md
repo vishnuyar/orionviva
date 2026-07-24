@@ -57,7 +57,7 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 ---
 
-## Slice 3 — Transfer links + cross-document corroboration  ← NEXT
+## Slice 3 — Transfer links + cross-document corroboration  ✅ DONE (core)
 **Block seeded:** Transfer link (two postings = one economic non-event, graded) + the cross-document reconciliation witness (a decisive counterparty leg closes another statement's gap).
 
 **Full spec + locked architecture:** [transfer-links-and-cross-document-corroboration.md](transfer-links-and-cross-document-corroboration.md). Decisions: **internal own-account transfers only** (external Party → S5); **minimal netting** — `Transfers` is an exclusion category, self-netting economic sign → S7; **auto-link on decisive evidence, ask otherwise** (learn the ruling); **the transfer link doubles as a cross-document reconciliation witness** — a cheap, model-free, dual-issuer rung that supplies a leg a statement's read dropped (gated by decisiveness, provenance marked to the corroborating issuer, incomplete-read recorded so the crutch can't hide a model recall problem); v1 auto-links only when both legs are ingested own accounts; links reference a stable movement key, not an event id.
