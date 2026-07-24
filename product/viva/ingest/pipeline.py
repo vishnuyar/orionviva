@@ -8,10 +8,12 @@ trust core. Every file that arrives is:
      no-op, not a duplicate.
   2. **Read by a model** — the one place a model is in this path. The read is a
      *proposal*, never trusted on its own.
-  3. **Routed by type.** v0 has exactly one projector — checking statements. A
-     recognized checking statement goes to the reconciliation gate; anything else
-     is *parked*: held and acknowledged ("I have this; I can't read it yet"),
-     never discarded. As later slices add projectors, parked documents light up
+  3. **Routed by type — via the registry (data, not code).** The doc-type
+     registry maps a classified type to a profile; the balance family (checking,
+     savings, credit card) shares one profile and goes to the reconciliation
+     gate. Anything with no profile yet is *parked*: held and acknowledged ("I
+     have this; I can't read it yet"), never discarded. Adding a type is a
+     registry row; as later slices register more, parked documents light up
      retroactively — no re-upload.
   4. **Gated by deterministic reconciliation.** A statement posts to the ledger
      only if opening + its transactions reconcile to the printed closing, to the
@@ -44,15 +46,10 @@ from ..ledger.postings import simple_transaction
 from .diagnose import FORCED, ReconciliationFinding, diagnose
 from .identity import account_key
 from .raw_store import RawStore
+from .registry import account_kind_for, can_project
 from .statement import StatementFacts
 
 log = logging.getLogger(__name__)
-
-# v0's single projector keys off these classified types. This set is the seed of
-# the type registry (data, not code) that later slices grow.
-CHECKING_DOC_TYPES = frozenset({
-    "checking_statement", "checking", "bank_statement", "combined_bank_statement",
-})
 
 # Ingest actions, each an honest outcome the caller can report verbatim.
 POSTED = "posted"        # reconciled and written to the ledger
@@ -110,8 +107,11 @@ def account_id_for(facts: StatementFacts) -> str:
 
 
 def _resolve(proj, facts: StatementFacts):
+    # Resolve identity within the same account kind: a card and a checking
+    # account with the same holder are different accounts, not an ambiguity.
     return proj.resolve(facts.institution, facts.account_number,
-                        facts.account_ref, facts.account_names)
+                        facts.account_ref, facts.account_names,
+                        kind=account_kind_for(facts.doc_type))
 
 
 def _connects(facts: StatementFacts, proj, account: str) -> str:
@@ -246,10 +246,12 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
     account = res.account_id
 
     if not proj.is_seeded(account):
-        log.info("_post_reconciled: opening new account %s (%s %s) seeded at %s",
-                 account, facts.account_ref, facts.currency, facts.opening_amount)
+        kind = account_kind_for(facts.doc_type)   # depository | liability, from the registry
+        log.info("_post_reconciled: opening new %s account %s (%s %s) seeded at %s",
+                 kind, account, facts.account_ref, facts.currency,
+                 facts.opening_amount)
         ledger.append(account_opened(
-            account, "depository", facts.account_ref or account,
+            account, kind, facts.account_ref or account,
             facts.currency, facts.opening_date,
             institution=facts.institution, account_number=facts.account_number,
             account_names=facts.account_names))
@@ -341,8 +343,9 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                  "resp_chars=%d)", rr.model, rr.cost_usd, rr.facts is not None,
                  len(rr.raw_text))
 
-    # (3) route by type — v0 projects checking statements, parks the rest.
-    if rr.facts is not None and rr.doc_type in CHECKING_DOC_TYPES:
+    # (3) route by type — the registry decides what has a projector (data, not
+    # code): the balance family (checking / savings / card) posts; the rest parks.
+    if rr.facts is not None and can_project(rr.doc_type):
         res = post_statement(ledger, rr.facts)   # (4) the reconciliation gate
         if res.action == POSTED:
             healed = heal_gaps(ledger)           # a new post may unblock waiting statements

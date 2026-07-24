@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+from viva.answer import answer_balance
 from viva.ingest import (CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED, POSTED,
                          IngestResult, ReadResult, RawStore, StatementFacts,
                          TxnFact, account_id_for, apply_identity_ruling,
@@ -416,6 +417,83 @@ def test_ambiguous_identity_merge_learns_the_alias(tmp_path):
     depo = [i for i in proj.account_infos() if i.kind == "depository"]
     assert len(depo) == 1                                   # one account, merged
     assert proj.balance(account_id_for(a)).amount == Decimal("1600.00")
+
+
+# ------------------------------------------------- Slice 2: registry + card/savings
+
+def _up_typed(raw, ledger, data, facts):
+    """Ingest facts whose doc_type may be any registered balance type — the
+    ReadResult classification mirrors the facts' own type."""
+    return capture_and_ingest(
+        raw, ledger, data,
+        _reader({data: ReadResult(facts.doc_type, 0.98, facts)}),
+        captured_at="2026-04-01")
+
+
+def test_credit_card_statement_posts_as_a_liability_owed(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    # prev owed 200; a 500 charge raises it, a 50 payment lowers it -> owe 650.
+    card = _facts("200.00", [("2026-01-05", "Flights", "500.00"),
+                             ("2026-01-20", "Payment", "-50.00")], "650.00",
+                  ref="Amex Platinum 1234", doc_type="credit_card_statement")
+    res = _up_typed(raw, ledger, b"card-jan", card)
+    assert res.action == POSTED and res.grade == "corroborated"
+    proj = ledger.projection()
+    acct = account_id_for(card)
+    assert proj.account_info(acct).kind == "liability"      # opened as a liability
+    assert proj.balance(acct).amount == Decimal("650.00")   # reconciles on one identity
+    # The answer path phrases a liability as money owed.
+    ans = answer_balance(proj, acct)
+    assert ans.answered and "owe" in ans.text.lower()
+
+
+def test_savings_interest_line_reconciles(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    # A savings statement whose only movement is an interest credit (increase).
+    sav = _facts("1000.00", [("2026-01-31", "Interest", "1.25")], "1001.25",
+                 ref="Ally Savings 9876", doc_type="savings_statement")
+    res = _up_typed(raw, ledger, b"sav-jan", sav)
+    assert res.action == POSTED
+    proj = ledger.projection()
+    acct = account_id_for(sav)
+    assert proj.account_info(acct).kind == "depository"
+    assert proj.balance(acct).amount == Decimal("1001.25")
+
+
+def test_card_and_checking_same_holder_are_two_accounts(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    chk = _acct_facts("000000001111", ["Jane Public"], "1000.00",
+                      [("2026-01-10", "Pay", "500.00")], "1500.00")
+    _up_typed(raw, ledger, b"chk", chk)
+    # Same holder, different number, DIFFERENT kind -> not ambiguous: two accounts.
+    card = _facts("200.00", [("2026-01-05", "Buy", "300.00")], "500.00",
+                  ref="Jane's Card", doc_type="credit_card_statement")
+    card.account_number, card.institution, card.account_names = \
+        "000000002222", "Acme", ["Jane Public"]
+    res = _up_typed(raw, ledger, b"card", card)
+    assert res.action == POSTED                              # posted, not held for identity
+    kinds = sorted(i.kind for i in ledger.projection().account_infos()
+                   if i.kind in ("depository", "liability"))
+    assert kinds == ["depository", "liability"]
+
+
+def test_new_balance_type_via_registry_row_only(tmp_path):
+    # The load-bearing claim: a brand-new balance-shaped type posts with NO change
+    # to the pipeline or gate — just a registry row (data).
+    from viva.ingest import DocProfile, LIABILITY, can_project, register
+    raw, ledger = _stores(tmp_path)
+    store_card = _facts("0.00", [("2026-01-03", "Purchase", "80.00")], "80.00",
+                        ref="Store Card 4321", doc_type="store_card_statement")
+    # Before registering, the type has no projector -> parked.
+    assert not can_project("store_card_statement")
+    res = _up_typed(raw, ledger, b"store-unreg", store_card)
+    assert res.action == PARKED
+
+    register(DocProfile("store_card_statement", LIABILITY))
+    res2 = _up_typed(raw, ledger, b"store-reg", store_card)
+    assert res2.action == POSTED
+    acct = account_id_for(store_card)
+    assert ledger.projection().account_info(acct).kind == "liability"
 
 
 def test_transactions_sorted_by_date_after_backfill(tmp_path):

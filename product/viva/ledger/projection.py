@@ -283,11 +283,16 @@ class LedgerProjection:
     # ------------------------------------------------- identity resolution
 
     def resolve(self, institution: str, account_number: str, account_ref: str,
-                names: list[str]) -> Resolution:
+                names: list[str], kind: str = "depository") -> Resolution:
         """Resolve a statement's identity signals against known accounts:
         'same' (a learned alias or an account with this key), 'new', or
-        'ambiguous' (a holder name matches an existing account but the number
-        differs — ask the person once, then learn it)."""
+        'ambiguous' (a holder name matches an existing account *of the same kind*
+        but the number differs — ask the person once, then learn it).
+
+        The ambiguity is scoped to the same account ``kind``: a card and a
+        checking account sharing a holder are simply two different accounts, not
+        the same account under two labels — only a like-kind name clash is
+        genuinely ambiguous."""
         key = account_key(institution, account_number, account_ref)
         if key in self._aliases:                       # learned
             return Resolution(self._aliases[key], key, "same")
@@ -295,7 +300,7 @@ class LedgerProjection:
         if st is not None and st.seen:                 # already this account
             return Resolution(key, key, "same")
         for aid, s in self._acct.items():              # name overlaps another account?
-            if not s.seen or s.kind != "depository" or aid == key:
+            if not s.seen or s.kind != kind or aid == key:
                 continue
             if s.names and names_overlap(names, s.names):
                 who = s.name or aid

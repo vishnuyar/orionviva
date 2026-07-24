@@ -17,18 +17,51 @@ def _stmt(txns, opening="$1,000.00", closing="$1,457.58"):
     })
 
 
-def test_parses_and_signs_by_direction():
+def test_parses_and_signs_by_balance_effect():
+    # stmt-v3 (A1): the sign is the movement's effect on the printed balance.
+    out = _stmt([
+        {"date_raw": "01/10/2026", "description": "Payroll", "amount_raw": "$500.00", "balance_effect": "increase", "page": 2},
+        {"date_raw": "01/15/2026", "description": "Coffee", "amount_raw": "$42.42", "balance_effect": "decrease", "page": 3},
+    ])
+    facts, err = from_model_json(out, "doc1", "en-US", "USD")
+    assert err is None
+    assert facts.opening_amount == Decimal("1000.00")
+    assert facts.closing_amount == Decimal("1457.58")
+    assert facts.transactions[0].amount == Decimal("500.00")     # increase -> +
+    assert facts.transactions[1].amount == Decimal("-42.42")     # decrease -> -
+    assert facts.transactions[0].date == "2026-01-10"            # ISO normalized
+
+
+def test_legacy_direction_still_reparses():
+    # Stored stmt-v2 reads carried "direction" (credit=money in). They must still
+    # reparse unchanged on reingest — credit maps to increase, debit to decrease.
     out = _stmt([
         {"date_raw": "01/10/2026", "description": "Payroll", "amount_raw": "$500.00", "direction": "credit", "page": 2},
         {"date_raw": "01/15/2026", "description": "Coffee", "amount_raw": "$42.42", "direction": "debit", "page": 3},
     ])
     facts, err = from_model_json(out, "doc1", "en-US", "USD")
     assert err is None
-    assert facts.opening_amount == Decimal("1000.00")
-    assert facts.closing_amount == Decimal("1457.58")
     assert facts.transactions[0].amount == Decimal("500.00")     # credit -> +
     assert facts.transactions[1].amount == Decimal("-42.42")     # debit  -> -
-    assert facts.transactions[0].date == "2026-01-10"            # ISO normalized
+
+
+def test_card_charge_increases_owed_balance():
+    # A credit-card statement: a purchase RAISES the owed balance (increase),
+    # a payment LOWERS it (decrease). One identity reconciles it.
+    out = json.dumps({
+        "doc_type": "credit_card_statement", "doc_type_confidence": 0.99,
+        "account_ref": "Amex ...1234",
+        "opening": {"amount_raw": "$200.00", "date_raw": "01/01/2026", "page": 1},
+        "closing": {"amount_raw": "$650.00", "date_raw": "01/31/2026", "page": 1},
+        "transactions": [
+            {"date_raw": "01/05/2026", "description": "Flights", "amount_raw": "$500.00", "balance_effect": "increase"},
+            {"date_raw": "01/20/2026", "description": "Payment", "amount_raw": "$50.00", "balance_effect": "decrease"},
+        ],
+    })
+    facts, err = from_model_json(out, "doc1", "en-US", "USD")
+    assert err is None
+    assert facts.transactions[0].amount == Decimal("500.00")     # charge -> +
+    assert facts.transactions[1].amount == Decimal("-50.00")     # payment -> -
 
 
 def test_tolerates_fences_and_prose():
@@ -37,11 +70,19 @@ def test_tolerates_fences_and_prose():
     assert err is None and facts.currency == "USD"
 
 
-def test_bad_direction_refused():
+def test_bad_balance_effect_refused():
     out = _stmt([{"date_raw": "01/10/2026", "description": "x",
-                  "amount_raw": "$5.00", "direction": "sideways", "page": 2}])
+                  "amount_raw": "$5.00", "balance_effect": "sideways", "page": 2}])
     facts, err = from_model_json(out, "doc1", "en-US", "USD")
-    assert facts is None and "direction" in err
+    assert facts is None and "balance_effect" in err
+
+
+def test_missing_sign_field_refused():
+    # No balance_effect and no legacy direction → refuse, never guess the sign.
+    out = _stmt([{"date_raw": "01/10/2026", "description": "x",
+                  "amount_raw": "$5.00", "page": 2}])
+    facts, err = from_model_json(out, "doc1", "en-US", "USD")
+    assert facts is None and "balance_effect" in err
 
 
 def test_unreadable_amount_refused_not_guessed():

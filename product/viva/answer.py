@@ -29,6 +29,7 @@ from .ledger import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
 # never asserted; unverified is asserted only with a visible caveat.
 TRUSTWORTHY = (VERIFIED, CORROBORATED)
 DEPOSITORY = "depository"
+LIABILITY = "liability"
 
 
 def _projection(source, as_of: str | None = None) -> LedgerProjection:
@@ -109,13 +110,20 @@ def answer_balance(source, account: str, as_of: str | None = None) -> Answer:
         caveats.append("Computed from transactions; no closing statement has "
                        "confirmed this figure yet.")
 
+    # A liability's balance is money owed, not held — say so, and report the owed
+    # magnitude as a positive figure a person recognizes from their bill.
+    as_of = f" as of {ba.dated}" if ba.dated else ""
+    if info.kind == LIABILITY:
+        text = (f"You owe {_money(abs(ba.amount), ba.currency)} on {name}"
+                f"{as_of} ({ba.grade}).")
+    else:
+        text = (f"Your {name} balance is {_money(ba.amount, ba.currency)}"
+                f"{as_of} ({ba.grade}).")
+
     return Answer(
         question=q, answered=True, amount=ba.amount, currency=ba.currency,
         grade=ba.grade, as_of=ba.dated, provenance=[ba.provenance],
-        caveats=caveats,
-        text=(f"Your {name} balance is {_money(ba.amount, ba.currency)}"
-              + (f" as of {ba.dated}" if ba.dated else "")
-              + f" ({ba.grade})."))
+        caveats=caveats, text=text)
 
 
 def answer_total(source, as_of: str | None = None) -> Answer:

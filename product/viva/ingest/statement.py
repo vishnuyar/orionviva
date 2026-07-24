@@ -29,7 +29,7 @@ from ..ledger.events import Provenance
 class TxnFact:
     date: str            # ISO yyyy-mm-dd (value time)
     description: str
-    amount: Decimal      # signed: positive = money in, negative = money out
+    amount: Decimal      # signed by effect on printed balance: + raises it, - lowers it
     page: int | None = None
     running_balance: Decimal | None = None   # the printed balance after this line
 
@@ -138,6 +138,22 @@ def _date(raw, locale: str) -> tuple[str | None, str | None]:
     return n.value, None
 
 
+def _signed_amount(rt: dict, mag: Decimal, i: int
+                   ) -> tuple[Decimal | None, str | None]:
+    """Sign a transaction's positive magnitude by its effect on the printed
+    balance (A1). Prefers the stmt-v3 ``balance_effect`` (increase/decrease);
+    falls back to the legacy stmt-v2 ``direction`` (credit=increase, debit=
+    decrease) so stored reads reparse unchanged. Returns (signed, error)."""
+    effect = str(rt.get("balance_effect", "")).strip().lower()
+    if effect in ("increase", "decrease"):
+        return (mag if effect == "increase" else -mag), None
+    direction = str(rt.get("direction", "")).strip().lower()   # legacy stmt-v2
+    if direction in ("credit", "debit"):
+        return (mag if direction == "credit" else -mag), None
+    return None, (f"transaction {i}: balance_effect must be 'increase' or "
+                  f"'decrease' (got {effect!r})")
+
+
 def _txn_date(raw, locale: str, open_iso: str, close_iso: str
               ) -> tuple[str | None, str | None]:
     """A transaction date, whose year may be absent (statements print "04/17").
@@ -203,12 +219,15 @@ def from_model_json(text: str, doc_id: str, locale: str,
         d, err = _txn_date(rt.get("date_raw"), locale, open_date, close_date)
         if err:
             return None, f"transaction {i} {err}"
-        direction = str(rt.get("direction", "")).strip().lower()
-        if direction not in ("credit", "debit"):
-            return None, (f"transaction {i}: direction must be 'credit' or "
-                          f"'debit', got {direction!r}")
-        # amount_raw is a positive magnitude; direction gives the sign.
-        signed = abs(mag) if direction == "credit" else -abs(mag)
+        # amount_raw is a positive magnitude; the sign is the movement's EFFECT ON
+        # THE PRINTED BALANCE (A1): "increase" raises it, "decrease" lowers it —
+        # account-kind-agnostic, so one identity reconciles checking, savings, and
+        # cards. Legacy reads (stmt-v2) carried "direction" (credit=money in) with
+        # no cards in the corpus, so credit maps to increase — old stored reads
+        # still reparse unchanged on reingest.
+        signed, err = _signed_amount(rt, abs(mag), i)
+        if err:
+            return None, err
         # Running balance is an *aid* (a second identity for diagnosis), not core:
         # if it's present but unreadable, degrade it to None rather than failing
         # the whole statement over a column we only use to localize errors.
