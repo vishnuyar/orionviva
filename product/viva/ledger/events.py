@@ -322,6 +322,24 @@ def transfer_suggested(movement_a: str, candidates: list[str], evidence: dict,
     )
 
 
+def category_assigned(movement_key: str, descriptor: str, category: str,
+                      grade: str, occurred_at: str, by: str = "human",
+                      provenance: Provenance | None = None) -> Event:
+    """Assign a category to one movement — a graded OVERLAY via correction-as-event
+    (Slice 5), keyed to the stable movement key so it survives a reingest and
+    never mutates the read. ``by='model'`` is a suggestion graded ``unverified``;
+    ``by='human'`` is a confirmation graded ``verified`` (the moat). ``descriptor``
+    is the movement's raw merchant string, captured deliberately so merchant
+    learning is later a projection over these events — no re-ingestion, nothing
+    wasted (Vishnu, 2026-07-24)."""
+    return Event(
+        "CategoryAssigned", occurred_at,
+        body={"movement_key": movement_key, "descriptor": descriptor,
+              "category": category, "grade": grade, "by": by},
+        provenance=provenance or Provenance(),
+    )
+
+
 def transaction_recorded(postings: list[Posting], description: str,
                          occurred_at: str, tags: list[str] | None = None,
                          provenance: Provenance | None = None) -> Event:

@@ -184,41 +184,41 @@ def answer_total(source, as_of: str | None = None) -> Answer:
 
 
 def answer_spending(source, as_of: str | None = None) -> Answer:
-    """Real external spending, per currency — money that left your asset accounts
-    to the outside world, with internal transfers (moving your own money)
-    EXCLUDED (Slice 3). A minimal seed of the S5 spending view; its point here is
-    to prove transfers don't inflate the number."""
+    """Real spending, by category (Slice 5): every expense — card purchases
+    included — grouped by its assigned category, with internal transfers excluded
+    (Slice 3). Honest about how much is still uncategorized (the figure firms up
+    as you confirm categories)."""
     proj = _projection(source, as_of)
-    q = "outflow from deposit accounts" + (f" as of {as_of}" if as_of else "")
-    sums = proj.spending_by_currency()
-    # Honest scope: this is money leaving your DEPOSIT accounts to the outside
-    # world (transfers to your own accounts excluded). It is not yet total
-    # spending — card purchases are categorized with Slice 5, and the number
-    # firms up then.
-    scope = ("This is outflow from your deposit accounts (own-account transfers "
-             "excluded); card purchases are categorized separately and land here "
-             "with categorization.")
-    if not sums:
+    q = "spending by category" + (f" as of {as_of}" if as_of else "")
+    by_cat = proj.spending_by_category()
+    if not by_cat:
         return Answer(question=q, answered=True, amount=Decimal("0"),
-                      text="No external outflow from your deposit accounts yet.")
-    pending = len(proj.transfer_suggestions())
-    caveat = [scope]
-    if pending:
-        caveat.append(f"{pending} possible transfer(s) await your confirmation — "
-                      "confirming them would exclude that money.")
-    if len(sums) == 1:
-        cur, total = next(iter(sums.items()))
-        return Answer(
-            question=q, answered=True, amount=total, currency=cur,
-            subtotals={cur: str(total)}, caveats=caveat,
-            text=(f"{_money(total, cur)} left your deposit accounts"
-                  f"{f' as of {as_of}' if as_of else ''} (own-account transfers "
-                  "excluded)."))
-    parts = "; ".join(f"{c} {t}" for c, t in sums.items())
-    return Answer(question=q, answered=True, amount=None,
-                  subtotals={c: str(t) for c, t in sums.items()}, caveats=caveat,
-                  text=(f"Outflow from deposit accounts (transfers excluded), "
-                        f"per currency: {parts}."))
+                      text="No spending recorded yet.")
+    total = sum(by_cat.values(), Decimal("0"))
+    uncat = by_cat.get("Uncategorized", Decimal("0"))
+    cur = _single_currency(proj)
+    # Largest categories first, uncategorized shown honestly at the end.
+    ranked = sorted(((c, a) for c, a in by_cat.items() if c != "Uncategorized"),
+                    key=lambda x: x[1], reverse=True)
+    top = "; ".join(f"{c} {_money(a, cur)}" for c, a in ranked[:5])
+    caveats = ["Card purchases are included; own-account transfers are excluded."]
+    if uncat:
+        caveats.append(f"{_money(uncat, cur)} is still uncategorized — confirm "
+                       "categories to sharpen this.")
+    return Answer(
+        question=q, answered=True, amount=total, currency=cur,
+        subtotals={c: str(a) for c, a in by_cat.items()}, caveats=caveats,
+        text=(f"You spent {_money(total, cur)}"
+              f"{f' as of {as_of}' if as_of else ''} (transfers excluded)"
+              + (f" — top: {top}." if top else ".")))
+
+
+def _single_currency(proj) -> str:
+    """The account currency when the ledger holds exactly one, else '' (spending
+    buckets are shared and carry no currency of their own — I1 honesty)."""
+    held = {i.currency for i in proj.account_infos()
+            if i.kind in ("depository", "liability") and i.currency}
+    return next(iter(held)) if len(held) == 1 else ""
 
 
 def coverage_summary(source) -> Coverage:

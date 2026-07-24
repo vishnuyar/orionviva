@@ -83,6 +83,12 @@ def main() -> None:
     if spend:
         print("external spending (transfers excluded): "
               + ", ".join(f"{c} {v}" for c, v in spend.items()))
+    by_cat = proj.spending_by_category()
+    if by_cat:
+        ranked = sorted(by_cat.items(), key=lambda x: x[1], reverse=True)
+        print("spending by category (transfers excluded): "
+              + ", ".join(f"{c} {v}" for c, v in ranked))
+        print(f"    uncategorized expense movements: {len(proj.uncategorized_expenses())}")
     income = proj.income_by_currency()
     if income:
         print("recognized income (gross): "

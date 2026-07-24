@@ -12,6 +12,8 @@ from .pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED,
                        POSTED, IngestResult, ReadResult, account_id_for,
                        capture_and_ingest, heal_corroboration, heal_gaps,
                        heal_paystubs, post_paystub, post_statement, sweep)
+from .categorize import (SEED_CATEGORIES, assign_category, normalize_category,
+                         suggest_categories)
 from .paystub import Deduction, PayStubFacts, from_paystub_json
 from .raw_store import RawStore
 from .registry import (BALANCE_IDENTITY, DEPOSITORY, LIABILITY, DocProfile,
@@ -28,6 +30,8 @@ __all__ = [
     "post_paystub", "account_id_for", "heal_gaps", "heal_corroboration",
     "heal_paystubs", "sweep", "AWAITING",
     "PayStubFacts", "Deduction", "from_paystub_json",
+    "assign_category", "suggest_categories", "normalize_category",
+    "SEED_CATEGORIES",
     "HeldItem", "held_items", "apply_human_correction", "apply_identity_ruling",
     "diagnose", "ReconciliationFinding", "DIAGNOSIS_VERSION",
     "FORCED", "SUGGESTED", "UNLOCALIZED",

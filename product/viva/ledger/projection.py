@@ -178,6 +178,10 @@ class LedgerProjection:
         # not per-account (a transfer spans two accounts).
         self._links: dict[frozenset, dict] = {}         # {a,b} -> {status,grade,by}
         self._transfer_suggestions: dict[str, dict] = {}  # movement key -> body
+        # Category overlay (Slice 5): movement key -> {category, grade, by,
+        # descriptor}. A human confirmation (verified) supersedes a model
+        # suggestion (unverified); we keep the highest-trust ruling.
+        self._categories: dict[str, dict] = {}
         for event in events:
             self.apply(event)
 
@@ -245,6 +249,13 @@ class LedgerProjection:
 
         elif et == "TransferSuggested":
             self._transfer_suggestions[event.body["a"]] = event.body
+
+        elif et == "CategoryAssigned":
+            key = event.body["movement_key"]
+            prior = self._categories.get(key)
+            # A verified (human) ruling wins; otherwise the latest applies.
+            if prior is None or event.body.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
+                self._categories[key] = event.body
 
         elif et == "ClosingBalanceObserved":
             acct = event.body["account_id"]
@@ -413,10 +424,9 @@ class LedgerProjection:
         return out
 
     def spending_by_currency(self) -> dict[str, Decimal]:
-        """Minimal external-spending seed (S5 builds the real one): money that
-        left an asset account to the outside world — i.e. depository outflows,
-        **excluding** movements that are part of a transfer (moving your own
-        money is not spending). Positive magnitudes, per currency."""
+        """Minimal external-spending seed (superseded by spending_by_category):
+        depository outflows, excluding transfers. Positive magnitudes, per
+        currency. Kept for back-compat; the category view is the real one."""
         linked = self.linked_keys()
         out: dict[str, Decimal] = {}
         for m in self.movements():
@@ -424,6 +434,46 @@ class LedgerProjection:
                 continue
             out[m.currency] = out.get(m.currency, Decimal("0")) + (-m.amount)
         return out
+
+    # ------------------------------------------------------- categories (Slice 5)
+
+    @staticmethod
+    def _is_expense(m: "MovementInfo") -> bool:
+        """A movement that is spending: money out of an asset, or a charge on a
+        liability (a card purchase). A card *payment* (liability, negative) is a
+        transfer, not spending — the kind-aware distinction from Slice 5."""
+        return ((m.kind == "depository" and m.amount < 0)
+                or (m.kind == "liability" and m.amount > 0))
+
+    def category_of(self, key: str) -> dict | None:
+        """The category ruling on a movement (category, grade, by, descriptor), or
+        None if uncategorized."""
+        return self._categories.get(key)
+
+    def spending_by_category(self, currency: str | None = None) -> dict[str, Decimal]:
+        """Real spending, grouped by category (Slice 5): every expense movement —
+        card purchases included — **excluding transfers**, bucketed by its
+        assigned category (``Uncategorized`` if none). Positive magnitudes. If
+        ``currency`` is given, only that currency; otherwise all summed (the
+        answer layer keeps currency honest)."""
+        linked = self.linked_keys()
+        out: dict[str, Decimal] = {}
+        for m in self.movements():
+            if not self._is_expense(m) or m.key in linked:
+                continue
+            if currency is not None and m.currency != currency:
+                continue
+            cat = (self._categories.get(m.key) or {}).get("category", "Uncategorized")
+            out[cat] = out.get(cat, Decimal("0")) + abs(m.amount)
+        return out
+
+    def uncategorized_expenses(self) -> list["MovementInfo"]:
+        """Expense movements with no category yet — the categorization queue.
+        Transfers are excluded (they are not spending to categorize)."""
+        linked = self.linked_keys()
+        return [m for m in self.movements()
+                if self._is_expense(m) and m.key not in linked
+                and m.key not in self._categories]
 
     # ------------------------------------------------- identity resolution
 

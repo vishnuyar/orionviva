@@ -54,6 +54,8 @@ def make_handler(vault, read_fn):
                 return self._send(service.transfer_review(vault))
             if u.path == "/api/paystubs":
                 return self._send(service.paystub_review(vault))
+            if u.path == "/api/categorize":
+                return self._send(service.categorize_review(vault))
             if u.path == "/api/account":
                 acct = parse_qs(u.query).get("id", [""])[0]
                 return self._send(service.account_view(vault, acct))
@@ -82,6 +84,10 @@ def make_handler(vault, read_fn):
                     d = json.loads(raw or b"{}")
                     return self._send(service.reject_transfer_link(
                         vault, d["a"], d.get("b", "")))
+                if u.path == "/api/assign-category":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.assign_category_to(
+                        vault, d["key"], d["category"]))
                 if u.path == "/api/upload":
                     fn = self.headers.get("X-Filename", "upload.bin")
                     return self._send(service.upload(vault, fn, raw, read_fn))

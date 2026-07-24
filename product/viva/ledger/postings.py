@@ -34,6 +34,20 @@ from .events import (UNVERIFIED, VERIFIED, Event, Posting,
 EQUITY_OPENING = "Equity:OpeningBalance"      # the "unexplained history" bucket
 INCOME_UNCATEGORIZED = "Income:Uncategorized"
 EXPENSE_UNCATEGORIZED = "Expenses:Uncategorized"
+# A liability's payment reduces what's owed — a debt reduction funded by a
+# transfer, NOT an expense. It lands here so it never inflates spending (Slice 5).
+TRANSFERS_UNCATEGORIZED = "Transfers:Uncategorized"
+
+
+def counter_account(kind: str, amount: Decimal) -> str:
+    """The Uncategorized counter-leg for a movement, by (account kind, direction)
+    — the kind-aware fix (Slice 5). Asset signs and liability signs are opposite:
+    money out of an asset and a charge on a liability are both *expenses*; money
+    into an asset is *income*; a payment on a liability is a *transfer* (debt
+    reduction), not income. Getting this right is what makes spending honest."""
+    if kind == "liability":
+        return EXPENSE_UNCATEGORIZED if amount > 0 else TRANSFERS_UNCATEGORIZED
+    return INCOME_UNCATEGORIZED if amount > 0 else EXPENSE_UNCATEGORIZED
 
 # Pay-stub decomposition targets (Slice 4). Universal buckets — jurisdiction is an
 # attribute, never a per-country table (I5): a US 401k and an Indian EPF both land
@@ -101,20 +115,21 @@ def _require_balanced(postings: list[Posting]) -> list[Posting]:
 
 def simple_transaction(account: str, amount: Decimal | str, description: str,
                        occurred_at: str, tags: list[str] | None = None,
-                       provenance=None, account_grade: str = VERIFIED) -> Event:
+                       provenance=None, account_grade: str = VERIFIED,
+                       kind: str = "depository") -> Event:
     """A single-category movement on ``account``.
 
-    ``amount`` > 0 is money in (deposit), < 0 is money out (withdrawal). The
-    named account's leg is ``verified`` by default (the statement attests the
+    ``amount`` is the signed effect on the account's printed balance. The named
+    account's leg is ``verified`` by default (the statement attests the
     movement); the Uncategorized counter-leg mirrors the amount but is
-    ``unverified`` — its category is not yet inferred. A leg *supplied by
-    cross-document corroboration* (Slice 3) passes ``account_grade=CORROBORATED``:
-    a second issuer attested it, so it is not `verified` (which is reserved for a
-    figure this document itself states or a human confirms)."""
+    ``unverified`` — its category is not yet inferred. ``kind`` picks the correct
+    counter-leg (Slice 5): a card purchase is an expense, a card payment a
+    transfer, never income. A leg *supplied by cross-document corroboration*
+    (Slice 3) passes ``account_grade=CORROBORATED``."""
     amt = Decimal(amount)
     if amt == 0:
         raise ValueError("a transaction of zero is not a movement")
-    counter = INCOME_UNCATEGORIZED if amt > 0 else EXPENSE_UNCATEGORIZED
+    counter = counter_account(kind, amt)
     postings = _require_balanced([
         Posting(account, amt, account_grade),
         Posting(counter, -amt, UNVERIFIED),
