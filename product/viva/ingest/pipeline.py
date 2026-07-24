@@ -193,7 +193,7 @@ def heal_corroboration(ledger: Ledger) -> int:
     statement that attests the payment lands (order-independent, Slice 1 spirit).
     Only conflict holds with an available decisive partner are retried, so a
     genuine misread with no counterpart keeps waiting for a human."""
-    from .transfers import find_corroborating_leg
+    from .transfers import account_tokens_from, find_corroborating_legs
     posted_total = 0
     attempted: set[str] = set()
     while True:
@@ -204,10 +204,12 @@ def heal_corroboration(ledger: Ledger) -> int:
             if body.get("reason") != "conflict" or doc_id in attempted:
                 continue
             facts = StatementFacts.from_dict(body["facts"])
-            if find_corroborating_leg(
+            toks = account_tokens_from(facts.institution, facts.account_number,
+                                       facts.account_ref)
+            if find_corroborating_legs(
                     proj, account_id_for(facts), account_kind_for(facts.doc_type),
                     _gap_delta(facts), facts.currency, facts.opening_date,
-                    facts.closing_date) is not None:
+                    facts.closing_date, own_tokens=toks):
                 candidate = facts
                 attempted.add(doc_id)
                 break
@@ -217,6 +219,32 @@ def heal_corroboration(ledger: Ledger) -> int:
                  candidate.doc_id[:12])
         if post_statement(ledger, candidate).action == POSTED:
             posted_total += 1
+
+
+def sweep(ledger: Ledger) -> dict:
+    """Run the full order-independent reconciliation + transfer sweep over an
+    existing vault: stitch gaps, close conflict-holds a counterparty now
+    corroborates, and detect internal transfers among ALL posted movements. Safe
+    to run on startup or on demand — it only appends links/heals and is
+    idempotent (already-linked movements and resolved holds are skipped). This is
+    what links statements ingested *before* transfer detection existed."""
+    from .transfers import link_transfers
+    # Measure net change across the whole sweep: corroboration re-posts run their
+    # own transfer scan, so the final link_transfers alone undercounts. Diff the
+    # projection instead, for an honest summary.
+    p0 = ledger.projection()
+    links0, sugg0 = len(p0.transfer_links()), len(p0.transfer_suggestions())
+    gaps = heal_gaps(ledger)
+    corroborated = heal_corroboration(ledger)
+    link_transfers(ledger)
+    p1 = ledger.projection()
+    auto = len(p1.transfer_links()) - links0
+    suggested = len(p1.transfer_suggestions()) - sugg0
+    if gaps or corroborated or auto or suggested:
+        log.info("sweep: %d gaps healed, %d corroborated, %d transfers auto-linked, "
+                 "%d suggested", gaps, corroborated, auto, suggested)
+    return {"gaps": gaps, "corroborated": corroborated, "auto": auto,
+            "suggested": suggested, "links": len(p1.transfer_links())}
 
 
 def _apply_forced(facts: StatementFacts,
@@ -293,46 +321,57 @@ def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | 
     primary read (so the crutch never hides a model-recall problem) — then post.
     The subsequent transfer scan nets the pair. Returns None (→ hold for a human)
     unless the match is decisive; a gap is never closed on a guess."""
-    from .transfers import find_corroborating_leg, link_transfers
+    from .transfers import account_tokens_from, find_corroborating_legs, link_transfers
 
     proj = ledger.projection()
     account = account_id_for(facts)
     kind = account_kind_for(facts.doc_type)
-    total = sum((t.amount for t in facts.transactions), start=Decimal("0"))
-    delta = facts.closing_amount - (facts.opening_amount + total)
-    cp = find_corroborating_leg(proj, account, kind, delta, facts.currency,
-                                facts.opening_date, facts.closing_date)
-    if cp is None:
+    delta = _gap_delta(facts)
+    # Tokens come from the FACTS (this account may not be opened yet — it's the
+    # one failing to reconcile), so a counterparty line naming it can be found.
+    own_tokens = account_tokens_from(facts.institution, facts.account_number,
+                                     facts.account_ref)
+    legs = find_corroborating_legs(proj, account, kind, delta, facts.currency,
+                                   facts.opening_date, facts.closing_date,
+                                   own_tokens=own_tokens)
+    if not legs:
         return None
-    try:
-        cp_name = proj.account_info(cp.account).name or cp.account
-    except Exception:
-        cp_name = cp.account
-    supplied = TxnFact(
-        date=cp.date, description=f"Payment (corroborated by {cp_name})",
-        amount=delta, source_doc_id=cp.provenance.doc_id, grade=CORROBORATED,
+
+    def _name(acct: str) -> str:
+        try:
+            return proj.account_info(acct).name or acct
+        except Exception:
+            return acct
+
+    # One supplied leg per counterparty movement — each cites its OWN counterparty
+    # document (a missing section may be attested across several statements). The
+    # sign is the missing leg's effect on this account (sign of delta).
+    sign = Decimal(-1) if delta < 0 else Decimal(1)
+    supplied = [TxnFact(
+        date=cp.date, description=f"Payment (corroborated by {_name(cp.account)})",
+        amount=sign * abs(cp.amount), source_doc_id=cp.provenance.doc_id,
+        grade=CORROBORATED,
         note=("supplied by cross-document corroboration; attested by the "
-              "counterparty statement, not read from this document"))
-    corrected = replace(facts, transactions=list(facts.transactions) + [supplied])
-    recon2 = _reconciles(corrected)
-    if not recon2.passed:                         # defensive: only post if it closes
+              "counterparty statement, not read from this document")) for cp in legs]
+    corrected = replace(facts, transactions=list(facts.transactions) + supplied)
+    if not _reconciles(corrected).passed:         # defensive: only post if it closes
         return None
+    who = ", ".join(sorted({_name(cp.account) for cp in legs}))
     finding = ReconciliationFinding(
         reconciles=False, kind="cross_document", status=FORCED, delta=str(delta),
-        target=f"missing leg supplied from {cp_name}", implied=str(delta),
-        confidence=0.95,
-        message=(f"This statement was off by {delta}; a matching {cp.currency} "
-                 f"{abs(delta)} movement on your {cp_name} attests the missing "
-                 "line. I supplied it from that statement (corroborated) and "
-                 "linked the two as one transfer — this document's own read was "
-                 "incomplete."))
+        target=f"{len(legs)} missing leg(s) supplied from {who}",
+        implied=str(delta), confidence=0.95,
+        message=(f"This statement was off by {delta}; {len(legs)} matching "
+                 f"movement(s) on your {who} attest the missing line(s). I "
+                 "supplied them (corroborated) and linked them as transfers — "
+                 "this document's own read was incomplete."))
     log.info("post_statement: cross-document corroboration closes the gap for %s "
-             "from %s (delta=%s)", facts.doc_id[:12], cp.account, delta)
-    res = _post_reconciled(ledger, corrected, recon2, finding=finding,
-                           auto_corrected=True)
+             "with %d leg(s) (delta=%s)", facts.doc_id[:12], len(legs), delta)
+    res = _post_reconciled(ledger, corrected, _reconciles(corrected),
+                           finding=finding, auto_corrected=True)
     if res.action == POSTED:
         res.message = f"{finding.message} {res.message}"
-        link_transfers(ledger)                    # net the newly-completed pair
+        link_transfers(ledger)                    # net the newly-completed pair(s)
     return res
 
 

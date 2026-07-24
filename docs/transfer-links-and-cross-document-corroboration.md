@@ -83,14 +83,37 @@ Core built and tested (`ingest/transfers.py`, projection transfer overlay,
   match within the date window, with a strong own-account hint) auto-links at
   `corroborated`; ambiguous/weak surfaces a `TransferSuggested`; confirm →
   `verified`, reject dismisses. Currency is matched, never a bare amount (I1).
-- ✅ **Cross-document corroboration rung** — a decisive counterparty leg supplies
-  what a statement's read dropped; the supplied posting cites the **counterparty
-  document** (provenance) at grade `corroborated`, with an explicit
-  incomplete-read note; heals in **either ingest order** (`heal_corroboration`).
-  A gap with no decisive counterpart is **not** closed — it holds for a human
-  (tested). This is the H-E-B missing-payment case, rescued.
+- ✅ **Cross-document corroboration rung (single AND multi-leg)** — a decisive
+  set of counterparty movements supplies what a statement's read dropped; each
+  supplied posting cites its **counterparty document** (provenance) at grade
+  `corroborated`, with an explicit incomplete-read note; heals in **either ingest
+  order** (`heal_corroboration`). A single missing payment is the size-1 case; a
+  **whole missing payments section** (the Imprint case) is the size-N case —
+  counterparty movements that each **distinctively name the account** and whose
+  magnitudes **uniquely sum** to the gap (subset-sum, gated by uniqueness). A gap
+  with no decisive counterpart is **not** closed — it holds for a human (tested).
+- ✅ **Detection over an existing vault** — `sweep()` (stitch gaps → corroborate
+  conflict-holds → link transfers) runs on web startup and via
+  `python -m viva.rescan`, so statements ingested *before* transfer detection
+  existed get linked without a re-upload. Idempotent.
+- ✅ **Matcher tuned for real data** — date window 5 days; the strong hint
+  recognizes the counterparty's institution / last-4 / product token (e.g. a bank
+  line "PAYMENT TO IMPRINT" naming the card); the holder's name is deliberately
+  not a token (shared across a person's own accounts). Auto-link needs that
+  naming hint; a match is only *suggested* when a leg carries a **transfer word**
+  ("payment", "autopay", "transfer", …) — a pure amount coincidence with no such
+  word is treated as ordinary spending, not a question (the fix for the
+  review-flooding a real vault showed: 29 → the plausible few).
+- ✅ **Clean confirmation** — within one scan a movement is *consumed* once linked
+  and never offered again; `confirm_transfer` is a guarded no-op if either
+  movement is already linked (a movement joins at most one transfer);
+  `transfer_review` drops candidates/suggestions whose money is already linked,
+  so confirming one suggestion removes that movement from all the others. Each
+  suggestion is an independent per-source decision.
 - ✅ **Surfaces** — `debug_vault` and the web overview/review show transfers,
   suggestions, and transfers-excluded spending; confirm/reject endpoints wired.
+  `sweep()` reports net links/suggestions by diffing the projection (the nested
+  corroboration scan is counted honestly).
 
 Deferred (noted, not built — a clean v1 boundary):
 
