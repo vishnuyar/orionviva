@@ -91,6 +91,11 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 ---
 
+## Slice 5.5 — Merchant catalog & the categorization commons  ← NEXT
+**Block seeded:** merchant catalog (normalized merchant → category, the prior) + deterministic versioned normalizer + batched merchant-categorization edge + unencrypted content-addressed commons export.
+
+**Full spec + locked architecture:** [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md). Origin: Slice 5's per-transaction categorization asked for the same merchant repeatedly on a real vault. Decisions (Vishnu's batched-catalog idea + refinements, 2026-07-24): **categorize the merchant not the transaction** (O(new-merchants) model cost, retrospective); **catalog is a prior, the Slice-5 per-transaction overlay is the override** (grade ladder verified→corroborated→unverified→Uncategorized); **privacy split** — raw descriptor stays ENCRYPTED (PII: order-ids, peer names), only a linted commercial merchant→category catalog is ever unencrypted/shared (T5); **deterministic + versioned normalization + model grouping, never fuzzy-matching** (Costco/Costa danger; location is an attribute, not a category); **batched threshold-triggered** model call (known merchant → free lookup, unknown → plain-vanilla + caveat); **the commons falls out** — content-addressed opt-in export, corroborated-by-count, local override wins. Deferred: full commons registry, merchant-as-Party, self-healing.
+
 ## Slice 5 — Categorization & spending  ✅ DONE (core)
 **Block seeded:** Tag/Category (many-to-many overlay) + amount-split (double-entry) + spending projection + correction-as-event.
 
