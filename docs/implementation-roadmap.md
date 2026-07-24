@@ -57,18 +57,20 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 ---
 
-## Slice 3 — Transfer links
-**Block seeded:** Transfer link (two postings = one economic non-event), graded.
+## Slice 3 — Transfer links + cross-document corroboration  ← NEXT
+**Block seeded:** Transfer link (two postings = one economic non-event, graded) + the cross-document reconciliation witness (a decisive counterparty leg closes another statement's gap).
 
-**Open state:** a checking→card payment counts as spending on checking *and* a payment on the card — money seems to leave twice; spending double-counts. *Proof:* summed cross-account outflow overstates real spending by the transfer amount (red test).
+**Full spec + locked architecture:** [transfer-links-and-cross-document-corroboration.md](transfer-links-and-cross-document-corroboration.md). Decisions: **internal own-account transfers only** (external Party → S5); **minimal netting** — `Transfers` is an exclusion category, self-netting economic sign → S7; **auto-link on decisive evidence, ask otherwise** (learn the ruling); **the transfer link doubles as a cross-document reconciliation witness** — a cheap, model-free, dual-issuer rung that supplies a leg a statement's read dropped (gated by decisiveness, provenance marked to the corroborating issuer, incomplete-read recorded so the crutch can't hide a model recall problem); v1 auto-links only when both legs are ingested own accounts; links reference a stable movement key, not an event id.
 
-**Implementation:** detect candidate transfers (amount/date proximity + description hints across accounts); create a Transfer-link entity with its own grade + evidence; net the two legs so aggregates don't double-count. Ambiguous links surface as **Findings**; confirmation is **correction-as-event** → verified.
+**Open state:** a checking→card payment counts as spending on checking *and* a payment on the card — money seems to leave twice; and a statement whose gap is attested by a counterparty stays held though the evidence to close it is already in the ledger. *Proofs (red tests):* summed cross-account outflow overstates real spending by the transfer amount; a card missing a payment the checking statement attests stays unreconciled.
 
-**Final state:** internal transfers are recognized and netted; "how much did I spend" excludes moving your own money; wrong links are surfaced, not silently applied.
+**Implementation:** a stable movement key; a candidate matcher (amount/date/direction/description/own-account) over an amount·date index; a `TransferLinked` overlay event (grade + evidence) + recategorization of both legs into `Transfers` (excluded from aggregates); a decisiveness gate → auto-link (`corroborated`) or **Finding** (`suggested` → `verified`), learned thereafter; a **cross-document corroboration rung** in diagnosis that supplies a missing leg from a decisive counterparty (provenance → counterparty doc, incomplete-read marker, heals both orders); own-account membership learning; correction-as-event for confirm/reject/unlink.
 
-**Done criteria / tests:** a checking→card payment is linked and excluded from spending; total spending = real external outflow; an ambiguous link surfaces for confirmation; a confirmed link is verified and persists.
+**Final state:** internal transfers are recognized and excluded from spending; a statement whose gap is attested by a counterparty is rescued and posts `corroborated` with dual-issuer provenance; wrong/ambiguous links surface, never silently applied; confirmed patterns auto-link.
 
-**Why now + future use:** without it, spending (S5) and cash flow are simply wrong — load-bearing for job-1 accuracy; it's the first cross-account fact, seeding the operational graph; reuses Finding + correction (composition proof).
+**Done criteria / tests:** a checking→card payment is linked and excluded from spending; total spending = real external outflow; a card missing a payment reconciles when the checking statement is present and its posting cites the checking doc; the same in either ingest order (heal); an ambiguous match surfaces a Finding (not auto-linked) and a non-decisive gap is not auto-closed; a confirmed link is verified and persists across reingest; a transfer naming an unseen destination asks the own-account question and learns it.
+
+**Why now + future use:** without it, spending (S5) and cash flow are simply wrong — load-bearing for job-1 accuracy; it's the first cross-account fact, seeding the operational graph; the cross-document witness materially strengthens the verification layer and is an early instance of the endgame's cross-issuer corroboration; almost entirely reuse (Finding + correction + entity-resolution + grade + provenance + heal) — a composition proof.
 
 ---
 
