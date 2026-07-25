@@ -55,15 +55,27 @@ from .logs import configure as configure_logging
 CATEGORIZATION_EVENTS = ("CategoryAssigned", "MerchantCategorized",
                          "MerchantEnriched")
 
+# A ruling a PERSON made is not derived data — it is the moat (CLAUDE.md: memory
+# of the user is what's defensible). A model call can regenerate a merchant
+# category; it cannot regenerate the fact that *you* said this Zelle was a gift.
+# So a reset preserves `by="human"` rulings by default; discarding them takes an
+# explicit, loudly-named flag (Vishnu, 2026-07-25).
+HUMAN = "human"
+
 
 def rebuild_log(src_events: pathlib.Path, dst_events: pathlib.Path,
                 passphrase: str,
-                drop_types: tuple[str, ...] = CATEGORIZATION_EVENTS
+                drop_types: tuple[str, ...] = CATEGORIZATION_EVENTS,
+                keep_human: bool = True
                 ) -> tuple[collections.Counter, collections.Counter]:
     """Write ``dst_events`` = ``src_events`` with ``drop_types`` events removed,
     re-chained and re-sealed under the same key. Returns (counts_in, counts_out)
     keyed by event_type. Verifies the source chain as it reads (a corrupt source
-    refuses to migrate) and never writes over the source."""
+    refuses to migrate) and never writes over the source.
+
+    ``keep_human=True`` (the default) **preserves rulings a person made**
+    (``by="human"``) even when their event type is being dropped — they are the
+    irreplaceable asset, not derived data."""
     src_events = pathlib.Path(src_events)
     dst_events = pathlib.Path(dst_events)
     if dst_events.resolve() == src_events.resolve():
@@ -98,10 +110,13 @@ def rebuild_log(src_events: pathlib.Path, dst_events: pathlib.Path,
             aad = f"{seq}:{rec_prev}".encode("utf-8")
             payload = json.loads(open_sealed(key, sealed, aad))  # full payload
             prev = rec_hash
-            et = payload["event"]["event_type"]
+            event = payload["event"]
+            et = event["event_type"]
             counts_in[et] += 1
             if et in drop_types:
-                continue
+                # A person's ruling survives a reset unless explicitly discarded.
+                if not (keep_human and event.get("body", {}).get("by") == HUMAN):
+                    continue
             survivors.append(payload)
             counts_out[et] += 1
 
@@ -127,18 +142,21 @@ def rebuild_log(src_events: pathlib.Path, dst_events: pathlib.Path,
 
 
 def reset_vault(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
-                drop_types: tuple[str, ...] = CATEGORIZATION_EVENTS
+                drop_types: tuple[str, ...] = CATEGORIZATION_EVENTS,
+                keep_human: bool = True
                 ) -> tuple[collections.Counter, collections.Counter]:
     """Produce a fresh vault at ``dest``: the rebuilt (de-categorized) event log
     plus the raw-blob store copied across verbatim (raw captures are unchanged —
-    categorization was never stored there)."""
+    categorization was never stored there). ``keep_human`` preserves a person's
+    own rulings (the default, and the safe one)."""
     source, dest = pathlib.Path(source), pathlib.Path(dest)
     if dest.exists() and any(dest.iterdir()):
         raise ValueError(f"destination {dest} exists and is not empty")
     dest.mkdir(parents=True, exist_ok=True)
 
     counts_in, counts_out = rebuild_log(
-        source / "events.jsonl", dest / "events.jsonl", passphrase, drop_types)
+        source / "events.jsonl", dest / "events.jsonl", passphrase, drop_types,
+        keep_human=keep_human)
 
     src_raw = source / "raw"
     if src_raw.exists():
@@ -157,20 +175,29 @@ def main() -> None:
         "VIVA_VAULT_DIR", os.path.expanduser("~/.viva-vault")))
     if not (source / "events.jsonl").exists():
         raise SystemExit(f"No vault at {source}.")
-    dest = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else source.with_name(
+    args = [a for a in sys.argv[1:] if a != "--discard-my-rulings"]
+    keep_human = "--discard-my-rulings" not in sys.argv[1:]
+    dest = pathlib.Path(args[0]) if args else source.with_name(
         source.name + "-precat-" + time.strftime("%Y%m%d-%H%M%S"))
 
     print("reset categorization — rewind to before categorization, keep all else")
     print(f"  from: {source}")
     print(f"  into: {dest}  (source left untouched)")
-    counts_in, counts_out = reset_vault(source, dest, passphrase)
+    print("  your own rulings: " + ("PRESERVED" if keep_human else
+                                    "DISCARDED (--discard-my-rulings)"))
+    counts_in, counts_out = reset_vault(source, dest, passphrase,
+                                        keep_human=keep_human)
 
     dropped = sum(counts_in[t] for t in CATEGORIZATION_EVENTS)
     kept = sum(counts_out.values())
     print(f"\nevents: {sum(counts_in.values())} in → {kept} kept, {dropped} dropped")
     for et in sorted(counts_in):
         n_in, n_out = counts_in[et], counts_out.get(et, 0)
-        mark = "  DROPPED" if et in CATEGORIZATION_EVENTS else ""
+        if et in CATEGORIZATION_EVENTS:
+            mark = (f"  DROPPED ({n_out} of your own rulings kept)"
+                    if n_out else "  DROPPED")
+        else:
+            mark = ""
         print(f"    {et}: {n_in} → {n_out}{mark}")
 
     # Re-open the new vault to prove it verifies and reads cleanly.

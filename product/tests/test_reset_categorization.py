@@ -57,25 +57,39 @@ def _counts(vault):
     return collections.Counter(e.event_type for e in vault.events())
 
 
-def test_reset_drops_only_categorization_and_keeps_the_rest(tmp_path):
+def test_reset_drops_model_categorization_but_keeps_my_rulings(tmp_path):
+    """The guard: a model's categorization is derived data and goes; a ruling YOU
+    made is the moat and stays (Slice 6.5)."""
     src = _seed_vault(tmp_path / "src")
     before = _counts(src)
-    # Precondition: the seed really did create all three-ish overlay events.
-    assert before["MerchantEnriched"] > 0
-    assert before["CategoryAssigned"] > 0
+    assert before["MerchantEnriched"] > 0        # model-made
+    assert before["CategoryAssigned"] > 0        # human-made (the Costco ruling)
 
-    counts_in, counts_out = reset_vault(tmp_path / "src", tmp_path / "dst", "pw")
+    reset_vault(tmp_path / "src", tmp_path / "dst", "pw")
 
     clean = Vault.open(tmp_path / "dst", "pw")
     after = _counts(clean)
-    # Every categorization event is gone...
-    for et in CATEGORIZATION_EVENTS:
-        assert after[et] == 0
-    # ...and every OTHER event type survives with an identical count.
+    # The model's enrichment is gone...
+    assert after["MerchantEnriched"] == 0
+    assert after["MerchantCategorized"] == 0
+    # ...but every human ruling survived.
+    human = [e for e in clean.events()
+             if e.event_type == "CategoryAssigned" and e.body.get("by") == "human"]
+    assert len(human) == before["CategoryAssigned"]
+    # And every OTHER event type survives with an identical count.
     for et, n in before.items():
         if et in CATEGORIZATION_EVENTS:
             continue
         assert after[et] == n, f"{et} changed: {n} -> {after[et]}"
+
+
+def test_reset_can_discard_my_rulings_only_when_asked(tmp_path):
+    """Discarding a person's own rulings is possible, but never the default."""
+    _seed_vault(tmp_path / "src")
+    reset_vault(tmp_path / "src", tmp_path / "dst", "pw", keep_human=False)
+    after = _counts(Vault.open(tmp_path / "dst", "pw"))
+    for et in CATEGORIZATION_EVENTS:
+        assert after[et] == 0                     # now truly a blank slate
 
 
 def test_reset_leaves_the_source_untouched(tmp_path):
@@ -102,9 +116,12 @@ def test_reset_preserves_the_ledger_and_raw_store(tmp_path):
     assert proj.balance(proj.account_infos()[0].account).amount == src_total
     # Raw captures carried across verbatim.
     assert set(clean.raw.doc_ids()) == src_docs
-    # But categorization is a clean slate: nothing is categorized now.
-    assert proj.spending_by_category() in ({}, {"Uncategorized": Decimal("145.00")})
-    assert len(proj.uncategorized_merchants()) == 3
+    # The model's categorization is a clean slate, but the human ruling on Costco
+    # survives — so groceries remains and only the model-categorized two return
+    # to the queue (Slice 6.5: rulings are the asset).
+    assert proj.spending_by_category() == {"Uncategorized": Decimal("65.00"),
+                                           "groceries": Decimal("80.00")}
+    assert len(proj.uncategorized_merchants()) == 2
 
 
 def test_reset_chain_verifies_and_reindexes_sequences(tmp_path):
