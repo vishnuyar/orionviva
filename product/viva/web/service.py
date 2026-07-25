@@ -9,6 +9,8 @@ picture and the interactions, and only surfaces a source on request.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from ..answer import answer_spending, answer_total, coverage_summary
 from ..ingest import (SEED_CATEGORIES, apply_human_correction,
                       apply_identity_ruling, assign_category,
@@ -134,6 +136,38 @@ def categorize_review(vault: Vault, limit: int = 50) -> dict:
                       "amount": str(abs(m.amount)), "currency": m.currency,
                       "date": m.date, "account": m.account})
     return {"items": items, "categories": list(SEED_CATEGORIES)}
+
+
+def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict:
+    """Every movement with one merchant — the context behind a question.
+
+    Keyed on the NORMALIZED merchant, the same unit a ruling generalizes over, so
+    what you're shown is exactly what your answer will settle. (The first cut
+    reused the categorization queue and filtered by substring, which returned
+    nothing for a nature question: that queue only holds *uncategorized*
+    movements, and a nature question is asked about a merchant that already has a
+    category.)"""
+    from ..ledger.merchants import normalize_merchant
+    proj = vault.ledger.projection()
+    key = normalize_merchant(merchant)
+    items = []
+    for m in proj.movements():
+        if normalize_merchant(m.description) != key:
+            continue
+        ruling = proj.derived_category(m) or {}
+        items.append({
+            "key": m.key, "date": m.date, "description": m.description,
+            "amount": str(abs(m.amount)), "currency": m.currency,
+            "account": m.account,
+            "category": ruling.get("category", ""),
+            "subcategory": ruling.get("subcategory", ""),
+            "nature": m.nature, "counts_as_spending": proj._counts_as_spending(m)})
+    items.sort(key=lambda i: i["date"])
+    total = sum(abs(Decimal(i["amount"])) for i in items) if items else Decimal("0")
+    return {"merchant": key, "items": items[:limit], "count": len(items),
+            "total": str(total),
+            "currency": items[0]["currency"] if items else "",
+            "categories": list(SEED_CATEGORIES)}
 
 
 def assign_category_to(vault: Vault, movement_key: str, category: str) -> dict:

@@ -23,6 +23,7 @@ export const api = {
   paystubs:   ()             => get('/api/paystubs'),
   merchants:  ()             => get('/api/merchants'),
   categorize: ()             => get('/api/categorize'),
+  merchantTxns: (m)          => get(`/api/merchant-transactions?merchant=${encodeURIComponent(m)}`),
 
   confirmCorrection: (d)     => post('/api/confirm', JSON.stringify(d)),
   confirmIdentity:   (d)     => post('/api/confirm-identity', JSON.stringify(d)),

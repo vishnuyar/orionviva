@@ -94,6 +94,9 @@ def make_handler(vault, read_fn):
                 n = parse_qs(u.query).get("limit", ["10"])[0]
                 return self._send(service.questions(
                     vault, int(n) if n.isdigit() else 10))
+            if u.path == "/api/merchant-transactions":
+                m = parse_qs(u.query).get("merchant", [""])[0]
+                return self._send(service.merchant_transactions(vault, m))
             if u.path == "/api/account":
                 acct = parse_qs(u.query).get("id", [""])[0]
                 return self._send(service.account_view(vault, acct))
