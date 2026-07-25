@@ -72,7 +72,10 @@ class AnthropicAdapter:
                     timeout=c.timeout_s,
                 )
             except httpx.HTTPError as e:
-                raise AdapterError(f"[{c.name}] HTTP failure calling Anthropic: {e}") from e
+                raise AdapterError(
+                    f"[{c.name}] HTTP failure calling Anthropic after "
+                    f"{time.monotonic() - started:.1f}s (timeout {c.timeout_s}s, "
+                    f"attempt {attempt + 1}): {e}") from e
             latency = time.monotonic() - started
 
             if resp.status_code != 200:

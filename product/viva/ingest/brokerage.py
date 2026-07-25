@@ -21,6 +21,7 @@ optional: absent when the statement omits it, never invented.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -29,6 +30,9 @@ from vivacore.verify.normalize import parse_amount, parse_date
 
 from ..ledger.events import Provenance
 from ..ledger.postings import BROKERAGE_ACTIVITY_KINDS
+from .statement import period_date
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -171,6 +175,26 @@ def _amount(raw, locale: str, currency: str) -> tuple[Decimal | None, str | None
     return n.decimal(), None
 
 
+def _optional_amount(raw, locale: str, currency: str, what: str) -> Decimal | None:
+    """An OPTIONAL figure: absent when the statement omits it, and absent when it
+    prints something unreadable ("not applicable", "N/A", "—").
+
+    The discipline (from a real run that lost a whole statement to a cost-basis of
+    'not applicable'): **fail a parse only on figures the identity depends on.**
+    Units, market value, cash and total are load-bearing — an unreadable one sends
+    the document to review. An optional attribute that can't be read is simply
+    *unknown*, which the model already represents as None. It is logged, never
+    guessed and never fatal."""
+    if raw in (None, ""):
+        return None
+    n = parse_amount(str(raw), locale, currency)
+    if not n.ok:
+        log.info("brokerage: %s %r is not a number (%s) — recorded as unknown",
+                 what, raw, n.status)
+        return None
+    return n.decimal()
+
+
 def from_brokerage_json(text: str, doc_id: str, locale: str,
                         currency: str) -> tuple[BrokerageFacts | None, str | None]:
     """Parse a model's brokerage read into canonical BrokerageFacts.
@@ -214,12 +238,9 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
         mv, err = _amount(rp.get("market_value_raw"), locale, currency)
         if err:
             return None, f"position {i} market_value {err}"
-        cost = None
-        if rp.get("cost_basis_raw") not in (None, ""):
-            cb, cerr = _amount(rp.get("cost_basis_raw"), locale, currency)
-            if cerr:
-                return None, f"position {i} cost_basis {cerr}"
-            cost = cb
+        # Optional: unreadable means unknown, never fatal (never invented either).
+        cost = _optional_amount(rp.get("cost_basis_raw"), locale, currency,
+                                f"position {i} cost_basis")
         instrument = str(rp.get("instrument", "")).strip()
         if is_cash_row(instrument):
             # Not a holding — it's the cash line. Fold it into cash so the tally
@@ -249,18 +270,15 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
             amt, err = _amount(ra.get("amount_raw"), locale, currency)
             if err:
                 return None, f"activity {i} amount {err}"
-            gain = None
-            if ra.get("realized_gain_raw") not in (None, ""):
-                g, gerr = _amount(ra.get("realized_gain_raw"), locale, currency)
-                if gerr:
-                    return None, f"activity {i} realized_gain {gerr}"
-                gain = g
+            gain = _optional_amount(ra.get("realized_gain_raw"), locale, currency,
+                                    f"activity {i} realized_gain")
             adate = ""
             if ra.get("date_raw") not in (None, ""):
-                nd = parse_date(str(ra.get("date_raw")), locale)
-                if not nd.ok:
-                    return None, f"activity {i} date {ra.get('date_raw')!r}: {nd.status}"
-                adate = nd.value
+                # Activity lines print "11/04" — the year is in the header. Resolve
+                # it against the statement's as-of date (never invent a year).
+                adate, derr = period_date(ra.get("date_raw"), locale, as_of)
+                if derr:
+                    return None, f"activity {i} {derr}"
             activity.append(BrokerageActivity(
                 date=adate, kind=kind, amount=abs(amt),
                 description=str(ra.get("description", "")).strip(),
