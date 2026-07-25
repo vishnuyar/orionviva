@@ -28,6 +28,13 @@ log = logging.getLogger(__name__)
 
 ENRICHMENT_VERSION = "enrich-v2"       # v2: 16 primaries + subcategory, mcc, logo
 
+# Enrichment is N *independent* merchants, so we never gamble a whole run on one
+# giant JSON that overruns the model's output budget and truncates mid-object
+# (the failure mode that silently returned zero records). We split the batch into
+# chunks small enough that each call returns a complete, valid JSON object, and
+# merge. One bad chunk cannot sink the rest, and progress is logged per chunk.
+DEFAULT_CHUNK_SIZE = 40
+
 _PROMPT = """\
 You are identifying MERCHANTS from bank/card transaction descriptors. For EACH
 merchant below, return what you know from general knowledge — nothing about any
@@ -112,21 +119,36 @@ def parse_enrichment(text: str, keys, version: str) -> dict:
 
 
 class Enricher:
-    """Batched merchant enrichment. ``extract_fn(prompt) -> text`` is injected."""
+    """Chunked merchant enrichment. ``extract_fn(prompt) -> text`` is injected;
+    ``chunk_size`` bounds how many merchants ride in a single call so the reply
+    stays a complete, parseable JSON object."""
 
-    def __init__(self, extract_fn):
+    def __init__(self, extract_fn, chunk_size: int = DEFAULT_CHUNK_SIZE):
         self._extract = extract_fn
+        self._chunk_size = max(1, int(chunk_size))
 
     def enrich(self, merchants: dict) -> dict:
-        """Enrich ``{key: example}`` in ONE model call → ``{key: MerchantRecord}``."""
+        """Enrich ``{key: example}`` → ``{key: MerchantRecord}``, one model call
+        per chunk of at most ``chunk_size`` merchants, merged. A chunk whose reply
+        fails to parse contributes nothing but never aborts the others."""
         if not merchants:
             return {}
-        prompt, version = build_enrichment_prompt(merchants)
-        log.info("enrich: one call over %d merchant(s) (%s)", len(merchants), version)
-        text = self._extract(prompt)
-        records = parse_enrichment(text, list(merchants.keys()), version)
-        log.info("enrich: got %d record(s)", len(records))
-        return records
+        items = list(merchants.items())
+        chunks = [dict(items[i:i + self._chunk_size])
+                  for i in range(0, len(items), self._chunk_size)]
+        _, version = build_enrichment_prompt(dict(items[:1]))
+        log.info("enrich: %d merchant(s) in %d call(s) of <=%d (%s)",
+                 len(items), len(chunks), self._chunk_size, version)
+        out: dict[str, MerchantRecord] = {}
+        for n, chunk in enumerate(chunks, 1):
+            prompt, version = build_enrichment_prompt(chunk)
+            text = self._extract(prompt)
+            records = parse_enrichment(text, list(chunk.keys()), version)
+            log.info("enrich: chunk %d/%d → %d/%d record(s)",
+                     n, len(chunks), len(records), len(chunk))
+            out.update(records)
+        log.info("enrich: got %d record(s) total", len(out))
+        return out
 
 
 def model_extractor(spec):
@@ -136,6 +158,13 @@ def model_extractor(spec):
     adapter = adapter_for(spec)
 
     def _extract(prompt: str) -> str:
-        return adapter.extract([], prompt).text
+        result = adapter.extract([], prompt)
+        # The adapter continues across provider truncation; if it STILL comes back
+        # truncated, the chunk may be incomplete — say so rather than quietly
+        # dropping the tail records (never bluff — principle 2).
+        if result.finish_reason == "length":
+            log.warning("enrich: reply still truncated after continuation — "
+                        "a chunk may be incomplete; consider a smaller chunk_size")
+        return result.text
 
     return _extract
