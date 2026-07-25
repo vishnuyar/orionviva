@@ -546,10 +546,15 @@ class LedgerProjection:
             if tokens and any(tok in low for tok in tokens):
                 m.nature, m.nature_reason = TRANSFER, BY_OWN_ACCOUNT
                 return
-        # Rung 3: a person's explicit ruling on this movement's nature. Carried on
-        # the category overlay's body, so it needs no new event type (Move 1 is
-        # read-side only); a generic Ruling event is Move 3, if ever.
+        # Rung 3: a person's explicit ruling — on this movement (the category
+        # overlay's body) or on its MERCHANT (the enrichment attributes bag, so a
+        # ruling settles every transaction from that counterparty, past and
+        # future). Neither needed a new event type; Move 3 is where a generic
+        # Ruling would go, if a fifth question type ever earns it.
         nature = (self._categories.get(m.key) or {}).get("nature")
+        if nature not in (TRANSFER, SETTLEMENT, SPENDING):
+            merchant = self._merchant_categories.get(normalize_merchant(m.description)) or {}
+            nature = (merchant.get("attributes") or {}).get("nature")
         if nature in (TRANSFER, SETTLEMENT, SPENDING):
             m.nature, m.nature_reason = nature, BY_RULING
             return

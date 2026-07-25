@@ -108,6 +108,22 @@ def _income_breakdown(proj) -> list[dict]:
     return rows
 
 
+def questions(vault: Vault, limit: int = 10) -> dict:
+    """The one ranked list of what Viva needs (Slice 6.5 Move 2) — highest stake
+    first, with the tail summarized rather than hidden. The existing review cards
+    still answer these; this is the front door that says which to do first."""
+    from ..questions import open_questions
+    return open_questions(vault.ledger, limit=limit)
+
+
+def rule_nature(vault: Vault, merchant: str, nature: str) -> dict:
+    """Answer a nature question at merchant scope — settles every transaction
+    from that counterparty, past and future."""
+    from ..ingest import rule_merchant_nature
+    rule_merchant_nature(vault.ledger, merchant, nature, by="human")
+    return {"ok": True}
+
+
 def categorize_review(vault: Vault, limit: int = 50) -> dict:
     """The categorization queue: uncategorized expense movements, with the seed
     categories to choose from. Provenance rides along quietly."""

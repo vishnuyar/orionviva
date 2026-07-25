@@ -86,6 +86,31 @@ def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
                                        date.today().isoformat(), by=by))
 
 
+def rule_merchant_nature(ledger: Ledger, merchant: str, nature: str,
+                         by: str = "human") -> None:
+    """Record what money with this merchant *is* — spending, a transfer between
+    the person's own accounts, or a settlement (Slice 6.5 Move 2).
+
+    Rides on the existing `MerchantEnriched` attributes bag rather than adding an
+    event type or a field: nature is merchant knowledge like any other attribute,
+    and the write side stays untouched (abstract the read side early, the write
+    side late). One ruling settles every transaction from that merchant, past and
+    future — the Slice 5.5 generalization, applied to nature.
+
+    Only ever called for *commercial* merchants; a peer descriptor's nature varies
+    per payment and is ruled per-movement via ``assign_category(nature=…)``."""
+    prior = ledger.projection().merchant_categories().get(normalize_merchant(merchant), {})
+    attributes = dict(prior.get("attributes") or {})
+    attributes["nature"] = nature
+    log.info("merchant: %s %r nature -> %r", by, merchant, nature)
+    ledger.append(merchant_enriched(
+        normalize_merchant(merchant), prior.get("category", ""),
+        subcategory=prior.get("subcategory", ""),
+        canonical_name=prior.get("canonical_name", ""),
+        attributes=attributes, grade=VERIFIED if by == "human" else CORROBORATED,
+        occurred_at=date.today().isoformat(), by=by))
+
+
 def categorize_merchants_batch(ledger: Ledger, categorize_fn,
                                threshold: int = 1) -> int:
     """Batched merchant categorization (the cost win, Slice 5.5): gather the
