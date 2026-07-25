@@ -189,7 +189,17 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 ---
 
-## Slice 9 — Viva, the conversational agent
+## Slice 9 — Viva, the conversational agent  ✂️ SPLIT (2026-07-25) into 9a / 9b
+
+**Full research + design:** [viva-listens-and-speaks.md](viva-listens-and-speaks.md). The agent and the learning loop are **one engine, two directions**, and they carry different risk: a mis-parsed *ruling* persists and generalizes; a wrong *answer* misleads once. So this slice splits.
+
+**Slice 9a — Viva listens (pull EARLY, likely next).** Answer a question in your own words: a model parses **intent** into a structured **Proposal** — never a figure, never arithmetic — you confirm, and deterministic code applies it through the writers that already exist. Needs no new tools; it is what the author feels the absence of today (a closed-option question cannot express a compound truth like a mortgage payment). Seeds the **Proposal** block, which turns `TransferSuggested`, model category suggestions, forced corrections, drafted budgets (S10) and eventual actions into instances of one thing — making X3 structural rather than remembered. Also forces the unwritten persona work (C1 uncertainty language, C3 when-to-speak).
+
+**Slice 9b — Viva speaks (stays here).** The read direction: a tool registry (data, not code — the doc-type registry pattern again) plus a planner that composes answers from tool *results only*. Waits for a toolset worth asking (net worth, obligations).
+
+**Decision recorded:** no agent-memory framework. Rulings are institutional knowledge, not preferences; the append-only, graded, deterministically-applied event log already avoids the staleness and trustworthy-retrieval problems those frameworks are benchmarking.
+
+## Slice 9 (original entry) — Viva, the conversational agent
 **Block seeded:** Agent/orchestrator (seed: 1 tool → grows) + Persona config + user-memory context.
 
 **Open state:** interaction is fixed function calls / UI; no free-form questions; no voice. *Proof:* no NL entrypoint (red test).
