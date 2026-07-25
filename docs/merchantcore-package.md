@@ -1,0 +1,108 @@
+# merchantcore — the merchant enrichment package
+
+**Status:** Design (Slice 5.6) · **Last updated:** 2026-07-24 · **Origin:** Slice 5.5 built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
+
+**Invariants touched:** **T5 drawn at a package boundary** (only *impersonal* data crosses product → merchantcore: a normalized merchant key and a privacy-linted example — never amounts, dates, accounts, or peer/PII descriptors), T4 (the product's ledger stays the source of truth: merchantcore is a knowledge *cache/service*, and the product imports its results as events, so a replay is self-contained), T6 (contributing to the commons is an opt-in decision), T8 (merchantcore makes provider-agnostic, pinned model calls through `vivacore.models`), I3/I5/I6 (merchants are locale-sharded, categories/attributes are open data, the commons is pack-extensible). Principle 2 (an enriched attribute is a *graded* claim; the personal override always wins).
+
+## The shape: a knowledge service, not a data store
+
+```
+   vivacore  (verify · models · claims — the trust core)
+      ▲
+      │ depends on
+   merchantcore  (normalize · enrich · catalog · commons — merchant knowledge)
+      ▲
+      │ consumes (impersonal boundary)
+   viva / product  (encrypted ledger — applies merchant knowledge to YOUR money)
+```
+
+Clean, one-directional dependency DAG. The product knows nothing about how enrichment works; merchantcore knows nothing about amounts, accounts, or which transactions exist. They meet at one narrow, impersonal interface.
+
+## What lives where
+
+**merchantcore (impersonal, reusable, unencrypted-safe):**
+- `normalize(descriptor) -> key` + `NORMALIZER_VERSION` + `is_shareable(descriptor)` — moved out of the product (deterministic, versioned, portable keys; the privacy lint).
+- `MerchantRecord` — the merchant **entity**: `{key, canonical_name, category, attributes{}, grade, source, version}`. Category is attribute #1; `attributes` is an open bag for `website`, `description`, socials, reviews — added later as fields, never a restructure.
+- `Enricher` — the batched model-call engine + its **versioned enrichment prompt**. Given a model spec and a set of merchants, it returns records. Self-contained: it builds the prompt, calls `vivacore.models`, parses, and grades.
+- `Catalog` — the merchant knowledge base: an unencrypted local store (`{key -> MerchantRecord}`) plus a **pending queue** (submitted, not-yet-enriched merchants), plus commons `import`/`export` (content-addressed, linted).
+- (Later) web/API enrichers (Yelp, website, socials) that fill more of `attributes`.
+
+**product (personal, encrypted):**
+- The `MerchantEnriched` event (generalized from `MerchantCategorized`) — the product's *applied* record of a merchant ruling in its ledger, so categories replay without merchantcore present.
+- The projection's derivation (`override ?? merchant catalog ?? Uncategorized`) — now populated by syncing merchantcore records into events.
+- The per-transaction override, the surface, the spending projection — unchanged.
+
+## The three flows (the deep part)
+
+### 1. Product → merchantcore: submit unknown merchants (the impersonal boundary)
+
+The product's projection already knows its unknown merchants (`uncategorized_merchants()` → `{key: {count, example, shareable}}`). It sends **only the shareable ones**, and **only impersonal fields**:
+
+```
+merchantcore.submit([MerchantHint(key="amzn mktp us", example="AMZN MKTP US")])
+```
+
+`MerchantHint` carries the normalized key and a *linted example* (the example gives the model more signal than the stripped key; `is_shareable` guarantees no peer-payment/PII). **No amount, date, account, count, or transaction reference ever crosses.** This is T5 enforced at the API surface — merchantcore literally cannot learn anything about your money, only that "a merchant named roughly this exists." merchantcore drops hints it already has in its catalog, so submit is idempotent and cheap.
+
+### 2. merchantcore, on its own: enrich via batched model calls
+
+merchantcore owns the model call end-to-end. `Enricher.run(model_spec, batch_size)`:
+1. Pulls a batch of pending (unenriched) merchants from the queue.
+2. Builds the **versioned enrichment prompt** — "for each merchant, return `{canonical_name, category (one of the seed set), description, website?}`" — from the linted examples.
+3. Calls the model through a `vivacore.models` adapter (provider-agnostic, pinned, cost-tracked — the same socket the reader uses).
+4. Parses each result into a `MerchantRecord`, graded `corroborated` (a model batch is stronger than a lone guess, weaker than a human `verified`), tagged with the enrichment-prompt + normalizer version.
+5. Writes records to the catalog and clears them from the queue.
+
+It is **batched and decoupled**: enrichment runs on merchantcore's schedule (a threshold of pending merchants, a periodic pass, or an explicit call), never blocking the product's ingest. The catalog persists across runs, so a merchant is enriched **once**, ever — the O(new-merchants) cost. Cost scales with genuinely-new merchants, and the commons drives even that toward zero.
+
+### 3. merchantcore → product: the product syncs the results in
+
+The product does not read merchantcore live at derivation time (that would break T4's self-contained ledger). Instead it **pulls and imports** — an idempotent sync, in the spirit of `heal`/`sweep`:
+
+```
+for record in merchantcore.catalog.records():
+    if record.key not in already_imported:
+        ledger.append(merchant_enriched(record))   # a MerchantEnriched event
+```
+
+The projection's derivation then categorizes every past and future transaction from that merchant retrospectively. Because the enrichment is now an **event in the product's own ledger**, a replay (or a reingest) reproduces the categorization with merchantcore absent — the ledger stays the source of truth (T4); merchantcore is the *source of the knowledge*, not the store of the answer. The sync runs on startup and after an enrichment pass, like the other heals.
+
+### And the loop closes: contribution
+
+When you *confirm* a merchant's category (`verified` — you overruled or ratified the enrichment), that ruling is the moat. Opt-in (T6), the product hands it back to merchantcore as a stronger signal, and merchantcore's linted, content-addressed `export` is what a commons PR is built from — so your Amazon ruling raises the corroborated-by-count prior that spares the next person the model call entirely.
+
+## The privacy boundary, stated once
+
+Everything that crosses product → merchantcore is impersonal: a normalized merchant key and a linted example. Everything merchantcore holds — the catalog, the commons — is merchant knowledge with **no amounts, dates, accounts, transaction links, or peer/PII merchants**. The catalog is unencrypted *because* it is impersonal; the personal application (which of your transactions, for how much) never leaves the encrypted product ledger. The one residual exposure — the *set* of merchants you frequent — is why contribution is opt-in and biased to popular merchants (share "Amazon", never "Joe's Corner Store, Plano").
+
+## Graded knowledge
+
+A transaction's category grade is the max of the rulings that reach it: `verified` (you confirmed this exact transaction, or this merchant) > `corroborated` (a model batch, or a commons prior with enough independent contributors) > `unverified` (a lone unconfirmed guess) > `Uncategorized`. The trust envelope rides all the way from a document read to a spending answer — a merchant category never enters the trusted layer as fact; it enters as a graded prior you can always overrule.
+
+## The restructuring (bounded)
+
+- **New package `merchantcore/`** (its own `pyproject`, depends on `vivacore`): `normalize`, `MerchantRecord`, `Enricher` (+ the enrichment prompt), `Catalog` (+ commons import/export). The normalizer + `is_shareable` + `export_catalog` move here from the product.
+- **Product, lightly rewired:** `ledger/merchants.py` and `ingest/merchants.py` become re-exports from `merchantcore`; the projection imports `merchantcore.normalize`; `MerchantCategorized` generalizes to `MerchantEnriched` (carrying a record); `categorize_merchants_batch` calls `merchantcore.Enricher` (still injectable for offline tests); a `sync_merchants` step imports catalog records as events. The ledger, ingest pipeline, and other slices are untouched.
+- Dependency DAG stays clean and one-directional; the product gains a `merchantcore` dependency alongside `vivacore`.
+
+## Notes for future slices
+
+- **Multi-attribute enrichment:** the `attributes` bag grows — model-world-knowledge fields (canonical name, description, website) come from the same batched call; **looked-up / dynamic** fields (live Yelp reviews, current socials, logos) are a separate enricher layer with a freshness story, opt-in, cached in the commons.
+- **The commons registry:** a git repo of `MerchantRecord`s keyed by normalizer version + locale, corroborated-by-count, self-healing when merchants rebrand. `Catalog.export` is its input; `import` merges as priors.
+- **Merchant as a Party:** the canonical merchant is the Party primitive; per-location detail and external-counterparty attribution attach to the same key.
+
+---
+
+## Slice 5.6 — extract merchantcore + the live enrichment engine
+
+**Block(s) seeded:** the `merchantcore` package (normalize · MerchantRecord · Enricher · Catalog · commons), the impersonal product↔package boundary, and the sync-as-events import. Reuses `vivacore.models` (the model socket), the grade + provenance spine, and the Slice-5.5 events/projection (generalized).
+
+**Open state:** merchant knowledge lives inside the product, is category-only, and the enrichment model call is an unwired stub. *Proof:* there is no package boundary, no `MerchantRecord`, and `categorize_fn` is injected with no real prompt.
+
+**Implementation:** create `merchantcore` (peer package, depends on vivacore); move the normalizer + lint + export there; add `MerchantRecord` (multi-attribute), the `Enricher` (batched, versioned enrichment prompt via `vivacore.models`), and the `Catalog` (unencrypted store + pending queue + content-addressed commons export/import); rewire the product to submit impersonal hints, run enrichment (injectable), and sync results as `MerchantEnriched` events; generalize `MerchantCategorized` → `MerchantEnriched`.
+
+**Final state:** merchant knowledge is a reusable package the product consumes over a strictly-impersonal boundary; merchantcore enriches merchants on its own via batched model calls and holds a persistent, shareable catalog; the product pulls results in as events and categorizes retrospectively, with the ledger still self-contained; the enrichment is multi-attribute-ready and commons-ready.
+
+**Done criteria / tests:** the product→merchantcore boundary accepts only key + linted example (a test asserts no amount/date/account can cross, and a peer-payment hint is rejected); `Enricher.run` makes one batched, injected model call and produces graded `MerchantRecord`s; the product syncs records to `MerchantEnriched` events and categorizes retrospectively (survives replay with merchantcore absent); `Catalog.export` contains only linted merchant records (no financial data); a human `verified` override still wins; the full suite stays green through the extraction.
+
+**Why now + future use:** it makes the merchant knowledge base a first-class, reusable, shareable asset — the home for the enrichment prompt, multi-attribute records, web enrichers, and the commons registry — cleanly separated from the personal ledger by the impersonal boundary. It is the second shared crown-jewel package (after vivacore), and the concrete substrate for the network effect the format-commons chapter promised.

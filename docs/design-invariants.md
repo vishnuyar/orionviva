@@ -16,6 +16,7 @@ Some requirements are cross-cutting: they belong to no single feature, so they'r
 - **T6 — Nothing leaves silently.** New outbound bytes of any kind are a *decision* (ADR + promise check), never an implementation detail. (ADR-006)
 - **T7 — IDs are permanent; fingerprints are versioned.** (ADR-007)
 - **T8 — Models are pinned, provider-swappable, and never trusted** — access modes: bundled local, OAuth-brokered, BYOK, future attested-cloud. (ADR-001, model trust policy, adoption doc)
+- **T9 — The personal/impersonal boundary is drawn at package edges (added 2026-07-24).** Shared-knowledge packages (e.g. `merchantcore`, the format commons) may hold and share only *impersonal* data — merchant knowledge, format knowledge — never personal financial data. What crosses the product → such a package must be impersonal by construction (a normalized merchant key + a privacy-linted example; a format profile) — never amounts, dates, accounts, or PII descriptors. The unencrypted-safety of a shared catalog is a *consequence* of this boundary, not an exception to T5. (merchantcore-package.md, format-commons.md)
 
 ## Internationalization invariants (added 2026-07-20, standing directive: never lose these while deep in other features)
 
