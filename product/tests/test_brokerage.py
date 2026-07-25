@@ -385,6 +385,26 @@ def test_activity_is_never_dropped_in_silence(tmp_path):
     assert "not posted" in res.message and "1 activity item" in res.message
 
 
+def test_a_held_brokerage_statement_does_not_break_the_sweep(tmp_path):
+    """The real crash: startup ran sweep() -> heal_corroboration(), which rebuilt
+    EVERY conflict-hold as a StatementFacts and died on a held brokerage
+    statement's missing opening_amount. Holds are polymorphic; consumers must
+    route on the registry, not on the shape of the dict."""
+    from viva.ingest import held_items, other_holds, sweep
+    # A brokerage statement whose tally fails -> held as a conflict.
+    ledger, res = _brokerage([("AAPL", "10", "100.00", None)],
+                             cash="0.00", total="999.99", tmp_path=tmp_path)
+    assert res.action == "conflict"
+    swept = sweep(ledger)                       # must not raise
+    assert swept["gaps"] == 0
+    proj = ledger.projection()
+    assert held_items(proj) == []               # not a balance-family item...
+    others = other_holds(proj)                  # ...but visible, never invisible
+    assert len(others) == 1
+    assert others[0]["doc_type"] == "brokerage_statement"
+    assert others[0]["reason"] == "conflict"
+
+
 def test_cash_flow_mismatch_is_held(tmp_path):
     raw = RawStore.open(tmp_path / "raw", "pw")
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))

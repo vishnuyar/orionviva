@@ -13,7 +13,8 @@ from ..answer import answer_spending, answer_total, coverage_summary
 from ..ingest import (SEED_CATEGORIES, apply_human_correction,
                       apply_identity_ruling, assign_category,
                       assign_merchant_category, capture_and_ingest,
-                      confirm_transfer, held_items, reject_transfer)
+                      confirm_transfer, held_items, other_holds,
+                      reject_transfer)
 from ..ingest.identity import masked
 from ..ledger import UnknownAccountError
 from ..vault import Vault
@@ -79,6 +80,9 @@ def overview(vault: Vault) -> dict:
         "income_breakdown": _income_breakdown(proj),
         "positions": [p.to_dict() for p in proj.positions()],
         "review_count": len(held_items(proj)),
+        # Held documents with no fix-it affordance yet (pay stub, brokerage) —
+        # listed so nothing the system is sitting on is invisible.
+        "other_holds": other_holds(proj),
         "transfer_review_count": len(proj.transfer_suggestions()),
         "paystub_review_count": len(pending_paystubs),
         "uncategorized_count": len(proj.uncategorized_expenses()),

@@ -158,6 +158,21 @@ def can_project(doc_type: str) -> bool:
     return p is not None and p.identity in PROJECTABLE_IDENTITIES
 
 
+def identity_of_facts(facts: dict | None) -> str:
+    """Which reconciliation family a *held* document belongs to, read from its
+    stored facts.
+
+    Held documents are polymorphic — a balance statement, a pay stub and a
+    brokerage statement can all be held for review, and their facts have entirely
+    different shapes. Consumers must route on this rather than assume (a real
+    crash: the corroboration heal rebuilt every conflict-hold as a
+    ``StatementFacts`` and died on a held brokerage statement's missing
+    ``opening_amount``). The registry is the routing authority, so the answer
+    lives here."""
+    p = profile_for((facts or {}).get("doc_type", ""))
+    return p.identity if p else ""
+
+
 def extraction_prompt_for(doc_type: str) -> tuple[str, str] | None:
     """Compose the extraction prompt (text, version) a classified type's profile
     owns, or None if there is no projector for it yet. The version is the
