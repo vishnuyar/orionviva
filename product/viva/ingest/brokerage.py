@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
 from vivacore.verify.normalize import parse_amount, parse_date
@@ -141,19 +141,63 @@ class BrokerageFacts:
             activity=[BrokerageActivity.from_dict(x) for x in d.get("activity", [])])
 
 
-# Instrument labels that are really the CASH/sweep line, not a holding. A real
-# run showed a statement's sweep balance returned as a position named "CASH": the
-# tally still passed (it is self-consistent either way), but cash-as-a-holding is
-# semantically wrong and breaks the Stage-2 cash flow. We fold such a row into the
-# cash balance instead of recording a measurement (Slice 6 fix, 2026-07-25).
+# A brokerage account's "cash" is usually a money-market fund — Fidelity's core
+# position is SPAXX — so the same money can appear as a cash line, as a holding,
+# or (across two months of the SAME account) as one then the other. Two real
+# statements proved it: November printed cash = the sweep balance exactly, while
+# December printed cash EXCLUDING a separately-listed sweep. Treating the sweep as
+# a holding double-counts in the first case; treating it as cash under-counts in
+# the second. So we recognize it here and let the projector decide which reading
+# reconciles (Slice 6 fix, 2026-07-25).
 _CASH_INSTRUMENTS = frozenset({
     "cash", "cash balance", "cash & cash investments", "cash and equivalents",
     "cash equivalents", "sweep", "cash sweep", "core position", "money market"})
 
+# Substrings that mark a holding as the cash sweep whatever else its label says
+# (e.g. "FIDELITY GOVERNMENT MONEY MARKET (SPAXX)").
+_CASH_MARKERS = ("money market", "cash sweep", "core position", "sweep account")
+
 
 def is_cash_row(instrument: str) -> bool:
-    """True when a 'position' is really the account's cash line."""
-    return (instrument or "").strip().lower() in _CASH_INSTRUMENTS
+    """True when a listed 'position' is really the account's cash.
+
+    Being wrong here is safe: the projector only *acts* on this when one reading
+    of the tally reconciles exactly and the other doesn't. A misclassified holding
+    simply fails to close and the statement is held, never silently mis-posted."""
+    label = (instrument or "").strip().lower()
+    if label in _CASH_INSTRUMENTS:
+        return True
+    return any(marker in label for marker in _CASH_MARKERS)
+
+
+def resolve_sweep_cash(facts: "BrokerageFacts") -> tuple["BrokerageFacts", str]:
+    """Decide whether the statement's cash line already includes the money-market
+    sweep, and normalize so that it always does.
+
+    The same account can print it either way month to month, so we don't guess: we
+    try both readings and take the one whose tally closes **exactly**. If neither
+    closes (or there is no sweep), the facts come back untouched and the ordinary
+    gate decides — decisive-or-hold, never a fitted answer.
+
+    Returns (facts, note); ``note`` is empty when nothing was decided. Shared by
+    the projector and the claims diagnostic so they can never disagree."""
+    from vivacore.verify.arithmetic import check_brokerage_identity
+
+    sweeps = [p for p in facts.positions if is_cash_row(p.instrument)]
+    if not sweeps:
+        return facts, ""
+    holdings = [p for p in facts.positions if not is_cash_row(p.instrument)]
+    sweep_total = sum((p.market_value for p in sweeps), start=Decimal("0"))
+    values = [p.market_value for p in holdings]
+    separate = check_brokerage_identity(values, facts.cash + sweep_total, facts.total)
+    included = check_brokerage_identity(values, facts.cash, facts.total)
+    if not (separate.passed or included.passed):
+        return facts, ""
+    if included.passed and not separate.passed:
+        return (replace(facts, positions=holdings),
+                "the cash line already included it")
+    return (replace(facts, cash=facts.cash + sweep_total, positions=holdings),
+            "it was listed separately from the cash line")
 
 
 def _find_json(text: str) -> str | None:
@@ -241,14 +285,12 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
         # Optional: unreadable means unknown, never fatal (never invented either).
         cost = _optional_amount(rp.get("cost_basis_raw"), locale, currency,
                                 f"position {i} cost_basis")
-        instrument = str(rp.get("instrument", "")).strip()
-        if is_cash_row(instrument):
-            # Not a holding — it's the cash line. Fold it into cash so the tally
-            # stays true and the account's cash is real (never a "position").
-            cash += mv
-            continue
+        # Sweep rows are kept AS READ here; only the projector can tell whether the
+        # statement's cash line already includes them (it needs the stated total to
+        # decide), so folding at parse time would destroy the evidence.
         positions.append(PositionFact(
-            instrument=instrument, units=units_n.decimal(), market_value=mv,
+            instrument=str(rp.get("instrument", "")).strip(),
+            units=units_n.decimal(), market_value=mv,
             cost_basis=cost, page=rp.get("page")))
 
     # Stage 2 (optional): opening cash + the period's cash activity. Absent on a

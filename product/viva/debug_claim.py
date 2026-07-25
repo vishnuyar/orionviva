@@ -70,8 +70,12 @@ def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
         return
 
     if identity == BROKERAGE_IDENTITY:
-        # The parser already folds any cash/sweep row into `cash`, so what's left
-        # in `positions` is real holdings and `cash` is the post-fold figure.
+        # Apply the SAME sweep decision the projector makes, so this tool can never
+        # disagree with what an ingest would actually do.
+        from .ingest.brokerage import resolve_sweep_cash
+        facts, sweep_note = resolve_sweep_cash(facts)
+        if sweep_note:
+            print(f"[sweep]  money-market sweep counted as cash — {sweep_note}.")
         holdings = facts.positions
         print(f"[parse] ok — brokerage, account={facts.account_ref!r} as of {facts.as_of}")
         print(f"        {len(holdings)} holding(s), {len(facts.activity)} activity "

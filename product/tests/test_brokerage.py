@@ -131,18 +131,18 @@ def test_a_later_statement_revalues_the_same_holding(tmp_path):
 
 def test_a_cash_row_is_cash_not_a_holding(tmp_path):
     """A real run returned the sweep balance as a position named CASH. The tally
-    passes either way, so no gate catches it — fold it into cash instead."""
+    passes either way, so no gate catches it — treat it as cash instead."""
     ledger, res = _brokerage(
         [("CASH", "15507.13", "15507.13", None),
-         ("SPAXX", "117.36", "117.36", None)],
+         ("AAPL", "10", "117.36", None)],
         cash="0.00", total="15624.49", tmp_path=tmp_path)
     assert res.action == "posted"
     proj = ledger.projection()
     (acct,) = [i.account for i in proj.account_infos()]
     # CASH is not a holding...
-    assert [p.instrument for p in proj.positions()] == ["SPAXX"]
+    assert [p.instrument for p in proj.positions()] == ["AAPL"]
     # ...it's the account's cash, and the total is unchanged.
-    assert proj.balance(acct).amount == Decimal("15507.13")
+    assert proj.cash_value(acct) == Decimal("15507.13")
     assert proj.account_value(acct) == Decimal("15624.49")
 
 
@@ -188,6 +188,60 @@ def test_a_composed_value_reports_its_oldest_as_of(tmp_path):
     as_of, mixed = proj.holdings_as_of(acct)
     assert mixed                                    # AAPL is Q1, VTSAX is Q2
     assert as_of == "2026-03-31"                    # honest to the OLDEST part
+
+
+# ------------------------- the sweep, from two real Fidelity statements -------
+
+_SWEEP = "FIDELITY GOVERNMENT MONEY MARKET (SPAXX)"
+
+
+def test_sweep_counted_once_when_the_cash_line_already_includes_it(tmp_path):
+    """November's shape: cash printed as 139.77 AND the sweep listed at 139.77 —
+    the same money. Adding both over-counts by exactly the sweep; the reading that
+    reconciles is 'the cash line already includes it'."""
+    ledger, res = _brokerage(
+        [(_SWEEP, "139.770", "139.77", None),
+         ("SPXS", "1500", "8760.00", "9323.49"),
+         ("COST PUT", "10", "5650.00", "6256.77"),
+         ("TSLA PUT SHT", "-1", "-1770.00", "-2788.24"),
+         ("TSLA PUT", "1", "4790.00", "5964.68")],
+        cash="139.77", total="17569.77", tmp_path=tmp_path)
+    assert res.action == "posted"                      # was held before this fix
+    proj = ledger.projection()
+    (acct,) = [i.account for i in proj.account_infos()]
+    assert _SWEEP not in [p.instrument for p in proj.positions()]
+    assert proj.cash_value(acct) == Decimal("139.77")   # counted ONCE
+    assert proj.account_value(acct) == Decimal("17569.77")
+    assert "sweep" in res.message and "counted as cash" in res.message
+
+
+def test_sweep_added_when_the_cash_line_excludes_it(tmp_path):
+    """December's shape, same account: cash 20,998.11 EXCLUDES a separately listed
+    sweep of 295.12. Here the sweep must be ADDED — the opposite of November."""
+    ledger, res = _brokerage(
+        [(_SWEEP, "295.120", "295.12", None),
+         ("SPX CALL SHT", "-1", "-9955.00", "-9955.00"),
+         ("SPX CALL", "1", "890.00", "1475.67"),
+         ("SPXW PUT SHT", "-1", "-8920.00", "-8920.00"),
+         ("SPXW PUT", "1", "16370.00", "16370.00"),
+         ("NVDA PUT", "10", "8200.00", "5606.69")],
+        cash="20998.11", total="27878.23", tmp_path=tmp_path)
+    assert res.action == "posted"
+    proj = ledger.projection()
+    (acct,) = [i.account for i in proj.account_infos()]
+    # Normalized so cash means the same thing in both months: it includes the sweep.
+    assert proj.cash_value(acct) == Decimal("21293.23")   # 20,998.11 + 295.12
+    assert proj.account_value(acct) == Decimal("27878.23")
+
+
+def test_a_sweep_that_reconciles_neither_way_is_still_held(tmp_path):
+    """The rule only fires when a reading closes EXACTLY. A genuine misread has no
+    reading that works, so it holds — decisive-or-hold, never a fitted answer."""
+    ledger, res = _brokerage(
+        [(_SWEEP, "100", "100.00", None), ("AAPL", "10", "5000.00", None)],
+        cash="50.00", total="9999.99", tmp_path=tmp_path)
+    assert res.action == "conflict"
+    assert ledger.projection().positions() == []
 
 
 # --------------------------------------------------------- Stage 2: cash flow
@@ -271,6 +325,64 @@ def test_a_contribution_ties_to_the_funding_account(tmp_path):
     assert checking_out.key in linked
     # And so it is NOT spending — the $5,000 doesn't inflate checking outflow.
     assert proj.spending_by_category().get("Uncategorized", Decimal("0")) == Decimal("0")
+
+
+def test_opening_cash_carries_forward_when_the_statement_omits_it(tmp_path):
+    """The real December case: no opening cash printed, 24 activity items that
+    would otherwise be silently dropped. The ledger already knows the opening —
+    it is November's closing cash (Slice 1's forward-stitching rule, applied to
+    brokerage cash)."""
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    # November: closes with 200.00 cash.
+    nov = BrokerageFacts(
+        doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+        account_ref="Fidelity", currency="USD", as_of="2026-11-30",
+        cash=Decimal("200.00"), total=Decimal("200.00"), positions=[],
+        account_number="000000003311", institution="Fidelity")
+    capture_and_ingest(raw, ledger, b"nov", lambda d, i: _stamp(nov, i),
+                       captured_at="2026-12-01")
+    # December: NO opening cash printed, but activity that reconciles from 200.
+    dec = BrokerageFacts(
+        doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+        account_ref="Fidelity", currency="USD", as_of="2026-12-31",
+        opening_cash=None, cash=Decimal("1650.00"), total=Decimal("1650.00"),
+        positions=[],
+        activity=[
+            BrokerageActivity("2026-12-02", "contribution", Decimal("1500.00"),
+                              description="Eft Funds Received"),
+            BrokerageActivity("2026-12-31", "dividend", Decimal("10.00")),
+            BrokerageActivity("2026-12-31", "fee", Decimal("60.00")),
+            BrokerageActivity("2026-12-15", "sell", Decimal("1000.00")),
+            BrokerageActivity("2026-12-16", "buy", Decimal("1000.00")),
+        ],
+        account_number="000000003311", institution="Fidelity")
+    res = capture_and_ingest(raw, ledger, b"dec", lambda d, i: _stamp(dec, i),
+                             captured_at="2027-01-02")
+    assert res.action == "posted"
+    assert "5 activity item(s) posted" in res.message     # nothing dropped
+    proj = ledger.projection()
+    (acct,) = [i.account for i in proj.account_infos() if i.kind == "investment"]
+    assert proj.balance(acct).amount == Decimal("1650.00")   # 200 + 1500 + 10 - 60
+    assert proj.income_by_currency() == {"USD": Decimal("10.00")}
+
+
+def test_activity_is_never_dropped_in_silence(tmp_path):
+    """If the flow still can't be reconciled, the result SAYS the activity is held
+    back — an incomplete picture must be visibly incomplete (X2), not quiet."""
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    facts = BrokerageFacts(
+        doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+        account_ref="Fidelity", currency="USD", as_of="2026-12-31",
+        opening_cash=None, cash=Decimal("500.00"), total=Decimal("500.00"),
+        positions=[],
+        activity=[BrokerageActivity("2026-12-02", "contribution", Decimal("100.00"))],
+        account_number="000000003311", institution="Fidelity")
+    res = capture_and_ingest(raw, ledger, b"lone",
+                             lambda d, i: _stamp(facts, i), captured_at="2027-01-02")
+    assert res.action == "posted"
+    assert "not posted" in res.message and "1 activity item" in res.message
 
 
 def test_cash_flow_mismatch_is_held(tmp_path):
