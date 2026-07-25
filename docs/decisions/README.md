@@ -14,3 +14,4 @@ Short records of decisions: context, alternatives considered, what was decided, 
 | [008](ADR-008-public-promise-inventory.md) | Public promise inventory, v1 (8 promises) | One-way per entry (D6) |
 | [009](ADR-009-dco-contributions.md) | Contributions under DCO | One-way (D7) |
 | [010](ADR-010-verification-never-in-weights.md) | Verification never moves into model weights | One-way (D8) |
+| [011](ADR-011-blind-host-tier.md) | Blind-host tier — encrypted hosting with client-held keys, client-side compute (Proposed, not adopted) | Two-way until publicly announced |
