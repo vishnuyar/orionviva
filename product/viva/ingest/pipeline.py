@@ -603,6 +603,21 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     as a `PositionObserved` MEASUREMENT — not posted (M1: cash-flow over accrual;
     only realized cash flows post). Unrealized gain is never recorded here — it is
     a derived, as-of-date presentation view over these measurements."""
+    # A statement's cash/sweep line is sometimes read back as a "position" named
+    # CASH. It is not a holding: fold it into the cash balance before anything
+    # else, so the account's cash is real and no cash-measurement is recorded
+    # (Slice 6 fix from a real run). The tally is unchanged either way.
+    from .brokerage import is_cash_row
+    cash_rows = [p for p in facts.positions if is_cash_row(p.instrument)]
+    if cash_rows:
+        facts = replace(
+            facts,
+            cash=facts.cash + sum((p.market_value for p in cash_rows),
+                                  start=Decimal("0")),
+            positions=[p for p in facts.positions if not is_cash_row(p.instrument)])
+        log.info("post_brokerage: folded %d cash row(s) into the cash balance",
+                 len(cash_rows))
+
     recon = check_brokerage_identity(
         [p.market_value for p in facts.positions], facts.cash, facts.total)
     when = facts.as_of

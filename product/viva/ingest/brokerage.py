@@ -137,6 +137,21 @@ class BrokerageFacts:
             activity=[BrokerageActivity.from_dict(x) for x in d.get("activity", [])])
 
 
+# Instrument labels that are really the CASH/sweep line, not a holding. A real
+# run showed a statement's sweep balance returned as a position named "CASH": the
+# tally still passed (it is self-consistent either way), but cash-as-a-holding is
+# semantically wrong and breaks the Stage-2 cash flow. We fold such a row into the
+# cash balance instead of recording a measurement (Slice 6 fix, 2026-07-25).
+_CASH_INSTRUMENTS = frozenset({
+    "cash", "cash balance", "cash & cash investments", "cash and equivalents",
+    "cash equivalents", "sweep", "cash sweep", "core position", "money market"})
+
+
+def is_cash_row(instrument: str) -> bool:
+    """True when a 'position' is really the account's cash line."""
+    return (instrument or "").strip().lower() in _CASH_INSTRUMENTS
+
+
 def _find_json(text: str) -> str | None:
     if not text:
         return None
@@ -205,10 +220,15 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
             if cerr:
                 return None, f"position {i} cost_basis {cerr}"
             cost = cb
+        instrument = str(rp.get("instrument", "")).strip()
+        if is_cash_row(instrument):
+            # Not a holding — it's the cash line. Fold it into cash so the tally
+            # stays true and the account's cash is real (never a "position").
+            cash += mv
+            continue
         positions.append(PositionFact(
-            instrument=str(rp.get("instrument", "")).strip(),
-            units=units_n.decimal(), market_value=mv, cost_basis=cost,
-            page=rp.get("page")))
+            instrument=instrument, units=units_n.decimal(), market_value=mv,
+            cost_basis=cost, page=rp.get("page")))
 
     # Stage 2 (optional): opening cash + the period's cash activity. Absent on a
     # holdings-only statement — then only the snapshot is recorded (Stage 1).
