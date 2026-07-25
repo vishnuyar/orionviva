@@ -25,10 +25,12 @@ import logging
 from vivacore.models import ModelSpec, adapter_for
 from vivacore.models.base import PageImage
 
+from .brokerage import from_brokerage_json
 from .paystub import from_paystub_json
 from .pipeline import ModelPhase, ReadResult
 from .prompt_library import classify_prompt
-from .registry import PAYSTUB_IDENTITY, extraction_prompt_for, profile_for
+from .registry import (BROKERAGE_IDENTITY, PAYSTUB_IDENTITY,
+                       extraction_prompt_for, profile_for)
 from .statement import from_model_json
 
 log = logging.getLogger(__name__)
@@ -109,8 +111,9 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
     # The profile's identity selects the facts parser — a pay stub is not a
     # balance statement (Slice 4). Same two-phase read, different shape.
     profile = profile_for(doc_type)
-    parse_fn = (from_paystub_json if profile and profile.identity == PAYSTUB_IDENTITY
-                else from_model_json)
+    identity = profile.identity if profile else ""
+    parse_fn = {PAYSTUB_IDENTITY: from_paystub_json,
+                BROKERAGE_IDENTITY: from_brokerage_json}.get(identity, from_model_json)
     log.info("reader: extract with profile prompt %s via %s (json_mode=%s) ...",
              prompt_version, spec.model, spec.json_mode)
     rr = read_with_retry(lambda p: adapter.extract(pages, p),

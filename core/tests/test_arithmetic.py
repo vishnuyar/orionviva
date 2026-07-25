@@ -4,7 +4,28 @@ from decimal import Decimal
 
 import pytest
 
-from vivacore.verify.arithmetic import check_balance_identity, check_sum
+from vivacore.verify.arithmetic import (check_balance_identity,
+                                        check_brokerage_identity, check_sum)
+
+
+def test_brokerage_identity_passes():
+    # Σ position market values + cash = total account value.
+    r = check_brokerage_identity(
+        position_values=["18400.00", "6600.00"], cash="1000.00", total="26000.00")
+    assert r.passed, r.explain()
+
+
+def test_brokerage_identity_catches_a_misread_holding():
+    r = check_brokerage_identity(
+        position_values=["18400.00", "5600.00"], cash="1000.00", total="26000.00")
+    assert not r.passed
+    assert r.delta == "1000.00"
+
+
+def test_brokerage_identity_positions_only_no_cash():
+    r = check_brokerage_identity(
+        position_values=["1600.00"], cash="0", total="1600.00")
+    assert r.passed, r.explain()
 
 
 def test_balance_identity_passes():

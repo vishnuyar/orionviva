@@ -95,6 +95,37 @@ def check_paystub_identity(
     )
 
 
+def check_brokerage_identity(
+    position_values: Iterable[Decimal | str],
+    cash: Decimal | str,
+    total: Decimal | str,
+    tolerance: Decimal | str = "0",
+) -> CheckResult:
+    """sum(position market values) + cash == account total.
+
+    A brokerage statement's self-check, the divergent sibling of the balance
+    identity (Slice 6): a point-in-time *snapshot* consistency test rather than a
+    flow. If it passes, every position value and the cash corroborate the stated
+    total at once — the densest, most model-free cross-check, so a single misread
+    holding fails it loudly. The formula is the brokerage profile's data (the
+    registry's 'code universal, per-type formula is data' claim).
+    """
+    cash_d = _as_decimal(cash)
+    total_d = _as_decimal(total)
+    tol = _as_decimal(tolerance)
+    holdings = sum((_as_decimal(v) for v in position_values), start=Decimal("0"))
+    expected = holdings + cash_d
+    delta = total_d - expected
+    return CheckResult(
+        passed=abs(delta) <= tol,
+        check="brokerage identity (Σ positions + cash = total)",
+        expected=str(expected),
+        actual=str(total_d),
+        delta=str(delta),
+        tolerance=str(tol),
+    )
+
+
 def check_sum(
     items: Iterable[Decimal | str],
     total: Decimal | str,

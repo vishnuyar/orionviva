@@ -41,14 +41,17 @@ from dataclasses import dataclass, field
 # (positions×price + cash = total), 1099 (box sums) join later, each as data.
 BALANCE_IDENTITY = "balance"      # opening + Σ(effect on balance) = closing
 PAYSTUB_IDENTITY = "paystub"      # gross − Σ(deductions) = net
+BROKERAGE_IDENTITY = "brokerage"  # Σ(position market_value) + cash = total
 
 # Identities the pipeline has a projector for. Adding a projector is what turns a
 # parked type into a posted one — a registry concern, not a routing rewrite.
-PROJECTABLE_IDENTITIES = frozenset({BALANCE_IDENTITY, PAYSTUB_IDENTITY})
+PROJECTABLE_IDENTITIES = frozenset({BALANCE_IDENTITY, PAYSTUB_IDENTITY,
+                                    BROKERAGE_IDENTITY})
 
 # Account kinds — our interpretation, not the model's.
 DEPOSITORY = "depository"         # an asset; balance = money held
 LIABILITY = "liability"          # a card/loan; balance = money owed
+INVESTMENT = "investment"        # an asset holding cash + positions (Slice 6)
 
 
 @dataclass(frozen=True)
@@ -104,6 +107,18 @@ _SEED: tuple[DocProfile, ...] = (
         aliases=frozenset({
             "paystub", "pay_slip", "payslip", "salary_slip", "earnings_statement",
             "wage_statement", "payroll_statement",
+        })),
+    # The second DIVERGENT profile (Slice 6): its own shape (positions + cash) and
+    # a snapshot identity (Σ market_value + cash = total). Kind INVESTMENT — an
+    # asset that holds cash AND positions, distinct from a plain depository.
+    DocProfile(
+        "brokerage_statement", INVESTMENT, identity=BROKERAGE_IDENTITY,
+        profile_version="brk-v1", extract_base="brokerage-base-v1",
+        type_fragment="brokerage-v1",
+        aliases=frozenset({
+            "brokerage", "brokerage_account_statement", "investment_statement",
+            "investment_account_statement", "retirement_statement",
+            "retirement_account_statement", "ira_statement", "401k_statement",
         })),
 )
 

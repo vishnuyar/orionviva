@@ -96,6 +96,20 @@ def main() -> None:
         if len(sub) > 1:
             top = sorted(sub.items(), key=lambda x: x[1], reverse=True)[:8]
             print("    by subcategory: " + ", ".join(f"{c} {v}" for c, v in top))
+    positions = proj.positions()
+    if positions:
+        print(f"holdings (measured, Slice 6): {len(positions)} position(s)")
+        for p in positions:
+            ug = p.unrealized_gain()
+            print(f"    {p.instrument}: {p.units} units = {p.currency} "
+                  f"{p.market_value} as of {p.as_of} [{p.valuation_class}]"
+                  + (f"  (unrealized {ug})" if ug is not None else ""))
+        for i in infos:
+            if i.kind == "investment":
+                print(f"    {i.name} total value = {proj.account_value(i.account)} "
+                      f"(cash {proj.balance(i.account).amount} + holdings "
+                      f"{proj.holdings_value(i.account)})")
+
     income = proj.income_by_currency()
     if income:
         print("recognized income (gross): "
