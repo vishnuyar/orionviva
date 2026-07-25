@@ -55,8 +55,8 @@ def test_card_purchase_is_expense_not_income(tmp_path):
     # A card with a purchase (+300, owed up) and a payment (-100, owed down).
     card = _facts("0.00", [("2026-01-05", "STORE", "300.00"),
                            ("2026-01-20", "PAYMENT THANK YOU", "-100.00")],
-                  "200.00", ref="Card 4650", doc_type="credit_card_statement",
-                  number="000000004650")
+                  "200.00", ref="Card 7799", doc_type="credit_card_statement",
+                  number="000000007799")
     _up(raw, ledger, b"card", card)
     proj = ledger.projection()
     # The purchase's counter-leg is an EXPENSE (not income); the payment is a

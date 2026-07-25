@@ -16,11 +16,11 @@ def _card(txns, tmp_path):
     total = sum(Decimal(a) for _, _, a in txns)
     card = StatementFacts(
         doc_id="", doc_type="credit_card_statement", doc_type_confidence=0.98,
-        account_ref="Card 4650", currency="USD",
+        account_ref="Card 7799", currency="USD",
         opening_amount=Decimal("0"), opening_date="2026-01-01",
         closing_amount=total, closing_date="2026-01-31",
         transactions=[TxnFact(d, desc, Decimal(a)) for d, desc, a in txns],
-        account_number="000000004650", institution="Chase")
+        account_number="000000007799", institution="Chase")
     capture_and_ingest(raw, ledger, b"card", lambda data, did: _stamp(card, did),
                        captured_at="2026-02-01")
     return ledger
@@ -47,7 +47,7 @@ def test_only_impersonal_hints_cross_the_boundary(tmp_path):
     assert not any("venmo" in k for k in cat.records())
     assert not any("venmo" in k for k in cat.pending())
     # No amount, account number, or statement date leaked into the model prompt.
-    for forbidden in ("50.00", "20.00", "000000004650", "2026-01-05"):
+    for forbidden in ("50.00", "20.00", "000000007799", "2026-01-05"):
         assert forbidden not in seen["prompt"]
 
 
