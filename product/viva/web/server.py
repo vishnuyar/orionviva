@@ -58,6 +58,10 @@ def make_handler(vault, read_fn):
                 return self._send(service.categorize_review(vault))
             if u.path == "/api/merchants":
                 return self._send(service.merchant_review(vault))
+            if u.path == "/api/questions":
+                n = parse_qs(u.query).get("limit", ["10"])[0]
+                return self._send(service.questions(
+                    vault, int(n) if n.isdigit() else 10))
             if u.path == "/api/account":
                 acct = parse_qs(u.query).get("id", [""])[0]
                 return self._send(service.account_view(vault, acct))
@@ -94,6 +98,10 @@ def make_handler(vault, read_fn):
                     d = json.loads(raw or b"{}")
                     return self._send(service.assign_merchant(
                         vault, d["merchant"], d["category"]))
+                if u.path == "/api/rule-nature":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.rule_nature(
+                        vault, d["merchant"], d["nature"]))
                 if u.path == "/api/upload":
                     fn = self.headers.get("X-Filename", "upload.bin")
                     return self._send(service.upload(vault, fn, raw, read_fn))

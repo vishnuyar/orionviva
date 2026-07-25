@@ -1,6 +1,6 @@
 # The Question Queue (Slice 6.5, Move 2)
 
-**Status:** Design spec — pre-build · **Last updated:** 2026-07-25 · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
+**Status:** BUILT (`product/viva/questions.py`, `python -m viva.ask`, `/api/questions`) · **Last updated:** 2026-07-25 · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
 
 **Invariants touched:** T1 (a question carries the evidence it rests on) · T2 (questions are raised deterministically — a model never decides *whether* to ask) · **T4 (an answer is an append-only ruling event; we reuse the writers we already have)** · X2 (an unanswered question leaves the figure visibly incomplete, never silently resolved) · principle 5 (**serve, don't overwhelm** — the failure mode is asking about everything) · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts). Extends [verification-findings-and-correction.md](verification-findings-and-correction.md)'s Rung 2 ("the human, asked well") from one document to the whole vault.
 
@@ -73,6 +73,16 @@ Slice 9 (Viva) will re-voice these through the persona; the *content* — figure
 - Answering routes to the existing writers — no new event type is introduced by this slice.
 - Question ids are stable across projections (the same question doesn't churn between reads).
 - Existing identity / transfer / merchant / nature tests stay green.
+
+## As-built (2026-07-25)
+
+Three decisions the build forced, all resolved toward the reversible option:
+
+- **What raises a *nature* question.** The spec advertised a vehicle purchase and a property closing as the two highest-leverage questions — but neither is `provisional`; both are confidently categorized and counted as spending. So "ask about provisional items" would have missed exactly what was promised. **A nature question is raised wherever nature rests on weak evidence** (a category hint, rung 4, *or* the plain default, rung 5) for a merchant we already have a category for — and **leverage ranking is the filter**. No list of "capital-looking" categories, which would be jurisdiction-shaped guessing (I5). Big-ticket ambiguity floats up; a grocery run sinks. An *unknown* merchant raises the more fundamental MERCHANT question instead, so the two never collide.
+- **Alongside, not replacing.** The four existing review cards stay for this pass; the queue ships as the ranked front door that says *which to do first* and carries the answering actions. Rebuilding four working confirm flows in one go was the higher-risk path; retire them once the queue's answering is proven.
+- **Merchant-scope nature rides the existing attributes bag.** `merchant_enriched(attributes={"nature": …})` — no new event type and no new field, so the write side stayed untouched. The nature derivation's rung 3 now reads a ruling from the movement overlay *or* the merchant catalog, which is what makes one answer settle a counterparty past and future. Peer descriptors are excluded from merchant-scope rulings (`is_shareable`) and stay per-movement, per the local-categorization decision.
+
+Built: `Question` + `open_questions()` in `product/viva/questions.py` (held documents → transfer suggestions → unknown merchants → weak-nature merchants, ranked by amount with a stable id per subject); `rule_merchant_nature` writer; `python -m viva.ask` (read-only CLI); `/api/questions` + `/api/rule-nature`. Tests: `test_questions.py` (9) covering ranking, tail summary, both scopes, one-ruling-settles-and-stops-asking, id stability, and that the event vocabulary is unchanged. Full suite 303 green.
 
 ## Known limitation (and what Move 3 fixes)
 
