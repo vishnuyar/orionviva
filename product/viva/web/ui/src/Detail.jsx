@@ -95,43 +95,94 @@ export function HeldDetail({docId, onBack, onDone}) {
   )
 }
 
-/* A merchant's transactions — the context behind "is this spending?" and
- * "what is this?". Also where a peer descriptor is answered per transaction. */
+/* A merchant's transactions — the context behind "what is this?" and "is this
+ * spending?". Keyed on the NORMALIZED merchant, so what you see is exactly what
+ * your answer will settle. A peer descriptor is answered per transaction (one
+ * Zelle is a gift, the next a loan repayment); a commercial merchant once. */
 export function MerchantDetail({q, onBack, onDone}) {
   const [d, setD] = useState(null)
-  const [busy, setBusy] = useState(false)
-  useEffect(() => { api.categorize().then(setD) }, [])
-  const cats = q.refs.categories || d?.categories || []
   const [cat, setCat] = useState('')
-  const rows = (d?.items || []).filter(
-    i => (i.descriptor || '').toLowerCase().includes((q.refs.example || '').toLowerCase().slice(0, 12)))
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { api.merchantTxns(q.refs.merchant).then(setD) }, [q.refs.merchant])
+  if (!d) return <div className="card muted">Loading…</div>
+  const cats = q.refs.categories || d.categories || []
+  const chosen = cat || cats[0] || ''
+  const perTransaction = q.scope === 'one'
   return (
     <div className="card">
       <a className="back" onClick={onBack}>← back</a>
-      <h3 style={{marginTop: 10}}>{q.refs.example || q.refs.merchant}</h3>
+      <h3 style={{marginTop: 10}}>{q.refs.example || d.merchant}</h3>
       <div className="quiet">{q.text}</div>
-      <div className="row" style={{marginTop: 10}}>
-        <select value={cat || cats[0] || ''} onChange={e => setCat(e.target.value)}>
-          {cats.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <button disabled={busy} onClick={async () => {
-          setBusy(true)
-          try { await api.assignMerchant(q.refs.merchant, cat || cats[0]); await onDone() }
-          finally { setBusy(false) }
-        }}>Categorize everywhere</button>
+      <div className="quiet">
+        {d.count} transaction{d.count === 1 ? '' : 's'} · {money(d.total, d.currency)} in total
       </div>
-      {rows.length > 0 && (
-        <table>
-          <thead><tr><th>Date</th><th>Description</th><th className="amt">Amount</th></tr></thead>
-          <tbody>
-            {rows.slice(0, 40).map((t, i) => (
-              <tr key={i}><td>{t.date}</td><td>{t.descriptor}</td>
-                <td className="amt">{money(t.amount, t.currency)}</td></tr>
-            ))}
-          </tbody>
-        </table>
+      {q.kind === 'nature' ? (
+        <div className="row" style={{marginTop: 12}}>
+          <button disabled={busy} onClick={async () => {
+            setBusy(true); try { await api.ruleNature(d.merchant, 'spending'); await onDone() } finally { setBusy(false) }
+          }}>Money I spent</button>
+          <button className="ghost" disabled={busy} onClick={async () => {
+            setBusy(true); try { await api.ruleNature(d.merchant, 'transfer'); await onDone() } finally { setBusy(false) }
+          }}>Moved between my accounts</button>
+          <button className="ghost" disabled={busy} onClick={async () => {
+            setBusy(true); try { await api.ruleNature(d.merchant, 'settlement'); await onDone() } finally { setBusy(false) }
+          }}>Something I now own</button>
+        </div>
+      ) : !perTransaction && (
+        <div className="row" style={{marginTop: 12}}>
+          <select value={chosen} onChange={e => setCat(e.target.value)}>
+            {cats.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button disabled={busy || !chosen} onClick={async () => {
+            setBusy(true)
+            try { await api.assignMerchant(d.merchant, chosen); await onDone() }
+            finally { setBusy(false) }
+          }}>Categorize everywhere</button>
+        </div>
       )}
+      <table>
+        <thead><tr><th>Date</th><th>Description</th>
+          <th className="amt">Amount</th>{perTransaction && <th></th>}</tr></thead>
+        <tbody>
+          {d.items.map(t => (
+            <tr key={t.key}>
+              <td>{t.date}</td>
+              <td>{t.description}
+                <div className="src">
+                  {t.category || 'uncategorized'}
+                  {t.counts_as_spending ? '' : ` · not counted as spending (${t.nature})`}
+                </div></td>
+              <td className="amt">{money(t.amount, t.currency)}</td>
+              {perTransaction && (
+                <td className="amt">
+                  <PerTransaction txn={t} cats={cats} onDone={onDone} />
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
+  )
+}
+
+/* Peer payments vary one to the next, so each gets its own answer (the
+ * local-categorization ruling). Wires /api/assign-category, built in Slice 5 and
+ * reachable only by curl until now. */
+function PerTransaction({txn, cats, onDone}) {
+  const [c, setC] = useState('')
+  const [busy, setBusy] = useState(false)
+  return (
+    <span className="row" style={{justifyContent: 'flex-end'}}>
+      <select value={c || cats[0] || ''} onChange={e => setC(e.target.value)}>
+        {cats.map(x => <option key={x} value={x}>{x}</option>)}
+      </select>
+      <button className="ghost" disabled={busy} onClick={async () => {
+        setBusy(true)
+        try { await api.assignCategory(txn.key, c || cats[0]); await onDone() }
+        finally { setBusy(false) }
+      }}>Set</button>
+    </span>
   )
 }
 
