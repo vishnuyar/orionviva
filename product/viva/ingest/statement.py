@@ -150,6 +150,33 @@ def _date(raw, locale: str) -> tuple[str | None, str | None]:
     return n.value, None
 
 
+def period_date(raw, locale: str, period_end: str,
+                ) -> tuple[str | None, str | None]:
+    """Resolve a printed date that may omit its year, given only the statement's
+    period END (the close/valuation date).
+
+    Statements print activity lines as "11/04" — the year lives in the header.
+    The close-only variant of ``_txn_date``, for documents that state a single
+    as-of date rather than a period (a brokerage statement). Deterministic: use
+    the period-end year; if that lands *after* the period end, the line must
+    belong to the previous year (a December→January statement). We never invent a
+    year without a period to anchor it (I2)."""
+    n = parse_date(str(raw), locale)              # the model may have included one
+    if n.ok:
+        return n.value, None
+    if not period_end:
+        return None, f"date {raw!r}: no year printed and no statement period to infer it from"
+    year = int(period_end[:4])
+    n = parse_date(str(raw), locale, default_year=year)
+    if not n.ok:
+        return None, f"date {raw!r}: {n.status} ({n.reason})"
+    if n.value > period_end:
+        n = parse_date(str(raw), locale, default_year=year - 1)
+        if not n.ok:
+            return None, f"date {raw!r}: {n.status} ({n.reason})"
+    return n.value, None
+
+
 def _signed_amount(rt: dict, mag: Decimal, i: int
                    ) -> tuple[Decimal | None, str | None]:
     """Sign a transaction's positive magnitude by its effect on the printed

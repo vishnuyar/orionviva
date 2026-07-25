@@ -74,7 +74,13 @@ class OpenAICompatAdapter:
             try:
                 resp = httpx.post(self.url, json=body, headers=headers, timeout=c.timeout_s)
             except httpx.HTTPError as e:
-                raise AdapterError(f"[{c.name}] HTTP failure calling {self.url}: {e}") from e
+                # Say how long we actually waited and what the limit was — a bare
+                # "the read operation timed out" is undiagnosable, and tuning a
+                # timeout you can't measure is guessing.
+                raise AdapterError(
+                    f"[{c.name}] HTTP failure calling {self.url} after "
+                    f"{time.monotonic() - started:.1f}s (timeout {c.timeout_s}s, "
+                    f"attempt {attempt + 1}): {e}") from e
             latency = time.monotonic() - started
             if resp.status_code != 200:
                 raise AdapterError(

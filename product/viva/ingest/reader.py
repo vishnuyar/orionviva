@@ -147,9 +147,22 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
         tries += 1
         log.warning("reader: parse FAILED (%s); re-asking the model (retry %d)",
                     err, tries)
-        retry_prompt = (prompt + "\n\nYour previous reply was NOT valid JSON "
-                        f"({err}). Return ONLY one valid JSON object: escape "
-                        "quotes and newlines inside strings, no trailing commas.")
+        # Two different failures need two different asks. A JSON *syntax* error
+        # means "reply again, valid this time". A *value* that wouldn't normalize
+        # (a real run returned a cost basis of 'not applicable') means the JSON
+        # was fine and only one field is wrong — saying "your reply was not valid
+        # JSON" there is untrue, wastes a call, and doesn't tell the model what to
+        # fix. Name the offending field instead (T1: be specific about evidence).
+        if _is_syntax_error(err):
+            retry_prompt = (prompt + "\n\nYour previous reply was NOT valid JSON "
+                            f"({err}). Return ONLY one valid JSON object: escape "
+                            "quotes and newlines inside strings, no trailing commas.")
+        else:
+            retry_prompt = (
+                prompt + "\n\nYour previous reply was valid JSON, but one value "
+                f"could not be read: {err}. Return the SAME JSON with ONLY that "
+                "field corrected — copy it exactly as printed on the document, or "
+                "use \"\" if the document does not show it. Never invent a value.")
         result = extract(retry_prompt)
         total_cost += result.cost_usd
         facts, err = parse_fn(result.text, doc_id, locale, currency)
@@ -179,6 +192,14 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
     return ReadResult(doc_type=facts.doc_type,
                       doc_type_confidence=facts.doc_type_confidence,
                       facts=facts, **common)
+
+
+def _is_syntax_error(err: str) -> bool:
+    """True when the reply wasn't parseable JSON at all (as opposed to a single
+    value inside good JSON failing to normalize)."""
+    low = (err or "").lower()
+    return ("json did not parse" in low or "no json object" in low
+            or "top-level json" in low)
 
 
 def _peek_classification(text: str) -> tuple[str, float]:
