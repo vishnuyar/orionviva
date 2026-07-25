@@ -84,6 +84,10 @@ Three decisions the build forced, all resolved toward the reversible option:
 
 Built: `Question` + `open_questions()` in `product/viva/questions.py` (held documents → transfer suggestions → unknown merchants → weak-nature merchants, ranked by amount with a stable id per subject); `rule_merchant_nature` writer; `python -m viva.ask` (read-only CLI); `/api/questions` + `/api/rule-nature`. Tests: `test_questions.py` (9) covering ranking, tail summary, both scopes, one-ruling-settles-and-stops-asking, id stability, and that the event vocabulary is unchanged. Full suite 303 green.
 
+## Known limitation: questions it should not ask (added 2026-07-25)
+
+The first real run asked two questions that have no correct answer among the options offered — a **compound payment** (a mortgage is interest *and* principal *and* escrow at once) and a **capital purchase** (a car, which the ledger cannot yet represent as a thing you own). Forcing a nature ruling on either produces a wrong figure in one direction or the other. The fix is not a better option list: it is to recognize these cases and *say what is missing* — the document that states the split, or the Asset primitive — rather than inviting a guess. Recorded in [learning-mode.md](learning-mode.md); deferred by decision.
+
 ## Known limitation (and what Move 3 fixes)
 
 A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("anything in title-and-escrow is a capital purchase") cannot be recorded as one rule today — answering applies it to the movements at hand. Fixing that needs a ruling that carries its own scope, which is exactly the generic `Ruling` event of **Move 3** — deliberately deferred until a fifth question type (Slice 8's obligations, or Slice 11's loans) proves the shape. Until then the queue re-asks about genuinely new merchants, which is honest, if slightly repetitive.
