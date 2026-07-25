@@ -219,6 +219,8 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 ---
 
+> _Forward note (from the question queue's first real run, 2026-07-25): a mortgage payment is **compound** — interest, principal and escrow in one movement — so it cannot be answered by a single nature ruling and must be **split** (`split_transaction`, built in v0 and still unused). The ratios come from the loan statement or the 1098, which is why this lands here. Until then the queue must name such payments as compound and ask for the document rather than force a guess: [learning-mode.md](learning-mode.md)._
+
 ## Slice 11 — Loans, insurance, tax, FX (heavier domains — each its own smallest-seed sub-slice)
 **Blocks seeded:** Loan/amortization · Provision (insurance/loan terms) · Tax (attribute + liability projection + cost basis + jurisdiction) · FX/currency.
 
