@@ -121,9 +121,12 @@ def main() -> None:
                   + (f"  (unrealized {ug})" if ug is not None else ""))
         for i in infos:
             if i.kind == "investment":
+                as_of, mixed = proj.holdings_as_of(i.account)
                 print(f"    {i.name} total value = {proj.account_value(i.account)} "
-                      f"(cash {proj.balance(i.account).amount} + holdings "
-                      f"{proj.holdings_value(i.account)})")
+                      f"(cash {proj.cash_value(i.account)} + holdings "
+                      f"{proj.holdings_value(i.account)}) as of {as_of or '?'}"
+                      + ("  ⚠ parts measured on different dates — the total is "
+                         "only good as of the oldest" if mixed else ""))
 
     income = proj.income_by_currency()
     if income:
