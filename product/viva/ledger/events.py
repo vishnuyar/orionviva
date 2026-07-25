@@ -376,6 +376,30 @@ def merchant_enriched(merchant: str, category: str, subcategory: str = "",
     )
 
 
+def position_observed(account_id: str, instrument: str, units: Decimal | str,
+                      market_value: Decimal | str, currency: str, occurred_at: str,
+                      cost_basis: Decimal | str | None = None,
+                      valuation_class: str = "measured", grade: str = CORROBORATED,
+                      provenance: Provenance | None = None) -> Event:
+    """A holding *measured* at the statement date (Slice 6) — a unit quantity of an
+    instrument and its value, NOT a posting. A brokerage account changes value when
+    the market reprices holdings already owned, with no money moving; that is a
+    revaluation, not a transaction, so it is recorded as a dated measurement (like
+    ``ClosingBalanceObserved`` measures a balance) and never posted (M1: cash-flow
+    over accrual — only realized cash flows post). Append-only: next period emits a
+    NEW measurement for the same instrument; the projection reads the latest as-of.
+    ``valuation_class`` is ``measured`` here (a statement value at its date); the
+    unrealized gain (market_value − cost_basis) is a derived presentation view, never
+    a ledger fact. ``cost_basis`` is optional (absent when the statement omits it —
+    never invented)."""
+    body = {"account_id": account_id, "instrument": instrument,
+            "units": str(Decimal(units)), "market_value": str(Decimal(market_value)),
+            "currency": currency, "valuation_class": valuation_class, "grade": grade}
+    body["cost_basis"] = "" if cost_basis in (None, "") else str(Decimal(cost_basis))
+    return Event("PositionObserved", occurred_at, body=body,
+                 provenance=provenance or Provenance())
+
+
 def transaction_recorded(postings: list[Posting], description: str,
                          occurred_at: str, tags: list[str] | None = None,
                          provenance: Provenance | None = None) -> Event:

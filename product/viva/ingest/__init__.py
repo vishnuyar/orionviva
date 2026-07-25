@@ -8,10 +8,12 @@ or network dependencies.
 
 from .diagnose import (DIAGNOSIS_VERSION, FORCED, SUGGESTED, UNLOCALIZED,
                        ReconciliationFinding, diagnose)
+from .brokerage import BrokerageFacts, PositionFact, from_brokerage_json
 from .pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED,
                        POSTED, IngestResult, ReadResult, account_id_for,
                        capture_and_ingest, heal_corroboration, heal_gaps,
-                       heal_paystubs, post_paystub, post_statement, sweep)
+                       heal_paystubs, post_brokerage, post_paystub,
+                       post_statement, sweep)
 from .categorize import (SEED_CATEGORIES, assign_category,
                          assign_merchant_category, categorize_merchants_batch,
                          enrich_merchants, export_catalog, normalize_category,
@@ -19,7 +21,8 @@ from .categorize import (SEED_CATEGORIES, assign_category,
 from .merchants import NORMALIZER_VERSION, is_shareable, normalize_merchant
 from .paystub import Deduction, PayStubFacts, from_paystub_json
 from .raw_store import RawStore
-from .registry import (BALANCE_IDENTITY, DEPOSITORY, LIABILITY, DocProfile,
+from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, DEPOSITORY,
+                       INVESTMENT, LIABILITY, PAYSTUB_IDENTITY, DocProfile,
                        account_kind_for, can_project, profile_for, register)
 from .review import (HeldItem, apply_human_correction, apply_identity_ruling,
                      held_items)
@@ -33,6 +36,7 @@ __all__ = [
     "post_paystub", "account_id_for", "heal_gaps", "heal_corroboration",
     "heal_paystubs", "sweep", "AWAITING",
     "PayStubFacts", "Deduction", "from_paystub_json",
+    "BrokerageFacts", "PositionFact", "from_brokerage_json", "post_brokerage",
     "assign_category", "suggest_categories", "normalize_category",
     "SEED_CATEGORIES", "assign_merchant_category", "categorize_merchants_batch",
     "enrich_merchants", "export_catalog", "normalize_merchant", "is_shareable",
@@ -41,6 +45,7 @@ __all__ = [
     "diagnose", "ReconciliationFinding", "DIAGNOSIS_VERSION",
     "FORCED", "SUGGESTED", "UNLOCALIZED",
     "DocProfile", "profile_for", "register", "can_project", "account_kind_for",
-    "BALANCE_IDENTITY", "DEPOSITORY", "LIABILITY",
+    "BALANCE_IDENTITY", "PAYSTUB_IDENTITY", "BROKERAGE_IDENTITY",
+    "DEPOSITORY", "LIABILITY", "INVESTMENT",
     "POSTED", "PARKED", "DUPLICATE", "CONFLICT", "GAP", "IDENTITY",
 ]

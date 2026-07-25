@@ -1,7 +1,8 @@
 """The doc-type registry: a new statement type is DATA (a row), not code."""
 
-from viva.ingest import (BALANCE_IDENTITY, DEPOSITORY, LIABILITY, DocProfile,
-                         account_kind_for, can_project, profile_for, register)
+from viva.ingest import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, DEPOSITORY,
+                         INVESTMENT, LIABILITY, DocProfile, account_kind_for,
+                         can_project, profile_for, register)
 
 
 def test_canonical_and_alias_resolve_to_same_profile():
@@ -27,9 +28,9 @@ def test_whole_balance_family_shares_one_identity():
 
 
 def test_unknown_type_has_no_projector():
-    assert profile_for("brokerage_statement") is None
-    assert not can_project("brokerage_statement")
-    assert account_kind_for("brokerage_statement") == DEPOSITORY   # safe default
+    assert profile_for("loan_statement") is None
+    assert not can_project("loan_statement")
+    assert account_kind_for("loan_statement") == DEPOSITORY        # safe default
 
 
 def test_pay_stub_is_a_divergent_projectable_profile():
@@ -37,6 +38,15 @@ def test_pay_stub_is_a_divergent_projectable_profile():
     assert p is not None and p.identity == "paystub"    # not the balance family
     assert can_project("pay_stub")                       # it has a projector
     assert profile_for("payslip") is p                   # alias resolves
+
+
+def test_brokerage_is_a_divergent_investment_profile():
+    p = profile_for("brokerage_statement")
+    assert p is not None and p.identity == BROKERAGE_IDENTITY   # its own identity
+    assert p.account_kind == INVESTMENT                          # a third kind
+    assert can_project("brokerage_statement")                    # has a projector
+    assert profile_for("ira_statement") is p                     # alias resolves
+    assert account_kind_for("401k_statement") == INVESTMENT
 
 
 def test_registering_a_new_balance_type_is_data_only():

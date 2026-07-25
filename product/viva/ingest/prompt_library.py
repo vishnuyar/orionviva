@@ -132,6 +132,38 @@ Universal rules:
 - If a value is genuinely unreadable, write it exactly as best you can see it —
   never invent a figure to make gross − deductions equal net.
 """,
+    "brokerage-base-v1": """\
+You are reading one brokerage / investment / retirement account statement. Return
+ONLY a JSON object, no prose.
+
+Extract exactly this shape:
+
+{
+  "doc_type_confidence": 0.0-1.0,
+  "account_number": "the account number AS PRINTED (full or masked); '' if none",
+  "institution": "the brokerage / custodian name, e.g. 'Fidelity', 'Vanguard', 'Zerodha'",
+  "account_names": ["each account-holder name printed on the statement"],
+  "account_ref": "a short human label for the account (e.g. 'Fidelity Roth ...1234')",
+  "as_of_raw": "the statement / valuation date AS PRINTED (the date the holdings are valued)",
+  "cash_raw": "the cash / sweep / money-market balance in the account AS PRINTED (0 if none)",
+  "total_raw": "the TOTAL account value AS PRINTED (positions + cash)",
+  "positions": [
+    {"instrument": "the ticker or fund/security name AS PRINTED", "units_raw": "the quantity / shares held AS PRINTED", "market_value_raw": "this holding's market value AS PRINTED", "cost_basis_raw": "this holding's cost basis AS PRINTED if shown, else ''", "page": <page number>}
+  ]
+}
+
+Universal rules:
+- Copy amounts, quantities, and dates EXACTLY as printed. Do not reformat, convert,
+  or do math.
+- "market_value_raw" is the statement's value for THAT holding as of the statement
+  date. "units_raw" is the share/unit quantity.
+- "cost_basis_raw": copy it only if the statement prints a cost basis for the
+  holding; otherwise use '' — never compute or invent a cost basis.
+- The holdings and cash must satisfy: (sum of position market values) + cash =
+  total account value. List EVERY holding so they do.
+- If a value is genuinely unreadable, write it as best you can see it — never
+  invent a figure to make positions + cash equal the total.
+""",
 }
 
 # Per-type fragments. Each names what the printed balance means and the
@@ -184,6 +216,16 @@ and sort each into its universal bucket (tax / retirement / insurance / other) �
 that bucket is jurisdiction-free (a US 401k, an Indian EPF, a UK pension are all
 "retirement"). Completeness matters most: a missing deduction breaks the identity
 and will be caught.
+""",
+    "brokerage-v1": """\
+This is a brokerage / investment / retirement account statement. It reports the
+HOLDINGS (positions) in the account and their value as of the statement date, plus
+any cash. The identity is: (sum of every position's market value) + cash = the
+total account value. List EVERY holding from ALL sections (equities, funds, bonds,
+and any cash/sweep line shown separately) — completeness matters most; a missing
+holding breaks the identity and will be caught. Capture cost basis only where the
+statement prints it. Do not read performance/return percentages — only holdings,
+their units and value, cash, and the total.
 """,
 }
 

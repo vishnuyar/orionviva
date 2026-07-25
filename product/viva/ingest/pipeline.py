@@ -36,20 +36,22 @@ from decimal import Decimal
 from typing import Callable
 
 from vivacore.verify.arithmetic import (CheckResult, check_balance_identity,
+                                        check_brokerage_identity,
                                         check_paystub_identity)
 
 from ..ledger.events import (CORROBORATED, VERIFIED, Provenance, account_opened,
                              closing_balance_observed, document_captured,
-                             opening_balance_observed, read_recorded,
-                             statement_held)
+                             opening_balance_observed, position_observed,
+                             read_recorded, statement_held)
 from ..ledger.ledger import Ledger
 from ..ledger.postings import paystub_decomposition, simple_transaction
+from .brokerage import BrokerageFacts
 from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, diagnose
 from .identity import account_key
 from .paystub import PayStubFacts
 from .raw_store import RawStore
-from .registry import (PAYSTUB_IDENTITY, account_kind_for, can_project,
-                       profile_for)
+from .registry import (BROKERAGE_IDENTITY, INVESTMENT, PAYSTUB_IDENTITY,
+                       account_kind_for, can_project, profile_for)
 from .statement import StatementFacts, TxnFact
 
 log = logging.getLogger(__name__)
@@ -588,6 +590,65 @@ def heal_paystubs(ledger: Ledger) -> int:
             posted += 1
 
 
+def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
+    """Verify a brokerage statement's internal tally and, only if it holds, record
+    its holdings as measurements (Slice 6, Option A).
+
+    The divergent gate: `Σ position market_value + cash = total`, a snapshot
+    consistency check (not a flow). On failure the statement is held (never
+    guessed — principle 2). On success the account is opened as `investment`, the
+    cash is observed as an attested snapshot balance, and each holding is emitted
+    as a `PositionObserved` MEASUREMENT — not posted (M1: cash-flow over accrual;
+    only realized cash flows post). Unrealized gain is never recorded here — it is
+    a derived, as-of-date presentation view over these measurements."""
+    recon = check_brokerage_identity(
+        [p.market_value for p in facts.positions], facts.cash, facts.total)
+    when = facts.as_of
+    if not recon.passed:
+        log.info("post_brokerage: internal tally FAILED (%s); holding %s",
+                 recon.explain(), facts.doc_id[:12])
+        finding = ReconciliationFinding(
+            reconciles=False, kind="brokerage_tally", status=UNLOCALIZED,
+            delta=recon.delta, confidence=0.1,
+            message=(f"The holdings and cash don't add up to the stated total "
+                     f"(off by {recon.delta}) — a position may be misread. Held "
+                     "for your review."))
+        ledger.append(statement_held(facts.doc_id, facts.to_dict(),
+                                     finding.to_dict(), "conflict", when,
+                                     Provenance(doc_id=facts.doc_id)))
+        return IngestResult(
+            doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
+            grade="conflicted", reconciliation=recon, finding=finding,
+            message=f"Not posted; held for your review. {finding.message}")
+
+    proj = ledger.projection()
+    account = account_id_for(facts)
+    if not proj.seen_account(account):
+        log.info("post_brokerage: opening investment account %s (%s) at %s",
+                 account, facts.account_ref, when)
+        ledger.append(account_opened(
+            account, INVESTMENT, facts.account_ref or account, facts.currency,
+            when, institution=facts.institution,
+            account_number=facts.account_number,
+            account_names=facts.account_names))
+    # Cash: an attested snapshot balance at the statement date (real money).
+    ledger.append(closing_balance_observed(
+        account, facts.cash, when, facts.provenance("cash balance")))
+    # Holdings: dated measurements, NOT postings (Option A).
+    for p in facts.positions:
+        ledger.append(position_observed(
+            account, p.instrument, p.units, p.market_value, facts.currency, when,
+            cost_basis=p.cost_basis, grade=CORROBORATED,
+            provenance=facts.provenance(f"position {p.instrument}")))
+    log.info("post_brokerage: %s recorded cash %s + %d position(s), total %s "
+             "as of %s", account, facts.cash, len(facts.positions), facts.total, when)
+    return IngestResult(
+        doc_id=facts.doc_id, action=POSTED, doc_type=facts.doc_type,
+        account=account, grade="corroborated", reconciliation=recon,
+        message=(f"Holdings recorded: {len(facts.positions)} position(s) plus cash "
+                 f"{facts.currency} {facts.cash}, total {facts.total} as of {when}."))
+
+
 def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                        read_fn: ReadFn, filename: str = "",
                        captured_at: str = "") -> IngestResult:
@@ -641,8 +702,11 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         # (4) route by the profile's identity to the right gate + post-projector
         # (the divergent-profile dispatch, Slice 4): a pay stub is not a balance.
         profile = profile_for(rr.doc_type)
-        if profile is not None and profile.identity == PAYSTUB_IDENTITY:
+        identity = profile.identity if profile is not None else ""
+        if identity == PAYSTUB_IDENTITY:
             res = post_paystub(ledger, rr.facts)
+        elif identity == BROKERAGE_IDENTITY:
+            res = post_brokerage(ledger, rr.facts)
         else:
             res = post_statement(ledger, rr.facts)
         if res.action == POSTED:

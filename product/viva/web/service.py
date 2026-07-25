@@ -26,20 +26,30 @@ def overview(vault: Vault) -> dict:
     total = answer_total(proj)
     accounts = []
     for info in proj.account_infos():
-        if info.kind not in ("depository", "liability"):
+        if info.kind not in ("depository", "liability", "investment"):
             continue
         ba = proj.balance(info.account)
         liability = info.kind == "liability"
-        accounts.append({
+        investment = info.kind == "investment"
+        # An investment account's headline is its TOTAL value — cash + the latest
+        # measured holdings (Slice 6) — not the bare cash balance.
+        amount = proj.account_value(info.account) if investment else (
+            abs(ba.amount) if liability else ba.amount)
+        row = {
             "account": info.account, "name": info.name or info.account,
             "currency": info.currency,
             # A liability's balance is money owed; show a positive owed figure and
             # let the page label it, so the sign convention never confuses a person.
-            "amount": str(abs(ba.amount) if liability else ba.amount),
-            "kind": info.kind, "liability": liability,
+            "amount": str(amount),
+            "kind": info.kind, "liability": liability, "investment": investment,
             "grade": ba.grade, "as_of": ba.dated,
             "institution": info.institution, "number": masked(info.number),
-            "holders": info.names})
+            "holders": info.names}
+        if investment:
+            ug = proj.unrealized_gain(info.account)
+            row["holdings"] = str(proj.holdings_value(info.account))
+            row["unrealized_gain"] = str(ug) if ug is not None else None
+        accounts.append(row)
     income = proj.income_by_currency()
     pending_paystubs = [b for b in proj.open_holds()
                         if "gross" in b.get("facts", {})]
@@ -54,6 +64,7 @@ def overview(vault: Vault) -> dict:
                                     in proj.spending_by_subcategory().items()},
         "income": {c: str(v) for c, v in income.items()},
         "income_breakdown": _income_breakdown(proj),
+        "positions": [p.to_dict() for p in proj.positions()],
         "review_count": len(held_items(proj)),
         "transfer_review_count": len(proj.transfer_suggestions()),
         "paystub_review_count": len(pending_paystubs),

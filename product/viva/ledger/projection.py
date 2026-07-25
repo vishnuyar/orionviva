@@ -80,6 +80,38 @@ class AccountInfo:
 
 
 @dataclass
+class PositionRecord:
+    """One holding measured at a date (Slice 6). A measurement, not a posting —
+    unrealized gain is DERIVED here, as-of-date, never a stored/ledger fact (M1)."""
+    account: str
+    instrument: str
+    units: Decimal
+    market_value: Decimal
+    currency: str
+    as_of: str
+    cost_basis: Decimal | None
+    valuation_class: str
+    grade: str
+    provenance: Provenance
+
+    def unrealized_gain(self) -> Decimal | None:
+        """market_value − cost_basis, or None when cost basis is unknown. Computed
+        on demand (presentation view), never posted or reconciled."""
+        return None if self.cost_basis is None else self.market_value - self.cost_basis
+
+    def to_dict(self) -> dict:
+        ug = self.unrealized_gain()
+        return {"account": self.account, "instrument": self.instrument,
+                "units": str(self.units), "market_value": str(self.market_value),
+                "currency": self.currency, "as_of": self.as_of,
+                "cost_basis": (str(self.cost_basis)
+                               if self.cost_basis is not None else None),
+                "unrealized_gain": (str(ug) if ug is not None else None),
+                "valuation_class": self.valuation_class, "grade": self.grade,
+                "provenance": self.provenance.to_dict()}
+
+
+@dataclass
 class Resolution:
     """How a statement's identity signals resolve against known accounts."""
     account_id: str            # the account this statement belongs to
@@ -157,6 +189,9 @@ class _AccountState:
     names: list = field(default_factory=list)
     closing_confirmed: bool = False            # a human attested the closing
     lines: list = field(default_factory=list)  # TxnLine per posting on this account
+    # Holdings (Slice 6): instrument -> latest PositionObserved measurement (by
+    # as_of). Measurements, not postings — they never touch `balance`.
+    positions: dict = field(default_factory=dict)
 
 
 class LedgerProjection:
@@ -291,6 +326,28 @@ class LedgerProjection:
                 st.closing_date = event.occurred_at
                 st.closing_prov = event.provenance
                 st.closing_confirmed = event.body.get("confirmed_by") == "human"
+
+        elif et == "PositionObserved":
+            acct = event.body["account_id"]
+            st = self._state(acct)
+            st.seen = True
+            if did:
+                self._posted.add(did)
+            instrument = event.body["instrument"]
+            prior = st.positions.get(instrument)
+            # Keep the latest measurement by value-time (as_of); an earlier one was
+            # true when written. Append-only: a revaluation is a new observation.
+            if prior is None or event.occurred_at >= prior.get("as_of", ""):
+                cb = event.body.get("cost_basis", "")
+                st.positions[instrument] = {
+                    "units": Decimal(event.body["units"]),
+                    "market_value": Decimal(event.body["market_value"]),
+                    "currency": event.body.get("currency", ""),
+                    "as_of": event.occurred_at,
+                    "cost_basis": Decimal(cb) if cb not in (None, "") else None,
+                    "valuation_class": event.body.get("valuation_class", "measured"),
+                    "grade": event.body.get("grade", ""),
+                    "provenance": event.provenance}
 
         elif et == "TransactionRecorded":
             if did:
@@ -639,3 +696,54 @@ class LedgerProjection:
         ans.currency = st.currency
         ans.dated = st.closing_date or st.opening_date
         return ans
+
+    # ------------------------------------------------- positions (Slice 6)
+
+    def positions(self, account: str | None = None) -> list[PositionRecord]:
+        """Latest measured holdings, across investment accounts (or one). Each is a
+        dated measurement (`class=measured`), carrying its as-of date and grade —
+        never presented as "current"."""
+        out: list[PositionRecord] = []
+        for acct, st in self._acct.items():
+            if account is not None and acct != account:
+                continue
+            for instrument, p in sorted(st.positions.items()):
+                out.append(PositionRecord(
+                    account=acct, instrument=instrument, units=p["units"],
+                    market_value=p["market_value"], currency=p["currency"],
+                    as_of=p["as_of"], cost_basis=p["cost_basis"],
+                    valuation_class=p["valuation_class"], grade=p["grade"],
+                    provenance=p["provenance"]))
+        return out
+
+    def holdings_value(self, account: str) -> Decimal:
+        """Σ market value of an account's latest measured positions (no cash)."""
+        st = self._acct.get(account)
+        if st is None:
+            return Decimal("0")
+        return sum((p["market_value"] for p in st.positions.values()),
+                   start=Decimal("0"))
+
+    def account_value(self, account: str) -> Decimal:
+        """An account's total value: for an investment account, cash (the observed
+        balance) + Σ latest position market values; for any other, its balance.
+        The composition an investment account's headline figure comes from."""
+        st = self._acct.get(account)
+        if st is None or not st.seen:
+            raise UnknownAccountError(account)
+        base = self._effective(st) if st.closing is None else st.closing
+        if st.kind == "investment":
+            return base + self.holdings_value(account)
+        return self.balance(account).amount
+
+    def unrealized_gain(self, account: str | None = None) -> Decimal | None:
+        """The derived paper gain over held positions (Σ market_value − Σ cost
+        basis), as-of the latest measurements — a PRESENTATION view (M1), never a
+        ledger fact. None when no position carries a cost basis to compare."""
+        total = Decimal("0")
+        any_basis = False
+        for p in self.positions(account):
+            if p.cost_basis is not None:
+                any_basis = True
+                total += p.market_value - p.cost_basis
+        return total if any_basis else None
