@@ -57,7 +57,10 @@ def _flow(m: MovementInfo) -> str:
         **destination** (money arriving);
       - a liability going up is a charge — **neither**.
     """
-    if m.kind == "depository":
+    # An investment account's cash behaves like a depository for matching: money
+    # in (a contribution) is a destination, money out (a withdrawal) a source
+    # (Slice 6 Stage 2 — a checking→brokerage contribution is an internal transfer).
+    if m.kind in ("depository", "investment"):
         return "source" if m.amount < 0 else "destination"
     if m.kind == "liability":
         return "destination" if m.amount < 0 else "neither"

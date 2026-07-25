@@ -61,6 +61,77 @@ DEDUCTION_ACCOUNTS = {
     "other": "Expenses:Other",
 }
 
+# Brokerage cash-activity targets (Slice 6 Stage 2). The investment account's cash
+# moves for real reasons; each reason has a counter-leg the aggregates already
+# read: income buckets (dividends/interest/capital gains) feed income; a fee is an
+# expense; a buy/sell moves cash to/from Assets:Investments (an internal
+# reallocation, NOT spending or income); a contribution/withdrawal is a transfer
+# that ties to the funding account (Slice 3), never spending.
+INCOME_DIVIDENDS = "Income:Dividends"
+INCOME_INTEREST = "Income:Interest"
+INCOME_CAPITAL_GAINS = "Income:CapitalGains"   # REALIZED gain on a sell (a tax event)
+EXPENSE_FEES = "Expenses:Fees"
+ASSET_INVESTMENTS = "Assets:Investments"       # invested capital at cost (buys − sold basis)
+
+# Signed cash effect of each activity kind (+ money into the account's cash).
+BROKERAGE_CASH_IN = frozenset({"contribution", "dividend", "interest", "sell"})
+BROKERAGE_CASH_OUT = frozenset({"withdrawal", "fee", "buy"})
+BROKERAGE_ACTIVITY_KINDS = BROKERAGE_CASH_IN | BROKERAGE_CASH_OUT
+
+
+def brokerage_cash_effect(kind: str, amount: Decimal | str) -> Decimal:
+    """The signed effect of one activity on the account's cash (+ in, − out)."""
+    amt = Decimal(amount)
+    if kind in BROKERAGE_CASH_IN:
+        return amt
+    if kind in BROKERAGE_CASH_OUT:
+        return -amt
+    raise ValueError(f"unknown brokerage activity kind {kind!r}")
+
+
+def brokerage_activity_transaction(account: str, kind: str, amount: Decimal | str,
+                                   description: str, occurred_at: str,
+                                   instrument: str = "",
+                                   realized_gain: Decimal | str | None = None,
+                                   provenance=None) -> Event:
+    """One brokerage cash movement, posted with the counter-leg its *reason*
+    dictates (Slice 6 Stage 2). ``amount`` is the positive magnitude; the cash
+    leg's sign comes from the kind. A contribution/withdrawal balances against
+    Transfers (it ties to the funding account and is excluded from spending); a
+    dividend/interest against Income (recognized); a fee against Expenses; a
+    buy/sell against Assets:Investments (an internal cash↔holdings reallocation,
+    never income/expense) — with a sell's ``realized_gain``, if the statement
+    reports it, split off to Income:CapitalGains (proceeds = basis + gain). Only
+    realized cash events post; the unrealized paper change never does (M1)."""
+    amt = Decimal(amount)
+    if amt <= 0:
+        raise ValueError("a brokerage activity amount must be a positive magnitude")
+    cash = brokerage_cash_effect(kind, amt)      # signed cash leg
+    if kind in ("contribution", "withdrawal"):
+        counter = [Posting(TRANSFERS_UNCATEGORIZED, -cash, UNVERIFIED)]
+    elif kind == "dividend":
+        counter = [Posting(INCOME_DIVIDENDS, -cash, VERIFIED)]
+    elif kind == "interest":
+        counter = [Posting(INCOME_INTEREST, -cash, VERIFIED)]
+    elif kind == "fee":
+        counter = [Posting(EXPENSE_FEES, -cash, VERIFIED)]
+    elif kind == "buy":
+        counter = [Posting(ASSET_INVESTMENTS, -cash, VERIFIED)]
+    elif kind == "sell":
+        gain = (Decimal(realized_gain)
+                if realized_gain not in (None, "") else None)
+        if gain is None:                          # pure conversion; gain unknown
+            counter = [Posting(ASSET_INVESTMENTS, -cash, VERIFIED)]
+        else:                                     # proceeds = basis + realized gain
+            basis = cash - gain                   # cash is +proceeds here
+            counter = [Posting(ASSET_INVESTMENTS, -basis, VERIFIED),
+                       Posting(INCOME_CAPITAL_GAINS, -gain, VERIFIED)]
+    else:
+        raise ValueError(f"unknown brokerage activity kind {kind!r}")
+    label = description or (f"{kind} {instrument}".strip())
+    legs = _require_balanced([Posting(account, cash, VERIFIED), *counter])
+    return transaction_recorded(legs, label, occurred_at, None, provenance)
+
 
 def paystub_decomposition(gross: Decimal | str, net: Decimal | str,
                           deductions: list, description: str, occurred_at: str,

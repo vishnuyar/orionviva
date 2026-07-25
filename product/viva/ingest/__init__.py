@@ -8,7 +8,8 @@ or network dependencies.
 
 from .diagnose import (DIAGNOSIS_VERSION, FORCED, SUGGESTED, UNLOCALIZED,
                        ReconciliationFinding, diagnose)
-from .brokerage import BrokerageFacts, PositionFact, from_brokerage_json
+from .brokerage import (BrokerageActivity, BrokerageFacts, PositionFact,
+                        from_brokerage_json)
 from .pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED,
                        POSTED, IngestResult, ReadResult, account_id_for,
                        capture_and_ingest, heal_corroboration, heal_gaps,
@@ -36,7 +37,8 @@ __all__ = [
     "post_paystub", "account_id_for", "heal_gaps", "heal_corroboration",
     "heal_paystubs", "sweep", "AWAITING",
     "PayStubFacts", "Deduction", "from_paystub_json",
-    "BrokerageFacts", "PositionFact", "from_brokerage_json", "post_brokerage",
+    "BrokerageFacts", "BrokerageActivity", "PositionFact", "from_brokerage_json",
+    "post_brokerage",
     "assign_category", "suggest_categories", "normalize_category",
     "SEED_CATEGORIES", "assign_merchant_category", "categorize_merchants_batch",
     "enrich_merchants", "export_catalog", "normalize_merchant", "is_shareable",

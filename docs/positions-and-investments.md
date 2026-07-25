@@ -1,6 +1,6 @@
 # Positions & Investments (Slice 6)
 
-**Status:** Design spec — approved architecture, pre-build · **Last updated:** 2026-07-24 · **Block seeded:** Asset (valuation class) / Position (instrument + units + cost basis, dated).
+**Status:** BUILT (both stages) · **Last updated:** 2026-07-24 · **Block seeded:** Asset (valuation class) / Position (instrument + units + cost basis, dated).
 
 **Invariants touched:** T1 (every position value points to the statement region it was read from) · T2 (the reconciliation identity is deterministic `Decimal` arithmetic, never the model's mental math) · T3 (raw capture — the brokerage PDF is stored, so a richer position profile later re-reads it, no re-upload) · **T4 (a holding is an append-only *measurement* event; a revaluation is a new measurement, never an edit of the old one)** · **M1 (cash-flow over accrual — the ledger posts only realized cash events; unrealized gain is a derived presentation view, never a ledger fact)** · I5 (instrument and currency are data, no US-market assumptions) · **the valuation-class invariant (a measured value is always surfaced with its as-of date and class; a stale price is never dressed as "current" — the "never bluff a number" wall applied to prices) · X2 (unrealized gain is shown as an as-of-date estimate, its uncertainty visible)** · the grade ladder (a statement-attested position is `measured`+`verified`-of-source; a derived or stale figure is graded down, never silently).
 
@@ -92,6 +92,13 @@ The two reconciliations are built in order so each stage stands alone and green:
 
 Cost basis: a single graded figure per position, captured when the statement shows it (per-lot deferred). Nothing beyond the two stages.
 
+## As-built notes (both stages, 2026-07-24)
+
+- **Cash is a flow only when the statement reports it.** `post_brokerage` uses the flow path iff a statement carries *both* `opening_cash` and an `activity` list; then it books the opening once, posts each activity item, and observes the closing — the balance identity reconciles the cash sub-ledger (`opening + Σ activity = closing`) and grades it `corroborated`. A holdings-only statement falls back to the Stage-1 snapshot (cash observed as a lone attested balance). The two hard gates are the **internal tally** (`Σ market_value + cash = total`) and, when present, the **cash flow**; a failure of either holds the statement (never guessed).
+- **Activity counter-legs** (the account buckets each realized reason maps to): contribution/withdrawal → `Transfers:Uncategorized` (ties to the funding account via a Slice-3 link, counted once, excluded from spending); dividend → `Income:Dividends`, interest → `Income:Interest` (recognized by `income_by_currency`); fee → `Expenses:Fees`; buy → `Assets:Investments` (cash→holdings at cost); sell → `Assets:Investments` for the basis and, when the statement reports it, the realized gain to `Income:CapitalGains` (`proceeds = basis + gain`). Realized gain is taken from the statement's reported figure, not computed from lot basis (consistent with single-cost-basis; lots deferred).
+- **A contribution is an internal transfer.** The matcher (`_flow`) now treats an investment account's cash like a depository, so a checking/savings → brokerage contribution auto-links on the usual decisive evidence (a "transfer"/own-account naming hint) and is counted once.
+- **Known limitation (noted, not a bug):** an investment **fee** lands in the `Expenses:Fees` account balance but not in the movement-based `spending_by_category` view (that view is scoped to depository/liability legs). Consumer spending stays clean; investment costs are visible in the account. Multi-period cash-flow stitching (a later statement's opening = the prior closing) is lightly handled via the shared balance identity; full gap/heal hardening for brokerage cash is deferred with the rest of multi-statement investment history.
+
 ## Done criteria / tests
 
 **Stage 1 (snapshot):**
@@ -100,12 +107,12 @@ Cost basis: a single graded figure per position, captured when the statement sho
 - Cost basis is stored when the statement shows it and absent (not invented) when it doesn't.
 - The account's composed value = cash + Σ latest measured positions; registering a *synthetic* investment type via a profile row alone routes to the brokerage parser/identity (the divergent-profile proof holds).
 
-**Stage 2 (flow):**
-- A checking→brokerage contribution auto-links (Slice 3), is **counted once**, and is excluded from spending, in either ingest order; an unmatched inflow surfaces a `suggested` transfer.
-- A cash dividend also present in checking is counted once; a fee lands as an expense; a sell posts proceeds to cash, drops the units, and books `proceeds − cost basis` as realized gain.
-- **Unrealized gain is never posted or reconciled** (M1); it is computed on demand from the position measurements, as-of-date, and a stale figure is labeled as such (X2) — asserted by a projection/presentation test, not a ledger event.
+**Stage 2 (flow):** _(all green)_
+- The cash flow reconciles (`opening + Σ activity = closing`) and recognizes dividend + realized capital gain as income, a fee as an expense, and buys/sells as invested-capital moves; a statement whose activity doesn't reconcile the cash is **held**.
+- A checking→brokerage contribution auto-links (Slice 3), is **counted once**, and is excluded from spending.
+- **Unrealized gain is never posted or reconciled** (M1); it is computed on demand from the position measurements, as-of-date, and a stale figure is labeled as such (X2) — asserted by a projection test, not a ledger event.
 
-Existing balance-family, pay-stub, transfer, and categorization tests stay green throughout.
+Existing balance-family, pay-stub, transfer, and categorization tests stay green throughout (269 total).
 
 ## Deferred (explicitly not now)
 

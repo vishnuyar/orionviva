@@ -44,7 +44,9 @@ from ..ledger.events import (CORROBORATED, VERIFIED, Provenance, account_opened,
                              opening_balance_observed, position_observed,
                              read_recorded, statement_held)
 from ..ledger.ledger import Ledger
-from ..ledger.postings import paystub_decomposition, simple_transaction
+from ..ledger.postings import (brokerage_activity_transaction,
+                               brokerage_cash_effect, paystub_decomposition,
+                               simple_transaction)
 from .brokerage import BrokerageFacts
 from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, diagnose
 from .identity import account_key
@@ -621,9 +623,36 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             grade="conflicted", reconciliation=recon, finding=finding,
             message=f"Not posted; held for your review. {finding.message}")
 
+    # Stage 2 — the cross-account cash flow. When the statement reports opening
+    # cash AND the period's activity, reconcile the cash as a FLOW (opening +
+    # Σ activity = closing) and post each realized event so contributions tie to
+    # the funding account (Slice 3), income/fees/gains are recognized, and the
+    # cash sub-ledger reconciles. Unrealized change never posts (M1).
+    flow = facts.opening_cash is not None and bool(facts.activity)
+    if flow:
+        effects = [brokerage_cash_effect(a.kind, a.amount) for a in facts.activity]
+        cashflow = check_balance_identity(facts.opening_cash, effects, facts.cash)
+        if not cashflow.passed:
+            log.info("post_brokerage: cash-flow FAILED (%s); holding %s",
+                     cashflow.explain(), facts.doc_id[:12])
+            finding = ReconciliationFinding(
+                reconciles=False, kind="brokerage_cashflow", status=UNLOCALIZED,
+                delta=cashflow.delta, confidence=0.1,
+                message=(f"The period's activity doesn't reconcile the cash "
+                         f"balance (off by {cashflow.delta}) — an activity line "
+                         "may be missing. Held for your review."))
+            ledger.append(statement_held(facts.doc_id, facts.to_dict(),
+                                         finding.to_dict(), "conflict", when,
+                                         Provenance(doc_id=facts.doc_id)))
+            return IngestResult(
+                doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
+                grade="conflicted", reconciliation=cashflow, finding=finding,
+                message=f"Not posted; held for your review. {finding.message}")
+
     proj = ledger.projection()
     account = account_id_for(facts)
-    if not proj.seen_account(account):
+    seeding = not proj.seen_account(account)
+    if seeding:
         log.info("post_brokerage: opening investment account %s (%s) at %s",
                  account, facts.account_ref, when)
         ledger.append(account_opened(
@@ -631,7 +660,24 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             when, institution=facts.institution,
             account_number=facts.account_number,
             account_names=facts.account_names))
-    # Cash: an attested snapshot balance at the statement date (real money).
+
+    if flow:
+        # Cash as a reconciled flow: opening seed (once) + each activity posting +
+        # the attested closing. The activity legs carry contributions to Transfers
+        # (tied to the funding account), income to Income:*, fees to Expenses,
+        # buys/sells to Assets:Investments, and a sell's realized gain to
+        # Income:CapitalGains.
+        if seeding:
+            ledger.append(opening_balance_observed(
+                account, facts.opening_cash, when,
+                facts.provenance("opening cash")))
+        for a in facts.activity:
+            ledger.append(brokerage_activity_transaction(
+                account, a.kind, a.amount, a.description, a.date or when,
+                instrument=a.instrument, realized_gain=a.realized_gain,
+                provenance=facts.provenance(f"{a.kind} {a.instrument}".strip())))
+    # Cash: the attested balance at the statement date (closing of the flow, or a
+    # lone snapshot on a holdings-only statement).
     ledger.append(closing_balance_observed(
         account, facts.cash, when, facts.provenance("cash balance")))
     # Holdings: dated measurements, NOT postings (Option A).
@@ -640,13 +686,16 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             account, p.instrument, p.units, p.market_value, facts.currency, when,
             cost_basis=p.cost_basis, grade=CORROBORATED,
             provenance=facts.provenance(f"position {p.instrument}")))
-    log.info("post_brokerage: %s recorded cash %s + %d position(s), total %s "
-             "as of %s", account, facts.cash, len(facts.positions), facts.total, when)
+    log.info("post_brokerage: %s recorded cash %s + %d position(s)%s, total %s "
+             "as of %s", account, facts.cash, len(facts.positions),
+             f" + {len(facts.activity)} activity" if flow else "", facts.total, when)
     return IngestResult(
         doc_id=facts.doc_id, action=POSTED, doc_type=facts.doc_type,
         account=account, grade="corroborated", reconciliation=recon,
         message=(f"Holdings recorded: {len(facts.positions)} position(s) plus cash "
-                 f"{facts.currency} {facts.cash}, total {facts.total} as of {when}."))
+                 f"{facts.currency} {facts.cash}, total {facts.total} as of {when}."
+                 + (f" {len(facts.activity)} activity item(s) posted."
+                    if flow else "")))
 
 
 def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,

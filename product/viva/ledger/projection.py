@@ -442,7 +442,10 @@ class LedgerProjection:
         counts: dict[tuple, int] = {}
         for account in self.accounts():
             st = self._acct[account]
-            if st.kind not in ("depository", "liability"):
+            # depository/liability movements, plus an investment account's cash
+            # activity (Slice 6 Stage 2) — so a contribution into a brokerage ties
+            # to the funding account as a transfer.
+            if st.kind not in ("depository", "liability", "investment"):
                 continue
             for ln in sorted(st.lines, key=lambda l: (l.date, l.description, str(l.amount))):
                 did = ln.provenance.doc_id
@@ -488,7 +491,8 @@ class LedgerProjection:
         Income buckets carry no currency of their own; with exactly one account
         currency we attribute income to it, otherwise '?' (I1)."""
         held = {s.currency for a, s in self._acct.items()
-                if s.seen and s.kind in ("depository", "liability") and s.currency}
+                if s.seen and s.kind in ("depository", "liability", "investment")
+                and s.currency}
         default = next(iter(held)) if len(held) == 1 else "?"
         out: dict[str, Decimal] = {}
         for account, st in self._acct.items():
