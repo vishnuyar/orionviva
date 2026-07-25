@@ -357,6 +357,25 @@ def merchant_categorized(merchant: str, category: str, grade: str,
     )
 
 
+def merchant_enriched(merchant: str, category: str, subcategory: str = "",
+                      canonical_name: str = "", attributes: dict | None = None,
+                      grade: str = "corroborated", occurred_at: str = "",
+                      by: str = "model", provenance: Provenance | None = None) -> Event:
+    """The product's applied record of a merchantcore enrichment (Slice 5.6): a
+    merchant's primary category, a finer ``subcategory``, and richer attributes
+    (logo, mcc, website) synced in from the knowledge package as an event, so the
+    ledger stays self-contained (T4) — a replay reproduces the categorization
+    with merchantcore absent. The richer sibling of `MerchantCategorized`; both
+    feed the same catalog projection with grade precedence."""
+    return Event(
+        "MerchantEnriched", occurred_at,
+        body={"merchant": merchant, "category": category,
+              "subcategory": subcategory, "canonical_name": canonical_name,
+              "attributes": dict(attributes or {}), "grade": grade, "by": by},
+        provenance=provenance or Provenance(),
+    )
+
+
 def transaction_recorded(postings: list[Posting], description: str,
                          occurred_at: str, tags: list[str] | None = None,
                          provenance: Provenance | None = None) -> Event:

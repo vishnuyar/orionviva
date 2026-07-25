@@ -50,6 +50,8 @@ def overview(vault: Vault) -> dict:
         "spending": answer_spending(proj).to_dict(),
         "spending_by_category": {c: str(a) for c, a
                                  in proj.spending_by_category().items()},
+        "spending_by_subcategory": {c: str(a) for c, a
+                                    in proj.spending_by_subcategory().items()},
         "income": {c: str(v) for c, v in income.items()},
         "income_breakdown": _income_breakdown(proj),
         "review_count": len(held_items(proj)),

@@ -92,6 +92,10 @@ def main() -> None:
         unknown = proj.uncategorized_merchants()
         print(f"    merchants categorized: {len(mcat)}; unknown merchants "
               f"awaiting: {len(unknown)} ({len(proj.uncategorized_expenses())} txns)")
+        sub = proj.spending_by_subcategory()
+        if len(sub) > 1:
+            top = sorted(sub.items(), key=lambda x: x[1], reverse=True)[:8]
+            print("    by subcategory: " + ", ".join(f"{c} {v}" for c, v in top))
     income = proj.income_by_currency()
     if income:
         print("recognized income (gross): "
