@@ -55,3 +55,6 @@ build/
 dist/
 *.whl
 *.tar.gz
+
+# Slice 6.7: the surface source builds to web/static (committed); deps do not ship.
+product/viva/web/ui/node_modules/

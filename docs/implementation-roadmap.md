@@ -148,6 +148,13 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 ---
 
+## Slice 6.7 — The presentation layer
+**Block seeded:** the surface as a first-class layer — the question queue as the page's spine.
+
+**Full spec + rulings:** [the-presentation-layer.md](the-presentation-layer.md). Inserted because the engine had outrun the surface *measurably*: four endpoints the page never called (`/api/questions`, `/api/rule-nature`, and `/api/categorize` + `/api/assign-category` — dead since Slice 5) and seven overview fields ignored, including every position from Slice 6, Move 1's provisional/excluded honesty signals, and `other_holds`. Rulings (Vishnu, 2026-07-25): **hybrid answering** (one-tap inline, focused detail view when context is needed); **categories stay implicit** — the 16 primaries as suggestions, plus any you've used, plus add-your-own, with no `CategoryDefined` event (the named-but-unused wrinkle accepted as the signal for Move 3); **peer descriptors get per-transaction categorization** at last; **React + Vite** over a zero-dependency file split, for legibility to readers of a public repo and reliability of AI-written code — bounded by static build output served by the existing stdlib server, no runtime CDN, lockfile committed, and **zero new dependencies in `core/` or `product/`**.
+
+---
+
 ## Slice 7 — Net worth
 **Block seeded:** Net-worth projection (compose assets − liabilities, bitemporal).
 

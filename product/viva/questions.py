@@ -167,14 +167,23 @@ def _transfer_questions(proj) -> list[Question]:
 def _merchant_questions(proj) -> list[Question]:
     """Merchants we have no category for. Scoped to the MERCHANT — one ruling
     fills every transaction from it, past and future (the Slice 5.5 lesson)."""
+    from .ingest.categorize import SEED_CATEGORIES
     out: list[Question] = []
     totals: dict[str, Decimal] = {}
     currency: dict[str, str] = {}
+    movements: dict[str, list] = {}
     for m in proj.uncategorized_expenses():
         key = normalize_merchant(m.description)
         if key:
             totals[key] = totals.get(key, Decimal("0")) + abs(m.amount)
             currency.setdefault(key, m.currency)
+            movements.setdefault(key, []).append(m.key)
+    # The picker's options: the shared suggestions PLUS every category this person
+    # has actually used. Categories are implicit — one exists by being used — so
+    # the vocabulary grows without an event or a migration (Slice 6.7 D2).
+    used = sorted({(r.get("category") or "").strip()
+                   for r in proj.merchant_categories().values()} - {""})
+    categories = list(SEED_CATEGORIES) + [c for c in used if c not in SEED_CATEGORIES]
     for key, row in proj.uncategorized_merchants().items():
         amount = totals.get(key, Decimal("0"))
         cur = currency.get(key, "")
@@ -192,7 +201,11 @@ def _merchant_questions(proj) -> list[Question]:
             scope="pattern" if shareable else "one",
             options=[{"label": "Categorize it", "action": "assign_merchant",
                       "args": {"merchant": key}}],
-            refs={"merchant": key, "example": row["example"]}))
+            refs={"merchant": key, "example": row["example"],
+                  "categories": categories,
+                  # A peer is answered per transaction, so the surface needs the
+                  # movements; a commercial merchant is answered once, for all.
+                  "movements": movements.get(key, []) if not shareable else []}))
     return out
 
 
