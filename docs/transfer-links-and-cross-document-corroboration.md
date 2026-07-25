@@ -148,6 +148,8 @@ Deferred (noted, not built — a clean v1 boundary):
 - **Own-account membership** learning: ingested accounts auto-member; a named-but-unseen destination asks once and learns. v1 auto-links only when both legs are ingested own accounts.
 - **Correction-as-event** for confirm / reject / unlink — reversible, replayable.
 
+> _Amended 2026-07-25 (Slice 6.5): this slice excludes a transfer from spending **only when a link was formed**. A real-vault run showed that internal movements which never linked — a card payment whose counterpart statement isn't ingested, a brokerage contribution — were still counted as spending, and that a *category* saying "transfers" did not exclude anything. The exclusion rule is generalized to **movement nature** in [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md); the auto-link bar here is deliberately **not** loosened._
+
 **Final state:** internal transfers are recognized and excluded from spending; "how much did I spend" reflects only real external outflow; a statement whose gap is attested by a counterparty is **rescued and posts `corroborated`** with dual-issuer provenance; wrong or ambiguous links **surface**, never silently applied; confirmed patterns auto-link thereafter.
 
 **Done criteria / tests:**

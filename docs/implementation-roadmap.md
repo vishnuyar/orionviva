@@ -141,6 +141,13 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 ---
 
+## Slice 6.5 — Honest aggregates & the learning loop  🟡 MOVE 1 DONE
+**Blocks seeded:** movement **nature** (derived) · the **question queue** (the learning loop's front door).
+
+**Full spec + locked architecture:** [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md). Added after the first full real-vault run: spending was computed as *money that left an account*, not *money that left your life* (M1). Transfer **links** excluded a movement; a *category* saying `transfers` did not — two descriptions of one fact, one aggregate listening to half of them. And a single category (`loan_payments`) covered two opposite natures (mortgage vs own-card payment), proving **category cannot decide nature**. Decisions: nature is **derived** (linked → counterparty is an own account → human ruling → category/subcategory as a *suggestion* → default `spending`); undecided evidence leaves a movement counted but **provisional**, with the aggregate reporting its own uncertainty (X2/principle 6) rather than guessing either way; the transfer auto-link bar is deliberately **not** loosened (a wrong link is a wrong number). Read-side only — no new event type, retroactive with no re-ingest. Also names the vision shape (Vishnu, 2026-07-25): the four ask-and-learn loops already built **are one primitive**, the questions Viva asks *are* the product, and the rulings are the moat — with the sequencing rule **abstract the read side early, the write side late** (question queue = Move 2; a generic `Ruling` event = Move 3, gated on a fifth question type).
+
+---
+
 ## Slice 7 — Net worth
 **Block seeded:** Net-worth projection (compose assets − liabilities, bitemporal).
 
