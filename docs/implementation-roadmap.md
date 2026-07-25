@@ -116,6 +116,8 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 **Why now + future use:** first real advice (job 2); the correction stream **is** the moat + the eval/training signal; reuses correction + projection verbatim; feeds budgets (S10) and Viva's most-asked questions.
 
+> _Forward note (from the first enrichment run, 2026-07-24): merchant-level categorization structurally can't reach **peer descriptors** (Zelle/Venmo) — one is a gift, another a loan repayment — and `is_shareable` rightly keeps them out of the commons. Their **local, per-transaction** categorization + **user-defined categories** (strictly local, never exported — T9) + a movement's **spending-vs-transfer nature** land with the **presentation-layer slice**, not here. The substrate already supports it (`CategoryAssigned` is movement-keyed and overrides the merchant prior); decisions captured in [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)._
+
 ---
 
 ## Slice 6 — Positions & investments
