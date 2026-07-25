@@ -16,8 +16,25 @@ from urllib.parse import parse_qs, urlparse
 
 from . import service
 
-_INDEX = (Path(__file__).parent / "index.html").read_text()
+# The surface is a built React app (Slice 6.7) whose STATIC output is committed,
+# so cloning the repo and running this server gives a working page with no Node
+# and no network — the toolchain is a contributor's concern, never a user's.
+# `ui/` holds the source; `static/` is what ships. If the build is missing we say
+# so plainly rather than serving a blank page.
+_STATIC = Path(__file__).parent / "static"
+_LEGACY_INDEX = Path(__file__).parent / "index.html"
+_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
+          ".css": "text/css", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+          ".woff2": "font/woff2", ".map": "application/json"}
 log = logging.getLogger(__name__)
+
+
+def _asset(path: str) -> tuple[bytes, str] | None:
+    """Read a built asset, refusing anything outside the static directory."""
+    target = (_STATIC / path.lstrip("/")).resolve()
+    if not str(target).startswith(str(_STATIC.resolve())) or not target.is_file():
+        return None
+    return target.read_bytes(), _TYPES.get(target.suffix, "application/octet-stream")
 
 
 def make_handler(vault, read_fn):
@@ -33,19 +50,34 @@ def make_handler(vault, read_fn):
             self.end_headers()
             self.wfile.write(body)
 
-        def _html(self):
-            body = _INDEX.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+        def _bytes(self, body: bytes, content_type: str, code=200):
+            self.send_response(code)
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _html(self):
+            built = _asset("index.html")
+            if built:
+                return self._bytes(*built)
+            if _LEGACY_INDEX.is_file():          # the pre-6.7 single-file page
+                return self._bytes(_LEGACY_INDEX.read_bytes(),
+                                   "text/html; charset=utf-8")
+            self._bytes(
+                b"<h1>The surface isn't built yet</h1><p>Run <code>npm install "
+                b"&amp;&amp; npm run build</code> in <code>product/viva/web/ui</code>."
+                b"</p>", "text/html; charset=utf-8", 503)
 
         def do_GET(self):
             u = urlparse(self.path)
             log.info("GET %s", self.path)
             if u.path == "/":
                 return self._html()
+            if not u.path.startswith("/api/"):
+                built = _asset(u.path)           # app.js, app.css, icons…
+                if built:
+                    return self._bytes(*built)
             if u.path == "/api/overview":
                 return self._send(service.overview(vault))
             if u.path == "/api/review":
