@@ -24,9 +24,10 @@ from .paystub import Deduction, PayStubFacts, from_paystub_json
 from .raw_store import RawStore
 from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, DEPOSITORY,
                        INVESTMENT, LIABILITY, PAYSTUB_IDENTITY, DocProfile,
-                       account_kind_for, can_project, profile_for, register)
+                       account_kind_for, can_project, identity_of_facts,
+                       profile_for, register)
 from .review import (HeldItem, apply_human_correction, apply_identity_ruling,
-                     held_items)
+                     held_items, other_holds)
 from .statement import StatementFacts, TxnFact, from_model_json
 from .transfers import (confirm_transfer, link_transfers, reject_transfer)
 
@@ -43,10 +44,12 @@ __all__ = [
     "SEED_CATEGORIES", "assign_merchant_category", "categorize_merchants_batch",
     "enrich_merchants", "export_catalog", "normalize_merchant", "is_shareable",
     "NORMALIZER_VERSION",
-    "HeldItem", "held_items", "apply_human_correction", "apply_identity_ruling",
+    "HeldItem", "held_items", "other_holds", "apply_human_correction",
+    "apply_identity_ruling",
     "diagnose", "ReconciliationFinding", "DIAGNOSIS_VERSION",
     "FORCED", "SUGGESTED", "UNLOCALIZED",
     "DocProfile", "profile_for", "register", "can_project", "account_kind_for",
+    "identity_of_facts",
     "BALANCE_IDENTITY", "PAYSTUB_IDENTITY", "BROKERAGE_IDENTITY",
     "DEPOSITORY", "LIABILITY", "INVESTMENT",
     "POSTED", "PARKED", "DUPLICATE", "CONFLICT", "GAP", "IDENTITY",

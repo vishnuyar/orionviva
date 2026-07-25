@@ -24,6 +24,7 @@ from ..ledger.identity import account_key
 from ..ledger.ledger import Ledger
 from ..ledger.projection import LedgerProjection
 from .pipeline import (IngestResult, account_id_for, heal_gaps, post_statement)
+from .registry import BALANCE_IDENTITY, identity_of_facts
 from .statement import StatementFacts
 
 log = logging.getLogger(__name__)
@@ -70,10 +71,10 @@ def held_items(source) -> list[HeldItem]:
     items: list[HeldItem] = []
     for body in proj.open_holds():
         fdict = body.get("facts", {})
-        if "opening_amount" not in fdict:
-            # A non-balance hold (e.g. a pay stub awaiting its deposit, Slice 4).
-            # Surfaced minimally here; a shape-specific review view comes later.
-            continue
+        # Route on the registry, not on the shape of the dict: a pay stub or a
+        # brokerage statement is held with entirely different facts.
+        if identity_of_facts(fdict) != BALANCE_IDENTITY:
+            continue                      # see other_holds() — never just dropped
         facts = StatementFacts.from_dict(fdict)
         held_bal = proj.running_balance(account_id_for(facts))
         items.append(HeldItem(
@@ -82,6 +83,32 @@ def held_items(source) -> list[HeldItem]:
             finding=body.get("finding"),
             held_balance=None if held_bal is None else str(held_bal)))
     return items
+
+
+def other_holds(source) -> list[dict]:
+    """Held documents that are NOT balance-family — a pay stub awaiting its
+    deposit, a brokerage statement whose tally didn't close.
+
+    They have no fix-it affordance yet (that arrives with the question queue), but
+    a document the system is sitting on must never be invisible: silence would let
+    a held statement look like one that was never uploaded. Returns enough to say
+    what it is and why it's waiting."""
+    proj = source if isinstance(source, LedgerProjection) else LedgerProjection(source)
+    out: list[dict] = []
+    for body in proj.open_holds():
+        fdict = body.get("facts", {})
+        if identity_of_facts(fdict) == BALANCE_IDENTITY:
+            continue
+        finding = body.get("finding") or {}
+        out.append({
+            "doc_id": body["doc_id"],
+            "doc_type": fdict.get("doc_type", "unknown"),
+            "reason": body.get("reason", ""),
+            "account_ref": _mask(fdict.get("account_ref", "")
+                                 or fdict.get("employer", "")),
+            "message": finding.get("message", ""),
+        })
+    return out
 
 
 def apply_identity_ruling(ledger: Ledger, doc_id: str, decision: str) -> IngestResult:

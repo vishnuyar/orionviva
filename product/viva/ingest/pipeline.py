@@ -52,8 +52,9 @@ from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, dia
 from .identity import account_key
 from .paystub import PayStubFacts
 from .raw_store import RawStore
-from .registry import (BROKERAGE_IDENTITY, INVESTMENT, PAYSTUB_IDENTITY,
-                       account_kind_for, can_project, profile_for)
+from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, INVESTMENT,
+                       PAYSTUB_IDENTITY, account_kind_for, can_project,
+                       identity_of_facts, profile_for)
 from .statement import StatementFacts, TxnFact
 
 log = logging.getLogger(__name__)
@@ -168,7 +169,9 @@ def heal_gaps(ledger: Ledger) -> int:
         candidate = None
         for body in proj.gap_holds():
             doc_id = body["doc_id"]
-            if doc_id in attempted:
+            # Holds are polymorphic — only the balance family stitches this way.
+            if (doc_id in attempted
+                    or identity_of_facts(body.get("facts")) != BALANCE_IDENTITY):
                 continue
             facts = StatementFacts.from_dict(body["facts"])
             if _connects(facts, proj, _resolve(proj, facts).account_id):
@@ -209,7 +212,10 @@ def heal_corroboration(ledger: Ledger) -> int:
         candidate = None
         for body in proj.open_holds():
             doc_id = body["doc_id"]
-            if body.get("reason") != "conflict" or doc_id in attempted:
+            # A pay stub or a brokerage statement can also be held as a conflict,
+            # and their facts are a different shape entirely — route, never assume.
+            if (body.get("reason") != "conflict" or doc_id in attempted
+                    or identity_of_facts(body.get("facts")) != BALANCE_IDENTITY):
                 continue
             facts = StatementFacts.from_dict(body["facts"])
             toks = account_tokens_from(facts.institution, facts.account_number,
