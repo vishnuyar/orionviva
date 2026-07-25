@@ -146,6 +146,28 @@ def test_a_cash_row_is_cash_not_a_holding(tmp_path):
     assert proj.account_value(acct) == Decimal("15624.49")
 
 
+def test_a_legacy_cash_position_self_corrects_on_read(tmp_path):
+    """An EXISTING vault already holds PositionObserved(CASH) events from before
+    the fix. The projection reinterprets them as cash on the next query — no
+    re-ingest, no model cost, nothing rewritten (the read-side payoff)."""
+    from viva.ledger.events import position_observed
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    # Simulate the legacy shape directly: a cash row recorded as a holding.
+    from viva.ledger.events import account_opened, closing_balance_observed
+    ledger.append(account_opened("acct:x", "investment", "Broker X", "USD",
+                                 "2026-03-31"))
+    ledger.append(closing_balance_observed("acct:x", "0.00", "2026-03-31"))
+    ledger.append(position_observed("acct:x", "CASH", "15507.13", "15507.13",
+                                    "USD", "2026-03-31"))
+    ledger.append(position_observed("acct:x", "SPAXX", "117.36", "117.36",
+                                    "USD", "2026-03-31"))
+    proj = ledger.projection()
+    assert [p.instrument for p in proj.positions()] == ["SPAXX"]   # CASH isn't a holding
+    assert proj.cash_value("acct:x") == Decimal("15507.13")        # it's cash
+    assert proj.holdings_value("acct:x") == Decimal("117.36")
+    assert proj.account_value("acct:x") == Decimal("15624.49")     # total unchanged
+
+
 def test_a_composed_value_reports_its_oldest_as_of(tmp_path):
     """Summing measurements of different vintages must not read as 'current': the
     composed figure is only good as of its OLDEST part, and says the parts differ."""

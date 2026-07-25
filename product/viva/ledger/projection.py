@@ -227,6 +227,10 @@ class _AccountState:
     # Holdings (Slice 6): instrument -> latest PositionObserved measurement (by
     # as_of). Measurements, not postings — they never touch `balance`.
     positions: dict = field(default_factory=dict)
+    # Cash/sweep lines that were recorded as "positions" before we recognized them
+    # (Slice 6 fix). Kept apart so an existing vault reads correctly with no
+    # re-ingest: they compose into the account's cash, never its holdings.
+    position_cash: dict = field(default_factory=dict)
 
 
 class LedgerProjection:
@@ -374,12 +378,18 @@ class LedgerProjection:
             if did:
                 self._posted.add(did)
             instrument = event.body["instrument"]
-            prior = st.positions.get(instrument)
+            # A cash/sweep line misfiled as a holding by an older read is cash, not
+            # a position. Reinterpreting it HERE (rather than only at ingest) makes
+            # an existing vault correct on the next query — no re-ingest, no model
+            # cost, nothing rewritten. The ingest-side fold stops new ones arriving.
+            from ..ingest.brokerage import is_cash_row
+            bucket = st.position_cash if is_cash_row(instrument) else st.positions
+            prior = bucket.get(instrument)
             # Keep the latest measurement by value-time (as_of); an earlier one was
             # true when written. Append-only: a revaluation is a new observation.
             if prior is None or event.occurred_at >= prior.get("as_of", ""):
                 cb = event.body.get("cost_basis", "")
-                st.positions[instrument] = {
+                bucket[instrument] = {
                     "units": Decimal(event.body["units"]),
                     "market_value": Decimal(event.body["market_value"]),
                     "currency": event.body.get("currency", ""),
@@ -856,6 +866,17 @@ class LedgerProjection:
         return sum((p["market_value"] for p in st.positions.values()),
                    start=Decimal("0"))
 
+    def cash_value(self, account: str) -> Decimal:
+        """An account's cash: its observed balance plus any cash/sweep line that an
+        older read misfiled as a "position" (Slice 6 fix). This is what the person
+        actually holds in cash, regardless of how the statement was read."""
+        st = self._acct.get(account)
+        if st is None or not st.seen:
+            raise UnknownAccountError(account)
+        base = self._effective(st) if st.closing is None else st.closing
+        return base + sum((p["market_value"] for p in st.position_cash.values()),
+                          start=Decimal("0"))
+
     def holdings_as_of(self, account: str) -> tuple[str, bool]:
         """The as-of date an account's composed value is honest at, and whether
         the measurements it sums were taken on DIFFERENT dates.
@@ -867,7 +888,9 @@ class LedgerProjection:
         (the date the whole number is truly good as of) and flags the mix, rather
         than quietly implying it is all current (Slice 6 fix, 2026-07-25)."""
         st = self._acct.get(account)
-        dates = {p["as_of"] for p in (st.positions.values() if st else ()) if p["as_of"]}
+        measured = (list(st.positions.values()) + list(st.position_cash.values())
+                    if st else [])
+        dates = {p["as_of"] for p in measured if p["as_of"]}
         if st is not None and st.closing_date:
             dates.add(st.closing_date)
         if not dates:
@@ -885,9 +908,8 @@ class LedgerProjection:
         st = self._acct.get(account)
         if st is None or not st.seen:
             raise UnknownAccountError(account)
-        base = self._effective(st) if st.closing is None else st.closing
         if st.kind == "investment":
-            return base + self.holdings_value(account)
+            return self.cash_value(account) + self.holdings_value(account)
         return self.balance(account).amount
 
     def unrealized_gain(self, account: str | None = None) -> Decimal | None:

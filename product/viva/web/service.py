@@ -49,6 +49,7 @@ def overview(vault: Vault) -> dict:
             ug = proj.unrealized_gain(info.account)
             as_of, mixed = proj.holdings_as_of(info.account)
             row["holdings"] = str(proj.holdings_value(info.account))
+            row["cash"] = str(proj.cash_value(info.account))
             row["unrealized_gain"] = str(ug) if ug is not None else None
             # The composed total is only good as of its OLDEST part; say so.
             row["as_of"] = as_of or row["as_of"]
