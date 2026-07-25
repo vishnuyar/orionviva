@@ -20,16 +20,8 @@ import time
 import httpx
 
 from .spec import ModelSpec
-from .base import AdapterError, ModelResult, PageImage, elide_images
-
-# A statement with many transactions can produce JSON longer than max_tokens, so
-# the provider truncates (finish_reason="length") mid-JSON. Rather than re-ask
-# from scratch (which truncates again), we ask the model to *continue* from where
-# it stopped and stitch the parts — bounded so a runaway can't loop forever.
-_MAX_CONTINUATIONS = 6
-_CONTINUE = ("Continue the JSON output from exactly where it stopped. Output "
-             "ONLY the remaining characters — do not repeat anything already "
-             "produced, no code fence, no prose.")
+from .base import (AdapterError, CONTINUE_INSTRUCTION, PageImage, Turn,
+                   elide_images, run_to_completion)
 
 
 class OpenAICompatAdapter:
@@ -55,27 +47,22 @@ class OpenAICompatAdapter:
             headers["HTTP-Referer"] = "https://orionviva.com"
             headers["X-Title"] = "viva-bench"
 
-        # First turn: images + the prompt (which already carries the statement's
-        # embedded text). Continuation turns drop the heavy images — the embedded
-        # text is re-sent in the prompt, so the model can still see every line
-        # without the multi-megabyte image payload.
-        messages = [{"role": "user", "content": images + [{"type": "text", "text": prompt}]}]
-
-        accumulated = ""
-        in_tok = out_tok = 0
-        cost = 0.0
-        latency = 0.0
-        finish = ""
-        first_request = None
-        last_response: dict = {}
-
-        for attempt in range(_MAX_CONTINUATIONS + 1):
-            body = {
-                "model": c.model,
-                "max_tokens": c.max_tokens,
-                "temperature": c.temperature,
-                "messages": messages,
-            }
+        def call_once(accumulated: str, attempt: int) -> Turn:
+            # First turn: images + the prompt (which already carries the
+            # statement's embedded text). Continuation turns drop the heavy images
+            # — the embedded text is re-sent in the prompt, so the model still sees
+            # every line without the multi-megabyte image payload.
+            if attempt == 0:
+                messages = [{"role": "user",
+                             "content": images + [{"type": "text", "text": prompt}]}]
+            else:
+                messages = [
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": accumulated},
+                    {"role": "user", "content": CONTINUE_INSTRUCTION},
+                ]
+            body = {"model": c.model, "max_tokens": c.max_tokens,
+                    "temperature": c.temperature, "messages": messages}
             if c.json_mode and attempt == 0:
                 # Guaranteed-valid JSON on the first turn; continuation turns emit
                 # a raw fragment, so json_mode is off for those.
@@ -88,14 +75,11 @@ class OpenAICompatAdapter:
                 resp = httpx.post(self.url, json=body, headers=headers, timeout=c.timeout_s)
             except httpx.HTTPError as e:
                 raise AdapterError(f"[{c.name}] HTTP failure calling {self.url}: {e}") from e
-            latency += time.monotonic() - started
+            latency = time.monotonic() - started
             if resp.status_code != 200:
                 raise AdapterError(
                     f"[{c.name}] {self.url} returned {resp.status_code}: {resp.text[:2000]}")
             data = resp.json()
-            last_response = data
-            if first_request is None:
-                first_request = elide_images(body, [p.sha256 for p in pages])
 
             try:
                 choice = data["choices"][0]
@@ -104,40 +88,27 @@ class OpenAICompatAdapter:
                 raise AdapterError(
                     f"[{c.name}] response shape unexpected (not chat-completions?): "
                     f"{str(data)[:500]}") from e
-            finish = choice.get("finish_reason") or ""
 
             usage = data.get("usage") or {}
             step_in = int(usage.get("prompt_tokens", 0))
             step_out = int(usage.get("completion_tokens", 0))
-            in_tok += step_in
-            out_tok += step_out
             reported_cost = usage.get("cost")
             if reported_cost is not None:
                 try:
-                    cost += float(reported_cost)
+                    step_cost = float(reported_cost)
                 except (TypeError, ValueError):
-                    cost += (step_in * c.cost_per_mtok_in + step_out * c.cost_per_mtok_out) / 1_000_000.0
+                    step_cost = (step_in * c.cost_per_mtok_in
+                                 + step_out * c.cost_per_mtok_out) / 1_000_000.0
             else:
-                cost += (step_in * c.cost_per_mtok_in + step_out * c.cost_per_mtok_out) / 1_000_000.0
+                step_cost = (step_in * c.cost_per_mtok_in
+                             + step_out * c.cost_per_mtok_out) / 1_000_000.0
 
-            accumulated += text
-            if finish != "length":
-                break
-            # Truncated — continue from the partial, without resending images.
-            messages = [
-                {"role": "user", "content": prompt},
-                {"role": "assistant", "content": accumulated},
-                {"role": "user", "content": _CONTINUE},
-            ]
+            return Turn(
+                text=text, finish_reason=choice.get("finish_reason") or "",
+                input_tokens=step_in, output_tokens=step_out, cost_usd=step_cost,
+                latency_s=latency, resolved_model=str(data.get("model", c.model)),
+                request=(elide_images(body, [p.sha256 for p in pages])
+                         if attempt == 0 else None),
+                response=data)
 
-        return ModelResult(
-            text=accumulated,
-            resolved_model=str(last_response.get("model", c.model)),
-            input_tokens=in_tok,
-            output_tokens=out_tok,
-            cost_usd=cost,
-            latency_s=latency,
-            request=first_request or {},
-            response=last_response,
-            finish_reason=finish,
-        )
+        return run_to_completion(call_once)
