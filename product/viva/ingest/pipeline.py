@@ -603,24 +603,25 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     as a `PositionObserved` MEASUREMENT — not posted (M1: cash-flow over accrual;
     only realized cash flows post). Unrealized gain is never recorded here — it is
     a derived, as-of-date presentation view over these measurements."""
-    # A statement's cash/sweep line is sometimes read back as a "position" named
-    # CASH. It is not a holding: fold it into the cash balance before anything
-    # else, so the account's cash is real and no cash-measurement is recorded
-    # (Slice 6 fix from a real run). The tally is unchanged either way.
-    from .brokerage import is_cash_row
-    cash_rows = [p for p in facts.positions if is_cash_row(p.instrument)]
-    if cash_rows:
-        facts = replace(
-            facts,
-            cash=facts.cash + sum((p.market_value for p in cash_rows),
-                                  start=Decimal("0")),
-            positions=[p for p in facts.positions if not is_cash_row(p.instrument)])
-        log.info("post_brokerage: folded %d cash row(s) into the cash balance",
-                 len(cash_rows))
+    # The sweep is cash — but a statement may print the cash line as INCLUDING it
+    # (November) or EXCLUDING it (December), for the very same account. Rather than
+    # guess, try both readings and take the one that reconciles **exactly**; if
+    # neither closes (or the sweep is absent and they're identical), fall through
+    # to the ordinary gate. Decisive-or-hold, the same contract as every other
+    # forced correction. Internally we then normalize to "cash includes the sweep",
+    # so the cash figure means the same thing across statements — which is what
+    # lets the cash flow stitch month to month.
+    from .brokerage import is_cash_row, resolve_sweep_cash
+    when = facts.as_of
+    sweep_total = sum((p.market_value for p in facts.positions
+                       if is_cash_row(p.instrument)), start=Decimal("0"))
+    facts, sweep_note = resolve_sweep_cash(facts)
+    if sweep_note:
+        log.info("post_brokerage: sweep holding(s) worth %s treated as cash (%s)",
+                 sweep_total, sweep_note)
 
     recon = check_brokerage_identity(
         [p.market_value for p in facts.positions], facts.cash, facts.total)
-    when = facts.as_of
     if not recon.passed:
         log.info("post_brokerage: internal tally FAILED (%s); holding %s",
                  recon.explain(), facts.doc_id[:12])
@@ -638,15 +639,31 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             grade="conflicted", reconciliation=recon, finding=finding,
             message=f"Not posted; held for your review. {finding.message}")
 
-    # Stage 2 — the cross-account cash flow. When the statement reports opening
-    # cash AND the period's activity, reconcile the cash as a FLOW (opening +
-    # Σ activity = closing) and post each realized event so contributions tie to
-    # the funding account (Slice 3), income/fees/gains are recognized, and the
-    # cash sub-ledger reconciles. Unrealized change never posts (M1).
-    flow = facts.opening_cash is not None and bool(facts.activity)
+    # Stage 2 — the cross-account cash flow. When we know the opening cash AND the
+    # period's activity, reconcile the cash as a FLOW (opening + Σ activity =
+    # closing) and post each realized event so contributions tie to the funding
+    # account (Slice 3), income/fees/gains are recognized, and the cash sub-ledger
+    # reconciles. Unrealized change never posts (M1).
+    #
+    # If the statement doesn't print an opening cash figure, the LEDGER already
+    # knows it: it is the cash we hold for this account from the previous
+    # statement. That is Slice 1's forward-stitching rule ("its opening is the
+    # balance we hold") applied to brokerage cash — the reason a real December
+    # statement with no opening line can still post its whole activity.
+    proj0 = ledger.projection()
+    account0 = account_id_for(facts)
+    opening_cash, opening_from = facts.opening_cash, "the statement"
+    if opening_cash is None and proj0.seen_account(account0):
+        held_dated = proj0.balance(account0).dated
+        if held_dated and when and held_dated < when:
+            opening_cash = proj0.cash_value(account0)
+            opening_from = f"the cash we held as of {held_dated}"
+            log.info("post_brokerage: no opening cash printed; carrying %s forward "
+                     "from %s", opening_cash, held_dated)
+    flow = opening_cash is not None and bool(facts.activity)
     if flow:
         effects = [brokerage_cash_effect(a.kind, a.amount) for a in facts.activity]
-        cashflow = check_balance_identity(facts.opening_cash, effects, facts.cash)
+        cashflow = check_balance_identity(opening_cash, effects, facts.cash)
         if not cashflow.passed:
             log.info("post_brokerage: cash-flow FAILED (%s); holding %s",
                      cashflow.explain(), facts.doc_id[:12])
@@ -684,8 +701,8 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
         # Income:CapitalGains.
         if seeding:
             ledger.append(opening_balance_observed(
-                account, facts.opening_cash, when,
-                facts.provenance("opening cash")))
+                account, opening_cash, when,
+                facts.provenance(f"opening cash (from {opening_from})")))
         for a in facts.activity:
             ledger.append(brokerage_activity_transaction(
                 account, a.kind, a.amount, a.description, a.date or when,
@@ -704,13 +721,26 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     log.info("post_brokerage: %s recorded cash %s + %d position(s)%s, total %s "
              "as of %s", account, facts.cash, len(facts.positions),
              f" + {len(facts.activity)} activity" if flow else "", facts.total, when)
+    message = (f"Holdings recorded: {len(facts.positions)} position(s) plus cash "
+               f"{facts.currency} {facts.cash}, total {facts.total} as of {when}.")
+    if sweep_note:
+        message += (f" Its money-market sweep ({facts.currency} {sweep_total}) is "
+                    f"counted as cash — {sweep_note}.")
+    if flow:
+        message += f" {len(facts.activity)} activity item(s) posted."
+    elif facts.activity:
+        # Never drop what we read in silence (T3): say the activity is held back
+        # and why, so an incomplete picture is visibly incomplete (X2).
+        log.info("post_brokerage: %d activity item(s) read but NOT posted — no "
+                 "opening cash to reconcile the flow against", len(facts.activity))
+        message += (f" I also read {len(facts.activity)} activity item(s), but "
+                    "without an opening cash balance I can't reconcile them, so "
+                    "they are not posted — the holdings above are complete, the "
+                    "period's movements are not.")
     return IngestResult(
         doc_id=facts.doc_id, action=POSTED, doc_type=facts.doc_type,
         account=account, grade="corroborated", reconciliation=recon,
-        message=(f"Holdings recorded: {len(facts.positions)} position(s) plus cash "
-                 f"{facts.currency} {facts.cash}, total {facts.total} as of {when}."
-                 + (f" {len(facts.activity)} activity item(s) posted."
-                    if flow else "")))
+        message=message)
 
 
 def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
