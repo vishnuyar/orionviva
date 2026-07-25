@@ -129,6 +129,45 @@ def test_a_later_statement_revalues_the_same_holding(tmp_path):
     assert proj.unrealized_gain() == Decimal("8000.00")  # 20000 - 12000, derived
 
 
+def test_a_cash_row_is_cash_not_a_holding(tmp_path):
+    """A real run returned the sweep balance as a position named CASH. The tally
+    passes either way, so no gate catches it — fold it into cash instead."""
+    ledger, res = _brokerage(
+        [("CASH", "15507.13", "15507.13", None),
+         ("SPAXX", "117.36", "117.36", None)],
+        cash="0.00", total="15624.49", tmp_path=tmp_path)
+    assert res.action == "posted"
+    proj = ledger.projection()
+    (acct,) = [i.account for i in proj.account_infos()]
+    # CASH is not a holding...
+    assert [p.instrument for p in proj.positions()] == ["SPAXX"]
+    # ...it's the account's cash, and the total is unchanged.
+    assert proj.balance(acct).amount == Decimal("15507.13")
+    assert proj.account_value(acct) == Decimal("15624.49")
+
+
+def test_a_composed_value_reports_its_oldest_as_of(tmp_path):
+    """Summing measurements of different vintages must not read as 'current': the
+    composed figure is only good as of its OLDEST part, and says the parts differ."""
+    ledger, _ = _brokerage([("AAPL", "100", "18400.00", None)],
+                           cash="1000.00", total="19400.00", tmp_path=tmp_path,
+                           as_of="2026-03-31")
+    facts = BrokerageFacts(
+        doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+        account_ref="Fidelity Roth", currency="USD", as_of="2026-06-30",
+        cash=Decimal("1000.00"), total=Decimal("21000.00"),
+        positions=[PositionFact("VTSAX", Decimal("50"), Decimal("20000.00"), None)],
+        account_number="000000003311", institution="Fidelity")
+    r2 = RawStore.open(tmp_path / "raw", "pw")
+    capture_and_ingest(r2, ledger, b"brk-q2",
+                       lambda data, did: _stamp(facts, did), captured_at="2026-07-02")
+    proj = ledger.projection()
+    (acct,) = [i.account for i in proj.account_infos()]
+    as_of, mixed = proj.holdings_as_of(acct)
+    assert mixed                                    # AAPL is Q1, VTSAX is Q2
+    assert as_of == "2026-03-31"                    # honest to the OLDEST part
+
+
 # --------------------------------------------------------- Stage 2: cash flow
 
 def _flow_facts(doc_id="", number="000000003311"):
