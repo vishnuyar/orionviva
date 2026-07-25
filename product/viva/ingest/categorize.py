@@ -43,31 +43,44 @@ def normalize_category(category: str) -> str:
 
 
 def assign_category(ledger: Ledger, movement_key: str, category: str,
-                    by: str = "human") -> bool:
+                    by: str = "human", nature: str = "") -> bool:
     """Assign a category to a movement. ``by='human'`` records it `verified` (the
     authoritative ruling + the moat); ``by='model'`` records a `unverified`
     suggestion. Captures the movement's descriptor for later merchant learning.
-    Returns whether the movement was found."""
+
+    ``nature`` (Slice 6.5, optional) is the person's ruling on what the movement
+    *is* — `spending`, `transfer`, or `settlement`. It rides on this same overlay
+    rather than needing a new event type (Move 1 is read-side only), and outranks
+    any category hint when the projection derives nature. Returns whether the
+    movement was found."""
     proj = ledger.projection()
     m = next((mv for mv in proj.movements() if mv.key == movement_key), None)
     descriptor = m.description if m else ""
     when = m.date if m else date.today().isoformat()
     grade = VERIFIED if by == "human" else UNVERIFIED
-    log.info("category: %s %s -> %r (%s)", by, movement_key[:24],
-             normalize_category(category), grade)
+    log.info("category: %s %s -> %r (%s)%s", by, movement_key[:24],
+             normalize_category(category), grade,
+             f" nature={nature}" if nature else "")
     ledger.append(category_assigned(movement_key, descriptor,
                                     normalize_category(category), grade,
-                                    when, by=by))
+                                    when, by=by, nature=nature))
     return m is not None
 
 
 def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
-                             by: str = "human") -> None:
+                             by: str = "human", subcategory: str = "") -> None:
     """Categorize a whole MERCHANT (Slice 5.5) — 'this merchant is X, everywhere'.
     ``by='human'`` is `verified` (fills every transaction from it, past and
-    future, unless a per-transaction override says otherwise)."""
+    future, unless a per-transaction override says otherwise). ``subcategory`` is
+    the finer label (Slice 5.6) — also the sharper *nature* signal (Slice 6.5)."""
     grade = VERIFIED if by == "human" else UNVERIFIED
     log.info("merchant: %s %r -> %r (%s)", by, merchant, normalize_category(category), grade)
+    if subcategory:
+        ledger.append(merchant_enriched(
+            normalize_merchant(merchant), normalize_category(category),
+            subcategory=subcategory.strip().lower(), grade=grade,
+            occurred_at=date.today().isoformat(), by=by))
+        return
     ledger.append(merchant_categorized(normalize_merchant(merchant),
                                        normalize_category(category), grade,
                                        date.today().isoformat(), by=by))

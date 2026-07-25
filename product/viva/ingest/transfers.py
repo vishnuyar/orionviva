@@ -21,6 +21,7 @@ from datetime import date
 from decimal import Decimal
 
 from ..ledger.events import transfer_linked, transfer_suggested, transfer_unlinked
+from ..ledger.identity import account_tokens
 from ..ledger.ledger import Ledger
 from ..ledger.projection import LedgerProjection, MovementInfo
 
@@ -83,25 +84,13 @@ def _last4(proj: LedgerProjection, account: str) -> str:
 
 
 def account_tokens_from(institution: str, number: str, ref: str) -> set[str]:
-    """Distinctive tokens that identify one account in a transaction description:
-    its institution, its last-4, and product words from its label (e.g.
-    'imprint', 'freedom') — minus generic stopwords. Derived from raw identity
-    signals so it works even for an account not yet opened (a statement mid-post
-    that is failing to reconcile). These are what a bank line like 'PAYMENT TO
-    IMPRINT' carries to name the card it paid.
+    """Distinctive tokens that identify one account in a transaction description.
 
-    The account HOLDER's name is deliberately excluded — it is shared across all
-    of the user's own accounts, so it does not distinguish one from another."""
-    toks: set[str] = set()
-    if institution and len(institution) >= 3:
-        toks.add(institution.lower())
-    digits = "".join(ch for ch in (number or "") if ch.isdigit())
-    if len(digits) >= 4:
-        toks.add(digits[-4:])
-    for w in re.split(r"[^a-z0-9]+", (ref or "").lower()):
-        if len(w) >= 4 and w not in _STOPWORDS:
-            toks.add(w)
-    return {t for t in toks if t and t not in _STOPWORDS}
+    The single implementation lives in the ledger's identity layer (Slice 6.5:
+    the projection's nature derivation needs the same tokens); this stays as the
+    ingest-side name so existing callers are unchanged. Works even for an account
+    not yet opened (a statement mid-post that is failing to reconcile)."""
+    return account_tokens(institution, number, ref)
 
 
 def _account_tokens(proj: LedgerProjection, account: str) -> set[str]:

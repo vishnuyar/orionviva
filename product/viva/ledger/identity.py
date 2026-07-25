@@ -49,6 +49,35 @@ def account_key(institution: str, account_number: str, account_ref: str) -> str:
     return f"acct:{slug(account_ref) or 'unknown'}"
 
 
+# Words that are not distinctive account tokens — shared across institutions or
+# products, so they can't identify WHICH account a description names.
+STOPWORDS = frozenset({
+    "chase", "bank", "card", "credit", "account", "checking", "savings",
+    "total", "statement", "rise", "the", "and", "for", "payment", "rewards"})
+
+
+def account_tokens(institution: str, number: str, ref: str) -> set[str]:
+    """Distinctive tokens that identify one account inside a transaction
+    description: its institution, its last-4, and product words from its label —
+    minus generic stopwords. These are what a line like 'PAYMENT TO <product>
+    ENDING IN 1234' carries to name the account it paid.
+
+    Lives here (the ledger's identity layer) because BOTH the transfer matcher and
+    the projection's nature derivation (Slice 6.5) need it — one implementation,
+    no import cycle. The account HOLDER's name is deliberately excluded: it is
+    shared across all of a person's own accounts, so it distinguishes nothing."""
+    toks: set[str] = set()
+    if institution and len(institution) >= 3:
+        toks.add(institution.lower())
+    digits = normalize_number(number)
+    if len(digits) >= 4:
+        toks.add(digits[-4:])
+    for w in re.split(r"[^a-z0-9]+", (ref or "").lower()):
+        if len(w) >= 4 and w not in STOPWORDS:
+            toks.add(w)
+    return {t for t in toks if t and t not in STOPWORDS}
+
+
 def normalize_name(name: str) -> str:
     return re.sub(r"\s+", " ", (name or "").strip().lower())
 
