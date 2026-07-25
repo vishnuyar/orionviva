@@ -28,6 +28,7 @@ from decimal import Decimal
 from vivacore.verify.normalize import parse_amount, parse_date
 
 from ..ledger.events import Provenance
+from ..ledger.postings import BROKERAGE_ACTIVITY_KINDS
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,34 @@ class PositionFact:
                    page=d.get("page"))
 
 
+@dataclass(frozen=True)
+class BrokerageActivity:
+    """One cash-affecting event in the period (Slice 6 Stage 2). ``amount`` is the
+    positive magnitude; the sign is implied by ``kind``. ``realized_gain`` is the
+    booked gain/loss on a sell when the statement reports it (else None — never
+    invented)."""
+    date: str
+    kind: str                          # contribution|withdrawal|dividend|interest|fee|buy|sell
+    amount: Decimal
+    description: str = ""
+    instrument: str = ""
+    realized_gain: Decimal | None = None
+
+    def to_dict(self) -> dict:
+        return {"date": self.date, "kind": self.kind, "amount": str(self.amount),
+                "description": self.description, "instrument": self.instrument,
+                "realized_gain": (str(self.realized_gain)
+                                  if self.realized_gain is not None else "")}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "BrokerageActivity":
+        rg = d.get("realized_gain", "")
+        return cls(date=d.get("date", ""), kind=d.get("kind", ""),
+                   amount=Decimal(d["amount"]), description=d.get("description", ""),
+                   instrument=d.get("instrument", ""),
+                   realized_gain=(Decimal(rg) if rg not in (None, "") else None))
+
+
 @dataclass
 class BrokerageFacts:
     doc_id: str
@@ -62,12 +91,17 @@ class BrokerageFacts:
     account_ref: str
     currency: str
     as_of: str                         # the statement date the snapshot is measured at
-    cash: Decimal                      # cash / sweep balance
+    cash: Decimal                      # cash / sweep balance (closing)
     total: Decimal                     # stated total account value
     positions: list[PositionFact]
     account_number: str = ""
     institution: str = ""
     account_names: list[str] = field(default_factory=list)
+    # Stage 2 (cross-account cash flow) — optional; when both are present the cash
+    # is reconciled as a flow (opening + Σ activity = closing) and posted, tying
+    # contributions to the funding account and recognizing income/fees/gains.
+    opening_cash: Decimal | None = None
+    activity: list[BrokerageActivity] = field(default_factory=list)
 
     def provenance(self, note: str = "") -> Provenance:
         return Provenance(doc_id=self.doc_id, note=note)
@@ -81,10 +115,14 @@ class BrokerageFacts:
             "positions": [p.to_dict() for p in self.positions],
             "account_number": self.account_number, "institution": self.institution,
             "account_names": list(self.account_names),
+            "opening_cash": (str(self.opening_cash)
+                             if self.opening_cash is not None else ""),
+            "activity": [a.to_dict() for a in self.activity],
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "BrokerageFacts":
+        oc = d.get("opening_cash", "")
         return cls(
             doc_id=d["doc_id"], doc_type=d.get("doc_type", "brokerage_statement"),
             doc_type_confidence=d.get("doc_type_confidence", 0.0),
@@ -94,7 +132,9 @@ class BrokerageFacts:
             positions=[PositionFact.from_dict(x) for x in d.get("positions", [])],
             account_number=d.get("account_number", ""),
             institution=d.get("institution", ""),
-            account_names=list(d.get("account_names", [])))
+            account_names=list(d.get("account_names", [])),
+            opening_cash=(Decimal(oc) if oc not in (None, "") else None),
+            activity=[BrokerageActivity.from_dict(x) for x in d.get("activity", [])])
 
 
 def _find_json(text: str) -> str | None:
@@ -170,6 +210,43 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
             units=units_n.decimal(), market_value=mv, cost_basis=cost,
             page=rp.get("page")))
 
+    # Stage 2 (optional): opening cash + the period's cash activity. Absent on a
+    # holdings-only statement — then only the snapshot is recorded (Stage 1).
+    opening_cash = None
+    if data.get("opening_cash_raw") not in (None, ""):
+        opening_cash, err = _amount(data.get("opening_cash_raw"), locale, currency)
+        if err:
+            return None, f"opening_cash {err}"
+    activity: list[BrokerageActivity] = []
+    if isinstance(data.get("activity"), list):
+        for i, ra in enumerate(data["activity"]):
+            if not isinstance(ra, dict):
+                return None, f"activity {i} is not an object"
+            kind = str(ra.get("kind", "")).strip().lower()
+            if kind not in BROKERAGE_ACTIVITY_KINDS:
+                return None, (f"activity {i} has unknown kind {kind!r} "
+                              f"(expected one of {sorted(BROKERAGE_ACTIVITY_KINDS)})")
+            amt, err = _amount(ra.get("amount_raw"), locale, currency)
+            if err:
+                return None, f"activity {i} amount {err}"
+            gain = None
+            if ra.get("realized_gain_raw") not in (None, ""):
+                g, gerr = _amount(ra.get("realized_gain_raw"), locale, currency)
+                if gerr:
+                    return None, f"activity {i} realized_gain {gerr}"
+                gain = g
+            adate = ""
+            if ra.get("date_raw") not in (None, ""):
+                nd = parse_date(str(ra.get("date_raw")), locale)
+                if not nd.ok:
+                    return None, f"activity {i} date {ra.get('date_raw')!r}: {nd.status}"
+                adate = nd.value
+            activity.append(BrokerageActivity(
+                date=adate, kind=kind, amount=abs(amt),
+                description=str(ra.get("description", "")).strip(),
+                instrument=str(ra.get("instrument", "")).strip(),
+                realized_gain=gain))
+
     raw_names = data.get("account_names")
     if isinstance(raw_names, list):
         names = [str(n).strip() for n in raw_names if str(n).strip()]
@@ -188,5 +265,5 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
         positions=positions,
         account_number=str(data.get("account_number", "")).strip(),
         institution=str(data.get("institution", "")).strip(),
-        account_names=names)
+        account_names=names, opening_cash=opening_cash, activity=activity)
     return facts, None
