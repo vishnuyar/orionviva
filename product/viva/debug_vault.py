@@ -12,6 +12,7 @@ Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 from __future__ import annotations
 
 import collections
+from decimal import Decimal
 import os
 import pathlib
 import sys
@@ -86,8 +87,22 @@ def main() -> None:
     by_cat = proj.spending_by_category()
     if by_cat:
         ranked = sorted(by_cat.items(), key=lambda x: x[1], reverse=True)
-        print("spending by category (transfers excluded): "
+        print("spending by category (non-spending natures excluded): "
               + ", ".join(f"{c} {v}" for c, v in ranked))
+        # Slice 6.5: what was kept OUT and why, and how much is weakly evidenced.
+        excluded = proj.excluded_from_spending()
+        if excluded:
+            by_reason: dict[str, Decimal] = {}
+            for m in excluded:
+                by_reason[m.nature_reason] = (by_reason.get(m.nature_reason, Decimal("0"))
+                                              + abs(m.amount))
+            print("    excluded as not-spending: "
+                  + ", ".join(f"{r} {v} ({sum(1 for m in excluded if m.nature_reason == r)})"
+                              for r, v in sorted(by_reason.items(),
+                                                 key=lambda x: x[1], reverse=True)))
+        prov = proj.provisional_spending()
+        if prov:
+            print(f"    provisional (weak evidence, could move): {prov}")
         mcat = proj.merchant_categories()
         unknown = proj.uncategorized_merchants()
         print(f"    merchants categorized: {len(mcat)}; unknown merchants "

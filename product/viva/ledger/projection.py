@@ -30,7 +30,7 @@ from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
 from .events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED, Event,
                      Provenance, postings_of)
-from .identity import account_key, names_overlap
+from .identity import account_key, account_tokens, names_overlap
 from .merchants import normalize_merchant
 from .postings import EQUITY_OPENING, INCOME_UNCATEGORIZED
 
@@ -155,6 +155,35 @@ def movement_key(doc_id: str, account: str, date: str, amount: Decimal | str,
     return f"{doc_id}|{account}|{date}|{amount}|{description}|{occurrence}"
 
 
+# --------------------------------------------------------- movement nature (S6.5)
+
+# What a movement *is*, economically — the distinction that makes "spending" mean
+# money that left your LIFE, not money that left an ACCOUNT (M1). Derived, never
+# stored: a projection over events we already write (T4), so it is retroactive for
+# free and costs no re-ingest.
+SPENDING = "spending"        # real external outflow — the only thing aggregates count
+TRANSFER = "transfer"        # the money is still yours (own card, own brokerage, ...)
+SETTLEMENT = "settlement"    # a person's ruling: repaid a loan, was paid back, ...
+
+# How a nature was decided, strongest first. Carried on the movement so a figure
+# can explain itself (T1) and so the surface can show WHY something was excluded.
+BY_LINK = "linked"                   # rung 1: a live TransferLinked (decisive)
+BY_OWN_ACCOUNT = "own_account"       # rung 2: names an account you hold
+BY_RULING = "ruling"                 # rung 3: a human said so
+BY_CATEGORY = "category_hint"        # rung 4: category/subcategory SUGGESTS it
+BY_DEFAULT = "default"               # rung 5: nothing said otherwise
+
+# Category/subcategory labels that merely *suggest* a non-spending nature. They
+# never decide alone: the real-vault run showed one category (`loan_payments`)
+# covering opposite natures — a mortgage payment (real outflow) and a payment to
+# your own card (internal). A movement resting only on this rung stays counted and
+# is flagged PROVISIONAL, so the number is honest about its own uncertainty (X2).
+_TRANSFER_HINT_CATEGORIES = frozenset({"transfers"})
+_TRANSFER_HINT_SUBCATEGORIES = frozenset({
+    "credit card payment", "card payment", "investment", "transfer",
+    "internal transfer", "brokerage", "atm", "cash withdrawal"})
+
+
 @dataclass
 class MovementInfo:
     """One posted movement on a real (asset/liability) account, with the stable
@@ -168,6 +197,12 @@ class MovementInfo:
     currency: str
     provenance: Provenance
     linked: bool = False
+    # Slice 6.5 — derived, with the rung that decided it. `provisional` means the
+    # nature rests only on a category hint (or the default), so the figure is
+    # counted but its uncertainty is reported rather than hidden.
+    nature: str = SPENDING
+    nature_reason: str = BY_DEFAULT
+    provisional: bool = False
 
 
 @dataclass
@@ -229,6 +264,10 @@ class LedgerProjection:
         # by}. The prior a transaction's category derives from when it has no
         # per-movement override. Highest-trust ruling wins.
         self._merchant_categories: dict[str, dict] = {}
+        # Own-account token index (Slice 6.5), built lazily and invalidated when a
+        # new account is opened — used to recognize an internal movement even when
+        # no transfer link was formed.
+        self._own_tokens_cache: dict[str, set[str]] | None = None
         for event in events:
             self.apply(event)
 
@@ -254,6 +293,7 @@ class LedgerProjection:
             st.institution = event.body.get("institution", "")
             st.number = event.body.get("account_number", "")
             st.names = list(event.body.get("account_names", []))
+            self._own_tokens_cache = None      # a new account changes the index
 
         elif et == "OpeningBalanceObserved":
             acct = event.body["account_id"]
@@ -454,12 +494,64 @@ class LedgerProjection:
                 counts[sig] = occ + 1
                 key = movement_key(did, account, ln.date, ln.amount,
                                    ln.description, occ)
-                out.append(MovementInfo(
+                m = MovementInfo(
                     key=key, account=account, kind=st.kind, date=ln.date,
                     amount=ln.amount, description=ln.description,
                     currency=st.currency, provenance=ln.provenance,
-                    linked=key in linked))
+                    linked=key in linked)
+                self._decide_nature(m)
+                out.append(m)
         return out
+
+    def _own_account_tokens(self) -> dict[str, set[str]]:
+        """Distinctive tokens for every account we hold, so a movement naming one
+        of them can be recognized as internal even when no link was formed."""
+        if self._own_tokens_cache is None:
+            self._own_tokens_cache = {
+                a: account_tokens(s.institution, s.number, s.name)
+                for a, s in self._acct.items()
+                if s.seen and s.kind in ("depository", "liability", "investment")}
+        return self._own_tokens_cache
+
+    def _decide_nature(self, m: "MovementInfo") -> None:
+        """Decide what a movement IS, strongest evidence first (Slice 6.5).
+
+        1. linked            — a live TransferLink. Decisive.
+        2. own account       — the description distinctively names another account
+                               you hold (a card payment whose counterpart statement
+                               was never ingested still isn't spending).
+        3. a human ruling    — you said what this is.
+        4. category hint     — SUGGESTS internal; counted but marked provisional,
+                               because one category can cover opposite natures.
+        5. default           — spending.
+        """
+        if m.linked:
+            m.nature, m.nature_reason = TRANSFER, BY_LINK
+            return
+        # Rung 2: does this movement name one of YOUR OTHER accounts?
+        low = (m.description or "").lower()
+        for account, tokens in self._own_account_tokens().items():
+            if account == m.account:
+                continue                      # naming itself proves nothing
+            if tokens and any(tok in low for tok in tokens):
+                m.nature, m.nature_reason = TRANSFER, BY_OWN_ACCOUNT
+                return
+        # Rung 3: a person's explicit ruling on this movement's nature. Carried on
+        # the category overlay's body, so it needs no new event type (Move 1 is
+        # read-side only); a generic Ruling event is Move 3, if ever.
+        nature = (self._categories.get(m.key) or {}).get("nature")
+        if nature in (TRANSFER, SETTLEMENT, SPENDING):
+            m.nature, m.nature_reason = nature, BY_RULING
+            return
+        # Rung 4: the category/subcategory only SUGGESTS — provisional, never silent.
+        derived = self.derived_category(m) or {}
+        cat = (derived.get("category") or "").strip().lower()
+        sub = (derived.get("subcategory") or "").strip().lower()
+        if cat in _TRANSFER_HINT_CATEGORIES or sub in _TRANSFER_HINT_SUBCATEGORIES:
+            m.nature, m.nature_reason = TRANSFER, BY_CATEGORY
+            m.provisional = True
+            return
+        m.nature, m.nature_reason, m.provisional = SPENDING, BY_DEFAULT, False
 
     def transfer_suggestions(self) -> list[dict]:
         """Pending transfer suggestions awaiting a human ruling — with the source
@@ -507,12 +599,12 @@ class LedgerProjection:
 
     def spending_by_currency(self) -> dict[str, Decimal]:
         """Minimal external-spending seed (superseded by spending_by_category):
-        depository outflows, excluding transfers. Positive magnitudes, per
-        currency. Kept for back-compat; the category view is the real one."""
-        linked = self.linked_keys()
+        depository outflows, excluding non-spending natures (Slice 6.5). Positive
+        magnitudes, per currency. Kept for back-compat; the category view is the
+        real one."""
         out: dict[str, Decimal] = {}
         for m in self.movements():
-            if m.kind != "depository" or m.amount >= 0 or m.key in linked:
+            if m.kind != "depository" or m.amount >= 0 or m.nature != SPENDING:
                 continue
             out[m.currency] = out.get(m.currency, Decimal("0")) + (-m.amount)
         return out
@@ -521,11 +613,43 @@ class LedgerProjection:
 
     @staticmethod
     def _is_expense(m: "MovementInfo") -> bool:
-        """A movement that is spending: money out of an asset, or a charge on a
-        liability (a card purchase). A card *payment* (liability, negative) is a
-        transfer, not spending — the kind-aware distinction from Slice 5."""
+        """A movement with the *shape* of spending: money out of an asset, or a
+        charge on a liability (a card purchase). A card *payment* (liability,
+        negative) is a transfer — the kind-aware distinction from Slice 5.
+
+        Shape is necessary but not sufficient: what a movement *is* economically
+        is its `nature` (Slice 6.5). ``_counts_as_spending`` applies both."""
         return ((m.kind == "depository" and m.amount < 0)
                 or (m.kind == "liability" and m.amount > 0))
+
+    def _counts_as_spending(self, m: "MovementInfo") -> bool:
+        """Does this movement belong in a spending figure? It must have the shape
+        of an expense AND have `spending` nature — money that left your LIFE, not
+        merely an account (M1). This one predicate is what makes the headline
+        honest: a card payment, a brokerage contribution, or a movement naming
+        another account you hold is excluded whether or not a link was formed."""
+        return self._is_expense(m) and m.nature == SPENDING
+
+    def provisional_spending(self, currency: str | None = None) -> Decimal:
+        """How much of the reported spending rests on *weak* evidence — movements
+        excluded (or kept) only on a category hint. Surfaced alongside the total so
+        the figure states its own uncertainty instead of hiding it (X2): 'I count
+        X as spending; Y of that I'm not certain about.'"""
+        total = Decimal("0")
+        for m in self.movements():
+            if not self._is_expense(m) or not m.provisional:
+                continue
+            if currency is not None and m.currency != currency:
+                continue
+            total += abs(m.amount)
+        return total
+
+    def excluded_from_spending(self) -> list["MovementInfo"]:
+        """Expense-shaped movements kept OUT of spending because their nature is
+        not `spending` — with the rung that decided each. The audit trail for
+        'why isn't this in my spending?'"""
+        return [m for m in self.movements()
+                if self._is_expense(m) and m.nature != SPENDING]
 
     def derived_category(self, m: "MovementInfo") -> dict | None:
         """A movement's effective category (Slice 5.5): a per-transaction override
@@ -549,11 +673,15 @@ class LedgerProjection:
         """Real spending, grouped by category (Slice 5): every expense movement —
         card purchases included — **excluding transfers**, bucketed by its
         *derived* category (override → merchant catalog → ``Uncategorized``, per
-        Slice 5.5). Positive magnitudes; ``currency`` filters if given."""
-        linked = self.linked_keys()
+        Slice 5.5). Positive magnitudes; ``currency`` filters if given.
+
+        Slice 6.5: exclusion is by **nature**, not merely by link — so an internal
+        movement that never linked (a card payment, a brokerage contribution) is
+        no longer counted as consumption, and `transfers` can never appear as a
+        line item inside spending."""
         out: dict[str, Decimal] = {}
         for m in self.movements():
-            if not self._is_expense(m) or m.key in linked:
+            if not self._counts_as_spending(m):
                 continue
             if currency is not None and m.currency != currency:
                 continue
@@ -565,11 +693,11 @@ class LedgerProjection:
         """Finer spending slice (Slice 5.6): expense movements grouped by the
         merchant's model-provided **subcategory** ("streaming", "warehouse club"),
         falling back to the primary category, then ``Uncategorized``. The extra
-        axis for slicing and dicing. Positive magnitudes; transfers excluded."""
-        linked = self.linked_keys()
+        axis for slicing and dicing. Positive magnitudes; non-spending natures
+        excluded (Slice 6.5)."""
         out: dict[str, Decimal] = {}
         for m in self.movements():
-            if not self._is_expense(m) or m.key in linked:
+            if not self._counts_as_spending(m):
                 continue
             if currency is not None and m.currency != currency:
                 continue
@@ -582,10 +710,10 @@ class LedgerProjection:
     def uncategorized_expenses(self) -> list["MovementInfo"]:
         """Expense movements whose *derived* category is still unknown — no
         override and no merchant-catalog entry. The categorization queue;
-        transfers excluded."""
-        linked = self.linked_keys()
+        non-spending natures excluded (Slice 6.5) — we never ask you to categorize
+        money that didn't leave your life."""
         return [m for m in self.movements()
-                if self._is_expense(m) and m.key not in linked
+                if self._counts_as_spending(m)
                 and self.derived_category(m) is None]
 
     def uncategorized_merchants(self) -> dict[str, dict]:
@@ -728,10 +856,32 @@ class LedgerProjection:
         return sum((p["market_value"] for p in st.positions.values()),
                    start=Decimal("0"))
 
+    def holdings_as_of(self, account: str) -> tuple[str, bool]:
+        """The as-of date an account's composed value is honest at, and whether
+        the measurements it sums were taken on DIFFERENT dates.
+
+        A real run mixed a cash measurement from one month with holdings from the
+        next and presented one total. Summing measurements of different vintages
+        is exactly the stale-price dressing the valuation-class invariant exists to
+        prevent — so the composed figure reports the OLDEST measurement it rests on
+        (the date the whole number is truly good as of) and flags the mix, rather
+        than quietly implying it is all current (Slice 6 fix, 2026-07-25)."""
+        st = self._acct.get(account)
+        dates = {p["as_of"] for p in (st.positions.values() if st else ()) if p["as_of"]}
+        if st is not None and st.closing_date:
+            dates.add(st.closing_date)
+        if not dates:
+            return "", False
+        return min(dates), len(dates) > 1
+
     def account_value(self, account: str) -> Decimal:
         """An account's total value: for an investment account, cash (the observed
         balance) + Σ latest position market values; for any other, its balance.
-        The composition an investment account's headline figure comes from."""
+        The composition an investment account's headline figure comes from.
+
+        Pair with ``holdings_as_of`` to present it honestly: the figure is only
+        good as of the OLDEST measurement it sums, and that call reports whether
+        the parts were measured on different dates."""
         st = self._acct.get(account)
         if st is None or not st.seen:
             raise UnknownAccountError(account)

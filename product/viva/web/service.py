@@ -47,8 +47,12 @@ def overview(vault: Vault) -> dict:
             "holders": info.names}
         if investment:
             ug = proj.unrealized_gain(info.account)
+            as_of, mixed = proj.holdings_as_of(info.account)
             row["holdings"] = str(proj.holdings_value(info.account))
             row["unrealized_gain"] = str(ug) if ug is not None else None
+            # The composed total is only good as of its OLDEST part; say so.
+            row["as_of"] = as_of or row["as_of"]
+            row["mixed_as_of"] = mixed
         accounts.append(row)
     income = proj.income_by_currency()
     pending_paystubs = [b for b in proj.open_holds()
@@ -60,6 +64,14 @@ def overview(vault: Vault) -> dict:
         "spending": answer_spending(proj).to_dict(),
         "spending_by_category": {c: str(a) for c, a
                                  in proj.spending_by_category().items()},
+        # How much of the spending figure rests on weak evidence, and what was
+        # kept out of it and why (Slice 6.5) — the number states its own doubt.
+        "provisional_spending": str(proj.provisional_spending()),
+        "excluded_from_spending": [
+            {"description": m.description, "amount": str(abs(m.amount)),
+             "account": m.account, "date": m.date, "reason": m.nature_reason,
+             "nature": m.nature, "provisional": m.provisional}
+            for m in proj.excluded_from_spending()],
         "spending_by_subcategory": {c: str(a) for c, a
                                     in proj.spending_by_subcategory().items()},
         "income": {c: str(v) for c, v in income.items()},

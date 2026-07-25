@@ -324,6 +324,7 @@ def transfer_suggested(movement_a: str, candidates: list[str], evidence: dict,
 
 def category_assigned(movement_key: str, descriptor: str, category: str,
                       grade: str, occurred_at: str, by: str = "human",
+                      nature: str = "",
                       provenance: Provenance | None = None) -> Event:
     """Assign a category to one movement — a graded OVERLAY via correction-as-event
     (Slice 5), keyed to the stable movement key so it survives a reingest and
@@ -331,11 +332,17 @@ def category_assigned(movement_key: str, descriptor: str, category: str,
     ``by='human'`` is a confirmation graded ``verified`` (the moat). ``descriptor``
     is the movement's raw merchant string, captured deliberately so merchant
     learning is later a projection over these events — no re-ingestion, nothing
-    wasted (Vishnu, 2026-07-24)."""
+    wasted (Vishnu, 2026-07-24).
+
+    ``nature`` (Slice 6.5, optional) records what the movement *is* — `spending`,
+    `transfer`, or `settlement`. Carried here rather than in a new event type, so
+    the honest-aggregates work stays a read-side change over events we already
+    write; a person's ruling outranks any category hint when nature is derived."""
     return Event(
         "CategoryAssigned", occurred_at,
         body={"movement_key": movement_key, "descriptor": descriptor,
-              "category": category, "grade": grade, "by": by},
+              "category": category, "grade": grade, "by": by,
+              "nature": nature},
         provenance=provenance or Provenance(),
     )
 
