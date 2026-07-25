@@ -27,6 +27,10 @@ Some requirements are cross-cutting: they belong to no single feature, so they'r
 - **I5 — No US-shaped taxonomy.** Account types, tax concepts, and document categories in the data model must be extensible to non-US instruments (ISAs, provident funds, passbooks) without migration pain.
 - **I6 — The admission exam is pack-extensible.** Regional benchmark packs run through identical machinery; real statements are never committed (synthetic packs, or contributors verify locally and share scorecards only). International expansion is evidence-gated, not promised.
 
+## Accounting-model invariants
+
+- **M1 — Cash-flow over accrual, when in doubt (added 2026-07-24).** The ledger records *realized* cash events — money that moved, which is what is tax-relevant and independently verifiable. Accrual/paper figures (unrealized gains, mark-to-market revaluation) are **never posted, never reconciled as ledger facts, never events**; they are *derived, as-of-date presentation views* computed from the measurements on hand, always carrying their date and valuation class (X2). Rationale: the thesis (clean data is *measurements, not generations*) — posting a price change that wasn't a cash movement fabricates an event that never happened; keeping the ledger cash-flow keeps it aligned with reality and with tax. When a modeling choice is ambiguous, prefer the cash-flow reading. (positions-and-investments.md)
+
 ## Experience invariants
 
 - **X1 — Target user skill: "can install an app."** No feature may require self-hosting, terminals, or knowing what an API key is on the default path. (Adoption doc)
