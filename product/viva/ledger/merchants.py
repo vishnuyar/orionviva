@@ -1,69 +1,12 @@
-"""Merchant normalization — a raw transaction descriptor to a canonical merchant.
+"""Merchant normalization — re-exported from the ``merchantcore`` package.
 
-Deterministic and **versioned** (Slice 5.5): the normalized key is what the
-merchant catalog is keyed by, and — for a shareable commons — two users must
-derive the *same* key from the same descriptor, so the rules are fixed and
-carried by a version, exactly like the format normalizers. This is NOT fuzzy
-matching (which would merge "Costco" and "Costa Coffee"); it only strips the
-noisy tail that varies transaction-to-transaction — store numbers, order ids,
-phone numbers, payment-processor prefixes — leaving the merchant words as read.
-The model does the actual grouping/categorization on the deduped list.
-
-``is_shareable`` is the privacy lint (T5/T6): a peer-payment or person-name
-descriptor ("VENMO TO JOHN SMITH", "ZELLE FROM …") is personal and must never
-enter the unencrypted catalog or the commons — only clearly *commercial*
-merchants are shareable.
+The normalizer, the privacy lint, and the merchant record now live in
+``merchantcore`` (a peer to vivacore; see docs/merchantcore-package.md), because
+merchant knowledge is impersonal and reusable. The projection derives a
+transaction's category through ``normalize_merchant``, so this thin re-export
+keeps the ledger-layer import path stable (and ledger must not import ingest).
 """
 
-from __future__ import annotations
+from merchantcore import NORMALIZER_VERSION, is_shareable, normalize_merchant
 
-import re
-
-NORMALIZER_VERSION = "merch-v1"
-
-# Payment-processor / POS prefixes that wrap the real merchant name.
-_PREFIXES = (
-    "tst* ", "tst*", "sq *", "sq*", "sp *", "sp*", "pos ", "pp*", "paypal *",
-    "paypal*", "ppd id:", "ppd", "ach pmt", "web pymt", "pos debit ",
-    "pos purchase ", "purchase ", "debit card purchase ", "checkcard ",
-)
-
-# Substrings that mark a personal peer-payment (never shareable).
-_PEER_MARKERS = (
-    "venmo", "zelle", "cash app", "cashapp", "cash.app", "paypal *",
-    "quickpay", "popmoney", " to ", " from ",
-)
-
-_ORDER_ID = re.compile(r"\*[a-z0-9]{3,}")          # US*RA30Z3BP0, *RH4DD6YM1
-_STORE_NUM = re.compile(r"#\s*\d+")                 # #0664
-_PHONE = re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b")
-_LONGNUM = re.compile(r"\b\d{3,}\b")                # order/ref numbers, ids
-_NONWORD = re.compile(r"[^a-z0-9 ]+")
-_WS = re.compile(r"\s+")
-
-
-def normalize_merchant(descriptor: str) -> str:
-    """Canonical merchant key for a raw descriptor (deterministic, versioned).
-    Empty string if nothing meaningful remains."""
-    s = (descriptor or "").lower().strip()
-    for p in _PREFIXES:
-        if s.startswith(p):
-            s = s[len(p):]
-            break
-    s = _PHONE.sub(" ", s)
-    s = _ORDER_ID.sub(" ", s)
-    s = _STORE_NUM.sub(" ", s)
-    s = _LONGNUM.sub(" ", s)
-    s = _NONWORD.sub(" ", s)
-    s = _WS.sub(" ", s).strip()
-    return s
-
-
-def is_shareable(descriptor: str) -> bool:
-    """True when a descriptor names a *commercial* merchant safe to put in the
-    unencrypted catalog / commons — i.e. NOT a peer payment or a person's name.
-    Conservative: anything with a peer-payment marker is filtered out."""
-    low = (descriptor or "").lower()
-    if any(mark in low for mark in _PEER_MARKERS):
-        return False
-    return bool(normalize_merchant(descriptor))
+__all__ = ["normalize_merchant", "is_shareable", "NORMALIZER_VERSION"]

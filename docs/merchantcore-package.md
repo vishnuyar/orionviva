@@ -1,6 +1,6 @@
 # merchantcore — the merchant enrichment package
 
-**Status:** Design (Slice 5.6) · **Last updated:** 2026-07-24 · **Origin:** Slice 5.5 built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
+**Status:** Implemented (Slice 5.6, core) · **Last updated:** 2026-07-24 · **Origin:** Slice 5.5 built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
 
 **Invariants touched:** **T5 drawn at a package boundary** (only *impersonal* data crosses product → merchantcore: a normalized merchant key and a privacy-linted example — never amounts, dates, accounts, or peer/PII descriptors), T4 (the product's ledger stays the source of truth: merchantcore is a knowledge *cache/service*, and the product imports its results as events, so a replay is self-contained), T6 (contributing to the commons is an opt-in decision), T8 (merchantcore makes provider-agnostic, pinned model calls through `vivacore.models`), I3/I5/I6 (merchants are locale-sharded, categories/attributes are open data, the commons is pack-extensible). Principle 2 (an enriched attribute is a *graded* claim; the personal override always wins).
 
@@ -85,9 +85,30 @@ A transaction's category grade is the max of the rulings that reach it: `verifie
 - **Product, lightly rewired:** `ledger/merchants.py` and `ingest/merchants.py` become re-exports from `merchantcore`; the projection imports `merchantcore.normalize`; `MerchantCategorized` generalizes to `MerchantEnriched` (carrying a record); `categorize_merchants_batch` calls `merchantcore.Enricher` (still injectable for offline tests); a `sync_merchants` step imports catalog records as events. The ledger, ingest pipeline, and other slices are untouched.
 - Dependency DAG stays clean and one-directional; the product gains a `merchantcore` dependency alongside `vivacore`.
 
+## Implementation status (as built, 2026-07-24)
+
+- ✅ **The package exists** (`merchant/`, `pyproject` name `merchantcore`, depends on `vivacore`): `normalize` (moved out of the product), `MerchantRecord` (multi-attribute — `attributes` bag), `Enricher` (+ the versioned `enrich-v1` prompt) via `vivacore.models`, `Catalog` (records + pending queue + JSON persistence + linted `export` + `merge`). Product `ledger/merchants.py` + `ingest/merchants.py` are now re-exports.
+- ✅ **The impersonal boundary** (T9): `enrich_merchants` submits only `(normalized key, linted example)`; a test asserts no amount, account number, or date reaches the model prompt, and a peer-payment merchant is filtered out entirely.
+- ✅ **Own model calls**: `Enricher.enrich` is ONE batched, injected call → graded (`corroborated`) records carrying the taxonomy + prompt + normalizer version. `model_extractor(spec)` is the live text-only edge.
+- ✅ **Two-level taxonomy + richer attributes (enrich-v2, cat-v2).** Informed by an industry scan (Plaid's Personal Finance Categories are 16 primary + 104 detailed; Ntropy adds MCC, recurrence, custom categories — see below): the record now carries a **primary category** from **16 controlled buckets** (`merchantcore.taxonomy.PRIMARY_CATEGORIES`, the single source of truth the product's category picker also uses), a **model-provided `subcategory`** (open value, lightly normalized — "warehouse club", "streaming" — the commons converges on it), and `attributes` for **logo_url, mcc, website, description**. The product syncs `subcategory` into the `MerchantEnriched` event and exposes `projection.spending_by_subcategory` — the finer slice-and-dice axis.
+- ✅ **Sync-as-events** (T4): the product imports catalog records as `MerchantEnriched` events; categorization is retrospective (a merchant ruling fills every transaction), idempotent, and survives a **replay with merchantcore absent** — tested.
+- ✅ **Runnable on a real vault**: `python -m viva.enrich` gathers unknowns, enriches in one call, persists the catalog beside the vault (plain JSON, impersonal), and syncs. `MerchantEnriched` and `MerchantCategorized` share the catalog projection with grade precedence; a human `verified` override still wins.
+
+Install note: the product now depends on `merchantcore`, so `pip install -e ./merchant` alongside `./core` and `./product`. Deferred: web/API enrichers, the git commons registry, merchant-as-Party. Tests: `merchant/tests/test_merchantcore.py` (6) + `product/tests/test_merchant_enrich.py` (4); full suite 244 green.
+
+## Slice-and-dice: the dimensions, and where each comes from
+
+The goal of enrichment is to let a person slice their finances any way. That is not one richer category — it's a few **orthogonal dimensions**, sourced from three places (an industry scan — Plaid, Ntropy — confirmed this shape):
+
+- **merchantcore (impersonal, shareable):** primary **category** (16) + **subcategory** (model value) + **MCC** + **logo** + website. Done (enrich-v2).
+- **the product, from transaction patterns:** **recurrence / subscriptions** — recurring inflow/outflow *streams* grouped by merchant + amount + cadence (Plaid/Ntropy both do this; matured at 3+ occurrences). This is **Slice 8 (Obligations)** and a first-class slice axis ("my subscriptions", "recurring vs discretionary").
+- **the product, from the user:** **tags** — the free, many-to-many personal axis ("reimbursable", "vacation-2024", "business"). Deferred in Slice 5; the axis that lets someone slice *their own way* (Ntropy's "custom categories"). A strong pull-forward candidate.
+- **per-transaction (from the statement read):** **location** (city/store) and **payment_channel** (in-store vs online) — these are transaction attributes (a merchant has many locations), so they belong to the reader/extraction, not the merchant record.
+
 ## Notes for future slices
 
-- **Multi-attribute enrichment:** the `attributes` bag grows — model-world-knowledge fields (canonical name, description, website) come from the same batched call; **looked-up / dynamic** fields (live Yelp reviews, current socials, logos) are a separate enricher layer with a freshness story, opt-in, cached in the commons.
+- **Multi-attribute enrichment:** the `attributes` bag grows — model-world-knowledge fields (canonical name, description, website, mcc, logo) come from the same batched call; **looked-up / dynamic** fields (live Yelp reviews, current socials) are a separate enricher layer with a freshness story, opt-in, cached in the commons.
+- **Tags + recurrence** are the remaining slice dimensions (above); subcategory + these three are what deliver "slice and dice".
 - **The commons registry:** a git repo of `MerchantRecord`s keyed by normalizer version + locale, corroborated-by-count, self-healing when merchants rebrand. `Catalog.export` is its input; `import` merges as priors.
 - **Merchant as a Party:** the canonical merchant is the Party primitive; per-location detail and external-counterparty attribution attach to the same key.
 

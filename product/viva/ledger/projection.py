@@ -269,10 +269,12 @@ class LedgerProjection:
             if prior is None or event.body.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
                 self._categories[key] = event.body
 
-        elif et == "MerchantCategorized":
+        elif et in ("MerchantCategorized", "MerchantEnriched"):
             merchant = event.body["merchant"]
             prior = self._merchant_categories.get(merchant)
             # Keep the highest-trust ruling; a later equal-or-higher grade wins.
+            # MerchantCategorized (human/category-only) and MerchantEnriched (the
+            # richer package-synced record) share this catalog.
             if prior is None or _grade_rank(event.body.get("grade")) >= _grade_rank(prior.get("grade")):
                 self._merchant_categories[merchant] = event.body
 
@@ -496,6 +498,24 @@ class LedgerProjection:
                 continue
             cat = (self.derived_category(m) or {}).get("category", "Uncategorized")
             out[cat] = out.get(cat, Decimal("0")) + abs(m.amount)
+        return out
+
+    def spending_by_subcategory(self, currency: str | None = None) -> dict[str, Decimal]:
+        """Finer spending slice (Slice 5.6): expense movements grouped by the
+        merchant's model-provided **subcategory** ("streaming", "warehouse club"),
+        falling back to the primary category, then ``Uncategorized``. The extra
+        axis for slicing and dicing. Positive magnitudes; transfers excluded."""
+        linked = self.linked_keys()
+        out: dict[str, Decimal] = {}
+        for m in self.movements():
+            if not self._is_expense(m) or m.key in linked:
+                continue
+            if currency is not None and m.currency != currency:
+                continue
+            ruling = self.derived_category(m) or {}
+            label = (ruling.get("subcategory") or ruling.get("category")
+                     or "Uncategorized")
+            out[label] = out.get(label, Decimal("0")) + abs(m.amount)
         return out
 
     def uncategorized_expenses(self) -> list["MovementInfo"]:

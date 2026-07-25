@@ -17,17 +17,21 @@ import logging
 from datetime import date
 
 from ..ledger.events import (CORROBORATED, UNVERIFIED, VERIFIED,
-                             category_assigned, merchant_categorized)
+                             category_assigned, merchant_categorized,
+                             merchant_enriched)
 from ..ledger.ledger import Ledger
 from ..ledger.merchants import is_shareable, normalize_merchant
 
+_GRADE_RANK = {VERIFIED: 3, CORROBORATED: 2, UNVERIFIED: 1}
+
 log = logging.getLogger(__name__)
 
-# Offered defaults only — categories are open; the user may assign anything.
-SEED_CATEGORIES = (
-    "groceries", "dining", "transport", "utilities", "housing", "shopping",
-    "health", "entertainment", "income", "transfers", "other",
-)
+# The 16 primary categories live in merchantcore (the shareable taxonomy); the
+# product offers them plus the fallback. Categories are still open — a user may
+# assign anything.
+from merchantcore import FALLBACK_CATEGORY, PRIMARY_CATEGORIES  # noqa: E402
+
+SEED_CATEGORIES = PRIMARY_CATEGORIES + (FALLBACK_CATEGORY,)
 
 UNCATEGORIZED = "Uncategorized"
 
@@ -95,6 +99,45 @@ def categorize_merchants_batch(ledger: Ledger, categorize_fn,
     if n:
         log.info("merchant: batched-categorized %d merchant(s)", n)
     return n
+
+
+def enrich_merchants(ledger: Ledger, catalog, extract_fn) -> dict:
+    """The product↔merchantcore loop (Slice 5.6). Submit the unknown, shareable
+    merchants to the catalog as **impersonal** hints (a normalized key + a linted
+    example — nothing about amounts, dates, or accounts crosses, T9); let
+    merchantcore enrich the pending set in one batched call; then **sync** the
+    catalog records back into the ledger as `MerchantEnriched` events, so
+    categorization is retrospective and the ledger stays self-contained (T4).
+
+    ``catalog`` is a ``merchantcore.Catalog``; ``extract_fn`` is the injected
+    model call. Returns counts."""
+    from merchantcore import Enricher
+
+    proj = ledger.projection()
+    hints = [(key, row["example"])
+             for key, row in proj.uncategorized_merchants().items()
+             if row["shareable"]]
+    submitted = catalog.submit(hints)
+    enriched = 0
+    if catalog.pending():
+        records = Enricher(extract_fn).enrich(catalog.pending())
+        catalog.add_all(records)
+        enriched = len(records)
+
+    # Sync: import catalog records the ledger doesn't already reflect (idempotent).
+    existing = proj.merchant_categories()
+    synced = 0
+    for key, r in catalog.records().items():
+        cur = existing.get(key)
+        if cur is None or _GRADE_RANK.get(r.grade, 0) > _GRADE_RANK.get(cur.get("grade"), 0):
+            ledger.append(merchant_enriched(
+                r.key, r.category, r.subcategory, r.canonical_name,
+                r.attributes, r.grade, date.today().isoformat()))
+            synced += 1
+    if submitted or enriched or synced:
+        log.info("merchants: submitted %d, enriched %d, synced %d",
+                 submitted, enriched, synced)
+    return {"submitted": submitted, "enriched": enriched, "synced": synced}
 
 
 def export_catalog(ledger: Ledger) -> dict:

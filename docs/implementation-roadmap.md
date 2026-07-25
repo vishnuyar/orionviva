@@ -91,7 +91,7 @@ _Delivered: `ingest/registry.py` — a `DocProfile` registry (checking/savings =
 
 ---
 
-## Slice 5.6 — Extract `merchantcore` + the live enrichment engine  ← NEXT
+## Slice 5.6 — Extract `merchantcore` + the live enrichment engine  ✅ DONE (core)
 **Block seeded:** the standalone `merchantcore` package (peer to vivacore): normalize · MerchantRecord (multi-attribute) · Enricher (batched model calls + versioned enrichment prompt) · Catalog (unencrypted store + pending queue + content-addressed commons export/import).
 
 **Full spec:** [merchantcore-package.md](merchantcore-package.md). The three flows: product **submits only impersonal** merchant hints (normalized key + linted example — T5 at a package boundary, no amounts/dates/accounts cross); merchantcore makes its **own batched model calls** to enrich merchants into graded multi-attribute records; the product **syncs results back as `MerchantEnriched` events** so its ledger stays self-contained (T4) and categorizes retrospectively. Generalizes the Slice-5.5 `MerchantCategorized` → `MerchantEnriched`. Second shared crown-jewel package; the home for the enrichment prompt, multi-attribute merchants (website/socials/reviews later), and the commons registry. Deferred: web/API enrichers, the git commons registry, merchant-as-Party.

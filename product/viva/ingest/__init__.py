@@ -14,7 +14,8 @@ from .pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED,
                        heal_paystubs, post_paystub, post_statement, sweep)
 from .categorize import (SEED_CATEGORIES, assign_category,
                          assign_merchant_category, categorize_merchants_batch,
-                         export_catalog, normalize_category, suggest_categories)
+                         enrich_merchants, export_catalog, normalize_category,
+                         suggest_categories)
 from .merchants import NORMALIZER_VERSION, is_shareable, normalize_merchant
 from .paystub import Deduction, PayStubFacts, from_paystub_json
 from .raw_store import RawStore
@@ -34,7 +35,8 @@ __all__ = [
     "PayStubFacts", "Deduction", "from_paystub_json",
     "assign_category", "suggest_categories", "normalize_category",
     "SEED_CATEGORIES", "assign_merchant_category", "categorize_merchants_batch",
-    "export_catalog", "normalize_merchant", "is_shareable", "NORMALIZER_VERSION",
+    "enrich_merchants", "export_catalog", "normalize_merchant", "is_shareable",
+    "NORMALIZER_VERSION",
     "HeldItem", "held_items", "apply_human_correction", "apply_identity_ruling",
     "diagnose", "ReconciliationFinding", "DIAGNOSIS_VERSION",
     "FORCED", "SUGGESTED", "UNLOCALIZED",
