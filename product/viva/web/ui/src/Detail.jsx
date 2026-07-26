@@ -116,17 +116,25 @@ export function MerchantDetail({q, onBack, onDone}) {
       <div className="quiet">
         {d.count} transaction{d.count === 1 ? '' : 's'} · {money(d.total, d.currency)} in total
       </div>
+      {/* The three hard-coded natures that stood here until 2026-07-26 —
+          spending / transfer / settlement — were replaced by the four majors in
+          Slice 9a, and "settlement" had always been mislabelled ("something I
+          now own" when it meant debt repayment). The options now come from the
+          QUESTION, which is where the intelligence lives: the queue already
+          knows whether it is proposing a relationship or asking outright. */}
       {q.kind === 'nature' ? (
         <div className="row" style={{marginTop: 12}}>
-          <button disabled={busy} onClick={async () => {
-            setBusy(true); try { await api.ruleNature(d.merchant, 'spending'); await onDone() } finally { setBusy(false) }
-          }}>Money I spent</button>
-          <button className="ghost" disabled={busy} onClick={async () => {
-            setBusy(true); try { await api.ruleNature(d.merchant, 'transfer'); await onDone() } finally { setBusy(false) }
-          }}>Moved between my accounts</button>
-          <button className="ghost" disabled={busy} onClick={async () => {
-            setBusy(true); try { await api.ruleNature(d.merchant, 'settlement'); await onDone() } finally { setBusy(false) }
-          }}>Something I now own</button>
+          {(q.options || []).map(o => (
+            <button key={o.label} className={o === q.options[0] ? '' : 'ghost'}
+                    disabled={busy} onClick={async () => {
+              setBusy(true)
+              try {
+                await api.ruleMajor({descriptor: q.refs.descriptor || d.merchant,
+                                     ...o.args})
+                await onDone()
+              } finally { setBusy(false) }
+            }}>{o.label}</button>
+          ))}
         </div>
       ) : !perTransaction && (
         <div className="row" style={{marginTop: 12}}>

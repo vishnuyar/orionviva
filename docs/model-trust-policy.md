@@ -1,6 +1,6 @@
 # Model Trust Policy — guardrails, graduated autonomy, feedback
 
-**Status:** Draft · **Last updated:** 2026-07-19 · **Origin question:** how do we decide we're at a position to completely believe models; what guardrails; what feedback systems?
+**Status:** Stable — implemented as grades + ADR-010; autonomy still earned per-surface · **Last updated:** 2026-07-19 · **Origin question:** how do we decide we're at a position to completely believe models; what guardrails; what feedback systems?
 
 ## The stance
 

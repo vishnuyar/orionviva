@@ -1,6 +1,6 @@
 # Experience Vision — a day with Viva, and the machinery each moment demands
 
-**Status:** Draft — core interaction decisions settled 2026-07-20; two flagged tensions open · **Last updated:** 2026-07-20
+**Status:** Vision — unbuilt by design; the debug surface is deliberately not this · **Last updated:** 2026-07-20
 **Invariants touched:** T1 (every displayed figure carries grade + source), T6 (capture surfaces must not create hosted data), X1 (no surface requires technical skill), X2 (uncertainty visible), X3 (explicit yes for anything irreversible), I3 (capability honesty per locale surfaces in UI)
 
 ## The chosen shape (author decisions, 2026-07-20)

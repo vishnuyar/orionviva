@@ -1,6 +1,6 @@
 # Adoption & Distribution — local-first without the friction tax
 
-**Status:** Draft · **Last updated:** 2026-07-20 · **Origin question:** if data must stay local, who can actually run this? What user tech skill do we assume? Does local-first cost us the growth the vision needs ("I want this tool so that everyone uses it")?
+**Status:** Open — deliberately undecided; first user is the author, so friction is not yet the binding constraint · **Last updated:** 2026-07-20 · **Origin question:** if data must stay local, who can actually run this? What user tech skill do we assume? Does local-first cost us the growth the vision needs ("I want this tool so that everyone uses it")?
 
 ## Naming the tension precisely
 

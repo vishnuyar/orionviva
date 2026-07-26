@@ -1,6 +1,13 @@
 # Competitive & Adjacent Landscape
 
-**Status:** Draft · **Last updated:** 2026-07-19 · **Refresh trigger:** new entrants, quarterly review of Q6
+**Status:** ⛔ Historical — a snapshot of mid-July 2026, deliberately not maintained · **Last updated:** 2026-07-19 · **Refresh trigger:** new entrants, quarterly review of Q6
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **A read of competing and adjacent products as of *July 2026*, from public marketing and documentation only. None was audited, and all of them change.**
+>
+> Kept because it records the positioning reasoning at the time. **Do not cite any characterization in it as a current fact about another product.** It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see the positioning that survived: local-first, provenance as a product primitive, and paid-not-harvested.
+
 
 _All characterizations below are our reading of publicly available material as of July 2026 — marketing pages, documentation, and press coverage (sources at the end). We have not audited any of these products, and they change; corrections are welcome as issues._
 

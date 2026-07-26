@@ -1,6 +1,13 @@
 # Agent & Model Landscape (mid-2026)
 
-**Status:** Draft · **Last updated:** 2026-07-19 · **Refresh trigger:** new frontier model generation, major SDK release
+**Status:** ⛔ Historical — a snapshot of mid-July 2026, deliberately not maintained · **Last updated:** 2026-07-19 · **Refresh trigger:** new frontier model generation, major SDK release
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **A survey of agent frameworks and model capabilities as they stood on *19 July 2026*. This document's whole value was being current, and it stopped being updated the same week.**
+>
+> Kept because it shows the floor the architecture was designed against. Treat every specific claim in it as expired. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see the standing conclusion it produced — *models are commodities; memory of the user is the moat* — which lives permanently in the project principles.
+
 
 ## Why this doc exists
 

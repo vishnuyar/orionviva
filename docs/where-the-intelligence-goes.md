@@ -204,7 +204,7 @@ Nothing is thrown away. The machinery was built for the hard tier and gets to ke
 **My lean: (b).** This is the "feels intelligent" lever, and *report what you did* is what keeps it honest rather than presumptuous.
 
 **D4 — Rebuild or extend?**
- · (a) new slice extending 9a in place · **(b) 9b-shaped restructure: enrichment gains implications, the queue is rewritten around the three tiers, 9a's machinery is retargeted** · (c) revert 9a.
+ · (a) new slice extending 9a in place · **(b) a 6.8-shaped restructure: enrichment gains implications, the queue is rewritten around the three tiers, 9a's machinery is retargeted** · (c) revert 9a.
 **My lean: (b).** Not a revert — 9a's write side is right and its read side is retroactive, so this is repointing, not rebuilding. (c) would throw away work that is correct for Tier 3.
 
 ---

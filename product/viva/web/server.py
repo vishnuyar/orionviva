@@ -133,15 +133,12 @@ def make_handler(vault, read_fn):
                     d = json.loads(raw or b"{}")
                     return self._send(service.assign_merchant(
                         vault, d["merchant"], d["category"]))
-                if u.path == "/api/rule-nature":
-                    d = json.loads(raw or b"{}")
-                    return self._send(service.rule_nature(
-                        vault, d["merchant"], d["nature"]))
                 if u.path == "/api/rule-major":
                     d = json.loads(raw or b"{}")
                     return self._send(service.rule_major(
-                        vault, d["merchant"], d["major"],
-                        d.get("descriptor", ""), d.get("kind", "")))
+                        vault, d.get("merchant", ""), d["major"],
+                        d.get("descriptor", ""), d.get("kind", ""),
+                        d.get("movement_key", ""), d.get("group", "")))
                 if u.path == "/api/listen":
                     d = json.loads(raw or b"{}")
                     return self._send(service.listen_to(

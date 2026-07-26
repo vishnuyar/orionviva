@@ -1,7 +1,14 @@
 # v0 Scope — "one honest answer"
 
-**Status:** Draft — the first architecture-phase artifact · **Last updated:** 2026-07-21 · **Decisions in:** first answer = *balance* (attested, cleanest trust proof); build order = *trust-core first, conversational AI second*.
+**Status:** ⛔ Historical — v0 shipped; the product is many slices past it · **Last updated:** 2026-07-21 · **Decisions in:** first answer = *balance* (attested, cleanest trust proof); build order = *trust-core first, conversational AI second*.
 **Invariants touched:** all of T1–T8 are exercised for the first time end-to-end; X2 (honest uncertainty in the answer); this doc is where "the whole has never been assembled" (synthesis risk #1) gets retired.
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **The thinnest possible first slice: one checking statement, verified, answering *“what's my balance?”* with no model anywhere in the answer path. Written as *the next thing to build*. It was built.**
+>
+> Kept because the discipline of subtraction it describes — assemble the trust loop once, end to end, with proven parts — is the reason the foundation held. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [implementation-roadmap.md](implementation-roadmap.md) for where the build actually is.
+
 
 ## The one sentence
 

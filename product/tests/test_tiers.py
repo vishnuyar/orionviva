@@ -1,4 +1,8 @@
-"""Slice 9b — ask only where the counterparty cannot tell us.
+"""Slice 6.8 — ask only where the counterparty cannot tell us.
+
+(Committed originally as "Slice 9b"; renamed 2026-07-26 because 9b is reserved
+for the READ direction — Viva speaking. This is the question queue getting
+smarter, which is the 6.x family. See docs/implementation-roadmap.md.)
 
 The failure this replaces, in one sentence: the queue asked *"is this money spent,
 or is it something you now own?"* about a counterparty already enriched as

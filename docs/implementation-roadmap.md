@@ -141,19 +141,30 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 ---
 
-## Slice 6.5 — Honest aggregates & the learning loop  ✅ MOVES 1 & 2 DONE
+## Slice 6.5 — Honest aggregates & the learning loop  ✅ DONE (Moves 1 & 2)
 **Blocks seeded:** movement **nature** (derived) · the **question queue** (the learning loop's front door).
 
 **Full spec + locked architecture:** [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md). Added after the first full real-vault run: spending was computed as *money that left an account*, not *money that left your life* (M1). Transfer **links** excluded a movement; a *category* saying `transfers` did not — two descriptions of one fact, one aggregate listening to half of them. And a single category (`loan_payments`) covered two opposite natures (mortgage vs own-card payment), proving **category cannot decide nature**. Decisions: nature is **derived** (linked → counterparty is an own account → human ruling → category/subcategory as a *suggestion* → default `spending`); undecided evidence leaves a movement counted but **provisional**, with the aggregate reporting its own uncertainty (X2/principle 6) rather than guessing either way; the transfer auto-link bar is deliberately **not** loosened (a wrong link is a wrong number). Read-side only — no new event type, retroactive with no re-ingest. Also names the vision shape (Vishnu, 2026-07-25): the four ask-and-learn loops already built **are one primitive**, the questions Viva asks *are* the product, and the rulings are the moat — with the sequencing rule **abstract the read side early, the write side late** (question queue = Move 2; a generic `Ruling` event = Move 3, gated on a fifth question type).
 
 ---
 
-## Slice 6.7 — The presentation layer
+## Slice 6.7 — The presentation layer  ✅ DONE
 **Block seeded:** the surface as a first-class layer — the question queue as the page's spine.
 
 **Full spec + rulings:** [the-presentation-layer.md](the-presentation-layer.md). Inserted because the engine had outrun the surface *measurably*: four endpoints the page never called (`/api/questions`, `/api/rule-nature`, and `/api/categorize` + `/api/assign-category` — dead since Slice 5) and seven overview fields ignored, including every position from Slice 6, Move 1's provisional/excluded honesty signals, and `other_holds`. Rulings (Vishnu, 2026-07-25): **hybrid answering** (one-tap inline, focused detail view when context is needed); **categories stay implicit** — the 16 primaries as suggestions, plus any you've used, plus add-your-own, with no `CategoryDefined` event (the named-but-unused wrinkle accepted as the signal for Move 3); **peer descriptors get per-transaction categorization** at last; **React + Vite** over a zero-dependency file split, for legibility to readers of a public repo and reliability of AI-written code — bounded by static build output served by the existing stdlib server, no runtime CDN, lockfile committed, and **zero new dependencies in `core/` or `product/`**.
 
 ---
+
+---
+
+## Slice 6.8 — Counterparty implications & the three tiers  ✅ DONE
+**Blocks seeded:** an **implication** carried on a merchant record · the **tier** projection that decides who gets asked.
+
+**Full spec + build record:** [where-the-intelligence-goes.md](where-the-intelligence-goes.md). Written after running 9a on a real vault and finding the machinery correct but *aimed at the wrong moment*: the answer was intelligent and the question was naive — asking "is this spent, or something you now own?" about a counterparty already enriched as `loan_payments / mortgage`. The inversion: **the product forms the belief, the person confirms it.** A merchant category *implies structure* (a mortgage servicer implies a property, a loan, escrow, a 1098), and that knowledge belongs in `merchantcore` at enrichment time — impersonal, batched, cached, commons-shareable — not in a per-sentence personal model call. Every movement sorts into **settled** (silence) · **structural** (an informed proposal) · **unknown** (a real question, one transaction at a time), reusing the forced/suggested ladder from verification findings. Also owns the drift that prompted it: **nine** raw-text keyword classifiers had accumulated against a stated anti-goal, four of them predating 9a — a reflex, not a slice.
+
+**Naming note (2026-07-26):** this work was committed under the label *"Slice 9b"*, which collides with **9b — Viva speaks** below, reserved for the read direction. It is renamed **6.8**, where it belongs: it is the 6.x queue-and-aggregates family getting smarter, not Viva gaining a voice. Commit messages before 2026-07-26 still say 9b.
+
+**Measured on real money (2026-07-26):** 15 counterparties carrying over half the vault's money moved from a naive question to a named proposal; the scoring of it is in [stocktake-2026-07.md](stocktake-2026-07.md), including three false "contradictions" the scorer invented and what that cost.
 
 ## Slice 7 — Net worth
 **Block seeded:** Net-worth projection (compose assets − liabilities, bitemporal).
@@ -189,11 +200,11 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 ---
 
-## Slice 9 — Viva, the conversational agent  ✂️ SPLIT (2026-07-25) into 9a / 9b
+## Slice 9 — Viva, the conversational agent  ✂️ SPLIT (2026-07-25) into 9a ✅ / 9b
 
 **Full research + design:** [viva-listens-and-speaks.md](viva-listens-and-speaks.md). The agent and the learning loop are **one engine, two directions**, and they carry different risk: a mis-parsed *ruling* persists and generalizes; a wrong *answer* misleads once. So this slice splits.
 
-**Slice 9a — Viva listens (pull EARLY, likely next).** Answer a question in your own words: a model parses **intent** into a structured **Proposal** — never a figure, never arithmetic — you confirm, and deterministic code applies it through the writers that already exist. Needs no new tools; it is what the author feels the absence of today (a closed-option question cannot express a compound truth like a mortgage payment). Seeds the **Proposal** block, which turns `TransferSuggested`, model category suggestions, forced corrections, drafted budgets (S10) and eventual actions into instances of one thing — making X3 structural rather than remembered. Also forces the unwritten persona work (C1 uncertainty language, C3 when-to-speak).
+**Slice 9a — Viva listens.  ✅ BUILT 2026-07-25.** Answer a question in your own words: a model parses **intent** into a structured **Proposal** — never a figure, never arithmetic — you confirm, and deterministic code applies it through the writers that already exist. Needs no new tools; it is what the author feels the absence of today (a closed-option question cannot express a compound truth like a mortgage payment). Seeds the **Proposal** block, which turns `TransferSuggested`, model category suggestions, forced corrections, drafted budgets (S10) and eventual actions into instances of one thing — making X3 structural rather than remembered. Also forces the unwritten persona work (C1 uncertainty language, C3 when-to-speak).
 
 **9a's concrete design:** [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md). The ontology is settled — **four majors** (expense/asset/liability/income), equity derived not asserted, fixed top with a free hierarchy below — and the six-step toolset has exactly one model call, with account resolution reusing the Slice-1.5 matcher. Needs a `Liabilities:` root (absent today, which is why debt paydown is unsayable), general Asset accounts with valuation class, and `split_transaction` (built in v0, still unused — this is its first customer). Writing to the ledger is **9a's job**: the split is by direction of information, not by who writes.
 

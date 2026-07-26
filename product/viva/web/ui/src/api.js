@@ -31,11 +31,14 @@ export const api = {
   rejectTransfer:    (a, b)  => post('/api/reject-transfer', JSON.stringify({a, b: b || ''})),
   assignCategory:    (k, c)  => post('/api/assign-category', JSON.stringify({key: k, category: c})),
   assignMerchant:    (m, c)  => post('/api/assign-merchant', JSON.stringify({merchant: m, category: c})),
-  ruleNature:        (m, n)  => post('/api/rule-nature', JSON.stringify({merchant: m, nature: n})),
   // Slice 9a. ruleMajor is the button path (deterministic, no model);
   // listen reads a sentence and returns a PROPOSAL, writing nothing;
   // applyRuling is the explicit yes that makes it real.
-  ruleMajor:  (m, major, d) => post('/api/rule-major', JSON.stringify({merchant: m, major, descriptor: d || ''})),
+  // Takes a question option's `args` wholesale — {major, merchant?,
+  // movement_key?, group?} — so the surface never has to know which scope a
+  // question is asking at. The queue already decided that; re-deciding it here
+  // is how movement-scoped answers lost their key.
+  ruleMajor:  (args)        => post('/api/rule-major', JSON.stringify(args)),
   listen:     (body)        => post('/api/listen', JSON.stringify(body)),
   applyRuling:(proposal)    => post('/api/apply-ruling', JSON.stringify({proposal})),
   upload:            (file)  => post('/api/upload', file, {'X-Filename': file.name}),

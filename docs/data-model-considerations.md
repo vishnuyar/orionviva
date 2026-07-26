@@ -1,6 +1,6 @@
 # Data Model Considerations — what the unified model must account for
 
-**Status:** Draft — the thinking that guides experiment 2 (data model spike); the spike's findings graduate this into the architecture-phase data model ADR · **Last updated:** 2026-07-20
+**Status:** Stable — the ten primitives and three layers, as built; tested empirically in [data-model-spike-findings.md](data-model-spike-findings.md) · **Last updated:** 2026-07-20
 **Invariants touched:** T1, T3, T4, T7 (the trust spine below is their schema form), I1 (currency on every amount), I2 (locale-driven normalization feeds the claims layer), I5 (no US-shaped taxonomy — jurisdiction as attribute, never as table), X2
 
 ## The pipeline, refined

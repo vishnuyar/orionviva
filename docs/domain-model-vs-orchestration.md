@@ -1,6 +1,13 @@
 # A Trained Domain Model vs. Orchestration Rules
 
-**Status:** Draft · **Last updated:** 2026-07-19 · **Origin:** a challenge raised against ADR-001 — "instead of writing orchestration rules (find balances, tally numbers, notice the missing Feb bill), why not train a model that already *knows* what an insurance or broker statement is? Look at River AI."
+**Status:** ⛔ Historical — settled by ADR-010, a one-way door · **Last updated:** 2026-07-19 · **Origin:** a challenge raised against ADR-001 — "instead of writing orchestration rules (find balances, tally numbers, notice the missing Feb bill), why not train a model that already *knows* what an insurance or broker statement is? Look at River AI."
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **Separates three tangled ideas: a model that knows what documents *are*, a model that does the *checking*, and a model that continually learns this user. The middle one is now closed by decision.**
+>
+> Kept because it is the analysis ADR-010 was written from, and the temptation it examines recurs with every model generation. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [decisions/ADR-010-verification-never-in-weights.md](decisions/ADR-010-verification-never-in-weights.md) — verification is deterministic, inspectable code, permanently.
+
 
 ## Untangling the question
 

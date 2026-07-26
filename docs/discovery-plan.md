@@ -1,6 +1,13 @@
 # Discovery Plan
 
-**Status:** Draft · **Last updated:** 2026-07-19
+**Status:** ⛔ Historical — the discovery phase it plans CLOSED 2026-07-22 · **Last updated:** 2026-07-19
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **This plans a research phase that ran 19–22 July 2026 and is finished. Its opening sentence — *“we are deliberately in a discovery phase before writing product code”* — has been false since the first commit of `vivacore`.**
+>
+> Kept because it records the open-questions register that drove the phase, and every question in it was closed rather than abandoned. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [discovery-synthesis.md](discovery-synthesis.md) for the result and [decisions/](decisions/README.md) for the decisions it produced.
+
 
 ## Purpose
 

@@ -117,8 +117,9 @@ function NatureAnswer({q, onAnswer, onOpen}) {
     <div>
       <div className="row">
         {(q.options || []).map(o => (
-          <button key={o.args.major} className={o === q.options[0] ? '' : 'ghost'} disabled={busy}
-                  onClick={() => act(() => api.ruleMajor(m, o.args.major, q.refs.descriptor))}>
+          <button key={o.label} className={o === q.options[0] ? '' : 'ghost'} disabled={busy}
+                  onClick={() => act(() => api.ruleMajor(
+                    {descriptor: q.refs.descriptor || q.refs.example || '', ...o.args}))}>
             {o.label}
           </button>
         ))}

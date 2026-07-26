@@ -1,6 +1,6 @@
 # Eval Harness Design (A8) — how honesty is measured, continuously
 
-**Status:** Draft · **Last updated:** 2026-07-21 · **Covers:** discovery-map A8. The last discovery design doc.
+**Status:** Design — PARTIALLY BUILT: `eval_listen` scores sentence interpretation; **document reading has no live measurement yet** (the project's largest standing gap) · **Last updated:** 2026-07-21 · **Covers:** discovery-map A8. The last discovery design doc.
 **Invariants touched:** T1 (every eval case checks a figure *and* its source), T2 (grading is deterministic), T3 (eval runs are captured), X2 (the confidently-wrong rate is the alarm), and it is the enforcement mechanism behind promise #1 ("never bluff a number")
 **Related:** [benchmark-harness-design.md](benchmark-harness-design.md) (the one-time exam this reuses), [model-trust-policy.md](model-trust-policy.md) (feedback loop 3).
 

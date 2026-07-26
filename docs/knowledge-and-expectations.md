@@ -1,6 +1,6 @@
 # Knowledge & Expectations — where the domain rules live
 
-**Status:** Draft · **Last updated:** 2026-07-20 · **Origin question:** how does OrionViva *know* to ask for 401(k) statements after seeing a pay-stub contribution, or an escrow analysis after a mortgage statement? Where do such rules sit?
+**Status:** Design — partially built (knowledge lives in enrichment attributes and format profiles); the jurisdiction registry is unbuilt · **Last updated:** 2026-07-20 · **Origin question:** how does OrionViva *know* to ask for 401(k) statements after seeing a pay-stub contribution, or an escrow analysis after a mortgage statement? Where do such rules sit?
 **Invariants touched:** T1 (inferred accounts/expectations are graded, cited claims), T2 (expectation evaluation is deterministic), I5/I6 (knowledge is jurisdiction-tagged data, community-extensible packs), X2 (unmet expectations are visible quiet state, honestly labeled inferences)
 
 ## The reframe
