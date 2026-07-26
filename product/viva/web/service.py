@@ -331,13 +331,33 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
             "account": m.account,
             "category": ruling.get("category", ""),
             "subcategory": ruling.get("subcategory", ""),
-            "nature": m.nature, "counts_as_spending": proj._counts_as_spending(m)})
+            "nature": m.nature, "counts_as_spending": proj._counts_as_spending(m),
+            "tags": proj.tags_of(m)})
     items.sort(key=lambda i: i["date"])
     total = sum(abs(Decimal(i["amount"])) for i in items) if items else Decimal("0")
     return {"merchant": key, "items": items[:limit], "count": len(items),
             "total": str(total),
             "currency": items[0]["currency"] if items else "",
-            "categories": list(SEED_CATEGORIES)}
+            "categories": list(SEED_CATEGORIES),
+            # The tag vocabulary rides along so the surface can offer what
+            # exists before anything new is minted — the same prevention that
+            # keeps categories from sprawling, applied where it matters more:
+            # nothing outside this device can ever help clean up tags (T9).
+            "known_tags": proj.known_tags(),
+            "merchant_tags": proj._merchant_tags.get(key, [])}
+
+
+def tag(vault: Vault, subject: str, tags: list, scope: str = "movement") -> dict:
+    """Tag one movement, or every movement from a merchant (Slice 7.6).
+
+    ``tags`` is the COMPLETE set for that subject — removing one is sending the
+    set without it, so the log stays append-only and replay stays trivial."""
+    from ..ingest import tag_merchant, tag_movement
+    if scope == "merchant":
+        tag_merchant(vault.ledger, subject, tags, by="human")
+    else:
+        tag_movement(vault.ledger, subject, tags, by="human")
+    return {"ok": True, "tags": sorted({t.strip().lower() for t in tags if t.strip()})}
 
 
 def assign_category_to(vault: Vault, movement_key: str, category: str) -> dict:

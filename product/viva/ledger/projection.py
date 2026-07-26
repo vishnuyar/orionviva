@@ -344,6 +344,8 @@ class LedgerProjection:
         # type) so "tags never leave this device" stays an event-level rule.
         self._movement_tags: dict[str, list] = {}
         self._merchant_tags: dict[str, list] = {}
+        self._category_alias_map: dict[str, str] = {}
+        self._tag_alias_map: dict[str, str] = {}
         # Merchant catalog (Slice 5.5): normalized merchant -> {category, grade,
         # by}. The prior a transaction's category derives from when it has no
         # per-movement override. Highest-trust ruling wins.
@@ -446,6 +448,17 @@ class LedgerProjection:
                 self._rulings[key] = event.body
             if event.body["scope"] == SCOPE_ACCOUNT:
                 self._own_tokens_cache = None
+            # Label aliases are maintained HERE rather than derived per lookup.
+            # Deriving them was O(movements x rulings): `derived_category` is the
+            # funnel every aggregate reads through, and it was rebuilding the
+            # whole alias map on each call. The test suite went from 32s to over
+            # 44s, which is the cheap version of the lesson — on a real vault
+            # with a thousand movements it would have been the expensive one.
+            scope = event.body["scope"]
+            if scope in (SCOPE_CATEGORY, SCOPE_TAG) and event.body.get("same_as"):
+                target = (self._category_alias_map if scope == SCOPE_CATEGORY
+                          else self._tag_alias_map)
+                target[event.body["subject"]] = event.body["same_as"]
 
         elif et in ("MerchantCategorized", "MerchantEnriched"):
             merchant = event.body["merchant"]
@@ -988,12 +1001,10 @@ class LedgerProjection:
         """Tag-vocabulary aliases, kept apart from category aliases: a tag
         "poker" and a category "poker" are different things and merging one
         must not silently merge the other."""
-        return {subj: body["same_as"]
-                for (scope, subj), body in self._rulings.items()
-                if scope == SCOPE_TAG and (body or {}).get("same_as")}
+        return dict(self._tag_alias_map)
 
     def canonical_tag(self, label: str) -> str:
-        aliases = self.tag_aliases()
+        aliases = self._tag_alias_map
         seen: set[str] = set()
         current = (label or "").strip().lower()
         while current in aliases and current not in seen:
@@ -1040,9 +1051,7 @@ class LedgerProjection:
 
     def category_aliases(self) -> dict[str, str]:
         """{duplicate label -> the label it is really the same as}."""
-        return {subj: body["same_as"]
-                for (scope, subj), body in self._rulings.items()
-                if scope == SCOPE_CATEGORY and (body or {}).get("same_as")}
+        return dict(self._category_alias_map)
 
     def canonical_category(self, label: str) -> str:
         """Follow a label to the one every total should count it under.
@@ -1050,7 +1059,7 @@ class LedgerProjection:
         Chains are followed (a → b → c) and cycles are survived rather than
         trusted: a ruling loop is a mistake someone made, and hanging on it
         would take the whole read side down with it."""
-        aliases = self.category_aliases()
+        aliases = self._category_alias_map
         seen: set[str] = set()
         current = label
         while current in aliases and current not in seen:
@@ -1097,8 +1106,7 @@ class LedgerProjection:
         # a single alias ruling corrects spending-by-category, spending-by-
         # subcategory, the tiers and net worth at once — retroactively, with no
         # re-ingest and nothing rewritten.
-        aliases = self.category_aliases()
-        if not aliases:
+        if not self._category_alias_map:
             return found
         out = dict(found)
         for field_name in ("category", "subcategory"):

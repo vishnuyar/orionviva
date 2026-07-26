@@ -31,6 +31,9 @@ export const api = {
   confirmTransfer:   (a, b)  => post('/api/confirm-transfer', JSON.stringify({a, b})),
   rejectTransfer:    (a, b)  => post('/api/reject-transfer', JSON.stringify({a, b: b || ''})),
   assignCategory:    (k, c)  => post('/api/assign-category', JSON.stringify({key: k, category: c})),
+  // The COMPLETE tag set for a subject — removing a tag is sending the set
+  // without it. scope 'merchant' settles every movement from that counterparty.
+  tag:        (subject, tags, scope) => post('/api/tag', JSON.stringify({subject, tags, scope: scope || 'movement'})),
   assignMerchant:    (m, c)  => post('/api/assign-merchant', JSON.stringify({merchant: m, category: c})),
   // Slice 9a. ruleMajor is the button path (deterministic, no model);
   // listen reads a sentence and returns a PROPOSAL, writing nothing;

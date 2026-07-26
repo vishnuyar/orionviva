@@ -134,6 +134,11 @@ def make_handler(vault, read_fn):
                     d = json.loads(raw or b"{}")
                     return self._send(service.assign_category_to(
                         vault, d["key"], d["category"]))
+                if u.path == "/api/tag":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.tag(
+                        vault, d["subject"], d.get("tags") or [],
+                        d.get("scope", "movement")))
                 if u.path == "/api/assign-merchant":
                     d = json.loads(raw or b"{}")
                     return self._send(service.assign_merchant(
