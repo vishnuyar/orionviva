@@ -224,7 +224,19 @@ What came back: *"I'd record USD 1000.00 across 2 payments as: spent — the mon
 
 Defects 3 and 4 are one idea stated twice: **not every answer brings a thing into being.** The slice was designed around the answers that create accounts — a car, a mortgage, a loan — and the ordinary case, which is most cases, had no path that didn't create one.
 
-Four live failures, all of the same shape: **a design shaped by its hard cases, then meeting an ordinary one.** Errors swallowed, a bounded answer stitched, a prompt assuming a bank, an account minted for a night out. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
+### "mortgage payments" → *"I couldn't read that one"*
+
+A clear, short, on-topic answer came back unread. Two defects, and the second is the one that matters.
+
+**One sentence for four different failures.** `unreachable` (the model is down), `unparseable` (it answered, we couldn't read it), `empty` (we read it, it said nothing usable) and "no model configured" all produced *"I couldn't read that one — the buttons still work."* Neither the person nor the log could tell them apart, so a broken connection and a genuine limit looked identical — and there was nothing to debug from. Each now says something different and true, the reason is returned as `why`, and the **raw reply is logged**. Saying which failure it was is the difference between a product that admits a limit and one that just seems broken.
+
+**The nested-reply gap.** `_first_json_object` took the *first* balanced object, but some providers and `json_mode` wrappers nest the answer — `{"response": {"legs": [...]}}`. The outer object has no legs, so a perfectly good reading was discarded as "couldn't read". It now searches for the object that actually **carries** `legs`, up to two levels down, and a leading object without them no longer beats a later one that has them.
+
+`--probe --say "<the sentence that failed>"` now replays exactly one call with nothing swallowed: the prompt version, the raw reply, the parsed legs, the category, and the failure reason. That is the tool to reach for the moment a real answer comes back unread — the eval deliberately degrades, and this deliberately does not.
+
+**Honest note:** the nesting fix addresses a *plausible* cause, not a confirmed one. The logging is what will actually identify it next time — which is itself the lesson. Two rounds of this slice's debugging were slowed by failures that had been swallowed on purpose.
+
+Five live failures, all of the same shape: **a design shaped by its hard cases, then meeting an ordinary one — and a habit of degrading silently where it should have degraded loudly.** Errors swallowed, a bounded answer stitched, a prompt assuming a bank, an account minted for a night out, four failures wearing one sentence. Graceful degradation is right in the product and wrong in everything that reports on it. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
 
 ### Not done yet
 

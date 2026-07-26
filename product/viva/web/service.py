@@ -9,6 +9,7 @@ picture and the interactions, and only surfaces a source on request.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from ..answer import answer_spending, answer_total, coverage_summary
@@ -21,6 +22,8 @@ from ..ingest.identity import masked
 from ..ledger.merchants import normalize_merchant as normalize
 from ..ledger import UnknownAccountError
 from ..vault import Vault
+
+log = logging.getLogger("viva.web.service")
 
 
 def overview(vault: Vault) -> dict:
@@ -166,7 +169,7 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
     it happens. With no model configured this returns `understood: False` and
     the surface falls back to the buttons, which is the honest failure: we could
     not read it, so we do not guess."""
-    from ..listen import listen
+    from ..listen import interpret, propose
     proj = vault.ledger.projection()
     # Name the instrument the movement actually sat in — a card, a brokerage, a
     # loan account — instead of letting the prompt assume a bank (I5).
@@ -178,13 +181,26 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
         if not movement_key and normalize(m.description) == normalize(descriptor):
             source = _describe_source(proj, m.account)
             break
-    proposal = listen(proj, said, descriptor, amount=amount, currency=currency,
-                      movement_key=movement_key, category=category,
-                      subcategory=subcategory, extract_fn=_interpreter(),
-                      source=source)
-    if proposal is None:
-        return {"understood": False,
-                "message": "I couldn't read that one — the buttons still work."}
+    interp = interpret(said, descriptor, category, subcategory, _interpreter(),
+                       source=source)
+    if not interp.legs:
+        # Four different failures used to share one unhelpful sentence, so
+        # neither the person nor the log could tell a model that was DOWN from
+        # one that was rambling from one that genuinely didn't understand.
+        # Saying which is the difference between a product that admits a limit
+        # and one that just seems broken.
+        message = {
+            "unreachable": "I can't reach my reader right now — the buttons "
+                           "still work, and nothing was lost.",
+            "unparseable": "I got an answer back but couldn't make sense of it. "
+                           "Try fewer words, or use a button.",
+            "empty": "I read that, but couldn't tell what the money became. "
+                     "Could you say what happened to it?",
+        }.get(interp.failure, "I couldn't read that one — the buttons still work.")
+        log.warning("listen: %s (%s) said=%r raw=%r", interp.failure,
+                    interp.detail, said, (interp.raw or "")[:400])
+        return {"understood": False, "why": interp.failure, "message": message}
+    proposal = propose(proj, interp, descriptor, amount, currency, movement_key)
     return {"understood": True, "proposal": proposal.to_dict()}
 
 

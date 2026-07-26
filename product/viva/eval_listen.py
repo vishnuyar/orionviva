@@ -230,7 +230,11 @@ def main() -> None:
     ap.add_argument("--no-json-mode", action="store_true",
                     help="drop response_format — some local servers reject it")
     ap.add_argument("--probe", action="store_true",
-                    help="one call, printing the raw reply; use this when a run comes back BROKEN")
+                    help="one call, printing the raw reply; reach for this the moment "
+                         "a real answer comes back unread")
+    ap.add_argument("--say", default="i bought a car",
+                    help="the sentence to probe with — paste the one that failed")
+    ap.add_argument("--counterparty", default="NORTHSIDE MOTORS")
     ap.add_argument("--json", action="store_true", help="machine-readable, for tracking over time")
     args = ap.parse_args()
 
@@ -247,7 +251,7 @@ def main() -> None:
         api_key_env=None if (args.key_env or "").lower() in ("", "none") else args.key_env,
         max_tokens=1024, json_mode=not args.no_json_mode)
     if args.probe:
-        return _probe(spec)
+        return _probe(spec, args.say, args.counterparty)
     cases = load_cases()
     result = run(one_shot_extractor(spec), cases, repeat=args.repeat)
     if args.json:
@@ -257,13 +261,19 @@ def main() -> None:
         print(report(result, cases.get("version", "")))
 
 
-def _probe(spec) -> None:
+def _probe(spec, said: str = "i bought a car",
+           counterparty: str = "NORTHSIDE MOTORS") -> None:
     """One call, everything printed, nothing swallowed — the tool to reach for
     the moment a run comes back BROKEN. The eval deliberately degrades on
     failure; this deliberately does not."""
-    from .listen import INTERPRET_PROMPT, one_shot_extractor
-    prompt = INTERPRET_PROMPT.format(said="i bought a car", descriptor="NORTHSIDE MOTORS",
-                                     category="transport", subcategory="auto dealer")
+    from .listen import interpret, one_shot_extractor
+    from .ingest.prompt_library import interpret_prompt
+    from .listen import INTERPRET_VERSION
+    text, version = interpret_prompt(INTERPRET_VERSION)
+    prompt = text.format(said=said, counterparty=counterparty,
+                         source="(an account they hold)",
+                         category="(unknown)", subcategory="(unknown)")
+    print(f"prompt {version}, said={said!r}")
     print(f"POST {spec.base_url}  model={spec.model}  json_mode={spec.json_mode}\n")
     try:
         reply = one_shot_extractor(spec)(prompt)
@@ -271,9 +281,10 @@ def _probe(spec) -> None:
         print(f"FAILED: {type(exc).__name__}: {exc}")
         raise SystemExit(1)
     print("RAW REPLY:\n" + (reply or "(empty)"))
-    from .listen import interpret
-    got = interpret("i bought a car", "NORTHSIDE MOTORS", extract_fn=lambda p: reply)
-    print(f"\nparsed legs: {got.legs or 'NONE'}   failure: {got.failure or 'none'}")
+    got = interpret(said, counterparty, extract_fn=lambda p: reply)
+    print(f"\nparsed legs: {got.legs or 'NONE'}")
+    print(f"category:    {got.category or '(none)'}")
+    print(f"failure:     {got.failure or 'none'}  {got.detail}")
 
 
 if __name__ == "__main__":
