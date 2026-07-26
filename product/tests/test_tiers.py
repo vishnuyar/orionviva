@@ -413,3 +413,20 @@ def test_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):
     # The classified type survived into the posting — an `unknown` document has
     # no projector and could not have produced movements at all.
     assert rebuilt.movements()[0].kind == "depository"
+
+
+def test_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
+    """Slice 1's promise — any ingest order yields the same posted chain — is a
+    CASCADE: a statement that cannot connect yet waits for its neighbour. In
+    normal use the neighbour arrives later and the heal fires. In one batch run
+    the last arrivals have nobody left to trigger them, so 14 of 40 real
+    documents held as gaps. The sweep at the end is that promise being kept
+    rather than assumed."""
+    import inspect
+
+    from viva import rebuild as mod
+
+    source = inspect.getsource(mod.rebuild)
+    assert "sweep(vault.ledger)" in source
+    # And it runs BEFORE the vault reports its own outcome, or the count lies.
+    assert source.index("sweep(vault.ledger)") < source.index("movements == 0")
