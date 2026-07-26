@@ -108,4 +108,7 @@ class AnthropicAdapter:
                          if attempt == 0 else None),
                 response=data)
 
-        return run_to_completion(call_once)
+        # A spec may say "one shot, no stitching" — see ModelSpec.max_continuations.
+        if c.max_continuations is None:
+            return run_to_completion(call_once)
+        return run_to_completion(call_once, max_continuations=c.max_continuations)
