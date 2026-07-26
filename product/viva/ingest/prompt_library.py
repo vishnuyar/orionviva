@@ -296,7 +296,59 @@ performance/return percentages.
 # ruling made before the change and makes eval runs incomparable across time.
 #
 # Placeholders: {said} {counterparty} {source} {category} {subcategory}
+#
+# v2 (2026-07-25), after a real answer exposed two gaps in v1:
+#   * a person said "spent on playing poker, ADD IT TO POKER CATEGORY" and the
+#     category half of their sentence was silently dropped. v2 asks for it.
+#   * v1 asked the model for "corroborates" with no guidance, and it answered
+#     "no" — which the surface then rendered as "Your no would let me prove
+#     this". The field is GONE: the model reports `kind`, and deterministic code
+#     maps kind to the document that would prove it. One less place for free
+#     text to reach a person unchecked.
 INTERPRET_PROMPTS: dict[str, str] = {
+    "interpret-v2": """\
+A person was asked what ONE movement of their money was, and answered in their
+own words. Decide what the money BECAME, and pick up anything else they told
+you. Reply with JSON only.
+
+Their answer: {said}
+The other party, as it appeared in the record: {counterparty}
+Where it was recorded: {source}
+What we already believe about that other party: {category} / {subcategory}
+
+Reply with:
+{{"legs": [{{"major": "...", "account_hint": "", "share": ""}}],
+  "kind": "", "category": "", "confidence": 0.0}}
+
+"major" must be exactly one of: expense, asset, liability, income.
+  expense   - money spent, consumed, gone
+  asset     - they still have it, in another form (a vehicle, a deposit held for
+              them, money lent out, a holding, cash withdrawn)
+  liability - what they owe changed (any borrowing repaid or drawn down)
+  income    - money that came to them
+
+Rules that matter more than completeness:
+- Return SEVERAL legs when one payment is genuinely several things at once, and
+  order them most-certain first. This is common wherever a single instalment
+  covers a cost, a repayment and an amount held on their behalf.
+- Leave "share" as "" unless the person themselves stated the proportions.
+  NEVER estimate or assume a split. An unknown split is the CORRECT answer and
+  is handled properly downstream; a guessed one would put a wrong number in
+  someone's finances.
+- "category" is a label THEY named for what this was ("poker", "school fees").
+  Copy their word; do not invent one, and leave it "" if they named none. It is
+  not the same as the major and not a guess about their habits.
+- "account_hint" is a short human name for a THING they now own or owe, taken
+  from their words — a vehicle, a property, a loan. Leave it "" for ordinary
+  spending; not every answer creates an account.
+- "kind" is one of: vehicle, property, mortgage, loan, investment, insurance,
+  tax, or "" when none fits. It only routes a follow-up question — leave it
+  empty rather than forcing it.
+- The movement may come from any financial instrument, in any country: a bank
+  or card account, a brokerage or retirement account, a loan account, a wallet.
+  Do not assume a bank, a currency, or a jurisdiction.
+- Never output an amount, a date or a balance. You are reading meaning only.
+""",
     "interpret-v1": """\
 A person was asked what ONE movement of their money was, and answered in their
 own words. Decide what the money BECAME. Reply with JSON only.
@@ -347,7 +399,7 @@ def classify_prompt(version: str = "classify-v2") -> tuple[str, str]:
     return CLASSIFY_PROMPTS[version], version
 
 
-def interpret_prompt(version: str = "interpret-v1") -> tuple[str, str]:
+def interpret_prompt(version: str = "interpret-v2") -> tuple[str, str]:
     """The interpretation prompt and its version id (Slice 9a). The caller fills
     the placeholders; the version is stamped on the ruling so the reading stays
     reproducible after the text is superseded."""
