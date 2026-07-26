@@ -307,3 +307,80 @@ def test_the_interpreter_is_configured_separately_and_can_be_local(monkeypatch):
     monkeypatch.setenv("VIVA_INTERPRET_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("VIVA_INTERPRET_KEY_ENV", "none")
     assert service._interpreter() is not None        # would raise if a key were required
+
+
+# ------------------------------- reading a real model's reply (the second run)
+
+
+def test_json_is_found_inside_whatever_the_model_wraps_it_in():
+    """Requiring the WHOLE reply to be JSON was too brittle. Models fence their
+    output, think out loud first, or add a cheerful sentence after — none of
+    which is a failure of understanding, and all of which threw away a perfectly
+    good reading."""
+    from viva.listen import _first_json_object
+
+    obj = {"legs": [{"major": "liability"}]}
+    for wrapper in (
+        '```json\n{"legs":[{"major":"liability"}]}\n```',
+        'Let me think about this.\n{"legs":[{"major":"liability"}]}\nHope that helps!',
+        '<think>the user said mortgage</think>{"legs":[{"major":"liability"}]}',
+        '{"legs":[{"major":"liability"}]}',
+    ):
+        assert _first_json_object(wrapper) == obj, wrapper[:30]
+
+    assert _first_json_object("no json here at all") is None
+    # A brace inside a string must not be mistaken for structure.
+    assert _first_json_object('{"a": "} not really"}') == {"a": "} not really"}
+
+
+def test_a_truncated_reply_is_refused_not_half_read():
+    """The important half of the leniency. A cut-off reading is not a partial
+    reading, it is an UNKNOWN one — guessing the rest is how a wrong ruling gets
+    written and then generalized."""
+    from viva.listen import _first_json_object
+
+    cut = '{"legs": [{"major": "expense", "account_hint": "Newco inter'
+    assert _first_json_object(cut) is None
+
+    got = interpret("this is my mortgage", "LENDER", extract_fn=lambda p: cut)
+    assert got.legs == []
+    assert got.failure == "unparseable"
+    assert got.raw == cut                  # kept, so it can be diagnosed offline
+
+
+def test_interpretation_is_never_continued_across_truncation():
+    """The bug the first live run produced: seven HTTP calls, then a stitched
+    reply that wasn't valid JSON. Continuation is the right repair for a long
+    transaction list and the WRONG one here — the answer is ~60 tokens, so
+    hitting the limit means the model is rambling, and stitching six more chunks
+    onto a runaway reply turns one cheap failure into garbage at 7x the cost."""
+    from dataclasses import replace as _replace
+
+    from viva.listen import one_shot_extractor
+
+    seen = {}
+
+    class FakeAdapter:
+        def __init__(self, spec):
+            seen["max_continuations"] = spec.max_continuations
+
+        def extract(self, pages, prompt):
+            class R:
+                text = '{"legs":[{"major":"expense"}]}'
+                finish_reason = "length"
+                output_tokens = 1024
+            return R()
+
+    import vivacore.models as models
+    real = models.adapter_for
+    models.adapter_for = FakeAdapter
+    try:
+        from vivacore.models import ModelSpec
+        spec = ModelSpec(name="t", adapter="openai-compatible", model="m",
+                         base_url="http://x/v1", api_key_env=None)
+        assert spec.max_continuations is None          # the document-reading default
+        out = one_shot_extractor(spec)("prompt")
+        assert seen["max_continuations"] == 0          # ...overridden to one shot
+        assert out == '{"legs":[{"major":"expense"}]}'
+    finally:
+        models.adapter_for = real

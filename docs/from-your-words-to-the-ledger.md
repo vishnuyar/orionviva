@@ -185,6 +185,21 @@ This is the confidently-wrong failure committed *by the instrument built to dete
 
 The general lesson, worth more than the fix: **a component that degrades gracefully must still report the difference between "I handled it" and "it broke."** Silent resilience in the product is correct; silent resilience in the instrument measuring the product is a lie.
 
+### The second live run: a good mechanism in the wrong place
+
+With the connection working, one sentence produced **seven HTTP calls over 23 seconds**, then *"reply still truncated after continuation"*, then a JSON parse error. The count is the diagnosis: `MAX_CONTINUATIONS = 6`, plus the first call, is exactly seven.
+
+The **continuation driver** — lifted into `vivacore.models.base` a few days earlier precisely because a truncated document read was silently losing transactions — was doing its job in a place where its job is wrong. Reading a statement, truncation means *the list was genuinely too long* and stitching the tail back is the correct repair. Reading a sentence, the answer is ~60 tokens **by construction**: hitting the limit means the model is rambling, and stitching six more chunks onto a runaway reply turns one cheap, recoverable failure into unparseable garbage at seven times the cost and seven times the latency. Worse, continuation turns `json_mode` off for the follow-up turns, so it was concatenating free prose onto a JSON prefix and then asking `json.loads` to make sense of it.
+
+The fix, and the principle behind it:
+
+- `ModelSpec.max_continuations` — a call whose output is **short and bounded** sets it to 0. Truncation there is a condition to **report, not repair**.
+- `one_shot_extractor` is the interpreter's own edge; both the product and the eval use it, since an eval on a different edge measures the wrong thing.
+- `_first_json_object` finds the first *balanced* object anywhere in the reply, so fences, reasoning traces and trailing pleasantries stop costing us a good reading. The balance check matters more than the leniency: **a truncated reply is refused rather than half-read**, because a cut-off reading is not partial, it is unknown, and guessing the rest is how a wrong ruling gets written and then generalized.
+- `max_tokens` raised to 1024 — headroom for models that think out loud, which now costs tokens but never costs the reading.
+
+Two live failures, two of the same shape: **a mechanism that is correct for document extraction, applied unexamined to interpretation.** The first swallowed errors; the second stitched a bounded answer. Reading a 40-page statement and reading a six-word sentence are not the same problem, and shared infrastructure has to be told which one it is in.
+
 ### Not done yet
 
 **No real-document run.** Every slice is supposed to meet real statements before being called done, and this one has met only fixtures. The standing practice says that is when concept errors surface — Slice 6 was declared done without one and had two defects. Until a real mortgage or car purchase goes through the sentence path, treat this as built but unproven.

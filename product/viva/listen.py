@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_MERCHANT,
@@ -195,12 +195,13 @@ def interpret(said: str, descriptor: str = "", category: str = "",
         # a rejected parameter. NOT the model declining.
         log.warning("interpret: could not reach the model (%s)", exc)
         return Interpretation(said=said, failure="unreachable", detail=str(exc))
-    try:
-        body = json.loads(_strip_fence(raw))
-    except Exception as exc:                       # noqa: BLE001
-        log.warning("interpret: the model's reply was not JSON (%s)", exc)
+    body = _first_json_object(raw)
+    if body is None:
+        log.warning("interpret: no readable JSON object in the reply (%d chars)",
+                    len(raw or ""))
         return Interpretation(said=said, failure="unparseable",
-                              detail=str(exc), raw=raw or "")
+                              detail="no complete JSON object in the reply",
+                              raw=raw or "")
     legs = []
     # A model's reply is untrusted input, not a contract: `legs` arriving as a
     # string, a number, or anything but a list of objects must degrade to "I
@@ -229,12 +230,49 @@ def interpret(said: str, descriptor: str = "", category: str = "",
         raw=raw or "")
 
 
-def _strip_fence(text: str) -> str:
-    t = (text or "").strip()
-    if t.startswith("```"):
-        t = t.split("\n", 1)[-1]
-        t = t.rsplit("```", 1)[0]
-    return t.strip()
+def _first_json_object(text: str) -> dict | None:
+    """The first COMPLETE, balanced JSON object in a reply, or None.
+
+    Requiring the whole reply to be JSON was too brittle in practice. Models
+    wrap objects in code fences, prefix them with reasoning, or append a
+    cheerful sentence afterwards — none of which is a failure of understanding,
+    and all of which threw away a perfectly good reading.
+
+    Scanning for balance (respecting strings and escapes) also means a reply cut
+    off mid-object is correctly rejected rather than half-parsed. That matters
+    more than the leniency: a *truncated* reading is not a partial reading, it
+    is an unknown one, and guessing at the rest is how a wrong ruling gets
+    written."""
+    if not text:
+        return None
+    for start in range(len(text)):
+        if text[start] != "{":
+            continue
+        depth, in_str, escaped = 0, False, False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if in_str:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        found = json.loads(text[start:i + 1])
+                    except Exception:              # noqa: BLE001 - try the next '{'
+                        break
+                    return found if isinstance(found, dict) else None
+        # unbalanced from here — the reply was cut off
+    return None
 
 
 # --------------------------------------------------------------------- step 4
@@ -368,6 +406,35 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
         settles=max(settles, 1), amount=amount, currency=currency)
+
+
+def one_shot_extractor(spec):
+    """The live model edge for interpretation — **one call, never continued.**
+
+    The shared driver continues across truncation, which is right for reading a
+    statement (a long transaction list really does get cut off, and stitching
+    the tail back is the correct repair) and wrong here. This reply is ~60
+    tokens by construction. If it hits the limit the model is rambling, and
+    continuing six more times turns one cheap, recoverable failure into
+    unparseable garbage at seven times the cost and seven times the latency —
+    which is exactly what the first real run produced.
+
+    So: one shot, and truncation is REPORTED rather than repaired."""
+    from vivacore.models import adapter_for
+
+    adapter = adapter_for(replace(spec, max_continuations=0))
+
+    def _extract(prompt: str) -> str:
+        result = adapter.extract([], prompt)
+        if result.finish_reason == "length":
+            # Not a transport failure and not a bad reading — a third thing,
+            # and it is the caller's job to refuse rather than to guess.
+            log.warning("interpret: the model ran past its limit (%d output tokens) "
+                        "— refusing to stitch a bounded answer back together",
+                        result.output_tokens)
+        return result.text
+
+    return _extract
 
 
 def _group_for(kind: str, major: str) -> str:

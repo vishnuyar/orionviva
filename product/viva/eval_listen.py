@@ -237,18 +237,19 @@ def main() -> None:
     if not args.model:
         raise SystemExit("No model. Pass --model, or set VIVA_INTERPRET_MODEL.")
 
-    from merchantcore.enrich import model_extractor
     from vivacore.models import ModelSpec
+
+    from .listen import one_shot_extractor
 
     spec = ModelSpec(
         name="viva-listen-eval", adapter=args.adapter, model=args.model,
         base_url=args.base_url,
         api_key_env=None if (args.key_env or "").lower() in ("", "none") else args.key_env,
-        max_tokens=512, json_mode=not args.no_json_mode)
+        max_tokens=1024, json_mode=not args.no_json_mode)
     if args.probe:
         return _probe(spec)
     cases = load_cases()
-    result = run(model_extractor(spec), cases, repeat=args.repeat)
+    result = run(one_shot_extractor(spec), cases, repeat=args.repeat)
     if args.json:
         print(json.dumps({k: v for k, v in result.items() if k != "rows"}, indent=2))
     else:
@@ -260,13 +261,12 @@ def _probe(spec) -> None:
     """One call, everything printed, nothing swallowed — the tool to reach for
     the moment a run comes back BROKEN. The eval deliberately degrades on
     failure; this deliberately does not."""
-    from merchantcore.enrich import model_extractor
-    from .listen import INTERPRET_PROMPT
+    from .listen import INTERPRET_PROMPT, one_shot_extractor
     prompt = INTERPRET_PROMPT.format(said="i bought a car", descriptor="NORTHSIDE MOTORS",
                                      category="transport", subcategory="auto dealer")
     print(f"POST {spec.base_url}  model={spec.model}  json_mode={spec.json_mode}\n")
     try:
-        reply = model_extractor(spec)(prompt)
+        reply = one_shot_extractor(spec)(prompt)
     except Exception as exc:                       # noqa: BLE001 - this is the point
         print(f"FAILED: {type(exc).__name__}: {exc}")
         raise SystemExit(1)

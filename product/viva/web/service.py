@@ -214,18 +214,20 @@ def _interpreter():
     model = os.environ.get("VIVA_INTERPRET_MODEL") or os.environ.get("VIVA_MODEL")
     if not model:
         return None
-    from merchantcore.enrich import model_extractor
     from vivacore.models import ModelSpec
+
+    from ..listen import one_shot_extractor
     # A local server is keyless. `none` says so explicitly rather than leaving a
     # missing key to fail three layers down with a confusing message.
     key_env = cfg("KEY_ENV", "OPENROUTER_API_KEY")
-    return model_extractor(ModelSpec(
+    return one_shot_extractor(ModelSpec(
         name="viva-listen", adapter=cfg("ADAPTER", "openai-compatible"),
         model=model, base_url=cfg("BASE_URL"),
         api_key_env=None if (key_env or "").lower() in ("", "none") else key_env,
-        # A sentence is short and the reply is ~60 tokens; the 8192 default just
-        # wastes a local model's KV cache.
-        max_tokens=512, json_mode=True))
+        # The answer is ~60 tokens. The headroom is for models that think out
+        # loud before answering — `_first_json_object` finds the object inside
+        # the prose, so reasoning costs tokens but never costs the reading.
+        max_tokens=1024, json_mode=True))
 
 
 def categorize_review(vault: Vault, limit: int = 50) -> dict:

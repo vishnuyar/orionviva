@@ -27,6 +27,16 @@ class ModelSpec:
     cost_per_mtok_out: float = 0.0
     timeout_s: float = 300.0
     json_mode: bool = False           # ask the provider for guaranteed-valid JSON
+    # How many times to CONTINUE across provider truncation. The default suits
+    # document extraction, where a long transaction list genuinely gets cut off
+    # and stitching the tail back on is the right repair.
+    #
+    # Set to 0 for any call whose output is SHORT AND BOUNDED. Continuation is
+    # the wrong repair there: hitting the limit means the model is misbehaving,
+    # not that the answer was too long, and stitching six more chunks onto a
+    # runaway reply turns one recoverable failure into unparseable garbage at
+    # six times the cost. Truncation should then be REPORTED, not repaired.
+    max_continuations: int | None = None   # None = the shared default
     notes: str = ""
 
     def api_key(self) -> str | None:
