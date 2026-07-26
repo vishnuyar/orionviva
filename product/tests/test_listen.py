@@ -18,7 +18,7 @@ from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
 from viva.ledger import EventStore, Ledger
 from viva.ledger.events import (ASSERTED, MAJOR_ASSET, MAJOR_EXPENSE,
                                 MAJOR_LIABILITY, SCOPE_MERCHANT, SCOPE_MOVEMENT)
-from viva.ledger.projection import MIXED, SETTLEMENT, TRANSFER
+from viva.ledger.projection import MIXED, SETTLEMENT, SPENDING, TRANSFER
 from viva.listen import (PLAIN, apply_proposal, interpret, listen, propose,
                          resolve_account, suggest_answers)
 
@@ -384,3 +384,74 @@ def test_interpretation_is_never_continued_across_truncation():
         assert out == '{"legs":[{"major":"expense"}]}'
     finally:
         models.adapter_for = real
+
+
+# ------------------------------- the ATM answer (a real run, 2026-07-25)
+
+
+def _atm(tmp_path):
+    """The real shape: an ATM descriptor carrying its own date, place and card."""
+    raw, ledger = _vault(tmp_path)
+    _checking(raw, ledger, [
+        ("2026-03-29", "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
+         Decimal("-500.00")),
+        ("2026-03-29", "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
+         Decimal("-500.00"))])
+    return ledger
+
+
+def test_the_label_a_person_names_is_not_dropped(tmp_path):
+    """The defect: answering "spent on playing poker, add it to poker category"
+    recorded only the major. Half the sentence reached the ledger and nothing
+    said so — the worst kind of silence, because it looks like it worked."""
+    ledger = _atm(tmp_path)
+    p = listen(ledger.projection(), "spent on playing poker, add it to poker category",
+               "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
+               amount="1000.00", currency="USD",
+               extract_fn=_reply({"legs": [{"major": "expense", "account_hint": ""}],
+                                  "category": "poker"}))
+    assert p.category == "poker"
+    assert "poker" in p.summary()
+
+    apply_proposal(ledger, p, "2026-07-25")
+    proj = ledger.projection()
+    assert proj.movements()[0].nature == SPENDING
+    # Both halves landed, through the writers that already existed.
+    assert (proj.derived_category(proj.movements()[0]) or {}).get("category") == "poker"
+
+
+def test_the_document_line_is_never_the_models_free_text(tmp_path):
+    """v1 asked for "corroborates" with no guidance; a model answered "no", and
+    the surface said "Your no would let me prove this — it isn't needed to save
+    it." Nonsense reaching a person is a trust failure even when the ledger is
+    fine. Code maps kind -> document now; the model has no say."""
+    ledger = _atm(tmp_path)
+    p = listen(ledger.projection(), "spent on playing poker",
+               "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
+               amount="1000.00", currency="USD",
+               extract_fn=_reply({"legs": [{"major": "expense"}],
+                                  "corroborates": "no", "kind": ""}))
+    assert p.corroborates == ""
+    assert "prove" not in p.summary()
+    assert "no would" not in p.summary()
+
+    # And where a document genuinely applies, it is OUR wording, not the model's.
+    car = listen(ledger.projection(), "i bought a car", "NORTHSIDE MOTORS",
+                 extract_fn=_reply({"legs": [{"major": "asset", "account_hint": "Truck"}],
+                                    "kind": "vehicle", "corroborates": "whatever"}))
+    assert car.corroborates == "invoice or bill of sale"
+
+
+def test_ordinary_spending_creates_no_account(tmp_path):
+    """Not every answer brings a thing into being. Cash spent on an evening out
+    is an expense, not an asset with a name — and an account per answer is how
+    the sprawl this slice worries about would actually start."""
+    ledger = _atm(tmp_path)
+    p = listen(ledger.projection(), "spent on playing poker",
+               "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
+               amount="1000.00", currency="USD",
+               extract_fn=_reply({"legs": [{"major": "expense", "account_hint": ""}],
+                                  "category": "poker"}))
+    applied = apply_proposal(ledger, p, "2026-07-25")
+    assert applied["accounts_opened"] == []
+    assert ledger.projection().ruled_accounts() == {}

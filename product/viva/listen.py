@@ -50,7 +50,7 @@ from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             account_opened, ruling_recorded)
 from .ingest.prompt_library import interpret_prompt
 from .ledger.merchants import is_shareable, normalize_merchant
-from .ledger.postings import MAJOR_ROOTS, account_path
+from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 
 log = logging.getLogger("viva.listen")
 
@@ -121,7 +121,10 @@ class Interpretation:
     """What a model may return from a sentence — meaning only, never money."""
     legs: list[dict] = field(default_factory=list)   # {major, account_hint, share}
     kind: str = ""                 # vehicle | property | mortgage | loan | ...
-    corroborates: str = ""         # the document that would prove it
+    # A label the PERSON named ("poker"), not a guess about them. Its absence
+    # was a real defect: someone answered "spent on playing poker, add it to
+    # poker category" and only the first half reached the ledger.
+    category: str = ""
     confidence: float = 0.0
     said: str = ""                 # the person's own words, kept (T3)
     # WHY there are no legs, when there are none. "The model declined" and "we
@@ -147,7 +150,7 @@ class Interpretation:
 # (`viva/ingest/prompt_library.py`), not as a constant here. A recorded ruling
 # stamps its `prompt_version`, so tuning the text never silently invalidates the
 # readings made before the change — and eval runs stay comparable across time.
-INTERPRET_VERSION = "interpret-v1"
+INTERPRET_VERSION = "interpret-v2"
 
 
 def interpret(said: str, descriptor: str = "", category: str = "",
@@ -206,7 +209,7 @@ def interpret(said: str, descriptor: str = "", category: str = "",
                      "share": str(leg.get("share", "")).strip()})
     return Interpretation(
         legs=legs, kind=str(body.get("kind", "")).strip().lower(),
-        corroborates=str(body.get("corroborates", "")).strip(),
+        category=str(body.get("category", "")).strip().lower()[:40],
         confidence=float(body.get("confidence") or 0.0), said=said,
         failure="" if legs else "empty",
         detail="" if legs else "valid JSON, but no usable legs",
@@ -267,7 +270,7 @@ class AccountMatch:
     Slice 1.5's statement matcher — `same` / `ambiguous` / `new` — because this
     is that matcher pointed at a new target, not a second mechanism."""
     account: str
-    verdict: str               # "same" | "ambiguous" | "new"
+    verdict: str               # "same" | "existing" | "ambiguous" | "new"
     candidate: str = ""
     reason: str = ""
 
@@ -282,6 +285,15 @@ def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatc
     `Assets:My Car` — so the cure is the same one that tamed merchant
     descriptors: normalize the name, and suggest what exists before offering to
     create anything."""
+    # Not every leg names a thing. Ordinary spending — cash at a poker table,
+    # a restaurant bill — is an expense, not an asset with a name, and minting
+    # `Expenses:Other:Unnamed` for it is exactly how account sprawl starts. Only
+    # a major that means "you now OWN or OWE something" can bring an account
+    # into being; the rest go to the Uncategorized bucket the ledger already
+    # has, where the CATEGORY does the descriptive work.
+    if major in (MAJOR_EXPENSE, MAJOR_INCOME) and not hint.strip():
+        return AccountMatch(MAJOR_UNCATEGORIZED[major], "existing",
+                            reason="ordinary spending needs no account of its own")
     want = _norm(hint)
     known = set(proj.ruled_accounts()) | {
         a for a in proj.accounts() if a.split(":")[0] == MAJOR_ROOTS.get(major)}
@@ -320,6 +332,7 @@ class Proposal:
     new_accounts: list[str] = field(default_factory=list)
     confirm_accounts: list[str] = field(default_factory=list)
     corroborates: str = ""
+    category: str = ""             # what the person called it, if they said
     said: str = ""
     unknown_split: bool = False
     settles: int = 1
@@ -340,6 +353,8 @@ class Proposal:
         if self.unknown_split:
             parts.append("I can't tell how it splits between those, so I won't "
                          "guess: the money is recorded, the split stays open.")
+        if self.category:
+            parts.append(f"I'll file it under \u201c{self.category}\u201d.")
         if self.corroborates:
             parts.append(f"Your {self.corroborates} would let me prove this "
                          "— it isn't needed to save it.")
@@ -349,7 +364,8 @@ class Proposal:
         return {"scope": self.scope, "subject": self.subject, "legs": self.legs,
                 "new_accounts": self.new_accounts,
                 "confirm_accounts": self.confirm_accounts,
-                "corroborates": self.corroborates, "said": self.said,
+                "corroborates": self.corroborates, "category": self.category,
+                "said": self.said,
                 "unknown_split": self.unknown_split, "settles": self.settles,
                 "amount": self.amount, "currency": self.currency,
                 "prompt_version": self.prompt_version,
@@ -387,8 +403,12 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     return Proposal(
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
         confirm_accounts=confirm,
-        corroborates=interp.corroborates or CORROBORATION.get(interp.kind, ""),
-        said=interp.said,
+        # The document is chosen by CODE from the kind, never taken from the
+        # model's free text. v1 let the model fill this field and it answered
+        # "no", which the surface rendered as "Your no would let me prove this."
+        # A model reads meaning; deciding which document proves a claim is ours.
+        corroborates=CORROBORATION.get(interp.kind, ""),
+        category=interp.category, said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
         settles=max(settles, 1), amount=amount, currency=currency,
         prompt_version=interp.version)
@@ -462,8 +482,19 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
         by=by, grade=grade, said=proposal.said,
         corroborates=proposal.corroborates,
         prompt_version=proposal.prompt_version))
+    # One sentence can carry two rulings — "spent on poker, add it to poker
+    # category" is a major AND a label. Both are written, through the writers
+    # that already exist, at the same scope the ruling used.
+    if proposal.category:
+        from .ingest.categorize import assign_category, assign_merchant_category
+        if proposal.scope == SCOPE_MERCHANT:
+            assign_merchant_category(ledger, proposal.subject, proposal.category,
+                                     by=by)
+        else:
+            assign_category(ledger, proposal.subject, proposal.category, by=by)
     return {"scope": proposal.scope, "subject": proposal.subject,
-            "accounts_opened": opened, "settles": proposal.settles}
+            "accounts_opened": opened, "settles": proposal.settles,
+            "category": proposal.category}
 
 
 def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "",

@@ -23,6 +23,7 @@ FROZEN = {
     "paystub-base-v1": "0c6d6940246743c5",
     "paystub-v1": "03b31eadbe878505",
     "interpret-v1": "999d8aa496da5691",
+    "interpret-v2": "7ac87ea8a867d0ba",
 }
 
 
@@ -82,8 +83,10 @@ def test_the_interpret_prompt_is_addressable_like_every_other():
     rewritable in place, which would have meant that tuning it silently
     reinterpreted every ruling made before the change (Vishnu, 2026-07-25)."""
     text, version = pl.interpret_prompt()
-    assert version == "interpret-v1"
+    assert version == "interpret-v2"
     assert pl.resolve(version) == text          # a recorded ruling round-trips
+    # v1 is retained, unchanged: rulings recorded under it stay explainable.
+    assert pl.resolve("interpret-v1") != text
 
 
 def test_the_interpret_prompt_assumes_no_particular_instrument():
@@ -127,3 +130,14 @@ def test_a_ruling_records_which_prompt_read_it():
                          prompt_version="interpret-v1")
     assert ev.body["prompt_version"] == "interpret-v1"
     assert pl.resolve(ev.body["prompt_version"])       # still reconstructible
+
+
+def test_v2_asks_for_the_label_the_person_named_and_not_for_a_document():
+    """Both changes came from one real answer: "spent on playing poker, add it
+    to poker category". v1 dropped the category half, and its unguided
+    "corroborates" field came back as "no" — which the surface rendered as
+    "Your no would let me prove this"."""
+    v2, _ = pl.interpret_prompt("interpret-v2")
+    assert '"category"' in v2 and "Copy their word" in v2
+    assert "corroborates" not in v2        # code maps kind -> document, not the model
+    assert '"corroborates"' in pl.resolve("interpret-v1")   # v1 still has it, intact

@@ -233,7 +233,13 @@ _NATURE_OF_MAJOR = {
 }
 # Which leg names the account a ruling brings into being. A mortgage payment
 # creates the LOAN account, not an interest bucket, so the liability leads.
-_LEG_PRIORITY = (MAJOR_LIABILITY, MAJOR_ASSET, MAJOR_INCOME, MAJOR_EXPENSE)
+#
+# Expense and income are deliberately ABSENT. Only "you now own it" or "you now
+# owe it" names a thing worth tracking as an account; ordinary spending is
+# described by its CATEGORY, in the Uncategorized bucket the ledger already has.
+# Including them here made an evening's cash turn into `Expenses:Other:Unnamed`
+# and show up beside a car in "things you hold" — sprawl, and a false claim.
+_LEG_PRIORITY = (MAJOR_LIABILITY, MAJOR_ASSET)
 
 
 def nature_of_legs(legs: list[dict]) -> str:

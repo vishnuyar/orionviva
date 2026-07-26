@@ -208,7 +208,23 @@ Two problems, both spotted by Vishnu on reading the rendered prompt (2026-07-25)
 
 The general shape, again: a discipline the project already had, not applied to new code because the new code arrived from a different direction. Worth a habit — *when a slice makes a model call, its prompt goes in the library and its version goes on the event.*
 
-Three live failures, all of the same shape: **an existing discipline not carried across to new code that arrived from a different direction.** The first swallowed errors, the second stitched a bounded answer, the third hardcoded a prompt that assumed a bank. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
+### The ATM answer: four defects in one exchange
+
+The question: *"2 transactions with ATM Withdrawal … totalling USD 1,000.00. I've treated those as money moved rather than spent, because they look like 'atm'. Is that right?"*
+The answer: *"spent on playing poker, add it to poker category."*
+What came back: *"I'd record USD 1000.00 across 2 payments as: spent — the money is gone. **Your no would let me prove this** — it isn't needed to save it."*
+
+**1. Half the sentence was silently dropped.** The person said two things — the major *and* a label — and only the major reached the ledger. Nothing indicated the rest had been ignored, which is the worst kind of silence: it looks like it worked. `interpret-v2` asks for the label the person named ("copy their word; do not invent one"), the Proposal carries it, and applying writes it through the category writers that already existed. The summary now says *"I'll file it under 'poker'."*
+
+**2. Nonsense reached the person.** v1 asked the model for a `corroborates` value with no guidance; it answered `"no"`, and the surface rendered *"Your no would let me prove this."* **The field is gone.** The model reports `kind`; deterministic code maps kind → document. Nonsense in a finance app is a trust failure even when the ledger underneath is perfectly correct — arguably *especially* then, since the number was right and the sentence still made the product look like it wasn't listening. This is the same boundary as everywhere else: a model reads meaning, and *deciding which document proves a claim is ours.*
+
+**3. Account sprawl actually started.** Ordinary spending minted `Expenses:Other:Unnamed`, because `resolve_account` proposed an account for every leg. Only a major meaning *"you now own it"* or *"you now owe it"* can bring an account into being; expense and income go to the Uncategorized bucket the ledger already has, where the **category** does the descriptive work. This is exactly the sprawl the spec named as the failure mode — and it appeared on the third real answer.
+
+**4. An evening's cash was about to be listed beside a car** in "things you hold", because `_leading_account` fell back to an expense bucket. Expense and income are now absent from that priority list entirely.
+
+Defects 3 and 4 are one idea stated twice: **not every answer brings a thing into being.** The slice was designed around the answers that create accounts — a car, a mortgage, a loan — and the ordinary case, which is most cases, had no path that didn't create one.
+
+Four live failures, all of the same shape: **a design shaped by its hard cases, then meeting an ordinary one.** Errors swallowed, a bounded answer stitched, a prompt assuming a bank, an account minted for a night out. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
 
 ### Not done yet
 
