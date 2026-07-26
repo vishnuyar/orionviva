@@ -976,13 +976,26 @@ class LedgerProjection:
                 if self._counts_as_spending(m)
                 and self.derived_category(m) is None]
 
-    def uncategorized_merchants(self) -> dict[str, dict]:
-        """Unknown merchants across the uncategorized expense queue, deduped by
-        normalized key (Slice 5.5): {merchant -> {count, example, shareable}}.
-        This is the batched categorizer's pending set and the surface's unit."""
+    def uncategorized_merchants(self, expenses_only: bool = False) -> dict[str, dict]:
+        """Every counterparty we have not identified yet, deduped by normalized
+        key (Slice 5.5): {merchant -> {count, example, shareable}}. The batched
+        enricher's pending set.
+
+        **Every counterparty, not just the expense-shaped ones.** Until
+        2026-07-25 this walked `uncategorized_expenses()`, so employers,
+        transfers, card payments and every inflow were structurally invisible to
+        enrichment — permanently unidentified, never asked about, never settled.
+        The blind spot was found by comparing this count (46 merchants) against
+        `debug_tiers` (428 unenriched movements) on a real vault: two tools
+        counting different populations, and the gap was the bug.
+
+        `expenses_only=True` keeps the old, narrower view for the spending queue."""
         from .merchants import is_shareable
         out: dict[str, dict] = {}
-        for m in self.uncategorized_expenses():
+        source = (self.uncategorized_expenses() if expenses_only
+                  else [m for m in self.movements()
+                        if self.derived_category(m) is None])
+        for m in source:
             key = normalize_merchant(m.description)
             if not key:
                 continue
