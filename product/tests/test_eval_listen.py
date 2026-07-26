@@ -132,3 +132,64 @@ def test_the_key_carries_no_real_financial_data():
     for case in load_cases()["cases"]:
         blob = f"{case['said']} {case['descriptor']}"
         assert not money.search(blob), f"{case['id']}: {blob}"
+
+
+def test_a_broken_pipe_is_never_reported_as_a_clean_result():
+    """The bug this harness shipped with, and the reason it exists.
+
+    On its first real run every call failed before reaching the model — and the
+    report said "0% ruin, clean, safe but weak". An eval that cannot tell a
+    declining model from a broken connection is worse than no eval, because it
+    is *reassuring*. So: BROKEN is its own verdict, it is excluded from the
+    denominator, and the confidently-wrong rate becomes None rather than zero —
+    an unknown rate is not a good one."""
+    from viva.eval_listen import BROKEN
+
+    cases = load_cases()
+
+    def dead(prompt):
+        raise ConnectionError("model 'qwen3:4b' not found, try pulling it first")
+
+    r = run(dead, cases)
+    assert r["counts"][BROKEN] == r["n"]
+    assert r["counts"][SAFE] == 0             # NOT laundered into the safe bucket
+    assert r["scored"] == 0
+    assert r["confidently_wrong"] is None     # unknown, not zero
+
+    text = report(r)
+    assert "NOTHING WAS MEASURED" in text
+    assert "not found" in text                # the actual cause, surfaced
+    assert "ollama list" in text              # and what to do about it
+    for misleading in ("clean", "safe but weak", "usable", "VERDICT: do not use"):
+        assert misleading not in text
+
+
+def test_a_partly_broken_run_scores_only_what_it_measured():
+    """Half a run is not a result either — say so rather than quietly averaging."""
+    from viva.eval_listen import BROKEN
+
+    cases = load_cases()
+    state = {"n": 0}
+
+    def flaky(prompt):
+        state["n"] += 1
+        if state["n"] % 2:
+            raise ConnectionError("connection reset")
+        return json.dumps({"legs": [{"major": "expense"}]})
+
+    r = run(flaky, cases)
+    assert 0 < r["counts"][BROKEN] < r["n"]
+    assert r["scored"] == r["n"] - r["counts"][BROKEN]
+    assert "never reached the model" in report(r)
+    assert "Fix the connection" in report(r)
+
+
+def test_a_declining_model_is_still_distinguished_from_a_broken_one():
+    """Both produce no legs. They mean opposite things."""
+    from viva.eval_listen import BROKEN
+
+    cases = load_cases()
+    declined = run(_model(lambda said: {"legs": []}), cases)
+    assert declined["counts"][SAFE] == declined["n"]
+    assert declined["counts"][BROKEN] == 0
+    assert declined["confidently_wrong"] == 0     # measured, and genuinely zero
