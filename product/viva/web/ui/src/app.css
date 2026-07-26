@@ -57,3 +57,10 @@ a.back{color:var(--accent);text-decoration:none;font-size:14px;cursor:pointer}
 .flash{font-size:13px;color:var(--accent);min-height:18px;margin-top:8px}
 .bar{height:6px;border-radius:3px;background:var(--accent-soft);overflow:hidden;margin-top:6px}
 .bar > span{display:block;height:100%;background:var(--accent)}
+
+/* Slice 9a — the sentence box and the proposal it comes back as. The proposal
+   is set apart deliberately: it is the moment before something is written. */
+.grow { flex: 1; min-width: 18rem; }
+.proposal { border-left: 3px solid var(--accent, #6b8afd); padding: .5rem .7rem;
+            margin-top: .4rem; background: rgba(107,138,253,.06); border-radius: 4px; }
+.proposal .text { margin-bottom: .45rem; }

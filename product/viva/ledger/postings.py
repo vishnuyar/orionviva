@@ -26,8 +26,8 @@ from decimal import Decimal
 
 from vivacore.verify.arithmetic import CheckResult, check_sum
 
-from .events import (UNVERIFIED, VERIFIED, Event, Posting,
-                     transaction_recorded)
+from .events import (MAJOR_ASSET, MAJOR_EXPENSE, MAJOR_INCOME, MAJOR_LIABILITY,
+                     UNVERIFIED, VERIFIED, Event, Posting, transaction_recorded)
 
 # --- the v0 chart of accounts (a tiny fixed set; a registry grows it later) ---
 
@@ -37,6 +37,47 @@ EXPENSE_UNCATEGORIZED = "Expenses:Uncategorized"
 # A liability's payment reduces what's owed — a debt reduction funded by a
 # transfer, NOT an expense. It lands here so it never inflates spending (Slice 5).
 TRANSFERS_UNCATEGORIZED = "Transfers:Uncategorized"
+
+# --- the four majors, as account roots (Slice 9a) ---------------------------
+# Until now there was no `Liabilities:` root at all, which is why "I paid off
+# debt" was literally unsayable: a card payment landed in Transfers:Uncategorized
+# and the fact that what-you-owe had *changed* was nowhere in the ledger.
+#
+# Adding the root is a READ-SIDE change, not a schema change, because a category
+# is an OVERLAY keyed on movement_key (Slice 5) — the posted counter-leg stays
+# an Uncategorized bucket forever and every aggregate reads the overlay. So the
+# chart of accounts below is *materialized by the projection* from rulings, and
+# `Assets:Vehicles:Tesla` never has to be written into a posting to be real.
+# That keeps this cheap and reversible, and leaves re-posting available later
+# (abstract the read side early, the write side late).
+LIABILITIES_UNCATEGORIZED = "Liabilities:Uncategorized"
+
+MAJOR_ROOTS = {
+    MAJOR_EXPENSE: "Expenses",
+    MAJOR_ASSET: "Assets",
+    MAJOR_LIABILITY: "Liabilities",
+    MAJOR_INCOME: "Income",
+}
+MAJOR_UNCATEGORIZED = {
+    MAJOR_EXPENSE: EXPENSE_UNCATEGORIZED,
+    MAJOR_ASSET: "Assets:Uncategorized",
+    MAJOR_LIABILITY: LIABILITIES_UNCATEGORIZED,
+    MAJOR_INCOME: INCOME_UNCATEGORIZED,
+}
+
+
+def account_path(major: str, *parts: str) -> str:
+    """Build a chart-of-accounts path: the major's root is fixed CODE, and every
+    level beneath it is free DATA (I5) — `Assets:Vehicles:<name>`,
+    `Liabilities:Mortgage:<lender>`. Exactly the shape the 16 primary categories
+    already use with a free subcategory, so nothing new has to be learned.
+
+    Empty parts are dropped, and a `:` inside a part is collapsed so a merchant
+    name can never inject a fake level into the hierarchy."""
+    if major not in MAJOR_ROOTS:
+        raise ValueError(f"unknown major {major!r}")
+    clean = [p.strip().replace(":", " ").strip() for p in parts]
+    return ":".join([MAJOR_ROOTS[major]] + [p for p in clean if p])
 
 
 def counter_account(kind: str, amount: Decimal) -> str:

@@ -137,6 +137,21 @@ def make_handler(vault, read_fn):
                     d = json.loads(raw or b"{}")
                     return self._send(service.rule_nature(
                         vault, d["merchant"], d["nature"]))
+                if u.path == "/api/rule-major":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.rule_major(
+                        vault, d["merchant"], d["major"],
+                        d.get("descriptor", ""), d.get("kind", "")))
+                if u.path == "/api/listen":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.listen_to(
+                        vault, d["said"], d.get("descriptor", ""),
+                        d.get("movement_key", ""), d.get("category", ""),
+                        d.get("subcategory", ""), d.get("amount", ""),
+                        d.get("currency", "")))
+                if u.path == "/api/apply-ruling":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.apply_ruling(vault, d["proposal"]))
                 if u.path == "/api/upload":
                     fn = self.headers.get("X-Filename", "upload.bin")
                     return self._send(service.upload(vault, fn, raw, read_fn))

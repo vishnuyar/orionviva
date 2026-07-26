@@ -37,7 +37,9 @@ from decimal import Decimal
 
 from .ingest import held_items, other_holds
 from .ledger.merchants import is_shareable, normalize_merchant
+from .ledger.events import ASSERTED
 from .ledger.projection import BY_CATEGORY, BY_DEFAULT, SPENDING
+from .listen import suggest_answers
 
 # How many questions to surface before summarizing the rest. Not a materiality
 # threshold in money — that would be a currency- and jurisdiction-shaped guess
@@ -50,6 +52,7 @@ RECONCILIATION = "reconciliation"  # this document didn't add up
 TRANSFER = "transfer"              # are these two movements the same money?
 MERCHANT = "merchant"              # what is this merchant?
 NATURE = "nature"                  # is this money spent, or moved?
+CORROBORATION = "corroboration"    # do you have the document that proves this?
 
 
 @dataclass
@@ -69,13 +72,15 @@ class Question:
     count: int = 1                 # how many movements/documents it settles
     scope: str = "one"             # "one" | "pattern"
     options: list = field(default_factory=list)   # {label, action, args}
+    free_text: str = ""            # the prompt for an answer no button can hold
     refs: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"id": self.id, "kind": self.kind, "text": self.text,
                 "why": self.why, "amount": str(self.amount),
                 "currency": self.currency, "count": self.count,
-                "scope": self.scope, "options": self.options, "refs": self.refs}
+                "scope": self.scope, "options": self.options,
+                "free_text": self.free_text, "refs": self.refs}
 
 
 def _money(amount: Decimal, currency: str) -> str:
@@ -260,14 +265,65 @@ def _nature_questions(proj) -> list[Question]:
             id=f"{NATURE}:{key}", kind=NATURE, text=text, why=why,
             amount=g["amount"], currency=g["currency"], count=g["count"],
             scope="pattern",
+            # Slice 9a: the four majors, in plain language, ordered by what we
+            # already believe about this merchant. The old three options were
+            # both too few and wrong — "something I now own" was mapped to
+            # `settlement`, which means debt repayment, so answering it honestly
+            # recorded the wrong thing.
             options=[
-                {"label": "Money I spent", "action": "rule_nature",
-                 "args": {"merchant": key, "nature": SPENDING}},
-                {"label": "Moved between my accounts", "action": "rule_nature",
-                 "args": {"merchant": key, "nature": "transfer"}},
-                {"label": "Something I now own", "action": "rule_nature",
-                 "args": {"merchant": key, "nature": "settlement"}}],
-            refs={"merchant": key, "movements": g["keys"]}))
+                {"label": s["label"], "action": "rule_major",
+                 "args": {"merchant": key, "major": s["major"]}}
+                for s in suggest_answers(g["category"], g["subcategory"])],
+            # And the escape hatch a button cannot be: a compound answer, or one
+            # that names the thing. `free_text` is what makes the complete
+            # vocabulary reachable at all (docs/from-your-words-to-the-ledger.md).
+            free_text="Or tell me in your own words",
+            refs={"merchant": key, "movements": g["keys"],
+                  "category": g["category"], "subcategory": g["subcategory"],
+                  "descriptor": g["example"]}))
+    return out
+
+
+def _corroboration_questions(proj) -> list[Question]:
+    """Documents that would PROVE what you told us (Slice 9a).
+
+    Every account a ruling created is `asserted` — only you say it exists. That
+    is honest and it is enough to run your finances on, but it is not evidence a
+    counterparty could ever rely on. The invoice, the 1098, the closing
+    disclosure is the ladder from `asserted` to `issued`.
+
+    Two rules keep this from nagging, both deliberate: the ask is **never a
+    gate** — the account is already created and the money already recorded — and
+    it is **ranked with everything else**, so a large purchase surfaces and a
+    small one does not."""
+    out: list[Question] = []
+    for account, row in proj.ruled_accounts().items():
+        if row.get("origin") != ASSERTED:
+            continue
+        doc = ""
+        for ruling in proj.rulings():
+            if ruling.get("corroborates") and any(
+                    leg.get("account") == account for leg in ruling.get("legs", [])):
+                doc = ruling["corroborates"]
+                break
+        if not doc:
+            continue
+        name = account.split(":")[-1]
+        text = (f"You told me about {name} — {_money(row['paid'], row['currency'])} "
+                f"so far. Do you have the {doc}? It would let me prove this, "
+                "not just record it.")
+        why = ("This account exists because you said so; nothing has attested it. "
+               + ("Its balance also can't be trusted yet, because part of those "
+                  "payments was interest." if not row["reliable_balance"] else ""))
+        out.append(Question(
+            id=f"{CORROBORATION}:{account}", kind=CORROBORATION, text=text.strip(),
+            why=why.strip(), amount=row["paid"], currency=row["currency"],
+            count=row["count"], scope="one",
+            options=[{"label": f"I have the {doc}", "action": "upload",
+                      "args": {"account": account, "document": doc}},
+                     {"label": "Not right now", "action": "dismiss",
+                      "args": {"account": account}}],
+            refs={"account": account, "document": doc}))
     return out
 
 
@@ -286,6 +342,7 @@ def open_questions(source, limit: int = DEFAULT_LIMIT) -> dict:
     qs += _transfer_questions(proj)
     qs += _merchant_questions(proj)
     qs += _nature_questions(proj)
+    qs += _corroboration_questions(proj)
     # Highest stake first; ties broken by id so the order is stable between reads.
     qs.sort(key=lambda q: (-q.amount, q.id))
     shown, rest = qs[:limit], qs[limit:]

@@ -97,3 +97,11 @@ What to gather next, in the order it unblocks something real:
 6. **One insurance declaration** — proves Provision (non-numeric attested terms) doesn't need a new engine.
 
 **Discipline:** real documents are never committed (I6, and the gitignore enforces it). They live in the local vault and `bench/bench-data/`; what ships is the *profile*, never the document.
+
+---
+
+## Documents the product asks *for itself* (added 2026-07-25)
+
+This list was written as *"what should we test against."* Slice 9a adds a second, live source: **every account a ruling creates names the document that would corroborate it** ([from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)). *"I bought a car"* → the invoice. *"This is my mortgage"* → the statement or 1098. *"This paid my car loan"* → the loan statement.
+
+Two things follow. First, coverage stops being a list the author works through and becomes **demand-driven** — the vault says which document matters next, ranked by the money it would explain. Second, the asks are **corroboration, never gates**: the account is created and the cash posted before the document is mentioned, so declining costs the person nothing but a confidence grade.

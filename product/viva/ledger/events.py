@@ -153,17 +153,44 @@ class Event:
 # --- typed constructors (the only supported way to build a well-formed event) --
 
 
+# --- how an account came to exist (Slice 9a, decision A3) -------------------
+# Every account before this slice was born from a document an ISSUER produced —
+# a bank statement, a pay stub, a brokerage report. Slice 9a introduces accounts
+# born from a SENTENCE ("I bought a car"), whose only witness is the person.
+#
+# That distinction is capturable ONLY at write time, and it is the difference
+# between a ledger that can vouch for you to a counterparty and one that cannot:
+# an asserted account is not evidence the way a statement is. Recording it costs
+# a string today and is unrecoverable later, so it is recorded from the start.
+#
+# It is also a LADDER, not a label. The corroboration ask (invoice, 1098,
+# closing disclosure, loan statement) is precisely the path from `asserted` to
+# `issued`, and a document arriving upgrades the account in place.
+ISSUED = "issued"        # a document from an issuer attests this account exists
+ASSERTED = "asserted"    # only the person says so — honest, and not yet provable
+ORIGINS = (ISSUED, ASSERTED)
+
+
 def account_opened(account_id: str, kind: str, name: str, currency: str,
                    occurred_at: str, jurisdiction: str = "US",
                    institution: str = "", account_number: str = "",
                    account_names: list[str] | None = None,
+                   origin: str = ISSUED,
                    provenance: Provenance | None = None) -> Event:
+    """Register a value-holding relationship.
+
+    ``origin`` (Slice 9a, A3) records *who says this account exists* — see the
+    ORIGINS note above. It defaults to ``issued`` so every existing call site,
+    all of which are driven by a real document, keeps its present meaning."""
+    if origin not in ORIGINS:
+        raise ValueError(f"origin must be one of {ORIGINS}, got {origin!r}")
     return Event(
         "AccountOpened", occurred_at,
         body={"account_id": account_id, "kind": kind, "name": name,
               "currency": currency, "jurisdiction": jurisdiction,
               "institution": institution, "account_number": account_number,
-              "account_names": list(account_names or [])},
+              "account_names": list(account_names or []),
+              "origin": origin},
         provenance=provenance or Provenance(),
     )
 
@@ -343,6 +370,87 @@ def category_assigned(movement_key: str, descriptor: str, category: str,
         body={"movement_key": movement_key, "descriptor": descriptor,
               "category": category, "grade": grade, "by": by,
               "nature": nature},
+        provenance=provenance or Provenance(),
+    )
+
+
+# --------------------------------------------------- the ruling (Slice 9a, A1)
+#
+# The FOUR MAJORS — the complete answer space for "what is this movement's
+# counter-leg?", and the vocabulary a person's sentence is interpreted into.
+# Closed and universal (I5); everything BELOW a major is free data.
+#
+# Equity is deliberately absent: for a person, equity IS net worth (assets minus
+# liabilities), so it is derived and never asserted. `Equity:OpeningBalance`
+# stays system-generated for genuinely unexplained history.
+#
+# These are stored, never spoken (decision D1). The surface always asks in plain
+# language — "do you still have it, in another form?" — and a person never types
+# an accounting term to use this product.
+MAJOR_EXPENSE = "expense"        # money spent, gone
+MAJOR_ASSET = "asset"            # you still have it, in another form
+MAJOR_LIABILITY = "liability"    # what you owe changed
+MAJOR_INCOME = "income"          # money that arrived
+MAJORS = (MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY, MAJOR_INCOME)
+
+# What a ruling is ABOUT. Scope is the whole reason this is one generic event
+# rather than a fourth narrow one: the same ruling mechanism has to say "this
+# transaction", "this merchant, always", and "this account" without multiplying
+# event types (Move 3, earned here — see from-your-words-to-the-ledger.md, A1).
+SCOPE_MOVEMENT = "movement"      # subject = a stable movement key
+SCOPE_MERCHANT = "merchant"      # subject = a normalized merchant (generalizes)
+SCOPE_ACCOUNT = "account"        # subject = an account id
+SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT)
+
+
+def ruling_recorded(scope: str, subject: str, occurred_at: str,
+                    legs: list[dict] | None = None, by: str = "human",
+                    grade: str = VERIFIED, said: str = "",
+                    corroborates: str = "",
+                    provenance: Provenance | None = None) -> Event:
+    """A person's ruling about what something *is* — the generic, scoped event
+    that Move 3 deferred and Slice 9a earns (A1).
+
+    ``legs`` are the counter-legs this movement's money goes to, each
+    ``{"major": <one of MAJORS>, "account": "Liabilities:Mortgage:Acme",
+    "share": ""}``. One leg is the ordinary case. Several legs is a compound
+    payment — a mortgage is interest *and* principal *and* escrow at once.
+
+    **A leg may carry no ``share``, and that is a first-class outcome, not a
+    failure.** The interest/principal/escrow split is printed on a statement
+    neither party has; guessing it would put a wrong number in a finance app.
+    So an unshared multi-leg ruling means: *these are the components, in this
+    order of certainty, proportions unknown.* The projection records the account
+    and holds the DECOMPOSITION provisional — the cash movement itself is a
+    measured fact and is never held hostage to a missing document.
+
+    ``said`` keeps the person's own sentence verbatim (T3), so a better model
+    can re-derive a richer reading later without ever asking them again.
+    ``corroborates`` names a document that would *prove* this — an invoice, a
+    1098, a closing disclosure. It is a suggestion, never a gate (Vishnu,
+    2026-07-25): the account is already created and the cash already posted.
+
+    NO AMOUNT APPEARS HERE, by design. Amounts come from the movement the ruling
+    is about. A model interprets meaning and never supplies a figure (T2 /
+    ADR-010) — the one place that boundary could leak is this event, so it is
+    closed structurally rather than by prompt."""
+    if scope not in SCOPES:
+        raise ValueError(f"scope must be one of {SCOPES}, got {scope!r}")
+    if not subject:
+        raise ValueError("a ruling must name its subject")
+    clean: list[dict] = []
+    for leg in (legs or []):
+        major = leg.get("major", "")
+        if major not in MAJORS:
+            raise ValueError(f"leg major must be one of {MAJORS}, got {major!r}")
+        if "amount" in leg:
+            raise ValueError("a ruling carries no amount — it comes from the movement")
+        clean.append({"major": major, "account": leg.get("account", ""),
+                      "share": str(leg.get("share", ""))})
+    return Event(
+        "RulingRecorded", occurred_at,
+        body={"scope": scope, "subject": subject, "legs": clean, "by": by,
+              "grade": grade, "said": said, "corroborates": corroborates},
         provenance=provenance or Provenance(),
     )
 

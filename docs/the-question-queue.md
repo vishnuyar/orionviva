@@ -6,6 +6,9 @@
 
 ---
 
+> _Forward note, 2026-07-25 — the first real run put two questions in front of the author that its three answers could not hold: a mortgage payment (three things at once) and a car purchase (something he now **owns**). The diagnosis is that a **NATURE** question's option set was an impoverished stand-in for what the counter-leg *is*. **Slice 9a** ([from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)) widens the answer space to the four majors — expense / asset / liability / income — reached through a sentence rather than a button. **The queue itself does not change**: framing, ranking by consequence, scope, and the tail summary are all untouched, and buttons remain the fast path and the no-model fallback. Free text becomes an additional way to answer a question the queue already asked._
+
+
 ## Why now
 
 Move 1 made the spending figure honest and, in doing so, **quantified what the system doesn't know**: on a real vault, a third of reported spending rests on a category hint alone, alongside dozens of unknown merchants and a handful of unresolved transfer suggestions. The system knows precisely what it is unsure about and has no way to work through it with the person.
