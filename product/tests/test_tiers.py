@@ -356,3 +356,35 @@ def test_the_diff_writes_nothing(tmp_path):
     before = len(list(ledger.store.events()))
     score(ledger.projection(), [_key("lender ach pmt", "liability")])
     assert len(list(ledger.store.events())) == before
+
+
+def test_a_rebuild_that_produces_nothing_says_so(tmp_path):
+    """`enrich` on the first rebuilt vault reported "0 merchants, 0 transactions"
+    — the vault was empty, and the rebuild had printed 35 tidy per-document
+    lines and a cheerful summary. Per-document output is not a result. Same
+    lesson as the eval harness: a tool must check its own outcome, and the
+    failure has to be louder than the progress."""
+    from viva.ingest import RawStore
+    from viva.ingest.pipeline import ReadResult
+    from viva.rebuild import rebuild
+
+    src = tmp_path / "src"
+    raw = RawStore.open(src / "raw", "pw")
+    ledger = Ledger(EventStore.open(src / "events.jsonl", "pw"))
+
+    from viva.ingest import capture_and_ingest
+
+    def unreadable(_data, did):
+        # A stored reply today's parser cannot use — the realistic failure.
+        return ReadResult(doc_type="mystery_document", doc_type_confidence=0.4,
+                          facts=None, error="no profile", raw_text="{}",
+                          model="test", prompt_version="classify-v2")
+
+    capture_and_ingest(raw, ledger, b"doc", unreadable, captured_at="2026-04-01")
+
+    lines = []
+    rebuild(src, tmp_path / "dest", "pw", log=lines.append)
+    text = "\n".join(lines)
+    assert "NOTHING WAS REBUILT" in text
+    assert "not a result" in text
+    assert "debug_claim" in text          # and what to run next

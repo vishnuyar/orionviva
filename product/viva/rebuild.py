@@ -132,9 +132,30 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
         res = capture_and_ingest(vault.raw, vault.ledger, data, replay,
                                  filename=f"{doc_id[:10]}.pdf", captured_at=now)
         counts[res.action] = counts.get(res.action, 0) + 1
+        why = ""
+        if res.action not in ("posted", "prepended"):
+            # Say WHY on the line itself. A rebuild that quietly parks every
+            # document still prints 35 tidy lines and looks like it worked.
+            reason = res.message or (res.finding.explain()
+                                     if res.finding else "") or "no facts parsed"
+            why = f"   [{reason[:70]}]"
         log(f"  [{i}/{len(doc_ids)}] {doc_id[:10]}… {doc_type:24} -> {res.action}"
-            + (f" ({res.grade})" if res.grade else ""))
+            + (f" ({res.grade})" if res.grade else "") + why)
 
+    # A tool must check its own outcome. `enrich` on the last rebuilt vault said
+    # "0 merchants, 0 transactions" — the vault was empty and nothing had said
+    # so, because per-document lines are not a result (2026-07-26).
+    proj = vault.ledger.projection()
+    movements = len(proj.movements())
+    log(f"\nrebuilt vault: {len(proj.accounts())} account(s), {movements} movement(s)")
+    if movements == 0:
+        log("\n  NOTHING WAS REBUILT. The vault is empty.\n"
+            "  This is not a result — do not enrich or measure it. Check, in order:\n"
+            "    * the outcomes above: all `parked`/`held` means the PARSER failed,\n"
+            "      and the bracketed reason on each line says how;\n"
+            "    * `python -m viva.debug_claim <doc_id>` re-parses one stored reply\n"
+            "      with today's code and prints exactly where it breaks;\n"
+            "    * an unrecognised doc_type has no profile, so it parks by design.")
     return counts
 
 
