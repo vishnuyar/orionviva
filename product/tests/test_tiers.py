@@ -432,35 +432,27 @@ def test_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
     assert source.index("sweep(vault.ledger)") < source.index("movements == 0")
 
 
-def test_the_sweep_should_close_a_gap_whose_neighbour_arrived_later(tmp_path):
-    """KNOWN DEFECT, found on 40 real documents (2026-07-26). Marked xfail so it
-    stays visible instead of becoming folklore.
+def test_a_gap_on_arrival_is_not_a_gap_in_the_vault(tmp_path):
+    """The correction to a false alarm (2026-07-26).
 
-    Ingested oldest-first, all 40 posted `corroborated`. Ingested in content-hash
-    order — which is what a replay naturally does — 14 held as `conflicted` gaps,
-    and `sweep` healed ZERO of them.
+    A rebuild summarised as "14 gap" was read as a defect in Slice 1's
+    order-independence, written up with a table and a diagnosis. `debug_gaps`
+    on that very vault then reported ZERO holds: the gaps were TRANSIENT. A
+    statement arriving before its neighbour is a gap at that instant and posts
+    the moment the neighbour heals it — the cascade working as designed.
 
-    The money is order-independent (919 movements either way), so Slice 1's
-    substantive promise holds. The GRADE is not. For a product whose output is
-    trust, a vault that says `conflicted` about statements that plainly
-    reconcile is telling the person something false — and it is the *pessimistic*
-    direction, which is safer but still wrong.
+    The arrival counters kept saying "gap" forever, so a sum of MOMENTS was read
+    as a STATE, and correct code was accused of a bug. Report the vault's final
+    state; never the sum of moments."""
+    from viva.rebuild import rebuild
+    from viva.vault import Vault
 
-    The cascade heals FORWARD as each document lands; nothing re-examines a gap
-    once its missing neighbour has since arrived. `rescan` exists precisely for
-    that and does not do it."""
-    import pytest
+    src = tmp_path / "src"
+    _claim_vault(src)
+    counts = rebuild(src, tmp_path / "dest", "pw", log=lambda *_: None)
 
-    from viva.ingest import sweep
+    proj = Vault.open(tmp_path / "dest", "pw").ledger.projection()
+    assert list(proj.gap_holds()) == []      # whatever the arrival counters said
+    assert counts.get("posted")
 
-    # Two statements of one account, ingested newest-first so the first cannot
-    # connect: the exact shape of the 14 real gaps.
-    later = _vault(tmp_path / "a", [("2026-04-05", "SHOP", "-100.00")],
-                   opening="900.00")
-    proj = later.projection()
-    conflicted = [a for a in proj.accounts()
-                  if proj.balance(a).grade == "conflicted"]
-    swept = sweep(later)
-    if conflicted:
-        pytest.xfail("known: sweep does not re-evaluate gaps whose neighbour "
-                     f"arrived later (healed {swept.get('gaps', 0)})")
+
