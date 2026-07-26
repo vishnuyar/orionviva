@@ -78,7 +78,8 @@ def _parse(doc_type: str, text: str, doc_id: str, locale: str, currency: str):
 
 
 def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
-            locale: str = "US", currency: str = "USD", log=print) -> dict:
+            locale: str = "US", currency: str = "USD", by_date: bool = False,
+            log=print) -> dict:
     """Replay every stored claim into a fresh vault. Returns counts by outcome."""
     from .ingest import capture_and_ingest
     from .ingest.reader import _peek_classification
@@ -95,6 +96,28 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
            if missing else ""))
     log(f"  from: {source}")
     log(f"  into: {dest}\n")
+
+    # WHICH ORDER, and why it is a question at all.
+    #
+    # `src_raw.doc_ids()` yields content hashes, so a replay arrives in
+    # effectively random order. Slice 1 promises that ordering does not matter —
+    # "every ordering of a 3-month run yields the identical posted chain, zero
+    # gaps" — so hash order SHOULD be fine, and running it that way is how we
+    # find out whether that promise still holds on 40 real documents.
+    #
+    # `by_date=True` replays oldest-first instead. If the two orders disagree,
+    # the promise is broken and the difference is the measurement.
+    if by_date:
+        def _period(doc):
+            e = claims[doc].get("extract") or {}
+            t = e.get("response_text") or ""
+            c = claims[doc].get("classify") or {}
+            dt, _ = _peek_classification(c.get("response_text") or t)
+            facts, _err = _parse(dt, t, doc, locale, currency)
+            return getattr(facts, "opening_date", "") or getattr(
+                facts, "as_of", "") or getattr(facts, "period_end", "") or ""
+        doc_ids = sorted(doc_ids, key=_period)
+    log(f"  order: {'oldest first' if by_date else 'as stored (content hash)'}\n")
 
     vault = Vault.open(dest, passphrase)
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -160,10 +183,20 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     from .ingest import sweep
 
     swept = sweep(vault.ledger)
-    if any(swept.get(k) for k in ("gaps", "corroborated")):
-        log(f"\nsweep: healed {swept.get('gaps', 0)} gap(s), corroborated "
-            f"{swept.get('corroborated', 0)} conflict(s), linked "
-            f"{swept.get('auto', 0)} transfer(s)")
+    # ALWAYS report the sweep, including when it healed nothing. A silent zero
+    # is how the first run of this looked identical to the run before it and
+    # nobody could tell whether the sweep had even happened (2026-07-26).
+    log(f"\nsweep: healed {swept.get('gaps', 0)} gap(s), corroborated "
+        f"{swept.get('corroborated', 0)} conflict(s), linked "
+        f"{swept.get('auto', 0)} transfer(s)")
+    held = counts.get("gap", 0)
+    if held and not swept.get("gaps"):
+        log(f"\n  {held} statement(s) still held as gaps after the sweep.\n"
+            "  Either their neighbouring statements are genuinely absent — in\n"
+            "  which case a gap is the CORRECT answer and the coverage line\n"
+            "  should say so — or ordering decided the outcome, which would\n"
+            "  contradict Slice 1. Re-run with --by-date to tell the two apart:\n"
+            "  if oldest-first posts them, the cascade is not order-independent.")
 
     # A tool must check its own outcome. `enrich` on the last rebuilt vault said
     # "0 merchants, 0 transactions" — the vault was empty and nothing had said
@@ -193,14 +226,17 @@ def main() -> None:
                                          os.path.expanduser("~/.viva-vault")))
     if not source.exists():
         raise SystemExit(f"No vault at {source}.")
-    dest = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else source.with_name(
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    by_date = "--by-date" in sys.argv
+    dest = pathlib.Path(args[0]) if args else source.with_name(
         source.name + "-rebuilt-" + time.strftime("%Y%m%d-%H%M%S"))
     if dest.exists():
         raise SystemExit(f"{dest} already exists — pick a fresh directory.")
 
     counts = rebuild(source, dest, passphrase,
                      locale=os.environ.get("VIVA_LOCALE", "US"),
-                     currency=os.environ.get("VIVA_CURRENCY", "USD"))
+                     currency=os.environ.get("VIVA_CURRENCY", "USD"),
+                     by_date=by_date)
     print("\ndone: " + ", ".join(f"{n} {a}" for a, n in sorted(counts.items())))
     print(f"\nnext:  VIVA_VAULT_DIR={dest} python3 -m viva.enrich")
     print(f"       VIVA_VAULT_DIR={dest} python3 -m viva.debug_tiers")
