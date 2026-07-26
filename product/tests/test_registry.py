@@ -82,7 +82,18 @@ def test_a_read_names_its_own_type_through_its_prompt_version():
         "checking_statement"
     # An unknown fragment must return "" so the caller parks honestly rather
     # than defaulting to a plausible type — a wrong projector is worse than none.
+    # A document read a YEAR AGO carries whatever version was current then, and
+    # the registry only holds today's. Three real documents recorded under
+    # `brokerage-v1` were unrecoverable against a registry holding
+    # `brokerage-v2` and parked as `unknown` — the type was written down; we
+    # were asking for an exact match on the one part designed to change.
+    assert doc_type_for_prompt_version("extract:brokerage-base-v1+brokerage-v1") \
+        == "brokerage_statement"
+    assert doc_type_for_prompt_version("extract:base-v1+checking-v9") == \
+        "checking_statement", "a future version must resolve too"
     assert doc_type_for_prompt_version("extract:base-v1+not-a-real-fragment") == ""
+    assert doc_type_for_prompt_version("extract:base-v1+nonsense-v1") == "", \
+        "an unknown FAMILY is still unknown, however well-formed the version"
     assert doc_type_for_prompt_version("classify-v1") == ""
     assert doc_type_for_prompt_version("") == ""
 
