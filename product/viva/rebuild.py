@@ -90,10 +90,32 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     doc_ids = [d for d in src_raw.doc_ids() if d in claims]
     missing = [d for d in src_raw.doc_ids() if d not in claims]
 
+    # WHAT THE CLAIMS ACTUALLY CONTAIN, said before anything is attempted.
+    #
+    # A rebuild reads the doc TYPE from the classify-phase claim and the figures
+    # from the extract-phase one. If the classify claims are missing, every
+    # balance-family document comes back `unknown` — because that family's
+    # extract JSON does not name its own type — and all 40 park with an
+    # identical, uninformative message.
+    #
+    # That happened on a real vault and the run said nothing about it: forty
+    # lines of "no projector yet for 'unknown'" and no hint that the INPUT was
+    # short a phase. An instrument that cannot say which of its inputs is
+    # missing is making the person guess, which is this project's most repeated
+    # failure. Counted and printed up front, before a single parse.
+    with_classify = sum(1 for d in doc_ids if (claims[d].get("classify") or {}).get("response_text"))
+    with_extract = sum(1 for d in doc_ids if (claims[d].get("extract") or {}).get("response_text"))
+
     log(f"documents captured: {len(src_raw.doc_ids())}")
     log(f"with stored claims: {len(doc_ids)}"
         + (f"   ({len(missing)} have no claim and cannot be rebuilt free)"
            if missing else ""))
+    log(f"  with a CLASSIFY claim: {with_classify}/{len(doc_ids)}"
+        + ("" if with_classify == len(doc_ids) else
+           "   ← the doc type comes from this phase; without it the balance\n"
+           "        family cannot name itself and every statement parks as "
+           "'unknown'"))
+    log(f"  with an EXTRACT claim:  {with_extract}/{len(doc_ids)}")
     log(f"  from: {source}")
     log(f"  into: {dest}\n")
 
