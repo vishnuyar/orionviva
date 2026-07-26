@@ -122,6 +122,14 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
             vault's claims still name the instructions that actually produced
             the text (T8). A rebuild must not relabel history as its own."""
             facts, err = _parse(_t, _text, new_doc_id, locale, currency)
+            if facts is not None:
+                # The balance family's extract JSON carries no doc_type — that
+                # comes from the CLASSIFY phase, and the reader stamps it onto
+                # the facts after parsing. Omitting this is what parked 33 of 40
+                # documents on the first real rebuild: every statement came back
+                # as `unknown`, which has no projector, so nothing could post.
+                facts.doc_type = _t
+                facts.doc_type_confidence = _c
             return ReadResult(doc_type=(facts.doc_type if facts else _t),
                               doc_type_confidence=(facts.doc_type_confidence
                                                    if facts else _c),

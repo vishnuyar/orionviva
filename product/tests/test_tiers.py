@@ -388,3 +388,28 @@ def test_a_rebuild_that_produces_nothing_says_so(tmp_path):
     assert "NOTHING WAS REBUILT" in text
     assert "not a result" in text
     assert "debug_claim" in text          # and what to run next
+
+
+def test_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):
+    """The bug that parked 33 of 40 real documents on the first rebuild.
+
+    The balance family's extract JSON carries no `doc_type` — that comes from
+    the CLASSIFY phase, and the reader stamps it onto the facts after parsing.
+    The rebuild's replay skipped that step, so every statement came back as
+    `unknown`, which has no projector, so nothing could post. Brokerage and pay
+    stubs were unaffected because their extract JSON names its own type — which
+    is exactly why the failure looked selective and confusing."""
+    from viva.rebuild import rebuild
+    from viva.vault import Vault
+
+    src = tmp_path / "src"
+    _claim_vault(src)
+    dest = tmp_path / "dest"
+    counts = rebuild(src, dest, "pw", log=lambda *_: None)
+
+    assert counts.get("posted"), f"expected a posting, got {counts}"
+    rebuilt = Vault.open(dest, "pw").ledger.projection()
+    assert len(rebuilt.movements()) == 2
+    # The classified type survived into the posting — an `unknown` document has
+    # no projector and could not have produced movements at all.
+    assert rebuilt.movements()[0].kind == "depository"
