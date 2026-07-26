@@ -83,3 +83,25 @@ def test_a_read_names_its_own_type_through_its_prompt_version():
     assert doc_type_for_prompt_version("extract:base-v1+not-a-real-fragment") == ""
     assert doc_type_for_prompt_version("classify-v1") == ""
     assert doc_type_for_prompt_version("") == ""
+
+
+def test_reingest_can_filter_to_one_document_family_and_cost_nothing_first():
+    """`--only` and `--dry-run` are what make a prompt change affordable to test.
+
+    Re-reading every document costs one model call each; re-reading the family
+    whose prompt you actually changed costs a handful. And `--dry-run` prints
+    exactly what WOULD be read while spending nothing — this is the one command
+    in the project that costs real money, so it must be possible to look before
+    committing to it.
+
+    Checked as text because the alternative is a live model call in CI."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "viva" / "reingest.py").read_text()
+    assert "--only" in src and "--dry-run" in src
+    assert "DRY RUN" in src, "a dry run must say plainly that it spent nothing"
+    # The regression report is the reason the tool exists at all.
+    assert "REGRESSION" in src
+    assert "Do not ship this prompt version" in src
+    assert "No document changed outcome" in src, \
+        "an unchanged run must say so, rather than looking like a success"
