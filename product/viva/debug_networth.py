@@ -51,11 +51,18 @@ def report_point(point) -> str:
     for line in sorted(point.lines, key=lambda l: (l.currency, l.account)):
         stale = "" if line.as_of == point.as_of else "   ← measured earlier"
         mark = "✓" if line.provable else "·"
-        out.append(f"    {mark} {line.account[:34]:34} {_money(line.amount)} "
-                   f"{line.currency}  as of {line.as_of}{stale}")
+        out.append(f"    {mark} {line.account[:30]:30} [{line.kind[:11]:11}] "
+                   f"{_money(line.amount)} {line.currency}  as of "
+                   f"{line.as_of}{stale}")
     if point.oldest_input and point.oldest_input != point.as_of:
         out += ["", f"  oldest input: {point.oldest_input} — this total is only "
                     "as current as that."]
+
+    if point.skipped:
+        out += ["", "  ACCOUNTS THIS TOTAL DOES NOT INCLUDE"]
+        for row in point.skipped:
+            out.append(f"    {row['account'][:34]:34} [{row['kind'] or '?'}]")
+            out.append(f"      {row['why']}")
 
     if point.missing:
         out += ["", "  NOT COUNTED — and your true net worth is LOWER because "

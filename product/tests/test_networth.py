@@ -282,3 +282,28 @@ def test_an_empty_vault_reports_absence_not_zero(vault):
     text = report_point(net_worth(ledger.projection()))
     assert "Nothing to value yet" in text
     assert "not zero" in text
+
+
+def test_an_account_it_cannot_value_is_named_not_dropped(vault):
+    """The first real run valued 4 accounts from a vault holding 11 and said
+    nothing about the other 7 — among them a brokerage whose statements were
+    parked, so the author's investments were missing from his net worth and the
+    report looked complete.
+
+    Silently omitting an account is the same failure as silently omitting a
+    mortgage. An account we hold but cannot value at this date must be NAMED."""
+    raw, ledger = vault
+    _checking(vault, opening="1000.00", closing="1500.00",
+              opening_date="2026-03-01", closing_date="2026-03-31", blob=b"a")
+    _statement(ledger, raw, account="Amex Gold", kind_doc="credit_card_statement",
+               opening="0.00", closing="-400.00", opening_date="2026-07-01",
+               closing_date="2026-07-31", number="000000004321",
+               institution="Amex", blob=b"b")
+    march = net_worth(ledger.projection(), "2026-03-31")
+    assert len(march.lines) == 1
+    skipped = {row["account"].split(":")[1] for row in march.skipped}
+    assert "amex" in skipped, "an account with no statement yet must be named"
+    assert "2026-07-31" in march.skipped[0]["why"], "say when its first one is"
+
+    from viva.debug_networth import report_point
+    assert "DOES NOT INCLUDE" in report_point(march)
