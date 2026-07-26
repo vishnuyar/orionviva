@@ -1,0 +1,76 @@
+"""Where are your totals being split? — the category vocabulary (Slice 7.5).
+
+    VIVA_VAULT_DIR=<vault> python -m viva.debug_categories
+
+A category is a name a person totals by, so two names for one thing is not
+untidiness — it is a figure quietly halved, with no error raised anywhere. On a
+real vault `poker` and `playing poker` both existed because the author typed
+each once.
+
+This prints every label the vault uses, what it is worth, and where it came
+from, so the near-duplicates are visible rather than inferred. It does NOT guess
+which pairs are the same: that judgement is recorded as a ruling, once, and
+applied on the read side forever after —
+
+    from viva.ingest import rule_category_same_as
+    rule_category_same_as(vault.ledger, "playing poker", "poker")
+
+Nothing is rewritten; the merge is retroactive and reversed by appending.
+"""
+
+from __future__ import annotations
+
+import os
+import pathlib
+from decimal import Decimal
+
+
+def report(proj) -> str:
+    spending = proj.spending_by_category()
+    aliases = proj.category_aliases()
+    labels = proj.known_categories()
+    subs = proj.known_subcategories()
+
+    out = [f"{len(labels)} category label(s) · {len(subs)} subcategory label(s)", ""]
+    if spending:
+        out.append("  what each label is worth")
+        for label, amount in sorted(spending.items(), key=lambda kv: -kv[1]):
+            out.append(f"    {label[:34]:34} {amount:>14,.2f}")
+        out.append("")
+    if subs:
+        out += ["  the finer vocabulary (enrichment writes these)", ""]
+        out.append("    " + ", ".join(subs))
+        out.append("")
+    if aliases:
+        out += ["  already folded together"]
+        for dup, canonical in sorted(aliases.items()):
+            out.append(f"    {dup}  →  {canonical}")
+        out.append("")
+    out += [
+        "  Two labels meaning one thing split a total in half and raise nothing.",
+        "  This tool deliberately does NOT guess which pairs those are — it shows",
+        "  you the vocabulary and records your ruling, because a similarity",
+        "  threshold is a keyword list with decimals, and one that recomputes",
+        "  each run would merge and un-merge categories behind your back.",
+    ]
+    return "\n".join(out)
+
+
+def main() -> None:
+    from .env import load_dotenv
+    from .vault import Vault
+
+    load_dotenv()
+    passphrase = os.environ.get("VIVA_PASSPHRASE")
+    if not passphrase:
+        raise SystemExit("Set VIVA_PASSPHRASE (or put it in .env).")
+    vault_dir = os.environ.get("VIVA_VAULT_DIR", os.path.expanduser("~/.viva-vault"))
+    if not pathlib.Path(vault_dir).exists():
+        raise SystemExit(f"No vault at {vault_dir}.")
+    vault = Vault.open(vault_dir, passphrase)
+    print(f"vault: {vault_dir}\n")
+    print(report(vault.ledger.projection()))
+
+
+if __name__ == "__main__":
+    main()

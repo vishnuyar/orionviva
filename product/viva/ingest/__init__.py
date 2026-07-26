@@ -17,6 +17,7 @@ from .pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED,
                        post_statement, sweep)
 from .categorize import (SEED_CATEGORIES, assign_category,
                          assign_merchant_category, categorize_merchants_batch,
+                         rule_category_same_as,
                          rule_merchant_nature,
                          enrich_merchants, export_catalog, normalize_category,
                          suggest_categories)
@@ -43,6 +44,7 @@ __all__ = [
     "post_brokerage",
     "assign_category", "suggest_categories", "normalize_category",
     "SEED_CATEGORIES", "assign_merchant_category", "categorize_merchants_batch",
+    "rule_category_same_as",
     "rule_merchant_nature",
     "enrich_merchants", "export_catalog", "normalize_merchant", "is_shareable",
     "NORMALIZER_VERSION",

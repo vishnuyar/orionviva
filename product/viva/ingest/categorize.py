@@ -42,6 +42,29 @@ def normalize_category(category: str) -> str:
     return (category or "").strip().lower() or "other"
 
 
+def _today() -> str:
+    import time
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def rule_category_same_as(ledger: Ledger, label: str, same_as: str,
+                          by: str = "human") -> None:
+    """Record that two labels name one thing (Slice 7.5).
+
+    Nothing is rewritten. The event that recorded "playing poker" keeps saying
+    "playing poker" forever — T4 — and every total folds it into "poker" from
+    the moment this ruling exists, retroactively, with no re-ingest. A merge
+    made in error is reversed by appending the opposite ruling, never by
+    editing, which is what makes it safe to offer at all."""
+    from ..ledger.events import SCOPE_CATEGORY, ruling_recorded
+    label, same_as = normalize_category(label), normalize_category(same_as)
+    if not label or not same_as or label == same_as:
+        return
+    ledger.append(ruling_recorded(
+        scope=SCOPE_CATEGORY, subject=label, same_as=same_as,
+        occurred_at=_today(), by=by))
+
+
 def assign_category(ledger: Ledger, movement_key: str, category: str,
                     by: str = "human", nature: str = "") -> bool:
     """Assign a category to a movement. ``by='human'`` records it `verified` (the
@@ -158,7 +181,12 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn) -> dict:
     submitted = catalog.submit(hints)
     enriched = 0
     if catalog.pending():
-        records = Enricher(extract_fn).enrich(catalog.pending())
+        # Show the model the labels this vault already uses, so a new one is a
+        # deliberate act rather than the path of least resistance (Slice 7.5).
+        records = Enricher(
+            extract_fn,
+            known_subcategories=ledger.projection().known_subcategories()
+        ).enrich(catalog.pending())
         catalog.add_all(records)
         enriched = len(records)
 
