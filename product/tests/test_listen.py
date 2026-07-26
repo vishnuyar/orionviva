@@ -455,3 +455,57 @@ def test_ordinary_spending_creates_no_account(tmp_path):
     applied = apply_proposal(ledger, p, "2026-07-25")
     assert applied["accounts_opened"] == []
     assert ledger.projection().ruled_accounts() == {}
+
+
+def test_a_nested_reply_is_still_read(tmp_path):
+    """"mortgage payments" came back "I couldn't read that one". Some providers
+    and json_mode wrappers nest the answer — {"response": {"legs": [...]}} — and
+    taking the OUTER object found no legs. Search for the object that carries
+    them, not merely the first one."""
+    from viva.listen import _first_json_object
+
+    inner = {"legs": [{"major": "liability", "account_hint": "Lender"}],
+             "kind": "mortgage"}
+    for wrapper in (
+        '{"response": {"legs":[{"major":"liability","account_hint":"Lender"}],'
+        '"kind":"mortgage"}}',
+        '{"result": {"data": {"legs":[{"major":"liability","account_hint":"Lender"}],'
+        '"kind":"mortgage"}}}',
+        'here you go: {"legs":[{"major":"liability","account_hint":"Lender"}],'
+        '"kind":"mortgage"}',
+    ):
+        assert _first_json_object(wrapper, require_key="legs") == inner, wrapper[:40]
+
+    # A leading object WITHOUT legs must not win over a later one that has them.
+    two = '{"note":"thinking"} {"legs":[{"major":"expense"}]}'
+    assert _first_json_object(two, require_key="legs") == {"legs": [{"major": "expense"}]}
+
+
+def test_each_failure_says_something_different_and_true(tmp_path):
+    """One sentence for four failures meant neither the person nor the log could
+    tell a model that was DOWN from one that was rambling from one that simply
+    didn't understand. Saying which is the difference between a product that
+    admits a limit and one that just seems broken."""
+    from viva.web import service
+
+    raw, ledger = _vault(tmp_path)
+    _checking(raw, ledger, [("2026-03-01", "LENDER ACH PMT", Decimal("-4400.00"))])
+
+    class FakeVault:
+        pass
+    v = FakeVault()
+    v.ledger = ledger
+
+    cases = {
+        "unreachable": lambda p: (_ for _ in ()).throw(ConnectionError("down")),
+        "unparseable": lambda p: "sure, it's a mortgage!",
+        "empty": lambda p: '{"legs": []}',
+    }
+    seen = set()
+    for expected, fn in cases.items():
+        service._interpreter = lambda _fn=fn: _fn
+        out = service.listen_to(v, "mortgage payments", "LENDER ACH PMT")
+        assert out["understood"] is False
+        assert out["why"] == expected
+        seen.add(out["message"])
+    assert len(seen) == 3, "each failure needs its own honest sentence"

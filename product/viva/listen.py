@@ -181,7 +181,7 @@ def interpret(said: str, descriptor: str = "", category: str = "",
         log.warning("interpret: could not reach the model (%s)", exc)
         return Interpretation(said=said, failure="unreachable", detail=str(exc),
                               version=version)
-    body = _first_json_object(raw)
+    body = _first_json_object(raw, require_key="legs")
     if body is None:
         log.warning("interpret: no readable JSON object in the reply (%d chars)",
                     len(raw or ""))
@@ -216,8 +216,9 @@ def interpret(said: str, descriptor: str = "", category: str = "",
         raw=raw or "", version=version)
 
 
-def _first_json_object(text: str) -> dict | None:
-    """The first COMPLETE, balanced JSON object in a reply, or None.
+def _first_json_object(text: str, require_key: str = "") -> dict | None:
+    """The first COMPLETE, balanced JSON object in a reply — preferring one that
+    actually carries ``require_key`` — or None.
 
     Requiring the whole reply to be JSON was too brittle in practice. Models
     wrap objects in code fences, prefix them with reasoning, or append a
@@ -256,8 +257,33 @@ def _first_json_object(text: str) -> dict | None:
                         found = json.loads(text[start:i + 1])
                     except Exception:              # noqa: BLE001 - try the next '{'
                         break
-                    return found if isinstance(found, dict) else None
+                    if not isinstance(found, dict):
+                        break
+                    # Some providers and json_mode wrappers nest the answer:
+                    # {"response": {"legs": [...]}}. Taking the OUTER object
+                    # then finds no legs and reports "I couldn't read that",
+                    # which is both wrong and unhelpfully indistinguishable
+                    # from the model genuinely not understanding.
+                    if require_key:
+                        hit = _find_key(found, require_key)
+                        if hit is not None:
+                            return hit
+                        break                      # keep scanning for a better one
+                    return found
         # unbalanced from here — the reply was cut off
+    return None
+
+
+def _find_key(obj, key: str, depth: int = 0):
+    """The nearest dict carrying ``key``, searching one or two levels down."""
+    if not isinstance(obj, dict) or depth > 2:
+        return None
+    if key in obj:
+        return obj
+    for value in obj.values():
+        hit = _find_key(value, key, depth + 1)
+        if hit is not None:
+            return hit
     return None
 
 
