@@ -81,8 +81,13 @@ def report(proj) -> str:
 
 
 def main() -> None:
+    from .env import load_dotenv
     from .vault import Vault
 
+    # Every other CLI in this package loads `.env` first; this one didn't, and
+    # told the author to set a variable he had already set. A tool that says
+    # "you forgot" when you didn't is worse than one that just fails.
+    load_dotenv()
     passphrase = os.environ.get("VIVA_PASSPHRASE") or (
         sys.argv[1] if len(sys.argv) > 1 else None)
     if not passphrase:

@@ -191,3 +191,168 @@ def test_the_tier_summary_is_the_before_and_after_number(tmp_path):
     assert "settled" in text and "50.0%" in text
     assert "questions the queue would ask: 2" in text     # not 4
     assert "handled without asking" in text
+
+
+def test_every_cli_reads_dotenv_the_same_way():
+    """`debug_tiers` shipped without it and told the author to set a variable he
+    had already set in `.env`. One entry point behaving differently from its
+    siblings is a small bug with an outsized cost: it makes the tool look broken
+    at the exact moment someone is trying to use it for the first time."""
+    import ast
+    import pathlib
+
+    viva = pathlib.Path(__file__).resolve().parents[1] / "viva"
+    for module in viva.glob("*.py"):
+        source = module.read_text()
+        if 'if __name__ == "__main__"' not in source:
+            continue                      # not a CLI entry point
+        if "VIVA_PASSPHRASE" not in source:
+            continue                      # doesn't need the vault
+        assert "load_dotenv()" in source, (
+            f"{module.name} reads VIVA_PASSPHRASE but never loads .env — it "
+            f"will tell the user to set something they already set.")
+
+
+# ----------------------------------- the rebuild: claims in, fresh vault out
+
+
+def _claim_vault(tmp_path):
+    """A vault built the way a real one is: the model's REPLY is stored, and the
+    facts come from parsing it. Only such a vault can be rebuilt for free."""
+    import json as _json
+
+    from viva.ingest import RawStore, capture_and_ingest
+    from viva.ingest.pipeline import ReadResult
+    from viva.ingest.statement import from_model_json
+
+    reply = _json.dumps({
+        "doc_type": "checking_statement", "doc_type_confidence": 0.98,
+        "account_ref": "Chase Total Checking", "currency": "USD",
+        "opening": {"amount_raw": "100000.00", "date_raw": "2026-03-01"},
+        "closing": {"amount_raw": "99805.00", "date_raw": "2026-03-31"},
+        "transactions": [
+            {"date_raw": "2026-03-06", "description": "WHOLE FOODS MKT",
+             "amount_raw": "180.00", "balance_effect": "decrease"},
+            {"date_raw": "2026-03-07", "description": "NETFLIX.COM",
+             "amount_raw": "15.00", "balance_effect": "decrease"}],
+        "account_number": "000000001122", "institution": "Chase"})
+
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+
+    def read(_data, did):
+        facts, err = from_model_json(reply, did, "US", "USD")
+        return ReadResult(doc_type="checking_statement", doc_type_confidence=0.98,
+                          facts=facts, error=err, raw_text=reply,
+                          model="test", prompt_version="extract:base-v1+checking-v1",
+                          input_mode="text+image")
+
+    capture_and_ingest(raw, ledger, b"chk", read, captured_at="2026-04-01")
+    return ledger
+
+
+def test_a_rebuild_replays_claims_through_todays_parsers(tmp_path):
+    """The claims layer's whole promise, cashed: a vault reconstructed from
+    stored model replies, with no model call and no money spent."""
+    from viva.rebuild import claims_by_doc, rebuild
+
+    src = tmp_path / "src"
+    ledger = _claim_vault(src)
+    _enrich(ledger, "whole foods mkt", "food", sub="grocery")   # a human-era overlay
+    assert len(ledger.projection().movements()) == 2
+
+    claims = claims_by_doc(ledger.store.events())
+    assert claims, "the source vault must carry claims to rebuild from"
+
+    dest = tmp_path / "dest"
+    counts = rebuild(src, dest, "pw", log=lambda *_: None)
+    assert counts and sum(counts.values()) == len(claims)
+
+    from viva.vault import Vault
+    rebuilt = Vault.open(dest, "pw").ledger.projection()
+    # The MONEY came back, parsed fresh from yesterday's reply...
+    assert len(rebuilt.movements()) == 2
+    # ...and the derived overlay did not. That is the point: a queue with
+    # pre-answered questions measures nothing.
+    assert rebuilt.merchant_categories() == {}
+
+
+def test_a_rebuild_never_touches_the_source(tmp_path):
+    """Real money, one shot. The old vault stands until the new one is trusted."""
+    from viva.rebuild import rebuild
+    from viva.vault import Vault
+
+    src = tmp_path / "src"
+    ledger = _claim_vault(src)
+    before = len(list(ledger.store.events()))
+
+    rebuild(src, tmp_path / "dest", "pw", log=lambda *_: None)
+    assert len(list(Vault.open(src, "pw").ledger.store.events())) == before
+
+
+def test_the_export_captures_what_a_rebuild_cannot_replay(tmp_path):
+    """A rebuild replays documents; it cannot replay a person. Anything they
+    authored has to be written down first or it is simply gone."""
+    from viva.export_rulings import collect
+    from viva.ledger.events import MAJOR_ASSET, SCOPE_MERCHANT, ruling_recorded
+
+    ledger = _vault(tmp_path, [("2026-03-04", "BIG MOTORS", "-30000.00")])
+    ledger.append(ruling_recorded(SCOPE_MERCHANT, "big motors", "2026-07-25",
+                                  legs=[{"major": MAJOR_ASSET, "account": "Assets:Car"}],
+                                  said="i bought a car"))
+    _enrich(ledger, "other co", "food")            # by=model — NOT a human ruling
+
+    rulings = collect(ledger.store.events())
+    assert len(rulings) == 1
+    assert rulings[0]["body"]["said"] == "i bought a car"
+
+
+# ------------------------------------------- the diff: did it learn to say it?
+
+
+def _key(subject, major, said="x"):
+    return {"event_type": "RulingRecorded", "occurred_at": "2026-07-25",
+            "body": {"subject": subject, "legs": [{"major": major}], "said": said}}
+
+
+def test_the_diff_scores_anticipated_missed_and_contradicted(tmp_path):
+    """The measure that matters. A product that now says it first has learned;
+    one that stays silent has a gap; one that DISAGREES is dangerous, and the
+    report puts that case first."""
+    from viva.diff_rulings import (ANTICIPATED, CONTRADICTED, MISSED, report,
+                                   score)
+
+    ledger = _vault(tmp_path, [("2026-03-01", "LENDER ACH PMT", "-4400.00"),
+                               ("2026-03-04", "QUIET CO", "-100.00"),
+                               ("2026-03-05", "WRONG CO", "-50.00")])
+    _enrich(ledger, "lender ach pmt", "housing", implies=LOAN_OUT)
+    _enrich(ledger, "wrong co", "food", implies=[
+        {"relationship": "a brokerage account", "major": "asset", "on": "outflow",
+         "account_group": "Investments", "compound": False,
+         "confidence": "suggested", "documents": "", "ask": ""}])
+    _enrich(ledger, "quiet co", "food")            # known, implies nothing
+
+    rows = score(ledger.projection(), [
+        _key("lender ach pmt", "liability", "this is my mortgage"),
+        _key("quiet co", "expense"),
+        _key("wrong co", "liability", "that paid my loan"),
+    ])
+    got = {r["subject"]: r["verdict"] for r in rows}
+    assert got["lender ach pmt"] == ANTICIPATED      # it says it first now
+    assert got["quiet co"] == MISSED                 # silence: an honest gap
+    assert got["wrong co"] == CONTRADICTED           # it disagrees with the person
+
+    text = report(rows)
+    assert text.index("READ THESE FIRST") < text.index("it now says these")
+    assert "contradiction" in text
+
+
+def test_the_diff_writes_nothing(tmp_path):
+    """A comparison, not a restore."""
+    from viva.diff_rulings import score
+
+    ledger = _vault(tmp_path, [("2026-03-01", "LENDER ACH PMT", "-4400.00")])
+    _enrich(ledger, "lender ach pmt", "housing", implies=LOAN_OUT)
+    before = len(list(ledger.store.events()))
+    score(ledger.projection(), [_key("lender ach pmt", "liability")])
+    assert len(list(ledger.store.events())) == before
