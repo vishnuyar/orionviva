@@ -73,6 +73,13 @@ class NetWorthPoint:
     as_of: str
     lines: list = field(default_factory=list)
     missing: list = field(default_factory=list)
+    # Real accounts that contributed NOTHING to this point, and why. Added
+    # 2026-07-26 after the first real run: it valued 4 accounts out of a vault
+    # holding 11 and said nothing about the other 7. Silently dropping an
+    # account from a net-worth total is the same lie of omission the `missing`
+    # list exists to prevent — this instrument had the flaw it was built to
+    # warn about, which is now the sixth time that has happened here.
+    skipped: list = field(default_factory=list)
 
     @property
     def complete(self) -> bool:
@@ -117,7 +124,7 @@ class NetWorthPoint:
                        "grade": ln.grade, "origin": ln.origin, "kind": ln.kind,
                        "provable": ln.provable, "proves": ln.proves}
                       for ln in sorted(self.lines, key=lambda l: l.account)],
-            "missing": self.missing}
+            "missing": self.missing, "skipped": self.skipped}
 
 
 # --- the pieces of one point -------------------------------------------------
@@ -247,6 +254,18 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
             continue
 
         closing = _closing_at(st, as_of)
+        if closing is None and not _holdings_at(st, as_of):
+            # An account we hold but cannot value at this date. Naming it is the
+            # difference between "your net worth is X" and "your net worth is X,
+            # and here is what X does not include."
+            later = min((d for d, *_ in st.closings if d > as_of), default="")
+            point.skipped.append({
+                "account": account, "kind": info.kind,
+                "why": (f"no statement on or before this date — the first is {later}"
+                        if later else
+                        "no balance has ever been observed for this account; if "
+                        "its statements were held (parked or unreconciled), they "
+                        "are not in your net worth")})
         if closing is not None:
             date, amount, grade, doc = closing
             point.lines.append(NetWorthLine(
