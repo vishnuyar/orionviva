@@ -1,6 +1,6 @@
 # Threat Model & Ingestion Security (B1 + B2)
 
-**Status:** Draft · **Last updated:** 2026-07-21 · **Covers:** the discovery map's B1 (threat model) and B2 (prompt injection via documents), which are tightly coupled.
+**Status:** Stable — the stances hold; the model is powerless by construction (ADR-010 / CaMeL) · **Last updated:** 2026-07-21 · **Covers:** the discovery map's B1 (threat model) and B2 (prompt injection via documents), which are tightly coupled.
 **Invariants touched:** T3 (raw capture aids forensics), T5 (encryption limits breach blast radius), T6 (zero exfiltration limits what an attacker can send out), T8 + model-trust guardrails (the extraction model is powerless by design), X3 (irreversible actions gated)
 
 ## The frame: ruin vs. cost (Taleb)

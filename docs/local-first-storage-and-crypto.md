@@ -1,6 +1,6 @@
 # Local-First Storage & Crypto
 
-**Status:** Draft · **Last updated:** 2026-07-19
+**Status:** Implemented — encrypted vault, hash-chained event log, scrypt + AES-256-GCM · **Last updated:** 2026-07-19
 
 ## Requirements (derived from principles)
 

@@ -1,6 +1,6 @@
 # Reading Guide — where every document sits
 
-**Status:** Living — this is the only place document order exists · **Last updated:** 2026-07-19
+**Status:** Living — this is the only place document order exists · **Last updated:** 2026-07-26
 
 ## Why this doc
 
@@ -13,23 +13,16 @@ Read in this order if arriving fresh. Each entry: what it is, and when you'd ret
 **1 · Orientation — why this exists and where it's going**
 
 - [discovery-synthesis.md](discovery-synthesis.md) — **start here: the forest on one page.** The thesis, what we measured, what's locked, where every concern sits in the architecture, and the accepted risks. The bridge from discovery into Architecture.
-- [v0-scope.md](v0-scope.md) — **the first thing we build**: "one honest answer" (your checking balance, verified, tap-to-source), trust-core-first with no LLM in the answer path. The minimal slice and its build sequence.
 - [implementation-roadmap.md](implementation-roadmap.md) — **the whole path after v0**: 14 data-first slices, each seeding a reusable lego block, written as fact statements (open state → implementation → final state → done-tests → why). From consolidating a full financial life, to Viva's voice, to proving a claim to a counterparty (the endgame).
 - [`../README.md`](../README.md) (repo root) — what OrionViva is, and the principles everything else reasons from.
 - [`../ROADMAP.md`](../ROADMAP.md) — the product phases and what each one has to deliver.
 
 **2 · The process spine — how we're deciding things**
 
-- [discovery-plan.md](discovery-plan.md) — the discovery process and the open-questions register (the heartbeat).
-- [discovery-map-and-reversibility.md](discovery-map-and-reversibility.md) — the master map: full discovery inventory, and the one-way/sticky/two-way door classification that governs when each decision gets made.
 - [design-invariants.md](design-invariants.md) — the standing checklist (trust, internationalization, experience) every new design doc and ADR must answer to.
 
-**3 · What we learned about the world — landscape research**
 
-- [agent-and-model-landscape.md](agent-and-model-landscape.md) — frameworks, model capabilities, MCP, as of mid-2026.
-- [competitive-landscape.md](competitive-landscape.md) — who's building near this (Era, OpenBudget, incumbents, the VC ecosystem) and what it means for positioning.
-
-**4 · Design stances — how the core will work**
+**3 · Design stances — how the core will work**
 
 Read these together; they are one argument in four parts:
 
@@ -58,12 +51,11 @@ Read these together; they are one argument in four parts:
 - [learning-mode.md](learning-mode.md) — the two questions the queue asked and shouldn't have, and what they reveal. A **mortgage payment is three things at once** (interest spent, principal buying equity, escrow still yours), so no single spending/moved/own answer is correct — the honest move is not to make the person guess but to *ask for the document that states the split* ("documents are evidence that other documents exist"), since the split mechanism (`split_transaction`) has existed unused since v0 and only the ratios are missing. A **car purchase** needs the Asset primitive — enumerated, unbuilt — where a vehicle's value is `estimated`, never `measured`, which is what the valuation-class discipline was for. Also records Vishnu's postulate: **rulings in your own words**, with the boundary that keeps it safe — a model parses *intent* into a structured proposal, never a figure; you confirm; deterministic code applies. Deferred by decision, documented so the questions stay asked.
 - [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md) — the categorization thread's private half, surfaced by the first real enrichment run: peer descriptors (Zelle/Venmo) have no stable merchant category — one is a gift, another a loan repayment — so they need a **per-transaction, local** path the commons can't and shouldn't touch (T9). Captures four decisions for the presentation layer: peer descriptors default to per-transaction not "everywhere"; **custom categories are first-class but strictly local** (a user's "Gifts"/"Loan to Raj" never reach merchantcore or the commons); and a movement's **nature** (spending vs transfer/settlement) so peer money a user marks "loan repaid" stays out of spending. The substrate already supports it (`CategoryAssigned` is movement-keyed and overrides the merchant prior); the note settles the model before the UI is built.
 - [positions-and-investments.md](positions-and-investments.md) — the first **asset that isn't cash**: a brokerage/retirement statement's holdings. The load-bearing decision is that a holding is a **dated measurement, not a posting** (a `PositionObserved` event measured at the statement date, like a balance observation) — so the money ledger stays pure cash flow and **unrealized gain is the difference between measurements, never a fabricated transaction** (the thesis: measurements, not generations). Introduces the `INVESTMENT` account kind, a snapshot reconciliation identity `Σ(market_value) + cash = total` (the densest, most model-free cross-check yet), and the **valuation-class invariant** — a `measured` value is always shown with its as-of date, never dressed as "current" (the "never bluff a number" wall applied to stale prices, inherited by every future asset). The brokerage account is also a **reconciliation hub**: a cross-account cash flow (`opening + Σ activity = closing`) ties contributions to the funding checking/savings account via Slice-3 links (counted once), recognizes dividends/interest as income and fees as expense, and books a sell's realized gain — all *realized cash*, while unrealized change stays a presentation view (M1). Slice 6 (both stages built); a divergent profile as *data* (Slice-4 reuse), cost basis seeding Tax (S11), positions seeding net worth (S7).
-- [domain-model-vs-orchestration.md](domain-model-vs-orchestration.md) — why checking stays out of model weights, and the specialization flywheel that turns verification into training data.
 - [local-first-storage-and-crypto.md](local-first-storage-and-crypto.md) — where truth lives: encrypted storage, key custody, tamper-evidence.
 - [threat-model-and-ingestion-security.md](threat-model-and-ingestion-security.md) — adversaries by ruin-vs-bad-day; document prompt injection and why the extraction model is powerless by design (the CaMeL pattern, arrived at independently).
 - [own-chain-vs-borrowed-trust.md](own-chain-vs-borrowed-trust.md) — why we anchor to existing fortresses instead of building a chain: the ION and Sovrin precedents, the node-churn physics, and where "every app is a node" honestly fits (verification, not storage).
 
-**4b · The experience — what all the machinery is for**
+**3b · The experience — what all the machinery is for**
 
 - [experience-vision.md](experience-vision.md) — a day with Viva: dashboard-first, speak-only-when-spoken-to, four capture surfaces, text + voice; the parts inventory that becomes the v0 component list.
 - [agent-toolset.md](agent-toolset.md) — the twelve verbs Viva may ever use, the forbidden list that makes her safe, and the scaling law: tools grow with verbs, never with accounts.
@@ -73,16 +65,32 @@ Read these together; they are one argument in four parts:
 - [knowledge-and-expectations.md](knowledge-and-expectations.md) — where domain rules live: mechanisms in code, a jurisdiction-tagged knowledge registry as data, model suggestions graded like claims. Documents are evidence that other documents exist.
 - [format-commons.md](format-commons.md) — frontier models read a format once, distill its shape into a shareable profile (knowledge, never documents); cheap models answer pointed questions thereafter. Self-healing, privacy-linted, contributed as PRs.
 
-**5 · Deliberately open**
+**4 · Deliberately open**
 
 - [adoption-and-distribution.md](adoption-and-distribution.md) — local-first without the friction tax: the onboarding ladder, model access without API keys, and the verified-private-cloud pattern. Shapes the architecture phase.
 - [multi-device-and-remote-access.md](multi-device-and-remote-access.md) — the ledger follows you, documents stay put: blind-relay sync, browser access with a passkey, and the one hosted architecture we never build.
-- [form-factor-and-stack.md](form-factor-and-stack.md) — CLI vs local web vs desktop; Python vs TypeScript. Options framed, decision deliberately deferred to post-experiment architecture phase.
 
-**6 · What's been decided**
+**5 · The audit trail**
+
+- [stocktake-2026-07.md](stocktake-2026-07.md) — the July 2026 holistic audit: what was stale, what was absent, and the run that tested six slices of unproven work against real money. Also the honest record of **six occasions when a measuring instrument reported something untrue** — including one that manufactured a defect in correct code, and three false accusations of the product contradicting its user. The rules that came out of it: *graceful degradation belongs in the product, never in the instrument that measures it*; *report the final state, never the sum of moments*; *never grade one axis against another*.
+
+**5b · What's been decided**
 
 - [decisions/](decisions/README.md) — the ADRs. Note: ADR numbers are serial IDs of decisions (in the order they were made), not a reading order; the index table there is the guide.
 
+
+**6 · Historical record — read for reasoning, never for what is true now**
+
+These seven describe a phase that has closed or a decision that has since been made. Each carries a ⛔ banner at the top saying so. They are kept because the *reasoning* in them is still worth reading and is the honest record of how the project decided things in the open — but **nothing in them describes how OrionViva works today.**
+
+- [discovery-plan.md](discovery-plan.md) — the research phase's own plan and its open-questions register. Every question in it closed.
+- [discovery-map-and-reversibility.md](discovery-map-and-reversibility.md) — the **doors framework** — one-way / sticky / two-way — and the decision inventory it sequenced. Its output is the eleven ADRs.
+- [agent-and-model-landscape.md](agent-and-model-landscape.md) — agent frameworks and model capabilities **as of 19 July 2026**. Expired by design; the conclusion that survived is *models are commodities, memory of the user is the moat*.
+- [competitive-landscape.md](competitive-landscape.md) — competing and adjacent products **as of July 2026**, from public material, never audited. Do not cite any characterization in it as current.
+- [form-factor-and-stack.md](form-factor-and-stack.md) — CLI vs local web vs desktop, Python vs TypeScript — with the choice deferred. It is no longer deferred: see [the-presentation-layer.md](the-presentation-layer.md).
+- [domain-model-vs-orchestration.md](domain-model-vs-orchestration.md) — should the *checking* live in model weights? Settled permanently by [ADR-010](decisions/ADR-010-verification-never-in-weights.md).
+- [v0-scope.md](v0-scope.md) — the thinnest first slice — one statement, one verified balance, no model in the answer path. Built, and long since surpassed.
+
 ## Placement rules
 
-New documents are slotted here at writing time, wherever they belong conceptually — that's the point of unnumbered names. Superseded documents stay in the folder, marked **Superseded** in their status line with a pointer forward, and move to a "Superseded" section here. If this guide and a doc's own cross-references ever disagree about structure, this guide wins.
+New documents are slotted here at writing time, wherever they belong conceptually — that's the point of unnumbered names. Documents whose *content* was replaced stay in the folder, marked **Superseded** in their status line with a pointer forward. Documents that were true of a *closed phase* — a plan for work now done, a snapshot of a market on a date — get the ⛔ **HISTORICAL RECORD** banner and move to section 7. The distinction matters: superseded means *we changed our minds*, historical means *this was true then*. Neither is ever deleted; a project arguing that trust must be provable does not quietly erase its own reasoning. If this guide and a doc's own cross-references ever disagree about structure, this guide wins.

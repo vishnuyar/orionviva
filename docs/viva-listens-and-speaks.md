@@ -1,6 +1,6 @@
 # Viva Listens, and Viva Speaks — the agent and the learning loop
 
-**Status:** Research + design spec — pre-build, **Slice 9 proposed to split into 9a / 9b** · **Created:** 2026-07-25 · **Origin:** Vishnu, using the debug surface to categorize: *"I am feeling a lot of deficiency and I do not want to create deterministic answers."*
+**Status:** Design spec — **9a is BUILT** (see [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)); the read direction (Viva speaks) is unbuilt and still reserved as 9b · **Created:** 2026-07-25 · **Origin:** Vishnu, using the debug surface to categorize: *"I am feeling a lot of deficiency and I do not want to create deterministic answers."*
 
 **Invariants touched:** **T2 / ADR-010 (a model may parse what a person *means*; it must never supply a figure or do arithmetic)** · T3 (the person's own sentence and the model's parse are captured verbatim — raw capture applies to interpretation too) · T4 (a confirmed ruling is an append-only event; we reuse the writers we have) · T6 (nothing leaves silently) · X2 (a proposal states what it would change and how sure it is) · **X3 (nothing irreversible without an explicit yes — structurally, not by prompt)** · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts).
 

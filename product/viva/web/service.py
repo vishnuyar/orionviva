@@ -133,16 +133,18 @@ def questions(vault: Vault, limit: int = 10) -> dict:
     return open_questions(vault.ledger, limit=limit)
 
 
-def rule_nature(vault: Vault, merchant: str, nature: str) -> dict:
-    """Answer a nature question at merchant scope — settles every transaction
-    from that counterparty, past and future."""
-    from ..ingest import rule_merchant_nature
-    rule_merchant_nature(vault.ledger, merchant, nature, by="human")
-    return {"ok": True}
+# `rule_nature` lived here until 2026-07-26. It answered with the OLD three
+# natures — spending / transfer / settlement — which the four majors replaced in
+# Slice 9a, and one of its three options was wired wrong from the start
+# ("settlement" meant debt repayment while the button said "something I now
+# own"). Live code contradicting the current design is worse than no code, so it
+# is gone; `rule_major` below is the only answer path. Vaults holding old
+# `MerchantNatureRuled` events still replay — the projection reads them — but
+# nothing new can be written in that vocabulary.
 
 
 def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
-               kind: str = "") -> dict:
+               kind: str = "", movement_key: str = "", group: str = "") -> dict:
     """Answer with one of the four majors (Slice 9a) — the button path.
 
     Deterministic end to end: no model is involved when a person taps an answer,
@@ -153,9 +155,16 @@ def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
     from ..listen import Interpretation, apply_proposal, propose
     proj = vault.ledger.projection()
     interp = Interpretation(
-        legs=[{"major": major, "account_hint": descriptor or merchant, "share": ""}],
+        legs=[{"major": major, "account_hint": group or descriptor or merchant,
+               "share": ""}],
         kind=kind, said="")
-    proposal = propose(proj, interp, descriptor or merchant)
+    # A `movement_key` scopes the answer to ONE transaction. The unknown tier —
+    # a cheque, an ATM withdrawal, a peer — asks one at a time precisely because
+    # the descriptor says nothing about what the money was for, so generalizing
+    # would settle a whole bucket on a single answer. Passing it through was
+    # missing: the surface sent an undefined merchant for every such question.
+    proposal = propose(proj, interp, descriptor or merchant,
+                       movement_key=movement_key)
     applied = apply_proposal(vault.ledger, proposal, _today())
     return {"ok": True, **applied}
 

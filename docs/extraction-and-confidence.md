@@ -1,6 +1,6 @@
 # Extraction & Calibrated Confidence
 
-**Status:** Draft · **Last updated:** 2026-07-19
+**Status:** Stable — the stance is implemented (verification constructs confidence; models never report it) · **Last updated:** 2026-07-19
 
 ## The problem, precisely
 

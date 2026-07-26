@@ -197,3 +197,27 @@ The rule now has a second clause: *report the final state, never the sum of mome
 **A third flaw in the scorer, recorded and deliberately not fixed.** A warehouse club, a large online retailer, the tax authority and a tutoring service all sit under `missed` — but they are ordinary businesses, now `settled`, which the queue will never ask about at all. **A ruling the new design makes unnecessary is the best possible outcome, and it is being scored as a failure.** So the real picture is better than 2/22. It is left unfixed because three consecutive corrections to this instrument have each moved the number in the builder's favour, and that pattern is more informative than any of the three corrections. The fourth needs a colder eye.
 
 **Overall judgement, stated plainly:** the architecture is right and the plumbing works on real money — the naive question the whole refactor existed to kill is gone, and 55% of the vault's money now arrives as an informed proposal. What remains unproven is **quality**: whether the proposals are ones a person would accept, and whether the categories are right at all (`poker` and `playing poker` both appear in the author's own answer key). That is the next thing to measure, and the builder should not be the sole grader of it.
+
+---
+
+## The cleanup, done (2026-07-26)
+
+Everything above that was *findings* is now *fixed*. What changed, and the rule each change came from.
+
+**Seven documents marked ⛔ HISTORICAL RECORD rather than deleted.** `discovery-plan`, `discovery-map-and-reversibility`, `agent-and-model-landscape`, `competitive-landscape`, `form-factor-and-stack`, `domain-model-vs-orchestration`, `v0-scope`. Each now opens with a banner naming what it was true of, why it is kept, and where to look for what is true now.
+
+The test applied was Vishnu's: **"nothing a new reader would find confusing."** These seven failed it in three distinct ways — they lied about the present tense (*"we are deliberately in a discovery phase before writing product code"*, with 11,000 lines of product code in the repo), they were dated snapshots of an outside world that moves (*"as of July 2026"*, never updated again), or they reopened a door that an ADR has since closed.
+
+Deletion was considered and rejected. A project whose entire argument is that **trust must be earned and provable** does not quietly erase its own reasoning; a stranger reading `discovery-map-and-reversibility.md` learns why eleven decisions were made before any code existed, which is worth more than the tidiness of removing it. But a document that cannot be dated by its reader is worse than no document, so the banner is doing the actual work.
+
+**Sixteen status lines corrected.** Every one said `Draft` (or "next") about code that is built and running. The reason this matters is disproportionate to the effort: a status line is the first thing a reader trusts and the last thing anyone updates, which is the same shape as the prompt drift — *a discipline that depends on remembering.* The honest fix here is a habit, and the honest admission is that habits have failed twice in this repo already.
+
+**The naming collision resolved: Slice 9b → Slice 6.8 — Counterparty implications.** The tier/implication work was committed under a number reserved for *Viva speaks*, the read direction. It is not Viva speaking; it is the question queue getting smarter, which is the 6.x family. The roadmap now carries a full 6.8 entry with the naming note, and commit messages before today still say 9b.
+
+**Roadmap markers caught up** — 6.5, 6.7 and 9a marked built.
+
+**The dead three-nature path deleted.** `Detail.jsx` still offered *spending / transfer / settlement* through `/api/rule-nature`, a month after the four majors replaced that vocabulary — and *"settlement"* was the option that had been **wired wrong from the start**: it meant debt repayment while the button read *"Something I now own"*, which is an asset. A person answering that button honestly recorded the opposite of what they meant.
+
+Removing it exposed a live defect underneath: the surface unpacked each question's options by hand into `{merchant, major, descriptor}`, so a **movement-scoped** question — a cheque, an ATM withdrawal, a peer payment, all of the `unknown` tier — posted an undefined merchant and dropped its `movement_key`. The queue had decided the scope correctly and the page re-decided it wrongly. Options are now forwarded whole. Two contract tests hold both properties, and they check the *vocabulary*, not just the function name, so reintroducing three natures under a new name still fails.
+
+**317 tests green.** The reading guide gained a *Historical record* section and a sharpened placement rule: **superseded means we changed our minds; historical means this was true then.** Neither is ever deleted.

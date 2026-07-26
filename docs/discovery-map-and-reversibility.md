@@ -1,6 +1,13 @@
 # The Discovery Map & Decision Reversibility
 
-**Status:** Draft (this is the master map — other docs are its details) · **Last updated:** 2026-07-19
+**Status:** ⛔ Historical — every decision it schedules has since been made · **Last updated:** 2026-07-19
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **The one-way / sticky / two-way *doors framework*, plus an inventory of decisions classified by which kind each was. Written to sequence *when* things got decided. They are decided.**
+>
+> Kept because the doors framework is the reasoning behind ADR-001→011, and reading it explains why those eleven were settled before any product code existed. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [decisions/](decisions/README.md) — the eleven ADRs are this document's output.
+
 
 ## The framing: doors, not decisions
 

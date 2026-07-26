@@ -87,3 +87,41 @@ def test_the_surface_fetches_nothing_from_the_network():
             # fetched asset is not.
             assert not hit.startswith(("http://cdn", "https://cdn",
                                        "https://unpkg", "https://esm")), hit
+
+
+def test_the_three_natures_are_gone_from_the_surface():
+    """Slice 9a replaced spending/transfer/settlement with the four majors, but
+    the old three-button path stayed wired for a month: `Detail.jsx` called
+    `api.ruleNature(...)` and `/api/rule-nature` answered it.
+
+    Live code contradicting the current design is worse than no code, and this
+    particular contradiction was already known to be wrong — "settlement" meant
+    debt repayment while its button read *"Something I now own"*, which is an
+    asset. A person answering honestly recorded the opposite of what they meant.
+
+    The vocabulary is checked, not just the function name, so reintroducing the
+    three natures under a new name still fails."""
+    ui, server = _ui_text(), (WEB / "server.py").read_text()
+    assert "ruleNature" not in ui
+    assert "/api/rule-nature" not in server
+    assert "/api/rule-nature" not in ui
+    # Single quotes only: this codebase writes JS string literals that way, so
+    # `'settlement'` is a value being passed while "settlement" in a comment is
+    # the build log explaining why it left. Checking both would forbid the
+    # explanation along with the mistake.
+    assert "'settlement'" not in ui, "the old three-nature vocabulary is back"
+
+
+def test_an_answer_carries_the_scope_the_question_chose():
+    """The queue decides scope — a cheque is answered one at a time, a merchant
+    once for all — and the surface must not re-decide it. It did: every option
+    was posted as `{merchant, major, descriptor}`, so a movement-scoped question
+    sent an undefined merchant and lost its `movement_key` entirely.
+
+    The fix is that the button forwards the option's `args` wholesale."""
+    ui = _ui_text()
+    assert "api.ruleMajor(" in ui
+    assert "...o.args" in ui, "options must be forwarded whole, not unpacked by hand"
+    server = (WEB / "server.py").read_text()
+    for field in ("movement_key", "group"):
+        assert field in server, f"/api/rule-major must accept {field}"

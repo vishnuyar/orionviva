@@ -1,6 +1,6 @@
 # The Format Commons — distilled document knowledge, shared without the documents
 
-**Status:** Draft · **Last updated:** 2026-07-20 · **Origin question:** the first German document is read expensively by a frontier model; that format knowledge should persist and serve *every* user afterward via cheap/local models with pointed questions. Share the knowledge, never the document.
+**Status:** Design — unbuilt; the merchant commons ([merchant-catalog-and-commons.md](merchant-catalog-and-commons.md)) is its first instance · **Last updated:** 2026-07-20 · **Origin question:** the first German document is read expensively by a frontier model; that format knowledge should persist and serve *every* user afterward via cheap/local models with pointed questions. Share the knowledge, never the document.
 **Invariants touched:** T1/T2 (profile-guided extraction passes the same verification floor), T3 (blind reads that birth profiles are raw-captured), T6 (contribution is explicit user action; nothing leaves silently), T8 (profiles carry versions and scorecards like models), I2/I5/I6 (profiles are locale/jurisdiction-tagged data packs), X1 (all invisible to the user)
 
 ## The anti-goal tension, resolved precisely

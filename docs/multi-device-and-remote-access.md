@@ -1,6 +1,6 @@
 # Multi-Device & Remote Access — reaching Viva from anywhere without a readable server
 
-**Status:** Draft · **Last updated:** 2026-07-20 · **Origin question:** ingest documents from desktop and mobile, then log in somewhere with a passkey and chat with Viva about the extracted picture (not the documents). Is that possible without clouding the core principles?
+**Status:** Open — deliberately undecided; ADR-011 (blind-host tier) is the only part settled · **Last updated:** 2026-07-20 · **Origin question:** ingest documents from desktop and mobile, then log in somewhere with a passkey and chat with Viva about the extracted picture (not the documents). Is that possible without clouding the core principles?
 
 ## The short answer
 
