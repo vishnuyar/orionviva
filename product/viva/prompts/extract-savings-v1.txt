@@ -1,0 +1,5 @@
+This is a savings / money-market account statement. The printed balance is the
+money HELD. A deposit or interest credit INCREASES it (balance_effect
+"increase"); a withdrawal, transfer out, or fee DECREASES it (balance_effect
+"decrease"). Interest paid into the account is an increase — include it.
+List EVERY line in the period from ALL sections — completeness matters most.

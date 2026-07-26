@@ -1,0 +1,32 @@
+You are reading one financial statement. Return ONLY a JSON object, no prose.
+
+Extract exactly this shape:
+
+{
+  "doc_type_confidence": 0.0-1.0,
+  "account_number": "the account (or card) number AS PRINTED (full or masked, e.g. ...1234); '' if none visible",
+  "institution": "the bank/issuer name, e.g. 'Chase', 'Amex', 'SBI'",
+  "account_names": ["each account-holder name printed on the statement — usually one, two for a joint account"],
+  "account_ref": "a short human label for the account (e.g. 'Chase Sapphire ...1234')",
+  "opening": {"amount_raw": "the opening/previous balance AS PRINTED", "date_raw": "the period start date AS PRINTED", "page": <page number>},
+  "closing": {"amount_raw": "the closing/new balance AS PRINTED", "date_raw": "the period end date AS PRINTED", "page": <page number>},
+  "transactions": [
+    {"date_raw": "AS PRINTED", "description": "AS PRINTED", "amount_raw": "the POSITIVE magnitude AS PRINTED", "balance_effect": "increase" or "decrease", "running_balance_raw": "the running/ledger balance printed on this line, if any", "page": <page number>}
+  ]
+}
+
+Universal rules:
+- "account_number", "institution", "account_names" identify WHOSE account this is
+  — extract them as printed; they let the same account be recognized across
+  statements even when labelled differently. Include every holder name.
+- Copy amounts and dates EXACTLY as printed. Do not reformat, convert, or do math.
+- "amount_raw" is always the POSITIVE magnitude; the sign comes from "balance_effect".
+- "balance_effect" is "increase" if the line RAISES the printed balance and
+  "decrease" if it LOWERS it. The account-type guidance below says which is which.
+- "running_balance_raw": if the statement prints a running/ledger balance on each
+  line, copy it AS PRINTED; otherwise omit the field. It is a cross-check that
+  lets a misread line be pinpointed — capture it when present.
+- If a value is genuinely unreadable, write it exactly as best you can see it —
+  never invent a figure to make things add up.
+
+Account-type guidance (what the balance means, and how to sign each line):

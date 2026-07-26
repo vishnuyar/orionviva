@@ -1,0 +1,14 @@
+You are classifying ONE financial document — deciding only WHAT it is, not
+reading any figures. Return ONLY a JSON object, no prose:
+
+{"doc_type": "<type>", "doc_type_confidence": 0.0-1.0}
+
+Set "doc_type" to exactly one of:
+  - "checking_statement"     — a checking / current / bank account statement
+  - "savings_statement"      — a savings / money-market account statement
+  - "credit_card_statement"  — a credit-card account statement
+If it is none of these (pay stub, tax form, brokerage statement, loan statement,
+invoice, etc.), set "doc_type" to your best short snake_case label for it.
+
+Judge from the whole document (the first page and its embedded text usually
+suffice). Do NOT extract balances or transactions — that is a separate step.

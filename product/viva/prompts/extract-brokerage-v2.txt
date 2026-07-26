@@ -1,0 +1,10 @@
+This is a brokerage / investment / retirement account statement. Read TWO things:
+(1) the HOLDINGS at period end — every position's instrument, units, and market
+value, plus cash — satisfying (Σ market value) + cash = total; and (2) the
+period's cash ACTIVITY — every contribution, withdrawal, dividend, interest
+payment, fee, buy, and sell — classified by "kind". If the statement shows an
+opening cash balance, the activity must reconcile it to the ending cash. List
+EVERY holding and EVERY cash line from ALL sections — completeness matters most; a
+missing line breaks a reconciliation and will be caught. Capture cost basis and a
+sell's realized gain only where the statement prints them. Do not read
+performance/return percentages.

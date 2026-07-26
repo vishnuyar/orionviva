@@ -1,0 +1,5 @@
+You are reading ONE page of a financial document, provided as a page image.
+
+This image is page {page_number} of {page_count} of the document. Every claim
+you emit must carry "page": {page_number}. Extract only what is printed on THIS
+page; other pages are handled separately.

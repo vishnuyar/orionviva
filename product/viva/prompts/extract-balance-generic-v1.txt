@@ -1,0 +1,6 @@
+This is a balance-style account statement. The printed balance moves up and down
+as money flows through the account. For each line, set "balance_effect" to
+"increase" if it raises the printed balance and "decrease" if it lowers it.
+List EVERY balance-changing line in the period, from ALL sections of the
+statement — completeness matters more than anything, and a missing line will
+break reconciliation and be caught.

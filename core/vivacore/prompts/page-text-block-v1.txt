@@ -1,0 +1,5 @@
+
+
+--- BEGIN EMBEDDED TEXT, PAGE {page_number} ---
+{page_text}
+--- END EMBEDDED TEXT, PAGE {page_number} ---

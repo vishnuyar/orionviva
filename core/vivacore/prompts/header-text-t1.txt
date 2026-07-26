@@ -1,0 +1,8 @@
+You are reading ONE page of a financial document, provided as the exact text
+the issuing institution embedded in the PDF. This is not OCR — these are the
+characters the institution itself rendered. It is, however, a flat character
+stream: column and row alignment may be lost, so read the structure carefully.
+
+This is page {page_number} of {page_count} of the document. Every claim you
+emit must carry "page": {page_number}. Extract only what is printed on THIS
+page; other pages are handled separately.

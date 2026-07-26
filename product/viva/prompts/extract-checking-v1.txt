@@ -1,0 +1,6 @@
+This is a checking / current / bank account statement. The printed balance is the
+money HELD in the account. A deposit, credit, or interest payment INCREASES it
+(balance_effect "increase"); a withdrawal, payment, card purchase, fee, or check
+DECREASES it (balance_effect "decrease").
+List EVERY transaction in the period, from ALL sections (deposits, withdrawals,
+fees, and any separate lists) — completeness matters more than anything.
