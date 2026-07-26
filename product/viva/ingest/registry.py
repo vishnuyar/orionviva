@@ -194,8 +194,26 @@ def doc_type_for_prompt_version(version: str) -> str:
     if not version or not version.startswith("extract:"):
         return ""
     fragment = version[len("extract:"):].split("+", 1)[-1]
+
+    def _family(frag: str) -> str:
+        """`brokerage-v2` -> `brokerage`. A fragment's FAMILY, not its version.
+
+        Match on the family, because a document read a year ago was recorded
+        under whatever version was current then, and the registry only carries
+        today's. Three real documents read under `brokerage-v1` were
+        unrecoverable against a registry holding `brokerage-v2`, and parked as
+        `unknown` — the type was recorded, we were simply asking for an exact
+        match on a number that is expected to change.
+
+        Safe because a family belongs to exactly one profile: `card`,
+        `checking`, `savings`, `paystub`, `brokerage`. Only the version moves,
+        and the version is the part that must not matter here."""
+        stem = frag.rsplit("-v", 1)
+        return stem[0] if len(stem) == 2 and stem[1].isdigit() else frag
+
+    want = _family(fragment)
     for profile in set(_INDEX.values()):
-        if profile.type_fragment == fragment:
+        if _family(profile.type_fragment) == want:
             return profile.doc_type
     return ""
 
