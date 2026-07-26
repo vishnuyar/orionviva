@@ -58,30 +58,15 @@ def normalize_merchant(descriptor: str) -> str:
     return s
 
 
-# Descriptors that name HOW money moved, not WHO received it. A check, an ATM
-# withdrawal, a wire, a cash deposit — these are conduits, and the ledger has no
-# idea what was on the other side of them.
+# `_CONDUIT_MARKERS` and `is_conduit` lived here and are GONE (Slice 9b).
+# Whether "check" names a payment instrument rather than a business is exactly
+# the kind of universal a MODEL should tell us once, at enrichment, and cache —
+# not a word list maintained by hand in every language and every country. It now
+# arrives as `counterparty_kind` on the enriched record.
 #
-# Treating a conduit as a merchant is a real defect, not a cosmetic one: every
-# check in a vault normalizes to the single token "check", so one question gets
-# asked about all of them and one answer settles all of them. A person whose
-# checks were an earnest-money deposit and an initial deposit to open an account
-# has no way to say so (Vishnu, 2026-07-25).
-#
-# So a conduit NEVER generalizes — it is answered one transaction at a time —
-# and it never enters the shared catalog, where "check" would be noise anyway.
-_CONDUIT_MARKERS = (
-    "check", "cheque", "atm ", "atm withdrawal", "cash withdrawal",
-    "cash deposit", "wire transfer", "wire in", "wire out", "counter credit",
-    "counter debit", "teller", "money order", "cashier",
-)
-
-
-def is_conduit(descriptor: str) -> bool:
-    """True when a descriptor names a payment INSTRUMENT rather than a
-    counterparty — so an answer about one of them says nothing about the next."""
-    low = f" {(descriptor or '').lower()} "
-    return any(mark in low for mark in _CONDUIT_MARKERS)
+# The lesson that removed it is worth keeping: every time this codebase met
+# ambiguity in raw text it reached for a substring list, and nine of them had
+# accumulated before anyone counted (docs/where-the-intelligence-goes.md).
 
 
 def is_shareable(descriptor: str) -> bool:
@@ -91,6 +76,4 @@ def is_shareable(descriptor: str) -> bool:
     low = (descriptor or "").lower()
     if any(mark in low for mark in _PEER_MARKERS):
         return False
-    if is_conduit(descriptor):
-        return False          # "check" is not merchant knowledge anyone can use
     return bool(normalize_merchant(descriptor))

@@ -49,7 +49,7 @@ from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             SCOPE_MOVEMENT, UNVERIFIED, VERIFIED,
                             account_opened, ruling_recorded)
 from .ingest.prompt_library import interpret_prompt
-from .ledger.merchants import is_conduit, is_shareable, normalize_merchant
+from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 
 log = logging.getLogger("viva.listen")
@@ -74,46 +74,38 @@ PLAIN = {
     MAJOR_INCOME: "Money that came to me",
 }
 
-# The document that would PROVE each kind of claim. Provenance is the product,
-# so a created account invites its paperwork — always to prove, never to unblock
-# (Vishnu, 2026-07-25). This is also the ladder from `asserted` to `issued`: the
-# document arriving is what upgrades the account.
-CORROBORATION = {
-    "vehicle": "invoice or bill of sale",
-    "property": "closing disclosure",
-    "mortgage": "mortgage statement or 1098",
-    "loan": "loan statement",
-    "investment": "brokerage statement",
-}
-
-# Where a major's account lives by default when the person gives no better hint.
-# One level under the root, free data (I5) — never a jurisdiction-shaped table.
-_DEFAULT_GROUP = {MAJOR_ASSET: "Other", MAJOR_LIABILITY: "Other",
-                  MAJOR_EXPENSE: "Other", MAJOR_INCOME: "Other"}
+# Slice 9b deleted three tables that used to live here: CORROBORATION (which
+# document proves which claim), _DEFAULT_GROUP and _group_for (where an account
+# belongs in the hierarchy). All three are now properties of the counterparty's
+# IMPLICATION — `documents` and `account_group` — learned once at enrichment,
+# cached, versioned and shareable, instead of a list we maintained by hand.
+#
+# What is left here is the fallback for when nothing is known, and it is
+# deliberately dull: one level under the root, named "Other". A product that
+# knows nothing should look like it knows nothing.
+_FALLBACK_GROUP = "Other"
 
 
 # --------------------------------------------------------------------- step 2
 
 
-def suggest_answers(category: str = "", subcategory: str = "") -> list[dict]:
+def suggest_answers(implied: dict | None = None) -> list[dict]:
     """Plain-language answers to offer *before* anyone types anything.
 
-    The common case should still be one tap: what we already know about the
-    merchant usually implies the major. Free text is the escape hatch for the
-    cases a button genuinely cannot hold, not a replacement for the fast path —
-    and because these are deterministic, the queue keeps working with **no model
-    configured at all**."""
-    cat, sub = (category or "").lower(), (subcategory or "").lower()
-    ordered: list[str] = []
-    if any(w in f"{cat} {sub}" for w in ("mortgage", "loan", "credit card", "debt")):
-        ordered = [MAJOR_LIABILITY, MAJOR_EXPENSE, MAJOR_ASSET]
-    elif any(w in f"{cat} {sub}" for w in ("auto", "vehicle", "real estate",
-                                           "investment", "transfer")):
-        ordered = [MAJOR_ASSET, MAJOR_EXPENSE, MAJOR_LIABILITY]
-    elif any(w in f"{cat} {sub}" for w in ("payroll", "salary", "refund", "rent")):
-        ordered = [MAJOR_INCOME, MAJOR_ASSET, MAJOR_EXPENSE]
-    else:
-        ordered = [MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY]
+    The common case should still be one tap. Free text is the escape hatch for
+    the cases a button genuinely cannot hold, not a replacement for the fast
+    path — and because this is deterministic, the queue keeps working with **no
+    model configured at all**."""
+    ordered = [MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY]
+    if implied and implied.get("major") in PLAIN:
+        # Lead with what the counterparty implies. Slice 9b deleted the substring
+        # matching that used to do this from category names — ordering the answers
+        # is knowledge about the counterparty, and knowledge about counterparties
+        # is learned at enrichment, not kept in a word list here.
+        lead = implied["major"]
+        ordered = [lead] + [m for m in (MAJOR_EXPENSE, MAJOR_ASSET,
+                                        MAJOR_LIABILITY, MAJOR_INCOME)
+                            if m != lead][:2]
     return [{"major": m, "label": PLAIN[m]} for m in ordered]
 
 
@@ -344,7 +336,7 @@ def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatc
         if want and tail and (want in tail or tail in want):
             return AccountMatch(account, "ambiguous", candidate=account,
                                 reason=f"looks like your existing {account}")
-    proposed = account_path(major, group or _DEFAULT_GROUP.get(major, "Other"),
+    proposed = account_path(major, group or _FALLBACK_GROUP,
                             hint.strip() or "Unnamed")
     return AccountMatch(proposed, "new", reason="nothing like this exists yet")
 
@@ -419,10 +411,12 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     peer descriptor — a person's name on a Zelle — does not, because one payment
     to a friend can be a gift and the next a loan."""
     merchant = normalize_merchant(descriptor)
-    # A conduit — a check, an ATM withdrawal, a wire — is never generalized, even
-    # when several share a descriptor. What the money was FOR differs every time.
-    generalizes = (bool(merchant) and is_shareable(descriptor)
-                   and not is_conduit(descriptor))
+    # An INSTRUMENT — a check, an ATM withdrawal, a wire — is never generalized,
+    # even when several share a descriptor: what the money was FOR differs every
+    # time. Slice 9b learns that from enrichment (`counterparty_kind`) instead of
+    # matching the descriptor against a list of words we kept by hand.
+    is_instrument = proj.kind_of_merchant(merchant) in ("instrument", "peer")
+    generalizes = bool(merchant) and is_shareable(descriptor) and not is_instrument
     scope = SCOPE_MERCHANT if generalizes and not movement_key else SCOPE_MOVEMENT
     subject = merchant if scope == SCOPE_MERCHANT else movement_key
     if scope == SCOPE_MOVEMENT and not subject:
@@ -436,9 +430,10 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         subject = matches[0].key
 
     legs, new_accounts, confirm = [], [], []
+    implied = proj.implication_for(merchant)
     for leg in interp.legs:
         match = resolve_account(proj, leg["major"], leg.get("account_hint", ""),
-                                group=_group_for(interp.kind, leg["major"]))
+                                group=(implied or {}).get("account_group", ""))
         legs.append({"major": leg["major"], "account": match.account,
                      "share": leg.get("share", "")})
         if match.verdict == "new":
@@ -453,11 +448,11 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     return Proposal(
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
         confirm_accounts=confirm,
-        # The document is chosen by CODE from the kind, never taken from the
-        # model's free text. v1 let the model fill this field and it answered
-        # "no", which the surface rendered as "Your no would let me prove this."
-        # A model reads meaning; deciding which document proves a claim is ours.
-        corroborates=CORROBORATION.get(interp.kind, ""),
+        # The document comes from the counterparty's IMPLICATION (learned at
+        # enrichment), never from the interpreter's free text. v1 let the model
+        # fill this per-sentence and it answered "no", which the surface
+        # rendered as "Your no would let me prove this."
+        corroborates=(implied or {}).get("documents", ""),
         category=interp.category, said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
         settles=max(settles, 1), amount=amount, currency=currency,
@@ -498,18 +493,7 @@ def one_shot_extractor(spec):
     return _extract
 
 
-def _group_for(kind: str, major: str) -> str:
-    if kind == "vehicle":
-        return "Vehicles" if major == MAJOR_ASSET else "Auto"
-    if kind == "property":
-        return "Property" if major == MAJOR_ASSET else "Mortgage"
-    if kind == "mortgage":
-        return "Escrow" if major == MAJOR_ASSET else "Mortgage"
-    if kind == "loan":
-        return "Loans"
-    if kind == "investment":
-        return "Investments"
-    return ""
+# `_group_for` deleted in Slice 9b — see the note beside _FALLBACK_GROUP.
 
 
 # --------------------------------------------------------------------- step 6

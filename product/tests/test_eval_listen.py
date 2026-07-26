@@ -193,3 +193,63 @@ def test_a_declining_model_is_still_distinguished_from_a_broken_one():
     assert declined["counts"][SAFE] == declined["n"]
     assert declined["counts"][BROKEN] == 0
     assert declined["confidently_wrong"] == 0     # measured, and genuinely zero
+
+
+# ------------------------------------------ implications: the new ruin case
+
+
+def test_inventing_structure_where_none_exists_is_the_new_ruin():
+    """Slice 9b's equivalent of the invented split, and a worse one.
+
+    A fabricated ratio corrupts one payment. A fabricated IMPLICATION — deciding
+    a coffee shop means a loan — creates an account nobody has, applies it to
+    every transaction with that counterparty, and propagates into every vault
+    that ever syncs the record. So `[]` must be the easy answer, and anything
+    outside the closed vocabulary is dropped rather than trusted."""
+    from merchantcore.enrich import clean_implications
+
+    # Silence is a first-class, correct answer — not a parse failure.
+    assert clean_implications(None) == []
+    assert clean_implications([]) == []
+    assert clean_implications("nope") == []
+    assert clean_implications([{"relationship": "a loan"}]) == []   # no major → gone
+
+    # A major outside the four is dropped, not coerced into the nearest one.
+    for bad in ("equity", "spending", "", "assets", "liability payment"):
+        assert clean_implications([{"major": bad, "relationship": "x"}]) == [], bad
+    # Whitespace and case ARE tolerated — that is transport noise, not a claim.
+    assert clean_implications([{"major": " Asset "}])[0]["major"] == "asset"
+
+    good = clean_implications([{
+        "relationship": "a home loan", "major": "liability", "on": "outflow",
+        "account_group": "Mortgage", "compound": True, "confidence": "forced",
+        "documents": "1098", "ask": "Set it up?"}])
+    assert good[0]["major"] == "liability" and good[0]["confidence"] == "forced"
+
+
+def test_an_unreadable_confidence_or_direction_degrades_to_the_cautious_value():
+    """Unrecognised input must land on the side that ASKS, never the side that
+    acts. `suggested` proposes; `forced` applies — so an unknown value becoming
+    `forced` would let a garbled reply change a ledger unprompted."""
+    from merchantcore.enrich import clean_implications
+
+    (row,) = clean_implications([{"major": "asset", "confidence": "definitely",
+                                  "on": "sideways"}])
+    assert row["confidence"] == "suggested"      # ask, don't act
+    assert row["on"] == "both"                   # apply to neither direction blindly
+
+
+def test_the_enrichment_prompt_makes_silence_the_default():
+    """The prompt is where the ruin case is actually prevented. If it does not
+    say plainly that MOST merchants imply nothing, a helpful model will invent
+    relationships to be useful."""
+    from merchantcore.enrich import _PROMPT
+
+    # Collapse wrapping: the prompt is hand-wrapped prose, and a phrase split
+    # across two lines is still the same instruction to a model.
+    low = " ".join(_PROMPT.lower().split())
+    assert "almost always the answer is nothing" in low
+    assert "correct and expected answer" in low
+    assert "far worse than saying nothing" in low
+    # And direction is stated as the crux, not an afterthought.
+    assert "money going out to a lender repays borrowing" in low

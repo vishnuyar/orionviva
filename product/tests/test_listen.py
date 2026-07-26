@@ -23,6 +23,31 @@ from viva.listen import (PLAIN, apply_proposal, interpret, listen, propose,
                          resolve_account, suggest_answers)
 
 
+def _enrich(ledger, merchant, category="other", kind="business", implies=(),
+            subcategory=""):
+    """Seed what the WORLD knows about a counterparty (Slice 9b).
+
+    Where the account belongs, which document proves it, and whether the
+    descriptor even names a business are all learned once at enrichment now —
+    not read from tables in listen.py. Tests seed that knowledge instead of
+    relying on keyword matching, because that is how the product gets it."""
+    from viva.ledger.events import merchant_enriched
+    ledger.append(merchant_enriched(
+        merchant, category, subcategory=subcategory, grade="corroborated",
+        occurred_at="2026-04-01", by="model",
+        attributes={"counterparty_kind": kind, "implies": list(implies)}))
+
+
+VEHICLE = [{"relationship": "a vehicle", "major": "asset", "on": "outflow",
+            "account_group": "Vehicles", "compound": False,
+            "confidence": "suggested", "documents": "invoice or bill of sale",
+            "ask": "Shall I track it?"}]
+MORTGAGE = [{"relationship": "a home loan", "major": "liability", "on": "outflow",
+             "account_group": "Mortgage", "compound": True,
+             "confidence": "suggested", "documents": "mortgage statement or 1098",
+             "ask": "Shall I set up the loan?"}]
+
+
 def _reply(payload):
     import json
     return lambda prompt: json.dumps(payload)
@@ -59,6 +84,7 @@ def test_the_model_never_supplies_a_figure(tmp_path):
     event builder refuses an amount outright, so this is closed twice."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "TESLA MOTORS", Decimal("-42000.00"))])
+    _enrich(ledger, "tesla motors", "transport", implies=VEHICLE)
     proj = ledger.projection()
     p = listen(proj, "i bought a car for ninety thousand dollars", "TESLA MOTORS",
                amount="42000.00", currency="USD",
@@ -85,8 +111,8 @@ def test_a_broken_model_degrades_the_surface_never_the_ledger(tmp_path):
 def test_with_no_model_the_buttons_still_work():
     """Free text is an addition, never a dependency."""
     assert interpret("i bought a car", "TESLA").legs == []
-    majors = [s["major"] for s in suggest_answers("loan_payments", "mortgage")]
-    assert majors[0] == MAJOR_LIABILITY
+    majors = [s["major"] for s in suggest_answers({"major": MAJOR_LIABILITY})]
+    assert majors[0] == MAJOR_LIABILITY          # lead with what is implied
     assert all(s["label"] == PLAIN[s["major"]] for s in suggest_answers())
     # And nobody is ever shown an accounting term (D1).
     assert not any(m in PLAIN[m].lower() for m in PLAIN)
@@ -98,6 +124,7 @@ def test_with_no_model_the_buttons_still_work():
 def test_resolution_asks_only_when_ambiguous(tmp_path):
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "TESLA MOTORS", Decimal("-42000.00"))])
+    _enrich(ledger, "tesla motors", "transport", implies=VEHICLE)
     proj = ledger.projection()
     assert resolve_account(proj, MAJOR_ASSET, "Model 3").verdict == "new"
 
@@ -143,6 +170,7 @@ def test_a_proposal_states_what_it_does_not_know(tmp_path):
     wrong answer this project exists to refuse."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-01", "NEWCO MORTGAGE SERVICING", Decimal("-4400.00"))])
+    _enrich(ledger, "newco mortgage servicing", "housing", implies=MORTGAGE)
     proj = ledger.projection()
     p = listen(proj, "principal, interest and escrow on my house",
                "NEWCO MORTGAGE SERVICING", amount="4400.00", currency="USD",
@@ -208,10 +236,12 @@ def test_the_corroboration_ask_is_the_path_from_asserted_to_issued(tmp_path):
     would prove it — and that document arriving is what upgrades its origin."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "TESLA MOTORS", Decimal("-42000.00"))])
+    _enrich(ledger, "tesla motors", "transport", implies=VEHICLE)
     proj = ledger.projection()
     p = listen(proj, "i bought a car", "TESLA MOTORS", currency="USD",
                extract_fn=_reply({"legs": [{"major": "asset", "account_hint": "Model 3"}],
                                   "kind": "vehicle"}))
+    # The document comes from what the WORLD knows about this counterparty.
     assert p.corroborates == "invoice or bill of sale"
     apply_proposal(ledger, p, "2026-07-25")
     proj = ledger.projection()
@@ -258,6 +288,7 @@ def test_an_asserted_account_asks_for_the_document_that_would_prove_it(tmp_path)
 
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "TESLA MOTORS", Decimal("-42000.00"))])
+    _enrich(ledger, "tesla motors", "transport", implies=VEHICLE)
     p = listen(ledger.projection(), "i bought a car", "TESLA MOTORS",
                currency="USD",
                extract_fn=_reply({"legs": [{"major": "asset", "account_hint": "Model 3"}],
@@ -275,12 +306,11 @@ def test_an_asserted_account_asks_for_the_document_that_would_prove_it(tmp_path)
 
 def test_a_ruling_retires_the_question_that_prompted_it(tmp_path):
     """Idempotent by construction: state changed, so the queue stops asking."""
-    from viva.ingest import assign_merchant_category
     from viva.questions import NATURE, open_questions
 
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-06", "BIG MOTORS", Decimal("-30000.00"))])
-    assign_merchant_category(ledger, "big motors", "transport", by="model")
+    _enrich(ledger, "big motors", "transport", implies=VEHICLE)
     assert [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
 
     p = listen(ledger.projection(), "i bought a car", "BIG MOTORS", currency="USD",
@@ -403,6 +433,8 @@ def _atm(tmp_path):
          Decimal("-500.00")),
         ("2026-03-29", "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
          Decimal("-500.00"))])
+    _enrich(ledger, "atm withdrawal 03 29 example rd anytown card", "transfers",
+            kind="instrument", subcategory="atm")
     return ledger
 
 
@@ -439,11 +471,12 @@ def test_the_document_line_is_never_the_models_free_text(tmp_path):
                movement_key=key, amount="500.00", currency="USD",
                extract_fn=_reply({"legs": [{"major": "expense"}],
                                   "corroborates": "no", "kind": ""}))
-    assert p.corroborates == ""
+    assert p.corroborates == ""                  # an instrument proves nothing
     assert "prove" not in p.summary()
     assert "no would" not in p.summary()
 
     # And where a document genuinely applies, it is OUR wording, not the model's.
+    _enrich(ledger, "northside motors", "transport", implies=VEHICLE)
     car = listen(ledger.projection(), "i bought a car", "NORTHSIDE MOTORS",
                  extract_fn=_reply({"legs": [{"major": "asset", "account_hint": "Truck"}],
                                     "kind": "vehicle", "corroborates": "whatever"}))
@@ -526,21 +559,22 @@ def test_a_conduit_is_answered_one_transaction_at_a_time(tmp_path):
     checks were an earnest-money deposit and an initial deposit to open an
     account could say only one thing (Vishnu, 2026-07-25). A check says HOW the
     money moved, not who got it."""
-    from viva.ledger.merchants import is_conduit, is_shareable, normalize_merchant
+    from viva.ledger.merchants import normalize_merchant
     from viva.questions import NATURE, open_questions
 
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "Check # 1201", Decimal("-20000.00")),
                             ("2026-03-11", "Check # 1202", Decimal("-500.00"))])
+    # Enrichment is what tells us "check" names an instrument, not a business.
+    _enrich(ledger, "check", "other", kind="instrument")
 
     assert normalize_merchant("Check # 1201") == normalize_merchant("Check # 1202")
-    assert is_conduit("Check # 1201") and not is_shareable("Check # 1201")
 
     qs = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
     assert len(qs) == 2, "one question per check, not one for the bucket"
     assert all(q["scope"] == "one" and q["count"] == 1 for q in qs)
     assert all(q["refs"]["movement"] for q in qs)
-    assert "not who got it" in qs[0]["why"]
+    assert "not who received it" in qs[0]["why"]
     # Ranked by consequence, so the earnest money surfaces above the small one.
     assert Decimal(qs[0]["amount"]) > Decimal(qs[1]["amount"])
 
@@ -563,7 +597,10 @@ def test_a_conduit_is_answered_one_transaction_at_a_time(tmp_path):
 
     proj = ledger.projection()
     by_amount = {m.amount: m.ruling_account for m in proj.movements()}
-    assert by_amount[Decimal("-20000.00")] == "Assets:Property:House"
+    # An instrument implies nothing, so the account is named from the person's
+    # own words and lands in the dull fallback group. That is correct: we know
+    # nothing about a check beyond what they just told us.
+    assert by_amount[Decimal("-20000.00")] == "Assets:Other:House"
     assert by_amount[Decimal("-500.00")] == "Assets:Other:New account"
     assert sum(proj.spending_by_category("USD").values()) == Decimal("0")
 
@@ -576,6 +613,7 @@ def test_a_conduit_answer_refuses_to_settle_the_whole_bucket(tmp_path):
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "Check # 1201", Decimal("-20000.00")),
                             ("2026-03-11", "Check # 1202", Decimal("-500.00"))])
+    _enrich(ledger, "check", "other", kind="instrument")
     with pytest.raises(ValueError, match="needs a specific transaction"):
         listen(ledger.projection(), "earnest money", "Check # 1201",
                extract_fn=_reply({"legs": [{"major": "asset", "account_hint": "House"}]}))

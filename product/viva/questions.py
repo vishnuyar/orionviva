@@ -36,9 +36,11 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .ingest import held_items, other_holds
-from .ledger.merchants import is_conduit, is_shareable, normalize_merchant
+from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.events import ASSERTED
-from .ledger.projection import BY_CATEGORY, BY_DEFAULT, SPENDING
+from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
+                                TIER_SETTLED, TIER_STRUCTURAL,
+                                TIER_UNENRICHED, TIER_UNKNOWN)
 from .listen import suggest_answers
 
 # How many questions to surface before summarizing the rest. Not a materiality
@@ -215,100 +217,96 @@ def _merchant_questions(proj) -> list[Question]:
 
 
 def _nature_questions(proj) -> list[Question]:
-    """Is this money *spent*, or just moved/converted?
+    """What is this money, really? — asked ONLY where the counterparty cannot say.
 
-    Raised where the nature rests on weak evidence — a category hint (rung 4) or
-    nothing at all (rung 5) — for merchants we already have a category for.
-    Deliberately NOT filtered by a list of "capital-looking" categories, which
-    would be a jurisdiction-shaped guess: leverage ranking is the filter, so a
-    vehicle purchase or a property closing floats up and a grocery run sinks."""
-    groups: dict[str, dict] = {}
+    Rebuilt in Slice 9b. It used to fire for every enriched merchant whose nature
+    rested on a hint or a default — which meant asking *"is this spent or
+    something you now own?"* about a supermarket we had already identified. We
+    knew, and we asked anyway. The tiers make the rule explicit:
+
+      settled     an ordinary counterparty implying nothing  → SILENCE
+      structural  the counterparty implies a relationship    → an informed proposal
+      unknown     an instrument or a peer                    → a real question, one at a time
+
+    The queue's job is to be *short*. Every question it does not ask is one the
+    product answered for you."""
+    out: list[Question] = []
     singles: list = []
+    groups: dict[str, dict] = {}
+
     for m in proj.movements():
         if not proj._is_expense(m):
             continue
-        if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT):
-            continue                      # decided by a link, own-account or a ruling
-        # A CONDUIT is asked about first and separately, before the merchant
-        # path can claim it. It has no useful category and never will — "check"
-        # is not merchant knowledge — so waiting for one would mean never asking,
-        # while grouping them would let a person say only one thing about an
-        # earnest-money deposit and an account opening at once.
-        if is_conduit(m.description):
-            singles.append(m)
+        tier = proj.tier_of(m)
+        if tier == TIER_SETTLED:
+            continue                      # we know. asking would be noise.
+        if tier == TIER_UNENRICHED:
+            continue                      # that is a MERCHANT question, not this
+        if tier == TIER_UNKNOWN:
+            singles.append(m)             # a check, an ATM, a peer: one at a time
             continue
-        ruling = proj.derived_category(m) or {}
-        category = ruling.get("category")
-        if not category:
-            continue                      # unknown merchant → that's a MERCHANT question
+        if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT):
+            continue                      # a link, an own account or a ruling settled it
         key = normalize_merchant(m.description)
-        if not key or not is_shareable(m.description):
-            continue                      # peers are per-transaction, not a merchant rule
         g = groups.setdefault(key, {
             "amount": Decimal("0"), "count": 0, "currency": m.currency,
-            "example": m.description, "category": category,
-            "subcategory": ruling.get("subcategory", ""),
-            "provisional": False, "keys": []})
+            "example": m.description, "keys": [],
+            "implied": proj.implication_of(m) or {},
+            "category": (proj.derived_category(m) or {}).get("category", ""),
+            "subcategory": (proj.derived_category(m) or {}).get("subcategory", "")})
         g["amount"] += abs(m.amount)
         g["count"] += 1
-        g["provisional"] = g["provisional"] or m.provisional
         g["keys"].append(m.key)
 
-    out: list[Question] = []
+    # Tier 3 — genuinely unknown, one transaction at a time.
     for m in singles:
         ruling = proj.derived_category(m) or {}
-        label = ruling.get("subcategory") or ruling.get("category") or "unknown"
         out.append(Question(
             id=f"{NATURE}:{m.key}", kind=NATURE,
             text=(f"{m.date}: {m.description} — {_money(abs(m.amount), m.currency)}. "
                   "What was this one for?"),
-            why=("A check, an ATM withdrawal or a wire says HOW the money moved, "
-                 "not who got it — so I have to ask about each one separately."),
+            why=("This names how the money moved, not who received it — so I "
+                 "have to ask about each one separately."),
             amount=abs(m.amount), currency=m.currency, count=1, scope="one",
             options=[{"label": s["label"], "action": "rule_major",
                       "args": {"movement_key": m.key, "major": s["major"]}}
-                     for s in suggest_answers(ruling.get("category", ""), label)],
+                     for s in suggest_answers()],
             free_text="Or tell me in your own words",
             refs={"movement": m.key, "movements": [m.key],
                   "descriptor": m.description,
                   "category": ruling.get("category", ""),
                   "subcategory": ruling.get("subcategory", "")}))
 
+    # Tier 2 — we have a hypothesis. Say it, name the doubt, offer the choice.
     for key, g in groups.items():
-        label = g["subcategory"] or g["category"]
-        if g["provisional"]:
-            # We EXCLUDED it on a hint — confirm before trusting that.
-            text = (f"You have {g['count']} transaction(s) with {g['example']} "
-                    f"totalling {_money(g['amount'], g['currency'])}. I've treated "
-                    f"those as money moved rather than spent, because they look "
-                    f"like \"{label}\". Is that right?")
-            why = f"Excluded from spending on a category hint only ({label})."
-        else:
-            text = (f"You have {g['count']} transaction(s) with {g['example']} "
-                    f"totalling {_money(g['amount'], g['currency'])}, counted as "
-                    f"spending ({label}). Is that money spent — or is it something "
-                    "you now own, or moved between your own accounts?")
-            why = f"Counted as spending by default; nothing has confirmed it."
+        implied = g["implied"]
+        what = implied.get("relationship") or g["subcategory"] or g["category"]
+        head = (f"You have {g['count']} payment(s) to {g['example']} totalling "
+                f"{_money(g['amount'], g['currency'])}.")
+        text = f"{head} These normally mean {what}."
+        if implied.get("compound"):
+            text += (" A payment like that is usually several things at once, and "
+                     "I can't tell the split without the paperwork.")
+        text += f" {implied.get('ask') or 'Shall I set that up?'}"
+        why = f"Because of who they are, not because of anything you told me."
+        if implied.get("documents"):
+            why += f" Your {implied['documents']} would let me prove it."
+        options = [{"label": f"Yes — {what}", "action": "rule_major",
+                    "args": {"merchant": key, "major": implied.get("major", "expense"),
+                             "descriptor": g["example"],
+                             "group": implied.get("account_group", "")}},
+                   {"label": "No — that was money spent", "action": "rule_major",
+                    "args": {"merchant": key, "major": "expense",
+                             "descriptor": g["example"]}}]
         out.append(Question(
             id=f"{NATURE}:{key}", kind=NATURE, text=text, why=why,
             amount=g["amount"], currency=g["currency"], count=g["count"],
-            scope="pattern",
-            # Slice 9a: the four majors, in plain language, ordered by what we
-            # already believe about this merchant. The old three options were
-            # both too few and wrong — "something I now own" was mapped to
-            # `settlement`, which means debt repayment, so answering it honestly
-            # recorded the wrong thing.
-            options=[
-                {"label": s["label"], "action": "rule_major",
-                 "args": {"merchant": key, "major": s["major"]}}
-                for s in suggest_answers(g["category"], g["subcategory"])],
-            # And the escape hatch a button cannot be: a compound answer, or one
-            # that names the thing. `free_text` is what makes the complete
-            # vocabulary reachable at all (docs/from-your-words-to-the-ledger.md).
+            scope="pattern", options=options,
             free_text="Or tell me in your own words",
             refs={"merchant": key, "movements": g["keys"],
-                  "category": g["category"], "subcategory": g["subcategory"],
-                  "descriptor": g["example"]}))
+                  "descriptor": g["example"], "category": g["category"],
+                  "subcategory": g["subcategory"],
+                  "documents": implied.get("documents", "")}))
     return out
 
 
