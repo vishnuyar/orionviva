@@ -166,6 +166,13 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 **Measured on real money (2026-07-26):** 15 counterparties carrying over half the vault's money moved from a naive question to a named proposal; the scoring of it is in [stocktake-2026-07.md](stocktake-2026-07.md), including three false "contradictions" the scorer invented and what that cost.
 
+## Slice 7.6 — Categories & tags  ✅ DONE
+**Blocks seeded:** the **tag overlay** (`MovementTagged`) · a second alias vocabulary.
+
+**Full spec + the seven decisions:** [categories-and-tags.md](categories-and-tags.md). The discovery rule finally built — *double-entry governs the money, tags govern the meaning* — after Vishnu asked how categories and tags differ. A category **partitions** (one per movement, parts sum to the whole); a tag **overlays** (many per movement, totals deliberately do not sum, and the report says so). The question also explained the category sprawl rather than sitting beside it: the labels in the author's own answer key were **tags typed into a category field**, because that was the only field there was. Tags get their own event type so *"tags never leave this device"* is an **event-level** T9 rule rather than a per-field check inside a shareable event.
+
+---
+
 ## Slice 7 — Net worth  📐 SPEC SETTLED 2026-07-26
 **Block seeded:** the **net-worth projection** · the **provable subtotal** (Slice 13's first primitive, derived for free).
 

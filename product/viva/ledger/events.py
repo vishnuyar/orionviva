@@ -407,7 +407,11 @@ SCOPE_ACCOUNT = "account"        # subject = an account id
 # forever after. History is never rewritten: "playing poker" stays in the event
 # that recorded it, and every total folds it into "poker" from now on.
 SCOPE_CATEGORY = "category"
-SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT, SCOPE_CATEGORY)
+SCOPE_TAG = "tag"                # same, in the TAG vocabulary (kept apart: a
+                                 # tag "poker" and a category "poker" are
+                                 # different things and must alias separately)
+SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT, SCOPE_CATEGORY,
+          SCOPE_TAG)
 
 
 def ruling_recorded(scope: str, subject: str, occurred_at: str,
@@ -545,3 +549,55 @@ def transaction_recorded(postings: list[Posting], description: str,
 def postings_of(event: Event) -> list[Posting]:
     """Rebuild the Posting objects from a TransactionRecorded event."""
     return [Posting.from_dict(p) for p in event.body.get("postings", [])]
+
+
+# --- tags (Slice 7.6) --------------------------------------------------------
+#
+# The rule from discovery, finally built: **double-entry governs the money (one
+# balanced truth, verifiable); tags govern the meaning (freely multiple,
+# user-owned, the moat).**
+#
+# A CATEGORY is a PARTITION — exactly one per movement, so the parts sum to the
+# whole and "where did my money go?" is checkable. A TAG is an OVERLAY — many
+# per movement, overlapping, and tag totals deliberately DO NOT sum to spending.
+# Mixing them yields a report whose parts do not add up to its total, which in
+# this product is a bluff.
+#
+# WHY ITS OWN EVENT rather than a field on CategoryAssigned. Two reasons, and
+# the second is the important one:
+#
+#   * different lifecycles — a tag is added without re-ruling the category, and
+#     a combined event would re-assert a category on every tag edit.
+#   * different PRIVACY. A category is shareable world knowledge: a merchant IS
+#     a coffee shop, for everyone, which is why a commons can hold one. A tag is
+#     personal meaning — this coffee was on the Japan trip, this withdrawal was
+#     poker night — which no commons can ever know. Keeping tags in their own
+#     event type makes "tags never leave this device" an EVENT-LEVEL rule (T9)
+#     instead of a per-field check inside an event that is itself shareable.
+#     Event-level rules are much harder to get wrong by accident.
+
+MOVEMENT_TAGGED = "MovementTagged"
+
+
+def movement_tagged(subject: str, tags: list, occurred_at: str,
+                    scope: str = SCOPE_MOVEMENT, by: str = "human",
+                    provenance: Provenance | None = None) -> Event:
+    """Tag one movement, or every movement from a merchant.
+
+    ``tags`` is the COMPLETE set for that subject, not a delta — last write
+    wins, so removing a tag is appending the set without it. Replay stays
+    trivial and the log stays append-only; there is no "untag" event to
+    reconcile against an "add" that arrived out of order.
+
+    Merchant scope exists so "everything from this gym is martial arts" is one
+    ruling rather than forty. The Slice 5.5 rule still binds: a peer descriptor
+    does not generalize, because one payment to a friend is a gift and the next
+    is a loan repayment."""
+    if scope not in (SCOPE_MOVEMENT, SCOPE_MERCHANT):
+        raise ValueError(f"a tag applies to a movement or a merchant, got {scope!r}")
+    clean = sorted({t.strip().lower() for t in (tags or []) if t and t.strip()})
+    return Event(
+        MOVEMENT_TAGGED, occurred_at,
+        body={"subject": subject, "scope": scope, "tags": clean, "by": by},
+        provenance=provenance or Provenance(),
+    )

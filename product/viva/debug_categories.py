@@ -31,7 +31,8 @@ def report(proj) -> str:
     labels = proj.known_categories()
     subs = proj.known_subcategories()
 
-    out = [f"{len(labels)} category label(s) · {len(subs)} subcategory label(s)", ""]
+    out = [f"{len(labels)} category label(s) · {len(subs)} subcategory label(s) "
+           f"· {len(proj.known_tags())} tag(s)", ""]
     if spending:
         out.append("  what each label is worth")
         for label, amount in sorted(spending.items(), key=lambda kv: -kv[1]):
@@ -41,6 +42,23 @@ def report(proj) -> str:
         out += ["  the finer vocabulary (enrichment writes these)", ""]
         out.append("    " + ", ".join(subs))
         out.append("")
+    tags = proj.known_tags()
+    by_tag = proj.spending_by_tag()
+    if tags:
+        out += ["  tags — an OVERLAY, not a partition", ""]
+        for tag, amount in sorted(by_tag["by_tag"].items(), key=lambda kv: -kv[1]):
+            out.append(f"    {tag[:34]:34} {amount:>14,.2f}")
+        out += ["",
+                f"    these overlap: they sum to "
+                f"{sum(by_tag['by_tag'].values()):,.2f} against total spending of "
+                f"{by_tag['total']:,.2f},",
+                f"    and {by_tag['untagged']:,.2f} carries no tag at all. That is "
+                "correct, not a discrepancy —",
+                "    a tag answers 'how much on the Japan trip', which is a "
+                "different question",
+                "    from 'where did my money go'. Only the category report "
+                "closes.", ""]
+
     if aliases:
         out += ["  already folded together"]
         for dup, canonical in sorted(aliases.items()):
