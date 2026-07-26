@@ -28,8 +28,10 @@ from typing import Iterable
 
 from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
-from .events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED, Event,
-                     Provenance, postings_of)
+from .events import (ASSERTED, CONFLICTED, CORROBORATED, ISSUED, MAJOR_ASSET,
+                     MAJOR_EXPENSE, MAJOR_INCOME, MAJOR_LIABILITY,
+                     SCOPE_ACCOUNT, SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
+                     VERIFIED, Event, Provenance, postings_of)
 from .identity import account_key, account_tokens, names_overlap
 from .merchants import normalize_merchant
 from .postings import EQUITY_OPENING, INCOME_UNCATEGORIZED
@@ -77,6 +79,7 @@ class AccountInfo:
     institution: str = ""
     number: str = ""                       # as extracted (mask for display)
     names: list[str] = field(default_factory=list)   # account holder name(s)
+    origin: str = ISSUED     # Slice 9a (A3): who says this account exists
 
 
 @dataclass
@@ -164,6 +167,14 @@ def movement_key(doc_id: str, account: str, date: str, amount: Decimal | str,
 SPENDING = "spending"        # real external outflow — the only thing aggregates count
 TRANSFER = "transfer"        # the money is still yours (own card, own brokerage, ...)
 SETTLEMENT = "settlement"    # a person's ruling: repaid a loan, was paid back, ...
+# Slice 9a. A COMPOUND movement whose components are known but whose PROPORTIONS
+# are not — a mortgage payment is interest (spending) and principal (settlement)
+# and escrow (still yours) at once, and the split is printed on a statement we
+# do not have. Counting it all as spending overstates; counting none understates.
+# So it is neither: it gets its own line, named, with the document that would
+# resolve it. Stating "part of this is spending, I can't say how much" is the
+# honest answer, and it is the one the three-button question could not give.
+MIXED = "mixed"
 
 # How a nature was decided, strongest first. Carried on the movement so a figure
 # can explain itself (T1) and so the surface can show WHY something was excluded.
@@ -203,6 +214,44 @@ class MovementInfo:
     nature: str = SPENDING
     nature_reason: str = BY_DEFAULT
     provisional: bool = False
+    # Slice 9a — the chart-of-accounts path a ruling put this movement's
+    # counter-leg on ("Liabilities:Mortgage:Acme"). Derived, never posted: the
+    # posted counter-leg stays an Uncategorized bucket and this overlay is what
+    # every aggregate reads, so the whole chart of accounts stays reversible.
+    ruling_account: str = ""
+
+
+# --- majors → nature (Slice 9a) ---------------------------------------------
+# `nature` answers one question: did this money leave your LIFE, or only an
+# account? Each major answers it directly, which is why the four majors could
+# replace the three buttons without changing a single aggregate.
+_NATURE_OF_MAJOR = {
+    MAJOR_EXPENSE: SPENDING,      # gone — the only thing a spending figure counts
+    MAJOR_ASSET: TRANSFER,        # you still have it, in another form
+    MAJOR_LIABILITY: SETTLEMENT,  # what you owe changed; not consumption
+    MAJOR_INCOME: SPENDING,       # only read for expense-shaped movements, so inert
+}
+# Which leg names the account a ruling brings into being. A mortgage payment
+# creates the LOAN account, not an interest bucket, so the liability leads.
+_LEG_PRIORITY = (MAJOR_LIABILITY, MAJOR_ASSET, MAJOR_INCOME, MAJOR_EXPENSE)
+
+
+def nature_of_legs(legs: list[dict]) -> str:
+    """The nature a ruling's legs imply. One nature among them → that nature.
+    Several → ``MIXED``: the components are known and the proportions are not,
+    so neither counting it all nor dropping it all would be true."""
+    natures = {_NATURE_OF_MAJOR.get(leg.get("major", ""), SPENDING) for leg in legs}
+    if not natures:
+        return SPENDING
+    return natures.pop() if len(natures) == 1 else MIXED
+
+
+def _leading_account(legs: list[dict]) -> str:
+    for major in _LEG_PRIORITY:
+        for leg in legs:
+            if leg.get("major") == major and leg.get("account"):
+                return leg["account"]
+    return ""
 
 
 @dataclass
@@ -222,6 +271,7 @@ class _AccountState:
     institution: str = ""
     number: str = ""
     names: list = field(default_factory=list)
+    origin: str = ISSUED          # who says this account exists (Slice 9a, A3)
     closing_confirmed: bool = False            # a human attested the closing
     lines: list = field(default_factory=list)  # TxnLine per posting on this account
     # Holdings (Slice 6): instrument -> latest PositionObserved measurement (by
@@ -268,6 +318,11 @@ class LedgerProjection:
         # by}. The prior a transaction's category derives from when it has no
         # per-movement override. Highest-trust ruling wins.
         self._merchant_categories: dict[str, dict] = {}
+        # Rulings (Slice 9a): (scope, subject) -> body. One dict for all three
+        # scopes, which is the point of a generic Ruling — a movement ruling and
+        # a merchant ruling are looked up the same way, and a fourth scope later
+        # costs a constant, not an event type.
+        self._rulings: dict[tuple[str, str], dict] = {}
         # Own-account token index (Slice 6.5), built lazily and invalidated when a
         # new account is opened — used to recognize an internal movement even when
         # no transfer link was formed.
@@ -297,6 +352,10 @@ class LedgerProjection:
             st.institution = event.body.get("institution", "")
             st.number = event.body.get("account_number", "")
             st.names = list(event.body.get("account_names", []))
+            # Slice 9a (A3). Older events pre-date `origin` and are all
+            # document-born, so absent means `issued` — the honest reading, and
+            # it keeps every existing vault's meaning exactly as it was.
+            st.origin = event.body.get("origin", ISSUED)
             self._own_tokens_cache = None      # a new account changes the index
 
         elif et == "OpeningBalanceObserved":
@@ -347,6 +406,16 @@ class LedgerProjection:
             # A verified (human) ruling wins; otherwise the latest applies.
             if prior is None or event.body.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
                 self._categories[key] = event.body
+
+        elif et == "RulingRecorded":
+            key = (event.body["scope"], event.body["subject"])
+            prior = self._rulings.get(key)
+            # Same precedence as every other overlay: a person's ruling wins and
+            # is never silently overwritten by a model's later guess.
+            if prior is None or event.body.get("grade") == VERIFIED or prior.get("grade") != VERIFIED:
+                self._rulings[key] = event.body
+            if event.body["scope"] == SCOPE_ACCOUNT:
+                self._own_tokens_cache = None
 
         elif et in ("MerchantCategorized", "MerchantEnriched"):
             merchant = event.body["merchant"]
@@ -515,42 +584,57 @@ class LedgerProjection:
 
     def _own_account_tokens(self) -> dict[str, set[str]]:
         """Distinctive tokens for every account we hold, so a movement naming one
-        of them can be recognized as internal even when no link was formed."""
+        of them can be recognized as internal even when no link was formed.
+
+        ISSUED accounts only (Slice 9a). An `asserted` account is named after the
+        very counterparty whose payments created it — `Liabilities:Mortgage:Acme`
+        from "ACME MORTGAGE SERVICING" — so including it would make every one of
+        those payments look like an internal transfer to itself, silently
+        overriding the ruling the person just gave. Found by a test, not by a
+        real run, which is the whole reason this rung is tested at all."""
         if self._own_tokens_cache is None:
             self._own_tokens_cache = {
                 a: account_tokens(s.institution, s.number, s.name)
                 for a, s in self._acct.items()
-                if s.seen and s.kind in ("depository", "liability", "investment")}
+                if s.seen and s.kind in ("depository", "liability", "investment")
+                and s.origin == ISSUED}
         return self._own_tokens_cache
 
     def _decide_nature(self, m: "MovementInfo") -> None:
         """Decide what a movement IS, strongest evidence first (Slice 6.5).
 
         1. linked            — a live TransferLink. Decisive.
-        2. own account       — the description distinctively names another account
+        2. a human ruling    — you said what this is.
+        3. own account       — the description distinctively names another account
                                you hold (a card payment whose counterpart statement
                                was never ingested still isn't spending).
-        3. a human ruling    — you said what this is.
         4. category hint     — SUGGESTS internal; counted but marked provisional,
                                because one category can cover opposite natures.
         5. default           — spending.
-        """
+
+        Rungs 2 and 3 swapped in Slice 9a. A ruling is a person telling us what
+        something is; the own-account rung is a *heuristic* over description
+        text. When the two disagree the person is right, and letting a token
+        match override an explicit answer would be the worst kind of bug — the
+        product quietly ignoring what it was told."""
         if m.linked:
             m.nature, m.nature_reason = TRANSFER, BY_LINK
             return
-        # Rung 2: does this movement name one of YOUR OTHER accounts?
-        low = (m.description or "").lower()
-        for account, tokens in self._own_account_tokens().items():
-            if account == m.account:
-                continue                      # naming itself proves nothing
-            if tokens and any(tok in low for tok in tokens):
-                m.nature, m.nature_reason = TRANSFER, BY_OWN_ACCOUNT
-                return
-        # Rung 3: a person's explicit ruling — on this movement (the category
-        # overlay's body) or on its MERCHANT (the enrichment attributes bag, so a
-        # ruling settles every transaction from that counterparty, past and
-        # future). Neither needed a new event type; Move 3 is where a generic
-        # Ruling would go, if a fifth question type ever earns it.
+        # Rung 2: a person's explicit ruling. Three places, strongest first — a
+        # RulingRecorded on this movement, then one on its MERCHANT (so a single
+        # answer settles every transaction from that counterparty, past and
+        # future), then the older nature field carried on the category overlay /
+        # merchant attributes, which pre-date the generic Ruling and must keep
+        # working forever (an event written is a promise kept).
+        ruling = (self._rulings.get((SCOPE_MOVEMENT, m.key))
+                  or self._rulings.get((SCOPE_MERCHANT, normalize_merchant(m.description))))
+        if ruling and ruling.get("legs"):
+            m.nature, m.nature_reason = nature_of_legs(ruling["legs"]), BY_RULING
+            m.ruling_account = _leading_account(ruling["legs"])
+            # Components known, proportions not: uncertainty that is reported,
+            # never hidden, and never guessed at.
+            m.provisional = (m.nature == MIXED)
+            return
         nature = (self._categories.get(m.key) or {}).get("nature")
         if nature not in (TRANSFER, SETTLEMENT, SPENDING):
             merchant = self._merchant_categories.get(normalize_merchant(m.description)) or {}
@@ -558,6 +642,14 @@ class LedgerProjection:
         if nature in (TRANSFER, SETTLEMENT, SPENDING):
             m.nature, m.nature_reason = nature, BY_RULING
             return
+        # Rung 3: does this movement name one of YOUR OTHER accounts?
+        low = (m.description or "").lower()
+        for account, tokens in self._own_account_tokens().items():
+            if account == m.account:
+                continue                      # naming itself proves nothing
+            if tokens and any(tok in low for tok in tokens):
+                m.nature, m.nature_reason = TRANSFER, BY_OWN_ACCOUNT
+                return
         # Rung 4: the category/subcategory only SUGGESTS — provisional, never silent.
         derived = self.derived_category(m) or {}
         cat = (derived.get("category") or "").strip().lower()
@@ -665,6 +757,77 @@ class LedgerProjection:
         'why isn't this in my spending?'"""
         return [m for m in self.movements()
                 if self._is_expense(m) and m.nature != SPENDING]
+
+    def undecomposed(self, currency: str | None = None) -> dict:
+        """Money whose components are known but whose proportions are not — the
+        Slice 9a bucket (``MIXED``). A mortgage payment is interest *and*
+        principal *and* escrow; the ratio lives on a statement we do not have.
+
+        It is reported as its OWN line rather than folded into spending, because
+        both alternatives lie: counting it all restates the very overstatement
+        Slice 6.5 fixed, and dropping it silently understates. The honest answer
+        is "part of this was spent, I can't yet say how much — here is the
+        document that would tell us", and this is the figure behind it.
+
+        Returns ``{total, count, accounts, corroborates}`` — the last being the
+        documents that would resolve it, which is what makes the gap actionable
+        instead of merely admitted."""
+        total, count = Decimal("0"), 0
+        accounts: set[str] = set()
+        docs: set[str] = set()
+        for m in self.movements():
+            if m.nature != MIXED or not self._is_expense(m):
+                continue
+            if currency is not None and m.currency != currency:
+                continue
+            total += abs(m.amount)
+            count += 1
+            if m.ruling_account:
+                accounts.add(m.ruling_account)
+            ruling = (self._rulings.get((SCOPE_MOVEMENT, m.key))
+                      or self._rulings.get((SCOPE_MERCHANT, normalize_merchant(m.description))))
+            if ruling and ruling.get("corroborates"):
+                docs.add(ruling["corroborates"])
+        return {"total": total, "count": count,
+                "accounts": sorted(accounts), "corroborates": sorted(docs)}
+
+    def ruled_accounts(self) -> dict[str, dict]:
+        """The chart of accounts as a person's rulings have built it — every
+        `Assets:`/`Liabilities:` path a ruling names, with the cash that flowed
+        to it, how many movements, and whether the figure can be trusted as a
+        BALANCE.
+
+        Three honesty properties, all load-bearing for net worth (Slice 7):
+
+        * ``origin`` is ``asserted`` — nobody issued these accounts, you said so.
+        * ``reliable_balance`` is False whenever any contributing movement was
+          ``MIXED``. Cash reaching a mortgage account is a fact; treating that
+          cash as debt *reduction* is not, because part of it was interest. Net
+          worth must never quietly claim otherwise.
+        * the value recorded is **cost — what you paid** — never what a thing is
+          now worth (M1). A car account holds its purchase price, and any
+          present-day value is an `estimated` presentation layer on top."""
+        out: dict[str, dict] = {}
+        for m in self.movements():
+            if not m.ruling_account:
+                continue
+            row = out.setdefault(m.ruling_account, {
+                "account": m.ruling_account, "paid": Decimal("0"), "count": 0,
+                "currency": m.currency, "origin": ASSERTED,
+                "reliable_balance": True, "valuation": "measured"})
+            row["paid"] += abs(m.amount)
+            row["count"] += 1
+            if m.nature == MIXED:
+                row["reliable_balance"] = False
+                row["valuation"] = "estimated"
+        return out
+
+    def rulings(self, scope: str | None = None) -> list[dict]:
+        """Every ruling, optionally by scope — the audit trail for 'why does the
+        ledger think this?', and what a reset must preserve when it is a human's."""
+        return [dict(body, scope=s, subject=subj)
+                for (s, subj), body in sorted(self._rulings.items())
+                if scope is None or s == scope]
 
     def derived_category(self, m: "MovementInfo") -> dict | None:
         """A movement's effective category (Slice 5.5): a per-transaction override
@@ -780,7 +943,7 @@ class LedgerProjection:
         st = self._acct.get(account)
         if st is None or not st.seen:
             raise UnknownAccountError(account)
-        return AccountInfo(account=account, kind=st.kind,
+        return AccountInfo(account=account, kind=st.kind, origin=st.origin,
                            currency=st.currency, name=st.name,
                            institution=st.institution, number=st.number,
                            names=list(st.names))

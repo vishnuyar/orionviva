@@ -81,6 +81,8 @@ Model access (`ModelSpec`/adapters) · Claims record (the verbatim capture, exte
 
 # How it grows, stage by stage — with the options at each
 
+> _Concretised 2026-07-25 in [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md), which settles what the parse may emit: the **four majors** (expense/asset/liability/income) plus an account hint and an optional split. That supersedes the A1-vs-A2 framing below — the schema is neither "per question kind" nor "a union of ruling types" but **the counter-leg vocabulary**, which is the same for every question. The open decisions are now D1 (accounting words vs plain English on the surface) and D2 (when a parse may auto-apply)._
+
 ## Stage A — Viva listens, *inside a question* (Slice 9a)
 
 The narrow, safe beginning: you answer an existing question in your own words. Crucially, **the question supplies the context**, so the model is never parsing open-world intent — it is answering *"given that I asked about this merchant, what did they mean?"* That single constraint removes most of the hallucination surface.

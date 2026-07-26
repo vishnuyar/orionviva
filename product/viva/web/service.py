@@ -71,6 +71,17 @@ def overview(vault: Vault) -> dict:
         # How much of the spending figure rests on weak evidence, and what was
         # kept out of it and why (Slice 6.5) — the number states its own doubt.
         "provisional_spending": str(proj.provisional_spending()),
+        # Money whose components are known but whose PROPORTIONS are not
+        # (Slice 9a). Its own line, deliberately: folding it into spending
+        # would overstate and dropping it would understate, so the headline
+        # says "X spent, plus Y I can't split yet" and names the document.
+        "undecomposed": {k: (str(v) if not isinstance(v, list) else v)
+                         for k, v in proj.undecomposed().items()},
+        # The chart of accounts your own rulings built — asserted, not issued.
+        "ruled_accounts": [
+            {**row, "paid": str(row["paid"])}
+            for row in sorted(proj.ruled_accounts().values(),
+                              key=lambda r: -r["paid"])],
         "excluded_from_spending": [
             {"description": m.description, "amount": str(abs(m.amount)),
              "account": m.account, "date": m.date, "reason": m.nature_reason,
@@ -124,6 +135,97 @@ def rule_nature(vault: Vault, merchant: str, nature: str) -> dict:
     from ..ingest import rule_merchant_nature
     rule_merchant_nature(vault.ledger, merchant, nature, by="human")
     return {"ok": True}
+
+
+def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
+               kind: str = "") -> dict:
+    """Answer with one of the four majors (Slice 9a) — the button path.
+
+    Deterministic end to end: no model is involved when a person taps an answer,
+    so this works with nothing configured. It goes through the same `propose` /
+    `apply_proposal` pair the sentence path uses, so a tapped answer and a typed
+    one produce byte-identical events — free text is an alternative channel,
+    never a second mechanism."""
+    from ..listen import Interpretation, apply_proposal, propose
+    proj = vault.ledger.projection()
+    interp = Interpretation(
+        legs=[{"major": major, "account_hint": descriptor or merchant, "share": ""}],
+        kind=kind, said="")
+    proposal = propose(proj, interp, descriptor or merchant)
+    applied = apply_proposal(vault.ledger, proposal, _today())
+    return {"ok": True, **applied}
+
+
+def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
+              category: str = "", subcategory: str = "",
+              amount: str = "", currency: str = "") -> dict:
+    """Read a sentence and return a **Proposal** — nothing is written (X3).
+
+    The person sees what would change and how much money it moves before any of
+    it happens. With no model configured this returns `understood: False` and
+    the surface falls back to the buttons, which is the honest failure: we could
+    not read it, so we do not guess."""
+    from ..listen import listen
+    proj = vault.ledger.projection()
+    proposal = listen(proj, said, descriptor, amount=amount, currency=currency,
+                      movement_key=movement_key, category=category,
+                      subcategory=subcategory, extract_fn=_interpreter())
+    if proposal is None:
+        return {"understood": False,
+                "message": "I couldn't read that one — the buttons still work."}
+    return {"understood": True, "proposal": proposal.to_dict()}
+
+
+def apply_ruling(vault: Vault, proposal: dict) -> dict:
+    """Confirm a proposal. The only path from a sentence to the ledger."""
+    from ..listen import Proposal, apply_proposal
+    fields = {k: v for k, v in proposal.items() if k != "summary"}
+    return {"ok": True, **apply_proposal(vault.ledger, Proposal(**fields), _today())}
+
+
+def _today() -> str:
+    from datetime import date
+    return date.today().isoformat()
+
+
+def _interpreter():
+    """The live model edge for step 3, or None when nothing is configured.
+    Absent a model the whole queue keeps working — free text is an addition.
+
+    **Configured separately from the document reader, on purpose.** Reading a
+    statement is a hard vision task that wants the strongest model available;
+    reading *"this is my mortgage"* is a ~390-token text task a 4B model does
+    well. Forcing one setting for both would either overpay on every sentence or
+    under-read every statement. So `VIVA_INTERPRET_*` overrides `VIVA_MODEL_*`
+    per-field, and falls back to it when unset.
+
+    This is also the seam the local model goes through (D1's forward note):
+    point `VIVA_INTERPRET_BASE_URL` at Ollama or LM Studio and set
+    `VIVA_INTERPRET_KEY_ENV=none`, and no sentence a person types ever leaves
+    the machine — which is the whole promise, applied to the warmest surface in
+    the product."""
+    import os
+
+    def cfg(field, default=None):
+        return (os.environ.get(f"VIVA_INTERPRET_{field}")
+                or os.environ.get(f"VIVA_MODEL_{field}" if field != "MODEL" else "VIVA_MODEL")
+                or default)
+
+    model = os.environ.get("VIVA_INTERPRET_MODEL") or os.environ.get("VIVA_MODEL")
+    if not model:
+        return None
+    from merchantcore.enrich import model_extractor
+    from vivacore.models import ModelSpec
+    # A local server is keyless. `none` says so explicitly rather than leaving a
+    # missing key to fail three layers down with a confusing message.
+    key_env = cfg("KEY_ENV", "OPENROUTER_API_KEY")
+    return model_extractor(ModelSpec(
+        name="viva-listen", adapter=cfg("ADAPTER", "openai-compatible"),
+        model=model, base_url=cfg("BASE_URL"),
+        api_key_env=None if (key_env or "").lower() in ("", "none") else key_env,
+        # A sentence is short and the reply is ~60 tokens; the 8192 default just
+        # wastes a local model's KV cache.
+        max_tokens=512, json_mode=True))
 
 
 def categorize_review(vault: Vault, limit: int = 50) -> dict:

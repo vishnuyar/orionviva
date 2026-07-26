@@ -1,0 +1,404 @@
+"""Viva listens — a sentence becomes double-entry (Slice 9a).
+
+Full design: docs/from-your-words-to-the-ledger.md.
+
+The queue asks *"is this money spent, or moved?"* and offers three answers. Real
+money immediately produced two questions none of them fit: a mortgage payment
+(interest **and** principal **and** escrow, at once) and a car purchase
+(something you now *own*, which the ledger had no way to say). More answers in
+that vocabulary would only mean more wrong answers.
+
+The diagnosis was that `nature` stood in for something richer: **what the
+counter-leg IS**. That has a complete, centuries-old vocabulary — expense,
+asset, liability, income — with too many members and too many compound cases to
+put behind buttons. But it fits in a sentence. So free text here is not a
+convenience; it is the only practical interface to a complete ontology.
+
+The pipeline, and where the boundary sits:
+
+    1  frame_question      deterministic   the question queue (already built)
+    2  suggest_answers     deterministic   from merchant category/subcategory
+    3  interpret           ← THE MODEL     the sentence → a structured reading
+    4  resolve_account     deterministic   exact / candidate to confirm / new
+    5  propose             deterministic   legs, accounts, what changes
+    6  apply               deterministic   RulingRecorded (+ an asserted account)
+
+**The model touches step 3 only.** It never sees the ledger, never chooses an
+account, and never supplies a figure — amounts come from the movement, and
+`ruling_recorded` refuses an amount outright, so the boundary is structural
+rather than a line in a prompt (T2 / ADR-010).
+
+Two rulings from the author that shaped this (2026-07-25):
+
+* **A missing document never blocks a ruling.** Create the account, post the
+  cash, mark only the *decomposition* provisional, and ask for the 1098 or the
+  invoice as corroboration. Blocking would be deferential where it doesn't count.
+* **Confirmation is scoped to the account, not to every parse.** The expensive,
+  hard-to-reverse act is binding money to an account for the first time. After
+  that, the learned ruling applies in silence.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass, field
+
+from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
+                            MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_MERCHANT,
+                            SCOPE_MOVEMENT, UNVERIFIED, VERIFIED,
+                            account_opened, ruling_recorded)
+from .ledger.merchants import is_shareable, normalize_merchant
+from .ledger.postings import MAJOR_ROOTS, account_path
+
+log = logging.getLogger("viva.listen")
+
+# The surface never speaks these words (decision D1): the four majors are stored
+# and never shown. A person is asked whether they still *have* it, not whether it
+# is "an asset". Nobody should have to learn bookkeeping to use this product.
+#
+# Forward note: today these strings are fixed templates. A small local model
+# should later phrase them in the person's own language and tone — a Swedish user
+# getting a Swedish question, not a translated one. That is safe precisely
+# because phrasing touches no figure and no account, so it sits entirely outside
+# the T2 boundary, and it is small enough to run locally.
+PLAIN = {
+    MAJOR_EXPENSE: "Spent — the money is gone",
+    MAJOR_ASSET: "I still have it, in another form",
+    MAJOR_LIABILITY: "It changed what I owe",
+    MAJOR_INCOME: "Money that came to me",
+}
+
+# The document that would PROVE each kind of claim. Provenance is the product,
+# so a created account invites its paperwork — always to prove, never to unblock
+# (Vishnu, 2026-07-25). This is also the ladder from `asserted` to `issued`: the
+# document arriving is what upgrades the account.
+CORROBORATION = {
+    "vehicle": "invoice or bill of sale",
+    "property": "closing disclosure",
+    "mortgage": "mortgage statement or 1098",
+    "loan": "loan statement",
+    "investment": "brokerage statement",
+}
+
+# Where a major's account lives by default when the person gives no better hint.
+# One level under the root, free data (I5) — never a jurisdiction-shaped table.
+_DEFAULT_GROUP = {MAJOR_ASSET: "Other", MAJOR_LIABILITY: "Other",
+                  MAJOR_EXPENSE: "Other", MAJOR_INCOME: "Other"}
+
+
+# --------------------------------------------------------------------- step 2
+
+
+def suggest_answers(category: str = "", subcategory: str = "") -> list[dict]:
+    """Plain-language answers to offer *before* anyone types anything.
+
+    The common case should still be one tap: what we already know about the
+    merchant usually implies the major. Free text is the escape hatch for the
+    cases a button genuinely cannot hold, not a replacement for the fast path —
+    and because these are deterministic, the queue keeps working with **no model
+    configured at all**."""
+    cat, sub = (category or "").lower(), (subcategory or "").lower()
+    ordered: list[str] = []
+    if any(w in f"{cat} {sub}" for w in ("mortgage", "loan", "credit card", "debt")):
+        ordered = [MAJOR_LIABILITY, MAJOR_EXPENSE, MAJOR_ASSET]
+    elif any(w in f"{cat} {sub}" for w in ("auto", "vehicle", "real estate",
+                                           "investment", "transfer")):
+        ordered = [MAJOR_ASSET, MAJOR_EXPENSE, MAJOR_LIABILITY]
+    elif any(w in f"{cat} {sub}" for w in ("payroll", "salary", "refund", "rent")):
+        ordered = [MAJOR_INCOME, MAJOR_ASSET, MAJOR_EXPENSE]
+    else:
+        ordered = [MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY]
+    return [{"major": m, "label": PLAIN[m]} for m in ordered]
+
+
+# --------------------------------------------------------------------- step 3
+
+
+@dataclass
+class Interpretation:
+    """What a model may return from a sentence — meaning only, never money."""
+    legs: list[dict] = field(default_factory=list)   # {major, account_hint, share}
+    kind: str = ""                 # vehicle | property | mortgage | loan | ...
+    corroborates: str = ""         # the document that would prove it
+    confidence: float = 0.0
+    said: str = ""                 # the person's own words, kept (T3)
+
+    @property
+    def compound(self) -> bool:
+        return len(self.legs) > 1
+
+    @property
+    def shares_known(self) -> bool:
+        return bool(self.legs) and all(leg.get("share") for leg in self.legs)
+
+
+INTERPRET_PROMPT = """\
+A person was asked what one payment from their bank account was, and answered in
+their own words. Decide what the money BECAME. Reply with JSON only.
+
+Their answer: {said}
+The counterparty on the statement: {descriptor}
+What we already believe about that counterparty: {category} / {subcategory}
+
+Reply with:
+{{"legs": [{{"major": "...", "account_hint": "...", "share": ""}}],
+  "kind": "", "corroborates": "", "confidence": 0.0}}
+
+"major" must be exactly one of: expense, asset, liability, income.
+  expense   - money spent, consumed, gone
+  asset     - they still have it, in another form (a car, escrow, money lent out)
+  liability - what they owe changed (a loan or card paid down)
+  income    - money that came to them
+
+Rules that matter more than completeness:
+- Return SEVERAL legs when the payment is genuinely several things at once. A
+  mortgage payment is interest (expense), principal (liability) and escrow
+  (asset). List them in that order.
+- Leave "share" as "" unless the person themselves stated the proportions.
+  NEVER estimate or assume a split. An unknown split is the correct answer and
+  is handled properly downstream; a guessed one would put a wrong number in
+  someone's finances.
+- "account_hint" is a short human name for the thing, from THEIR words — "Model
+  3", "Acme mortgage". Not an account number, not a path.
+- "kind" is one of: vehicle, property, mortgage, loan, investment, or "".
+- Never output an amount, a date or a balance. You are reading meaning only.
+"""
+
+
+def interpret(said: str, descriptor: str = "", category: str = "",
+              subcategory: str = "", extract_fn=None) -> Interpretation:
+    """The one model call. Turns a sentence into a structured reading.
+
+    Anything the model returns that isn't in the closed vocabulary is dropped
+    rather than trusted, and an unparseable reply yields an empty
+    Interpretation — the caller then falls back to the buttons. A model being
+    unavailable or wrong must degrade the surface, never the ledger."""
+    if extract_fn is None:
+        return Interpretation(said=said)
+    prompt = INTERPRET_PROMPT.format(
+        said=said, descriptor=descriptor or "(unknown)",
+        category=category or "(unknown)", subcategory=subcategory or "(unknown)")
+    try:
+        raw = extract_fn(prompt)
+        body = json.loads(_strip_fence(raw))
+    except Exception as exc:                       # noqa: BLE001 - degrade, never raise
+        log.warning("interpret: could not read the model's reply (%s)", exc)
+        return Interpretation(said=said)
+    legs = []
+    # A model's reply is untrusted input, not a contract: `legs` arriving as a
+    # string, a number, or anything but a list of objects must degrade to "I
+    # didn't understand", never raise into the caller.
+    raw_legs = body.get("legs")
+    for leg in raw_legs if isinstance(raw_legs, list) else []:
+        if not isinstance(leg, dict):
+            log.warning("interpret: dropping a leg that isn't an object")
+            continue
+        major = str(leg.get("major", "")).strip().lower()
+        if major not in MAJORS:
+            log.warning("interpret: dropping leg with unknown major %r", major)
+            continue
+        legs.append({"major": major,
+                     "account_hint": str(leg.get("account_hint", "")).strip(),
+                     # A share is only ever honoured if the PERSON stated it;
+                     # a model-invented ratio is exactly the kind of confident
+                     # wrong number this project exists to refuse.
+                     "share": str(leg.get("share", "")).strip()})
+    return Interpretation(
+        legs=legs, kind=str(body.get("kind", "")).strip().lower(),
+        corroborates=str(body.get("corroborates", "")).strip(),
+        confidence=float(body.get("confidence") or 0.0), said=said)
+
+
+def _strip_fence(text: str) -> str:
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[-1]
+        t = t.rsplit("```", 1)[0]
+    return t.strip()
+
+
+# --------------------------------------------------------------------- step 4
+
+
+@dataclass
+class AccountMatch:
+    """How an account hint resolves. Deliberately the same three verdicts as
+    Slice 1.5's statement matcher — `same` / `ambiguous` / `new` — because this
+    is that matcher pointed at a new target, not a second mechanism."""
+    account: str
+    verdict: str               # "same" | "ambiguous" | "new"
+    candidate: str = ""
+    reason: str = ""
+
+
+def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatch:
+    """Which account does this belong to? — Slice 1.5's problem, re-pointed.
+
+    Exact match posts in silence; a near match asks; nothing matching proposes a
+    new account, which is the ONE thing this slice always confirms (D2).
+
+    Account sprawl is the failure mode here — `Assets:Car`, `Assets:Tesla`,
+    `Assets:My Car` — so the cure is the same one that tamed merchant
+    descriptors: normalize the name, and suggest what exists before offering to
+    create anything."""
+    want = _norm(hint)
+    known = set(proj.ruled_accounts()) | {
+        a for a in proj.accounts() if a.split(":")[0] == MAJOR_ROOTS.get(major)}
+    for account in sorted(known):
+        tail = _norm(account.split(":")[-1])
+        if want and tail == want:
+            return AccountMatch(account, "same", reason="an account you already have")
+    for account in sorted(known):
+        tail = _norm(account.split(":")[-1])
+        if want and tail and (want in tail or tail in want):
+            return AccountMatch(account, "ambiguous", candidate=account,
+                                reason=f"looks like your existing {account}")
+    proposed = account_path(major, group or _DEFAULT_GROUP.get(major, "Other"),
+                            hint.strip() or "Unnamed")
+    return AccountMatch(proposed, "new", reason="nothing like this exists yet")
+
+
+def _norm(text: str) -> str:
+    return " ".join((text or "").lower().replace("-", " ").split())
+
+
+# --------------------------------------------------------------------- step 5
+
+
+@dataclass
+class Proposal:
+    """A structured, *un-applied* intent — what would change, how much money it
+    moves, what it rests on, and what it does NOT know.
+
+    `Finding` is the read side's version of this; Proposal is its write-side
+    twin, and it is what makes X3 ("nothing irreversible without an explicit
+    yes") a property of the type rather than a rule anyone has to remember."""
+    scope: str
+    subject: str
+    legs: list[dict] = field(default_factory=list)
+    new_accounts: list[str] = field(default_factory=list)
+    confirm_accounts: list[str] = field(default_factory=list)
+    corroborates: str = ""
+    said: str = ""
+    unknown_split: bool = False
+    settles: int = 1
+    amount: str = ""
+    currency: str = ""
+
+    def summary(self) -> str:
+        """What Viva says back before anything is written. It must state the
+        money moved and — the part that matters — what it still doesn't know."""
+        what = ", ".join(PLAIN[leg["major"]].lower() for leg in self.legs)
+        head = (f"{self.currency} {self.amount}".strip()
+                + (f" across {self.settles} payments" if self.settles > 1 else ""))
+        parts = [f"I'd record {head} as: {what}."]
+        if self.new_accounts:
+            parts.append("This creates " + ", ".join(self.new_accounts)
+                         + " — new, and only you say it exists.")
+        if self.unknown_split:
+            parts.append("I can't tell how it splits between those, so I won't "
+                         "guess: the money is recorded, the split stays open.")
+        if self.corroborates:
+            parts.append(f"Your {self.corroborates} would let me prove this "
+                         "— it isn't needed to save it.")
+        return " ".join(parts)
+
+    def to_dict(self) -> dict:
+        return {"scope": self.scope, "subject": self.subject, "legs": self.legs,
+                "new_accounts": self.new_accounts,
+                "confirm_accounts": self.confirm_accounts,
+                "corroborates": self.corroborates, "said": self.said,
+                "unknown_split": self.unknown_split, "settles": self.settles,
+                "amount": self.amount, "currency": self.currency,
+                "summary": self.summary()}
+
+
+def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
+            currency: str = "", movement_key: str = "") -> Proposal:
+    """Turn a reading into a concrete, reviewable proposal — deterministically.
+
+    Scope follows the Slice 5.5 rule already in force: a **commercial** merchant
+    generalizes (one answer settles every payment to them, past and future), a
+    peer descriptor — a person's name on a Zelle — does not, because one payment
+    to a friend can be a gift and the next a loan."""
+    merchant = normalize_merchant(descriptor)
+    generalizes = bool(merchant) and is_shareable(merchant)
+    scope = SCOPE_MERCHANT if generalizes and not movement_key else SCOPE_MOVEMENT
+    subject = merchant if scope == SCOPE_MERCHANT else movement_key
+
+    legs, new_accounts, confirm = [], [], []
+    for leg in interp.legs:
+        match = resolve_account(proj, leg["major"], leg.get("account_hint", ""),
+                                group=_group_for(interp.kind, leg["major"]))
+        legs.append({"major": leg["major"], "account": match.account,
+                     "share": leg.get("share", "")})
+        if match.verdict == "new":
+            new_accounts.append(match.account)
+        elif match.verdict == "ambiguous":
+            confirm.append(match.candidate)
+
+    settles = 1
+    if scope == SCOPE_MERCHANT:
+        settles = sum(1 for m in proj.movements()
+                      if normalize_merchant(m.description) == merchant)
+    return Proposal(
+        scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
+        confirm_accounts=confirm,
+        corroborates=interp.corroborates or CORROBORATION.get(interp.kind, ""),
+        said=interp.said,
+        unknown_split=interp.compound and not interp.shares_known,
+        settles=max(settles, 1), amount=amount, currency=currency)
+
+
+def _group_for(kind: str, major: str) -> str:
+    if kind == "vehicle":
+        return "Vehicles" if major == MAJOR_ASSET else "Auto"
+    if kind == "property":
+        return "Property" if major == MAJOR_ASSET else "Mortgage"
+    if kind == "mortgage":
+        return "Escrow" if major == MAJOR_ASSET else "Mortgage"
+    if kind == "loan":
+        return "Loans"
+    if kind == "investment":
+        return "Investments"
+    return ""
+
+
+# --------------------------------------------------------------------- step 6
+
+
+def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
+                   by: str = "human") -> dict:
+    """Write it. Deterministic, and the only path from a sentence to the ledger.
+
+    An account the person brought into being is opened with `origin=asserted`
+    (A3) — the ledger must never lose track of the difference between what an
+    issuer attests and what you told it, because that is precisely what it can
+    and cannot vouch for later."""
+    grade = VERIFIED if by == "human" else UNVERIFIED
+    opened = []
+    for account in proposal.new_accounts:
+        major_root = account.split(":")[0]
+        kind = "liability" if major_root == "Liabilities" else "asset"
+        ledger.append(account_opened(
+            account, kind, account.split(":")[-1], proposal.currency or "USD",
+            occurred_at, origin=ASSERTED))
+        opened.append(account)
+    ledger.append(ruling_recorded(
+        proposal.scope, proposal.subject, occurred_at, legs=proposal.legs,
+        by=by, grade=grade, said=proposal.said,
+        corroborates=proposal.corroborates))
+    return {"scope": proposal.scope, "subject": proposal.subject,
+            "accounts_opened": opened, "settles": proposal.settles}
+
+
+def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "",
+           movement_key: str = "", category: str = "", subcategory: str = "",
+           extract_fn=None) -> Proposal | None:
+    """Steps 3–5 in one call: sentence in, reviewable Proposal out. Nothing is
+    written — applying is a separate, explicit act."""
+    interp = interpret(said, descriptor, category, subcategory, extract_fn)
+    if not interp.legs:
+        return None
+    return propose(proj, interp, descriptor, amount, currency, movement_key)

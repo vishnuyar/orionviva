@@ -46,6 +46,24 @@ function Picture({d}) {
             {open ? 'hide' : "show me what I left out"}</button>
         </div>
       )}
+      {/* Slice 9a: money whose components are known and whose split is not. Its
+          own line — folding it into spending would overstate, dropping it would
+          understate, and both would be the confident-wrong answer. */}
+      {Number(d.undecomposed?.total || 0) > 0 && (
+        <div className="quiet">
+          A further {money(d.undecomposed.total, d.spending?.currency)} across{' '}
+          {d.undecomposed.count} payment{d.undecomposed.count > 1 ? 's' : ''} was
+          part spending and part something else — I won't guess the split.
+          {d.undecomposed.corroborates?.length > 0 &&
+            ` Your ${d.undecomposed.corroborates.join(' or ')} would settle it.`}
+        </div>
+      )}
+      {(d.ruled_accounts || []).length > 0 && (
+        <div className="quiet">
+          Things you've told me you hold or owe:{' '}
+          {d.ruled_accounts.map(r => `${r.account.split(':').pop()} (${money(r.paid, r.currency)}${r.reliable_balance ? '' : ', balance unconfirmed'})`).join(', ')}.
+        </div>
+      )}
       {open && (
         <table>
           <tbody>

@@ -27,14 +27,12 @@ function Answers({q, onAnswer, onOpen}) {
   const [busy, setBusy] = useState(false)
   const act = async (fn) => { setBusy(true); try { await fn(); await onAnswer() } finally { setBusy(false) } }
 
-  if (q.kind === 'nature') {
-    const m = q.refs.merchant
+  if (q.kind === 'nature') return <NatureAnswer q={q} onAnswer={onAnswer} onOpen={onOpen} />
+  if (q.kind === 'corroboration') {
     return (
       <div className="row">
-        <button disabled={busy} onClick={() => act(() => api.ruleNature(m, 'spending'))}>Money I spent</button>
-        <button className="ghost" disabled={busy} onClick={() => act(() => api.ruleNature(m, 'transfer'))}>Moved between my accounts</button>
-        <button className="ghost" disabled={busy} onClick={() => act(() => api.ruleNature(m, 'settlement'))}>Something I now own</button>
-        <button className="link" onClick={() => onOpen(q)}>see the transactions</button>
+        <button className="ghost" onClick={() => onOpen(q)}>I have the {q.refs.document}</button>
+        <span className="tiny">Not needed to keep this — it just lets me prove it.</span>
       </div>
     )
   }
@@ -85,6 +83,75 @@ function CategoryPicker({categories, value, onChange}) {
       </select>
     </span>
   )
+}
+
+/* The four majors, in plain language, plus the sentence box (Slice 9a).
+ *
+ * The three old buttons could not hold what real money produced: a mortgage
+ * payment is three things at once, and a car is something you now OWN. So the
+ * buttons carry the common case and free text carries the rest — and the
+ * sentence never applies directly. It comes back as a proposal saying what
+ * would change and what it still doesn't know, and you press yes. */
+function NatureAnswer({q, onAnswer, onOpen}) {
+  const [busy, setBusy] = useState(false)
+  const [said, setSaid] = useState('')
+  const [typing, setTyping] = useState(false)
+  const [proposal, setProposal] = useState(null)
+  const [failed, setFailed] = useState('')
+  const m = q.refs.merchant
+
+  if (proposal) return (
+    <div className="proposal">
+      <div className="text">{proposal.summary}</div>
+      <div className="row">
+        <button disabled={busy} onClick={async () => {
+          setBusy(true)
+          try { await api.applyRuling(proposal); await onAnswer() } finally { setBusy(false) }
+        }}>Yes, record that</button>
+        <button className="ghost" onClick={() => { setProposal(null); setTyping(true) }}>Let me rephrase</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      <div className="row">
+        {(q.options || []).map(o => (
+          <button key={o.args.major} className={o === q.options[0] ? '' : 'ghost'} disabled={busy}
+                  onClick={() => act(() => api.ruleMajor(m, o.args.major, q.refs.descriptor))}>
+            {o.label}
+          </button>
+        ))}
+        {!typing && <button className="link" onClick={() => setTyping(true)}>{q.free_text}</button>}
+        <button className="link" onClick={() => onOpen(q)}>see the transactions</button>
+      </div>
+      {typing && (
+        <div className="row" style={{marginTop: 6}}>
+          <input type="text" autoFocus className="grow" value={said}
+                 placeholder="e.g. this is my mortgage — principal, interest and escrow"
+                 onChange={e => setSaid(e.target.value)}
+                 onKeyDown={e => { if (e.key === 'Enter') send() }} />
+          <button className="ghost" disabled={busy || !said.trim()} onClick={send}>Read it</button>
+        </div>
+      )}
+      {failed && <div className="why">{failed}</div>}
+    </div>
+  )
+
+  async function act(fn) { setBusy(true); try { await fn(); await onAnswer() } finally { setBusy(false) } }
+
+  async function send() {
+    setBusy(true); setFailed('')
+    try {
+      const r = await api.listen({
+        said, descriptor: q.refs.descriptor || m, category: q.refs.category,
+        subcategory: q.refs.subcategory, amount: q.amount, currency: q.currency,
+      })
+      // Not understood is an honest outcome, not an error: the buttons remain.
+      if (r.understood) { setProposal(r.proposal); setTyping(false) }
+      else setFailed(r.message)
+    } finally { setBusy(false) }
+  }
 }
 
 function MerchantAnswer({q, onAnswer, onOpen}) {

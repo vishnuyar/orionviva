@@ -86,8 +86,12 @@ def test_a_known_merchant_asks_whether_it_is_really_spending(tmp_path):
     (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
     assert q["scope"] == "pattern"
     assert "spent" in q["text"] and "own" in q["text"]
-    assert {o["args"]["nature"] for o in q["options"]} == {
-        "spending", "transfer", "settlement"}
+    # Slice 9a widened the answer space from three natures to the four majors,
+    # reached in plain language — and added the escape hatch for the compound
+    # answers ("interest, principal and escrow") no button set can hold.
+    assert {o["args"]["major"] for o in q["options"]} == {
+        "expense", "asset", "liability"}
+    assert q["free_text"]
 
 
 def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_path):

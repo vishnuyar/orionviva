@@ -53,7 +53,7 @@ from .logs import configure as configure_logging
 
 # The overlay event types categorization is made of — the only things removed.
 CATEGORIZATION_EVENTS = ("CategoryAssigned", "MerchantCategorized",
-                         "MerchantEnriched")
+                         "MerchantEnriched", "RulingRecorded")
 
 # A ruling a PERSON made is not derived data — it is the moat (CLAUDE.md: memory
 # of the user is what's defensible). A model call can regenerate a merchant
