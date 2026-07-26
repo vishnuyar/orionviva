@@ -194,6 +194,9 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
                            "still work, and nothing was lost.",
             "unparseable": "I got an answer back but couldn't make sense of it. "
                            "Try fewer words, or use a button.",
+            "too_long": "My reader went on far longer than this needs and never "
+                        "finished the answer. That's a setting on my side, not "
+                        "anything you did — the buttons still work.",
             "empty": "I read that, but couldn't tell what the money became. "
                      "Could you say what happened to it?",
         }.get(interp.failure, "I couldn't read that one — the buttons still work.")

@@ -7,6 +7,7 @@ transaction's category through ``normalize_merchant``, so this thin re-export
 keeps the ledger-layer import path stable (and ledger must not import ingest).
 """
 
-from merchantcore import NORMALIZER_VERSION, is_shareable, normalize_merchant
+from merchantcore import NORMALIZER_VERSION, is_shareable, is_conduit, normalize_merchant
 
-__all__ = ["normalize_merchant", "is_shareable", "NORMALIZER_VERSION"]
+__all__ = ["normalize_merchant", "is_shareable", "is_conduit",
+           "NORMALIZER_VERSION"]

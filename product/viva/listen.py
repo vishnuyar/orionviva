@@ -49,10 +49,14 @@ from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             SCOPE_MOVEMENT, UNVERIFIED, VERIFIED,
                             account_opened, ruling_recorded)
 from .ingest.prompt_library import interpret_prompt
-from .ledger.merchants import is_shareable, normalize_merchant
+from .ledger.merchants import is_conduit, is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 
 log = logging.getLogger("viva.listen")
+
+# An out-of-band marker for "the model ran past its token limit". Not an
+# exception, because the partial text is still worth logging and diagnosing.
+TRUNCATED_MARK = "\x00truncated\x00"
 
 # The surface never speaks these words (decision D1): the four majors are stored
 # and never shown. A person is asked whether they still *have* it, not whether it
@@ -181,8 +185,16 @@ def interpret(said: str, descriptor: str = "", category: str = "",
         log.warning("interpret: could not reach the model (%s)", exc)
         return Interpretation(said=said, failure="unreachable", detail=str(exc),
                               version=version)
+    truncated = (raw or "").startswith(TRUNCATED_MARK)
+    if truncated:
+        raw = raw[len(TRUNCATED_MARK):]
     body = _first_json_object(raw, require_key="legs")
     if body is None:
+        if truncated:
+            return Interpretation(
+                said=said, failure="too_long",
+                detail=f"the model ran past its token limit ({len(raw)} chars back)",
+                raw=raw, version=version)
         log.warning("interpret: no readable JSON object in the reply (%d chars)",
                     len(raw or ""))
         return Interpretation(said=said, failure="unparseable",
@@ -407,9 +419,21 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     peer descriptor — a person's name on a Zelle — does not, because one payment
     to a friend can be a gift and the next a loan."""
     merchant = normalize_merchant(descriptor)
-    generalizes = bool(merchant) and is_shareable(merchant)
+    # A conduit — a check, an ATM withdrawal, a wire — is never generalized, even
+    # when several share a descriptor. What the money was FOR differs every time.
+    generalizes = (bool(merchant) and is_shareable(descriptor)
+                   and not is_conduit(descriptor))
     scope = SCOPE_MERCHANT if generalizes and not movement_key else SCOPE_MOVEMENT
     subject = merchant if scope == SCOPE_MERCHANT else movement_key
+    if scope == SCOPE_MOVEMENT and not subject:
+        # Refuse rather than quietly settle a whole conduit bucket on one answer.
+        matches = [m for m in proj.movements()
+                   if normalize_merchant(m.description) == merchant]
+        if len(matches) != 1:
+            raise ValueError(
+                f"{descriptor!r} needs a specific transaction: it covers "
+                f"{len(matches)} movements that may each mean something different")
+        subject = matches[0].key
 
     legs, new_accounts, confirm = [], [], []
     for leg in interp.legs:
@@ -460,10 +484,15 @@ def one_shot_extractor(spec):
         result = adapter.extract([], prompt)
         if result.finish_reason == "length":
             # Not a transport failure and not a bad reading — a third thing,
-            # and it is the caller's job to refuse rather than to guess.
+            # and it is the caller's job to refuse rather than to guess. Marked
+            # so `interpret` can say "the model ran long" instead of the far
+            # less useful "couldn't make sense of it": those have different
+            # causes and different fixes (a smaller/less chatty model vs a
+            # clearer sentence), and a person deserves the one that helps.
             log.warning("interpret: the model ran past its limit (%d output tokens) "
                         "— refusing to stitch a bounded answer back together",
                         result.output_tokens)
+            return TRUNCATED_MARK + (result.text or "")
         return result.text
 
     return _extract

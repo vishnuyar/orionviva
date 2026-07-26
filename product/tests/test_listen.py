@@ -381,7 +381,10 @@ def test_interpretation_is_never_continued_across_truncation():
         assert spec.max_continuations is None          # the document-reading default
         out = one_shot_extractor(spec)("prompt")
         assert seen["max_continuations"] == 0          # ...overridden to one shot
-        assert out == '{"legs":[{"major":"expense"}]}'
+        # Truncation is marked, not stitched: the caller reports it as its own
+        # failure rather than guessing at the missing tail.
+        from viva.listen import TRUNCATED_MARK
+        assert out == TRUNCATED_MARK + '{"legs":[{"major":"expense"}]}'
     finally:
         models.adapter_for = real
 
@@ -390,7 +393,10 @@ def test_interpretation_is_never_continued_across_truncation():
 
 
 def _atm(tmp_path):
-    """The real shape: an ATM descriptor carrying its own date, place and card."""
+    """The real shape: an ATM descriptor carrying its own date, place and card.
+
+    Two withdrawals sharing a descriptor — which is a CONDUIT, so each is
+    answered separately. The tests pass a movement key for exactly that reason."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [
         ("2026-03-29", "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
@@ -405,9 +411,10 @@ def test_the_label_a_person_names_is_not_dropped(tmp_path):
     recorded only the major. Half the sentence reached the ledger and nothing
     said so — the worst kind of silence, because it looks like it worked."""
     ledger = _atm(tmp_path)
+    key = ledger.projection().movements()[0].key
     p = listen(ledger.projection(), "spent on playing poker, add it to poker category",
                "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
-               amount="1000.00", currency="USD",
+               movement_key=key, amount="500.00", currency="USD",
                extract_fn=_reply({"legs": [{"major": "expense", "account_hint": ""}],
                                   "category": "poker"}))
     assert p.category == "poker"
@@ -426,9 +433,10 @@ def test_the_document_line_is_never_the_models_free_text(tmp_path):
     it." Nonsense reaching a person is a trust failure even when the ledger is
     fine. Code maps kind -> document now; the model has no say."""
     ledger = _atm(tmp_path)
+    key = ledger.projection().movements()[0].key
     p = listen(ledger.projection(), "spent on playing poker",
                "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
-               amount="1000.00", currency="USD",
+               movement_key=key, amount="500.00", currency="USD",
                extract_fn=_reply({"legs": [{"major": "expense"}],
                                   "corroborates": "no", "kind": ""}))
     assert p.corroborates == ""
@@ -447,9 +455,10 @@ def test_ordinary_spending_creates_no_account(tmp_path):
     is an expense, not an asset with a name — and an account per answer is how
     the sprawl this slice worries about would actually start."""
     ledger = _atm(tmp_path)
+    key = ledger.projection().movements()[0].key
     p = listen(ledger.projection(), "spent on playing poker",
                "ATM Withdrawal 03/29 100 Example Rd Anytown Card 0000",
-               amount="1000.00", currency="USD",
+               movement_key=key, amount="500.00", currency="USD",
                extract_fn=_reply({"legs": [{"major": "expense", "account_hint": ""}],
                                   "category": "poker"}))
     applied = apply_proposal(ledger, p, "2026-07-25")
@@ -509,3 +518,87 @@ def test_each_failure_says_something_different_and_true(tmp_path):
         assert out["why"] == expected
         seen.add(out["message"])
     assert len(seen) == 3, "each failure needs its own honest sentence"
+
+
+def test_a_conduit_is_answered_one_transaction_at_a_time(tmp_path):
+    """Every check in a vault normalizes to the single token "check". Grouping
+    them as a merchant meant one question about all of them — so a person whose
+    checks were an earnest-money deposit and an initial deposit to open an
+    account could say only one thing (Vishnu, 2026-07-25). A check says HOW the
+    money moved, not who got it."""
+    from viva.ledger.merchants import is_conduit, is_shareable, normalize_merchant
+    from viva.questions import NATURE, open_questions
+
+    raw, ledger = _vault(tmp_path)
+    _checking(raw, ledger, [("2026-03-04", "Check # 1201", Decimal("-20000.00")),
+                            ("2026-03-11", "Check # 1202", Decimal("-500.00"))])
+
+    assert normalize_merchant("Check # 1201") == normalize_merchant("Check # 1202")
+    assert is_conduit("Check # 1201") and not is_shareable("Check # 1201")
+
+    qs = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    assert len(qs) == 2, "one question per check, not one for the bucket"
+    assert all(q["scope"] == "one" and q["count"] == 1 for q in qs)
+    assert all(q["refs"]["movement"] for q in qs)
+    assert "not who got it" in qs[0]["why"]
+    # Ranked by consequence, so the earnest money surfaces above the small one.
+    assert Decimal(qs[0]["amount"]) > Decimal(qs[1]["amount"])
+
+    # Two different answers, each landing on its own transaction.
+    proj = ledger.projection()
+    big = [m for m in proj.movements() if m.amount == Decimal("-20000.00")][0]
+    small = [m for m in proj.movements() if m.amount == Decimal("-500.00")][0]
+    earnest = listen(proj, "earnest money that went to the house down payment",
+                     big.description, movement_key=big.key, currency="USD",
+                     extract_fn=_reply({"legs": [{"major": "asset",
+                                                  "account_hint": "House"}],
+                                        "kind": "property"}))
+    apply_proposal(ledger, earnest, "2026-07-25")
+    proj = ledger.projection()
+    opening = listen(proj, "initial deposit to open a new bank account",
+                     small.description, movement_key=small.key, currency="USD",
+                     extract_fn=_reply({"legs": [{"major": "asset",
+                                                  "account_hint": "New account"}]}))
+    apply_proposal(ledger, opening, "2026-07-25")
+
+    proj = ledger.projection()
+    by_amount = {m.amount: m.ruling_account for m in proj.movements()}
+    assert by_amount[Decimal("-20000.00")] == "Assets:Property:House"
+    assert by_amount[Decimal("-500.00")] == "Assets:Other:New account"
+    assert sum(proj.spending_by_category("USD").values()) == Decimal("0")
+
+
+def test_a_conduit_answer_refuses_to_settle_the_whole_bucket(tmp_path):
+    """The guard behind it: asked to rule on a conduit without naming which
+    transaction, refuse loudly rather than quietly settle them all."""
+    import pytest
+
+    raw, ledger = _vault(tmp_path)
+    _checking(raw, ledger, [("2026-03-04", "Check # 1201", Decimal("-20000.00")),
+                            ("2026-03-11", "Check # 1202", Decimal("-500.00"))])
+    with pytest.raises(ValueError, match="needs a specific transaction"):
+        listen(ledger.projection(), "earnest money", "Check # 1201",
+               extract_fn=_reply({"legs": [{"major": "asset", "account_hint": "House"}]}))
+
+
+def test_running_past_the_token_limit_is_its_own_failure(tmp_path):
+    """"Couldn't make sense of it" and "ran on and never finished" have
+    different causes and different fixes — a clearer sentence versus a less
+    chatty model. Telling a person the first when it was the second sends them
+    to rewrite a sentence that was never the problem."""
+    from viva.listen import TRUNCATED_MARK
+
+    got = interpret("mortgage payments", "LENDER",
+                    extract_fn=lambda p: TRUNCATED_MARK +
+                    '{"legs": [{"major": "liabil')
+    assert got.failure == "too_long"
+    assert got.legs == []
+    assert "token limit" in got.detail
+    assert got.raw.startswith("{")          # the partial reply is kept, unmarked
+
+    # A truncated reply that nonetheless CONTAINS a complete object is fine —
+    # the model rambled after answering, which costs tokens, not correctness.
+    ok = interpret("mortgage payments", "LENDER",
+                   extract_fn=lambda p: TRUNCATED_MARK +
+                   '{"legs":[{"major":"liability"}]} and furthermore I should')
+    assert ok.legs and ok.failure == ""

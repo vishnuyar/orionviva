@@ -236,7 +236,23 @@ A clear, short, on-topic answer came back unread. Two defects, and the second is
 
 **Honest note:** the nesting fix addresses a *plausible* cause, not a confirmed one. The logging is what will actually identify it next time — which is itself the lesson. Two rounds of this slice's debugging were slowed by failures that had been swallowed on purpose.
 
-Five live failures, all of the same shape: **a design shaped by its hard cases, then meeting an ordinary one — and a habit of degrading silently where it should have degraded loudly.** Errors swallowed, a bounded answer stitched, a prompt assuming a bank, an account minted for a night out, four failures wearing one sentence. Graceful degradation is right in the product and wrong in everything that reports on it. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
+### Conduits: one question that could only take one answer
+
+Two checks came up as a single question — one had been earnest money that became a house down payment, the other an initial deposit to open an account — and there was room for one sentence.
+
+The cause is exact and was hiding in plain sight: **every check in a vault normalizes to the single token `check`.** So does the next one, and the one after. The merchant catalog treated that as a counterparty, the queue grouped by it, and one answer settled all of them.
+
+A check is not a counterparty. Neither is an ATM withdrawal, a wire, a teller deposit, a money order — they say **how** the money moved, not **who** got it, and the ledger has no idea what was on the other side. So a new notion sits beside `is_shareable` in merchantcore (impersonal, so it belongs there):
+
+**A conduit never generalizes.** It is asked about one transaction at a time, it never enters the shared catalog — `check` is not knowledge anyone can use — and `propose` **refuses** to rule on one without being told which transaction, rather than quietly settling the bucket. Conduit questions are also asked *before* the merchant path can claim them and without waiting for a category, because a conduit will never have a useful one.
+
+This is the same insight as the Zelle case from the design phase — *one payment to a friend is a gift, the next a loan* — and it generalizes: **the descriptor sometimes names the pipe, not the payee.** The spec had it for peers and missed it for instruments.
+
+### The recurring `unparseable`, and its real name
+
+`too_long` is now its own failure. The one-shot extractor marks a reply that hit the token limit, so *"I got an answer but couldn't make sense of it"* is no longer said when the truth is *"my reader went on far longer than this needs and never finished"*. Those have different causes and different fixes — a clearer sentence versus a less chatty model — and telling someone the first when it was the second sends them to rewrite a sentence that was never the problem. A truncated reply that nonetheless contains a complete object is still accepted: the model rambling *after* answering costs tokens, not correctness.
+
+Six live failures, all of the same shape: **a design shaped by its hard cases, then meeting an ordinary one — and a habit of degrading silently where it should have degraded loudly.** Errors swallowed, a bounded answer stitched, a prompt assuming a bank, an account minted for a night out, four failures wearing one sentence, two checks sharing one answer. Graceful degradation is right in the product and wrong in everything that reports on it. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
 
 ### Not done yet
 
