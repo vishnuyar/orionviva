@@ -29,7 +29,7 @@ import os
 import pathlib
 import sys
 
-from .env import load_dotenv
+from .env import currency_from_env, load_dotenv, locale_from_env
 from .logs import configure as configure_logging
 
 
@@ -119,8 +119,8 @@ def main() -> None:
     vault_dir = os.environ.get("VIVA_VAULT_DIR", os.path.expanduser("~/.viva-vault"))
     if not pathlib.Path(vault_dir).exists():
         raise SystemExit(f"No vault at {vault_dir}.")
-    locale = os.environ.get("VIVA_LOCALE", "en-US")
-    currency = os.environ.get("VIVA_CURRENCY", "USD")
+    locale = locale_from_env()
+    currency = currency_from_env()
 
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     show_raw = "--raw" in sys.argv[1:]
