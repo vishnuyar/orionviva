@@ -48,6 +48,7 @@ from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_MERCHANT,
                             SCOPE_MOVEMENT, UNVERIFIED, VERIFIED,
                             account_opened, ruling_recorded)
+from .ingest.prompt_library import interpret_prompt
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, account_path
 
@@ -131,6 +132,7 @@ class Interpretation:
     failure: str = ""              # "" | unreachable | unparseable | empty
     detail: str = ""               # the underlying error, verbatim
     raw: str = ""                  # what the model actually said
+    version: str = ""              # the prompt version that produced this (T8)
 
     @property
     def compound(self) -> bool:
@@ -141,41 +143,16 @@ class Interpretation:
         return bool(self.legs) and all(leg.get("share") for leg in self.legs)
 
 
-INTERPRET_PROMPT = """\
-A person was asked what one payment from their bank account was, and answered in
-their own words. Decide what the money BECAME. Reply with JSON only.
-
-Their answer: {said}
-The counterparty on the statement: {descriptor}
-What we already believe about that counterparty: {category} / {subcategory}
-
-Reply with:
-{{"legs": [{{"major": "...", "account_hint": "...", "share": ""}}],
-  "kind": "", "corroborates": "", "confidence": 0.0}}
-
-"major" must be exactly one of: expense, asset, liability, income.
-  expense   - money spent, consumed, gone
-  asset     - they still have it, in another form (a car, escrow, money lent out)
-  liability - what they owe changed (a loan or card paid down)
-  income    - money that came to them
-
-Rules that matter more than completeness:
-- Return SEVERAL legs when the payment is genuinely several things at once. A
-  mortgage payment is interest (expense), principal (liability) and escrow
-  (asset). List them in that order.
-- Leave "share" as "" unless the person themselves stated the proportions.
-  NEVER estimate or assume a split. An unknown split is the correct answer and
-  is handled properly downstream; a guessed one would put a wrong number in
-  someone's finances.
-- "account_hint" is a short human name for the thing, from THEIR words — "Model
-  3", "Acme mortgage". Not an account number, not a path.
-- "kind" is one of: vehicle, property, mortgage, loan, investment, or "".
-- Never output an amount, a date or a balance. You are reading meaning only.
-"""
+# The prompt lives in the versioned, append-only library with every other one
+# (`viva/ingest/prompt_library.py`), not as a constant here. A recorded ruling
+# stamps its `prompt_version`, so tuning the text never silently invalidates the
+# readings made before the change — and eval runs stay comparable across time.
+INTERPRET_VERSION = "interpret-v1"
 
 
 def interpret(said: str, descriptor: str = "", category: str = "",
-              subcategory: str = "", extract_fn=None) -> Interpretation:
+              subcategory: str = "", extract_fn=None,
+              source: str = "", version: str = INTERPRET_VERSION) -> Interpretation:
     """The one model call. Turns a sentence into a structured reading.
 
     Anything the model returns that isn't in the closed vocabulary is dropped
@@ -184,9 +161,14 @@ def interpret(said: str, descriptor: str = "", category: str = "",
     unavailable or wrong must degrade the surface, never the ledger."""
     if extract_fn is None:
         return Interpretation(said=said, failure="unreachable",
-                              detail="no model configured")
-    prompt = INTERPRET_PROMPT.format(
-        said=said, descriptor=descriptor or "(unknown)",
+                              detail="no model configured", version=version)
+    text, version = interpret_prompt(version)
+    prompt = text.format(
+        said=said, counterparty=descriptor or "(unknown)",
+        # The movement may come from a bank, a card, a brokerage, a loan account
+        # or a wallet — the reading must not assume one (I5). When we do know,
+        # say so plainly; when we do not, say that instead of implying a bank.
+        source=source or "(an account they hold)",
         category=category or "(unknown)", subcategory=subcategory or "(unknown)")
     try:
         raw = extract_fn(prompt)
@@ -194,14 +176,15 @@ def interpret(said: str, descriptor: str = "", category: str = "",
         # The call never landed: wrong model name, server down, bad base URL,
         # a rejected parameter. NOT the model declining.
         log.warning("interpret: could not reach the model (%s)", exc)
-        return Interpretation(said=said, failure="unreachable", detail=str(exc))
+        return Interpretation(said=said, failure="unreachable", detail=str(exc),
+                              version=version)
     body = _first_json_object(raw)
     if body is None:
         log.warning("interpret: no readable JSON object in the reply (%d chars)",
                     len(raw or ""))
         return Interpretation(said=said, failure="unparseable",
                               detail="no complete JSON object in the reply",
-                              raw=raw or "")
+                              raw=raw or "", version=version)
     legs = []
     # A model's reply is untrusted input, not a contract: `legs` arriving as a
     # string, a number, or anything but a list of objects must degrade to "I
@@ -227,7 +210,7 @@ def interpret(said: str, descriptor: str = "", category: str = "",
         confidence=float(body.get("confidence") or 0.0), said=said,
         failure="" if legs else "empty",
         detail="" if legs else "valid JSON, but no usable legs",
-        raw=raw or "")
+        raw=raw or "", version=version)
 
 
 def _first_json_object(text: str) -> dict | None:
@@ -342,6 +325,7 @@ class Proposal:
     settles: int = 1
     amount: str = ""
     currency: str = ""
+    prompt_version: str = ""       # which instructions read the sentence (T8)
 
     def summary(self) -> str:
         """What Viva says back before anything is written. It must state the
@@ -368,6 +352,7 @@ class Proposal:
                 "corroborates": self.corroborates, "said": self.said,
                 "unknown_split": self.unknown_split, "settles": self.settles,
                 "amount": self.amount, "currency": self.currency,
+                "prompt_version": self.prompt_version,
                 "summary": self.summary()}
 
 
@@ -405,7 +390,8 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         corroborates=interp.corroborates or CORROBORATION.get(interp.kind, ""),
         said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
-        settles=max(settles, 1), amount=amount, currency=currency)
+        settles=max(settles, 1), amount=amount, currency=currency,
+        prompt_version=interp.version)
 
 
 def one_shot_extractor(spec):
@@ -474,17 +460,19 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
     ledger.append(ruling_recorded(
         proposal.scope, proposal.subject, occurred_at, legs=proposal.legs,
         by=by, grade=grade, said=proposal.said,
-        corroborates=proposal.corroborates))
+        corroborates=proposal.corroborates,
+        prompt_version=proposal.prompt_version))
     return {"scope": proposal.scope, "subject": proposal.subject,
             "accounts_opened": opened, "settles": proposal.settles}
 
 
 def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "",
            movement_key: str = "", category: str = "", subcategory: str = "",
-           extract_fn=None) -> Proposal | None:
+           extract_fn=None, source: str = "") -> Proposal | None:
     """Steps 3–5 in one call: sentence in, reviewable Proposal out. Nothing is
     written — applying is a separate, explicit act."""
-    interp = interpret(said, descriptor, category, subcategory, extract_fn)
+    interp = interpret(said, descriptor, category, subcategory, extract_fn,
+                       source=source)
     if not interp.legs:
         return None
     return propose(proj, interp, descriptor, amount, currency, movement_key)

@@ -198,7 +198,17 @@ The fix, and the principle behind it:
 - `_first_json_object` finds the first *balanced* object anywhere in the reply, so fences, reasoning traces and trailing pleasantries stop costing us a good reading. The balance check matters more than the leniency: **a truncated reply is refused rather than half-read**, because a cut-off reading is not partial, it is unknown, and guessing the rest is how a wrong ruling gets written and then generalized.
 - `max_tokens` raised to 1024 — headroom for models that think out loud, which now costs tokens but never costs the reading.
 
-Two live failures, two of the same shape: **a mechanism that is correct for document extraction, applied unexamined to interpretation.** The first swallowed errors; the second stitched a bounded answer. Reading a 40-page statement and reading a six-word sentence are not the same problem, and shared infrastructure has to be told which one it is in.
+### The prompt: bank-shaped, and outside the library
+
+Two problems, both spotted by Vishnu on reading the rendered prompt (2026-07-25).
+
+**It assumed a bank.** *"one payment from their bank account"*, *"the counterparty on the statement"* — but the vault already holds cards, brokerages and retirement accounts, and will hold loan accounts and wallets. That framing quietly mis-describes every one of them, and it is the same I5 failure the project has caught before in other places: an assumption baked into universal code instead of arriving as data. `interpret-v1` now says *"ONE movement of their money"*, names the actual instrument through a `{source}` placeholder the service fills from the account's own kind, and states explicitly that the movement may come from any instrument in any country.
+
+**It was a module constant, not a versioned prompt.** Slice 2 established prompts as **retained, addressable, append-only data**, with a frozen-hash test enforcing that a released version's text can never change. `INTERPRET_PROMPT` lived in `listen.py` as a plain string — rewritable in place. Tuning it would have silently reinterpreted every ruling recorded before the change, with no way to recover what the model had actually been told, and would have made eval runs incomparable across time. It now lives in `prompt_library.py` as `interpret-v1` with named placeholders, and **every ruling stamps its `prompt_version`** so a stored ruling resolves to the exact instructions that read it (T8).
+
+The general shape, again: a discipline the project already had, not applied to new code because the new code arrived from a different direction. Worth a habit — *when a slice makes a model call, its prompt goes in the library and its version goes on the event.*
+
+Three live failures, all of the same shape: **an existing discipline not carried across to new code that arrived from a different direction.** The first swallowed errors, the second stitched a bounded answer, the third hardcoded a prompt that assumed a bank. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
 
 ### Not done yet
 

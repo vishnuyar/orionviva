@@ -18,6 +18,7 @@ from ..ingest import (SEED_CATEGORIES, apply_human_correction,
                       confirm_transfer, held_items, other_holds,
                       reject_transfer)
 from ..ingest.identity import masked
+from ..ledger.merchants import normalize_merchant as normalize
 from ..ledger import UnknownAccountError
 from ..vault import Vault
 
@@ -167,13 +168,37 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
     not read it, so we do not guess."""
     from ..listen import listen
     proj = vault.ledger.projection()
+    # Name the instrument the movement actually sat in — a card, a brokerage, a
+    # loan account — instead of letting the prompt assume a bank (I5).
+    source = ""
+    for m in proj.movements():
+        if movement_key and m.key == movement_key:
+            source = _describe_source(proj, m.account)
+            break
+        if not movement_key and normalize(m.description) == normalize(descriptor):
+            source = _describe_source(proj, m.account)
+            break
     proposal = listen(proj, said, descriptor, amount=amount, currency=currency,
                       movement_key=movement_key, category=category,
-                      subcategory=subcategory, extract_fn=_interpreter())
+                      subcategory=subcategory, extract_fn=_interpreter(),
+                      source=source)
     if proposal is None:
         return {"understood": False,
                 "message": "I couldn't read that one — the buttons still work."}
     return {"understood": True, "proposal": proposal.to_dict()}
+
+
+def _describe_source(proj, account: str) -> str:
+    """A plain-language name for the instrument a movement sat in. Never a bank
+    by assumption: the vault holds cards, brokerages and (soon) loan accounts,
+    and a prompt that says "your bank account" mis-frames all of them."""
+    try:
+        info = proj.account_info(account)
+    except Exception:                              # noqa: BLE001
+        return ""
+    kind = {"depository": "a bank or cash account", "liability": "a credit account",
+            "investment": "an investment account"}.get(info.kind, "an account they hold")
+    return f"{info.name or account} — {kind}" if info.name else kind
 
 
 def apply_ruling(vault: Vault, proposal: dict) -> dict:

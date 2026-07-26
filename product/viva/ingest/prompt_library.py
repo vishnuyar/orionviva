@@ -287,12 +287,71 @@ performance/return percentages.
 
 # ---------------------------------------------------------------- resolvers
 
-_ALL: dict[str, str] = {**CLASSIFY_PROMPTS, **EXTRACT_BASE, **TYPE_FRAGMENTS}
+# ------------------------------------------------------- interpret phase (9a)
+#
+# Slice 9a's single model call: a person's own sentence about ONE movement →
+# the four majors. Kept here, versioned and append-only, for the same reason
+# every other prompt is: a recorded ruling must resolve to the exact text that
+# produced it (T8). Without that, tuning this prompt silently invalidates every
+# ruling made before the change and makes eval runs incomparable across time.
+#
+# Placeholders: {said} {counterparty} {source} {category} {subcategory}
+INTERPRET_PROMPTS: dict[str, str] = {
+    "interpret-v1": """\
+A person was asked what ONE movement of their money was, and answered in their
+own words. Decide what the money BECAME. Reply with JSON only.
+
+Their answer: {said}
+The other party, as it appeared in the record: {counterparty}
+Where it was recorded: {source}
+What we already believe about that other party: {category} / {subcategory}
+
+Reply with:
+{{"legs": [{{"major": "...", "account_hint": "...", "share": ""}}],
+  "kind": "", "corroborates": "", "confidence": 0.0}}
+
+"major" must be exactly one of: expense, asset, liability, income.
+  expense   - money spent, consumed, gone
+  asset     - they still have it, in another form (a vehicle, a deposit held for
+              them, money lent out, a holding, cash withdrawn)
+  liability - what they owe changed (any borrowing repaid or drawn down)
+  income    - money that came to them
+
+Rules that matter more than completeness:
+- Return SEVERAL legs when one payment is genuinely several things at once, and
+  order them most-certain first. This is common wherever a single instalment
+  covers a cost, a repayment and an amount held on their behalf.
+- Leave "share" as "" unless the person themselves stated the proportions.
+  NEVER estimate or assume a split. An unknown split is the CORRECT answer and
+  is handled properly downstream; a guessed one would put a wrong number in
+  someone's finances.
+- "account_hint" is a short human name for the thing, taken from THEIR words.
+  Not an account number, not a path, not a category.
+- "kind" is one of: vehicle, property, mortgage, loan, investment, insurance,
+  tax, or "" when none fits. It only routes a follow-up question — leave it
+  empty rather than forcing it.
+- The movement may come from any financial instrument, in any country: a bank
+  or card account, a brokerage or retirement account, a loan account, a wallet.
+  Do not assume a bank, a currency, or a jurisdiction.
+- Never output an amount, a date or a balance. You are reading meaning only.
+""",
+}
+
+
+_ALL: dict[str, str] = {**CLASSIFY_PROMPTS, **EXTRACT_BASE, **TYPE_FRAGMENTS,
+                        **INTERPRET_PROMPTS}
 
 
 def classify_prompt(version: str = "classify-v2") -> tuple[str, str]:
     """The classification prompt text and its version id (v2 knows pay stubs)."""
     return CLASSIFY_PROMPTS[version], version
+
+
+def interpret_prompt(version: str = "interpret-v1") -> tuple[str, str]:
+    """The interpretation prompt and its version id (Slice 9a). The caller fills
+    the placeholders; the version is stamped on the ruling so the reading stays
+    reproducible after the text is superseded."""
+    return INTERPRET_PROMPTS[version], version
 
 
 def compose_extraction(base_version: str, fragment_version: str) -> tuple[str, str]:
