@@ -1,0 +1,96 @@
+{
+  "version": "listen-key-v1",
+  "frozen": "2026-07-25",
+  "note": "Frozen answer key for Slice 9a interpretation. Every sentence is SYNTHETIC and every counterparty is invented — no real merchant, amount, account or person appears here, so this file is safe in a public repo (T9). `accept` lists the major-sets a correct reading may produce; several of these are genuinely ambiguous to a person too, and a key that pretended otherwise would measure obedience rather than understanding.",
+  "cases": [
+    {"id": "groceries", "said": "just food shopping", "descriptor": "CORNER GROCERY",
+     "category": "food", "subcategory": "grocery",
+     "accept": [["expense"]], "shares_stated": false},
+
+    {"id": "car-bought", "said": "i bought a car", "descriptor": "NORTHSIDE MOTORS",
+     "category": "transport", "subcategory": "auto dealer",
+     "accept": [["asset"]], "kind": "vehicle", "shares_stated": false},
+
+    {"id": "mortgage-plain", "said": "this is my mortgage", "descriptor": "PINEBROOK LOAN SERVICING",
+     "category": "housing", "subcategory": "mortgage",
+     "accept": [["asset", "expense", "liability"], ["expense", "liability"]],
+     "kind": "mortgage", "shares_stated": false, "compound": true},
+
+    {"id": "mortgage-spelled", "said": "principal, interest and escrow on my house",
+     "descriptor": "PINEBROOK LOAN SERVICING", "category": "housing", "subcategory": "mortgage",
+     "accept": [["asset", "expense", "liability"]], "kind": "mortgage",
+     "shares_stated": false, "compound": true},
+
+    {"id": "mortgage-split-stated", "said": "it was half interest and half principal",
+     "descriptor": "PINEBROOK LOAN SERVICING", "category": "housing", "subcategory": "mortgage",
+     "accept": [["expense", "liability"]], "shares_stated": true, "compound": true},
+
+    {"id": "card-paid", "said": "i paid off my credit card", "descriptor": "MERIDIAN CARD SERVICES",
+     "category": "transfers", "subcategory": "credit card payment",
+     "accept": [["liability"]], "shares_stated": false},
+
+    {"id": "car-loan", "said": "that paid my car loan", "descriptor": "HARBOR AUTO FINANCE",
+     "category": "loan_payments", "subcategory": "auto loan",
+     "accept": [["liability"], ["expense", "liability"]], "kind": "loan", "shares_stated": false},
+
+    {"id": "student-loan", "said": "student loan payment", "descriptor": "EDUFUND SERVICING",
+     "category": "loan_payments", "subcategory": "student loan",
+     "accept": [["liability"], ["expense", "liability"]], "kind": "loan", "shares_stated": false},
+
+    {"id": "lent-money", "said": "i lent that to a friend, he's paying it back",
+     "descriptor": "ZELLE PAYMENT", "category": "transfers", "subcategory": "peer to peer",
+     "accept": [["asset"]], "kind": "loan", "shares_stated": false},
+
+    {"id": "gift", "said": "a birthday gift for my sister", "descriptor": "ZELLE PAYMENT",
+     "category": "transfers", "subcategory": "peer to peer",
+     "accept": [["expense"]], "shares_stated": false},
+
+    {"id": "salary", "said": "that's my paycheck", "descriptor": "ACME CORP PAYROLL",
+     "category": "income", "subcategory": "salary",
+     "accept": [["income"]], "shares_stated": false},
+
+    {"id": "refund", "said": "they refunded me for the return", "descriptor": "BRIGHTWAY RETAIL",
+     "category": "shopping", "subcategory": "general",
+     "accept": [["income"], ["expense"]], "shares_stated": false},
+
+    {"id": "rent-paid", "said": "my rent", "descriptor": "OAKFIELD PROPERTY MGMT",
+     "category": "housing", "subcategory": "rent",
+     "accept": [["expense"]], "shares_stated": false},
+
+    {"id": "rent-received", "said": "rent from my tenant", "descriptor": "INBOUND TRANSFER",
+     "category": "income", "subcategory": "rental",
+     "accept": [["income"]], "shares_stated": false},
+
+    {"id": "atm", "said": "i took cash out", "descriptor": "ATM WITHDRAWAL",
+     "category": "transfers", "subcategory": "cash",
+     "accept": [["asset"], ["expense"]], "shares_stated": false},
+
+    {"id": "savings", "said": "moved it to my savings", "descriptor": "ONLINE TRANSFER",
+     "category": "transfers", "subcategory": "internal",
+     "accept": [["asset"]], "shares_stated": false},
+
+    {"id": "retirement", "said": "my 401k contribution", "descriptor": "RETIREMENT PLAN SVCS",
+     "category": "investments", "subcategory": "retirement",
+     "accept": [["asset"]], "kind": "investment", "shares_stated": false},
+
+    {"id": "insurance", "said": "car insurance premium", "descriptor": "SAFEHARBOR INSURANCE",
+     "category": "insurance", "subcategory": "auto",
+     "accept": [["expense"]], "shares_stated": false},
+
+    {"id": "deposit", "said": "the security deposit on the apartment — i get it back at the end",
+     "descriptor": "OAKFIELD PROPERTY MGMT", "category": "housing", "subcategory": "rent",
+     "accept": [["asset"]], "shares_stated": false},
+
+    {"id": "house-closing", "said": "this was the down payment when we closed on the house",
+     "descriptor": "SUMMIT TITLE COMPANY", "category": "housing", "subcategory": "real estate",
+     "accept": [["asset"], ["asset", "expense"]], "kind": "property", "shares_stated": false},
+
+    {"id": "hoa", "said": "hoa dues", "descriptor": "RIDGEVIEW HOA",
+     "category": "housing", "subcategory": "fees",
+     "accept": [["expense"]], "shares_stated": false},
+
+    {"id": "vague", "said": "not sure really", "descriptor": "UNCLEAR MERCHANT",
+     "category": "", "subcategory": "",
+     "accept": [["expense"]], "shares_stated": false, "vague": true}
+  ]
+}
