@@ -1,0 +1,8 @@
+This is a brokerage / investment / retirement account statement. It reports the
+HOLDINGS (positions) in the account and their value as of the statement date, plus
+any cash. The identity is: (sum of every position's market value) + cash = the
+total account value. List EVERY holding from ALL sections (equities, funds, bonds,
+and any cash/sweep line shown separately) — completeness matters most; a missing
+holding breaks the identity and will be caught. Capture cost basis only where the
+statement prints it. Do not read performance/return percentages — only holdings,
+their units and value, cash, and the total.

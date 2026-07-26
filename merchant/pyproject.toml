@@ -22,3 +22,10 @@ include = ["merchantcore*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Prompts are DATA and must ship with the wheel. A packaging slip here is
+# invisible in a checkout and fatal in an install: `resolve()` would raise on a
+# version that plainly exists in the repo. X1 — the toolchain is a contributor's
+# problem, never a user's.
+[tool.setuptools.package-data]
+"merchantcore" = ["prompts/*.txt"]

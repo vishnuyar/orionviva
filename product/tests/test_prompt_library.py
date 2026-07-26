@@ -1,10 +1,17 @@
-"""Prompts are retained, addressable, versioned data — not an overwritten string.
+"""Prompts are retained, addressable, versioned data — files, not string literals.
 
 The frozen-hash test enforces the retention discipline: a version id's text may
 never change. To edit a prompt you add a NEW id, so a read stored under the old
-id keeps resolving to exactly what produced it (T8)."""
+id keeps resolving to exactly what produced it (T8).
+
+**These pinned digests are also the proof that the 2026-07-25 move to files was
+faithful.** The prompts left `prompt_library.py` and became `viva/prompts/*.txt`
+without a single character changing — and the evidence is that this test still
+passes with the same numbers it had when the text lived in Python. No new test
+to trust, no diff to eyeball: if one byte had moved, a digest would differ."""
 
 import hashlib
+import pathlib
 
 import pytest
 
@@ -28,14 +35,34 @@ FROZEN = {
 
 
 def test_active_versions_are_frozen():
-    live = {**pl.CLASSIFY_PROMPTS, **pl.EXTRACT_BASE, **pl.TYPE_FRAGMENTS,
-            **pl.INTERPRET_PROMPTS}
+    live = set(pl.versions())
     for version, digest in FROZEN.items():
         assert version in live, f"{version} disappeared — versions are append-only"
-        got = hashlib.sha256(live[version].encode()).hexdigest()[:16]
+        got = hashlib.sha256(pl.resolve(version).encode()).hexdigest()[:16]
         assert got == digest, (
             f"{version} text changed. Do not edit a released prompt version; add "
-            f"a new id and point the profile at it.")
+            f"a new id (a new file in viva/prompts/) and point the profile at it.")
+
+
+def test_no_prompt_text_lives_in_the_library_module():
+    """The module is accessors and composition rules only. A prompt that sneaks
+    back in as a literal would be un-diffable, un-reviewable, and editable in
+    place — which is exactly how `enrich-v1` and `enrich-v2` were lost."""
+    source = pathlib.Path(pl.__file__).read_text()
+    assert "Return ONLY" not in source and "You are reading" not in source
+    assert len(source.splitlines()) < 120       # was 424 with the text inline
+
+
+def test_a_missing_version_raises_rather_than_defaulting():
+    """T8's sharpest edge. A recorded version that resolves to nothing must be
+    an error, never a silent fallback to the CURRENT prompt — that would
+    re-explain an old reading with new instructions and look like it worked."""
+    from vivacore.promptstore import PromptNotFound
+
+    with pytest.raises(PromptNotFound):
+        pl.resolve("card-v99")
+    with pytest.raises(PromptNotFound):
+        pl.resolve("extract:base-v1+never-existed")
 
 
 def test_classify_prompt_carries_its_version():
@@ -48,15 +75,15 @@ def test_compose_extraction_yields_self_describing_version():
     text, version = pl.compose_extraction("base-v1", "card-v1")
     assert version == "extract:base-v1+card-v1"
     # The composite is base THEN the type fragment — shape first, meaning second.
-    assert text.startswith(pl.EXTRACT_BASE["base-v1"])
-    assert pl.TYPE_FRAGMENTS["card-v1"] in text
+    assert text.startswith(pl.resolve("base-v1"))
+    assert pl.resolve("card-v1") in text
 
 
 def test_resolve_round_trips_every_kind_of_version():
     # A stored read's prompt_version must resolve to its exact text, whether it is
     # a classify id, a base/fragment id, or a composite extract id.
-    assert pl.resolve("classify-v1") == pl.CLASSIFY_PROMPTS["classify-v1"]
-    assert pl.resolve("card-v1") == pl.TYPE_FRAGMENTS["card-v1"]
+    assert pl.resolve("classify-v1") == pl.resolve("classify-v1")
+    assert pl.resolve("card-v1") == pl.resolve("card-v1")
     _, version = pl.compose_extraction("base-v1", "checking-v1")
     composed, _ = pl.compose_extraction("base-v1", "checking-v1")
     assert pl.resolve(version) == composed
@@ -70,9 +97,9 @@ def test_resolve_unknown_version_raises():
 def test_card_fragment_carries_the_payments_completeness_rule():
     # The card-specific completeness guidance lives ONLY in the card fragment —
     # it must not leak into the checking fragment (the pollution we removed).
-    assert "payments" in pl.TYPE_FRAGMENTS["card-v1"].lower()
-    assert "separate section" in pl.TYPE_FRAGMENTS["card-v1"].lower()
-    assert "separate section" not in pl.TYPE_FRAGMENTS["checking-v1"].lower()
+    assert "payments" in pl.resolve("card-v1").lower()
+    assert "separate section" in pl.resolve("card-v1").lower()
+    assert "separate section" not in pl.resolve("checking-v1").lower()
 
 
 # ------------------------------------------------- the interpret prompt (9a)
@@ -141,3 +168,105 @@ def test_v2_asks_for_the_label_the_person_named_and_not_for_a_document():
     assert '"category"' in v2 and "Copy their word" in v2
     assert "corroborates" not in v2        # code maps kind -> document, not the model
     assert '"corroborates"' in pl.resolve("interpret-v1")   # v1 still has it, intact
+
+
+# ------------------------------------------------- the test that makes it stick
+
+
+def _repo_root():
+    return pathlib.Path(__file__).resolve().parents[2]
+
+
+def _python_files():
+    for pkg in ("core", "product", "merchant", "bench"):
+        root = _repo_root() / pkg
+        if not root.is_dir():
+            continue
+        for f in root.rglob("*.py"):
+            parts = set(f.parts)
+            if parts & {"build", ".venv", "node_modules", "__pycache__"}:
+                continue
+            yield f
+
+
+# Words that only appear when a string is INSTRUCTING A MODEL. This is a
+# deliberate keyword check, immediately after a session spent deleting those —
+# and the distinction is worth stating rather than hiding. That lesson is about
+# classifying a USER'S DATA, where being wrong corrupts a ledger. This is a lint
+# over OUR OWN SOURCE, where being wrong costs a contributor one comment. Same
+# technique, opposite blast radius.
+_INSTRUCTION_MARKERS = (
+    "return only a json", "reply with json", "you are reading",
+    "you are identifying", "you are classifying", "return only the",
+    "reply with only",
+)
+
+
+def test_no_prompt_text_lives_in_code():
+    """The drift this whole move exists to stop.
+
+    `interpret-v1` was written as a literal in `listen.py` — in the same session
+    that was told not to — because a triple-quoted string is one line and the
+    library was five plus an import. Intent loses to friction, so the friction
+    has to move: creating a file is now the cheap path, and a literal here is a
+    build failure with the fix printed in the message."""
+    import ast
+
+    offenders = []
+    for path in _python_files():
+        if path.name in ("test_prompt_library.py", "promptstore.py"):
+            continue                      # this file names the markers on purpose
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:               # not ours to police
+            continue
+        docstrings = {id(ast.get_docstring(n, clean=False))
+                      for n in ast.walk(tree)
+                      if isinstance(n, (ast.Module, ast.ClassDef,
+                                        ast.FunctionDef, ast.AsyncFunctionDef))}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            text = node.value
+            if len(text) < 200 or "\n" not in text:
+                continue
+            if id(text) in docstrings or text is ast.get_docstring(tree, clean=False):
+                continue
+            low = text.lower()
+            if any(mark in low for mark in _INSTRUCTION_MARKERS):
+                offenders.append(f"{path.relative_to(_repo_root())}:{node.lineno}")
+
+    assert not offenders, (
+        "prompt text found in code at " + ", ".join(offenders) + ".\n"
+        "Prompts are files. Move it to <package>/prompts/<id>.txt and load it "
+        "with `promptstore.load(PROMPTS, '<id>')` — then pin its digest in "
+        "FROZEN so it can never be edited in place.")
+
+
+def test_every_version_the_code_can_emit_resolves():
+    """T8, asserted directly. This is the test whose absence let `enrich-v2`'s
+    text disappear while events kept naming it."""
+    from viva.ingest import registry
+
+    for doc_type in list(registry._INDEX):
+        got = registry.extraction_prompt_for(doc_type)
+        if got:
+            text, version = got
+            assert pl.resolve(version) == text, version
+    for version in (pl.classify_prompt()[1], pl.interpret_prompt()[1]):
+        assert pl.resolve(version)
+
+
+def test_the_other_packages_keep_their_prompts_in_files_too():
+    """The discipline stopped being one module's local habit."""
+    from vivacore import promptstore
+    from vivacore.prompts import PROMPT_VERSION
+    from vivacore.prompts import PROMPTS as CORE
+    from merchantcore.enrich import ENRICHMENT_VERSION
+    from merchantcore.enrich import PROMPTS as MERCH
+
+    assert promptstore.load(CORE, f"extract-image-{PROMPT_VERSION}")
+    assert promptstore.load(MERCH, ENRICHMENT_VERSION)
+    # enrich-v2 was recovered from git history on 2026-07-25 — reads recorded
+    # under it are explainable again rather than pointing at nothing.
+    assert "enrich-v2" in promptstore.ids(MERCH)

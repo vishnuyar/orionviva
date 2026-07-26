@@ -15,6 +15,10 @@ submits. The Enricher cannot learn anything about amounts, dates, or accounts.
 
 from __future__ import annotations
 
+import pathlib
+
+from vivacore import promptstore
+
 import json
 import logging
 import re
@@ -43,68 +47,14 @@ KINDS = ("business", "instrument", "peer")
 # merge. One bad chunk cannot sink the rest, and progress is logged per chunk.
 DEFAULT_CHUNK_SIZE = 40
 
-_PROMPT = """\
-You are identifying MERCHANTS from bank/card transaction descriptors. For EACH
-merchant below, return what you know from general knowledge — nothing about any
-person's finances is involved, only who the merchant is.
+PROMPTS = pathlib.Path(__file__).resolve().parent / "prompts"
 
-Return ONLY a JSON object mapping each input key to an object:
-{{
-  "<key>": {{
-    "canonical_name": "the clean merchant name, e.g. 'Amazon', 'Costco'",
-    "category": one of [{primaries}],
-    "subcategory": "a finer, specific label for slicing, e.g. 'warehouse club', 'coffee shop', 'streaming', 'rideshare' — free text, be specific",
-    "mcc": "the 4-digit Merchant Category Code if you know it, else ''",
-    "description": "a short (<=8 word) description",
-    "website": "the primary website domain if well-known, else ''",
-    "logo": "the logo URL or a clearbit-style domain logo if well-known, else ''",
-    "counterparty_kind": "business" | "instrument" | "peer",
-    "implies": []
-  }}
-}}
+# The enrichment prompt lives in `prompts/<version>.txt`. It used to be a single
+# literal here, edited in place while ENRICHMENT_VERSION was bumped v1 -> v2 ->
+# v3 — so `enrich-v2`'s text existed only in git history until it was recovered
+# on 2026-07-25. That is a T8 failure, and files are what stop it recurring.
+_PROMPT = promptstore.load(PROMPTS, ENRICHMENT_VERSION)
 
-Rules:
-- Use the key EXACTLY as given in your output object.
-- "category" MUST be one of the listed primaries — pick the single best one for
-  how a typical person classifies spending there. Use "other" only when unclear.
-- "subcategory" is your finer value; be specific and consistent so similar
-  merchants share a subcategory.
-- Do NOT invent order numbers, amounts, or any transaction detail — you are only
-  identifying the merchant.
-
-"counterparty_kind" — what the descriptor NAMES:
-- "business"   an actual company or organisation being paid or paying.
-- "instrument" HOW money moved, not who received it: a check, an ATM withdrawal,
-               a wire, a teller or counter entry, a money order. Nobody can tell
-               what one of these was FOR from the descriptor.
-- "peer"       a person, or a person-to-person payment app entry.
-
-"implies" — THE IMPORTANT ONE. What does dealing with this counterparty tell us
-about the SHAPE of someone's finances? Almost always the answer is NOTHING:
-return []. A supermarket, a restaurant, a utility, a streaming service, a shop —
-all imply nothing beyond an ordinary expense. **Returning [] is the correct and
-expected answer for the large majority of merchants.** Inventing a relationship
-that isn't there would make us create accounts nobody has, which is far worse
-than saying nothing.
-
-Only when the counterparty's business NECESSARILY means the person holds
-something — a loan, a property, an investment account, a policy — list it:
-  {{"relationship": "short label, e.g. 'home loan', 'brokerage account'",
-    "major": one of [expense, asset, liability, income],
-    "on": "outflow" | "inflow" | "both",   // which direction this applies to
-    "account_group": "one word for where it belongs, e.g. 'Mortgage', 'Investments'",
-    "compound": true if ONE payment is normally several things at once,
-    "confidence": "forced" if it could not be otherwise, else "suggested",
-    "documents": "the document that would prove it, e.g. 'mortgage statement or 1098'",
-    "ask": "a short question to a non-accountant, if anything is still uncertain"}}
-
-Direction matters and is often the whole answer. Money going OUT to a lender
-repays borrowing; money coming IN from one IS the borrowing. Money out to a
-brokerage is a contribution; money in may be a withdrawal or a distribution.
-Use "on" to say which, and list two entries when both directions mean something.
-
-Merchants (key: example descriptor):
-"""
 
 
 def build_enrichment_prompt(merchants: dict) -> tuple[str, str]:

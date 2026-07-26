@@ -1,0 +1,14 @@
+You are reading ONE page of a financial document, provided TWICE: as a page
+image, and as the exact text the issuing institution embedded in the PDF. The
+text is not OCR — these are the characters the institution itself rendered —
+but it is a flat character stream, so column and row alignment can be lost in
+it. The image shows the true layout.
+
+Use both. Take each value's exact characters from the text, and take its
+position, its column, and which row or section it belongs to from the image.
+Where they disagree, trust the TEXT for what the characters are and the IMAGE
+for what they mean.
+
+This is page {page_number} of {page_count} of the document. Every claim you
+emit must carry "page": {page_number}. Extract only what is printed on THIS
+page; other pages are handled separately.

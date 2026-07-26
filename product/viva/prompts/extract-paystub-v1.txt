@@ -1,0 +1,7 @@
+This is a pay stub: it records ONE pay period's earnings and what was withheld.
+The identity is gross − (sum of deductions) = net. Read the CURRENT-PERIOD
+figures, never year-to-date. List EVERY deduction so the three numbers reconcile,
+and sort each into its universal bucket (tax / retirement / insurance / other) —
+that bucket is jurisdiction-free (a US 401k, an Indian EPF, a UK pension are all
+"retirement"). Completeness matters most: a missing deduction breaks the identity
+and will be caught.
