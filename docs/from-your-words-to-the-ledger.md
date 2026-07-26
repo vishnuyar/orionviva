@@ -153,6 +153,26 @@ Reading the code before writing it corrected two claims, and the tests found two
 
 `RulingRecorded` (generic, scoped: movement / merchant / account) · `origin: issued | asserted` on every account · the four majors + `account_path` · `MIXED` + `undecomposed()` + `ruled_accounts()` · `viva/listen.py` (the six steps, one model call) · the `corroboration` question kind · `/api/rule-major`, `/api/listen`, `/api/apply-ruling` · the sentence box and proposal card on the debug surface. **26 new tests, 249 green.**
 
+### Measuring the model (added the same day)
+
+`python -m viva.eval_listen` scores any model on the one job this slice gives it, against a **frozen synthetic key** of 22 sentences (`viva/evals/listen_cases.json` — invented counterparties, no amounts, safe in a public repo). Free, offline-capable, and reproducible.
+
+**The headline is not accuracy — it is the confidently-wrong rate.** This is [eval-harness-design.md](eval-harness-design.md)'s thesis meeting its first real subject, and the failure modes are deliberately not on one scale:
+
+| verdict | meaning | cost |
+|---|---|---|
+| `unreadable` | no JSON, or no legs | **safe** — one tap on a button that already existed |
+| `missed_compound` | read a mortgage as one thing | weak — collapses a nature, doesn't fabricate |
+| `wrong_majors` | a confident misreading | wrong — and it *generalizes* to every future payment |
+| **`invented_split`** | a ratio nobody stated | **ruin** |
+| **`leaked_amount`** | a figure from the model's head | **ruin** |
+
+A model that declines costs a person a tap. A model that invents a 60/40 mortgage split writes a wrong number into someone's finances, grades it `verified` because the person did confirm the sentence, and applies it forever. **Any non-zero ruin count disqualifies a model outright** — averaging it against successes is exactly the mistake this project exists not to make.
+
+Several cases accept *more than one* reading: an ATM withdrawal is defensibly cash-you-still-have or money-spent. A key insisting on one answer would measure obedience rather than understanding. `--repeat N` surfaces instability, because a model that is right two times in three is a different product from one that always is.
+
+The harness has its own tests (`test_eval_listen.py`) — a scorer that mis-grades a fabrication as "ok" would silence the one alarm the thesis rests on.
+
 ### Not done yet
 
 **No real-document run.** Every slice is supposed to meet real statements before being called done, and this one has met only fixtures. The standing practice says that is when concept errors surface — Slice 6 was declared done without one and had two defects. Until a real mortgage or car purchase goes through the sentence path, treat this as built but unproven.
