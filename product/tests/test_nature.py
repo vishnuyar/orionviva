@@ -11,6 +11,7 @@ from decimal import Decimal
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          assign_category, assign_merchant_category,
                          capture_and_ingest)
+from viva.ledger.events import merchant_enriched
 from viva.ledger import EventStore, Ledger
 from viva.ledger.projection import (BY_CATEGORY, BY_LINK, BY_OWN_ACCOUNT,
                                     SPENDING, TRANSFER)
@@ -121,19 +122,41 @@ def test_same_category_opposite_natures(tmp_path):
     assert to_card.nature_reason == BY_OWN_ACCOUNT
 
 
-def test_category_hint_alone_is_provisional_not_silent(tmp_path):
-    """A category that merely SUGGESTS internal excludes the movement but says so
-    — the number states its own uncertainty rather than hiding it (X2)."""
+def _implies(ledger, merchant, category, implies, subcategory=""):
+    """Enrich a merchant WITH an implication — the Slice-9b replacement for the
+    keyword hint. What a counterparty implies is learned once, impersonally, and
+    cached; it is not matched against a word list we maintain."""
+    ledger.append(merchant_enriched(
+        merchant, category, subcategory=subcategory, grade="corroborated",
+        occurred_at="2026-04-01", by="model",
+        attributes={"counterparty_kind": "business", "implies": implies}))
+
+
+def test_a_suggested_implication_is_provisional_not_silent(tmp_path):
+    """An implication that is `suggested` rather than `forced` excludes the
+    movement but says so — the number states its own uncertainty (X2)."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-08", "ACME BROKERAGE DEPOSIT", "-1000.00")])
     m0 = next(m for m in ledger.projection().movements() if "ACME" in m.description)
-    assign_merchant_category(ledger, "acme brokerage deposit", "transfers", by="model")
+    _implies(ledger, "acme brokerage deposit", "investments",
+             [{"relationship": "brokerage account", "major": "asset",
+               "on": "outflow", "account_group": "Investments", "compound": False,
+               "confidence": "suggested", "documents": "brokerage statement",
+               "ask": ""}], subcategory="brokerage")
 
     proj = ledger.projection()
     m = next(m for m in proj.movements() if "ACME" in m.description)
     assert m.nature == TRANSFER and m.nature_reason == BY_CATEGORY
-    assert m.provisional                            # weak evidence, flagged
+    assert m.provisional                            # `suggested`, so flagged
     assert proj.provisional_spending() == Decimal("1000.00")
+    # And a `forced` implication is NOT provisional — the ladder has two rungs.
+    _implies(ledger, "acme brokerage deposit", "investments",
+             [{"relationship": "brokerage account", "major": "asset",
+               "on": "outflow", "account_group": "Investments", "compound": False,
+               "confidence": "forced", "documents": "", "ask": ""}],
+             subcategory="brokerage")
+    m2 = next(m for m in ledger.projection().movements() if "ACME" in m.description)
+    assert m2.nature == TRANSFER and not m2.provisional
     # It IS excluded from the headline, but the doubt is reported alongside.
     assert proj.spending_by_category() == {}
 
@@ -143,20 +166,26 @@ def test_transfers_never_appear_as_a_spending_line_item(tmp_path):
     _checking(raw, ledger, [("2026-03-08", "MOVE TO SAVINGS", "-1000.00"),
                             ("2026-03-09", "WHOLE FOODS MKT", "-50.00")])
     m = next(m for m in ledger.projection().movements() if "SAVINGS" in m.description)
-    assign_merchant_category(ledger, "move to savings", "transfers", by="model")
+    _implies(ledger, "move to savings", "transfers",
+             [{"relationship": "own account", "major": "asset", "on": "both",
+               "account_group": "", "compound": False, "confidence": "forced",
+               "documents": "", "ask": ""}])
     by_cat = ledger.projection().spending_by_category()
     assert "transfers" not in by_cat                # the incoherence is gone
     assert by_cat == {"Uncategorized": Decimal("50.00")}
 
 
-def test_a_human_ruling_beats_the_category_hint(tmp_path):
-    """You say it's really spending; your ruling outranks the hint (rung 3)."""
+def test_a_human_ruling_beats_the_implication(tmp_path):
+    """You say it's really spending; your ruling outranks what the counterparty
+    implies. A person's answer is the top of the ladder, always."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-08", "ATM WITHDRAWAL", "-200.00")])
     m0 = next(m for m in ledger.projection().movements() if "ATM" in m.description)
-    assign_merchant_category(ledger, "atm withdrawal", "transfers",
-                             by="model", subcategory="atm")
-    assert ledger.projection().spending_by_category() == {}   # hint excludes it
+    _implies(ledger, "atm withdrawal", "transfers",
+             [{"relationship": "cash in hand", "major": "asset", "on": "outflow",
+               "account_group": "", "compound": False, "confidence": "suggested",
+               "documents": "", "ask": ""}], subcategory="atm")
+    assert ledger.projection().spending_by_category() == {}   # implication excludes it
     # Now rule that it IS spending — cash you consider spent.
     assign_category(ledger, m0.key, "personal_care", by="human", nature=SPENDING)
     proj = ledger.projection()

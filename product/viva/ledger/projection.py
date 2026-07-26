@@ -189,10 +189,21 @@ BY_DEFAULT = "default"               # rung 5: nothing said otherwise
 # covering opposite natures — a mortgage payment (real outflow) and a payment to
 # your own card (internal). A movement resting only on this rung stays counted and
 # is flagged PROVISIONAL, so the number is honest about its own uncertainty (X2).
-_TRANSFER_HINT_CATEGORIES = frozenset({"transfers"})
-_TRANSFER_HINT_SUBCATEGORIES = frozenset({
-    "credit card payment", "card payment", "investment", "transfer",
-    "internal transfer", "brokerage", "atm", "cash withdrawal"})
+# Slice 9b. The keyword sets that used to live here — `_TRANSFER_HINT_CATEGORIES`
+# and `_TRANSFER_HINT_SUBCATEGORIES` — are GONE. Guessing a movement's nature by
+# matching category names against a hand-kept word list was the project's own
+# stated anti-goal ("no keyword classification engine") wearing a small enough
+# disguise to slip through. What replaces it is the counterparty's IMPLICATION,
+# learned once per merchant at enrichment time, cached, versioned and shareable
+# (docs/where-the-intelligence-goes.md).
+
+# Which tier a movement falls in, and therefore whether it is worth a person's
+# attention at all. The whole rule: ASK ONLY WHERE THE COUNTERPARTY CANNOT TELL US.
+TIER_SETTLED = "settled"      # enriched, implies nothing → silence
+TIER_STRUCTURAL = "structural"  # implies a relationship → an informed proposal
+TIER_UNKNOWN = "unknown"      # an instrument or a peer → a real question
+TIER_UNENRICHED = "unenriched"  # we don't know the merchant yet → enrich first
+
 
 
 @dataclass
@@ -656,14 +667,16 @@ class LedgerProjection:
             if tokens and any(tok in low for tok in tokens):
                 m.nature, m.nature_reason = TRANSFER, BY_OWN_ACCOUNT
                 return
-        # Rung 4: the category/subcategory only SUGGESTS — provisional, never silent.
-        derived = self.derived_category(m) or {}
-        cat = (derived.get("category") or "").strip().lower()
-        sub = (derived.get("subcategory") or "").strip().lower()
-        if cat in _TRANSFER_HINT_CATEGORIES or sub in _TRANSFER_HINT_SUBCATEGORIES:
-            m.nature, m.nature_reason = TRANSFER, BY_CATEGORY
-            m.provisional = True
-            return
+        # Rung 4: what does this COUNTERPARTY imply, given which way the money
+        # went? Learned at enrichment, not guessed from a word list. A `forced`
+        # implication is decisive; a `suggested` one counts but says so.
+        implied = self.implication_of(m)
+        if implied:
+            nature = _NATURE_OF_MAJOR.get(implied["major"], SPENDING)
+            if nature != SPENDING:
+                m.nature, m.nature_reason = nature, BY_CATEGORY
+                m.provisional = implied.get("confidence") != "forced"
+                return
         m.nature, m.nature_reason, m.provisional = SPENDING, BY_DEFAULT, False
 
     def transfer_suggestions(self) -> list[dict]:
@@ -834,6 +847,69 @@ class LedgerProjection:
         return [dict(body, scope=s, subject=subj)
                 for (s, subj), body in sorted(self._rulings.items())
                 if scope is None or s == scope]
+
+    def implication_for(self, merchant: str, inflow: bool = False) -> dict | None:
+        """What a MERCHANT KEY implies, in one direction — no movement needed.
+
+        Keyed on the catalog rather than on a movement so a caller can ask about
+        a counterparty it has not seen yet (a proposal being composed, a
+        question being framed). Direction is a parameter because it is the whole
+        answer surprisingly often."""
+        record = self._merchant_categories.get(merchant)
+        implies = ((record or {}).get("attributes") or {}).get("implies") or []
+        want = "inflow" if inflow else "outflow"
+        for item in implies:
+            if item.get("on") in (want, "both"):
+                return item
+        return None
+
+    def implication_of(self, m: "MovementInfo") -> dict | None:
+        """What this movement's counterparty implies, filtered by DIRECTION.
+
+        Direction is the whole answer surprisingly often: money out to a lender
+        repays borrowing, money in from one *is* the borrowing. Same
+        counterparty, opposite sign, opposite meaning — so `on` is data on the
+        implication rather than a branch in the caller."""
+        return self.implication_for(normalize_merchant(m.description),
+                                    inflow=m.amount > 0)
+
+    def counterparty_kind(self, m: "MovementInfo") -> str:
+        """business | instrument | peer | "" — learned, not pattern-matched."""
+        return self.kind_of_merchant(normalize_merchant(m.description))
+
+    def kind_of_merchant(self, merchant: str) -> str:
+        record = self._merchant_categories.get(merchant)
+        return ((record or {}).get("attributes") or {}).get("counterparty_kind", "")
+
+    def tier_of(self, m: "MovementInfo") -> str:
+        """How much of this person's attention this movement deserves.
+
+        The single rule the queue rests on: **ask only where the counterparty
+        cannot tell us.** A supermarket tells us everything (settled). A mortgage
+        servicer tells us there is a loan but not which property (structural). A
+        check tells us nothing at all (unknown)."""
+        if self.counterparty_kind(m) in ("instrument", "peer"):
+            return TIER_UNKNOWN
+        if self.derived_category(m) is None:
+            return TIER_UNENRICHED
+        return TIER_STRUCTURAL if self.implication_of(m) else TIER_SETTLED
+
+    def tier_summary(self, currency: str | None = None) -> dict:
+        """Counts and money per tier — the measurement that sizes the queue.
+
+        This is the number that decides whether the whole three-tier design was
+        worth doing, and it is the honest 'before' to compare against."""
+        out: dict[str, dict] = {}
+        for m in self.movements():
+            if currency is not None and m.currency != currency:
+                continue
+            row = out.setdefault(self.tier_of(m), {"count": 0, "amount": Decimal("0"),
+                                                   "merchants": set()})
+            row["count"] += 1
+            row["amount"] += abs(m.amount)
+            row["merchants"].add(normalize_merchant(m.description) or m.description)
+        return {k: {"count": v["count"], "amount": v["amount"],
+                    "merchants": len(v["merchants"])} for k, v in out.items()}
 
     def derived_category(self, m: "MovementInfo") -> dict | None:
         """A movement's effective category (Slice 5.5): a per-transaction override

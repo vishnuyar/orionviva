@@ -1,6 +1,6 @@
 # Where the Intelligence Goes
 
-**Status:** Research + design — **pre-build, four decisions open** · **Created:** 2026-07-25 · **Origin:** Vishnu, after using Slice 9a on his own vault: *"any merchant we have by enrichment we already get category and subcategory, they should be assigned by default… it is only when we get categories under zelle or checks that we should ask… we are thinking about a financial AI agent, which means it has intelligence… it is ok to be a rule maker, but to the user it should feel like intelligence."*
+**Status:** ✅ **BUILT 2026-07-25** — all six steps; see *What the build showed* at the end · **Created:** 2026-07-25 · **Origin:** Vishnu, after using Slice 9a on his own vault: *"any merchant we have by enrichment we already get category and subcategory, they should be assigned by default… it is only when we get categories under zelle or checks that we should ask… we are thinking about a financial AI agent, which means it has intelligence… it is ok to be a rule maker, but to the user it should feel like intelligence."*
 
 **Invariants touched:** **T2 / ADR-010** (a model may perceive and infer; deterministic code decides and posts) · T4 (everything new is an event) · **T9** (the impersonal/personal boundary — this doc leans on it hard) · X2 (a proposal states its confidence and what it does not know) · X3 (nothing irreversible without a yes) · **I5** (code universal, specifics are data) · principle 5 (serve, don't overwhelm).
 
@@ -275,3 +275,36 @@ Steps are strictly ordered by reversibility. Step 0 changes nothing. Step 1 adds
 ## Deferred / out of scope
 
 Multi-party or household implications. Using implications to *predict* future obligations (that is Slice 8). Sharing the implication commons with other users (the mechanism should be built commons-ready and the sharing switched on separately). Any change to the ingest, verification or posting layers — this proposal touches only enrichment and the read side, which is deliberate: **the write side is where mistakes are permanent, and none of this needs one.**
+
+---
+
+## What the build showed (2026-07-25)
+
+**The audit was worse than the diagnosis.** Counting properly found **nine** raw-text classifiers, not five, and **four predate Slice 9a**: `_TRANSFER_WORDS` / `_CARD_WORDS` / `_DEPOSITORY_WORDS` (Slice 3), `_CASH_MARKERS` (Slice 6), `_PEER_MARKERS` (Slice 5.5). So this was never one slice drifting — it is a **reflex**: every time the code met ambiguity in raw text, it reached for a word list. Naming that is more useful than blaming a slice, because the reflex will recur unless the alternative is easier than the list, which is the point of putting implications where enrichment already runs.
+
+*(Not everything that looks like a table is drift. `PRIMARY_CATEGORIES`, `DEDUCTION_ACCOUNTS`, `BROKERAGE_CASH_IN/OUT` are **schema we deliberately own**, mapping our own structured field values. The drift is specifically **classifying raw descriptors by substring**.)*
+
+**Deleted:** `_TRANSFER_HINT_CATEGORIES`, `_TRANSFER_HINT_SUBCATEGORIES`, `_CONDUIT_MARKERS` + `is_conduit`, `CORROBORATION`, `_DEFAULT_GROUP`, `_group_for`, and `suggest_answers`'s substring matching. Each is now a property of the counterparty's implication — `major`, `account_group`, `documents`, `counterparty_kind` — learned once, cached, versioned, shareable.
+
+**Measured, on a synthetic vault of six movements** (four ordinary merchants, one mortgage servicer, one check):
+
+```
+before:  6 questions          — one per movement, including the supermarket
+after:   2 questions          — 33 per 100 movements
+         settled     4  67%   handled without asking
+         structural  1  17%   proposed, with its grounds
+         unknown     1  17%   asked, one transaction at a time
+```
+
+**Two-thirds of the queue disappeared** — and the two questions that remain are the two a person would actually ask.
+
+### What changed in the building
+
+- **`implication_for(merchant, inflow)`** had to exist separately from `implication_of(movement)`. `propose` needs to ask what a counterparty implies *before* it has a movement in hand, and scanning movements to find out was both slow and wrong for a proposal being composed.
+- **Confirming a `suggested` implication changes no figure — it removes the doubt about one.** That surfaced when a test asserted spending would drop on confirmation and it didn't: the implication had already excluded it, provisionally. That is the ladder working, and it is a better story than the old one: *"I believed this, and now I'm sure."*
+- **Unenriched counterparties raise no nature question at all.** Asking what money *became* before knowing *who received it* is the wrong order, so the flow is strictly ingest → enrich → ask. `debug_tiers` says so out loud when a vault has unenriched merchants, because otherwise the measurement would look artificially question-heavy.
+- **Tolerant on transport noise, strict on claims.** `clean_implications` accepts `" Asset "` (whitespace and case are noise) and drops `"assets"` or `"liability payment"` outright. An unrecognised `confidence` degrades to `suggested` and an unrecognised direction to `both` — always toward the rung that **asks** rather than the rung that **acts**.
+
+### Still to do
+
+**The real-vault run.** Everything above is measured on synthetic data. `python -m viva.debug_tiers` gives the honest before; `python -m viva.enrich` under `enrich-v3` fills in the implications; running `debug_tiers` again gives the after. The human rulings already made survive — `reset_categorization` keeps them by default, and they were true regardless of how naively they were asked for.

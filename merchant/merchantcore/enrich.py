@@ -26,7 +26,15 @@ from .taxonomy import (PRIMARY_CATEGORIES, TAXONOMY_VERSION, canonical_primary,
 
 log = logging.getLogger(__name__)
 
-ENRICHMENT_VERSION = "enrich-v2"       # v2: 16 primaries + subcategory, mcc, logo
+ENRICHMENT_VERSION = "enrich-v3"       # v3: + counterparty_kind and IMPLICATIONS
+# v2: 16 primaries + subcategory, mcc, logo. Retained; records written under it
+# keep resolving to it (T8).
+
+# The four majors, repeated here rather than imported: merchantcore must not
+# depend on the product (T9 runs both ways — the commons knows nothing about a
+# ledger). These are the closed answer space an implication may name.
+MAJORS = ("expense", "asset", "liability", "income")
+KINDS = ("business", "instrument", "peer")
 
 # Enrichment is N *independent* merchants, so we never gamble a whole run on one
 # giant JSON that overruns the model's output budget and truncates mid-object
@@ -49,7 +57,9 @@ Return ONLY a JSON object mapping each input key to an object:
     "mcc": "the 4-digit Merchant Category Code if you know it, else ''",
     "description": "a short (<=8 word) description",
     "website": "the primary website domain if well-known, else ''",
-    "logo": "the logo URL or a clearbit-style domain logo if well-known, else ''"
+    "logo": "the logo URL or a clearbit-style domain logo if well-known, else ''",
+    "counterparty_kind": "business" | "instrument" | "peer",
+    "implies": []
   }}
 }}
 
@@ -61,6 +71,37 @@ Rules:
   merchants share a subcategory.
 - Do NOT invent order numbers, amounts, or any transaction detail — you are only
   identifying the merchant.
+
+"counterparty_kind" — what the descriptor NAMES:
+- "business"   an actual company or organisation being paid or paying.
+- "instrument" HOW money moved, not who received it: a check, an ATM withdrawal,
+               a wire, a teller or counter entry, a money order. Nobody can tell
+               what one of these was FOR from the descriptor.
+- "peer"       a person, or a person-to-person payment app entry.
+
+"implies" — THE IMPORTANT ONE. What does dealing with this counterparty tell us
+about the SHAPE of someone's finances? Almost always the answer is NOTHING:
+return []. A supermarket, a restaurant, a utility, a streaming service, a shop —
+all imply nothing beyond an ordinary expense. **Returning [] is the correct and
+expected answer for the large majority of merchants.** Inventing a relationship
+that isn't there would make us create accounts nobody has, which is far worse
+than saying nothing.
+
+Only when the counterparty's business NECESSARILY means the person holds
+something — a loan, a property, an investment account, a policy — list it:
+  {{"relationship": "short label, e.g. 'home loan', 'brokerage account'",
+    "major": one of [expense, asset, liability, income],
+    "on": "outflow" | "inflow" | "both",   // which direction this applies to
+    "account_group": "one word for where it belongs, e.g. 'Mortgage', 'Investments'",
+    "compound": true if ONE payment is normally several things at once,
+    "confidence": "forced" if it could not be otherwise, else "suggested",
+    "documents": "the document that would prove it, e.g. 'mortgage statement or 1098'",
+    "ask": "a short question to a non-accountant, if anything is still uncertain"}}
+
+Direction matters and is often the whole answer. Money going OUT to a lender
+repays borrowing; money coming IN from one IS the borrowing. Money out to a
+brokerage is a contribution; money in may be a withdrawal or a distribution.
+Use "on" to say which, and list two entries when both directions mean something.
 
 Merchants (key: example descriptor):
 """
@@ -109,12 +150,53 @@ def parse_enrichment(text: str, keys, version: str) -> dict:
             v = str(d.get(src, "")).strip()
             if v:
                 attrs[dst] = v
+        kind = str(d.get("counterparty_kind", "")).strip().lower()
+        if kind in KINDS:
+            attrs["counterparty_kind"] = kind
+        implies = clean_implications(d.get("implies"))
+        if implies:
+            attrs["implies"] = implies
         out[key] = MerchantRecord(
             key=key, canonical_name=str(d.get("canonical_name", "")).strip(),
             category=canonical_primary(d.get("category", "")),
             subcategory=normalize_subcategory(d.get("subcategory", "")),
             attributes=attrs, grade="corroborated", source="model",
             version=version)
+    return out
+
+
+def clean_implications(raw) -> list[dict]:
+    """Keep only implications that speak the closed vocabulary, and drop the rest.
+
+    An implication is a claim that someone HOLDS something — a loan, a property,
+    an investment account. Acting on a wrong one would create an account nobody
+    has, across every transaction with that counterparty, in every vault that
+    ever syncs this record. So the parser is strict on the closed fields and
+    forgiving on the free ones, and **silence is always an acceptable answer**:
+    a merchant that implies nothing is the normal case, not a parse failure."""
+    out: list[dict] = []
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        major = str(item.get("major", "")).strip().lower()
+        if major not in MAJORS:
+            log.warning("enrich: dropping implication with unknown major %r", major)
+            continue
+        on = str(item.get("on", "both")).strip().lower()
+        if on not in ("inflow", "outflow", "both"):
+            on = "both"
+        confidence = str(item.get("confidence", "suggested")).strip().lower()
+        if confidence not in ("forced", "suggested"):
+            confidence = "suggested"
+        out.append({
+            "relationship": str(item.get("relationship", "")).strip()[:60],
+            "major": major, "on": on,
+            "account_group": str(item.get("account_group", "")).strip()[:40],
+            "compound": bool(item.get("compound")),
+            "confidence": confidence,
+            "documents": str(item.get("documents", "")).strip()[:80],
+            "ask": str(item.get("ask", "")).strip()[:160],
+        })
     return out
 
 

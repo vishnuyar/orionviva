@@ -80,17 +80,42 @@ def test_a_peer_payment_is_scoped_to_itself_not_a_rule(tmp_path):
     assert "only apply your answer here" in q["text"]
 
 
-def test_a_known_merchant_asks_whether_it_is_really_spending(tmp_path):
+def _enrich(ledger, merchant, category, implies=(), kind="business", subcategory=""):
+    from viva.ledger.events import merchant_enriched
+    ledger.append(merchant_enriched(
+        merchant, category, subcategory=subcategory, grade="corroborated",
+        occurred_at="2026-04-01", by="model",
+        attributes={"counterparty_kind": kind, "implies": list(implies)}))
+
+
+def test_an_ordinary_known_merchant_is_never_asked_about(tmp_path):
+    """Slice 9b's headline. A supermarket we have already identified implies
+    nothing beyond an ordinary expense — there was never a question here, and
+    asking one was the single largest source of noise in the queue."""
+    ledger = _checking(tmp_path, [("2026-03-06", "WHOLE FOODS MKT", "-180.00")])
+    _enrich(ledger, "whole foods mkt", "food", subcategory="grocery")
+    assert [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE] == []
+
+
+def test_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
+    """And the counterpart: where the counterparty DOES imply something, we say
+    what we believe rather than asking an open question."""
     ledger = _checking(tmp_path, [("2026-03-06", "BIG MOTORS", "-30000.00")])
-    assign_merchant_category(ledger, "big motors", "transport", by="model")
+    _enrich(ledger, "big motors", "transport", implies=[
+        {"relationship": "a vehicle", "major": "asset", "on": "outflow",
+         "account_group": "Vehicles", "compound": False, "confidence": "suggested",
+         "documents": "invoice or bill of sale", "ask": "Shall I track it?"}])
     (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
     assert q["scope"] == "pattern"
-    assert "spent" in q["text"] and "own" in q["text"]
+    # It states a hypothesis and its grounds, instead of asking what this is.
+    assert "normally mean a vehicle" in q["text"]
+    assert "Shall I track it?" in q["text"]
+    assert "because of who they are" in q["why"].lower()
+    assert "invoice or bill of sale" in q["why"]
     # Slice 9a widened the answer space from three natures to the four majors,
     # reached in plain language — and added the escape hatch for the compound
     # answers ("interest, principal and escrow") no button set can hold.
-    assert {o["args"]["major"] for o in q["options"]} == {
-        "expense", "asset", "liability"}
+    assert [o["args"]["major"] for o in q["options"]] == ["asset", "expense"]
     assert q["free_text"]
 
 
@@ -101,18 +126,26 @@ def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_p
         ("2026-03-06", "TITLE COMPANY", "-20000.00"),
         ("2026-03-08", "TITLE COMPANY", "-3000.00"),
     ])
-    assign_merchant_category(ledger, "title company", "housing", by="model")
+    _enrich(ledger, "title company", "housing", implies=[
+        {"relationship": "a property purchase", "major": "asset", "on": "outflow",
+         "account_group": "Property", "compound": False, "confidence": "suggested",
+         "documents": "closing disclosure", "ask": ""}])
     before = open_questions(ledger)["questions"]
     assert any(q["kind"] == NATURE for q in before)
-    spent_before = sum(ledger.projection().spending_by_category().values())
+    proj = ledger.projection()
+    # The implication ALREADY keeps it out of spending — but only provisionally,
+    # because it is `suggested`: we believe it, and we say we are not certain.
+    assert sum(proj.spending_by_category().values()) == Decimal("0")
+    assert proj.provisional_spending() == Decimal("23000.00")
 
     rule_merchant_nature(ledger, "title company", "settlement", by="human")
 
     after = open_questions(ledger)["questions"]
     assert not [q for q in after if q["kind"] == NATURE]      # never asked again
-    # And it left spending: money that bought something he now owns.
-    spent_after = sum(ledger.projection().spending_by_category().values())
-    assert spent_after == spent_before - Decimal("23000.00")
+    # Confirming does not change the figure — it removes the DOUBT about it.
+    proj = ledger.projection()
+    assert sum(proj.spending_by_category().values()) == Decimal("0")
+    assert proj.provisional_spending() == Decimal("0")
 
 
 def test_the_queue_introduces_no_new_event_type(tmp_path):
