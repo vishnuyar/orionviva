@@ -97,7 +97,7 @@ Building Slice 8 (obligations) or 9b (Viva speaks) next. Both are attractive and
 
 40 documents, replayed from stored claims through today's parsers. No model calls, no money. It found **two bugs of mine and one real defect** — and then a fourth thing nobody was looking for.
 
-### Ordering decides the grade
+### Ordering decides the grade — ❌ **RETRACTED, see the correction below**
 
 The same 40 documents, two ingest orders:
 
@@ -124,3 +124,29 @@ The same 40 documents, two ingest orders:
 ### And the meta-finding
 
 Four times in this session a tool reported success it had not earned: the eval harness scored a broken pipe as clean, the surface gave one message for four distinct failures, the rebuild reported success on an empty vault, and a sweep that healed nothing printed nothing at all. Each was fixed on its own; together they are one lesson, now in memory: **graceful degradation belongs in the product and never in the instrument that measures it.**
+
+---
+
+## Correction: Slice 1 was not broken (2026-07-26)
+
+**The finding above is wrong and is retracted.** `debug_gaps`, run against the hash-order vault — the one summarised as *"14 gap"* — reported:
+
+> No gap-held statements. Every chain connects.
+
+**The gaps were transient.** A statement that arrives before its neighbour is a gap *at that instant*, and posts as soon as the neighbour lands and the heal fires. Both vaults ended identical: 11 accounts, 919 movements, zero holds. **Slice 1's order-independence holds completely — money and grade.**
+
+What actually went wrong was mine, and it is the same failure a fifth time: the rebuild's summary counted **each document's action at the moment it arrived** and never revised it. `14 gap` was a sum of moments, not a state.
+
+**This one is worse than the four before it.** Those tools under-reported failure; this one **manufactured** one — a confident, specific, documented accusation against code that was correct, complete with a table, a diagnosis, and an xfail test asserting a defect that does not exist. A measurement that errs in the *alarming* direction is not the safe kind of wrong: it would have sent someone to rewrite a working invariant.
+
+**Fixed:** `rebuild` now prints `still held after everything: N` read from the vault itself, and says plainly when arrival-gaps healed. `debug_gaps` distinguishes "nothing held" from "nothing balance-shaped held". The xfail is replaced by a test asserting the true behaviour.
+
+**The rule, sharpened:** *report the final state, never the sum of moments* — and when a measurement accuses the code of a defect, verify it against the artifact before writing it down.
+
+### What still stands from that run
+
+- The **doc_type replay bug** (mine) — real, fixed, and it parked 33 of 40 documents.
+- The **brokerage unit-quantity defect** (`117.360` read as ambiguous money) — real, open, 3 statements.
+- One genuine **reconciliation conflict**, −2,640.27, on a card statement.
+- Two **identity conflicts** — expected and wanted, since the alias rulings were deliberately dropped.
+- `rebuild` defaulting to oldest-first — still correct for a batch, just not a bug fix.

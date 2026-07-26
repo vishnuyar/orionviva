@@ -192,25 +192,34 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     from .ingest import sweep
 
     swept = sweep(vault.ledger)
+    proj = vault.ledger.projection()
     # ALWAYS report the sweep, including when it healed nothing. A silent zero
     # is how the first run of this looked identical to the run before it and
     # nobody could tell whether the sweep had even happened (2026-07-26).
     log(f"\nsweep: healed {swept.get('gaps', 0)} gap(s), corroborated "
         f"{swept.get('corroborated', 0)} conflict(s), linked "
         f"{swept.get('auto', 0)} transfer(s)")
-    held = counts.get("gap", 0)
-    if held and not swept.get("gaps"):
-        log(f"\n  {held} statement(s) still held as gaps after the sweep.\n"
-            "  Either their neighbouring statements are genuinely absent — in\n"
-            "  which case a gap is the CORRECT answer and the coverage line\n"
-            "  should say so — or ordering decided the outcome, which would\n"
-            "  contradict Slice 1. Re-run with --by-date to tell the two apart:\n"
-            "  if oldest-first posts them, the cascade is not order-independent.")
+
+    # THE FINAL STATE, not the arrival actions.
+    #
+    # The per-document lines record what happened the MOMENT each document
+    # landed. A statement that arrives before its neighbour is a gap at that
+    # instant and posts minutes later when the neighbour heals it — but the
+    # arrival line still says "gap" forever.
+    #
+    # Reading those arrival counts as an outcome produced a false alarm: a run
+    # summarised as "14 gap" had ZERO gaps left in the vault, and I reported a
+    # defect in Slice 1's order-independence that does not exist (2026-07-26).
+    # A transient state counted as a result is still a reporting failure.
+    still_held = len([b for b in proj.gap_holds()])
+    log(f"still held after everything: {still_held} gap(s)")
+    if counts.get("gap") and not still_held:
+        log(f"  ({counts['gap']} statement(s) were a gap ON ARRIVAL and healed "
+            "when their neighbours landed — that is the cascade working.)")
 
     # A tool must check its own outcome. `enrich` on the last rebuilt vault said
     # "0 merchants, 0 transactions" — the vault was empty and nothing had said
     # so, because per-document lines are not a result (2026-07-26).
-    proj = vault.ledger.projection()
     movements = len(proj.movements())
     log(f"\nrebuilt vault: {len(proj.accounts())} account(s), {movements} movement(s)")
     if movements == 0:

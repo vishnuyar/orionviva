@@ -61,9 +61,17 @@ def diagnose(proj) -> list[dict]:
 
 
 def report(proj) -> str:
+    all_holds = list(proj.gap_holds())
     rows = diagnose(proj)
     if not rows:
-        return "No gap-held statements. Every chain connects."
+        if all_holds:
+            return (f"{len(all_holds)} hold(s), but none is a balance statement "
+                    "— nothing here stitches by opening/closing.")
+        return ("No gap-held statements. Every chain connects.\n\n"
+                "  If an ingest run REPORTED gaps, they were transient: a\n"
+                "  statement that arrives before its neighbour is a gap at that\n"
+                "  instant and posts as soon as the neighbour heals it. The\n"
+                "  arrival line keeps saying 'gap'; the vault does not.")
 
     out = [f"{len(rows)} statement(s) held as gaps.", ""]
     by_account: dict[str, list] = {}
