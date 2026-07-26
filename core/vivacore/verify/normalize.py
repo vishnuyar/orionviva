@@ -154,6 +154,21 @@ def parse_amount(raw: str, locale: str | None = None, currency: str | None = Non
     )
 
 
+def known_language_tags() -> tuple:
+    """The language tags whose decimal convention this module knows.
+
+    Exposed because an UNKNOWN tag is not an error here — `parse_amount` simply
+    has no separator convention to apply, and every three-decimal figure becomes
+    `ambiguous`. That is the right behaviour for a money parser (refuse rather
+    than guess) and a terrible thing to discover by accident: a caller that
+    passes "US" instead of "en-US" gets a stricter parser and no indication why.
+
+    So callers validate their configured locale against this list at startup,
+    where the fix is obvious, instead of meeting it as a parse failure on one
+    document three tools later."""
+    return tuple(sorted(_COMMA_DECIMAL_LOCALES + _DOT_DECIMAL_LOCALES))
+
+
 def _decimal_separator_for(locale: str | None) -> str | None:
     if not locale:
         return None

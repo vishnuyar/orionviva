@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ..env import load_dotenv
+from ..env import currency_from_env, load_dotenv, locale_from_env
 from ..ingest import ReadResult, sweep
 from ..logs import configure as configure_logging
 from ..vault import Vault
@@ -55,8 +55,8 @@ def build_reader():
         base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
         api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "ANTHROPIC_API_KEY"),
         json_mode=True)
-    locale = os.environ.get("VIVA_LOCALE", "en-US")
-    currency = os.environ.get("VIVA_CURRENCY", "USD")
+    locale = locale_from_env()
+    currency = currency_from_env()
 
     def reader(data, doc_id):
         return read_statement(data, doc_id, spec, locale, currency)

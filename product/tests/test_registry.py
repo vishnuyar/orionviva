@@ -1,3 +1,5 @@
+import pytest
+
 """The doc-type registry: a new statement type is DATA (a row), not code."""
 
 from viva.ingest import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, DEPOSITORY,
@@ -105,3 +107,52 @@ def test_reingest_can_filter_to_one_document_family_and_cost_nothing_first():
     assert "Do not ship this prompt version" in src
     assert "No document changed outcome" in src, \
         "an unchanged run must say so, rather than looking like a success"
+
+
+def test_one_locale_default_for_every_entry_point(monkeypatch):
+    """A setting that four programs each default separately is four defaults.
+
+    `rebuild` defaulted to "US" while `web`, `debug_claim` and `debug_read` all
+    defaulted to "en-US". "US" is not a language tag, so the amount parser had no
+    decimal convention for it and refused every THREE-DECIMAL figure as
+    ambiguous — silently, because an unknown locale is not an error in a money
+    parser, it just makes it stricter.
+
+    The visible consequence: two brokerage statements parsed perfectly under
+    `debug_claim` and parked under `rebuild`, on identical code and the same
+    stored reply. Chasing that contradiction invented a "unit-quantity defect"
+    that never existed and left real holdings out of a net-worth figure."""
+    from vivacore.verify.normalize import known_language_tags, parse_amount
+    from viva.env import locale_from_env
+
+    monkeypatch.delenv("VIVA_LOCALE", raising=False)
+    assert locale_from_env() == "en-US"
+
+    # The exact figures from the real statements.
+    for raw in ("295.120", "139.770"):
+        assert parse_amount(raw, "en-US", "USD").status == "ok"
+        assert parse_amount(raw, "US", "USD").status == "ambiguous", \
+            "an unrecognised tag makes the parser stricter, not louder"
+
+    # So an unrecognised tag must stop the run, where the fix is obvious.
+    monkeypatch.setenv("VIVA_LOCALE", "US")
+    with pytest.raises(SystemExit) as exc:
+        locale_from_env()
+    assert "en-US" in str(exc.value), "say what a valid tag looks like"
+    assert "ambiguous" in str(exc.value), "and what would silently go wrong"
+
+    monkeypatch.setenv("VIVA_LOCALE", "en-IN")
+    assert locale_from_env() == "en-IN"
+    assert "en" in known_language_tags()
+
+
+def test_no_entry_point_defaults_the_locale_by_hand():
+    """The class of bug, closed structurally rather than fixed four times."""
+    import pathlib
+    viva = pathlib.Path(__file__).resolve().parents[1] / "viva"
+    offenders = [p.name for p in viva.rglob("*.py")
+                 if 'environ.get("VIVA_LOCALE"' in p.read_text()
+                 and p.name != "env.py"]
+    assert not offenders, (
+        f"{offenders} default VIVA_LOCALE themselves; use locale_from_env() so "
+        "there is one value and unrecognised tags are refused in one place")

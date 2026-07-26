@@ -281,7 +281,7 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
 
 
 def main() -> None:
-    from .env import load_dotenv
+    from .env import currency_from_env, load_dotenv, locale_from_env
 
     load_dotenv()
     passphrase = os.environ.get("VIVA_PASSPHRASE")
@@ -299,8 +299,8 @@ def main() -> None:
         raise SystemExit(f"{dest} already exists — pick a fresh directory.")
 
     counts = rebuild(source, dest, passphrase,
-                     locale=os.environ.get("VIVA_LOCALE", "US"),
-                     currency=os.environ.get("VIVA_CURRENCY", "USD"),
+                     locale=locale_from_env(),
+                     currency=currency_from_env(),
                      by_date=by_date)
     print("\ndone: " + ", ".join(f"{n} {a}" for a, n in sorted(counts.items())))
     print(f"\nnext:  VIVA_VAULT_DIR={dest} python3 -m viva.enrich")

@@ -18,7 +18,7 @@ import os
 import pathlib
 import sys
 
-from .env import load_dotenv
+from .env import currency_from_env, load_dotenv, locale_from_env
 from .logs import configure as configure_logging
 
 
@@ -38,8 +38,8 @@ def main() -> None:
     from .ingest.reader import _render_and_read_text, _with_embedded, classify
 
     pdf_path = sys.argv[1]
-    locale = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("VIVA_LOCALE", "en-US")
-    currency = sys.argv[3] if len(sys.argv) > 3 else os.environ.get("VIVA_CURRENCY", "USD")
+    locale = sys.argv[2] if len(sys.argv) > 2 else locale_from_env()
+    currency = sys.argv[3] if len(sys.argv) > 3 else currency_from_env()
 
     if not os.environ.get("VIVA_MODEL"):
         raise SystemExit("No model configured. Set VIVA_MODEL_ADAPTER / VIVA_MODEL / "
