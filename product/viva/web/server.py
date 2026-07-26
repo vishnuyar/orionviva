@@ -90,6 +90,11 @@ def make_handler(vault, read_fn):
                 return self._send(service.categorize_review(vault))
             if u.path == "/api/merchants":
                 return self._send(service.merchant_review(vault))
+            if u.path == "/api/net-worth":
+                q = parse_qs(u.query)
+                return self._send(service.net_worth(
+                    vault, (q.get("as_of") or [""])[0],
+                    curve=(q.get("curve") or [""])[0] == "1"))
             if u.path == "/api/questions":
                 n = parse_qs(u.query).get("limit", ["10"])[0]
                 return self._send(service.questions(

@@ -143,6 +143,19 @@ def questions(vault: Vault, limit: int = 10) -> dict:
 # nothing new can be written in that vocabulary.
 
 
+def net_worth(vault: Vault, as_of: str = "", curve: bool = False) -> dict:
+    """Net worth as a CURVE (Slice 7) — pure projection, no model, no writes.
+
+    `as_of` empty means the latest date we have evidence for. `curve` returns
+    every point instead of one, which is what a trend line reads."""
+    from ..ledger.networth import net_worth as _net_worth
+    from ..ledger.networth import series
+    proj = vault.ledger.projection()
+    if curve:
+        return {"points": [p.to_dict() for p in series(proj)]}
+    return _net_worth(proj, as_of or None).to_dict()
+
+
 def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
                kind: str = "", movement_key: str = "", group: str = "") -> dict:
     """Answer with one of the four majors (Slice 9a) — the button path.

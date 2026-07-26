@@ -290,10 +290,19 @@ class _AccountState:
     names: list = field(default_factory=list)
     origin: str = ISSUED          # who says this account exists (Slice 9a, A3)
     closing_confirmed: bool = False            # a human attested the closing
+    # Slice 7. Every dated closing, not just the latest — net worth is a CURVE,
+    # so "the balance at D" must be answerable for any D, not only for today.
+    # The latest-wins fields above stay exactly as they were: this is additive,
+    # read-side, and changes no existing answer.
+    closings: list = field(default_factory=list)   # (date, Decimal, grade, doc_id)
     lines: list = field(default_factory=list)  # TxnLine per posting on this account
     # Holdings (Slice 6): instrument -> latest PositionObserved measurement (by
     # as_of). Measurements, not postings — they never touch `balance`.
     positions: dict = field(default_factory=dict)
+    # Slice 7: every position measurement ever seen, per instrument, for the same
+    # reason — an earlier point on the curve must not move when a later
+    # statement arrives. {instrument: [observation, ...]} in arrival order.
+    position_history: dict = field(default_factory=dict)
     # Cash/sweep lines that were recorded as "positions" before we recognized them
     # (Slice 6 fix). Kept apart so an existing vault reads correctly with no
     # re-ingest: they compose into the account's cash, never its holdings.
@@ -456,6 +465,8 @@ class LedgerProjection:
                 st.closing_date = event.occurred_at
                 st.closing_prov = event.provenance
                 st.closing_confirmed = event.body.get("confirmed_by") == "human"
+            st.closings.append((event.occurred_at, Decimal(event.body["amount"]),
+                                event.body.get("grade", ""), did or ""))
 
         elif et == "PositionObserved":
             acct = event.body["account_id"]
@@ -470,6 +481,12 @@ class LedgerProjection:
             # cost, nothing rewritten. The ingest-side fold stops new ones arriving.
             from ..ingest.brokerage import is_cash_row
             bucket = st.position_cash if is_cash_row(instrument) else st.positions
+            st.position_history.setdefault(instrument, []).append({
+                "as_of": event.occurred_at,
+                "market_value": Decimal(event.body["market_value"]),
+                "currency": event.body.get("currency", ""),
+                "grade": event.body.get("grade", ""),
+                "is_cash": is_cash_row(instrument)})
             prior = bucket.get(instrument)
             # Keep the latest measurement by value-time (as_of); an earlier one was
             # true when written. Append-only: a revaluation is a new observation.
