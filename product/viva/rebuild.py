@@ -150,6 +150,21 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
         log(f"  [{i}/{len(doc_ids)}] {doc_id[:10]}… {doc_type:24} -> {res.action}"
             + (f" ({res.grade})" if res.grade else "") + why)
 
+    # A rebuild ingests in whatever order the raw store yields, and gap-healing
+    # is a CASCADE: a statement that cannot connect yet is held until its
+    # neighbour arrives. During normal use that neighbour comes later and the
+    # heal fires; in a single batch run, the last arrivals have nobody left to
+    # trigger them. So the sweep runs once at the end — the same sweep `rescan`
+    # exists for, which is precisely Slice 1's order-independence promise being
+    # kept rather than assumed.
+    from .ingest import sweep
+
+    swept = sweep(vault.ledger)
+    if any(swept.get(k) for k in ("gaps", "corroborated")):
+        log(f"\nsweep: healed {swept.get('gaps', 0)} gap(s), corroborated "
+            f"{swept.get('corroborated', 0)} conflict(s), linked "
+            f"{swept.get('auto', 0)} transfer(s)")
+
     # A tool must check its own outcome. `enrich` on the last rebuilt vault said
     # "0 merchants, 0 transactions" — the vault was empty and nothing had said
     # so, because per-document lines are not a result (2026-07-26).
