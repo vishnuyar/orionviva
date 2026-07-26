@@ -456,3 +456,21 @@ def test_a_gap_on_arrival_is_not_a_gap_in_the_vault(tmp_path):
     assert counts.get("posted")
 
 
+
+
+def test_an_unshareable_counterparty_is_unknown_not_unenriched(tmp_path):
+    """Found on the real vault: 185 counterparties sat in `unenriched`, which
+    promises "we'll identify this later" — but T9 forbids sending a peer name or
+    a cheque number to the commons, so enrichment will never see them and they
+    could never become `settled`.
+
+    `unknown` is the truth about them, and it is also the tier that asks one
+    transaction at a time, which is exactly right for a Zelle or a check."""
+    ledger = _vault(tmp_path, [("2026-03-04", "ZELLE PAYMENT TO JOHN", "-200.00"),
+                               ("2026-03-05", "MYSTERY CO", "-100.00")])
+    proj = ledger.projection()
+    tiers = {m.description: proj.tier_of(m) for m in proj.movements()}
+    assert tiers["ZELLE PAYMENT TO JOHN"] == TIER_UNKNOWN
+    # A plain business we simply have not enriched yet is still `unenriched` —
+    # that one really will be identified later.
+    assert tiers["MYSTERY CO"] == TIER_UNENRICHED

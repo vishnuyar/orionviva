@@ -32,8 +32,8 @@ TIER_ORDER = ("settled", "structural", "unknown", "unenriched")
 TIER_MEANS = {
     "settled": "known, implies nothing  → SILENCE",
     "structural": "implies a relationship  → propose",
-    "unknown": "an instrument or a peer → ask, one at a time",
-    "unenriched": "counterparty not identified yet → enrich",
+    "unknown": "a peer or instrument → ask, one at a time",
+    "unenriched": "a business we have not identified yet → enrich",
 }
 
 

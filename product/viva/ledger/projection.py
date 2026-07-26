@@ -33,7 +33,7 @@ from .events import (ASSERTED, CONFLICTED, CORROBORATED, ISSUED, MAJOR_ASSET,
                      SCOPE_ACCOUNT, SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
                      VERIFIED, Event, Provenance, postings_of)
 from .identity import account_key, account_tokens, names_overlap
-from .merchants import normalize_merchant
+from .merchants import is_shareable, normalize_merchant
 from .postings import EQUITY_OPENING, INCOME_UNCATEGORIZED
 
 
@@ -889,6 +889,15 @@ class LedgerProjection:
         servicer tells us there is a loan but not which property (structural). A
         check tells us nothing at all (unknown)."""
         if self.counterparty_kind(m) in ("instrument", "peer"):
+            return TIER_UNKNOWN
+        # A descriptor that cannot be SHARED is, by that fact, a peer or an
+        # instrument: T9 forbids sending "ZELLE TO SAM" or "Check # 1201" to the
+        # commons, so enrichment will never see it and it can never become
+        # `settled`. Leaving it `unenriched` said "we'll identify this later"
+        # about counterparties nothing will ever identify — 185 of them on a
+        # real vault. They are `unknown`, which is the truth and is also the
+        # tier that asks one transaction at a time (2026-07-26).
+        if not is_shareable(m.description):
             return TIER_UNKNOWN
         if self.derived_category(m) is None:
             return TIER_UNENRICHED
