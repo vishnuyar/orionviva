@@ -57,3 +57,29 @@ def test_registering_a_new_balance_type_is_data_only():
                         aliases=frozenset({"gift_card"})))
     assert can_project("gift_card_statement")
     assert profile_for("gift_card").account_kind == LIABILITY
+
+
+def test_a_read_names_its_own_type_through_its_prompt_version():
+    """T8 required the extract version to be self-describing —
+    `extract:<base>+<fragment>` — and a fragment belongs to exactly one profile.
+    So a claim that lost its classify phase can still say what it is.
+
+    This is not a convenience. A real vault held 40 documents whose claims had an
+    EXTRACT phase and no CLASSIFY phase; the balance family's extract JSON does
+    not name its own type, so every one replayed as `unknown`, found no
+    projector, and parked. A rebuild produced an EMPTY vault out of forty
+    perfectly good stored reads — while the answer sat one field away, written
+    down at ingest time by a rule adopted for a completely different reason.
+
+    Reading it back is recovering a recorded fact, not inferring one."""
+    from viva.ingest.registry import doc_type_for_prompt_version
+
+    assert doc_type_for_prompt_version("extract:base-v1+card-v1") == \
+        "credit_card_statement"
+    assert doc_type_for_prompt_version("extract:base-v1+checking-v1") == \
+        "checking_statement"
+    # An unknown fragment must return "" so the caller parks honestly rather
+    # than defaulting to a plausible type — a wrong projector is worse than none.
+    assert doc_type_for_prompt_version("extract:base-v1+not-a-real-fragment") == ""
+    assert doc_type_for_prompt_version("classify-v1") == ""
+    assert doc_type_for_prompt_version("") == ""

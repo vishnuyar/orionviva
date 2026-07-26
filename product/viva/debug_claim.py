@@ -153,6 +153,21 @@ def main() -> None:
         did = b.get("doc_id", "")
         cap = captured.get(did, {})
         doc_type = cap.get("doc_type", "unknown")
+        if doc_type in ("", "unknown"):
+            # The capture never recorded a type (no classify claim), but the
+            # EXTRACT prompt version names it: T8's self-describing
+            # `extract:<base>+<fragment>`. Printing "unknown" while the very
+            # next line of this report shows `prompt=extract:base-v1+card-v1`
+            # is the tool withholding an answer it already has.
+            from .ingest.registry import doc_type_for_prompt_version
+            for candidate in [b] + [m.body for m in matches]:
+                recovered = doc_type_for_prompt_version(
+                    candidate.get("prompt_version", ""))
+                if recovered:
+                    doc_type = recovered
+                    print(f"  (no classify claim; type recovered from the "
+                          f"extract prompt version: {recovered})")
+                    break
         print("=" * 78)
         print(f"doc {did[:12]}  {cap.get('filename','')}  ({doc_type})")
         print(f"  phase={b.get('phase','extract')}  model={b.get('model')}  "

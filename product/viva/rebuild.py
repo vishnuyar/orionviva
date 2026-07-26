@@ -83,6 +83,7 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     """Replay every stored claim into a fresh vault. Returns counts by outcome."""
     from .ingest import capture_and_ingest
     from .ingest.reader import _peek_classification
+    from .ingest.registry import doc_type_for_prompt_version
 
     src = Vault.open(source, passphrase)
     src_raw = RawStore.open(source / "raw", passphrase)
@@ -144,6 +145,9 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
             t = e.get("response_text") or ""
             c = claims[doc].get("classify") or {}
             dt, _ = _peek_classification(c.get("response_text") or t)
+            if dt == "unknown":
+                dt = doc_type_for_prompt_version(
+                    e.get("prompt_version", "")) or dt
             facts, _err = _parse(dt, t, doc, locale, currency)
             return getattr(facts, "opening_date", "") or getattr(
                 facts, "as_of", "") or getattr(facts, "period_end", "") or ""
@@ -151,6 +155,7 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     log(f"  order: {'oldest first' if by_date else 'as stored (content hash)'}\n")
 
     vault = Vault.open(dest, passphrase)
+    recovered_types = 0
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     counts: dict[str, int] = {}
 
@@ -161,6 +166,23 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
         text = extract.get("response_text") or ""
         doc_type, confidence = _peek_classification(
             classify.get("response_text") or text)
+        if doc_type == "unknown":
+            # No classify claim (or an unreadable one). The EXTRACT claim still
+            # names its own type: T8 made the version a self-describing
+            # `extract:<base>+<fragment>` composite, and a fragment belongs to
+            # exactly one profile — a read recorded under `card-v1` WAS a
+            # credit-card statement. This reads a fact we wrote down; it does
+            # not infer one.
+            #
+            # Without it, 40 real documents whose claims carried an extract
+            # phase and no classify phase replayed as `unknown`, found no
+            # projector, and parked — an empty vault out of forty perfectly good
+            # stored reads, with the answer sitting one field away the whole
+            # time.
+            recovered = doc_type_for_prompt_version(extract.get("prompt_version", ""))
+            if recovered:
+                doc_type, confidence = recovered, 1.0
+                recovered_types += 1
 
         def replay(_data, new_doc_id, _text=text, _t=doc_type, _c=confidence,
                    _v=extract.get("prompt_version", ""),
@@ -233,6 +255,9 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     # summarised as "14 gap" had ZERO gaps left in the vault, and I reported a
     # defect in Slice 1's order-independence that does not exist (2026-07-26).
     # A transient state counted as a result is still a reporting failure.
+    if recovered_types:
+        log(f"\n  {recovered_types} document(s) had no classify claim; their type\n"
+            "  was recovered from the extract prompt version (T8).")
     still_held = len([b for b in proj.gap_holds()])
     log(f"still held after everything: {still_held} gap(s)")
     if counts.get("gap") and not still_held:
