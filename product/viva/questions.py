@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .ingest import held_items, other_holds
-from .ledger.merchants import is_shareable, normalize_merchant
+from .ledger.merchants import is_conduit, is_shareable, normalize_merchant
 from .ledger.events import ASSERTED
 from .ledger.projection import BY_CATEGORY, BY_DEFAULT, SPENDING
 from .listen import suggest_answers
@@ -223,11 +223,20 @@ def _nature_questions(proj) -> list[Question]:
     would be a jurisdiction-shaped guess: leverage ranking is the filter, so a
     vehicle purchase or a property closing floats up and a grocery run sinks."""
     groups: dict[str, dict] = {}
+    singles: list = []
     for m in proj.movements():
         if not proj._is_expense(m):
             continue
         if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT):
             continue                      # decided by a link, own-account or a ruling
+        # A CONDUIT is asked about first and separately, before the merchant
+        # path can claim it. It has no useful category and never will — "check"
+        # is not merchant knowledge — so waiting for one would mean never asking,
+        # while grouping them would let a person say only one thing about an
+        # earnest-money deposit and an account opening at once.
+        if is_conduit(m.description):
+            singles.append(m)
+            continue
         ruling = proj.derived_category(m) or {}
         category = ruling.get("category")
         if not category:
@@ -246,6 +255,25 @@ def _nature_questions(proj) -> list[Question]:
         g["keys"].append(m.key)
 
     out: list[Question] = []
+    for m in singles:
+        ruling = proj.derived_category(m) or {}
+        label = ruling.get("subcategory") or ruling.get("category") or "unknown"
+        out.append(Question(
+            id=f"{NATURE}:{m.key}", kind=NATURE,
+            text=(f"{m.date}: {m.description} — {_money(abs(m.amount), m.currency)}. "
+                  "What was this one for?"),
+            why=("A check, an ATM withdrawal or a wire says HOW the money moved, "
+                 "not who got it — so I have to ask about each one separately."),
+            amount=abs(m.amount), currency=m.currency, count=1, scope="one",
+            options=[{"label": s["label"], "action": "rule_major",
+                      "args": {"movement_key": m.key, "major": s["major"]}}
+                     for s in suggest_answers(ruling.get("category", ""), label)],
+            free_text="Or tell me in your own words",
+            refs={"movement": m.key, "movements": [m.key],
+                  "descriptor": m.description,
+                  "category": ruling.get("category", ""),
+                  "subcategory": ruling.get("subcategory", "")}))
+
     for key, g in groups.items():
         label = g["subcategory"] or g["category"]
         if g["provisional"]:
