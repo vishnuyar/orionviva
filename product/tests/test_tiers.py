@@ -430,3 +430,37 @@ def test_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
     assert "sweep(vault.ledger)" in source
     # And it runs BEFORE the vault reports its own outcome, or the count lies.
     assert source.index("sweep(vault.ledger)") < source.index("movements == 0")
+
+
+def test_the_sweep_should_close_a_gap_whose_neighbour_arrived_later(tmp_path):
+    """KNOWN DEFECT, found on 40 real documents (2026-07-26). Marked xfail so it
+    stays visible instead of becoming folklore.
+
+    Ingested oldest-first, all 40 posted `corroborated`. Ingested in content-hash
+    order — which is what a replay naturally does — 14 held as `conflicted` gaps,
+    and `sweep` healed ZERO of them.
+
+    The money is order-independent (919 movements either way), so Slice 1's
+    substantive promise holds. The GRADE is not. For a product whose output is
+    trust, a vault that says `conflicted` about statements that plainly
+    reconcile is telling the person something false — and it is the *pessimistic*
+    direction, which is safer but still wrong.
+
+    The cascade heals FORWARD as each document lands; nothing re-examines a gap
+    once its missing neighbour has since arrived. `rescan` exists precisely for
+    that and does not do it."""
+    import pytest
+
+    from viva.ingest import sweep
+
+    # Two statements of one account, ingested newest-first so the first cannot
+    # connect: the exact shape of the 14 real gaps.
+    later = _vault(tmp_path / "a", [("2026-04-05", "SHOP", "-100.00")],
+                   opening="900.00")
+    proj = later.projection()
+    conflicted = [a for a in proj.accounts()
+                  if proj.balance(a).grade == "conflicted"]
+    swept = sweep(later)
+    if conflicted:
+        pytest.xfail("known: sweep does not re-evaluate gaps whose neighbour "
+                     f"arrived later (healed {swept.get('gaps', 0)})")

@@ -90,3 +90,37 @@ These are the ones that matter, and none is new:
 ### What I would resist
 
 Building Slice 8 (obligations) or 9b (Viva speaks) next. Both are attractive and both would stack more unproven behaviour on top of behaviour that has never met real data. The last two sessions produced a lot of correct-looking work; **the next one should find out whether it is correct.**
+
+---
+
+## The rebuild, run for real (2026-07-26)
+
+40 documents, replayed from stored claims through today's parsers. No model calls, no money. It found **two bugs of mine and one real defect** — and then a fourth thing nobody was looking for.
+
+### Ordering decides the grade
+
+The same 40 documents, two ingest orders:
+
+| order | posted | held as gaps | movements |
+|---|---|---|---|
+| content hash (what a replay naturally does) | 16 | **14** | **919** |
+| oldest first | **31** | **0** | **919** |
+
+**The money is order-independent — 919 either way.** Slice 1's substantive promise holds, and that is the important half.
+
+**The grade is not.** The same statements are `corroborated` in one order and `conflicted` in the other. For a product whose entire output is trust, *the grade is the product*: a vault telling someone 14 of their statements don't reconcile, when they plainly do, is saying something false. It errs pessimistically, which is the safer direction, but wrong is wrong.
+
+**And `sweep` healed zero of them.** That is the precise defect: the cascade heals *forward* as each document lands, and **nothing re-examines a gap once its missing neighbour has since arrived.** `rescan` exists for exactly this case and does not do it. Recorded as an xfail test rather than a note, so it stays visible.
+
+`rebuild` now replays oldest-first by default — correct for a batch regardless — with `--hash-order` kept to reproduce the bug.
+
+### The other findings
+
+- **My replay skipped a step**: the balance family's `doc_type` comes from the classify phase and the reader stamps it onto the facts. Missing that parked **33 of 40** documents as `unknown`. Brokerage and pay stubs were unaffected because their extract JSON names its own type, which is why the failure looked selective and confusing.
+- **A genuine parser defect**: 3 brokerage statements park on unit quantities like `117.360` — the *money* parser applied to a *share count*, where three decimals are normal but a thousands separator is possible. Correct caution, wrong context. Still open, deliberately: loosening a money-safety rule deserves a decision, and the better fix is arithmetic (units × price ≈ market value) rather than permission.
+- **A real reconciliation conflict** on one card statement, off by −2,640.27, which the old vault had settled by a human correction we deliberately discarded.
+- **2 identity conflicts** — expected and wanted: the account-alias rulings were dropped, so "whose account is this?" gets re-tested.
+
+### And the meta-finding
+
+Four times in this session a tool reported success it had not earned: the eval harness scored a broken pipe as clean, the surface gave one message for four distinct failures, the rebuild reported success on an empty vault, and a sweep that healed nothing printed nothing at all. Each was fixed on its own; together they are one lesson, now in memory: **graceful degradation belongs in the product and never in the instrument that measures it.**

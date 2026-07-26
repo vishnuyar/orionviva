@@ -78,7 +78,7 @@ def _parse(doc_type: str, text: str, doc_id: str, locale: str, currency: str):
 
 
 def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
-            locale: str = "US", currency: str = "USD", by_date: bool = False,
+            locale: str = "US", currency: str = "USD", by_date: bool = True,
             log=print) -> dict:
     """Replay every stored claim into a fresh vault. Returns counts by outcome."""
     from .ingest import capture_and_ingest
@@ -105,8 +105,17 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     # gaps" — so hash order SHOULD be fine, and running it that way is how we
     # find out whether that promise still holds on 40 real documents.
     #
-    # `by_date=True` replays oldest-first instead. If the two orders disagree,
-    # the promise is broken and the difference is the measurement.
+    # `by_date` replays oldest-first, and IS THE DEFAULT since 2026-07-26,
+    # because the two orders were run against 40 real documents and disagreed:
+    #
+    #   hash order:  16 posted, 14 held as gaps  }  919 movements
+    #   date order:  31 posted,  0 held as gaps  }  919 movements
+    #
+    # The MONEY is order-independent — 919 either way, so Slice 1's substantive
+    # promise holds. The GRADE is not: the same statements are `conflicted` in
+    # one order and `corroborated` in the other. For a product whose output is
+    # trust, the grade IS the product, so this is a real defect and not cosmetic.
+    # See docs/stocktake-2026-07.md. Use --hash-order to reproduce it.
     if by_date:
         def _period(doc):
             e = claims[doc].get("extract") or {}
@@ -227,7 +236,7 @@ def main() -> None:
     if not source.exists():
         raise SystemExit(f"No vault at {source}.")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    by_date = "--by-date" in sys.argv
+    by_date = "--hash-order" not in sys.argv
     dest = pathlib.Path(args[0]) if args else source.with_name(
         source.name + "-rebuilt-" + time.strftime("%Y%m%d-%H%M%S"))
     if dest.exists():
