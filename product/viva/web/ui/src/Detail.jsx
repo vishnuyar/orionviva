@@ -21,6 +21,10 @@ export function AccountView({id, onBack}) {
       <div className="src">{[d.institution, d.number].filter(Boolean).join(' ')}
         {d.holders?.length ? ' · ' + d.holders.join(', ') : ''}</div>
       <div className="quiet">{d.balance.explanation}</div>
+      <Tags subject={d.merchant} scope="merchant" existing={d.merchant_tags}
+            known={d.known_tags} onDone={async () => {
+              setD(await api.merchantTxns(q.refs.merchant))
+            }} />
       <table>
         <thead><tr><th>Date</th><th>Description</th><th className="amt">Amount</th></tr></thead>
         <tbody>
@@ -99,6 +103,62 @@ export function HeldDetail({docId, onBack, onDone}) {
  * spending?". Keyed on the NORMALIZED merchant, so what you see is exactly what
  * your answer will settle. A peer descriptor is answered per transaction (one
  * Zelle is a gift, the next a loan repayment); a commercial merchant once. */
+
+/* Tags (Slice 7.6). Deliberately separate from the category picker above,
+ * because they are different KINDS of statement and merging them in the UI
+ * would re-create the confusion the split exists to remove:
+ *
+ *   the category answers "what kind of spending is this?"  — exactly one,
+ *     so the parts of a spending report sum to the whole.
+ *   a tag answers "what was this for?"                     — as many as you
+ *     like, overlapping, and tag totals deliberately do NOT sum.
+ *
+ * The vocabulary that already exists is offered before a new one can be typed.
+ * That matters more here than for categories: a tag is personal meaning, so
+ * nothing outside this device can ever help tidy it up later (T9). */
+function Tags({subject, scope, existing, known, onDone}) {
+  const [tags, setTags] = useState(existing || [])
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = async (next) => {
+    setBusy(true)
+    try { await api.tag(subject, next, scope); setTags(next); await onDone() }
+    finally { setBusy(false) }
+  }
+  const add = (t) => {
+    const clean = (t || '').trim().toLowerCase()
+    if (!clean || tags.includes(clean)) return setTyped('')
+    setTyped(''); save([...tags, clean])
+  }
+  const unused = (known || []).filter(k => !tags.includes(k))
+  return (
+    <div style={{marginTop: 12}}>
+      <div className="quiet">
+        Tags — {scope === 'merchant' ? 'everything from this counterparty' : 'this transaction'}.
+        As many as you like; they never change what kind of spending it is.
+      </div>
+      <div className="row" style={{marginTop: 6}}>
+        {tags.map(t => (
+          <button key={t} className="ghost" disabled={busy} title="remove"
+                  onClick={() => save(tags.filter(x => x !== t))}>{t} ×</button>
+        ))}
+        <input type="text" className="grow" value={typed} placeholder="add a tag…"
+               onChange={e => setTyped(e.target.value)}
+               onKeyDown={e => { if (e.key === 'Enter') add(typed) }} />
+      </div>
+      {unused.length > 0 && (
+        <div className="row" style={{marginTop: 6}}>
+          <span className="quiet">already used:</span>
+          {unused.slice(0, 12).map(k => (
+            <button key={k} className="link" disabled={busy}
+                    onClick={() => add(k)}>{k}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function MerchantDetail({q, onBack, onDone}) {
   const [d, setD] = useState(null)
   const [cat, setCat] = useState('')

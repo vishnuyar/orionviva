@@ -172,3 +172,27 @@ def test_a_tag_cannot_be_attached_to_something_that_is_not_money(tmp_path):
     with pytest.raises(ValueError):
         movement_tagged("acct:chase:1122", ["japan trip"], "2026-03-01",
                         scope="account")
+
+
+def test_the_surface_offers_a_tag_input_separate_from_the_category_picker():
+    """Merging them in the UI would recreate the confusion the split removes.
+
+    The category picker answers "what kind of spending is this?" — exactly one,
+    so a spending report's parts sum to the whole. The tag input answers "what
+    was this for?" — as many as you like, overlapping, never summing. Two
+    questions, two controls.
+
+    Crude on purpose (it reads the source as text): the alternative is a browser
+    rig, and the honest trade is to catch CONTRACT drift cheaply here and verify
+    rendering by hand against a real vault."""
+    import pathlib
+    ui = pathlib.Path(__file__).resolve().parents[1] / "viva" / "web" / "ui" / "src"
+    if not ui.is_dir():
+        import pytest
+        pytest.skip("UI source not present")
+    text = "\n".join(p.read_text() for p in ui.rglob("*.js*"))
+    assert "api.tag(" in text, "the surface must be able to write a tag"
+    assert "known" in text, "the existing vocabulary is offered before a new one"
+    # The two controls must remain distinguishable in the source.
+    assert "function Tags(" in text
+    assert "assignMerchant" in text, "the category path is untouched"
