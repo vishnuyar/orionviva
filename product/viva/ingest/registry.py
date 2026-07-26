@@ -173,6 +173,33 @@ def identity_of_facts(facts: dict | None) -> str:
     return p.identity if p else ""
 
 
+def doc_type_for_prompt_version(version: str) -> str:
+    """Recover the document type from a stored read's PROMPT VERSION.
+
+    The extract version is the self-describing composite `extract:<base>+<frag>`
+    (T8), and a profile's `type_fragment` is unique to it — a read recorded
+    under `card-v1` was, by construction, a credit-card statement. So a claim
+    that has lost its classify phase can still say what it is, with certainty
+    rather than inference: this reads a fact we wrote down, it does not guess.
+
+    Why this exists (2026-07-26): a real vault held 40 documents whose claims
+    carried an EXTRACT phase and no CLASSIFY phase. The balance family's extract
+    JSON does not name its own type, so every one replayed as `unknown`, had no
+    projector, and parked — a rebuild that produced an empty vault out of forty
+    perfectly good stored reads. The type was in the vault the whole time, one
+    field away, because T8 required the version to be self-describing.
+
+    Returns "" when the version names no known fragment; the caller must treat
+    that as unknown rather than as a default."""
+    if not version or not version.startswith("extract:"):
+        return ""
+    fragment = version[len("extract:"):].split("+", 1)[-1]
+    for profile in set(_INDEX.values()):
+        if profile.type_fragment == fragment:
+            return profile.doc_type
+    return ""
+
+
 def extraction_prompt_for(doc_type: str) -> tuple[str, str] | None:
     """Compose the extraction prompt (text, version) a classified type's profile
     owns, or None if there is no projector for it yet. The version is the
