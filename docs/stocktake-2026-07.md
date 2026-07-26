@@ -150,3 +150,50 @@ What actually went wrong was mine, and it is the same failure a fifth time: the 
 - One genuine **reconciliation conflict**, −2,640.27, on a card statement.
 - Two **identity conflicts** — expected and wanted, since the alias rulings were deliberately dropped.
 - `rebuild` defaulting to oldest-first — still correct for a batch, just not a bug fix.
+
+---
+
+## The answer key, scored — and a sixth false alarm (2026-07-26)
+
+`diff_rulings` re-judged **33 things Vishnu had told the old vault** against the rebuilt one. It reported three CONTRADICTIONS, under the heading it reserves for the single dangerous failure:
+
+```
+  READ THESE FIRST — Viva disagrees with you:
+    northwind motors nw moto ppd id    you: category:transport     viva: auto loan
+    brokerhouse svc llc moneyline ppd id  you: category:transfers     viva: brokerage account
+    01 09 online domestic wire transfer  you: category:down payment  viva: property purchase
+```
+
+**None of the three is a disagreement.** Every pair is true at the same time: a Northwind ACH is transport spending *and* an auto loan; a brokerage MoneyLine is a transfer *and* evidence of the brokerage it transfers into; a wire is a down payment *and* a property purchase. A spending **category** and a structural **relationship** are different axes, and the scorer compared across them.
+
+The giveaway was in its own output: the wire transfer appeared in the CONTRADICTED list **and** the ANTICIPATED list of the same report — two rulings on one subject, graded on two axes, reaching opposite verdicts.
+
+The `missed` column was the same error mirrored: **12 of the 15 "misses" were ATM withdrawals**, plus cheques and peers. T9 forbids sending those to the commons, so enrichment never sees them and no implication can ever exist. Scoring them as misses grades the *design* — and specifically grades the product for correctly refusing to guess about a cash withdrawal.
+
+**Fixed.** Two verdicts that are not grades — `incomparable` (different axes) and `unknowable` (a peer or an instrument) — both excluded from the denominator, so the score counts only what could have been anticipated. The peer/instrument test asks the **learned** `counterparty_kind` first and falls back to `is_shareable` only second: `is_shareable` is a substring list, it catches `zelle` and ` to ` but not `ATM WITHDRAWAL 03 15 MAIN ST`, and judging the tool by the weaker of the two tests is exactly how 12 withdrawals became misses. `tests/test_diff_rulings.py` (8 tests) holds all of it, including that a same-axis disagreement is **still** loudly CONTRADICTED.
+
+### The meta-lesson, sixth occurrence
+
+This is the same failure as the retracted Slice 1 defect, and the same *direction*: a measurement that **manufactured an accusation** against correct behaviour. Five of the six were an instrument reporting something it had not earned; two of the six accused working code of being broken.
+
+The rule now has a second clause: *report the final state, never the sum of moments* — **and never grade one axis against another.** Whenever a scorer compares two labels, the first question is whether they answer the same question. "Transport" and "auto loan" do not.
+
+
+### The corrected run, and what it honestly shows
+
+```
+  anticipated       2     6%
+  proposed         13    39%
+  incomparable      3     9%    a category vs a relationship — different axes
+  unknowable        8    24%    a peer or instrument — correctly silent
+  missed            7    21%
+  CONTRADICTED      0     0%
+```
+
+**The empty CONTRADICTED column is the result worth having.** On the same axis, the rebuilt vault never confidently disagrees with the person who owns the money. For a product whose output is trust, that column mattering more than the others is the whole thesis in one line.
+
+**2/22 is the uncomfortable number, and it should stay uncomfortable.** The vault reaches the author's exact conclusion twice and merely *raises the subject* thirteen times. There is a good argument that proposing is correct for houses, car loans and brokerage accounts — principle 7, deferential where it counts. There is also the fact that **the metric was designed expecting anticipation, returned 6%, and the designer then argued anticipation was the wrong target.** That is the most self-serving move available and it should not be settled by argument. It is settled by the author reading the 13 proposals and marking each one "I would have hit yes" or "no".
+
+**A third flaw in the scorer, recorded and deliberately not fixed.** A warehouse club, a large online retailer, the tax authority and a tutoring service all sit under `missed` — but they are ordinary businesses, now `settled`, which the queue will never ask about at all. **A ruling the new design makes unnecessary is the best possible outcome, and it is being scored as a failure.** So the real picture is better than 2/22. It is left unfixed because three consecutive corrections to this instrument have each moved the number in the builder's favour, and that pattern is more informative than any of the three corrections. The fourth needs a colder eye.
+
+**Overall judgement, stated plainly:** the architecture is right and the plumbing works on real money — the naive question the whole refactor existed to kill is gone, and 55% of the vault's money now arrives as an informed proposal. What remains unproven is **quality**: whether the proposals are ones a person would accept, and whether the categories are right at all (`poker` and `playing poker` both appear in the author's own answer key). That is the next thing to measure, and the builder should not be the sole grader of it.
