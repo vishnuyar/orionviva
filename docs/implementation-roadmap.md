@@ -166,20 +166,24 @@ _Delivered. **Stage 1 (holdings snapshot):** the `brokerage_statement` divergent
 
 **Measured on real money (2026-07-26):** 15 counterparties carrying over half the vault's money moved from a naive question to a named proposal; the scoring of it is in [stocktake-2026-07.md](stocktake-2026-07.md), including three false "contradictions" the scorer invented and what that cost.
 
-## Slice 7 — Net worth
-**Block seeded:** Net-worth projection (compose assets − liabilities, bitemporal).
+## Slice 7 — Net worth  📐 SPEC SETTLED 2026-07-26
+**Block seeded:** the **net-worth projection** · the **provable subtotal** (Slice 13's first primitive, derived for free).
 
-> _Note (from doc-type-registry design): liability netting (assets − liabilities) is a **projection over posted data — zero data impact**. Slice 2 shows cards as "owed"; net worth composes them here with no migration._
+**Full spec + the four decisions:** [net-worth.md](net-worth.md).
+
+**The reframe that settled it (Vishnu, 2026-07-26):** *"net worth is always as-of date, it should be from the earliest date available to latest date."* Net worth is **a curve, not a number with a date attached** — `net_worth(D)` for every D between the earliest and latest dated observation. That dissolves the as-of problem instead of answering it: there is no *the* net worth to be wrong about. It also needs **no new event type** and hands us trends for free.
 
 **Open state:** no single "what am I worth" figure; balances and positions live apart. *Proof:* net-worth query unsupported (red test).
 
-**Implementation:** a projection summing depository + investment assets − liabilities (cards, loans), **per currency** (no FX faking), each figure carrying grade + as-of date; coverage-aware (states included/missing); bitemporal so "net worth as of date X" and "as I knew it on date Y" both work.
+**Implementation:** a pure projection. Each point takes every account's most recent measurement at or before D — the **observed closing balance** for depository/card (the issuer attests it; summing our own postings would be our arithmetic over a possibly incomplete run), `Σ(market_value)` of latest holdings for investment, **cost at the ruling date** for asserted assets. An account with no measurement at or before D contributes **nothing** — no zero, no guess. Per currency, no FX faking. Every line carries its own as-of date and grade; every point names its **stalest input**.
 
-**Final state:** one honest net-worth figure per currency, with coverage and grade; a trend over time.
+**Decisions settled:** **D2 trust the user** — the personal view includes everything at your word; the provable/unprovable line is an *audience* question, and the disclosure view (S13) is later a one-line filter. **D3 two kinds of unknown** — an *asserted* value is trusted and badged; an *undecomposable* one (mortgage principal vs interest, `reliable_balance = False`) is **asked for, recorded as asserted, and corrected when the document arrives**, with the total marked incomplete meanwhile. **D4 reuse the grade ladder** — "provable" *is* `corroborated`; a parallel issued/asserted badge would be two systems describing one fact, the exact bug that inflated spending in 6.5.
 
-**Done criteria / tests:** net worth = Σ assets − Σ liabilities, only trustworthy grades summed, excluded accounts named; multi-currency reports per-currency (no conversion); a past-date recompute is correct; coverage states completeness.
+**Final state:** an honest net-worth curve per currency, every point dated, graded and coverage-aware; the first view where what you own and what you owe appear together.
 
-**Why now + future use:** the headline peace-of-mind number (job 4); **pure projection composition, no new primitive** — the clearest lego payoff; bitemporal net worth is the direct precursor to the proof bundle (S13).
+**Done criteria / tests:** an earlier point never changes when a later document lands · an account contributes nothing before its first measurement · `reliable_balance = False` keeps the total incomplete and names the document that would fix it · answering the estimate flips it to complete, and the statement later upgrades the grade **without moving earlier points** · two currencies produce two subtotals and no grand total · the provable subtotal sums `corroborated` lines only.
+
+**Why now + future use:** the headline peace-of-mind number (job 4); **pure projection composition, no new primitive** — the clearest lego payoff; and the first thing this product tells its author that he did not already know. The bitemporal curve is the direct precursor to the proof bundle (S13).
 
 ---
 

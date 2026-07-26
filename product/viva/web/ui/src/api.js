@@ -19,6 +19,7 @@ export const api = {
   questions:  (limit = 10)   => get(`/api/questions?limit=${limit}`),
   account:    (id)           => get(`/api/account?id=${encodeURIComponent(id)}`),
   review:     ()             => get('/api/review'),
+  netWorth:   (asOf = '')    => get(`/api/net-worth?as_of=${asOf}`),
   transfers:  ()             => get('/api/transfers'),
   paystubs:   ()             => get('/api/paystubs'),
   merchants:  ()             => get('/api/merchants'),

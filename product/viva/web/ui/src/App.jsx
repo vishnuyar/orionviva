@@ -198,6 +198,69 @@ function AddDocuments({onDone}) {
   )
 }
 
+
+/* Net worth (Slice 7). A CURVE, not a number with a date attached — so the
+ * date is not a caption on the figure, it IS the figure's subject.
+ *
+ * Three things here that a bank app will not show you, each one a refusal to
+ * bluff: every line's own measurement date (usually earlier than the point it
+ * belongs to); the PROVABLE subtotal, backed by a document whose arithmetic
+ * checks; and what is deliberately NOT counted, with the paperwork that would
+ * settle it. A total that silently omits a mortgage is a lie of omission. */
+function NetWorth() {
+  const [nw, setNw] = useState(null)
+  useEffect(() => { api.netWorth().then(setNw).catch(() => setNw(false)) }, [])
+  if (nw === false || (nw && !nw.lines.length && !nw.missing.length)) return null
+  if (!nw) return <div className="card muted">Working out what you're worth…</div>
+  const stale = nw.oldest_input && nw.oldest_input !== nw.as_of
+  return (
+    <div className="card">
+      <h3>What you're worth <span className="quiet">as of {nw.as_of}</span></h3>
+      {!nw.complete && (
+        <div className="why">
+          Incomplete — your true net worth is <strong>lower</strong> than this.
+        </div>
+      )}
+      {Object.entries(nw.by_currency).map(([cur, row]) => (
+        <div key={cur} className="row" style={{marginTop: 8}}>
+          <div className="grow">
+            <div className="big">{money(row.net, cur)}</div>
+            <div className="quiet">
+              {money(row.assets, cur)} owned · {money(row.liabilities, cur)} owed
+            </div>
+            <div className="quiet">
+              {money(row.provable, cur)} of it provable — a document attests it
+              and the arithmetic checks
+            </div>
+          </div>
+        </div>
+      ))}
+      {stale && (
+        <div className="quiet" style={{marginTop: 8}}>
+          Only as current as its oldest input: {nw.oldest_input}.
+        </div>
+      )}
+      <table>
+        <thead><tr><th>Account</th><th>Measured</th><th className="num">Amount</th></tr></thead>
+        <tbody>
+          {nw.lines.map(l => (
+            <tr key={l.account}>
+              <td>{l.account} {l.provable ? '' : <span className="quiet">· your word</span>}</td>
+              <td className="quiet">{l.as_of}</td>
+              <td className="num">{money(l.amount, l.currency)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {nw.missing.map(m => (
+        <div key={m.account} className="why">
+          <strong>{m.account}</strong> is not counted — {m.why}. {m.would_fix} would settle it.
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function App() {
   const [d, setD] = useState(null)
   const [q, setQ] = useState(null)
@@ -237,6 +300,7 @@ export default function App() {
   return (
     <>
       <Picture d={d} />
+      <NetWorth />
       <Questions data={q} onAnswer={load} onOpen={openQuestion}
                  onMore={() => setLimit(limit + 25)} />
       <Money d={d} onAccount={(id) => setRoute({name: 'account', id})} />
