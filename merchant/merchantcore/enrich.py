@@ -30,7 +30,8 @@ from .taxonomy import (PRIMARY_CATEGORIES, TAXONOMY_VERSION, canonical_primary,
 
 log = logging.getLogger(__name__)
 
-ENRICHMENT_VERSION = "enrich-v3"       # v3: + counterparty_kind and IMPLICATIONS
+ENRICHMENT_VERSION = "enrich-v4"       # v4: reuse the vault's known subcategories
+# v3: + counterparty_kind and IMPLICATIONS
 # v2: 16 primaries + subcategory, mcc, logo. Retained; records written under it
 # keep resolving to it (T8).
 
@@ -57,11 +58,21 @@ _PROMPT = promptstore.load(PROMPTS, ENRICHMENT_VERSION)
 
 
 
-def build_enrichment_prompt(merchants: dict) -> tuple[str, str]:
+def build_enrichment_prompt(merchants: dict,
+                            known_subcategories=None) -> tuple[str, str]:
     """Compose the enrichment prompt for a batch (``{key: example}``) and its
-    version (taxonomy + prompt + normalizer, so a record can be re-derived)."""
+    version (taxonomy + prompt + normalizer, so a record can be re-derived).
+
+    ``known_subcategories`` is the vault's EXISTING finer vocabulary. It crosses
+    the T9 boundary safely because a subcategory is impersonal by construction —
+    "coffee shop" says nothing about who bought coffee, or when, or how much."""
     lines = "\n".join(f"- {key}: {example}" for key, example in merchants.items())
-    header = _PROMPT.format(primaries=", ".join(PRIMARY_CATEGORIES) + ", other")
+    # The vocabulary that already exists is shown to the model BEFORE it invents
+    # a new one. The cheapest of the three sprawl defences and the only one that
+    # costs nothing: prevention beats a resolver beats a cleanup.
+    header = _PROMPT.format(
+        primaries=", ".join(PRIMARY_CATEGORIES) + ", other",
+        known_subcategories=", ".join(known_subcategories or []) or "none yet")
     version = f"{ENRICHMENT_VERSION}+{TAXONOMY_VERSION}+{NORMALIZER_VERSION}"
     return header + lines, version
 
@@ -155,9 +166,11 @@ class Enricher:
     ``chunk_size`` bounds how many merchants ride in a single call so the reply
     stays a complete, parseable JSON object."""
 
-    def __init__(self, extract_fn, chunk_size: int = DEFAULT_CHUNK_SIZE):
+    def __init__(self, extract_fn, chunk_size: int = DEFAULT_CHUNK_SIZE,
+                 known_subcategories=None):
         self._extract = extract_fn
         self._chunk_size = max(1, int(chunk_size))
+        self._known = list(known_subcategories or [])
 
     def enrich(self, merchants: dict) -> dict:
         """Enrich ``{key: example}`` → ``{key: MerchantRecord}``, one model call
@@ -168,12 +181,12 @@ class Enricher:
         items = list(merchants.items())
         chunks = [dict(items[i:i + self._chunk_size])
                   for i in range(0, len(items), self._chunk_size)]
-        _, version = build_enrichment_prompt(dict(items[:1]))
+        _, version = build_enrichment_prompt(dict(items[:1]), self._known)
         log.info("enrich: %d merchant(s) in %d call(s) of <=%d (%s)",
                  len(items), len(chunks), self._chunk_size, version)
         out: dict[str, MerchantRecord] = {}
         for n, chunk in enumerate(chunks, 1):
-            prompt, version = build_enrichment_prompt(chunk)
+            prompt, version = build_enrichment_prompt(chunk, self._known)
             text = self._extract(prompt)
             records = parse_enrichment(text, list(chunk.keys()), version)
             log.info("enrich: chunk %d/%d → %d/%d record(s)",

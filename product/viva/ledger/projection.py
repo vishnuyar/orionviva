@@ -28,7 +28,7 @@ from typing import Iterable
 
 from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
-from .events import (ASSERTED, CONFLICTED, CORROBORATED, ISSUED, MAJOR_ASSET,
+from .events import (SCOPE_CATEGORY, ASSERTED, CONFLICTED, CORROBORATED, ISSUED, MAJOR_ASSET,
                      MAJOR_EXPENSE, MAJOR_INCOME, MAJOR_LIABILITY,
                      SCOPE_ACCOUNT, SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
                      VERIFIED, Event, Provenance, postings_of)
@@ -937,14 +937,90 @@ class LedgerProjection:
         return {k: {"count": v["count"], "amount": v["amount"],
                     "merchants": len(v["merchants"])} for k, v in out.items()}
 
+    # --- category identity (Slice 7.5) ---------------------------------------
+    #
+    # The root cause of category sprawl: accounts and merchants are resolved
+    # IDENTITIES, and a category was a bare string. So `poker` and `playing
+    # poker` both lived in a real vault, quietly halving every total that
+    # touched either — and no amount of care at the point of typing prevents
+    # that, because enrichment mints labels from the other end too.
+    #
+    # The fix reuses the one primitive this project already has four instances
+    # of (accounts, transfers, merchants, and now labels): ask only when
+    # ambiguous, learn the ruling, apply it on the READ side. Deliberately NOT
+    # fuzzy string matching — a tuned similarity threshold is a keyword list
+    # with decimals, and recomputing it each run would let categories silently
+    # re-merge and un-merge between runs. A recorded alias is auditable, stable,
+    # and reversed by appending rather than editing.
+
+    def category_aliases(self) -> dict[str, str]:
+        """{duplicate label -> the label it is really the same as}."""
+        return {subj: body["same_as"]
+                for (scope, subj), body in self._rulings.items()
+                if scope == SCOPE_CATEGORY and (body or {}).get("same_as")}
+
+    def canonical_category(self, label: str) -> str:
+        """Follow a label to the one every total should count it under.
+
+        Chains are followed (a → b → c) and cycles are survived rather than
+        trusted: a ruling loop is a mistake someone made, and hanging on it
+        would take the whole read side down with it."""
+        aliases = self.category_aliases()
+        seen: set[str] = set()
+        current = label
+        while current in aliases and current not in seen:
+            seen.add(current)
+            current = aliases[current]
+        return current
+
+    def known_categories(self) -> list[str]:
+        """The vocabulary that already exists — canonical labels only.
+
+        This is what every path that could MINT a label must be offered first:
+        the surface picker, the free-text ruling, and enrichment's prompt. A new
+        label should be a deliberate act, not the path of least resistance."""
+        out = {self.canonical_category(c)
+               for row in self._merchant_categories.values()
+               for c in [(row.get("category") or "").strip()] if c}
+        out |= {self.canonical_category((row.get("category") or "").strip())
+                for row in self._categories.values()
+                if (row.get("category") or "").strip()}
+        return sorted(out)
+
+    def known_subcategories(self) -> list[str]:
+        """The finer vocabulary, canonicalized. Enrichment produces these as
+        free text per merchant, which is the larger sprawl source of the two:
+        one label per merchant, hundreds of merchants, and a prompt that could
+        only *ask* for consistency."""
+        out = {self.canonical_category(s)
+               for row in list(self._merchant_categories.values())
+               + list(self._categories.values())
+               for s in [(row.get("subcategory") or "").strip()] if s}
+        return sorted(out)
+
     def derived_category(self, m: "MovementInfo") -> dict | None:
         """A movement's effective category (Slice 5.5): a per-transaction override
         wins; else the merchant catalog (by normalized descriptor); else None.
         Returns the ruling dict ({category, grade, ...}) or None if unknown."""
         override = self._categories.get(m.key)
-        if override is not None:
-            return override
-        return self._merchant_categories.get(normalize_merchant(m.description))
+        found = (override if override is not None
+                 else self._merchant_categories.get(
+                     normalize_merchant(m.description)))
+        if found is None:
+            return None
+        # Canonicalize HERE, at the one funnel every aggregate reads through, so
+        # a single alias ruling corrects spending-by-category, spending-by-
+        # subcategory, the tiers and net worth at once — retroactively, with no
+        # re-ingest and nothing rewritten.
+        aliases = self.category_aliases()
+        if not aliases:
+            return found
+        out = dict(found)
+        for field_name in ("category", "subcategory"):
+            value = (out.get(field_name) or "").strip()
+            if value:
+                out[field_name] = self.canonical_category(value)
+        return out
 
     def category_of(self, key: str) -> dict | None:
         """The per-transaction override ruling on a movement, or None (the raw

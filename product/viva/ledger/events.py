@@ -400,13 +400,21 @@ MAJORS = (MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY, MAJOR_INCOME)
 SCOPE_MOVEMENT = "movement"      # subject = a stable movement key
 SCOPE_MERCHANT = "merchant"      # subject = a normalized merchant (generalizes)
 SCOPE_ACCOUNT = "account"        # subject = an account id
-SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT)
+# Slice 7.5: subject = a category or subcategory LABEL, and `same_as` names the
+# one it is really the same as. A label is not a thing in the world — it is a
+# name for a thing — so two names meaning one thing is not a data error to be
+# scrubbed but a fact to be recorded, once, and applied on the read side
+# forever after. History is never rewritten: "playing poker" stays in the event
+# that recorded it, and every total folds it into "poker" from now on.
+SCOPE_CATEGORY = "category"
+SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT, SCOPE_CATEGORY)
 
 
 def ruling_recorded(scope: str, subject: str, occurred_at: str,
                     legs: list[dict] | None = None, by: str = "human",
                     grade: str = VERIFIED, said: str = "",
                     corroborates: str = "", prompt_version: str = "",
+                    same_as: str = "",
                     provenance: Provenance | None = None) -> Event:
     """A person's ruling about what something *is* — the generic, scoped event
     that Move 3 deferred and Slice 9a earns (A1).
@@ -452,7 +460,7 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
     return Event(
         "RulingRecorded", occurred_at,
         body={"scope": scope, "subject": subject, "legs": clean, "by": by,
-              "grade": grade, "said": said, "corroborates": corroborates,
+              "grade": grade, "said": said, "corroborates": corroborates, "same_as": same_as,
               "prompt_version": prompt_version},
         provenance=provenance or Provenance(),
     )
