@@ -43,6 +43,13 @@ from .listen import interpret
 CASES = pathlib.Path(__file__).parent / "evals" / "listen_cases.json"
 
 SAFE, WRONG, RUIN, WEAK, OK = "unreadable", "wrong", "RUIN", "weak", "ok"
+# A verdict this harness needed on its very first real run. The pipe was broken
+# — wrong model name, server unreachable, a rejected parameter — and every case
+# came back with no legs in 10ms. Scored as `unreadable` that reads "safe, 0%
+# ruin, clean", which is a HARNESS making exactly the confidently-wrong error it
+# exists to catch. An eval that cannot tell "the model declined" from "we never
+# reached the model" is worse than no eval, because it is reassuring.
+BROKEN = "BROKEN"
 
 
 def load_cases(path: pathlib.Path = CASES) -> dict:
@@ -51,9 +58,17 @@ def load_cases(path: pathlib.Path = CASES) -> dict:
 
 def score_one(case: dict, interp, raw_text: str = "") -> dict:
     """Grade one reading against the key. Returns the verdict and why."""
+    if interp.failure == "unreachable":
+        # Not a model result at all. Never scored, never averaged in.
+        return {"verdict": BROKEN, "why": f"never reached the model: {interp.detail}",
+                "majors": []}
     if not interp.legs:
-        # The safe failure: we could not read it, so we do not guess.
-        return {"verdict": SAFE, "why": "no legs returned", "majors": []}
+        # The safe failure: the model answered and we could not use it.
+        why = {"unparseable": f"reply was not JSON: {interp.detail}",
+               "empty": "valid JSON, but no usable legs"}.get(
+                   interp.failure, "no legs returned")
+        return {"verdict": SAFE, "why": why, "majors": [],
+                "raw": (interp.raw or "")[:200]}
 
     majors = sorted({leg["major"] for leg in interp.legs})
     accept = [sorted(a) for a in case["accept"]]
@@ -108,15 +123,21 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
 
     n = len(rows) or 1
     counts = {v: sum(1 for r in rows if r["verdict"] == v)
-              for v in (OK, SAFE, WEAK, WRONG, RUIN)}
+              for v in (OK, SAFE, WEAK, WRONG, RUIN, BROKEN)}
+    # Rates are over readings that ACTUALLY HAPPENED. A broken run must not be
+    # able to launder itself into a good score by counting non-events as safe.
+    scored = n - counts[BROKEN] or 1
     unstable = sorted({r["id"] for r in rows
                        if len({x["verdict"] for x in rows if x["id"] == r["id"]}) > 1})
     return {
         "n": n, "cases": len(cases["cases"]), "repeat": repeat,
         "counts": counts,
-        "rates": {k: round(v / n, 3) for k, v in counts.items()},
+        "scored": n - counts[BROKEN],
+        "rates": {k: round(v / scored, 3) for k, v in counts.items()},
         # The number that decides whether this model may be trusted at all.
-        "confidently_wrong": round((counts[WRONG] + counts[RUIN]) / n, 3),
+        # `None` when nothing was measured — an unknown rate is not a zero rate.
+        "confidently_wrong": (None if counts[BROKEN] == n
+                              else round((counts[WRONG] + counts[RUIN]) / scored, 3)),
         "latency_p50": round(statistics.median(latencies), 2) if latencies else 0,
         "latency_max": round(max(latencies), 2) if latencies else 0,
         "unstable": unstable,
@@ -126,6 +147,23 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
 
 def report(result: dict, key_version: str = "") -> str:
     c, r = result["counts"], result["rates"]
+    if c[BROKEN] == result["n"]:
+        # Say nothing about the model. We learned nothing about the model.
+        first = next(x for x in result["rows"] if x["verdict"] == BROKEN)
+        return "\n".join([
+            f"NOTHING WAS MEASURED — all {result['n']} calls failed before "
+            "reaching the model.",
+            "",
+            f"  {first['why']}",
+            f"  latency p50 {result['latency_p50']}s — far too fast for inference,"
+            " which is the tell.",
+            "",
+            "  This is NOT a result. The model has no score, good or bad.",
+            "  Check, in order:",
+            "    ollama list                      is the model pulled, spelled exactly?",
+            "    curl http://localhost:11434/v1/models    is the server up on that port?",
+            "    --no-json-mode                   some local servers reject response_format",
+        ])
     out = [
         f"listen eval — {result['cases']} cases x{result['repeat']} = {result['n']} readings"
         + (f"  (key {key_version})" if key_version else ""),
@@ -135,6 +173,8 @@ def report(result: dict, key_version: str = "") -> str:
         f"  missed compound  {c[WEAK]:3}   {r[WEAK]:.0%}   weak — collapses a mortgage",
         f"  wrong majors     {c[WRONG]:3}   {r[WRONG]:.0%}   confidently wrong",
         f"  RUIN             {c[RUIN]:3}   {r[RUIN]:.0%}   fabricated a split or an amount",
+    ] + ([f"  BROKEN           {c[BROKEN]:3}         never reached the model — NOT scored"]
+         if c[BROKEN] else []) + [
         "",
         f"  CONFIDENTLY WRONG RATE: {result['confidently_wrong']:.1%}"
         + ("   <- the number that matters" if result["confidently_wrong"] else "   clean"),
@@ -157,6 +197,10 @@ def report(result: dict, key_version: str = "") -> str:
 
 
 def _verdict(result: dict) -> str:
+    if result["counts"][BROKEN]:
+        return (f"VERDICT: partial — {result['counts'][BROKEN]} call(s) never reached "
+                f"the model, so this scores only {result['scored']} readings. Fix the "
+                "connection before trusting any of it.")
     if result["counts"][RUIN]:
         return ("VERDICT: do not use this model. It fabricated a figure or a "
                 "split — the one failure this project treats as ruin.")
@@ -183,6 +227,10 @@ def main() -> None:
     ap.add_argument("--adapter", default=os.environ.get("VIVA_INTERPRET_ADAPTER",
                                                         "openai-compatible"))
     ap.add_argument("--repeat", type=int, default=1)
+    ap.add_argument("--no-json-mode", action="store_true",
+                    help="drop response_format — some local servers reject it")
+    ap.add_argument("--probe", action="store_true",
+                    help="one call, printing the raw reply; use this when a run comes back BROKEN")
     ap.add_argument("--json", action="store_true", help="machine-readable, for tracking over time")
     args = ap.parse_args()
 
@@ -196,7 +244,9 @@ def main() -> None:
         name="viva-listen-eval", adapter=args.adapter, model=args.model,
         base_url=args.base_url,
         api_key_env=None if (args.key_env or "").lower() in ("", "none") else args.key_env,
-        max_tokens=512, json_mode=True)
+        max_tokens=512, json_mode=not args.no_json_mode)
+    if args.probe:
+        return _probe(spec)
     cases = load_cases()
     result = run(model_extractor(spec), cases, repeat=args.repeat)
     if args.json:
@@ -204,6 +254,26 @@ def main() -> None:
     else:
         print(f"model: {args.model}  via {args.base_url or 'default'}\n")
         print(report(result, cases.get("version", "")))
+
+
+def _probe(spec) -> None:
+    """One call, everything printed, nothing swallowed — the tool to reach for
+    the moment a run comes back BROKEN. The eval deliberately degrades on
+    failure; this deliberately does not."""
+    from merchantcore.enrich import model_extractor
+    from .listen import INTERPRET_PROMPT
+    prompt = INTERPRET_PROMPT.format(said="i bought a car", descriptor="NORTHSIDE MOTORS",
+                                     category="transport", subcategory="auto dealer")
+    print(f"POST {spec.base_url}  model={spec.model}  json_mode={spec.json_mode}\n")
+    try:
+        reply = model_extractor(spec)(prompt)
+    except Exception as exc:                       # noqa: BLE001 - this is the point
+        print(f"FAILED: {type(exc).__name__}: {exc}")
+        raise SystemExit(1)
+    print("RAW REPLY:\n" + (reply or "(empty)"))
+    from .listen import interpret
+    got = interpret("i bought a car", "NORTHSIDE MOTORS", extract_fn=lambda p: reply)
+    print(f"\nparsed legs: {got.legs or 'NONE'}   failure: {got.failure or 'none'}")
 
 
 if __name__ == "__main__":

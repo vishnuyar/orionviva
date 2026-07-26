@@ -173,6 +173,18 @@ Several cases accept *more than one* reading: an ATM withdrawal is defensibly ca
 
 The harness has its own tests (`test_eval_listen.py`) — a scorer that mis-grades a fabrication as "ok" would silence the one alarm the thesis rests on.
 
+**The harness failed its own test on the first real run (2026-07-25).** Pointed at a local Ollama, all 66 calls errored before reaching the model — and the report said *"0% ruin, clean, safe but weak."* Every failure had been swallowed by `interpret`'s deliberate degrade-never-raise behaviour and scored as `unreadable`, the safe bucket. The tell was in the output and unread: **p50 latency of 0.01s**, two orders of magnitude too fast for local inference.
+
+This is the confidently-wrong failure committed *by the instrument built to detect it*, which makes it the most useful bug in the slice. An eval that cannot distinguish "the model declined" from "we never reached the model" is worse than no eval, because it is **reassuring**. Fixed by making the distinction structural rather than inferred:
+
+- `Interpretation` now carries **why** there are no legs — `unreachable` / `unparseable` / `empty` — plus the underlying error and the raw reply. Two identical-looking outcomes that mean opposite things are no longer collapsed.
+- `BROKEN` is its own verdict, **excluded from the denominator**, so a broken run cannot launder non-events into a good score.
+- The confidently-wrong rate becomes **`None`, not `0`**, when nothing was measured. An unknown rate is not a good rate — the same discipline the ledger applies to an unknown balance.
+- A wholly-broken run prints *"NOTHING WAS MEASURED"*, the actual error, and what to check. It says nothing whatsoever about the model, because nothing was learned about the model.
+- `--probe` runs one call with nothing swallowed, and `--no-json-mode` covers local servers that reject `response_format`.
+
+The general lesson, worth more than the fix: **a component that degrades gracefully must still report the difference between "I handled it" and "it broke."** Silent resilience in the product is correct; silent resilience in the instrument measuring the product is a lie.
+
 ### Not done yet
 
 **No real-document run.** Every slice is supposed to meet real statements before being called done, and this one has met only fixtures. The standing practice says that is when concept errors surface — Slice 6 was declared done without one and had two defects. Until a real mortgage or car purchase goes through the sentence path, treat this as built but unproven.

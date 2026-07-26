@@ -123,6 +123,14 @@ class Interpretation:
     corroborates: str = ""         # the document that would prove it
     confidence: float = 0.0
     said: str = ""                 # the person's own words, kept (T3)
+    # WHY there are no legs, when there are none. "The model declined" and "we
+    # never reached the model" look identical from the outside and mean opposite
+    # things — one is a model's honest limit, the other is a broken pipe wearing
+    # a model's failure as a costume. Anything that reports on this must be able
+    # to tell them apart, so the reason is carried rather than inferred.
+    failure: str = ""              # "" | unreachable | unparseable | empty
+    detail: str = ""               # the underlying error, verbatim
+    raw: str = ""                  # what the model actually said
 
     @property
     def compound(self) -> bool:
@@ -175,16 +183,24 @@ def interpret(said: str, descriptor: str = "", category: str = "",
     Interpretation — the caller then falls back to the buttons. A model being
     unavailable or wrong must degrade the surface, never the ledger."""
     if extract_fn is None:
-        return Interpretation(said=said)
+        return Interpretation(said=said, failure="unreachable",
+                              detail="no model configured")
     prompt = INTERPRET_PROMPT.format(
         said=said, descriptor=descriptor or "(unknown)",
         category=category or "(unknown)", subcategory=subcategory or "(unknown)")
     try:
         raw = extract_fn(prompt)
-        body = json.loads(_strip_fence(raw))
     except Exception as exc:                       # noqa: BLE001 - degrade, never raise
-        log.warning("interpret: could not read the model's reply (%s)", exc)
-        return Interpretation(said=said)
+        # The call never landed: wrong model name, server down, bad base URL,
+        # a rejected parameter. NOT the model declining.
+        log.warning("interpret: could not reach the model (%s)", exc)
+        return Interpretation(said=said, failure="unreachable", detail=str(exc))
+    try:
+        body = json.loads(_strip_fence(raw))
+    except Exception as exc:                       # noqa: BLE001
+        log.warning("interpret: the model's reply was not JSON (%s)", exc)
+        return Interpretation(said=said, failure="unparseable",
+                              detail=str(exc), raw=raw or "")
     legs = []
     # A model's reply is untrusted input, not a contract: `legs` arriving as a
     # string, a number, or anything but a list of objects must degrade to "I
@@ -207,7 +223,10 @@ def interpret(said: str, descriptor: str = "", category: str = "",
     return Interpretation(
         legs=legs, kind=str(body.get("kind", "")).strip().lower(),
         corroborates=str(body.get("corroborates", "")).strip(),
-        confidence=float(body.get("confidence") or 0.0), said=said)
+        confidence=float(body.get("confidence") or 0.0), said=said,
+        failure="" if legs else "empty",
+        detail="" if legs else "valid JSON, but no usable legs",
+        raw=raw or "")
 
 
 def _strip_fence(text: str) -> str:
