@@ -45,11 +45,21 @@ LIABILITY_ROOT = "Liabilities:"
 class NetWorthLine:
     """One account's contribution to one point on the curve.
 
-    `amount` is SIGNED in the ledger's own convention — a liability's balance is
-    already negative — so a point is a plain sum and no code re-decides which
-    side an account is on. `as_of` is the date this figure was measured, which
-    is usually EARLIER than the point it belongs to; that gap is the honesty the
-    whole slice exists to report."""
+    `amount` is signed FOR NET WORTH: positive is something you own, negative
+    something you owe. That is **not** how the ledger stores a card — the
+    registry is explicit that a `liability` account's balance is *money owed*,
+    held as a positive magnitude, because that is the figure on the bill.
+
+    So the side is decided by the account's KIND, never by the sign of the
+    number (see `_side`). Guessing the convention from the sign is exactly the
+    bug this line used to carry: it claimed liabilities were "already negative",
+    which was inferred from defensive `abs()` calls in the answer path rather
+    than read from the registry that states it. On a real vault two cards worth
+    a few hundred owed were added to ASSETS, and the report said
+    `liabilities 0.00` next to two lines labelled `[liability]`.
+
+    `as_of` is the date this figure was measured, usually EARLIER than the point
+    it belongs to; that gap is the honesty the whole slice exists to report."""
     account: str
     amount: Decimal
     currency: str
@@ -125,6 +135,17 @@ class NetWorthPoint:
                        "provable": ln.provable, "proves": ln.proves}
                       for ln in sorted(self.lines, key=lambda l: l.account)],
             "missing": self.missing, "skipped": self.skipped}
+
+
+def _side(kind: str, balance: Decimal) -> Decimal:
+    """The contribution of a balance to net worth, decided by account KIND.
+
+    A `liability` balance is money OWED (registry: "a card whose balance is
+    money owed"), so it is negated rather than absolute-valued — negating keeps
+    the rare-but-real case honest, where an overpaid card owes *you* and its
+    owed figure is negative, making it genuinely an asset. `abs()` would book
+    that credit as a debt."""
+    return -balance if kind == "liability" else balance
 
 
 # --- the pieces of one point -------------------------------------------------
@@ -269,7 +290,8 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
         if closing is not None:
             date, amount, grade, doc = closing
             point.lines.append(NetWorthLine(
-                account=account, amount=amount, currency=info.currency,
+                account=account, amount=_side(info.kind, amount),
+                currency=info.currency,
                 as_of=date, grade=grade or CORROBORATED,
                 origin=info.origin or ISSUED, kind=info.kind, proves=doc))
 

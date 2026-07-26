@@ -38,6 +38,10 @@ That dissolves the problem rather than answering it. There is no *the* net worth
 | investment | `Σ(market_value)` of each holding's latest observation ≤ `D`, plus the account's cash | a holding is a dated measurement (Slice 6, M1) |
 | asserted (`Assets:` / `Liabilities:` from a ruling) | **cost at the ruling's date** | what you paid, never what it is now worth |
 
+**The side is decided by the account's KIND, never by the sign of its balance.** The registry is explicit: a `liability` account's balance is *money owed*, stored as a **positive** magnitude, because that is the figure printed on the bill. So a liability's contribution is `-balance` — negated rather than absolute-valued, which keeps the real edge case honest: an overpaid card owes *you*, its owed figure is negative, and `abs()` would book that credit as another debt.
+
+This is written down because the first implementation got it backwards, from a docstring that asserted liabilities were "already negative" — inferred from defensive `abs()` calls in the answer path instead of read from the one comment that states the convention. On a real vault two cards were added to **assets**, and the report printed `liabilities 0.00` directly beneath two lines labelled `[liability]`. The test agreed with the code because the fixture fed a negative closing balance: **one wrong assumption, held in both places, so the suite confirmed the bug rather than catching it.**
+
 An account with no measurement at or before `D` **does not contribute** to that point. It did not exist to us then, and inventing a zero would be a claim.
 
 ### D2 · Trust the user; the provable/unprovable line is an *audience* question

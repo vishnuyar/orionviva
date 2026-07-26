@@ -103,7 +103,7 @@ def test_an_account_contributes_nothing_before_its_first_measurement(vault):
     _checking(vault, opening="1000.00", closing="1500.00",
               opening_date="2026-03-01", closing_date="2026-03-31", blob=b"a")
     _statement(ledger, raw, account="Amex Gold", kind_doc="credit_card_statement",
-               opening="0.00", closing="-400.00", opening_date="2026-06-01",
+               opening="0.00", closing="400.00", opening_date="2026-06-01",
                closing_date="2026-06-30", number="000000004321",
                institution="Amex", blob=b"b")
     proj = ledger.projection()
@@ -116,17 +116,43 @@ def test_an_account_contributes_nothing_before_its_first_measurement(vault):
 
 
 def test_a_card_lands_on_the_liability_side(vault):
+    """A card's stored balance is money OWED, positive — the figure on the bill
+    (registry: "a card whose balance is money owed"). Net worth must subtract it.
+
+    This test passed while the code was wrong, because it fed a NEGATIVE closing
+    balance: the fixture and the code shared one mistaken assumption about the
+    convention, so the test confirmed the bug instead of catching it. On a real
+    vault two cards were added to assets and the report showed
+    `liabilities 0.00` beside two lines labelled `[liability]`."""
     raw, ledger = vault
     _checking(vault, opening="1000.00", closing="1500.00",
               opening_date="2026-03-01", closing_date="2026-03-31", blob=b"a")
     _statement(ledger, raw, account="Amex Gold", kind_doc="credit_card_statement",
-               opening="0.00", closing="-400.00", opening_date="2026-03-01",
+               opening="0.00", closing="400.00", opening_date="2026-03-01",
                closing_date="2026-03-31", number="000000004321",
                institution="Amex", blob=b"b")
-    row = net_worth(ledger.projection(), "2026-03-31").by_currency()["USD"]
+    point = net_worth(ledger.projection(), "2026-03-31")
+    card = next(ln for ln in point.lines if "amex" in ln.account)
+    assert card.amount == Decimal("-400.00"), "owed money is negative net worth"
+    row = point.by_currency()["USD"]
     assert row["assets"] == Decimal("1500.00")
     assert row["liabilities"] == Decimal("400.00")
     assert row["net"] == Decimal("1100.00")
+
+
+def test_an_overpaid_card_is_an_asset_not_a_debt(vault):
+    """The reason the fix negates rather than takes an absolute value. If you
+    overpay a card it owes YOU, its owed figure is negative, and abs() would
+    book that credit as another debt — turning money you are owed into money you
+    owe, which is the worst possible direction for this error."""
+    raw, ledger = vault
+    _statement(ledger, raw, account="Amex Gold", kind_doc="credit_card_statement",
+               opening="0.00", closing="-50.00", opening_date="2026-03-01",
+               closing_date="2026-03-31", number="000000004321",
+               institution="Amex", blob=b"b")
+    row = net_worth(ledger.projection(), "2026-03-31").by_currency()["USD"]
+    assert row["assets"] == Decimal("50.00")
+    assert row["liabilities"] == Decimal("0")
 
 
 def test_every_point_names_its_stalest_input(vault):
@@ -137,7 +163,7 @@ def test_every_point_names_its_stalest_input(vault):
     _checking(vault, opening="1000.00", closing="1500.00",
               opening_date="2026-03-01", closing_date="2026-03-31", blob=b"a")
     _statement(ledger, raw, account="Amex Gold", kind_doc="credit_card_statement",
-               opening="0.00", closing="-400.00", opening_date="2026-07-01",
+               opening="0.00", closing="400.00", opening_date="2026-07-01",
                closing_date="2026-07-31", number="000000004321",
                institution="Amex", blob=b"b")
     july = net_worth(ledger.projection(), "2026-07-31")
@@ -296,7 +322,7 @@ def test_an_account_it_cannot_value_is_named_not_dropped(vault):
     _checking(vault, opening="1000.00", closing="1500.00",
               opening_date="2026-03-01", closing_date="2026-03-31", blob=b"a")
     _statement(ledger, raw, account="Amex Gold", kind_doc="credit_card_statement",
-               opening="0.00", closing="-400.00", opening_date="2026-07-01",
+               opening="0.00", closing="400.00", opening_date="2026-07-01",
                closing_date="2026-07-31", number="000000004321",
                institution="Amex", blob=b"b")
     march = net_worth(ledger.projection(), "2026-03-31")
