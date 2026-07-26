@@ -47,6 +47,40 @@ def _today() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
+def tag_movement(ledger: Ledger, movement_key: str, tags: list,
+                 by: str = "human") -> None:
+    """Tag one movement. ``tags`` is the complete set — last write wins."""
+    from ..ledger.events import SCOPE_MOVEMENT, movement_tagged
+    ledger.append(movement_tagged(movement_key, list(tags or []), _today(),
+                                  scope=SCOPE_MOVEMENT, by=by))
+
+
+def tag_merchant(ledger: Ledger, merchant: str, tags: list,
+                 by: str = "human") -> None:
+    """Tag every movement from a merchant — one ruling instead of forty.
+
+    The Slice 5.5 rule still binds and is enforced by the caller: a PEER
+    descriptor must not generalize, because one payment to a friend is a gift
+    and the next is a loan repayment."""
+    from ..ledger.events import SCOPE_MERCHANT, movement_tagged
+    ledger.append(movement_tagged(merchant, list(tags or []), _today(),
+                                  scope=SCOPE_MERCHANT, by=by))
+
+
+def rule_tag_same_as(ledger: Ledger, label: str, same_as: str,
+                     by: str = "human") -> None:
+    """Two tag labels naming one thing. Kept apart from the category alias
+    space on purpose: a tag "poker" and a category "poker" are different, and
+    merging one must not silently merge the other."""
+    from ..ledger.events import SCOPE_TAG, ruling_recorded
+    label = (label or "").strip().lower()
+    same_as = (same_as or "").strip().lower()
+    if not label or not same_as or label == same_as:
+        return
+    ledger.append(ruling_recorded(scope=SCOPE_TAG, subject=label,
+                                  same_as=same_as, occurred_at=_today(), by=by))
+
+
 def rule_category_same_as(ledger: Ledger, label: str, same_as: str,
                           by: str = "human") -> None:
     """Record that two labels name one thing (Slice 7.5).

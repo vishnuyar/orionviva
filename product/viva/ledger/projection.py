@@ -28,7 +28,7 @@ from typing import Iterable
 
 from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
-from .events import (SCOPE_CATEGORY, ASSERTED, CONFLICTED, CORROBORATED, ISSUED, MAJOR_ASSET,
+from .events import (SCOPE_CATEGORY, SCOPE_MERCHANT, SCOPE_TAG, ASSERTED, CONFLICTED, CORROBORATED, ISSUED, MAJOR_ASSET,
                      MAJOR_EXPENSE, MAJOR_INCOME, MAJOR_LIABILITY,
                      SCOPE_ACCOUNT, SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
                      VERIFIED, Event, Provenance, postings_of)
@@ -340,6 +340,10 @@ class LedgerProjection:
         # descriptor}. A human confirmation (verified) supersedes a model
         # suggestion (unverified); we keep the highest-trust ruling.
         self._categories: dict[str, dict] = {}
+        # Slice 7.6 — the tag overlay, kept in its own state (and its own event
+        # type) so "tags never leave this device" stays an event-level rule.
+        self._movement_tags: dict[str, list] = {}
+        self._merchant_tags: dict[str, list] = {}
         # Merchant catalog (Slice 5.5): normalized merchant -> {category, grade,
         # by}. The prior a transaction's category derives from when it has no
         # per-movement override. Highest-trust ruling wins.
@@ -467,6 +471,15 @@ class LedgerProjection:
                 st.closing_confirmed = event.body.get("confirmed_by") == "human"
             st.closings.append((event.occurred_at, Decimal(event.body["amount"]),
                                 event.body.get("grade", ""), did or ""))
+
+        elif et == "MovementTagged":
+            # Last write wins on the COMPLETE set — removing a tag is appending
+            # the set without it, so there is no untag event to reconcile
+            # against an add that arrived out of order.
+            b = event.body or {}
+            bucket = (self._merchant_tags if b.get("scope") == SCOPE_MERCHANT
+                      else self._movement_tags)
+            bucket[b.get("subject", "")] = list(b.get("tags") or [])
 
         elif et == "PositionObserved":
             acct = event.body["account_id"]
@@ -952,6 +965,78 @@ class LedgerProjection:
     # with decimals, and recomputing it each run would let categories silently
     # re-merge and un-merge between runs. A recorded alias is auditable, stable,
     # and reversed by appending rather than editing.
+
+    # --- tags (Slice 7.6) ----------------------------------------------------
+    #
+    # A category PARTITIONS (one per movement, parts sum to the whole); a tag
+    # OVERLAYS (many per movement, overlapping, and the totals deliberately do
+    # NOT sum). The discovery rule, finally built: double-entry governs the
+    # money, tags govern the meaning.
+
+    def tags_of(self, m: "MovementInfo") -> list[str]:
+        """Every tag on this movement: its own, plus its merchant's.
+
+        The union rather than an override, because the two say different things.
+        "Everything from this gym is martial arts" and "this particular visit
+        was a birthday present" are both true, and a person who set them expects
+        to find the movement under either."""
+        own = self._movement_tags.get(m.key, [])
+        shared = self._merchant_tags.get(normalize_merchant(m.description), [])
+        return sorted({self.canonical_tag(t) for t in list(own) + list(shared)})
+
+    def tag_aliases(self) -> dict[str, str]:
+        """Tag-vocabulary aliases, kept apart from category aliases: a tag
+        "poker" and a category "poker" are different things and merging one
+        must not silently merge the other."""
+        return {subj: body["same_as"]
+                for (scope, subj), body in self._rulings.items()
+                if scope == SCOPE_TAG and (body or {}).get("same_as")}
+
+    def canonical_tag(self, label: str) -> str:
+        aliases = self.tag_aliases()
+        seen: set[str] = set()
+        current = (label or "").strip().lower()
+        while current in aliases and current not in seen:
+            seen.add(current)
+            current = aliases[current]
+        return current
+
+    def known_tags(self) -> list[str]:
+        """The tag vocabulary — offered before a new one can be minted, exactly
+        as the category vocabulary is. Tags sprawl for the same reason
+        categories did, and are harder to fix afterwards: nothing outside this
+        device can ever help, because a tag is personal meaning (T9)."""
+        out = {self.canonical_tag(t)
+               for tags in list(self._movement_tags.values())
+               + list(self._merchant_tags.values()) for t in tags}
+        return sorted(t for t in out if t)
+
+    def spending_by_tag(self, currency: str | None = None) -> dict:
+        """Spending per tag — and the numbers DO NOT ADD UP, by design.
+
+        This returns `untagged` and `total` alongside the per-tag figures, and
+        callers must show them. A tag report read as though it were a partition
+        is a bluff: one movement carrying three tags appears in three lines, so
+        the tag totals can exceed total spending, and money with no tags appears
+        in none of them. The category report is the one that closes; this one
+        answers a different question ("how much on the Japan trip, across every
+        merchant?") and must never be dressed as the first."""
+        by_tag: dict[str, Decimal] = {}
+        untagged = total = Decimal("0")
+        for m in self.movements():
+            if not self._counts_as_spending(m):
+                continue
+            if currency is not None and m.currency != currency:
+                continue
+            amount = abs(m.amount)
+            total += amount
+            tags = self.tags_of(m)
+            if not tags:
+                untagged += amount
+            for tag in tags:
+                by_tag[tag] = by_tag.get(tag, Decimal("0")) + amount
+        return {"by_tag": by_tag, "untagged": untagged, "total": total,
+                "overlaps": True}
 
     def category_aliases(self) -> dict[str, str]:
         """{duplicate label -> the label it is really the same as}."""
