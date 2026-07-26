@@ -22,11 +22,13 @@ FROZEN = {
     "card-v1": "1fb3e7b3dfb1c9c9",
     "paystub-base-v1": "0c6d6940246743c5",
     "paystub-v1": "03b31eadbe878505",
+    "interpret-v1": "999d8aa496da5691",
 }
 
 
 def test_active_versions_are_frozen():
-    live = {**pl.CLASSIFY_PROMPTS, **pl.EXTRACT_BASE, **pl.TYPE_FRAGMENTS}
+    live = {**pl.CLASSIFY_PROMPTS, **pl.EXTRACT_BASE, **pl.TYPE_FRAGMENTS,
+            **pl.INTERPRET_PROMPTS}
     for version, digest in FROZEN.items():
         assert version in live, f"{version} disappeared — versions are append-only"
         got = hashlib.sha256(live[version].encode()).hexdigest()[:16]
@@ -70,3 +72,58 @@ def test_card_fragment_carries_the_payments_completeness_rule():
     assert "payments" in pl.TYPE_FRAGMENTS["card-v1"].lower()
     assert "separate section" in pl.TYPE_FRAGMENTS["card-v1"].lower()
     assert "separate section" not in pl.TYPE_FRAGMENTS["checking-v1"].lower()
+
+
+# ------------------------------------------------- the interpret prompt (9a)
+
+
+def test_the_interpret_prompt_is_addressable_like_every_other():
+    """It began life as a module constant in listen.py — unversioned and
+    rewritable in place, which would have meant that tuning it silently
+    reinterpreted every ruling made before the change (Vishnu, 2026-07-25)."""
+    text, version = pl.interpret_prompt()
+    assert version == "interpret-v1"
+    assert pl.resolve(version) == text          # a recorded ruling round-trips
+
+
+def test_the_interpret_prompt_assumes_no_particular_instrument():
+    """A vault holds cards, brokerages, retirement and loan accounts — and one
+    day, accounts in other countries. A prompt that says "your bank account"
+    mis-frames all of them (I5: code universal, specifics are data)."""
+    import re
+
+    text, _ = pl.interpret_prompt()
+    low = text.lower()
+    # Word-boundary matching, not substrings — "first" contains "irs".
+    for bank_shaped in (r"bank account", r"from their bank", r"on the statement",
+                        r"\bdollars?\b", r"\$", r"\birs\b", r"\b1098\b",
+                        r"\bchecking\b"):
+        assert not re.search(bank_shaped, low), f"prompt assumes {bank_shaped!r}"
+    # And it says so positively, rather than merely avoiding the word.
+    assert "any financial instrument" in low and "any country" in low
+
+
+def test_the_interpret_prompt_fills_from_named_placeholders():
+    """Placeholders, not string surgery — so a caller can add context without
+    editing prose, and a missing one fails loudly instead of silently."""
+    text, _ = pl.interpret_prompt()
+    filled = text.format(said="i bought a car", counterparty="ACME MOTORS",
+                         source="a credit account", category="transport",
+                         subcategory="auto dealer")
+    assert "i bought a car" in filled and "a credit account" in filled
+    assert "{" in text and "{" not in filled.split("Reply with:")[0]
+
+    import pytest
+    with pytest.raises(KeyError):
+        text.format(said="x")                   # a forgotten arg is not silent
+
+
+def test_a_ruling_records_which_prompt_read_it():
+    """T8. Without this, tuning the prompt makes past rulings unexplainable and
+    eval runs incomparable across time."""
+    from viva.ledger.events import MAJOR_ASSET, SCOPE_MERCHANT, ruling_recorded
+    ev = ruling_recorded(SCOPE_MERCHANT, "acme motors", "2026-07-25",
+                         legs=[{"major": MAJOR_ASSET}], said="i bought a car",
+                         prompt_version="interpret-v1")
+    assert ev.body["prompt_version"] == "interpret-v1"
+    assert pl.resolve(ev.body["prompt_version"])       # still reconstructible

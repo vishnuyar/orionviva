@@ -406,7 +406,7 @@ SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT)
 def ruling_recorded(scope: str, subject: str, occurred_at: str,
                     legs: list[dict] | None = None, by: str = "human",
                     grade: str = VERIFIED, said: str = "",
-                    corroborates: str = "",
+                    corroborates: str = "", prompt_version: str = "",
                     provenance: Provenance | None = None) -> Event:
     """A person's ruling about what something *is* — the generic, scoped event
     that Move 3 deferred and Slice 9a earns (A1).
@@ -425,7 +425,9 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
     measured fact and is never held hostage to a missing document.
 
     ``said`` keeps the person's own sentence verbatim (T3), so a better model
-    can re-derive a richer reading later without ever asking them again.
+    can re-derive a richer reading later without ever asking them again, and
+    ``prompt_version`` records the exact instructions that read it (T8) — so
+    tuning the prompt never silently reinterprets what someone already said.
     ``corroborates`` names a document that would *prove* this — an invoice, a
     1098, a closing disclosure. It is a suggestion, never a gate (Vishnu,
     2026-07-25): the account is already created and the cash already posted.
@@ -450,7 +452,8 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
     return Event(
         "RulingRecorded", occurred_at,
         body={"scope": scope, "subject": subject, "legs": clean, "by": by,
-              "grade": grade, "said": said, "corroborates": corroborates},
+              "grade": grade, "said": said, "corroborates": corroborates,
+              "prompt_version": prompt_version},
         provenance=provenance or Provenance(),
     )
 
