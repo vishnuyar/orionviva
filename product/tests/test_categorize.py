@@ -1,5 +1,5 @@
-"""Slice 5 — categorization & spending: the kind-aware counter-leg, the category
-overlay, and a real spending-by-category number."""
+"""Categorization & spending: the kind-aware counter-leg, the category overlay,
+and a real spending-by-category number."""
 
 from decimal import Decimal
 

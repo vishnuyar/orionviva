@@ -32,7 +32,7 @@ class TxnFact:
     amount: Decimal      # signed by effect on printed balance: + raises it, - lowers it
     page: int | None = None
     running_balance: Decimal | None = None   # the printed balance after this line
-    # A leg SUPPLIED by cross-document corroboration (Slice 3) sets these: its
+    # A leg SUPPLIED by cross-document corroboration sets these: its
     # source is the counterparty document (not this statement), and its grade is
     # `corroborated` (a second issuer attested it), never `verified`. Empty means
     # an ordinary line read from this statement.
@@ -76,7 +76,7 @@ class StatementFacts:
     transactions: list[TxnFact]
     opening_page: int | None = None
     closing_page: int | None = None
-    # Identity signals (Slice 1.5): extracted separately so account identity is
+    # Identity signals: extracted separately so account identity is
     # anchored to the stable number, not a free-text label. Names is a list —
     # joint accounts have two.
     account_number: str = ""
@@ -160,7 +160,7 @@ def period_date(raw, locale: str, period_end: str,
     as-of date rather than a period (a brokerage statement). Deterministic: use
     the period-end year; if that lands *after* the period end, the line must
     belong to the previous year (a December→January statement). We never invent a
-    year without a period to anchor it (I2)."""
+    year without a period to anchor it."""
     n = parse_date(str(raw), locale)              # the model may have included one
     if n.ok:
         return n.value, None
@@ -180,9 +180,9 @@ def period_date(raw, locale: str, period_end: str,
 def _signed_amount(rt: dict, mag: Decimal, i: int
                    ) -> tuple[Decimal | None, str | None]:
     """Sign a transaction's positive magnitude by its effect on the printed
-    balance (A1). Prefers the stmt-v3 ``balance_effect`` (increase/decrease);
-    falls back to the legacy stmt-v2 ``direction`` (credit=increase, debit=
-    decrease) so stored reads reparse unchanged. Returns (signed, error)."""
+    balance. Prefers the stmt-v3 ``balance_effect`` (increase/decrease); falls
+    back to the legacy stmt-v2 ``direction`` (credit=increase, debit=decrease)
+    so stored reads reparse unchanged. Returns (signed, error)."""
     effect = str(rt.get("balance_effect", "")).strip().lower()
     if effect in ("increase", "decrease"):
         return (mag if effect == "increase" else -mag), None
@@ -259,11 +259,10 @@ def from_model_json(text: str, doc_id: str, locale: str,
         if err:
             return None, f"transaction {i} {err}"
         # amount_raw is a positive magnitude; the sign is the movement's EFFECT ON
-        # THE PRINTED BALANCE (A1): "increase" raises it, "decrease" lowers it —
+        # THE PRINTED BALANCE: "increase" raises it, "decrease" lowers it —
         # account-kind-agnostic, so one identity reconciles checking, savings, and
-        # cards. Legacy reads (stmt-v2) carried "direction" (credit=money in) with
-        # no cards in the corpus, so credit maps to increase — old stored reads
-        # still reparse unchanged on reingest.
+        # cards. Legacy reads (stmt-v2) carried "direction" (credit=money in), so
+        # credit maps to increase and those stored reads reparse unchanged.
         signed, err = _signed_amount(rt, abs(mag), i)
         if err:
             return None, err

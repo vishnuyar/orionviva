@@ -8,8 +8,7 @@ scoped by institution.
 
 This lives in the ledger layer because the projection resolves identity while
 replaying events. The *learning* layer (matching an ambiguous statement to a
-known account and remembering the person's ruling) is built on these helpers —
-see docs/account-identity-and-entity-resolution.md.
+known account and remembering the person's ruling) is built on these helpers.
 """
 
 from __future__ import annotations
@@ -63,7 +62,7 @@ def account_tokens(institution: str, number: str, ref: str) -> set[str]:
     ENDING IN 1234' carries to name the account it paid.
 
     Lives here (the ledger's identity layer) because BOTH the transfer matcher and
-    the projection's nature derivation (Slice 6.5) need it — one implementation,
+    the projection's nature derivation need it — one implementation,
     no import cycle. The account HOLDER's name is deliberately excluded: it is
     shared across all of a person's own accounts, so it distinguishes nothing."""
     toks: set[str] = set()

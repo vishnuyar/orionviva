@@ -1,4 +1,4 @@
-""""Not now" is an answer (Slice 6.10).
+""""Not now" is an answer.
 
 The decline event extends settled → silence to the questions themselves: a
 question the person set aside stays quiet — not for some arbitrary number of

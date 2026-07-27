@@ -1,4 +1,4 @@
-"""Slice 3 — internal transfers: detect, net (exclude from spending), and the
+"""Internal transfers: detect, net (exclude from spending), and the
 decisive-vs-ambiguous boundary. The link is an overlay; each statement still
 reconciles on its own."""
 
@@ -70,7 +70,7 @@ def test_internal_transfer_auto_links_and_excludes_from_spending(tmp_path):
 
 
 def test_spending_double_counts_until_linked(tmp_path):
-    # The once-red proof: before the link exists, the transfer inflates spending.
+    # Before the link exists, the transfer inflates spending.
     raw, ledger = _stores(tmp_path)
     chk, card = _checking_paying_card()
     _up(raw, ledger, b"chk", chk)            # card not yet ingested → no partner
@@ -213,9 +213,9 @@ def test_answer_spending_excludes_transfers(tmp_path):
 
 
 def test_multi_leg_corroboration_supplies_a_missing_payments_section(tmp_path):
-    # The Imprint case: the card's WHOLE payments section was dropped, so it is
-    # off by the SUM of two bank payments. Each bank line names the card
-    # ("IMPRINT"), so the subset that sums to the gap is unique → supplied.
+    # The card's WHOLE payments section is dropped, so it is off by the SUM of
+    # two bank payments. Each bank line names the card ("IMPRINT"), so the
+    # subset that sums to the gap is unique → supplied.
     raw, ledger = _stores(tmp_path)
     chk = _facts("10000.00",
                  [("2026-01-05", "Groceries", "-100.00"),
@@ -274,7 +274,7 @@ def test_signal_without_naming_hint_is_suggested_not_auto_linked(tmp_path):
 
 def test_coincidental_amount_without_signal_is_not_suggested(tmp_path):
     # An equal amount with NO transfer word on either side is ordinary spending,
-    # not a question — the fix for review-flooding.
+    # not a question.
     raw, ledger = _stores(tmp_path)
     chk = _facts("5000.00", [("2026-01-05", "STARBUCKS", "-40.00")], "4960.00",
                  ref="Checking 1111", doc_type="checking_statement", number="000000001111")

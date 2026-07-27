@@ -1,20 +1,18 @@
-"""Slice 7.5 — a category is a resolved identity, not a bare string.
+"""A category is a resolved identity, not a bare string.
 
-Found on the real vault: `poker` and `playing poker` both existed, because the
-author typed each once. Every total touching either was quietly halved, and no
-error was ever raised — the worst shape a finance bug can take.
+Two labels for one thing split every total that touches either, quietly and
+without ever raising an error — the worst shape a finance bug can take.
 
-The root cause is structural rather than careless. Accounts and merchants are
+The cause is structural rather than careless. Accounts and merchants are
 *resolved* (signals → graded match → ask only when ambiguous → learn the
-ruling); categories were the one place that used a raw string, so they are the
-one place duplicates accumulate. And they arrive from BOTH ends: the person
-typing, and enrichment minting a free-text subcategory per merchant.
+ruling); a category is the one place a raw string is used, so it is the one
+place duplicates accumulate. And they arrive from BOTH ends: the person typing,
+and enrichment minting a free-text subcategory per merchant.
 
 Deliberately not fuzzy matching. A tuned similarity threshold is a keyword list
-with decimals — the reflex this project already caught itself in nine times —
-and recomputing similarity each run would let categories silently re-merge and
-un-merge between runs. A recorded alias is auditable, stable, and reversed by
-appending.
+with decimals, and recomputing similarity each run would let categories silently
+re-merge and un-merge between runs. A recorded alias is auditable, stable, and
+reversed by appending.
 """
 
 from decimal import Decimal
@@ -49,7 +47,7 @@ def _spending(ledger):
 
 
 def test_two_labels_for_one_thing_split_a_total_until_they_are_ruled(tmp_path):
-    """The bug, then the fix, on one vault."""
+    """Two labels for one thing split a total until a ruling merges them."""
     ledger = _vault(tmp_path, [("2026-03-05", "ATM WITHDRAWAL ONE", "-100.00"),
                                ("2026-03-06", "ATM WITHDRAWAL TWO", "-150.00")])
     keys = [m.key for m in ledger.projection().movements()]
@@ -68,8 +66,8 @@ def test_two_labels_for_one_thing_split_a_total_until_they_are_ruled(tmp_path):
 
 
 def test_the_ruling_is_retroactive_and_rewrites_nothing(tmp_path):
-    """T4. The event that said "playing poker" still says it — the fold happens
-    on the read side, so a merge costs no re-ingest and is reversible."""
+    """The event that said "playing poker" still says it — the fold happens on
+    the read side, so a merge costs no re-ingest and is reversible."""
     ledger = _vault(tmp_path, [("2026-03-05", "ATM WITHDRAWAL ONE", "-100.00")])
     key = ledger.projection().movements()[0].key
     assign_category(ledger, key, "playing poker")
@@ -113,8 +111,8 @@ def test_the_known_vocabulary_is_what_every_minting_path_is_offered(tmp_path):
 
 def test_enrichment_is_shown_the_labels_that_already_exist():
     """The other end of the sprawl. Enrichment mints one free-text subcategory
-    per merchant, hundreds of times, and the previous prompt could only *ask*
-    for consistency."""
+    per merchant, hundreds of times, so its prompt is handed the labels that
+    already exist rather than merely *asked* for consistency."""
     from merchantcore.enrich import build_enrichment_prompt
     prompt, version = build_enrichment_prompt(
         {"corner cafe": "CORNER CAFE"}, ["coffee shop", "warehouse club"])

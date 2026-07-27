@@ -2,14 +2,14 @@
 
     VIVA_VAULT_DIR=<rebuilt> python -m viva.diff_rulings <rulings-export.json>
 
-Every ruling in the export is something a person had to **say by hand** under the
-old design. So the honest test of the counterparty-implication work is not a tier
-percentage — it is:
+Every ruling in the export is something a person had to **say by hand**. So the
+honest test of the counterparty-implication work is not a tier percentage — it
+is:
 
 > **Does the product now PROPOSE what you previously had to TELL it?**
 
-Six outcomes per ruling. Only four of them are a grade — the other two exist
-because the first real run graded things that were never comparable:
+Six outcomes per ruling. Only four of them are a grade; the other two mark
+comparisons that were never comparisons:
 
   ANTICIPATED   the rebuilt vault reaches the same conclusion unprompted.
                 Exactly what the work was for.
@@ -27,13 +27,13 @@ because the first real run graded things that were never comparable:
 Both are excluded from the score, because a denominator that includes things no
 implementation could ever get right measures the design, not the build.
 
-**Known limitation, stated rather than fixed (2026-07-26).** A counterparty that
-is now `settled` — an ordinary business the queue will never ask about — still
-scores as `missed`, because this only inspects IMPLICATIONS. A ruling the new
-design makes UNNECESSARY is arguably the best outcome there is, and it is being
-counted as a failure. It is left visible instead of patched because three
-successive corrections to this scorer have each moved the number in the author's
-favour, and a fourth needs a colder eye than the one that wrote the first three.
+**Known limitation, stated rather than fixed.** A counterparty that is now
+`settled` — an ordinary business the queue will never ask about — still scores
+as `missed`, because this only inspects IMPLICATIONS. A ruling the new design
+makes UNNECESSARY is arguably the best outcome there is, and it is counted as a
+failure here. It is left visible rather than patched: every correction to a
+scorer that moves the number in its author's favour needs a colder eye than the
+one that wrote it.
 
 This is a comparison, not a restore. Nothing is written to either vault.
 """
@@ -48,19 +48,16 @@ from collections import Counter
 
 ANTICIPATED, PROPOSED, MISSED, CONTRADICTED = (
     "anticipated", "proposed", "missed", "CONTRADICTED")
-# Two verdicts added after the first real run cried wolf (2026-07-26).
-#
 # INCOMPARABLE — the person gave a spending CATEGORY ("transport", "transfers",
 # "down payment") and the vault offers a structural RELATIONSHIP ("auto loan",
 # "brokerage account", "property purchase"). Those are different axes, not
 # disagreements: a Northwind payment is transport spending AND an auto loan; a
-# brokerage MoneyLine is a transfer AND implies a brokerage account. Scoring them
-# as CONTRADICTED produced three alarming false accusations out of three.
+# brokerage MoneyLine is a transfer AND implies a brokerage account. Scoring
+# them as CONTRADICTED is a false accusation.
 #
 # UNKNOWABLE — the subject is a peer or an instrument. A cheque or an ATM
 # withdrawal tells us nothing about itself, BY CONSTRUCTION, so counting it as
-# "missed" measures the design rather than the implementation. 12 of 15 "misses"
-# on the real run were ATM withdrawals.
+# "missed" measures the design rather than the implementation.
 INCOMPARABLE, UNKNOWABLE = "incomparable", "unknowable"
 
 
@@ -133,9 +130,8 @@ def score(proj, rulings: list[dict]) -> list[dict]:
             # The LEARNED kind is asked first and `is_shareable` is only the
             # fallback, because `is_shareable` is a substring list — it catches
             # "zelle" and " to " but not "ATM WITHDRAWAL 03 15 MAIN ST". The
-            # kind comes back from enrichment, which reads the descriptor like a
-            # person would. Judging the tool by the weaker of the two tests is
-            # how 12 cash withdrawals got scored as misses.
+            # kind comes back from enrichment, which reads the descriptor like
+            # a person would.
             verdict, saw = UNKNOWABLE, "a peer or instrument — never inferable"
         rows.append({"verdict": verdict, "subject": subject, "yours": mine,
                      "viva": saw, "type": ruling["event_type"]})

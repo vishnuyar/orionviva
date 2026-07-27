@@ -1,28 +1,20 @@
-"""The answer-key scorer — and the false alarm it raised on its first real run.
+"""The answer-key scorer, and the failures it must not manufacture.
 
 `diff_rulings` asks the only question that matters about the implication work:
-**does Viva now propose what the person previously had to type by hand?** Run
-against 33 real rulings from the author's own vault it reported *three contradictions* — the verdict it
-reserves for the one dangerous failure, "the product confidently disagrees with
-its user" — and printed them under READ THESE FIRST.
+**does Viva now propose what the person previously had to type by hand?**
+CONTRADICTED is reserved for the one dangerous failure, "the product confidently
+disagrees with its user", and is printed under READ THESE FIRST.
 
-All three were the scorer's fault:
+A spending CATEGORY and a structural RELATIONSHIP are different axes, and a
+counterparty is routinely *both things at once*: a car maker's ACH is transport
+spending AND a car loan; a wire is a down payment AND a property purchase.
+Comparing across axes manufactures disagreement out of agreement, so those pairs
+are INCOMPARABLE. Nothing will ever imply anything about a cash withdrawal, so
+that is UNKNOWABLE rather than a miss — it grades the design, not the build.
 
-    you: category:transport      viva: auto loan
-    you: category:transfers      viva: brokerage account
-    you: category:down payment   viva: property purchase
-
-Every pair is *both things at once*. A car maker's ACH is transport spending AND a
-car loan; a wire is a down payment AND a property purchase. A spending CATEGORY
-and a structural RELATIONSHIP are different axes, and comparing across axes
-manufactures disagreement out of agreement. The same run also called 12 ATM
-withdrawals `missed`, when T9 guarantees nothing will ever imply anything about
-a cash withdrawal — that grades the design, not the build.
-
-So these tests exist to keep an instrument honest, which is this project's most
-repeated lesson: **graceful degradation belongs in the product, never in the
-thing that measures it** — and a measurement that errs toward *accusation* is
-not the safe kind of wrong.
+So these tests exist to keep an instrument honest: **graceful degradation
+belongs in the product, never in the thing that measures it** — and a
+measurement that errs toward *accusation* is not the safe kind of wrong.
 """
 
 from collections import Counter
@@ -50,9 +42,9 @@ def _projection(tmp_path):
     ledger = _vault(tmp_path, [("2026-03-05", LENDER, "-1200.00"),
                                ("2026-03-15", ATM, "-300.00"),
                                ("2026-03-20", BUSINESS, "-150.00")])
-    # Enriched exactly as the live catalog has them: a lender that implies a
-    # loan, a cash machine that implies nothing and never can, and a business
-    # we know the category of but have taught no implication for.
+    # A lender that implies a loan, a cash machine that implies nothing and
+    # never can, and a business we know the category of but have taught no
+    # implication for.
     _enrich(ledger, "northwind motors nw moto ppd id", "loan_payments", LOAN_OUT,
             sub="auto")
     _enrich(ledger, "atm withdrawal 03 15 main st anytown tx", "cash",
@@ -86,7 +78,7 @@ def test_a_major_answer_that_disagrees_is_still_contradicted(tmp_path):
 
 
 def test_a_peer_or_instrument_is_unknowable_not_missed(tmp_path):
-    """T9 forbids sending a cash withdrawal to the commons, so enrichment can
+    """Sending a cash withdrawal to the commons is forbidden, so enrichment can
     never see it and no implication can ever exist. Silence is the design."""
     proj = _projection(tmp_path)
     rows = score(proj, [_ruling(ATM,
@@ -126,9 +118,9 @@ def test_the_report_names_why_something_was_not_scored():
 
 
 def test_one_subject_ruled_twice_is_not_graded_on_two_axes(tmp_path):
-    """The giveaway on the real run: the same wire transfer appeared in BOTH the
-    CONTRADICTED and the ANTICIPATED list, because it carried two rulings and
-    each was compared against the same implication on a different axis."""
+    """A subject carrying two rulings must not appear in BOTH the CONTRADICTED
+    and the ANTICIPATED list, which is what happens when each ruling is compared
+    against the same implication on a different axis."""
     proj = _projection(tmp_path)
     rows = score(proj, [_ruling(LENDER,
                                 category="transport"),

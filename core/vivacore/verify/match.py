@@ -1,7 +1,7 @@
 """Comparing an extracted claim against ground truth. Product embryo.
 
 Two verdicts per comparison, reported separately because they answer
-different questions (design doc §5):
+different questions:
 
 - strict:      the model reproduced the printed characters exactly
                ("value_raw fidelity" — matters for provenance display).

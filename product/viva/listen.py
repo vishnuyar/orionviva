@@ -1,18 +1,11 @@
-"""Viva listens — a sentence becomes double-entry (Slice 9a).
+"""Viva listens — a sentence becomes double-entry.
 
-Full design: docs/from-your-words-to-the-ledger.md.
-
-The queue asks *"is this money spent, or moved?"* and offers three answers. Real
-money immediately produced two questions none of them fit: a mortgage payment
-(interest **and** principal **and** escrow, at once) and a car purchase
-(something you now *own*, which the ledger had no way to say). More answers in
-that vocabulary would only mean more wrong answers.
-
-The diagnosis was that `nature` stood in for something richer: **what the
-counter-leg IS**. That has a complete, centuries-old vocabulary — expense,
-asset, liability, income — with too many members and too many compound cases to
-put behind buttons. But it fits in a sentence. So free text here is not a
-convenience; it is the only practical interface to a complete ontology.
+What a movement's counter-leg IS has a complete, centuries-old vocabulary —
+expense, asset, liability, income — with too many members and too many compound
+cases to put behind a fixed set of buttons: a mortgage payment is interest
+**and** principal **and** escrow at once, and a car purchase is something you
+now *own*. But it fits in a sentence. So free text here is not a convenience; it
+is the only practical interface to a complete ontology.
 
 The pipeline, and where the boundary sits:
 
@@ -26,9 +19,9 @@ The pipeline, and where the boundary sits:
 **The model touches step 3 only.** It never sees the ledger, never chooses an
 account, and never supplies a figure — amounts come from the movement, and
 `ruling_recorded` refuses an amount outright, so the boundary is structural
-rather than a line in a prompt (T2 / ADR-010).
+rather than a line in a prompt.
 
-Two rulings from the author that shaped this (2026-07-25):
+Two rules this path keeps:
 
 * **A missing document never blocks a ruling.** Create the account, post the
   cash, mark only the *decomposition* provisional, and ask for the 1098 or the
@@ -58,15 +51,15 @@ log = logging.getLogger("viva.listen")
 # exception, because the partial text is still worth logging and diagnosing.
 TRUNCATED_MARK = "\x00truncated\x00"
 
-# The surface never speaks these words (decision D1): the four majors are stored
-# and never shown. A person is asked whether they still *have* it, not whether it
+# The surface never speaks these words: the four majors are stored and never
+# shown. A person is asked whether they still *have* it, not whether it
 # is "an asset". Nobody should have to learn bookkeeping to use this product.
 #
 # Forward note: today these strings are fixed templates. A small local model
 # should later phrase them in the person's own language and tone — a Swedish user
 # getting a Swedish question, not a translated one. That is safe precisely
 # because phrasing touches no figure and no account, so it sits entirely outside
-# the T2 boundary, and it is small enough to run locally.
+# the model boundary, and it is small enough to run locally.
 PLAIN = {
     MAJOR_EXPENSE: "Spent — the money is gone",
     MAJOR_ASSET: "I still have it, in another form",
@@ -74,15 +67,12 @@ PLAIN = {
     MAJOR_INCOME: "Money that came to me",
 }
 
-# Slice 9b deleted three tables that used to live here: CORROBORATION (which
-# document proves which claim), _DEFAULT_GROUP and _group_for (where an account
-# belongs in the hierarchy). All three are now properties of the counterparty's
-# IMPLICATION — `documents` and `account_group` — learned once at enrichment,
-# cached, versioned and shareable, instead of a list we maintained by hand.
-#
-# What is left here is the fallback for when nothing is known, and it is
+# The fallback for when nothing is known about the counterparty, and it is
 # deliberately dull: one level under the root, named "Other". A product that
-# knows nothing should look like it knows nothing.
+# knows nothing should look like it knows nothing. Where an account belongs,
+# which document corroborates a claim, and how the answers are ordered are all
+# properties of the counterparty's IMPLICATION — `documents` and
+# `account_group` — learned once at enrichment, cached, versioned and shareable.
 _FALLBACK_GROUP = "Other"
 
 
@@ -98,9 +88,8 @@ def suggest_answers(implied: dict | None = None) -> list[dict]:
     model configured at all**."""
     ordered = [MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY]
     if implied and implied.get("major") in PLAIN:
-        # Lead with what the counterparty implies. Slice 9b deleted the substring
-        # matching that used to do this from category names — ordering the answers
-        # is knowledge about the counterparty, and knowledge about counterparties
+        # Lead with what the counterparty implies. Ordering the answers is
+        # knowledge about the counterparty, and knowledge about counterparties
         # is learned at enrichment, not kept in a word list here.
         lead = implied["major"]
         ordered = [lead] + [m for m in (MAJOR_EXPENSE, MAJOR_ASSET,
@@ -117,12 +106,12 @@ class Interpretation:
     """What a model may return from a sentence — meaning only, never money."""
     legs: list[dict] = field(default_factory=list)   # {major, account_hint, share}
     kind: str = ""                 # vehicle | property | mortgage | loan | ...
-    # A label the PERSON named ("poker"), not a guess about them. Its absence
-    # was a real defect: someone answered "spent on playing poker, add it to
-    # poker category" and only the first half reached the ledger.
+    # A label the PERSON named ("poker"), not a guess about them. One sentence
+    # can carry both a major and a label — "spent on playing poker, add it to
+    # poker category" — and both halves must reach the ledger.
     category: str = ""
     confidence: float = 0.0
-    said: str = ""                 # the person's own words, kept (T3)
+    said: str = ""                 # the person's own words, kept
     # WHY there are no legs, when there are none. "The model declined" and "we
     # never reached the model" look identical from the outside and mean opposite
     # things — one is a model's honest limit, the other is a broken pipe wearing
@@ -131,7 +120,7 @@ class Interpretation:
     failure: str = ""              # "" | unreachable | unparseable | empty
     detail: str = ""               # the underlying error, verbatim
     raw: str = ""                  # what the model actually said
-    version: str = ""              # the prompt version that produced this (T8)
+    version: str = ""              # the prompt version that produced this
 
     @property
     def compound(self) -> bool:
@@ -165,7 +154,7 @@ def interpret(said: str, descriptor: str = "", category: str = "",
     prompt = text.format(
         said=said, counterparty=descriptor or "(unknown)",
         # The movement may come from a bank, a card, a brokerage, a loan account
-        # or a wallet — the reading must not assume one (I5). When we do know,
+        # or a wallet — the reading must not assume one. When we do know,
         # say so plainly; when we do not, say that instead of implying a bank.
         source=source or "(an account they hold)",
         category=category or "(unknown)", subcategory=subcategory or "(unknown)")
@@ -224,10 +213,10 @@ def _first_json_object(text: str, require_key: str = "") -> dict | None:
     """The first COMPLETE, balanced JSON object in a reply — preferring one that
     actually carries ``require_key`` — or None.
 
-    Requiring the whole reply to be JSON was too brittle in practice. Models
-    wrap objects in code fences, prefix them with reasoning, or append a
-    cheerful sentence afterwards — none of which is a failure of understanding,
-    and all of which threw away a perfectly good reading.
+    Requiring the whole reply to be JSON is too brittle. Models wrap objects in
+    code fences, prefix them with reasoning, or append a cheerful sentence
+    afterwards — none of which is a failure of understanding, and all of which
+    would throw away a perfectly good reading.
 
     Scanning for balance (respecting strings and escapes) also means a reply cut
     off mid-object is correctly rejected rather than half-parsed. That matters
@@ -296,9 +285,9 @@ def _find_key(obj, key: str, depth: int = 0):
 
 @dataclass
 class AccountMatch:
-    """How an account hint resolves. Deliberately the same three verdicts as
-    Slice 1.5's statement matcher — `same` / `ambiguous` / `new` — because this
-    is that matcher pointed at a new target, not a second mechanism."""
+    """How an account hint resolves. Deliberately the same three verdicts as the
+    statement matcher — `same` / `ambiguous` / `new` — because this is that
+    matcher pointed at a new target, not a second mechanism."""
     account: str
     verdict: str               # "same" | "existing" | "ambiguous" | "new"
     candidate: str = ""
@@ -306,10 +295,10 @@ class AccountMatch:
 
 
 def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatch:
-    """Which account does this belong to? — Slice 1.5's problem, re-pointed.
+    """Which account does this belong to?
 
     Exact match posts in silence; a near match asks; nothing matching proposes a
-    new account, which is the ONE thing this slice always confirms (D2).
+    new account, which is the ONE thing this path always confirms.
 
     Account sprawl is the failure mode here — `Assets:Car`, `Assets:Tesla`,
     `Assets:My Car` — so the cure is the same one that tamed merchant
@@ -354,8 +343,8 @@ class Proposal:
     moves, what it rests on, and what it does NOT know.
 
     `Finding` is the read side's version of this; Proposal is its write-side
-    twin, and it is what makes X3 ("nothing irreversible without an explicit
-    yes") a property of the type rather than a rule anyone has to remember."""
+    twin, and it is what makes "nothing irreversible without an explicit yes" a
+    property of the type rather than a rule anyone has to remember."""
     scope: str
     subject: str
     legs: list[dict] = field(default_factory=list)
@@ -368,7 +357,7 @@ class Proposal:
     settles: int = 1
     amount: str = ""
     currency: str = ""
-    prompt_version: str = ""       # which instructions read the sentence (T8)
+    prompt_version: str = ""       # which instructions read the sentence
 
     def summary(self) -> str:
         """What Viva says back before anything is written. It must state the
@@ -406,15 +395,15 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
             currency: str = "", movement_key: str = "") -> Proposal:
     """Turn a reading into a concrete, reviewable proposal — deterministically.
 
-    Scope follows the Slice 5.5 rule already in force: a **commercial** merchant
+    Scope follows the rule already in force: a **commercial** merchant
     generalizes (one answer settles every payment to them, past and future), a
     peer descriptor — a person's name on a Zelle — does not, because one payment
     to a friend can be a gift and the next a loan."""
     merchant = normalize_merchant(descriptor)
     # An INSTRUMENT — a check, an ATM withdrawal, a wire — is never generalized,
     # even when several share a descriptor: what the money was FOR differs every
-    # time. Slice 9b learns that from enrichment (`counterparty_kind`) instead of
-    # matching the descriptor against a list of words we kept by hand.
+    # time. That is learned from enrichment (`counterparty_kind`) rather than
+    # matched against a list of words kept by hand.
     is_instrument = proj.kind_of_merchant(merchant) in ("instrument", "peer")
     generalizes = bool(merchant) and is_shareable(descriptor) and not is_instrument
     scope = SCOPE_MERCHANT if generalizes and not movement_key else SCOPE_MOVEMENT
@@ -449,9 +438,9 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
         confirm_accounts=confirm,
         # The document comes from the counterparty's IMPLICATION (learned at
-        # enrichment), never from the interpreter's free text. v1 let the model
-        # fill this per-sentence and it answered "no", which the surface
-        # rendered as "Your no would let me prove this."
+        # enrichment), never from the interpreter's free text: a model asked to
+        # name it per-sentence answers with words the surface then renders as a
+        # document name.
         corroborates=(implied or {}).get("documents", ""),
         category=interp.category, said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
@@ -467,8 +456,7 @@ def one_shot_extractor(spec):
     the tail back is the correct repair) and wrong here. This reply is ~60
     tokens by construction. If it hits the limit the model is rambling, and
     continuing six more times turns one cheap, recoverable failure into
-    unparseable garbage at seven times the cost and seven times the latency —
-    which is exactly what the first real run produced.
+    unparseable garbage at seven times the cost and seven times the latency.
 
     So: one shot, and truncation is REPORTED rather than repaired."""
     from vivacore.models import adapter_for
@@ -493,9 +481,6 @@ def one_shot_extractor(spec):
     return _extract
 
 
-# `_group_for` deleted in Slice 9b — see the note beside _FALLBACK_GROUP.
-
-
 # --------------------------------------------------------------------- step 6
 
 
@@ -504,7 +489,7 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
     """Write it. Deterministic, and the only path from a sentence to the ledger.
 
     An account the person brought into being is opened with `origin=asserted`
-    (A3) — the ledger must never lose track of the difference between what an
+    — the ledger must never lose track of the difference between what an
     issuer attests and what you told it, because that is precisely what it can
     and cannot vouch for later."""
     grade = VERIFIED if by == "human" else UNVERIFIED

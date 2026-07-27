@@ -1,9 +1,9 @@
-"""Slice 6.11 — the expectations engine: documents pursue documents.
+"""The expectations engine: documents pursue documents.
 
 The registry is data; the mechanisms are universal; the whole thing is
 read-side — derived on every projection, satisfied deterministically by the
-expected document's arrival, silenced by the 6.10 decline event. No new event
-type anywhere, which is the read-early/write-late principle doing its job.
+expected document's arrival, silenced by the decline event. No new event type
+anywhere, which is the read-early/write-late principle doing its job.
 """
 
 from decimal import Decimal
@@ -33,9 +33,9 @@ def _vault(tmp_path):
 def _funded_paystub(vault, retirement="750.00", stub=b"stub1",
                     pay_date="2026-03-15", dates=("2026-03-01", "2026-03-31"),
                     opening="10000.00", tag=b"chk"):
-    """A pay stub only POSTS once its matching net deposit is on the books
-    (Slice 4 decomposes the deposit) — so the fixture ingests the checking
-    statement carrying the deposit first, then the stub."""
+    """A pay stub only POSTS once its matching net deposit is on the books,
+    because posting decomposes that deposit — so the fixture ingests the
+    checking statement carrying the deposit first, then the stub."""
     net = Decimal("5000.00") - Decimal(retirement) - Decimal("1000.00")
     _checking(vault, [(pay_date, "DIRECT DEP ACME PAYROLL", str(net))],
               opening=opening, dates=dates, tag=tag)
@@ -74,7 +74,7 @@ def _checking(vault, txns, opening="10000.00", dates=("2026-03-01", "2026-03-31"
 def test_retirement_flow_raises_an_expectation(tmp_path):
     """Money leaves every pay stub for retirement and no statement has ever
     shown where it lands — the pay stub is evidence the 401(k) statement
-    exists (the knowledge-and-expectations motivating case)."""
+    exists."""
     vault = _vault(tmp_path)
     _funded_paystub(vault)
     exps = evaluate(vault.ledger.projection(), AS_OF, "US")
@@ -91,8 +91,8 @@ def test_retirement_flow_raises_an_expectation(tmp_path):
 
 
 def test_the_stake_grows_with_each_pay_stub_and_a_decline_respects_that(tmp_path):
-    """6.10 and 6.11 compose: declining the ask silences it, and the NEXT pay
-    stub changes the stake, which brings it back — no timer anywhere."""
+    """Declining the ask silences it, and the NEXT pay stub changes the stake,
+    which brings it back — no timer anywhere."""
     vault = _vault(tmp_path)
     _funded_paystub(vault)
     qs = open_questions(vault.ledger, as_of=AS_OF, jurisdiction="US")
@@ -110,8 +110,8 @@ def test_the_stake_grows_with_each_pay_stub_and_a_decline_respects_that(tmp_path
 
 
 def test_jurisdiction_filters_the_registry(tmp_path):
-    """A 1099 is a US fact. An Indian vault must not be asked for one (I5) —
-    the entry is jurisdiction-tagged data, not code."""
+    """A 1099 is a US fact. An Indian vault must not be asked for one — the
+    entry is jurisdiction-tagged data, not code."""
     vault = _vault(tmp_path)
     _funded_paystub(vault)
     us = {e.entry_id for e in evaluate(vault.ledger.projection(), AS_OF, "US")}
@@ -148,7 +148,7 @@ def test_satisfaction_is_the_documents_arrival(tmp_path):
     assert any(e.entry_id == "retirement-statements"
                for e in evaluate(proj, AS_OF, "US"))
     # A retirement statement arrives (classified retirement_statement — an
-    # alias of the brokerage profile, Slice 6). Its captured doc_type is what
+    # alias of the brokerage profile). Its captured doc_type is what
     # satisfies the expectation: the ask was for the document, and it is here.
     from viva.ingest import BrokerageFacts
     facts = BrokerageFacts(

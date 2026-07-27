@@ -1,15 +1,15 @@
 """BrokerageFacts — the structured read of one brokerage/retirement statement.
 
-The second divergent sibling of StatementFacts (Slice 6). A brokerage statement's
+The second divergent sibling of StatementFacts. A brokerage statement's
 shape is not a balance and not a pay stub: it holds a list of *positions*
 (instrument + units + market value) plus a cash balance, and its self-check is a
 snapshot — ``Σ position market_value + cash = account total`` — not a flow. So it
 has its own facts type, its own parser, and its own verification identity, all
 selected by its registry profile.
 
-The load-bearing decision (Option A): a position is a dated MEASUREMENT, never a
-posting; unrealized gain is a derived presentation view, never a ledger fact (M1,
-cash-flow over accrual). This module only reads the numbers; the projector decides
+The load-bearing rule: a position is a dated MEASUREMENT, never a posting;
+unrealized gain is a derived presentation view, never a ledger fact — cash flow
+over accrual. This module only reads the numbers; the projector decides
 what to measure and what (cash only) to post.
 
 Same honesty contract as statements: amounts go through the shared deterministic
@@ -61,7 +61,7 @@ class PositionFact:
 
 @dataclass(frozen=True)
 class BrokerageActivity:
-    """One cash-affecting event in the period (Slice 6 Stage 2). ``amount`` is the
+    """One cash-affecting event in the period. ``amount`` is the
     positive magnitude; the sign is implied by ``kind``. ``realized_gain`` is the
     booked gain/loss on a sell when the statement reports it (else None — never
     invented)."""
@@ -101,7 +101,7 @@ class BrokerageFacts:
     account_number: str = ""
     institution: str = ""
     account_names: list[str] = field(default_factory=list)
-    # Stage 2 (cross-account cash flow) — optional; when both are present the cash
+    # Cross-account cash flow — optional; when both are present the cash
     # is reconciled as a flow (opening + Σ activity = closing) and posted, tying
     # contributions to the funding account and recognizing income/fees/gains.
     opening_cash: Decimal | None = None
@@ -143,12 +143,11 @@ class BrokerageFacts:
 
 # A brokerage account's "cash" is usually a money-market fund — Fidelity's core
 # position is SPAXX — so the same money can appear as a cash line, as a holding,
-# or (across two months of the SAME account) as one then the other. Two real
-# statements proved it: November printed cash = the sweep balance exactly, while
-# December printed cash EXCLUDING a separately-listed sweep. Treating the sweep as
-# a holding double-counts in the first case; treating it as cash under-counts in
-# the second. So we recognize it here and let the projector decide which reading
-# reconciles (Slice 6 fix, 2026-07-25).
+# or (across two months of the SAME account) as one then the other: one month
+# prints cash = the sweep balance exactly, the next prints cash EXCLUDING a
+# separately-listed sweep. Treating the sweep as a holding double-counts in the
+# first case; treating it as cash under-counts in the second. So we recognize it
+# here and let the projector decide which reading reconciles.
 _CASH_INSTRUMENTS = frozenset({
     "cash", "cash balance", "cash & cash investments", "cash and equivalents",
     "cash equivalents", "sweep", "cash sweep", "core position", "money market"})
@@ -223,8 +222,7 @@ def _optional_amount(raw, locale: str, currency: str, what: str) -> Decimal | No
     """An OPTIONAL figure: absent when the statement omits it, and absent when it
     prints something unreadable ("not applicable", "N/A", "—").
 
-    The discipline (from a real run that lost a whole statement to a cost-basis of
-    'not applicable'): **fail a parse only on figures the identity depends on.**
+    The discipline: **fail a parse only on figures the identity depends on.**
     Units, market value, cash and total are load-bearing — an unreadable one sends
     the document to review. An optional attribute that can't be read is simply
     *unknown*, which the model already represents as None. It is logged, never
@@ -293,8 +291,8 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
             units=units_n.decimal(), market_value=mv,
             cost_basis=cost, page=rp.get("page")))
 
-    # Stage 2 (optional): opening cash + the period's cash activity. Absent on a
-    # holdings-only statement — then only the snapshot is recorded (Stage 1).
+    # Optional: opening cash + the period's cash activity. Absent on a
+    # holdings-only statement — then only the snapshot is recorded.
     opening_cash = None
     if data.get("opening_cash_raw") not in (None, ""):
         opening_cash, err = _amount(data.get("opening_cash_raw"), locale, currency)

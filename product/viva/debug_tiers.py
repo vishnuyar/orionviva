@@ -3,7 +3,7 @@
     python -m viva.debug_tiers            # VIVA_PASSPHRASE / VIVA_VAULT_DIR
 
 This is the number that decides whether the three-tier design was worth doing,
-and the honest *before* to compare against (docs/where-the-intelligence-goes.md).
+and the honest *before* to compare against.
 
 The rule the whole queue rests on: **ask only where the counterparty cannot tell
 us.** Every movement lands in one of four states, and only two of them deserve a
@@ -90,9 +90,8 @@ def main() -> None:
     from .env import load_dotenv
     from .vault import Vault
 
-    # Every other CLI in this package loads `.env` first; this one didn't, and
-    # told the author to set a variable he had already set. A tool that says
-    # "you forgot" when you didn't is worse than one that just fails.
+    # Load `.env` first, as every CLI in this package does, so a variable that
+    # is already set in the file is never reported as missing.
     load_dotenv()
     passphrase = os.environ.get("VIVA_PASSPHRASE") or (
         sys.argv[1] if len(sys.argv) > 1 else None)

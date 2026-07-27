@@ -3,30 +3,24 @@
 Every prompt this project sends to a model is a `.txt` file in a `prompts/`
 directory beside the code that uses it, one file per version, **the filename is
 the version id**. Nothing else. No YAML, no front-matter, no templating engine —
-placeholders stay ordinary `str.format` fields, which is what every call site
-already used when the prompts were string literals.
+placeholders stay ordinary `str.format` fields.
 
-Why files, when a versioned dict in Python already existed and was tested:
+Why files rather than a versioned dict in Python:
 
-  * **T8 is the point.** A recorded `prompt_version` must resolve to the exact
-    text that produced the reading. When the text is a literal someone can edit
-    in place, that promise holds only by everyone's good behaviour — and it
-    already failed: `enrich-v1` and `enrich-v2` were edited over, so events in a
-    real vault name prompts whose text no longer exists anywhere but git.
-  * **The path of least resistance decides.** Adding a prompt used to mean
-    editing a module, importing it, wiring a dict — while a local `\"\"\"...\"\"\"`
-    was one line. Intent loses to friction every time, which is why the same
-    drift happened twice after being called out. Creating a file is now the
-    *cheap* path and a literal in code *fails a test*.
-  * **A prompt is not code.** It is the most domain-specific data in the system
-    (I5), it is what a reviewer most needs to read, and one day it is what a
-    person tunes for their own agent. None of that wants a Python file.
+  * A recorded `prompt_version` must resolve to the exact text that produced a
+    reading. A literal can be edited in place, and then the version a stored
+    reading names no longer resolves to anything.
+  * The path of least resistance decides. Creating a file is the cheap way to
+    add a prompt, and model-facing text written as a Python literal fails a
+    test.
+  * A prompt is not code. It is the most domain-specific data in the system, it
+    is what a reviewer most needs to read, and one day it is what a person tunes
+    for their own agent. None of that wants a Python file.
 
-Read-only package data (decision P1, 2026-07-25). A user-editable override
-directory is deliberately deferred: an edited prompt breaks the digest chain, so
-a stored read would resolve to text the person changed — a T8 hazard wearing a
-feature's clothes. `load()` takes the directory as an argument precisely so that
-later becomes a second search path rather than a rewrite.
+Prompts are read-only package data. There is no user-editable override
+directory: an edited prompt breaks the digest chain, so a stored read would
+resolve to text the person changed. `load()` takes the directory as an argument
+so that an override can later become a second search path rather than a rewrite.
 """
 
 from __future__ import annotations
@@ -40,10 +34,10 @@ SUFFIX = ".txt"
 class PromptNotFound(KeyError):
     """A recorded version that resolves to nothing.
 
-    This is a T8 failure, not a missing-file inconvenience: some stored read
-    claims to have been produced by instructions we cannot show. Raised loudly
-    rather than defaulted, because a silent fallback to the *current* prompt
-    would quietly re-explain old readings with new instructions."""
+    Some stored read claims to have been produced by instructions that cannot be
+    shown. Raised loudly rather than defaulted, because a silent fallback to the
+    *current* prompt would quietly re-explain old readings with new
+    instructions."""
 
 
 def _dir(package_dir: str | pathlib.Path) -> pathlib.Path:

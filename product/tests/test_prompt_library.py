@@ -2,13 +2,13 @@
 
 The frozen-hash test enforces the retention discipline: a version id's text may
 never change. To edit a prompt you add a NEW id, so a read stored under the old
-id keeps resolving to exactly what produced it (T8).
+id keeps resolving to exactly what produced it.
 
-**These pinned digests are also the proof that the 2026-07-25 move to files was
-faithful.** The prompts left `prompt_library.py` and became `viva/prompts/*.txt`
-without a single character changing — and the evidence is that this test still
-passes with the same numbers it had when the text lived in Python. No new test
-to trust, no diff to eyeball: if one byte had moved, a digest would differ."""
+**These pinned digests are also the proof that the move to files was faithful.**
+The prompts left `prompt_library.py` and became `viva/prompts/*.txt` without a
+single character changing — and the evidence is that this test still passes with
+the same numbers it had when the text lived in Python. No new test to trust, no
+diff to eyeball: if one byte had moved, a digest would differ."""
 
 import hashlib
 import pathlib
@@ -47,16 +47,16 @@ def test_active_versions_are_frozen():
 def test_no_prompt_text_lives_in_the_library_module():
     """The module is accessors and composition rules only. A prompt that sneaks
     back in as a literal would be un-diffable, un-reviewable, and editable in
-    place — which is exactly how `enrich-v1` and `enrich-v2` were lost."""
+    place, which is how a version's text gets lost."""
     source = pathlib.Path(pl.__file__).read_text()
     assert "Return ONLY" not in source and "You are reading" not in source
-    assert len(source.splitlines()) < 120       # was 424 with the text inline
+    assert len(source.splitlines()) < 120
 
 
 def test_a_missing_version_raises_rather_than_defaulting():
-    """T8's sharpest edge. A recorded version that resolves to nothing must be
-    an error, never a silent fallback to the CURRENT prompt — that would
-    re-explain an old reading with new instructions and look like it worked."""
+    """A recorded version that resolves to nothing must be an error, never a
+    silent fallback to the CURRENT prompt — that would re-explain an old reading
+    with new instructions and look like it worked."""
     from vivacore.promptstore import PromptNotFound
 
     with pytest.raises(PromptNotFound):
@@ -96,19 +96,18 @@ def test_resolve_unknown_version_raises():
 
 def test_card_fragment_carries_the_payments_completeness_rule():
     # The card-specific completeness guidance lives ONLY in the card fragment —
-    # it must not leak into the checking fragment (the pollution we removed).
+    # it must not leak into the checking fragment.
     assert "payments" in pl.resolve("card-v1").lower()
     assert "separate section" in pl.resolve("card-v1").lower()
     assert "separate section" not in pl.resolve("checking-v1").lower()
 
 
-# ------------------------------------------------- the interpret prompt (9a)
+# ----------------------------------------------------- the interpret prompt
 
 
 def test_the_interpret_prompt_is_addressable_like_every_other():
-    """It began life as a module constant in listen.py — unversioned and
-    rewritable in place, which would have meant that tuning it silently
-    reinterpreted every ruling made before the change (Vishnu, 2026-07-25)."""
+    """An unversioned prompt is rewritable in place, which would mean that
+    tuning it silently reinterprets every ruling made before the change."""
     text, version = pl.interpret_prompt()
     assert version == "interpret-v2"
     assert pl.resolve(version) == text          # a recorded ruling round-trips
@@ -119,7 +118,7 @@ def test_the_interpret_prompt_is_addressable_like_every_other():
 def test_the_interpret_prompt_assumes_no_particular_instrument():
     """A vault holds cards, brokerages, retirement and loan accounts — and one
     day, accounts in other countries. A prompt that says "your bank account"
-    mis-frames all of them (I5: code universal, specifics are data)."""
+    mis-frames all of them (code universal, specifics are data)."""
     import re
 
     text, _ = pl.interpret_prompt()
@@ -149,7 +148,7 @@ def test_the_interpret_prompt_fills_from_named_placeholders():
 
 
 def test_a_ruling_records_which_prompt_read_it():
-    """T8. Without this, tuning the prompt makes past rulings unexplainable and
+    """Without this, tuning the prompt makes past rulings unexplainable and
     eval runs incomparable across time."""
     from viva.ledger.events import MAJOR_ASSET, SCOPE_MERCHANT, ruling_recorded
     ev = ruling_recorded(SCOPE_MERCHANT, "acme motors", "2026-07-25",
@@ -160,10 +159,10 @@ def test_a_ruling_records_which_prompt_read_it():
 
 
 def test_v2_asks_for_the_label_the_person_named_and_not_for_a_document():
-    """Both changes came from one real answer: "spent on playing poker, add it
-    to poker category". v1 dropped the category half, and its unguided
-    "corroborates" field came back as "no" — which the surface rendered as
-    "Your no would let me prove this"."""
+    """v2 asks for the label the person named, so an answer like "add it to
+    poker category" is not half-dropped, and it drops the unguided
+    "corroborates" field, whose free-text answers reached the surface as
+    nonsense. v1 keeps both, unchanged."""
     v2, _ = pl.interpret_prompt("interpret-v2")
     assert '"category"' in v2 and "Copy their word" in v2
     assert "corroborates" not in v2        # code maps kind -> document, not the model
@@ -190,11 +189,10 @@ def _python_files():
 
 
 # Words that only appear when a string is INSTRUCTING A MODEL. This is a
-# deliberate keyword check, immediately after a session spent deleting those —
-# and the distinction is worth stating rather than hiding. That lesson is about
-# classifying a USER'S DATA, where being wrong corrupts a ledger. This is a lint
-# over OUR OWN SOURCE, where being wrong costs a contributor one comment. Same
-# technique, opposite blast radius.
+# deliberate keyword check, and the distinction is worth stating rather than
+# hiding: keyword classification is banned for a USER'S DATA, where being wrong
+# corrupts a ledger. This is a lint over OUR OWN SOURCE, where being wrong costs
+# a contributor one comment. Same technique, opposite blast radius.
 _INSTRUCTION_MARKERS = (
     "return only a json", "reply with json", "you are reading",
     "you are identifying", "you are classifying", "return only the",
@@ -203,13 +201,12 @@ _INSTRUCTION_MARKERS = (
 
 
 def test_no_prompt_text_lives_in_code():
-    """The drift this whole move exists to stop.
+    """Model-facing text may not live in code as a string literal.
 
-    `interpret-v1` was written as a literal in `listen.py` — in the same session
-    that was told not to — because a triple-quoted string is one line and the
-    library was five plus an import. Intent loses to friction, so the friction
-    has to move: creating a file is now the cheap path, and a literal here is a
-    build failure with the fix printed in the message."""
+    Intent loses to friction: a triple-quoted string is one line and the library
+    is five plus an import. So the friction moves — creating a file is the cheap
+    path, and a literal here is a build failure with the fix printed in the
+    message."""
     import ast
 
     offenders = []
@@ -244,8 +241,8 @@ def test_no_prompt_text_lives_in_code():
 
 
 def test_every_version_the_code_can_emit_resolves():
-    """T8, asserted directly. This is the test whose absence let `enrich-v2`'s
-    text disappear while events kept naming it."""
+    """Every version the code can emit must resolve, or an event can go on
+    naming text that no longer exists."""
     from viva.ingest import registry
 
     for doc_type in list(registry._INDEX):
@@ -258,7 +255,7 @@ def test_every_version_the_code_can_emit_resolves():
 
 
 def test_the_other_packages_keep_their_prompts_in_files_too():
-    """The discipline stopped being one module's local habit."""
+    """The discipline is not one module's local habit."""
     from vivacore import promptstore
     from vivacore.prompts import PROMPT_VERSION
     from vivacore.prompts import PROMPTS as CORE
@@ -267,6 +264,6 @@ def test_the_other_packages_keep_their_prompts_in_files_too():
 
     assert promptstore.load(CORE, f"extract-image-{PROMPT_VERSION}")
     assert promptstore.load(MERCH, ENRICHMENT_VERSION)
-    # enrich-v2 was recovered from git history on 2026-07-25 — reads recorded
-    # under it are explainable again rather than pointing at nothing.
+    # enrich-v2 is retained, so reads recorded under it stay explainable rather
+    # than pointing at nothing.
     assert "enrich-v2" in promptstore.ids(MERCH)

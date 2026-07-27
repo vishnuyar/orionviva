@@ -1,16 +1,12 @@
-"""Slice 7.6 — categories partition, tags overlay.
-
-The rule was written in discovery and left unbuilt for months, with an empty
-`tags` field sitting on the transaction event as a placeholder:
+"""Categories partition, tags overlay.
 
 > double-entry governs the money (one balanced truth, verifiable); tags govern
 > the meaning (freely multiple, user-owned, the moat).
 
-Vishnu reopened it (2026-07-26) by noticing that an answer can be a category
-*and* a tag at once. That question turned out to explain the category sprawl
-rather than sit beside it: `poker`, `playing poker`, `martial arts`, `down
-payment` are all TAGS that were typed into a category field, because a category
-field was the only field there was.
+An answer can be a category *and* a tag at once, and that is what explains the
+category sprawl rather than sitting beside it: `poker`, `playing poker`,
+`martial arts`, `down payment` are all TAGS typed into a category field, because
+a category field was the only field there was.
 
 The distinction is load-bearing, not stylistic:
 

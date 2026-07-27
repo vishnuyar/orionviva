@@ -1,11 +1,9 @@
-"""Where are your totals being split? — the category vocabulary (Slice 7.5).
+"""Where are your totals being split? — the category vocabulary.
 
     VIVA_VAULT_DIR=<vault> python -m viva.debug_categories
 
 A category is a name a person totals by, so two names for one thing is not
-untidiness — it is a figure quietly halved, with no error raised anywhere. On a
-real vault `poker` and `playing poker` both existed because the author typed
-each once.
+untidiness — it is a figure quietly halved, with no error raised anywhere.
 
 This prints every label the vault uses, what it is worth, and where it came
 from, so the near-duplicates are visible rather than inferred. It does NOT guess

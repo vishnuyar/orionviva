@@ -1,10 +1,9 @@
-"""Slice 9a — from your words to the ledger.
+"""From your words to the ledger.
 
-The failure these tests pin down came from the first real run of the question
-queue: it asked about a mortgage payment and a car purchase, and its three
-answers (spending / transfer / settlement) could hold neither. A mortgage is
-three things at once; a car is something you now *own*, which the ledger had no
-way to say. The fix is the four majors, reached by a sentence.
+Three answers (spending / transfer / settlement) can hold neither a mortgage
+payment nor a car purchase. A mortgage is three things at once; a car is
+something you now *own*, which those three had no way to say. So: the four
+majors, reached by a sentence.
 
 What each test is really defending:
 
@@ -12,8 +11,8 @@ What each test is really defending:
 * a compound payment with unknown proportions is neither counted nor dropped —
   it gets its own honest line and names the document that would resolve it;
 * an account nobody issued is marked `asserted` forever, because that is the
-  difference between a ledger that can vouch for you and one that cannot (A3);
-* a ruling can never smuggle in a figure (T2 / ADR-010).
+  difference between a ledger that can vouch for you and one that cannot;
+* a ruling can never smuggle in a figure.
 """
 
 from decimal import Decimal
@@ -80,9 +79,9 @@ def test_the_major_is_fixed_code_and_everything_below_it_is_data():
 
 
 def test_i_bought_a_car_stops_being_spending_with_no_reingest(tmp_path):
-    """The car question the queue could not ask. One sentence, and a purchase
-    the ledger called consumption becomes something you own — retroactively,
-    because nature is derived on the read side."""
+    """One sentence, and a purchase the ledger called consumption becomes
+    something you own — retroactively, because nature is derived on the read
+    side."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "TESLA MOTORS", Decimal("-42000.00")),
                             ("2026-03-06", "WHOLE FOODS", Decimal("-180.00"))])
@@ -107,8 +106,8 @@ def test_i_bought_a_car_stops_being_spending_with_no_reingest(tmp_path):
 def test_a_compound_payment_is_neither_counted_nor_dropped(tmp_path):
     """The mortgage. Interest is spending, principal is debt reduction, escrow is
     still yours — and the ratio is on a statement nobody has. Counting it all
-    restates the overstatement Slice 6.5 fixed; dropping it understates. So it
-    gets its own line, and names the document that would settle it."""
+    overstates spending; dropping it understates. So it gets its own line, and
+    names the document that would settle it."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-01", "NEWCO MORTGAGE SERVICING", Decimal("-4400.00")),
                             ("2026-03-06", "WHOLE FOODS", Decimal("-180.00"))])
@@ -176,11 +175,11 @@ def test_a_movement_ruling_beats_a_merchant_ruling(tmp_path):
     assert sum(proj.spending_by_category("USD").values()) == Decimal("300.00")
 
 
-# ------------------------------------------------------- the one-way doors (A3)
+# ------------------------------------------------------------ the one-way doors
 
 
 def test_an_account_records_who_says_it_exists(tmp_path):
-    """A3. A statement-born account is `issued`; a sentence-born one is
+    """A statement-born account is `issued`; a sentence-born one is
     `asserted`. Only the first is evidence to a counterparty, and the
     distinction is capturable at write time or never."""
     _, ledger = _vault(tmp_path)
@@ -194,18 +193,18 @@ def test_an_account_records_who_says_it_exists(tmp_path):
 
 
 def test_an_older_vault_reads_as_issued():
-    """Every account written before this slice came from a document. Absent must
+    """An account event carrying no `origin` came from a document. Absent must
     mean `issued`, so no existing vault's meaning shifts under it."""
     from viva.ledger.projection import LedgerProjection
     ev = account_opened("a", "depository", "n", "USD", "2026-01-01")
-    ev.body.pop("origin")                      # a pre-9a event, replayed today
+    ev.body.pop("origin")                      # an origin-less event, replayed
     assert LedgerProjection([ev]).account_info("a").origin == ISSUED
 
 
 def test_a_ruling_can_never_carry_a_figure():
-    """T2 / ADR-010's one plausible leak: a model interprets meaning, and the
-    event it produces is the place an invented number could enter the ledger.
-    Closed structurally, not by prompt."""
+    """The one plausible leak: a model interprets meaning, and the event it
+    produces is the place an invented number could enter the ledger. Closed
+    structurally, not by prompt."""
     with pytest.raises(ValueError, match="no amount"):
         ruling_recorded(SCOPE_MOVEMENT, "k", "2026-07-25",
                         legs=[{"major": MAJOR_ASSET, "amount": "42000.00"}])

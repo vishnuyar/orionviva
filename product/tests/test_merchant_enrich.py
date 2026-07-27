@@ -1,5 +1,5 @@
-"""Slice 5.6 — the product ↔ merchantcore loop: an impersonal boundary, then
-sync-as-events so categorization is retrospective and the ledger self-contained."""
+"""The product ↔ merchantcore loop: an impersonal boundary, then sync-as-events
+so categorization is retrospective and the ledger self-contained."""
 
 from decimal import Decimal
 
@@ -112,20 +112,18 @@ def test_sync_is_idempotent(tmp_path):
 
 
 def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monkeypatch):
-    """The catalog used to live inside the vault directory, which quietly
-    contradicted the reason it exists.
+    """The catalog lives outside the vault directory, because keeping it inside
+    contradicts the reason it exists.
 
-    It holds IMPERSONAL merchant knowledge (T9) — a normalized key, a category,
-    a counterparty kind — and nothing about anyone's money. That is exactly why
+    It holds IMPERSONAL merchant knowledge — a normalized key, a category, a
+    counterparty kind — and nothing about anyone's money. That is exactly why
     it can be kept once, reused by every vault, and eventually shared with other
     people: "Costco is a warehouse club" is true for everybody, and nobody
     should pay a model to learn it twice.
 
-    Keeping it beside the vault meant every rebuild started from zero and paid
+    Keeping it beside the vault makes every rebuild start from zero and pay
     again for knowledge already bought — the network effect the catalog exists
-    for, running in reverse. Vishnu caught it: "I already have enrich from the
-    previous one, I want to use the merchant-catalog.json — isn't having that
-    the reason for having it, for others to use?" """
+    for, running in reverse."""
     from viva.enrich import catalog_path
 
     monkeypatch.delenv("VIVA_CATALOG", raising=False)

@@ -14,10 +14,9 @@ it would invent a balance history that no document attests.
 
 **But the chain can only grow at its two ends.** A statement that belongs in the
 MIDDLE of a run has nothing to attach to until both its neighbours are present,
-and `heal_gaps` retries until nothing more connects — so in principle the
-cascade fills the middle in eventually.
+and `heal_gaps` retries until nothing more connects, so the cascade fills the
+middle in as neighbours arrive.
 
-On a real vault it did not: 14 statements held, and a full `sweep` healed zero.
 This prints, for every held statement, exactly what it wanted and what the chain
 was offering — so the difference is a number you can read rather than a theory.
 """

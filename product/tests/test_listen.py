@@ -1,4 +1,4 @@
-"""Slice 9a — the six-step toolset, sentence to ledger.
+"""The six-step toolset, sentence to ledger.
 
 The boundary these tests defend is the one the whole project rests on: **the
 model reads meaning and nothing else.** It never sees the ledger, never picks an
@@ -25,12 +25,12 @@ from viva.listen import (PLAIN, apply_proposal, interpret, listen, propose,
 
 def _enrich(ledger, merchant, category="other", kind="business", implies=(),
             subcategory=""):
-    """Seed what the WORLD knows about a counterparty (Slice 9b).
+    """Seed what the WORLD knows about a counterparty.
 
     Where the account belongs, which document proves it, and whether the
-    descriptor even names a business are all learned once at enrichment now —
-    not read from tables in listen.py. Tests seed that knowledge instead of
-    relying on keyword matching, because that is how the product gets it."""
+    descriptor even names a business are all learned once at enrichment — not
+    read from tables in listen.py. Tests seed that knowledge instead of relying
+    on keyword matching, because that is how the product gets it."""
     from viva.ledger.events import merchant_enriched
     ledger.append(merchant_enriched(
         merchant, category, subcategory=subcategory, grade="corroborated",
@@ -79,9 +79,10 @@ def _checking(raw, ledger, txns, opening="100000.00"):
 
 
 def test_the_model_never_supplies_a_figure(tmp_path):
-    """The one place T2 could leak: a model that names an amount in its reading.
-    The amount is ignored — the posting uses the movement's own value — and the
-    event builder refuses an amount outright, so this is closed twice."""
+    """The one place an invented figure could leak in: a model that names an
+    amount in its reading. The amount is ignored — the posting uses the
+    movement's own value — and the event builder refuses an amount outright, so
+    this is closed twice."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "TESLA MOTORS", Decimal("-42000.00"))])
     _enrich(ledger, "tesla motors", "transport", implies=VEHICLE)
@@ -114,7 +115,7 @@ def test_with_no_model_the_buttons_still_work():
     majors = [s["major"] for s in suggest_answers({"major": MAJOR_LIABILITY})]
     assert majors[0] == MAJOR_LIABILITY          # lead with what is implied
     assert all(s["label"] == PLAIN[s["major"]] for s in suggest_answers())
-    # And nobody is ever shown an accounting term (D1).
+    # And nobody is ever shown an accounting term.
     assert not any(m in PLAIN[m].lower() for m in PLAIN)
 
 
@@ -161,13 +162,13 @@ def test_a_commercial_merchant_generalizes_and_a_person_does_not(tmp_path):
     assert friend.scope == SCOPE_MOVEMENT and friend.settles == 1
 
 
-# ---------------------------------------------------------- the proposal (X2)
+# --------------------------------------------------------------- the proposal
 
 
 def test_a_proposal_states_what_it_does_not_know(tmp_path):
-    """X2. The mortgage: three legs, proportions unknown — and the summary has
-    to say so plainly, because a proposal that hid it would be the confident
-    wrong answer this project exists to refuse."""
+    """The mortgage: three legs, proportions unknown — and the summary has to
+    say so plainly, because a proposal that hid it would be the confident wrong
+    answer this project exists to refuse."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-01", "NEWCO MORTGAGE SERVICING", Decimal("-4400.00"))])
     _enrich(ledger, "newco mortgage servicing", "housing", implies=MORTGAGE)
@@ -216,7 +217,7 @@ def test_a_stated_split_is_kept_and_an_invented_one_is_not(tmp_path):
 
 
 def test_applying_is_a_separate_explicit_act(tmp_path):
-    """X3, structurally: a Proposal is not applied until someone says so."""
+    """A Proposal is not applied until someone says so."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-04", "ACME LENDING", Decimal("-500.00"))])
     proj = ledger.projection()
@@ -228,7 +229,7 @@ def test_applying_is_a_separate_explicit_act(tmp_path):
     proj = ledger.projection()
     assert len(proj.rulings()) == 1
     assert proj.movements()[0].nature == SETTLEMENT
-    assert proj.rulings()[0]["said"] == "that paid off my car loan"   # T3
+    assert proj.rulings()[0]["said"] == "that paid off my car loan"
 
 
 def test_the_corroboration_ask_is_the_path_from_asserted_to_issued(tmp_path):
@@ -339,14 +340,13 @@ def test_the_interpreter_is_configured_separately_and_can_be_local(monkeypatch):
     assert service._interpreter() is not None        # would raise if a key were required
 
 
-# ------------------------------- reading a real model's reply (the second run)
+# ------------------------------------------------- reading the model's reply
 
 
 def test_json_is_found_inside_whatever_the_model_wraps_it_in():
-    """Requiring the WHOLE reply to be JSON was too brittle. Models fence their
-    output, think out loud first, or add a cheerful sentence after — none of
-    which is a failure of understanding, and all of which threw away a perfectly
-    good reading."""
+    """Models fence their output, think out loud first, or add a cheerful
+    sentence after — none of which is a failure of understanding, so requiring
+    the WHOLE reply to be JSON throws away a perfectly good reading."""
     from viva.listen import _first_json_object
 
     obj = {"legs": [{"major": "liability"}]}
@@ -379,11 +379,10 @@ def test_a_truncated_reply_is_refused_not_half_read():
 
 
 def test_interpretation_is_never_continued_across_truncation():
-    """The bug the first live run produced: seven HTTP calls, then a stitched
-    reply that wasn't valid JSON. Continuation is the right repair for a long
-    transaction list and the WRONG one here — the answer is ~60 tokens, so
-    hitting the limit means the model is rambling, and stitching six more chunks
-    onto a runaway reply turns one cheap failure into garbage at 7x the cost."""
+    """Continuation is the right repair for a long transaction list and the
+    WRONG one here — the answer is ~60 tokens, so hitting the limit means the
+    model is rambling, and stitching six more chunks onto a runaway reply turns
+    one cheap failure into garbage at 7x the cost."""
     from dataclasses import replace as _replace
 
     from viva.listen import one_shot_extractor
@@ -419,11 +418,11 @@ def test_interpretation_is_never_continued_across_truncation():
         models.adapter_for = real
 
 
-# ------------------------------- the ATM answer (a real run, 2026-07-25)
+# ------------------------------------------------------- the ATM answer
 
 
 def _atm(tmp_path):
-    """The real shape: an ATM descriptor carrying its own date, place and card.
+    """An ATM descriptor carrying its own date, place and card.
 
     Two withdrawals sharing a descriptor — which is a CONDUIT, so each is
     answered separately. The tests pass a movement key for exactly that reason."""
@@ -439,9 +438,10 @@ def _atm(tmp_path):
 
 
 def test_the_label_a_person_names_is_not_dropped(tmp_path):
-    """The defect: answering "spent on playing poker, add it to poker category"
-    recorded only the major. Half the sentence reached the ledger and nothing
-    said so — the worst kind of silence, because it looks like it worked."""
+    """Answering "spent on playing poker, add it to poker category" records the
+    category as well as the major. Half a sentence reaching the ledger with
+    nothing said about it is the worst kind of silence, because it looks like it
+    worked."""
     ledger = _atm(tmp_path)
     key = ledger.projection().movements()[0].key
     p = listen(ledger.projection(), "spent on playing poker, add it to poker category",
@@ -460,10 +460,10 @@ def test_the_label_a_person_names_is_not_dropped(tmp_path):
 
 
 def test_the_document_line_is_never_the_models_free_text(tmp_path):
-    """v1 asked for "corroborates" with no guidance; a model answered "no", and
-    the surface said "Your no would let me prove this — it isn't needed to save
-    it." Nonsense reaching a person is a trust failure even when the ledger is
-    fine. Code maps kind -> document now; the model has no say."""
+    """Code maps kind -> document; the model has no say. An unguided
+    "corroborates" field puts the model's free text in front of a person, and
+    nonsense reaching a person is a trust failure even when the ledger is
+    fine."""
     ledger = _atm(tmp_path)
     key = ledger.projection().movements()[0].key
     p = listen(ledger.projection(), "spent on playing poker",
@@ -486,7 +486,7 @@ def test_the_document_line_is_never_the_models_free_text(tmp_path):
 def test_ordinary_spending_creates_no_account(tmp_path):
     """Not every answer brings a thing into being. Cash spent on an evening out
     is an expense, not an asset with a name — and an account per answer is how
-    the sprawl this slice worries about would actually start."""
+    account sprawl would actually start."""
     ledger = _atm(tmp_path)
     key = ledger.projection().movements()[0].key
     p = listen(ledger.projection(), "spent on playing poker",
@@ -500,10 +500,9 @@ def test_ordinary_spending_creates_no_account(tmp_path):
 
 
 def test_a_nested_reply_is_still_read(tmp_path):
-    """"mortgage payments" came back "I couldn't read that one". Some providers
-    and json_mode wrappers nest the answer — {"response": {"legs": [...]}} — and
-    taking the OUTER object found no legs. Search for the object that carries
-    them, not merely the first one."""
+    """Some providers and json_mode wrappers nest the answer —
+    {"response": {"legs": [...]}} — so taking the OUTER object finds no legs.
+    Search for the object that carries them, not merely the first one."""
     from viva.listen import _first_json_object
 
     inner = {"legs": [{"major": "liability", "account_hint": "Lender"}],
@@ -524,10 +523,11 @@ def test_a_nested_reply_is_still_read(tmp_path):
 
 
 def test_each_failure_says_something_different_and_true(tmp_path):
-    """One sentence for four failures meant neither the person nor the log could
-    tell a model that was DOWN from one that was rambling from one that simply
-    didn't understand. Saying which is the difference between a product that
-    admits a limit and one that just seems broken."""
+    """A model that is DOWN, one that is rambling, and one that simply didn't
+    understand each need their own sentence — with one sentence for all of them
+    neither the person nor the log can tell them apart. Saying which is the
+    difference between a product that admits a limit and one that just seems
+    broken."""
     from viva.web import service
 
     raw, ledger = _vault(tmp_path)
@@ -555,10 +555,9 @@ def test_each_failure_says_something_different_and_true(tmp_path):
 
 def test_a_conduit_is_answered_one_transaction_at_a_time(tmp_path):
     """Every check in a vault normalizes to the single token "check". Grouping
-    them as a merchant meant one question about all of them — so a person whose
-    checks were an earnest-money deposit and an initial deposit to open an
-    account could say only one thing (Vishnu, 2026-07-25). A check says HOW the
-    money moved, not who got it."""
+    them as a merchant would allow one answer for all of them, when one check
+    may be an earnest-money deposit and the next an initial deposit to open an
+    account. A check says HOW the money moved, not who got it."""
     from viva.ledger.merchants import normalize_merchant
     from viva.questions import NATURE, open_questions
 

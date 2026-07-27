@@ -30,30 +30,26 @@ from .taxonomy import (PRIMARY_CATEGORIES, TAXONOMY_VERSION, canonical_primary,
 
 log = logging.getLogger(__name__)
 
-ENRICHMENT_VERSION = "enrich-v4"       # v4: reuse the vault's known subcategories
-# v3: + counterparty_kind and IMPLICATIONS
-# v2: 16 primaries + subcategory, mcc, logo. Retained; records written under it
-# keep resolving to it (T8).
+ENRICHMENT_VERSION = "enrich-v4"       # the version stamped on records
 
 # The four majors, repeated here rather than imported: merchantcore must not
-# depend on the product (T9 runs both ways — the commons knows nothing about a
-# ledger). These are the closed answer space an implication may name.
+# depend on the product — the commons knows nothing about a ledger. These are
+# the closed answer space an implication may name.
 MAJORS = ("expense", "asset", "liability", "income")
 KINDS = ("business", "instrument", "peer")
 
-# Enrichment is N *independent* merchants, so we never gamble a whole run on one
-# giant JSON that overruns the model's output budget and truncates mid-object
-# (the failure mode that silently returned zero records). We split the batch into
-# chunks small enough that each call returns a complete, valid JSON object, and
-# merge. One bad chunk cannot sink the rest, and progress is logged per chunk.
+# Enrichment is N *independent* merchants, so a whole run is never gambled on one
+# giant JSON that overruns the model's output budget and truncates mid-object,
+# returning nothing. The batch is split into chunks small enough that each call
+# returns a complete, valid JSON object, and merged. One bad chunk cannot sink
+# the rest, and progress is logged per chunk.
 DEFAULT_CHUNK_SIZE = 40
 
 PROMPTS = pathlib.Path(__file__).resolve().parent / "prompts"
 
-# The enrichment prompt lives in `prompts/<version>.txt`. It used to be a single
-# literal here, edited in place while ENRICHMENT_VERSION was bumped v1 -> v2 ->
-# v3 — so `enrich-v2`'s text existed only in git history until it was recovered
-# on 2026-07-25. That is a T8 failure, and files are what stop it recurring.
+# The enrichment prompt lives in `prompts/<version>.txt`, never in a literal
+# here: a recorded version must always resolve to the exact text that produced
+# the record.
 _PROMPT = promptstore.load(PROMPTS, ENRICHMENT_VERSION)
 
 
@@ -64,12 +60,13 @@ def build_enrichment_prompt(merchants: dict,
     version (taxonomy + prompt + normalizer, so a record can be re-derived).
 
     ``known_subcategories`` is the vault's EXISTING finer vocabulary. It crosses
-    the T9 boundary safely because a subcategory is impersonal by construction —
-    "coffee shop" says nothing about who bought coffee, or when, or how much."""
+    the impersonal-data boundary safely because a subcategory is impersonal by
+    construction — "coffee shop" says nothing about who bought coffee, or when,
+    or how much."""
     lines = "\n".join(f"- {key}: {example}" for key, example in merchants.items())
     # The vocabulary that already exists is shown to the model BEFORE it invents
-    # a new one. The cheapest of the three sprawl defences and the only one that
-    # costs nothing: prevention beats a resolver beats a cleanup.
+    # a new one: preventing subcategory sprawl costs nothing, while resolving or
+    # cleaning it up afterwards does.
     header = _PROMPT.format(
         primaries=", ".join(PRIMARY_CATEGORIES) + ", other",
         known_subcategories=", ".join(known_subcategories or []) or "none yet")
@@ -206,7 +203,7 @@ def model_extractor(spec):
         result = adapter.extract([], prompt)
         # The adapter continues across provider truncation; if it STILL comes back
         # truncated, the chunk may be incomplete — say so rather than quietly
-        # dropping the tail records (never bluff — principle 2).
+        # dropping the tail records. Never bluff.
         if result.finish_reason == "length":
             log.warning("enrich: reply still truncated after continuation — "
                         "a chunk may be incomplete; consider a smaller chunk_size")

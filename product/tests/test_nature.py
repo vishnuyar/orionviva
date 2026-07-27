@@ -1,8 +1,8 @@
-"""Slice 6.5 — movement nature: spending means money that left your LIFE (M1).
+"""Movement nature: spending means money that left your LIFE.
 
-The real-vault finding this fixes: transfers were excluded only when a *link* was
-formed, while a *category* saying "transfers" excluded nothing — and one category
-(`loan_payments`) covered two opposite natures. Nature decides now, category only
+A formed *link* is not the only reason to exclude a transfer, and a *category*
+saying "transfers" is not enough to exclude one — a single category
+(`loan_payments`) can cover two opposite natures. Nature decides, category only
 suggests, and weak evidence is reported as provisional rather than hidden.
 """
 
@@ -43,8 +43,8 @@ def _checking(raw, ledger, txns, opening="10000.00", number="000000001122",
 
 
 def test_payment_to_my_own_card_is_not_spending_even_unlinked(tmp_path):
-    """The core real-vault bug: the card's statement isn't in the vault, so no
-    link can form — but the money plainly went to an account I hold."""
+    """The card's statement isn't in the vault, so no link can form — but the
+    money plainly went to an account I hold."""
     raw, ledger = _vault(tmp_path)
     # Open the card account (a statement of its own), then pay it from checking.
     card = StatementFacts(
@@ -93,8 +93,8 @@ def test_a_linked_transfer_reports_the_link_as_its_reason(tmp_path):
 
 
 def test_same_category_opposite_natures(tmp_path):
-    """The finding that killed category-decides-nature: a mortgage payment and a
-    payment to my own card can carry the SAME category and mean opposite things."""
+    """Category cannot decide nature: a mortgage payment and a payment to my own
+    card can carry the SAME category and mean opposite things."""
     raw, ledger = _vault(tmp_path)
     card = StatementFacts(
         doc_id="", doc_type="credit_card_statement", doc_type_confidence=0.98,
@@ -109,7 +109,7 @@ def test_same_category_opposite_natures(tmp_path):
               [("2026-03-05", "ROCKET MORTGAGE PMT", "-2000.00"),
                ("2026-03-06", "IMPRINT ACH PMT", "-500.00")])
     ledger_proj = ledger.projection()
-    # Both get the SAME category, as the real model did.
+    # Both get the SAME category.
     for m in ledger_proj.movements():
         if m.amount == Decimal("-2000.00") or m.amount == Decimal("-500.00"):
             assign_category(ledger, m.key, "loan_payments", by="model")
@@ -123,9 +123,9 @@ def test_same_category_opposite_natures(tmp_path):
 
 
 def _implies(ledger, merchant, category, implies, subcategory=""):
-    """Enrich a merchant WITH an implication — the Slice-9b replacement for the
-    keyword hint. What a counterparty implies is learned once, impersonally, and
-    cached; it is not matched against a word list we maintain."""
+    """Enrich a merchant WITH an implication. What a counterparty implies is
+    learned once, impersonally, and cached; it is not matched against a keyword
+    list we maintain."""
     ledger.append(merchant_enriched(
         merchant, category, subcategory=subcategory, grade="corroborated",
         occurred_at="2026-04-01", by="model",
@@ -134,7 +134,7 @@ def _implies(ledger, merchant, category, implies, subcategory=""):
 
 def test_a_suggested_implication_is_provisional_not_silent(tmp_path):
     """An implication that is `suggested` rather than `forced` excludes the
-    movement but says so — the number states its own uncertainty (X2)."""
+    movement but says so — the number states its own uncertainty."""
     raw, ledger = _vault(tmp_path)
     _checking(raw, ledger, [("2026-03-08", "ACME BROKERAGE DEPOSIT", "-1000.00")])
     m0 = next(m for m in ledger.projection().movements() if "ACME" in m.description)

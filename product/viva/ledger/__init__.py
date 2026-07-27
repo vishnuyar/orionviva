@@ -1,8 +1,8 @@
 """The ledger: encrypted append-only events, double-entry postings, projections.
 
-Events are the source of truth (ADR-004); balances are projections rebuilt by
-replaying them. Everything is encrypted at rest (ADR-005) and every answer
-carries a grade and provenance.
+Events are the source of truth; balances are projections rebuilt by
+replaying them. Everything is encrypted at rest and every answer carries a
+grade and provenance.
 """
 
 from ..crypto import CryptoError

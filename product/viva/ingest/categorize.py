@@ -1,12 +1,12 @@
 """Categorization — assign a movement to a category, as a graded overlay.
 
-The mechanism is correction-as-event over a stable movement key (Slice 5): a
+The mechanism is correction-as-event over a stable movement key: a
 human confirmation is `verified` and the moat; a model suggestion is `unverified`
 and shown against the source until confirmed. Every assignment captures the
 movement's raw descriptor, so merchant learning is later a projection over these
 events — no re-ingestion, nothing wasted.
 
-The seed taxonomy is minimal, jurisdiction-neutral **data** (I5): a person or a
+The seed taxonomy is minimal, jurisdiction-neutral **data**: a person or a
 region extends it by simply assigning a new label; nothing here is a US-shaped
 table, and any string is a valid category.
 """
@@ -59,9 +59,9 @@ def tag_merchant(ledger: Ledger, merchant: str, tags: list,
                  by: str = "human") -> None:
     """Tag every movement from a merchant — one ruling instead of forty.
 
-    The Slice 5.5 rule still binds and is enforced by the caller: a PEER
-    descriptor must not generalize, because one payment to a friend is a gift
-    and the next is a loan repayment."""
+    The caller enforces the rule that a PEER descriptor must not generalize,
+    because one payment to a friend is a gift and the next is a loan
+    repayment."""
     from ..ledger.events import SCOPE_MERCHANT, movement_tagged
     ledger.append(movement_tagged(merchant, list(tags or []), _today(),
                                   scope=SCOPE_MERCHANT, by=by))
@@ -83,10 +83,10 @@ def rule_tag_same_as(ledger: Ledger, label: str, same_as: str,
 
 def rule_category_same_as(ledger: Ledger, label: str, same_as: str,
                           by: str = "human") -> None:
-    """Record that two labels name one thing (Slice 7.5).
+    """Record that two labels name one thing.
 
     Nothing is rewritten. The event that recorded "playing poker" keeps saying
-    "playing poker" forever — T4 — and every total folds it into "poker" from
+    "playing poker" forever, and every total folds it into "poker" from
     the moment this ruling exists, retroactively, with no re-ingest. A merge
     made in error is reversed by appending the opposite ruling, never by
     editing, which is what makes it safe to offer at all."""
@@ -105,9 +105,9 @@ def assign_category(ledger: Ledger, movement_key: str, category: str,
     authoritative ruling + the moat); ``by='model'`` records a `unverified`
     suggestion. Captures the movement's descriptor for later merchant learning.
 
-    ``nature`` (Slice 6.5, optional) is the person's ruling on what the movement
+    ``nature`` (optional) is the person's ruling on what the movement
     *is* — `spending`, `transfer`, or `settlement`. It rides on this same overlay
-    rather than needing a new event type (Move 1 is read-side only), and outranks
+    rather than needing a new event type, and outranks
     any category hint when the projection derives nature. Returns whether the
     movement was found."""
     proj = ledger.projection()
@@ -126,10 +126,10 @@ def assign_category(ledger: Ledger, movement_key: str, category: str,
 
 def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
                              by: str = "human", subcategory: str = "") -> None:
-    """Categorize a whole MERCHANT (Slice 5.5) — 'this merchant is X, everywhere'.
+    """Categorize a whole MERCHANT — 'this merchant is X, everywhere'.
     ``by='human'`` is `verified` (fills every transaction from it, past and
     future, unless a per-transaction override says otherwise). ``subcategory`` is
-    the finer label (Slice 5.6) — also the sharper *nature* signal (Slice 6.5)."""
+    the finer label — also the sharper *nature* signal."""
     grade = VERIFIED if by == "human" else UNVERIFIED
     log.info("merchant: %s %r -> %r (%s)", by, merchant, normalize_category(category), grade)
     if subcategory:
@@ -146,13 +146,13 @@ def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
 def rule_merchant_nature(ledger: Ledger, merchant: str, nature: str,
                          by: str = "human") -> None:
     """Record what money with this merchant *is* — spending, a transfer between
-    the person's own accounts, or a settlement (Slice 6.5 Move 2).
+    the person's own accounts, or a settlement.
 
     Rides on the existing `MerchantEnriched` attributes bag rather than adding an
     event type or a field: nature is merchant knowledge like any other attribute,
     and the write side stays untouched (abstract the read side early, the write
     side late). One ruling settles every transaction from that merchant, past and
-    future — the Slice 5.5 generalization, applied to nature.
+    future — the merchant-level generalization, applied to nature.
 
     Only ever called for *commercial* merchants; a peer descriptor's nature varies
     per payment and is ruled per-movement via ``assign_category(nature=…)``."""
@@ -170,7 +170,7 @@ def rule_merchant_nature(ledger: Ledger, merchant: str, nature: str,
 
 def categorize_merchants_batch(ledger: Ledger, categorize_fn,
                                threshold: int = 1) -> int:
-    """Batched merchant categorization (the cost win, Slice 5.5): gather the
+    """Batched merchant categorization (the cost win): gather the
     deduped UNKNOWN merchants, and if there are at least ``threshold`` of them,
     make ONE call — ``categorize_fn({merchant: example}) -> {merchant: category}``
     — recording each as a `corroborated` merchant rule (a model batch agreeing is
@@ -197,12 +197,12 @@ def categorize_merchants_batch(ledger: Ledger, categorize_fn,
 
 
 def enrich_merchants(ledger: Ledger, catalog, extract_fn) -> dict:
-    """The product↔merchantcore loop (Slice 5.6). Submit the unknown, shareable
+    """The product↔merchantcore loop. Submit the unknown, shareable
     merchants to the catalog as **impersonal** hints (a normalized key + a linted
-    example — nothing about amounts, dates, or accounts crosses, T9); let
+    example — nothing about amounts, dates, or accounts crosses); let
     merchantcore enrich the pending set in one batched call; then **sync** the
     catalog records back into the ledger as `MerchantEnriched` events, so
-    categorization is retrospective and the ledger stays self-contained (T4).
+    categorization is retrospective and the ledger stays self-contained.
 
     ``catalog`` is a ``merchantcore.Catalog``; ``extract_fn`` is the injected
     model call. Returns counts."""
@@ -216,7 +216,7 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn) -> dict:
     enriched = 0
     if catalog.pending():
         # Show the model the labels this vault already uses, so a new one is a
-        # deliberate act rather than the path of least resistance (Slice 7.5).
+        # deliberate act rather than the path of least resistance.
         records = Enricher(
             extract_fn,
             known_subcategories=ledger.projection().known_subcategories()
@@ -241,10 +241,10 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn) -> dict:
 
 
 def export_catalog(ledger: Ledger) -> dict:
-    """The privacy-linted, shareable merchant catalog (Slice 5.5): commercial
+    """The privacy-linted, shareable merchant catalog: commercial
     merchants only (peer-payment / PII filtered), category + grade, and NOTHING
     else — no amounts, dates, or transaction links. This is the content the
-    commons contribution is hashed from (T5/T6)."""
+    commons contribution is hashed from."""
     cat = ledger.projection().merchant_categories()
     return {merchant: {"category": r["category"], "grade": r.get("grade", "")}
             for merchant, r in cat.items() if is_shareable(merchant)}

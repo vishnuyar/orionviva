@@ -1,11 +1,9 @@
-"""The merchant drill-through keeps direction (found 2026-07-27, on the real vault).
+"""The merchant drill-through keeps direction.
 
-The finding: every EFT to the author's broker showed positive and the header total summed
-magnitudes in BOTH directions, so a counterparty the author both sent money to
-and received money from displayed a gross figure dressed as one number. Cause:
-abs() on every amount in `merchant_transactions` — the same defect family as the
-liability abs() in the first net-worth cut (net-worth.md, D1: abs() erases the
-one bit that matters).
+abs() on every amount in `merchant_transactions` erases the one bit that
+matters: a counterparty money both flows to and comes back from then shows every
+row positive, and a header total that sums magnitudes in BOTH directions
+displays a gross figure dressed as one number.
 
 These tests pin the contract: amounts stay signed, each row carries a kind-aware
 direction, and the summary is three figures — out, in, net — never one.
@@ -59,9 +57,9 @@ def _card(vault, txns, opening="0"):
 
 
 def test_two_way_counterparty_keeps_signs_and_reports_out_in_net(tmp_path):
-    """The real-vault shape: EFTs out to the broker AND money received back.
-    One direction must never be dressed as the other, and the summary must be
-    three figures, not their gross sum."""
+    """EFTs out to a broker AND money received back. One direction must never
+    be dressed as the other, and the summary must be three figures, not their
+    gross sum."""
     vault = _vault(tmp_path)
     _checking(vault, [
         ("2026-03-05", "EFT Broker Moneyline", "-1500.00"),   # sent to them
@@ -70,10 +68,10 @@ def test_two_way_counterparty_keeps_signs_and_reports_out_in_net(tmp_path):
     ])
     d = service.merchant_transactions(vault, "EFT Broker Moneyline")
     assert d["count"] == 3
-    # Signed as the account recorded them — abs() was the bug.
+    # Signed as the account recorded them.
     amounts = {i["amount"]: i["direction"] for i in d["items"]}
     assert amounts == {"-1500.00": "out", "-2000.00": "out", "500.00": "in"}
-    # Three figures. The old single "total" would have said 4000.00.
+    # Three figures. A single gross "total" would say 4000.00.
     assert d["money_out"] == "3500.00"
     assert d["money_in"] == "500.00"
     assert d["net"] == "3000.00"
@@ -81,9 +79,9 @@ def test_two_way_counterparty_keeps_signs_and_reports_out_in_net(tmp_path):
 
 
 def test_card_charge_is_out_despite_its_positive_sign(tmp_path):
-    """Kind-aware, the Slice 5 distinction: a liability records a charge —
-    money out to the merchant — POSITIVE. Reading the raw sign alone would
-    call every card purchase incoming money."""
+    """Kind-aware: a liability records a charge — money out to the merchant —
+    POSITIVE. Reading the raw sign alone would call every card purchase
+    incoming money."""
     vault = _vault(tmp_path)
     _card(vault, [("2026-03-07", "GYM MONTHLY", "500.00")])
     d = service.merchant_transactions(vault, "GYM MONTHLY")

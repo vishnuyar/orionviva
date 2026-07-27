@@ -3,11 +3,11 @@
 Two files drive everything:
 
 - ``models.yaml``  — the candidate roster, budget ceiling, data directory.
-- ``corpus.yaml``  — the exam paper: documents, types, locales (invariant I4).
+- ``corpus.yaml``  — the exam paper: documents, types, locales.
 
 Design rules enforced here rather than politely suggested:
-- Unpinned model aliases ("latest") are refused outright (invariant T8).
-- Every document must declare a locale and currency (invariant I4).
+- Unpinned model aliases ("latest") are refused outright.
+- Every document must declare a locale and currency.
 - API keys come from environment variables only — never from config files.
 """
 
@@ -42,7 +42,7 @@ class BenchConfig:
     page_concurrency: int = 6
     # What the model is shown: "image" (page pixels), "text" (the issuer's own
     # embedded PDF text), or "text+image" (both). A benchmark dimension, not a
-    # setting to guess at — see docs/document-preprocessing.md.
+    # setting to guess at.
     input_mode: str = "image"
 
     def candidate(self, name: str) -> Candidate:
@@ -74,7 +74,7 @@ def _validate_candidate(raw: dict) -> Candidate:
         if fragment in lowered:
             raise ConfigError(
                 f"Candidate '{name}' uses the unpinned alias {model!r}. "
-                "The trust policy (T8) refuses 'latest' on principle: pin an exact "
+                "This exam refuses 'latest' on principle: pin an exact "
                 "version so the exam grades a model that exists, not a moving target."
             )
     if adapter == "openai-compatible" and not raw.get("base_url"):
@@ -145,8 +145,8 @@ class Document:
     id: str
     file: Path                # resolved absolute path
     doc_type: str             # e.g. checking_statement, credit_card_statement, ...
-    locale: str               # BCP-47-ish, e.g. en-US, de-DE  (invariant I4)
-    currency: str             # ISO 4217, e.g. USD             (invariant I1)
+    locale: str               # BCP-47-ish, e.g. en-US, de-DE
+    currency: str             # ISO 4217, e.g. USD
     quality: str = "clean"
     notes: str = ""
 
@@ -182,7 +182,7 @@ def load_corpus(path: Path) -> Corpus:
             if not d.get(required):
                 raise ConfigError(
                     f"Document '{doc_id}' is missing '{required}'. Locale and currency "
-                    "are required from day one (invariants I1/I4) — they cannot be "
+                    "are required from day one — they cannot be "
                     "retrofitted into ground truth later."
                 )
         quality = d.get("quality", "clean")

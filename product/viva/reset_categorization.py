@@ -1,7 +1,6 @@
 """One-time cleanup: rewind a vault to *before* categorization, keeping all else.
 
-Categorization is a graded OVERLAY (Slice 5 / 5.5 / 5.6) — three event types that
-never touched a posted transaction, balance, transfer, or income figure:
+Categorization is a graded OVERLAY — three event types that never touched a posted transaction, balance, transfer, or income figure:
 
     CategoryAssigned      — a category on one movement
     MerchantCategorized   — a category on a normalized merchant
@@ -55,11 +54,10 @@ from .logs import configure as configure_logging
 CATEGORIZATION_EVENTS = ("CategoryAssigned", "MerchantCategorized",
                          "MerchantEnriched", "RulingRecorded")
 
-# A ruling a PERSON made is not derived data — it is the moat (CLAUDE.md: memory
-# of the user is what's defensible). A model call can regenerate a merchant
-# category; it cannot regenerate the fact that *you* said this Zelle was a gift.
-# So a reset preserves `by="human"` rulings by default; discarding them takes an
-# explicit, loudly-named flag (Vishnu, 2026-07-25).
+# A ruling a PERSON made is not derived data — it is the moat. A model call can
+# regenerate a merchant category; it cannot regenerate the fact that *you* said
+# this Zelle was a gift. So a reset preserves `by="human"` rulings by default;
+# discarding them takes an explicit, loudly-named flag.
 HUMAN = "human"
 
 

@@ -1,8 +1,8 @@
-"""Encryption-at-rest envelope for OrionViva's ledger (ADR-005).
+"""Encryption-at-rest envelope for OrionViva's ledger.
 
 Encryption from commit one, not a later optimization: the ledger holds the
 user's real financial life, and what cannot be decrypted cannot be leaked or
-subpoenaed (principle 3 — a breach must be a bad day, not a ruin). This module
+subpoenaed (a breach must be a bad day, not a ruin). This module
 is the versioned crypto envelope that promise stands on.
 
 Design — deliberately boring, because trust wants boring crypto:

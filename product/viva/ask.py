@@ -1,7 +1,6 @@
 """What Viva needs from you, ranked — against a real vault, read-only.
 
-The question queue (Slice 6.5 Move 2) on the command line, the way debug_vault
-works. Shows the highest-stake questions first and summarizes the tail, so you
+The question queue on the command line, the way debug_vault works. Shows the highest-stake questions first and summarizes the tail, so you
 can see at a glance what answering would actually move.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):

@@ -29,19 +29,9 @@ def load_dotenv(path: str = ".env") -> bool:
 def locale_from_env() -> str:
     """The configured locale, validated — the single source for every entry point.
 
-    Why this exists (2026-07-26). `rebuild` defaulted to "US" while `web`,
-    `debug_claim` and `debug_read` all defaulted to "en-US". "US" is not a
-    language tag, so the amount parser had no decimal convention for it and
-    refused every three-decimal figure as ambiguous.
-
-    The visible consequence: two brokerage statements parsed perfectly under
-    `debug_claim` and parked under `rebuild`, on the same code and the same
-    stored reply. Chasing that produced a "unit-quantity defect" that never
-    existed, and left real holdings out of a net-worth figure for days.
-
-    A setting that four programs each default separately is not a default, it is
-    four defaults. One accessor, one value, and an unrecognised tag stops the run
-    with the list of valid ones rather than quietly becoming a stricter parser."""
+    An unrecognised language tag stops the run and lists the valid ones: a parser
+    with no decimal convention for the tag refuses every three-decimal figure as
+    ambiguous, and the documents containing them park for no visible reason."""
     import os
 
     from vivacore.verify.normalize import known_language_tags

@@ -2,7 +2,7 @@
 
 Impersonal, reusable merchant knowledge: deterministic normalization, the
 multi-attribute MerchantRecord, a batched model enrichment engine, and the
-merchant->category commons. It holds and shares ONLY impersonal data (T9) — the
+merchant->category commons. It holds and shares ONLY impersonal data — the
 personal ledger never crosses this boundary.
 """
 

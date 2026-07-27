@@ -1,11 +1,10 @@
 """Human-in-the-loop review: list held statements, and apply a person's ruling.
 
-This is the second half of the findings design (see
-docs/verification-findings-and-correction.md): a statement that did not
-reconcile was *held* (its read persisted, never posted). Here the person rules
-on it, and their ruling is a **correction event** — appended, never an overwrite
-(T4) — after which the corrected statement posts at `verified`, the highest
-grade, because a human attested it against the source.
+A statement that did not reconcile was *held* (its read persisted, never
+posted). Here the person rules on it, and their ruling is a **correction
+event** — appended, never an overwrite — after which the corrected
+statement posts at `verified`, the highest grade, because a human attested
+it against the source.
 
 Everything here is deterministic and offline: the person supplies the value, the
 same reconciliation gate decides whether it now holds.
@@ -89,10 +88,10 @@ def other_holds(source) -> list[dict]:
     """Held documents that are NOT balance-family — a pay stub awaiting its
     deposit, a brokerage statement whose tally didn't close.
 
-    They have no fix-it affordance yet (that arrives with the question queue), but
-    a document the system is sitting on must never be invisible: silence would let
-    a held statement look like one that was never uploaded. Returns enough to say
-    what it is and why it's waiting."""
+    They have no fix-it affordance yet, but a document the system is sitting on
+    must never be invisible: silence would let a held statement look like one
+    that was never uploaded. Returns enough to say what it is and why it's
+    waiting."""
     proj = source if isinstance(source, LedgerProjection) else LedgerProjection(source)
     out: list[dict] = []
     for body in proj.open_holds():

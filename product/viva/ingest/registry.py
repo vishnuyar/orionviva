@@ -1,9 +1,8 @@
 """The doc-type registry — how a new statement type becomes DATA, not code.
 
-v0 hardcoded a single projector (checking). To hold a whole financial life the
-product must read many statement types, and adding one must be a *registry row*,
-not a code change. This module is that registry and the claim the Slice 2
-architecture rests on (docs/doc-type-registry-and-format-profiles.md).
+To hold a whole financial life the product must read many statement types, and
+adding one must be a *registry row*, not a code change. This module is that
+registry.
 
 The shape:
 
@@ -37,8 +36,8 @@ from dataclasses import dataclass, field
 
 # The identities a profile can name. The point of naming them is that a divergent
 # type registers its own without the others knowing. The balance family shares
-# one; a pay stub is the first that doesn't (Slice 4). Brokerage
-# (positions×price + cash = total), 1099 (box sums) join later, each as data.
+# one; a pay stub does not. Brokerage (positions×price + cash = total) and
+# 1099 (box sums) join later, each as data.
 BALANCE_IDENTITY = "balance"      # opening + Σ(effect on balance) = closing
 PAYSTUB_IDENTITY = "paystub"      # gross − Σ(deductions) = net
 BROKERAGE_IDENTITY = "brokerage"  # Σ(position market_value) + cash = total
@@ -51,7 +50,7 @@ PROJECTABLE_IDENTITIES = frozenset({BALANCE_IDENTITY, PAYSTUB_IDENTITY,
 # Account kinds — our interpretation, not the model's.
 DEPOSITORY = "depository"         # an asset; balance = money held
 LIABILITY = "liability"          # a card/loan; balance = money owed
-INVESTMENT = "investment"        # an asset holding cash + positions (Slice 6)
+INVESTMENT = "investment"        # an asset holding cash + positions
 
 
 @dataclass(frozen=True)
@@ -100,7 +99,7 @@ _SEED: tuple[DocProfile, ...] = (
         })),
     # The first DIVERGENT profile: a different shape AND a different identity, as
     # data. `account_kind` is empty — a pay stub is an income document, not an
-    # account. (Slice 4.)
+    # account.
     DocProfile(
         "pay_stub", "", identity=PAYSTUB_IDENTITY,
         extract_base="paystub-base-v1", type_fragment="paystub-v1",
@@ -108,7 +107,7 @@ _SEED: tuple[DocProfile, ...] = (
             "paystub", "pay_slip", "payslip", "salary_slip", "earnings_statement",
             "wage_statement", "payroll_statement",
         })),
-    # The second DIVERGENT profile (Slice 6): its own shape (positions + cash) and
+    # The second DIVERGENT profile: its own shape (positions + cash) and
     # a snapshot identity (Σ market_value + cash = total). Kind INVESTMENT — an
     # asset that holds cash AND positions, distinct from a plain depository.
     DocProfile(
@@ -164,11 +163,10 @@ def identity_of_facts(facts: dict | None) -> str:
 
     Held documents are polymorphic — a balance statement, a pay stub and a
     brokerage statement can all be held for review, and their facts have entirely
-    different shapes. Consumers must route on this rather than assume (a real
-    crash: the corroboration heal rebuilt every conflict-hold as a
-    ``StatementFacts`` and died on a held brokerage statement's missing
-    ``opening_amount``). The registry is the routing authority, so the answer
-    lives here."""
+    different shapes. Consumers must route on this rather than assume:
+    rebuilding every conflict-hold as a ``StatementFacts`` dies on a held
+    brokerage statement's missing ``opening_amount``. The registry is the
+    routing authority, so the answer lives here."""
     p = profile_for((facts or {}).get("doc_type", ""))
     return p.identity if p else ""
 
@@ -176,18 +174,15 @@ def identity_of_facts(facts: dict | None) -> str:
 def doc_type_for_prompt_version(version: str) -> str:
     """Recover the document type from a stored read's PROMPT VERSION.
 
-    The extract version is the self-describing composite `extract:<base>+<frag>`
-    (T8), and a profile's `type_fragment` is unique to it — a read recorded
+    The extract version is the self-describing composite `extract:<base>+<frag>`,
+    and a profile's `type_fragment` is unique to it — a read recorded
     under `card-v1` was, by construction, a credit-card statement. So a claim
     that has lost its classify phase can still say what it is, with certainty
     rather than inference: this reads a fact we wrote down, it does not guess.
 
-    Why this exists (2026-07-26): a real vault held 40 documents whose claims
-    carried an EXTRACT phase and no CLASSIFY phase. The balance family's extract
-    JSON does not name its own type, so every one replayed as `unknown`, had no
-    projector, and parked — a rebuild that produced an empty vault out of forty
-    perfectly good stored reads. The type was in the vault the whole time, one
-    field away, because T8 required the version to be self-describing.
+    This matters for a claim that carries an EXTRACT phase and no CLASSIFY
+    phase: the balance family's extract JSON does not name its own type, so
+    without this the document replays as `unknown`, has no projector, and parks.
 
     Returns "" when the version names no known fragment; the caller must treat
     that as unknown rather than as a default."""
@@ -200,10 +195,8 @@ def doc_type_for_prompt_version(version: str) -> str:
 
         Match on the family, because a document read a year ago was recorded
         under whatever version was current then, and the registry only carries
-        today's. Three real documents read under `brokerage-v1` were
-        unrecoverable against a registry holding `brokerage-v2`, and parked as
-        `unknown` — the type was recorded, we were simply asking for an exact
-        match on a number that is expected to change.
+        today's. Asking for an exact match on a number that is expected to
+        change leaves an older read unrecoverable and parked as `unknown`.
 
         Safe because a family belongs to exactly one profile: `card`,
         `checking`, `savings`, `paystub`, `brokerage`. Only the version moves,
@@ -221,7 +214,7 @@ def doc_type_for_prompt_version(version: str) -> str:
 def extraction_prompt_for(doc_type: str) -> tuple[str, str] | None:
     """Compose the extraction prompt (text, version) a classified type's profile
     owns, or None if there is no projector for it yet. The version is the
-    self-describing ``extract:<base>+<fragment>`` composite (T8)."""
+    self-describing ``extract:<base>+<fragment>`` composite."""
     from .prompt_library import compose_extraction
     p = profile_for(doc_type)
     if p is None:

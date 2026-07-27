@@ -3,9 +3,9 @@
 Responsibilities (and nothing more):
 - iterate the (document x candidate x run) matrix, skipping completed cells;
 - render pages once, call the adapter page by page, capture everything raw;
-- enforce the budget ceiling — hard stop, loud report (approved design D-b).
+- enforce the budget ceiling — hard stop, loud report.
 
-One cell = one document x candidate x run, but N calls: one per page (p2).
+One cell = one document x candidate x run, but N calls: one per page.
 A dense 12-page statement needs ~62k output tokens to extract whole, which is
 past the output ceiling of every small candidate — asking for it in one call
 would score the ceiling rather than the reading. Pages are extracted
@@ -222,7 +222,7 @@ def extract_by_page(
         "pages_called": len(outcomes),
         "pages_truncated": [o.page_number for o in outcomes if o.truncated],
         "pages_unparsed": [o.page_number for o in outcomes if o.parse_error],
-        # Nothing is thrown away (T3): every page's verbatim exchange is kept.
+        # Nothing is thrown away: every page's verbatim exchange is kept.
         "page_calls": [
             {
                 "page": o.page_number,
@@ -264,7 +264,7 @@ def run_exam(
                 if store.is_done(doc.id, cand.name, run_index, mode):
                     continue
 
-                # ---- budget guard: check BEFORE spending, on actuals (T6/D-b)
+                # ---- budget guard: check BEFORE spending, on actuals
                 if store.spent_usd >= config.budget_usd:
                     raise BudgetExceeded(
                         f"Budget ceiling reached: spent ${store.spent_usd:.2f} of "

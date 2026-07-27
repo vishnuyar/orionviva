@@ -4,14 +4,14 @@
 
 A rebuild replays documents. It cannot replay *you*: the rulings, categories,
 identity confirmations and corrections you gave are the one thing in the vault
-that no amount of re-reading can reconstruct. They are also, per the project's
-own reckoning, the moat — "memory of the user is the moat, not the model".
+that no amount of re-reading can reconstruct. They are also the moat: memory of
+the user is what is defensible, not the model.
 
 So this runs first, always, and it writes plain JSON.
 
 **And it is more than a backup. It is an answer key.** Every ruling here is a
-thing you had to say by hand under the old design. After a rebuild, the honest
-test of whether the counterparty-implication work succeeded is not a tier
+thing you had to say by hand. After a rebuild, the honest test of whether the
+counterparty-implication work succeeded is not a tier
 percentage — it is: *does Viva now PROPOSE what you previously had to TELL it?*
 `viva.diff_rulings` scores exactly that, against this file.
 
@@ -29,7 +29,7 @@ import sys
 # Everything a person authored. Not derived, not re-derivable: if a rebuild
 # drops these, the knowledge is gone unless it was written down first.
 HUMAN_EVENTS = (
-    "RulingRecorded",          # Slice 9a — the four majors, in your words
+    "RulingRecorded",          # the four majors, in your words
     "CategoryAssigned",        # per-transaction categories
     "MerchantCategorized",     # "this merchant is X, everywhere"
     "MerchantEnriched",        # only where by=human

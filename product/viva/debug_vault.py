@@ -68,7 +68,7 @@ def main() -> None:
             print(f"    {h.account_ref}: CONFLICT — {f.get('kind')}/{f.get('status')}: "
                   f"{(f.get('message') or '')[:120]}")
 
-    # Transfers (Slice 3): recognized internal movements + anything suggested.
+    # Transfers: recognized internal movements + anything suggested.
     links = proj.transfer_links()
     print(f"transfer links: {len(links)}")
     for lk in links:
@@ -89,7 +89,7 @@ def main() -> None:
         ranked = sorted(by_cat.items(), key=lambda x: x[1], reverse=True)
         print("spending by category (non-spending natures excluded): "
               + ", ".join(f"{c} {v}" for c, v in ranked))
-        # Slice 6.5: what was kept OUT and why, and how much is weakly evidenced.
+        # What was kept OUT and why, and how much is weakly evidenced.
         excluded = proj.excluded_from_spending()
         if excluded:
             by_reason: dict[str, Decimal] = {}
@@ -113,7 +113,7 @@ def main() -> None:
             print("    by subcategory: " + ", ".join(f"{c} {v}" for c, v in top))
     positions = proj.positions()
     if positions:
-        print(f"holdings (measured, Slice 6): {len(positions)} position(s)")
+        print(f"holdings (measured): {len(positions)} position(s)")
         for p in positions:
             ug = p.unrealized_gain()
             print(f"    {p.instrument}: {p.units} units = {p.currency} "

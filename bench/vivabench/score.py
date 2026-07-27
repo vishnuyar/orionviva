@@ -1,6 +1,6 @@
 """The scorer: deterministic grading of runs against a frozen answer key.
 
-Two levels, reported separately (design doc §5):
+Two levels, reported separately:
   - raw model: per-claim accuracy, recall (silent omissions), self-consistency,
     source-region validity, and stated-confidence calibration.
   - system: with N-sample + cross-model agreement + arithmetic, the

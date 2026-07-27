@@ -5,7 +5,7 @@ turns that into typed Claim objects, tolerantly (models wrap JSON in prose,
 fences, etc.), and defines the frozen answer-key format.
 
 Product-embryo-adjacent: the Claim shape here is the first draft of the
-product's claims-layer schema (data-model-considerations.md).
+product's claims-layer schema.
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ def _find_json(text: str) -> str | None:
 
 @dataclass
 class KeyEntry:
-    """One ground-truth claim, human-verified. Carries locale/currency (I4)."""
+    """One ground-truth claim, human-verified. Carries locale and currency."""
 
     type: str
     label: str

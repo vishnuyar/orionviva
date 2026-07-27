@@ -1,4 +1,4 @@
-"""The category taxonomy — impersonal, shareable, versioned (Slice 5.6).
+"""The category taxonomy — impersonal, shareable, versioned.
 
 Two levels, mirroring the enrichment industry (Plaid's Personal Finance
 Categories, Ntropy): a small **primary** set of stable, portable buckets that the
@@ -12,7 +12,7 @@ knowledge — shareable, not personal.
 
 from __future__ import annotations
 
-TAXONOMY_VERSION = "cat-v2"      # v1 was the 10-bucket seed; v2 is the 16 below
+TAXONOMY_VERSION = "cat-v2"      # the controlled primary set below
 
 # 16 primary categories (a friendly cousin of Plaid's PFC primaries).
 PRIMARY_CATEGORIES = (

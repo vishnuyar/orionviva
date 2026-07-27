@@ -1,8 +1,7 @@
-"""The surface↔server contract (Slice 6.7).
+"""The surface↔server contract.
 
-The slice exists because the engine had silently outrun the page: four endpoints
-the page never called and seven overview fields it ignored, for weeks. Nothing
-failed — the data was simply invisible.
+The engine can silently outrun the page: endpoints nothing calls, overview
+fields nothing renders. Nothing fails — the data is simply invisible.
 
 These tests make that failure loud. They are deliberately crude (they read the UI
 source as text) because the alternative is a browser test rig, and the honest
@@ -22,10 +21,9 @@ UI_SRC = WEB / "static"
 def _ui_text() -> str:
     if not UI_SRC.is_dir():
         pytest.skip("surface not present")
-    # Slice 6.9: the surface is plain JS + HTML in `static/`, with NO build step.
-    # The source and the served artifact are the same file, so this test now
-    # checks the thing that actually runs rather than a source that is compiled
-    # into it — which is the entire reason the build was removed.
+    # The surface is plain JS + HTML in `static/`, with NO build step. The
+    # source and the served artifact are the same file, so this checks the thing
+    # that actually runs rather than a source compiled into it.
     return "\n".join(p.read_text() for p in
                       list(UI_SRC.glob("*.js")) + list(UI_SRC.glob("*.html")))
 
@@ -53,8 +51,8 @@ DELIBERATELY_UNRENDERED = {
 
 
 def test_every_overview_field_is_rendered_or_deliberately_dropped():
-    """The gap that started this slice: `positions`, `provisional_spending` and
-    friends sat in the payload for weeks with nothing showing them."""
+    """A field the overview payload sends and the page never shows is invisible
+    data."""
     ui = _ui_text()
     missing = sorted(k for k in _overview_keys()
                      if k not in DELIBERATELY_UNRENDERED and k not in ui)
@@ -64,7 +62,7 @@ def test_every_overview_field_is_rendered_or_deliberately_dropped():
 
 
 def test_every_endpoint_the_server_exposes_is_called_by_the_surface():
-    """Four endpoints were reachable only by curl, two of them since Slice 5."""
+    """An endpoint the surface never calls is reachable only by curl."""
     ui = _ui_text()
     uncalled = sorted(e for e in _server_endpoints() if e not in ui)
     assert not uncalled, (
@@ -73,12 +71,11 @@ def test_every_endpoint_the_server_exposes_is_called_by_the_surface():
 
 
 def test_every_question_action_the_queue_emits_has_a_surface_handler():
-    """The contract that actually drifted (found 2026-07-27): the queue offered
-    "A new account" (action=confirm_identity) for the held Imprint statements,
-    and app.js had no branch for it — the click did nothing, silently, and the
-    question was unanswerable from the surface. The endpoint test above cannot
-    catch this: `/api/confirm-identity` appears in the api table whether or not
-    any button reaches it. What must stay in step is ACTIONS → HANDLERS."""
+    """A question action with no branch in app.js makes the click do nothing,
+    silently, and leaves the question unanswerable from the surface. The
+    endpoint test above cannot catch it: an endpoint appears in the api table
+    whether or not any button reaches it. What must stay in step is
+    ACTIONS → HANDLERS."""
     q_src = (pathlib.Path(__file__).resolve().parents[1] /
              "viva" / "questions.py").read_text()
     actions = set(re.findall(r'"action":\s*"([a-z_]+)"', q_src))
@@ -93,15 +90,15 @@ def test_every_question_action_the_queue_emits_has_a_surface_handler():
 
 def test_the_built_surface_ships_with_the_repo():
     """Cloning and running the server gives a working page with no Node, no
-    network and no build (X1). Slice 6.9 went further: there is no toolchain at
-    all, so the file a contributor reads IS the file the browser runs — the
-    surface can no longer be silently stale."""
+    network and no build. There is no toolchain at all, so the file a
+    contributor reads IS the file the browser runs — the surface cannot be
+    silently stale."""
     static = WEB / "static"
     assert (static / "index.html").is_file()
     assert (static / "app.js").is_file()
     assert not (WEB / "ui").exists(), (
         "the build step was removed deliberately; do not reintroduce one "
-        "without answering docs/the-surface-cards.md")
+        "without a recorded decision to reintroduce it")
     assert (static / "app.js").is_file()
 
 
@@ -119,13 +116,12 @@ def test_the_surface_fetches_nothing_from_the_network():
 
 
 def test_the_three_natures_are_gone_from_the_surface():
-    """Slice 9a replaced spending/transfer/settlement with the four majors, but
-    the old three-button path stayed wired for a month: `Detail.jsx` called
-    `api.ruleNature(...)` and `/api/rule-nature` answered it.
+    """The four majors replace spending/transfer/settlement, so the old
+    three-button path must not stay wired.
 
     Live code contradicting the current design is worse than no code, and this
-    particular contradiction was already known to be wrong — "settlement" meant
-    debt repayment while its button read *"Something I now own"*, which is an
+    particular contradiction is known to be wrong — "settlement" means debt
+    repayment while its button read *"Something I now own"*, which is an
     asset. A person answering honestly recorded the opposite of what they meant.
 
     The vocabulary is checked, not just the function name, so reintroducing the
@@ -136,18 +132,18 @@ def test_the_three_natures_are_gone_from_the_surface():
     assert "/api/rule-nature" not in ui
     # Single quotes only: this codebase writes JS string literals that way, so
     # `'settlement'` is a value being passed while "settlement" in a comment is
-    # the build log explaining why it left. Checking both would forbid the
-    # explanation along with the mistake.
+    # prose explaining why it left. Checking both would forbid the explanation
+    # along with the mistake.
     assert "'settlement'" not in ui, "the old three-nature vocabulary is back"
 
 
 def test_an_answer_carries_the_scope_the_question_chose():
     """The queue decides scope — a cheque is answered one at a time, a merchant
-    once for all — and the surface must not re-decide it. It did: every option
-    was posted as `{merchant, major, descriptor}`, so a movement-scoped question
-    sent an undefined merchant and lost its `movement_key` entirely.
+    once for all — and the surface must not re-decide it. Posting every option
+    as `{merchant, major, descriptor}` sends an undefined merchant for a
+    movement-scoped question and loses its `movement_key` entirely.
 
-    The fix is that the button forwards the option's `args` wholesale."""
+    So the button forwards the option's `args` wholesale."""
     ui = _ui_text()
     assert "api.ruleMajor(" in ui
     assert "...opt.args" in ui or "...o.args" in ui, \
@@ -158,11 +154,10 @@ def test_an_answer_carries_the_scope_the_question_chose():
 
 
 def test_one_card_failing_does_not_take_the_page_down():
-    """A wrong assumption about the shape of `undecomposed` replaced the ENTIRE
-    surface with "I can't reach the ledger" — which was also false: the ledger
-    had answered perfectly and every other card had its data in hand. A whole
-    page lost, and a misleading reason given for losing it, from one bad guess
-    about a field.
+    """One card's wrong assumption about the shape of a field must not replace
+    the ENTIRE surface with "I can't reach the ledger" — a claim that is also
+    false when the ledger answered perfectly and every other card has its data
+    in hand. A whole page lost, and a misleading reason given for losing it.
 
     So each card is drawn inside `safely()`: it fails narrowly, says what
     failed, and the rest of the page keeps working. Same rule as everywhere else
@@ -176,9 +171,9 @@ def test_one_card_failing_does_not_take_the_page_down():
 
 def test_the_surface_never_assumes_a_payload_shape():
     """`ruled_accounts` is a list, `undecomposed` is a map, `holders` may be
-    either. Guessing produced `(ov.undecomposed || []).map is not a function`.
-    One helper accepts all three, so no renderer carries its own assumption
-    about a shape it cannot see."""
+    either, and guessing the shape is a runtime error. One helper accepts all
+    three, so no renderer carries its own assumption about a shape it cannot
+    see."""
     ui = _ui_text()
     assert "const asRows" in ui
     for field in ("positions", "ruled_accounts", "undecomposed",

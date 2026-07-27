@@ -1,4 +1,4 @@
-"""Locale-aware normalization of printed values. Product embryo (I1, I2).
+"""Locale-aware normalization of printed values. Product embryo.
 
 The honesty contract, enforced by types rather than intentions:
 - Every parse returns a status: "ok", "ambiguous", or "invalid".
@@ -7,7 +7,7 @@ The honesty contract, enforced by types rather than intentions:
 - Every assumption used (e.g. "locale de-DE implies comma decimal") is
   recorded in the result, so a verdict can always explain itself.
 
-Amounts are Decimal. Floats do not appear in this module (T2): 0.1 + 0.2
+Amounts are Decimal. Floats do not appear in this module: 0.1 + 0.2
 must equal 0.3 in a product that promises to never bluff a number.
 """
 
@@ -36,7 +36,7 @@ _SPACES = "    "  # nbsp, thin space, narrow nbsp, space
 class Normalized:
     status: str                      # "ok" | "ambiguous" | "invalid"
     value: str | None = None         # canonical form: amount as plain Decimal string, date as ISO yyyy-mm-dd
-    currency: str | None = None      # ISO 4217 if detected or supplied (I1)
+    currency: str | None = None      # ISO 4217 if detected or supplied
     assumptions: tuple[str, ...] = field(default_factory=tuple)
     reason: str | None = None        # for ambiguous/invalid: why
     rules_version: str = RULES_VERSION

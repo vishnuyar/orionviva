@@ -1,6 +1,6 @@
 """Reporter: turn scorecards into a findings document (markdown + JSON).
 
-No composite leaderboard, by design (design doc §5) — one scorecard per
+No composite leaderboard, by design — one scorecard per
 (candidate, doc_type, locale). The confidently-wrong rate leads, because the
 whole thesis rides on it.
 """
@@ -85,7 +85,7 @@ def _markdown(cards: list[Scorecard]) -> str:
         "- **ECE** (expected calibration error): 0 means stated confidence matches",
         "  reality; high means the model's self-reported confidence is noise —",
         "  which is exactly why OrionViva constructs confidence by verification",
-        "  rather than trusting the model (see docs/extraction-and-confidence.md).",
+        "  rather than trusting the model.",
         "- **recall** below 100% means the model silently dropped claims — the",
         "  failure mode a balances-only benchmark would hide.",
         "- **self-consistency** below 100% means repeat runs disagree — the signal",

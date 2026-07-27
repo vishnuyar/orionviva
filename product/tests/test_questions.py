@@ -1,5 +1,4 @@
-"""Slice 6.5 Move 2 — the question queue: one ranked front door for the four
-ask-and-learn loops that were built separately.
+"""The question queue: one ranked front door for the four ask-and-learn loops.
 
 The promises under test: rank by what answering MOVES, scope a ruling to the
 most general unit that is still honest, never hide the tail, and never introduce
@@ -52,7 +51,7 @@ def test_the_tail_is_summarized_never_dropped(tmp_path):
     ledger = _checking(tmp_path, [
         (f"2026-03-{d:02d}", f"SHOP {d}", f"-{d}.00") for d in range(1, 13)
     ])
-    # as_of pinned near the fixture dates so the 6.11 cadence expectation
+    # as_of pinned near the fixture dates so the cadence expectation
     # stays quiet and this asserts exactly the twelve merchant questions.
     result = open_questions(ledger, limit=3, as_of="2026-04-01")
     assert len(result["questions"]) == 3
@@ -75,7 +74,7 @@ def test_an_unknown_merchant_asks_what_it_is_scoped_to_the_merchant(tmp_path):
 
 def test_a_peer_payment_is_scoped_to_itself_not_a_rule(tmp_path):
     """A commercial merchant generalizes; a person does not — one Zelle is a
-    gift, the next a loan repayment (the local-categorization finding)."""
+    gift, the next a loan repayment."""
     ledger = _checking(tmp_path, [("2026-03-05", "ZELLE PAYMENT TO JOHN", "-200.00")])
     (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == MERCHANT]
     assert q["scope"] == "one"
@@ -91,9 +90,9 @@ def _enrich(ledger, merchant, category, implies=(), kind="business", subcategory
 
 
 def test_an_ordinary_known_merchant_is_never_asked_about(tmp_path):
-    """Slice 9b's headline. A supermarket we have already identified implies
-    nothing beyond an ordinary expense — there was never a question here, and
-    asking one was the single largest source of noise in the queue."""
+    """A supermarket we have already identified implies nothing beyond an
+    ordinary expense — there is no question here, and asking one is the single
+    largest source of noise in the queue."""
     ledger = _checking(tmp_path, [("2026-03-06", "WHOLE FOODS MKT", "-180.00")])
     _enrich(ledger, "whole foods mkt", "food", subcategory="grocery")
     assert [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE] == []
@@ -114,9 +113,9 @@ def test_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
     assert "Shall I track it?" in q["text"]
     assert "because of who they are" in q["why"].lower()
     assert "invoice or bill of sale" in q["why"]
-    # Slice 9a widened the answer space from three natures to the four majors,
-    # reached in plain language — and added the escape hatch for the compound
-    # answers ("interest, principal and escrow") no button set can hold.
+    # The answer space is the four majors, reached in plain language, plus the
+    # escape hatch for the compound answers ("interest, principal and escrow")
+    # no button set can hold.
     assert [o["args"]["major"] for o in q["options"]] == ["asset", "expense"]
     assert q["free_text"]
 
@@ -151,11 +150,12 @@ def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_p
 
 
 def test_the_queue_introduces_no_new_event_type(tmp_path):
-    """Move 2 is read-side. Answering must route to writers that already exist —
-    a generic Ruling event is Move 3, and only if a fifth question type earns it."""
-    # The event vocabulary as it stood BEFORE this slice. Answering a question
-    # must stay inside it — `MerchantEnriched` is Slice 5.6's, and nature rides
-    # in its existing attributes bag rather than earning a field of its own.
+    """The queue is read-side. Answering must route to writers that already
+    exist — a generic Ruling event would have to be earned by a fifth question
+    type."""
+    # The event vocabulary the queue must stay inside. Answering a question adds
+    # no type — nature rides in `MerchantEnriched`'s existing attributes bag
+    # rather than earning a field of its own.
     BEFORE_MOVE_2 = {
         "AccountOpened", "OpeningBalanceObserved", "ClosingBalanceObserved",
         "TransactionRecorded", "DocumentCaptured", "ReadRecorded",

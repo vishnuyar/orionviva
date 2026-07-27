@@ -301,7 +301,7 @@ def test_unreadable_document_is_parked(tmp_path):
     assert raw.has(RawStore.fingerprint(data))
 
 
-# ----------------------------------------------------- Slice 1: any-order / backfill
+# -------------------------------------------------------- any-order / backfill
 
 def _run_facts():
     """A continuous 3-month run: Jan 1000->1500, Feb 1500->1600, Mar 1600->1650."""
@@ -354,9 +354,9 @@ def test_middle_gap_heals_both_sides(tmp_path):
 
 
 def test_same_number_different_labels_are_one_account(tmp_path):
-    # Slice 1.5: the model labels the two months differently (product name vs
-    # holder name) but the account number is the same (full vs masked) — they
-    # must resolve to ONE account and stitch, not split into two.
+    # The model labels the two months differently (product name vs holder name)
+    # but the account number is the same (full vs masked) — they must resolve to
+    # ONE account and stitch, not split into two.
     raw, ledger = _stores(tmp_path)
     jan = _facts("1000.00", [("2026-01-10", "Pay", "500.00")], "1500.00",
                  o_date="2026-01-01", c_date="2026-01-31", ref="Chase Total Checking")
@@ -419,7 +419,7 @@ def test_ambiguous_identity_merge_learns_the_alias(tmp_path):
     assert proj.balance(account_id_for(a)).amount == Decimal("1600.00")
 
 
-# ------------------------------------------------- Slice 2: registry + card/savings
+# ------------------------------------------------- registry + card/savings
 
 def _up_typed(raw, ledger, data, facts):
     """Ingest facts whose doc_type may be any registered balance type — the
