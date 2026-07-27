@@ -246,7 +246,14 @@ _MONTHS = {
 }
 
 # Locales whose numeric dates read month-first. Everyone else: day-first.
-_MONTH_FIRST_LOCALES = ("en-US", "en-PH")
+# Compared against a NORMALIZED tag, because 'en-us' and 'en-US' naming
+# different date conventions is a silent wrong answer, not a typo.
+_MONTH_FIRST_LOCALES = ("en-us", "en-ph")
+
+
+def normalize_locale(locale: str | None) -> str:
+    """Canonical form of a language tag: lowercase, '-' separated."""
+    return (locale or "").strip().replace("_", "-").lower()
 
 
 def parse_date(raw: str, locale: str | None = None,
@@ -303,7 +310,7 @@ def parse_date(raw: str, locale: str | None = None,
         if a == b:
             return _make_date(y, a, b, assumptions)  # 3/3/2026 — same either way
         # Both readings valid: the trap. Locale or bust.
-        if locale in _MONTH_FIRST_LOCALES:
+        if normalize_locale(locale) in _MONTH_FIRST_LOCALES:
             return _make_date(y, a, b, assumptions + [f"locale {locale} reads month-first"])
         if locale:
             return _make_date(y, b, a, assumptions + [f"locale {locale} reads day-first"])
@@ -328,7 +335,7 @@ def parse_date(raw: str, locale: str | None = None,
             return Normalized(status="invalid", reason=f"no valid month reading of {raw!r}")
         if a == b:
             return _make_date(y, a, b, assumptions + [note])
-        if locale in _MONTH_FIRST_LOCALES:
+        if normalize_locale(locale) in _MONTH_FIRST_LOCALES:
             return _make_date(y, a, b, assumptions + [note, f"locale {locale} month-first"])
         if locale:
             return _make_date(y, b, a, assumptions + [note, f"locale {locale} day-first"])

@@ -175,3 +175,22 @@ def test_yearless_date_needs_default_year():
     assert parse_date("04/17", "en-US").status == "invalid"          # no year -> refuse
     n = parse_date("04/17", "en-US", default_year=2024)
     assert n.ok and n.value == "2024-04-17"                          # year supplied
+
+
+# --- a locale is normalized before it decides anything ----------------------
+
+@pytest.mark.parametrize("locale", ["en-US", "en-us", "en_US", "EN-us"])
+def test_every_spelling_of_one_locale_reads_a_date_the_same_way(locale):
+    """03/04/2025 is the trap: both readings are valid and only the locale
+    decides. A tag that decides differently depending on its capitalisation is
+    a silently wrong date, which is worse than a refused one."""
+    assert parse_date("03/04/2025", locale=locale).value == "2025-03-04"
+
+
+def test_a_day_first_locale_still_reads_day_first():
+    assert parse_date("03/04/2025", locale="de-DE").value == "2025-04-03"
+    assert parse_date("03/04/2025", locale="en-GB").value == "2025-04-03"
+
+
+def test_no_locale_still_refuses_to_choose():
+    assert parse_date("03/04/2025").status == "ambiguous"

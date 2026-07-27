@@ -92,3 +92,60 @@ def test_as_of_excludes_future_events():
 def test_accounts_listing():
     proj = LedgerProjection(_statement())
     assert "chk" in proj.accounts()
+
+
+# --- identity: the number decides before the holder's name is consulted -----
+
+def _known(tmp_path, *, account, name, number, holder="ROWAN E VANCE",
+           institution="Northbank", kind="depository"):
+    from viva.ledger import EventStore, Ledger
+    from viva.ledger.events import account_opened
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
+    ledger.append(account_opened(account, kind, name, "USD", "2026-01-01",
+                                 institution=institution, account_number=number,
+                                 account_names=[holder]))
+    return ledger.projection()
+
+
+def test_a_savings_account_is_not_confused_with_the_checking_beside_it(tmp_path):
+    """The commonest pairing a person has: two accounts at one bank, one holder,
+    two different and perfectly readable numbers. A holder's name is on every
+    account they own, so it cannot be what decides — and asking here asked about
+    the most ordinary arrangement in personal finance."""
+    proj = _known(tmp_path, account="acct:northbank:4417",
+                  name="Everyday Checking", number="••••4417")
+    r = proj.resolve("Northbank", "••••8802", "High-Yield Savings",
+                     ["ROWAN E VANCE"], kind="depository")
+    assert r.verdict == "new"
+
+
+def test_the_same_number_is_still_the_same_account(tmp_path):
+    proj = _known(tmp_path, account="acct:northbank:4417",
+                  name="Everyday Checking", number="••••4417")
+    assert proj.resolve("Northbank", "4417", "Checking",
+                        ["ROWAN E VANCE"], kind="depository").verdict == "same"
+
+
+def test_with_no_numbers_two_different_products_are_two_accounts(tmp_path):
+    proj = _known(tmp_path, account="acct:everyday-checking",
+                  name="Everyday Checking", number="")
+    assert proj.resolve("Northbank", "", "High-Yield Savings",
+                        ["ROWAN E VANCE"], kind="depository").verdict == "new"
+
+
+def test_with_nothing_stronger_than_a_name_it_still_asks(tmp_path):
+    """The ask is not removed, it is scoped. When no number is readable and the
+    labels agree, a holder name really is all there is, and that is exactly the
+    case worth one question."""
+    proj = _known(tmp_path, account="acct:northbank:4417",
+                  name="Everyday Checking", number="••••4417")
+    r = proj.resolve("Northbank", "", "Statement of Account",
+                     ["ROWAN E VANCE"], kind="depository")
+    assert r.verdict == "ambiguous" and r.candidate == "acct:northbank:4417"
+
+
+def test_a_card_and_a_checking_account_are_still_two_accounts(tmp_path):
+    proj = _known(tmp_path, account="acct:northbank:4417",
+                  name="Everyday Checking", number="••••4417")
+    assert proj.resolve("Meridian", "••••2291", "Signature Card",
+                        ["ROWAN E VANCE"], kind="liability").verdict == "new"

@@ -77,12 +77,18 @@ class NetWorthPoint:
     # dropping an account from a net-worth total is the same lie of omission
     # the `missing` list exists to prevent.
     skipped: list = field(default_factory=list)
+    # Documents read but not posted. They may name an account that does not
+    # exist yet, so they cannot appear in `skipped` — which is exactly why a
+    # point that ignored them could call itself complete while two statements
+    # sat in review.
+    held: list = field(default_factory=list)
 
     @property
     def complete(self) -> bool:
-        """False when something we KNOW you owe has no usable figure. The total
-        is then knowingly too favourable, and says so rather than absorbing it."""
-        return not self.missing
+        """False when something we KNOW you owe has no usable figure, or when a
+        document is read and not posted. Either way the total is knowingly
+        partial, and says so rather than absorbing it."""
+        return not self.missing and not self.held
 
     @property
     def oldest_input(self) -> str:
@@ -121,7 +127,8 @@ class NetWorthPoint:
                        "grade": ln.grade, "origin": ln.origin, "kind": ln.kind,
                        "provable": ln.provable, "proves": ln.proves}
                       for ln in sorted(self.lines, key=lambda l: l.account)],
-            "missing": self.missing, "skipped": self.skipped}
+            "missing": self.missing, "skipped": self.skipped,
+            "held": self.held}
 
 
 def _side(kind: str, balance: Decimal) -> Decimal:
@@ -157,13 +164,16 @@ def _holdings_at(state, as_of: str) -> dict:
     which is why the projection keeps the whole observation history and not just
     the newest one."""
     out: dict[str, dict] = {}
-    for _instrument, observations in state.position_history.items():
-        best = None
-        for ob in observations:
-            if ob["as_of"] <= as_of and (best is None or ob["as_of"] >= best["as_of"]):
-                best = ob
-        if best is None:
-            continue
+    # One snapshot, not a composition. The holdings that count at this date are
+    # the ones on the latest statement AT OR BEFORE it — so an earlier point
+    # still uses the statement that was current then, and a holding the newest
+    # statement no longer lists is no longer held.
+    observed = [ob for history in state.position_history.values() for ob in history
+                if ob.get("as_of") and ob["as_of"] <= as_of]
+    if not observed:
+        return out
+    newest = max(ob["as_of"] for ob in observed)
+    for best in (ob for ob in observed if ob["as_of"] == newest):
         cur = best["currency"] or state.currency
         row = out.setdefault(cur, {"value": Decimal("0"), "as_of": "",
                                    "grade": CORROBORATED})
@@ -279,7 +289,7 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
             point.lines.append(NetWorthLine(
                 account=account, amount=_side(info.kind, amount),
                 currency=info.currency,
-                as_of=date, grade=grade or CORROBORATED,
+                as_of=date, grade=grade or CORROBORATED,   # pre-grade events
                 origin=info.origin or ISSUED, kind=info.kind, proves=doc))
 
         for currency, row in _holdings_at(st, as_of).items():
@@ -291,6 +301,10 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
     asserted, missing = _asserted_lines(proj, as_of)
     point.lines.extend(asserted)
     point.missing.extend(missing)
+    for hold in proj.open_holds():
+        point.held.append({"doc_id": hold.get("doc_id", ""),
+                           "reason": hold.get("reason", ""),
+                           "why": "read but not posted, so nothing it attests is in this figure"})
     return point
 
 

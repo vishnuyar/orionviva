@@ -323,3 +323,128 @@ def test_an_account_it_cannot_value_is_named_not_dropped(vault):
 
     from viva.debug_networth import report_point
     assert "DOES NOT INCLUDE" in report_point(march)
+
+
+# --- the grade is a measurement, not a constant -----------------------------
+
+def test_a_closing_grades_corroborated_and_a_confirmed_one_grades_verified(tmp_path):
+    """The grade a net-worth line carries has to come from somewhere. It used to
+    come from a body key nothing wrote, so every line read `corroborated`
+    whatever the evidence was, and the provable subtotal equalled the total."""
+    from viva.ledger.events import closing_balance_observed, account_opened
+
+    store = EventStore.open(tmp_path / "e.jsonl", "pw")
+    ledger = Ledger(store)
+    ledger.append(account_opened("acct:a:1", "depository", "A", "USD", "2026-01-01"))
+    ledger.append(closing_balance_observed("acct:a:1", Decimal("100"), "2026-01-31"))
+    ledger.append(account_opened("acct:b:2", "depository", "B", "USD", "2026-01-01"))
+    ledger.append(closing_balance_observed("acct:b:2", Decimal("50"), "2026-01-31",
+                                           confirmed_by="human"))
+    point = net_worth(ledger.projection())
+    grades = {ln.account: ln.grade for ln in point.lines}
+    assert grades["acct:a:1"] == CORROBORATED
+    assert grades["acct:b:2"] == VERIFIED
+
+
+def test_both_figures_are_reported_the_whole_total_and_the_provable_part(tmp_path):
+    """Provable means issuer-attested arithmetic, so a figure a person attested
+    is in the total and not in the provable part. Reporting only one of the two
+    would make the person choose between being informed and being honest."""
+    from viva.ledger.events import closing_balance_observed, account_opened
+
+    store = EventStore.open(tmp_path / "e.jsonl", "pw")
+    ledger = Ledger(store)
+    ledger.append(account_opened("acct:a:1", "depository", "A", "USD", "2026-01-01"))
+    ledger.append(closing_balance_observed("acct:a:1", Decimal("100"), "2026-01-31"))
+    ledger.append(account_opened("acct:b:2", "depository", "B", "USD", "2026-01-01"))
+    ledger.append(closing_balance_observed("acct:b:2", Decimal("50"), "2026-01-31",
+                                           confirmed_by="human"))
+    row = net_worth(ledger.projection()).by_currency()["USD"]
+    assert row["net"] == Decimal("150")
+    assert row["provable"] == Decimal("100")
+
+
+# --- a held document is a known hole ----------------------------------------
+
+def test_a_point_is_not_complete_while_a_document_sits_held(tmp_path):
+    """A statement read and not posted names money the figure does not include.
+    It may name an account that does not exist yet, so it cannot appear in
+    `skipped` — which is how a point once called itself complete with two
+    statements parked in review."""
+    from viva.ledger.events import (account_opened, closing_balance_observed,
+                                    statement_held)
+
+    store = EventStore.open(tmp_path / "e.jsonl", "pw")
+    ledger = Ledger(store)
+    ledger.append(account_opened("acct:a:1", "depository", "A", "USD", "2026-01-01"))
+    ledger.append(closing_balance_observed("acct:a:1", Decimal("100"), "2026-01-31"))
+    before = net_worth(ledger.projection())
+    assert before.complete is True
+
+    ledger.append(statement_held("doc-9", {"account_ref": "elsewhere"}, None,
+                                 "identity", "2026-02-01"))
+    after = net_worth(ledger.projection())
+    assert after.complete is False
+    assert after.held and after.held[0]["reason"] == "identity"
+    assert after.to_dict()["held"]
+
+
+# --- holdings are one snapshot, not a composition ---------------------------
+
+def _investment(ledger, *, account="acct:v:7734"):
+    from viva.ledger.events import account_opened, closing_balance_observed
+    ledger.append(account_opened(account, "investment", "Broker", "USD", "2026-01-01"))
+    ledger.append(closing_balance_observed(account, Decimal("1000"), "2026-03-31"))
+    return account
+
+
+def test_one_instrument_written_two_ways_is_not_held_twice(tmp_path):
+    """The defect a real model run produced: a statement named a holding
+    `BND VANGUARD TOTAL BOND MKT ETF` in January and `BND - VANGUARD TOTAL BOND
+    MKT ETF` in March. Keyed by that string they are two instruments, and a
+    total composed instrument-by-instrument counted an entire stale snapshot a
+    second time — twenty thousand dollars, graded corroborated.
+
+    Reading the newest statement as ONE snapshot removes the whole class: the
+    older reading is not the latest measurement of anything, it is last
+    statement's, and last statement is not what the account holds now."""
+    store = EventStore.open(tmp_path / "e.jsonl", "pw")
+    ledger = Ledger(store)
+    acct = _investment(ledger)
+    ledger.append(position_observed(acct, "BND VANGUARD TOTAL BOND MKT ETF",
+                                    "55.000", "3993.00", "USD", "2026-01-31"))
+    ledger.append(position_observed(acct, "BND - VANGUARD TOTAL BOND MKT ETF",
+                                    "61.000", "4462.15", "USD", "2026-03-31"))
+    proj = ledger.projection()
+    holdings = [ln for ln in net_worth(proj).lines if ln.kind == "holdings"]
+    assert sum(ln.amount for ln in holdings) == Decimal("4462.15")
+    assert len(proj.positions(acct)) == 1
+
+
+def test_a_holding_the_newest_statement_no_longer_lists_is_no_longer_held(tmp_path):
+    """Sold, or misread. Either way the issuer has stopped attesting it, and
+    carrying it forward adds something no document says you own."""
+    store = EventStore.open(tmp_path / "e.jsonl", "pw")
+    ledger = Ledger(store)
+    acct = _investment(ledger)
+    ledger.append(position_observed(acct, "VTI", "10.000", "2000.00", "USD", "2026-01-31"))
+    ledger.append(position_observed(acct, "SOLD-CO", "5.000", "500.00", "USD", "2026-01-31"))
+    ledger.append(position_observed(acct, "VTI", "10.000", "2100.00", "USD", "2026-03-31"))
+    proj = ledger.projection()
+    assert proj.holdings_value(acct) == Decimal("2100.00")
+    assert [p.instrument for p in proj.positions(acct)] == ["VTI"]
+
+
+def test_an_earlier_point_still_uses_the_statement_current_then(tmp_path):
+    """Snapshot semantics must not cost the curve its stability: at a January
+    date the January statement is the newest one there was, so that point keeps
+    reporting what was true then."""
+    store = EventStore.open(tmp_path / "e.jsonl", "pw")
+    ledger = Ledger(store)
+    acct = _investment(ledger)
+    ledger.append(position_observed(acct, "VTI", "10.000", "2000.00", "USD", "2026-01-31"))
+    ledger.append(position_observed(acct, "SOLD-CO", "5.000", "500.00", "USD", "2026-01-31"))
+    ledger.append(position_observed(acct, "VTI", "10.000", "2100.00", "USD", "2026-03-31"))
+    proj = ledger.projection()
+    january = [ln for ln in net_worth(proj, "2026-02-15").lines if ln.kind == "holdings"]
+    assert sum(ln.amount for ln in january) == Decimal("2500.00")

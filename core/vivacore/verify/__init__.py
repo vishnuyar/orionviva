@@ -16,6 +16,7 @@ within a version.
 """
 
 from .normalize import (
+    normalize_locale,
     RULES_VERSION,
     Normalized,
     parse_amount,
