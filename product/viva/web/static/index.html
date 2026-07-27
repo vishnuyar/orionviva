@@ -4,10 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Viva</title>
-    <script type="module" crossorigin src="./app.js"></script>
-    <link rel="stylesheet" crossorigin href="./app.css">
+    <!--
+      Slice 6.9 — one card per instrument KIND, and NO BUILD STEP.
+
+      This file and app.js ARE the surface. What you read here is what runs.
+      That is the whole reason the React build was reversed: a compiled bundle
+      can serve last hour's product with no error and no way to tell by looking
+      — the same stale-artifact failure this project found everywhere else, in
+      a repo whose discipline is that the artifact must not lie.
+
+      See docs/the-surface-cards.md.
+    -->
+    <link rel="stylesheet" href="./app.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="card muted">Opening your vault…</div></div>
+    <script src="./app.js"></script>
   </body>
 </html>
