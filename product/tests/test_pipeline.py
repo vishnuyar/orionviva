@@ -384,10 +384,11 @@ def test_ambiguous_identity_is_held_then_learned_as_new(tmp_path):
     a = _acct_facts("000000001111", ["Jane Public"], "1000.00",
                     [("2026-01-10", "Pay", "500.00")], "1500.00")
     _up(raw, ledger, b"a", a)
-    # Different number, SAME holder name -> ambiguous, held (not silently split/merged).
-    b = _acct_facts("000000002222", ["Jane Public"], "200.00",
+    # No number could be read, and the holder matches an account that HAS one.
+    # Now a holder's name really is all there is, which is the case worth asking.
+    b = _acct_facts("", ["Jane Public"], "200.00",
                     [("2026-02-10", "Dep", "50.00")], "250.00",
-                    o="2026-02-01", c="2026-02-28")
+                    o="2026-02-01", c="2026-02-28", ref="Acme Savings")
     res = _up(raw, ledger, b"b", b)
     assert res.action == IDENTITY
     assert held_items(ledger.projection())[0].reason == "identity"
@@ -405,9 +406,9 @@ def test_ambiguous_identity_merge_learns_the_alias(tmp_path):
     _up(raw, ledger, b"a", a)
     # A continuation of the SAME real account but printed with a different number
     # (opening continues from A's balance). Different number -> ambiguous.
-    b = _acct_facts("000000002222", ["Jane Public"], "1500.00",
+    b = _acct_facts("", ["Jane Public"], "1500.00",
                     [("2026-02-10", "Dep", "100.00")], "1600.00",
-                    o="2026-02-01", c="2026-02-28")
+                    o="2026-02-01", c="2026-02-28", ref="Acme Savings")
     res = _up(raw, ledger, b"b", b)
     assert res.action == IDENTITY
     # Rule "same" -> merges into A, learns the alias, and it stitches.
@@ -516,3 +517,23 @@ def test_cached_projection_matches_a_fresh_replay(tmp_path):
     cached = ledger.projection().balance(acct).amount
     fresh = LedgerProjection(ledger.events()).balance(acct).amount
     assert cached == fresh == Decimal("1650.00")
+
+
+def test_two_readable_numbers_are_two_accounts_and_nobody_is_asked(tmp_path):
+    """A checking and a savings account at one bank, one holder, two different
+    and perfectly readable numbers. This used to be held for review, because a
+    holder name outranked the number that is supposed to be the anchor — and it
+    is the most ordinary arrangement in personal finance, so the product asked
+    about it on almost every real vault."""
+    raw, ledger = _stores(tmp_path)
+    a = _acct_facts("000000004417", ["Rowan E Vance"], "1000.00",
+                    [("2026-01-10", "Pay", "500.00")], "1500.00",
+                    ref="Everyday Checking")
+    assert _up(raw, ledger, b"a", a).action == POSTED
+    b = _acct_facts("000000008802", ["Rowan E Vance"], "200.00",
+                    [("2026-02-10", "Dep", "50.00")], "250.00",
+                    o="2026-02-01", c="2026-02-28", ref="High-Yield Savings")
+    assert _up(raw, ledger, b"b", b).action == POSTED
+    depo = [i for i in ledger.projection().account_infos() if i.kind == "depository"]
+    assert len(depo) == 2
+    assert held_items(ledger.projection()) == []

@@ -31,7 +31,8 @@ from .events import (SCOPE_CATEGORY, SCOPE_MERCHANT, SCOPE_TAG, ASSERTED, CONFLI
                      MAJOR_EXPENSE, MAJOR_INCOME, MAJOR_LIABILITY,
                      SCOPE_ACCOUNT, SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
                      VERIFIED, Event, Provenance, postings_of)
-from .identity import account_key, account_tokens, names_overlap
+from .identity import (account_key, account_tokens, names_overlap,
+                       number_key, slug)
 from .merchants import is_shareable, normalize_merchant
 from .postings import EQUITY_OPENING, INCOME_UNCATEGORIZED
 
@@ -482,8 +483,13 @@ class LedgerProjection:
                 st.closing_date = event.occurred_at
                 st.closing_prov = event.provenance
                 st.closing_confirmed = event.body.get("confirmed_by") == "human"
+            # A closing only ever reaches the ledger from a statement that
+            # reconciled, so its grade is corroborated; a person who attested it
+            # raises that to verified. Reading `grade` off the body found a key
+            # nothing writes, so every historical point graded the same.
             st.closings.append((event.occurred_at, Decimal(event.body["amount"]),
-                                event.body.get("grade", ""), did or ""))
+                                VERIFIED if event.body.get("confirmed_by") == "human"
+                                else CORROBORATED, did or ""))
 
         elif et == "MovementTagged":
             # Last write wins on the COMPLETE set — removing a tag is appending
@@ -507,26 +513,25 @@ class LedgerProjection:
             # cost, nothing rewritten. The ingest-side fold stops new ones arriving.
             from ..ingest.brokerage import is_cash_row
             bucket = st.position_cash if is_cash_row(instrument) else st.positions
-            st.position_history.setdefault(instrument, []).append({
-                "as_of": event.occurred_at,
+            cb = event.body.get("cost_basis", "")
+            record = {
+                "units": Decimal(event.body["units"]),
                 "market_value": Decimal(event.body["market_value"]),
                 "currency": event.body.get("currency", ""),
+                "as_of": event.occurred_at,
+                "cost_basis": Decimal(cb) if cb not in (None, "") else None,
+                "valuation_class": event.body.get("valuation_class", "measured"),
                 "grade": event.body.get("grade", ""),
-                "is_cash": is_cash_row(instrument)})
+                "provenance": event.provenance,
+                "is_cash": is_cash_row(instrument)}
+            # History carries the WHOLE measurement, so a reader can rebuild any
+            # statement's snapshot rather than only the latest one per instrument.
+            st.position_history.setdefault(instrument, []).append(record)
             prior = bucket.get(instrument)
             # Keep the latest measurement by value-time (as_of); an earlier one was
             # true when written. Append-only: a revaluation is a new observation.
             if prior is None or event.occurred_at >= prior.get("as_of", ""):
-                cb = event.body.get("cost_basis", "")
-                bucket[instrument] = {
-                    "units": Decimal(event.body["units"]),
-                    "market_value": Decimal(event.body["market_value"]),
-                    "currency": event.body.get("currency", ""),
-                    "as_of": event.occurred_at,
-                    "cost_basis": Decimal(cb) if cb not in (None, "") else None,
-                    "valuation_class": event.body.get("valuation_class", "measured"),
-                    "grade": event.body.get("grade", ""),
-                    "provenance": event.provenance}
+                bucket[instrument] = record
 
         elif et == "TransactionRecorded":
             if did:
@@ -1206,28 +1211,52 @@ class LedgerProjection:
                 names: list[str], kind: str = "depository") -> Resolution:
         """Resolve a statement's identity signals against known accounts:
         'same' (a learned alias or an account with this key), 'new', or
-        'ambiguous' (a holder name matches an existing account *of the same kind*
-        but the number differs — ask the person once, then learn it).
+        'ambiguous' (nothing stronger than a holder name connects this statement
+        to an account we hold — ask the person once, then learn it).
 
-        The ambiguity is scoped to the same account ``kind``: a card and a
-        checking account sharing a holder are simply two different accounts, not
-        the same account under two labels — only a like-kind name clash is
-        genuinely ambiguous."""
+        A holder's name is the WEAKEST identity signal there is: it is on every
+        account that person owns, so on its own it distinguishes nothing. It
+        raises an ambiguity only when the stronger signals cannot settle the
+        question. Two rules settle it before the name is consulted:
+
+        * **Two readable, different account numbers are two accounts.** The
+          number is the anchor, and a checking and a savings account at one bank
+          share a holder by definition. Asking there is asking about the most
+          ordinary pairing a person has.
+        * **When neither statement shows a number**, two different product
+          labels are two accounts, compared as slugs rather than fuzzily — a
+          threshold here would be a keyword list with decimals.
+
+        The ambiguity is also scoped to the same account ``kind``: a card and a
+        checking account sharing a holder are simply two different accounts.
+
+        A wrong split is visible — two accounts appear where one belongs, and a
+        merge ruling repairs it. A wrong merge corrupts a balance quietly. When
+        the two errors are not symmetric, prefer the loud one."""
         key = account_key(institution, account_number, account_ref)
         if key in self._aliases:                       # learned
             return Resolution(self._aliases[key], key, "same")
         st = self._acct.get(key)
         if st is not None and st.seen:                 # already this account
             return Resolution(key, key, "same")
+        mine_number = number_key(account_number)
         for aid, s in self._acct.items():              # name overlaps another account?
             if not s.seen or s.kind != kind or aid == key:
                 continue
-            if s.names and names_overlap(names, s.names):
-                who = s.name or aid
-                return Resolution(
-                    key, key, "ambiguous", candidate=aid, candidate_name=who,
-                    reason=(f"a holder name matches {who}, but the account "
-                            "number is different"))
+            if not (s.names and names_overlap(names, s.names)):
+                continue
+            their_number = number_key(s.number)
+            if mine_number and their_number and mine_number != their_number:
+                continue                               # two numbers, two accounts
+            if not mine_number and not their_number:
+                mine_label, their_label = slug(account_ref), slug(s.name)
+                if mine_label and their_label and mine_label != their_label:
+                    continue                           # two products, two accounts
+            who = s.name or aid
+            return Resolution(
+                key, key, "ambiguous", candidate=aid, candidate_name=who,
+                reason=(f"a holder name matches {who}, and nothing stronger "
+                        "tells them apart"))
         return Resolution(key, key, "new")
 
     def account_info(self, account: str) -> AccountInfo:
@@ -1300,15 +1329,35 @@ class LedgerProjection:
 
     # ------------------------------------------------------------ positions
 
+    def snapshot_positions(self, st, as_of: str = "") -> dict:
+        """An account's holdings from its LATEST statement at or before `as_of`.
+
+        A brokerage statement states everything the account holds on its date, so
+        the holdings are read as one snapshot rather than composed instrument by
+        instrument across statements. An instrument that appears in an older
+        statement and not in the newest one is no longer held, and carrying it
+        forward would add something the issuer has stopped attesting.
+
+        Composing across statements also lets ONE instrument written two ways
+        count twice, which is a wrong figure rather than a stale one."""
+        obs = [(name, ob) for name, history in st.position_history.items()
+               for ob in history
+               if ob.get("as_of") and (not as_of or ob["as_of"] <= as_of)
+               and not ob.get("is_cash")]
+        if not obs:
+            return {}
+        newest = max(ob["as_of"] for _n, ob in obs)
+        return {name: ob for name, ob in obs if ob["as_of"] == newest}
+
     def positions(self, account: str | None = None) -> list[PositionRecord]:
-        """Latest measured holdings, across investment accounts (or one). Each is a
-        dated measurement (`class=measured`), carrying its as-of date and grade —
-        never presented as "current"."""
+        """Measured holdings from each investment account's latest statement, one
+        snapshot per account. Each is a dated measurement (`class=measured`),
+        carrying its as-of date and grade — never presented as "current"."""
         out: list[PositionRecord] = []
         for acct, st in self._acct.items():
             if account is not None and acct != account:
                 continue
-            for instrument, p in sorted(st.positions.items()):
+            for instrument, p in sorted(self.snapshot_positions(st).items()):
                 out.append(PositionRecord(
                     account=acct, instrument=instrument, units=p["units"],
                     market_value=p["market_value"], currency=p["currency"],
@@ -1318,11 +1367,11 @@ class LedgerProjection:
         return out
 
     def holdings_value(self, account: str) -> Decimal:
-        """Σ market value of an account's latest measured positions (no cash)."""
+        """Σ market value of an account's latest statement's holdings (no cash)."""
         st = self._acct.get(account)
         if st is None:
             return Decimal("0")
-        return sum((p["market_value"] for p in st.positions.values()),
+        return sum((p["market_value"] for p in self.snapshot_positions(st).values()),
                    start=Decimal("0"))
 
     def cash_value(self, account: str) -> Decimal:
