@@ -136,3 +136,33 @@ def test_an_answer_carries_the_scope_the_question_chose():
     server = (WEB / "server.py").read_text()
     for field in ("movement_key", "group"):
         assert field in server, f"/api/rule-major must accept {field}"
+
+
+def test_one_card_failing_does_not_take_the_page_down():
+    """A wrong assumption about the shape of `undecomposed` replaced the ENTIRE
+    surface with "I can't reach the ledger" — which was also false: the ledger
+    had answered perfectly and every other card had its data in hand. A whole
+    page lost, and a misleading reason given for losing it, from one bad guess
+    about a field.
+
+    So each card is drawn inside `safely()`: it fails narrowly, says what
+    failed, and the rest of the page keeps working. Same rule as everywhere else
+    here — degrade where it helps the person, and never mis-state the cause."""
+    ui = _ui_text()
+    assert "function safely(" in ui
+    assert ui.count("safely(") > 5, "every card must be drawn through it"
+    assert "rendering fault, not a data one" in ui, \
+        "a display bug must not be reported as a ledger problem"
+
+
+def test_the_surface_never_assumes_a_payload_shape():
+    """`ruled_accounts` is a list, `undecomposed` is a map, `holders` may be
+    either. Guessing produced `(ov.undecomposed || []).map is not a function`.
+    One helper accepts all three, so no renderer carries its own assumption
+    about a shape it cannot see."""
+    ui = _ui_text()
+    assert "const asRows" in ui
+    for field in ("positions", "ruled_accounts", "undecomposed",
+                  "income_breakdown", "holders"):
+        assert f"asRows(ov.{field})" in ui, \
+            f"{field} is read without the shape-tolerant helper"

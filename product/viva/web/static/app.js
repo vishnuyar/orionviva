@@ -75,6 +75,18 @@ function money(amount, currency) {
   return `${currency ? currency + ' ' : ''}${n.toLocaleString(undefined, {
     minimumFractionDigits: 2, maximumFractionDigits: 2})}`
 }
+/* The payload's shapes are not uniform — `ruled_accounts` is a list,
+ * `undecomposed` is a map keyed by account, `holders` may be a string or a
+ * list. Guessing produced `(ov.undecomposed || []).map is not a function`,
+ * which took the whole page down.
+ *
+ * So: one helper that accepts any of them, rather than each renderer carrying
+ * its own assumption about a shape it cannot see. */
+const asRows = (v) => Array.isArray(v) ? v
+  : (v && typeof v === 'object') ? Object.entries(v).map(([k, val]) =>
+      (val && typeof val === 'object') ? {key: k, ...val} : {key: k, value: val})
+  : v ? [v] : []
+
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]))
 
@@ -227,9 +239,10 @@ function spendingCard(ov) {
  * so the breakdown names the withheld parts rather than showing only the net. */
 function incomeCard(ov) {
   if (!ov || !Number(ov.income || 0)) return ''
-  const rows = Object.entries(ov.income_breakdown || {}).map(([k, v]) =>
-    `<div class="row"><div class="grow">${esc(k)}</div>
-     <div class="amt">${esc(money(v, ov.currency))}</div></div>`).join('')
+  const rows = asRows(ov.income_breakdown).map(r =>
+    `<div class="row"><div class="grow">${esc(r.key || r.label || '')}</div>
+     <div class="amt">${esc(money(r.value !== undefined ? r.value : r.amount, ov.currency))}</div>
+     </div>`).join('')
   return `<section class="card"><h3>What came in</h3>
     <div class="big">${esc(money(ov.income, ov.currency))}</div>${rows}</section>`
 }
@@ -240,8 +253,8 @@ function incomeCard(ov) {
  * proportions are not. Neither counted nor dropped: said. */
 function holdingsCard(ov) {
   if (!ov) return ''
-  const pos = ov.positions || []
-  const ruled = Object.values(ov.ruled_accounts || {})
+  const pos = asRows(ov.positions)
+  const ruled = asRows(ov.ruled_accounts)
   if (!pos.length && !ruled.length) return ''
   const rows = pos.map(h => `<div class="row"><div class="grow">
       <strong>${esc(h.instrument || h.name || '')}</strong>
@@ -252,8 +265,8 @@ function holdingsCard(ov) {
       <div class="quiet">${esc(r.origin || 'asserted')} · recorded at cost
       ${r.reliable_balance === false ? ' · balance not reliable' : ''}</div>
     </div><div class="amt">${esc(money(r.paid, r.currency))}</div></div>`).join('')
-  const und = (ov.undecomposed || []).map(u => `<div class="why">
-      ${esc(u.description || u.account || '')} — components known, proportions not.
+  const und = asRows(ov.undecomposed).map(u => `<div class="why">
+      ${esc(u.account || u.key || u.description || '')} — components known, proportions not.
       Neither counted nor dropped until the paperwork says how it splits.</div>`).join('')
   return `<section class="card"><h3>Holdings and things you own</h3>
     ${rows}${mine}${und}</section>`
@@ -266,7 +279,7 @@ function coverageCard(ov) {
   const c = ov.coverage
   return `<section class="card"><h3>What I have to go on</h3>
     <div class="quiet">${esc(typeof c === 'string' ? c : JSON.stringify(c))}</div>
-    ${ov.holders ? `<div class="quiet">held by ${esc([].concat(ov.holders).join(', '))}</div>` : ''}
+    ${ov.holders ? `<div class="quiet">held by ${esc(asRows(ov.holders).join(', '))}</div>` : ''}
     ${ov.institution ? `<div class="quiet">${esc(ov.institution)}</div>` : ''}
   </section>`
 }
@@ -282,17 +295,35 @@ function addDocumentsCard() {
 const root = document.getElementById('root')
 let state = {nw: null, questions: null, overview: null}
 
+/* A card that throws must not take the page down with it.
+ *
+ * It did: one wrong assumption about the shape of `undecomposed` replaced the
+ * entire surface with "I can't reach the ledger" — which was also a LIE, since
+ * the ledger was reached perfectly and every other card had its data in hand.
+ * A whole page lost, and a misleading reason given for losing it.
+ *
+ * The right behaviour is the one this project applies everywhere else: fail
+ * narrowly, say what failed, and keep showing everything that is fine. */
+function safely(name, fn) {
+  try { return fn() } catch (e) {
+    return `<section class="card"><h3>${esc(name)}</h3>
+      <div class="why">This card could not be drawn: ${esc(e.message)}.
+      The rest of the page is unaffected, and your ledger is fine — this is a
+      rendering fault, not a data one.</div></section>`
+  }
+}
+
 function render() {
-  const {nw, questions} = state
+  const {nw, questions, overview} = state
   const lines = (nw && nw.lines) || []
   root.innerHTML = [
-    netWorthCard(nw),
-    questionsCard(questions),
-    ...KINDS.map(([k, t, b]) => kindCard(k, t, b, lines, nw || {})),
-    holdingsCard(state.overview),
-    spendingCard(state.overview),
-    incomeCard(state.overview),
-    coverageCard(state.overview),
+    safely("What you're worth", () => netWorthCard(nw)),
+    safely('What Viva needs', () => questionsCard(questions)),
+    ...KINDS.map(([k, t, b]) => safely(t, () => kindCard(k, t, b, lines, nw || {}))),
+    safely('Holdings and things you own', () => holdingsCard(overview)),
+    safely('Where it went', () => spendingCard(overview)),
+    safely('What came in', () => incomeCard(overview)),
+    safely('What I have to go on', () => coverageCard(overview)),
     addDocumentsCard(),
   ].join('')
   wire()
@@ -420,8 +451,12 @@ async function load() {
     state = {nw, questions, overview}
     render()
   } catch (e) {
+    // Only reached when a FETCH failed. A rendering fault is caught per card
+    // above, because blaming the ledger for a display bug sends you looking in
+    // the wrong place — which is exactly what happened the first time.
     root.innerHTML = `<div class="card"><h3>I can't reach the ledger</h3>
-      <div class="muted">${esc(e.message)}</div></div>`
+      <div class="muted">${esc(e.message)}</div>
+      <div class="quiet">This is a connection problem, not your data.</div></div>`
   }
 }
 
