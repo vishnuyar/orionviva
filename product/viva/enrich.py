@@ -79,8 +79,22 @@ def main() -> None:
         base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
         api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "OPENROUTER_API_KEY"),
         json_mode=True)
-    catalog = Catalog(catalog_path(vault_dir))
-    print(f"catalog: {catalog.path if hasattr(catalog, 'path') else ''}")
+    cpath = catalog_path(vault_dir)
+    catalog = Catalog(cpath)
+    known = len(catalog.records()) if hasattr(catalog, "records") else len(catalog._records)
+    # THE line that answers "why is it calling the model again?". `submit` skips
+    # anything already in the catalog, so a model call means the catalog it
+    # loaded does not hold those merchants — almost always because it is a
+    # DIFFERENT FILE from the one that was filled. Saying which file, and how
+    # much is in it, turns that from an inference into a fact.
+    print(f"catalog: {cpath}")
+    print(f"  {known} merchant(s) already known"
+          + ("" if known else
+             "   ← EMPTY. Nothing here has been learned yet, so every merchant\n"
+             "        below will cost a model call. If you have a catalog from\n"
+             "        another vault, point VIVA_CATALOG at it or copy it here\n"
+             "        first — the whole purpose of the catalog is that this\n"
+             "        knowledge is bought once."))
 
     result = enrich_merchants(vault.ledger, catalog, model_extractor(spec))
     print(f"submitted {result['submitted']} new merchant(s); enriched "
