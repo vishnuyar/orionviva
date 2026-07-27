@@ -14,7 +14,7 @@ Two of these transaction types are not even spending: a loan you repaid, or mone
 
 ## What the substrate already supports (no new mechanism needed)
 
-The Slice-5 derivation is `per-movement override ?? merchant-catalog prior ?? Uncategorized`. `CategoryAssigned` is keyed to the individual **movement key**, graded `verified`, and already **beats** the merchant-level default (proven by `test_human_override_beats_the_synced_enrichment`). So:
+The category overlay's derivation is `per-movement override ?? merchant-catalog prior ?? Uncategorized`. `CategoryAssigned` is keyed to the individual **movement key**, graded `verified`, and already **beats** the merchant-level default (proven by `test_human_override_beats_the_synced_enrichment`). So:
 
 - Per-transaction categorization needs **no new event type**. A Zelle payment and a Zelle gift already carry different categories via two `CategoryAssigned` events on different movement keys.
 - Categories are already **open strings** — `assign_category` accepts any label — so "create a new category" is, mechanically, "mint and reuse a label."
@@ -30,7 +30,7 @@ The surface already tags non-shareable items `private`. That tag should flip the
 Recommended: a `CategoryDefined` event (name + optional color/icon), so the picker can list, rename, and style a user's own categories ("Gifts", "Loan to Raj", "Rent split"). The alternative — implicit strings, any label used in a `CategoryAssigned` *is* a category — is simpler but gives the UI nothing to enumerate or rename cleanly. Either way, custom categories are a **personal overlay**: they must be excluded from `export_catalog` and can never reach merchantcore or the commons. The 16 primaries remain the only shareable taxonomy; a user's categories live and die in the encrypted vault.
 
 **D3 — A movement's *nature*: spending vs transfer/settlement.**
-Today `spending_by_category` excludes only *linked* transfers (Slice 3). A lone Zelle a user marks "loan repaid" or "gift received" must be excludable from spending too, but it has no counterpart leg to link. Options: (a) let a per-transaction assignment carry a `nature` (spending | transfer | settlement) that the projection honors when aggregating; or (b) route "this is a transfer" to a **one-sided transfer** mechanism (a Slice-3 extension) rather than a category. Leaning (a) for the common case — it keeps the user's action a single categorize gesture — with (b) reserved for when a real counterpart later appears and can corroborate. This is the subtle one; settle it before building, because it decides whether "spending" stays honest for peer money.
+Today `spending_by_category` excludes only *linked* transfers. A lone Zelle a user marks "loan repaid" or "gift received" must be excludable from spending too, but it has no counterpart leg to link. Options: (a) let a per-transaction assignment carry a `nature` (spending | transfer | settlement) that the projection honors when aggregating; or (b) route "this is a transfer" to a **one-sided transfer** mechanism (an extension of transfer links) rather than a category. Leaning (a) for the common case — it keeps the user's action a single categorize gesture — with (b) reserved for when a real counterpart later appears and can corroborate. This is the subtle one; settle it before building, because it decides whether "spending" stays honest for peer money.
 
 ## Scope split
 

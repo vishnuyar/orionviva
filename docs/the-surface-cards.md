@@ -1,4 +1,4 @@
-# The Surface, Rebuilt as Cards (Slice 6.9)
+# The Surface, Rebuilt as Cards
 
 **Status:** Spec — decided 2026-07-26, unbuilt · **Origin:** Vishnu: *"I feel that moving away from index.html created some bugs. Let us do away with React and come back to index.html, create a card for each type of instrument and decide what needs to be shown on that card."*
 
@@ -8,7 +8,7 @@
 
 ## Why we are reversing the React decision
 
-Slice 6.7 chose **React + Vite** for "legibility to readers of a public repo and reliability of AI-written code," bounded by static build output. Reasonable then, and a two-way door by design.
+The compiled surface chose **React + Vite** for "legibility to readers of a public repo and reliability of AI-written code," bounded by static build output. Reasonable then, and a two-way door by design.
 
 The evidence since says the build step costs more than the framework saves:
 
@@ -77,6 +77,10 @@ The vault knows three issued account kinds — `depository`, `liability`, `inves
 - **What Viva needs** — the question queue, ranked by consequence. **This stays the page's spine**: it is the learning loop's front door and the thing that makes the rest improve.
 
 ---
+
+## Why a card must not trust the payload's shape
+
+The rule that a card which throws cannot take the page down was written after one did. A single wrong assumption about the shape of one field in the overview payload replaced the *entire* surface with "I can't reach the ledger" — a message that was not merely unhelpful but false, since the ledger was fine and the page was the broken part. A surface whose whole job is to report honestly must never report its own defect as the engine's failure.
 
 ## Open questions for the build
 

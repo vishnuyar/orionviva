@@ -1,4 +1,4 @@
-# The Question Queue (Slice 6.5, Move 2)
+# The Question Queue
 
 **Status:** BUILT (`product/viva/questions.py`, `python -m viva.ask`, `/api/questions`) · **Last updated:** 2026-07-25 · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
 
@@ -6,27 +6,27 @@
 
 ---
 
-> _Forward note, 2026-07-25 — the first real run put two questions in front of the author that its three answers could not hold: a mortgage payment (three things at once) and a car purchase (something he now **owns**). The diagnosis is that a **NATURE** question's option set was an impoverished stand-in for what the counter-leg *is*. **Slice 9a** ([from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)) widens the answer space to the four majors — expense / asset / liability / income — reached through a sentence rather than a button. **The queue itself does not change**: framing, ranking by consequence, scope, and the tail summary are all untouched, and buttons remain the fast path and the no-model fallback. Free text becomes an additional way to answer a question the queue already asked._
+> _Forward note, 2026-07-25 — the first real run put two questions in front of the author that its three answers could not hold: a mortgage payment (three things at once) and a car purchase (something he now **owns**). The diagnosis is that a **NATURE** question's option set was an impoverished stand-in for what the counter-leg *is*. **Rulings in your own words** ([from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)) widens the answer space to the four majors — expense / asset / liability / income — reached through a sentence rather than a button. **The queue itself does not change**: framing, ranking by consequence, scope, and the tail summary are all untouched, and buttons remain the fast path and the no-model fallback. Free text becomes an additional way to answer a question the queue already asked._
 
 
 ## Why now
 
-Move 1 made the spending figure honest and, in doing so, **quantified what the system doesn't know**: on a real vault, a third of reported spending rests on a category hint alone, alongside dozens of unknown merchants and a handful of unresolved transfer suggestions. The system knows precisely what it is unsure about and has no way to work through it with the person.
+Movement nature made the spending figure honest and, in doing so, **quantified what the system doesn't know**: on a real vault, a third of reported spending rests on a category hint alone, alongside dozens of unknown merchants and a handful of unresolved transfer suggestions. The system knows precisely what it is unsure about and has no way to work through it with the person.
 
 It also already asks four kinds of question — built four separate times:
 
 | Question | Built in | Event it writes | Generalizes to |
 |---|---|---|---|
-| Whose account is this? | Slice 1.5 | `AccountAliasConfirmed` | every future statement of it |
-| Are these the same money? | Slice 3 | `TransferLinked(by=human)` | that pair (patterns learned) |
-| What is this merchant? | Slice 5.5 | `MerchantCategorized/Enriched` | every transaction from it |
-| Is this spending, or moving? | Slice 6.5 | `CategoryAssigned(nature=…)` | that movement |
+| Whose account is this? | account identity resolution | `AccountAliasConfirmed` | every future statement of it |
+| Are these the same money? | transfer links | `TransferLinked(by=human)` | that pair (patterns learned) |
+| What is this merchant? | the merchant catalog | `MerchantCategorized/Enriched` | every transaction from it |
+| Is this spending, or moving? | movement nature | `CategoryAssigned(nature=…)` | that movement |
 
 Four implementations of one primitive, four queues, four cards in the surface. **The questions Viva asks — and the rulings they produce — are the product** (CLAUDE.md: *memory of the user is the moat*). This slice gives them one front door.
 
 ## What a Question is
 
-A **read-side projection** over ambiguity the system already records. No new event type, no ingest change (Move 3 is where a generic `Ruling` event would go, and only once a fifth question type earns it).
+A **read-side projection** over ambiguity the system already records. No new event type, no ingest change (a generic `Ruling` event waited on a fifth question type to earn it, and has since arrived as the generic scoped ruling).
 
 ```
 Question(
@@ -46,13 +46,13 @@ Question(
 
 **1 — Leverage ranking.** Ask the question that moves the most money first. This is the merchant-catalog lesson turned on the questions themselves: on the real vault, two questions (a vehicle purchase and a property closing) resolve roughly half the outstanding uncertainty. A hundred small ones can wait forever without harming the picture.
 
-**2 — Scope: one ruling should clear many.** A question is raised at the **most general unit that is still honest**. Nature questions group by *normalized merchant* — the unit that already generalizes retroactively and forward (Slice 5.5) — so answering once settles every transaction from that counterparty, past and future. A genuine one-off (an ambiguous transfer pair) is scoped to itself.
+**2 — Scope: one ruling should clear many.** A question is raised at the **most general unit that is still honest**. Nature questions group by *normalized merchant* — the unit that already generalizes retroactively and forward (the merchant catalog) — so answering once settles every transaction from that counterparty, past and future. A genuine one-off (an ambiguous transfer pair) is scoped to itself.
 
-**3 — Silence by ranking, not by hiding.** Rather than a hard materiality threshold (which would be a currency- and jurisdiction-shaped guess — I1/I5), the queue **surfaces the top N and summarizes the tail**: "plus 34 smaller items worth X in total — ask me if you want them." Nothing is hidden, nothing is pushed. An unanswered question leaves its figure provisional and *labelled* (Move 1 already does this), so silence degrades the picture's precision, never its honesty.
+**3 — Silence by ranking, not by hiding.** Rather than a hard materiality threshold (which would be a currency- and jurisdiction-shaped guess — I1/I5), the queue **surfaces the top N and summarizes the tail**: "plus 34 smaller items worth X in total — ask me if you want them." Nothing is hidden, nothing is pushed. An unanswered question leaves its figure provisional and *labelled* (movement nature already does this), so silence degrades the picture's precision, never its honesty.
 
 ## Viva's voice
 
-Question text is a **deterministic template**, not a model call: the queue must be reproducible, free, and offline-testable, and a model that phrases a question could smuggle a claim into it. _Amended 2026-07-27 (Slice 6.10): the templates now live in the persona pack (`viva/persona/`, [viva-persona-and-interview.md](viva-persona-and-interview.md)) rather than in `questions.py` — the rule stands unchanged; a lint test guarantees a phrasing can only place fields the deterministic intent supplied. 6.10 also made "not now" an answer: a declined question is suppressed while its stake (amount, count) is unchanged and returns on new evidence._ Templates carry the figure, the evidence, and the choice:
+Question text is a **deterministic template**, not a model call: the queue must be reproducible, free, and offline-testable, and a model that phrases a question could smuggle a claim into it. _Amended 2026-07-27 (the voiced queue): the templates now live in the persona pack (`viva/persona/`, [viva-persona-and-interview.md](viva-persona-and-interview.md)) rather than in `questions.py` — the rule stands unchanged; a lint test guarantees a phrasing can only place fields the deterministic intent supplied. The persona pack also made "not now" an answer: a declined question is suppressed while its stake (amount, count) is unchanged and returns on new evidence._ Templates carry the figure, the evidence, and the choice:
 
 > "On 3 March you moved $2,400 to Chase. I've treated that as a payment to your own card rather than spending — is that right?"
 > "You have 12 transactions with FIRST AMERICAN TITLE totalling $23,512. Is that money spent, or a property purchase — something you now own?"
@@ -91,10 +91,10 @@ Built: `Question` + `open_questions()` in `product/viva/questions.py` (held docu
 
 The first real run asked two questions that have no correct answer among the options offered — a **compound payment** (a mortgage is interest *and* principal *and* escrow at once) and a **capital purchase** (a car, which the ledger cannot yet represent as a thing you own). Forcing a nature ruling on either produces a wrong figure in one direction or the other. The fix is not a better option list: it is to recognize these cases and *say what is missing* — the document that states the split, or the Asset primitive — rather than inviting a guess. Recorded in [learning-mode.md](learning-mode.md); deferred by decision.
 
-## Known limitation (and what Move 3 fixes)
+## Known limitation (and what the generic scoped ruling fixed)
 
-A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("anything in title-and-escrow is a capital purchase") cannot be recorded as one rule today — answering applies it to the movements at hand. Fixing that needs a ruling that carries its own scope, which is exactly the generic `Ruling` event of **Move 3** — deliberately deferred until a fifth question type (Slice 8's obligations, or Slice 11's loans) proves the shape. Until then the queue re-asks about genuinely new merchants, which is honest, if slightly repetitive.
+A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("anything in title-and-escrow is a capital purchase") could not be recorded as one rule — answering applies it to the movements at hand. Fixing that needs a ruling that carries its own scope, which is exactly the **generic scoped ruling** — deferred until a fifth question type (Slice 8's obligations, or Slice 11's loans) proved the shape, and since arrived as `RulingRecorded` carrying `scope` + `same_as`. Until it landed the queue re-asked about genuinely new merchants, which is honest, if slightly repetitive.
 
 ## Deferred
 
-The generic `Ruling` event and category-scoped rules (Move 3). Model-phrased questions (Slice 9). Proactive *timing* — deciding when to interrupt rather than wait to be opened (Slice 8's trigger). Learned auto-apply for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)).
+The generic `Ruling` event and category-scoped rules — **since arrived** as the generic scoped ruling (`RulingRecorded` with `scope` + `same_as`). Model-phrased questions (Slice 9). Proactive *timing* — deciding when to interrupt rather than wait to be opened (Slice 8's trigger). Learned auto-apply for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)).

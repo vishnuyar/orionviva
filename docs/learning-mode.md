@@ -1,6 +1,6 @@
 # Learning Mode: compound payments, and rulings in your own words
 
-**Status:** ⚠️ **SUPERSEDED 2026-07-25 (same day) by [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)** — the signal named at the bottom of this note ("the queue keeps asking unanswerable questions") fired immediately, on the very first real run, so both threads it defers were pulled into **Slice 9a**: the free-text ruling, the Asset primitive, and a compound answer with **honestly unknown proportions**. Read this note for the diagnosis — it is still the clearest statement of *why* three buttons could not work — and read the spec for what gets built. **Original status:** design note, not being built now (Vishnu, 2026-07-25); recorded so the questions stay asked · **Origin:** the first real run of the question queue, which asked two questions it had no right to ask. **Blocks it points at:** amount-split (built in v0, never used) · Asset · the free-text ruling.
+**Status:** ⚠️ **SUPERSEDED 2026-07-25 (same day) by [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)** — the signal named at the bottom of this note ("the queue keeps asking unanswerable questions") fired immediately, on the very first real run, so both threads it defers were pulled into **rulings in your own words**: the free-text ruling, the Asset primitive, and a compound answer with **honestly unknown proportions**. Read this note for the diagnosis — it is still the clearest statement of *why* three buttons could not work — and read the spec for what gets built. **Original status:** design note, not being built now (Vishnu, 2026-07-25); recorded so the questions stay asked · **Origin:** the first real run of the question queue, which asked two questions it had no right to ask. **Blocks it points at:** amount-split (built in v0, never used) · Asset · the free-text ruling.
 
 **Invariants touched:** T2 (a model may parse a person's *intent*; it must never supply a figure or do arithmetic — ADR-010/CaMeL) · T4 (a ruling is an append-only event; the person's own words are captured verbatim in the claims layer) · **X2 (a question the system cannot honestly ask should not be asked — say what's missing instead)** · principle 2 (never bluff) · principle 6 (you direct the pace).
 
@@ -16,7 +16,7 @@ None of the three answers is correct, because a mortgage payment is **three thin
 
 **"You bought a car — is that spending?"**
 
-Closer, but the honest answer ("no — I now own a car") lands somewhere the system cannot represent. There is no Asset primitive yet, so answering it correctly makes the money vanish from spending without appearing anywhere else, and net worth (S7) will be quietly understated.
+Closer, but the honest answer ("no — I now own a car") lands somewhere the system cannot represent. There is no Asset primitive yet, so answering it correctly makes the money vanish from spending without appearing anywhere else, and net worth will be quietly understated.
 
 ## What each one actually needs
 
@@ -26,7 +26,7 @@ So the right behaviour is **not to ask the person to guess**. Recognize the paym
 
 Amortization, and therefore the split, is Slice 11.
 
-**A capital purchase needs the Asset primitive.** Enumerated in the block inventory, not built: `Position` (securities) is a *subtype* shipped in Slice 6; the general Asset — vehicles, property, valuables — is deferred. The detail that makes it interesting: a car has **no issuer statement**, so its value is `estimated`, never `measured` — which is exactly the distinction the valuation-class discipline was built for in Slice 6. And a financed car is three facts, not one: a new liability, an asset, and only the down payment is cash that actually moved.
+**A capital purchase needs the Asset primitive.** Enumerated in the block inventory, not built: `Position` (securities) is a *subtype* shipped with positions and investments; the general Asset — vehicles, property, valuables — is deferred. The detail that makes it interesting: a car has **no issuer statement**, so its value is `estimated`, never `measured` — which is exactly the distinction the valuation-class discipline was built for. And a financed car is three facts, not one: a new liability, an asset, and only the down payment is cash that actually moved.
 
 **Interim honesty:** until Asset exists, ruling such a payment `settlement` keeps spending correct and leaves net worth understated. That is the better of two wrong answers, but it should be *said*, not silently done.
 
@@ -55,4 +55,4 @@ Both threads need primitives that belong to later slices (Asset; loan amortizati
 
 ## Deferred (explicitly)
 
-Splitting a mortgage payment into interest/principal/escrow (Slice 11 — the ratios come from the loan statement). The Asset primitive and estimated valuations (Slice 6's sibling, still unbuilt). The free-text ruling and its parse prompt. Recognizing that a document *implies* another document, as an askable question.
+Splitting a mortgage payment into interest/principal/escrow (Slice 11 — the ratios come from the loan statement). The Asset primitive and estimated valuations (the sibling of positions and investments, still unbuilt). The free-text ruling and its parse prompt. Recognizing that a document *implies* another document, as an askable question.

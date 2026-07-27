@@ -1,6 +1,6 @@
 # Agent Toolset — the twelve verbs Viva may ever use
 
-**Status:** Design — unbuilt; the read direction (Slice 9b) is where it lands · **Last updated:** 2026-07-20 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
+**Status:** Design — unbuilt; the read direction (Slice 9 — Viva speaks) is where it lands · **Last updated:** 2026-07-20 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2 (compute/project are deterministic; no arithmetic in the model), T4 (all writes are events), T6 (no tool touches the network), X3 (irreversibility structurally impossible — no tool can do anything irreversible)
 
 ## The scaling law
@@ -46,7 +46,7 @@
 | `get_provenance(record_id)` | Figure → source document → exact region. Powers tap-the-number; also Viva's answer to "why do you say that?" |
 | `get_transparency(question)` | "What left my machine?" "Why was this model trusted with that document?" — reads the outbound ledger and the autonomy ledger (ADR-006, trust policy). |
 
-> _Amended 2026-07-25: this doc describes the **read** direction (Viva answering). The **write** direction — rulings in your own words — needs no tools at all: it produces a **Proposal** that deterministic writers apply after confirmation. The toolset becomes an explicit registry only when Slice 9b starts; formalizing ~40 projection methods before then would be abstraction ahead of evidence. See [viva-listens-and-speaks.md](viva-listens-and-speaks.md)._
+> _Amended 2026-07-25: this doc describes the **read** direction (Viva answering). The **write** direction — rulings in your own words — needs no tools at all: it produces a **Proposal** that deterministic writers apply after confirmation. The toolset becomes an explicit registry only when Slice 9 starts; formalizing ~40 projection methods before then would be abstraction ahead of evidence. See [viva-listens-and-speaks.md](viva-listens-and-speaks.md)._
 
 ## The forbidden list (what makes it safe to hand over your finances)
 

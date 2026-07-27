@@ -1,4 +1,4 @@
-# Categories & Tags (Slice 7.6) — one partitions, one overlays
+# Categories & Tags — one partitions, one overlays
 
 **Status:** ✅ **BUILT 2026-07-26** · **Created:** 2026-07-26 · **Origin:** Vishnu: *"how are we addressing the differentiation between category and tags — user answers should fall under a category and subcategory and at the same time it can be a tag too. I do not think we have come back to the multiple tags discussion."* · **Blocks seeded:** the **tag overlay** (`MovementTagged`) · a second alias vocabulary.
 
@@ -12,7 +12,7 @@ From [data-model-considerations.md](data-model-considerations.md):
 
 > **Double-entry governs the money (one balanced truth, verifiable); tags govern the meaning (freely multiple, user-owned, the moat).**
 
-An empty `tags` field has sat on the transaction event since v0 as the door for exactly this. Slice 5 deferred it deliberately. Nobody walked through it until the question above.
+An empty `tags` field has sat on the transaction event since v0 as the door for exactly this. The category overlay deferred it deliberately. Nobody walked through it until the question above.
 
 ---
 
@@ -55,10 +55,16 @@ That is why tags get **their own event type**. It makes *"tags never leave this 
 | **D1** | **Subcategory stays in the partition** | One per movement, comes from world knowledge, refines the category. As a tag it would break drill-down totals. |
 | **D2** | **Enrichment never suggests tags** | A tag is your meaning; the commons cannot know it (T9). |
 | **D3** | **Start tags fresh; leave existing labels alone** | *Vishnu.* Costs nothing in practice: the rebuilt vault carries **no human labels at all**, so the first answers land with both fields already available. |
-| **D4** | **Both scopes — movement and merchant** | *"Everything from this gym is martial arts"* is one ruling instead of forty. A movement tag and a merchant tag are a **union, not an override**: both statements are true and a person who set both expects to find the movement under either. The Slice 5.5 rule still binds — a peer descriptor does not generalize. |
+| **D4** | **Both scopes — movement and merchant** | *"Everything from this gym is martial arts"* is one ruling instead of forty. A movement tag and a merchant tag are a **union, not an override**: both statements are true and a person who set both expects to find the movement under either. The merchant catalog rule still binds — a peer descriptor does not generalize. |
 | **D5** | **Its own event, `MovementTagged`** | Different lifecycles (a tag is added without re-ruling the category) and different privacy. See above. |
 | **D6** | **The complete set is re-asserted, last write wins** | Removing a tag is appending the set without it. No `untag` event to reconcile against an `add` that arrived out of order; replay stays trivial and the log stays append-only. |
 | **D7** | **Tags alias in their own vocabulary** | A tag `poker` and a category `poker` are different things; merging one must not silently merge the other. `RulingRecorded(scope="tag", same_as=…)` mirrors the category alias exactly. |
+
+## Two build notes the table does not carry
+
+**Alias maps are maintained as the events replay, not derived per lookup.** Both vocabularies fold on the read side — but the fold reads a map built during replay; it does not walk the ruling set on every call. The naive version is a line shorter and is O(movements × rulings): it took the test suite from 32s to over 44s, on a fixture set far smaller than a real vault. The read-side fold is the design; recomputing it per call is not part of it.
+
+**Resolution is a recorded ruling, never a similarity score.** The obvious shortcut for `poker` / `playing poker` is an embedding with a threshold, and it fails twice over. A tuned threshold is a keyword list with decimals — the same hand-maintained judgement this project keeps refusing, wearing a number instead of a word. And a score recomputed each run lets two labels merge on one run and separate on the next, which makes *a total that changed for no reason* a normal event. A ruling is asked once, recorded, and reversed by appending.
 
 ---
 

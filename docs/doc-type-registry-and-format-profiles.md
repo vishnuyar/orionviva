@@ -1,6 +1,6 @@
 # Doc-Type Registry & Format Profiles — how new statement types become data
 
-**Status:** Implemented (Slice 2) · **Last updated:** 2026-07-24 · **Origin:** v0 hardcoded one projector (checking). To hold a whole financial life we need many statement types — but adding one must be *data*, not a code change. This doc sets the architecture for that, and it is deliberately written to serve *every* future type, not just credit card + savings.
+**Status:** Implemented · **Last updated:** 2026-07-24 · **Origin:** v0 hardcoded one projector (checking). To hold a whole financial life we need many statement types — but adding one must be *data*, not a code change. This doc sets the architecture for that, and it is deliberately written to serve *every* future type, not just credit card + savings.
 **Invariants touched:** T1 (provenance per extracted field), T2 (verification identity per type, run by universal code), T4 (profiles are versioned; a re-read is an event, nothing overwritten), I5 (no country/institution-shaped tables — format specifics are profile data), X2 (types the model can't yet read are parked honestly). Serves the "code universal, specifics are data" doctrine.
 
 ## The architecture (decisions locked with Vishnu, 2026-07-23)
@@ -85,16 +85,16 @@ fields.
 
 ## Notes for future slices (read these when you build them)
 
-- **Slice 3 (transfer links):** a card *payment* corresponds to a checking
-  *withdrawal* — that cross-account link is deferred to S3, built on the same
-  graded-Finding + correction pattern. Card ingest in S2 must not try to guess it.
-- **Slice 6 (brokerage / positions):** the first *divergent* profile — its own
+- **Transfer links:** a card *payment* corresponds to a checking
+  *withdrawal* — that cross-account link is deferred to transfer links, built on the same
+  graded-Finding + correction pattern. Card ingest here must not try to guess it.
+- **Positions & investments:** the first *divergent* profile — its own
   extraction schema and identity (`positions × price + cash = total`). Because
-  S2 builds the classify→profile→extract structure, brokerage is a **new profile
+  the doc-type registry builds the classify→profile→extract structure, brokerage is a **new profile
   + a Position primitive**, not new plumbing. Carries the valuation-class
   discipline (measured/valued/estimated).
-- **Slice 7 (net worth):** liability netting (assets − liabilities) is a
-  **projection over posted data — zero data impact.** Card shows as "owed" in S2;
+- **Net worth:** liability netting (assets − liabilities) is a
+  **projection over posted data — zero data impact.** Card shows as "owed" here;
   net worth composes it in later, no migration.
 - **Slice 8 (obligations):** card-specific fields (credit limit, minimum payment,
   due date) feed Obligations. When we need them, **bump the card profile version
@@ -108,9 +108,15 @@ fields.
 - **Format authoring (later):** creating a profile reuses the trust pattern
   (model proposes → cross-model/human ratifies → freeze + version).
 
+## The consumer contract a held document carries
+
+**A held document is polymorphic, and anything that walks the held set must route on its identity rather than assume a shape.** Once a second family existed, "held" stopped meaning "a balance statement that didn't reconcile": a pay stub awaiting its deposit and a brokerage statement that failed its tally are held too, and their facts have different fields. A heal pass, a review list, a rebuild — each must ask the registry which identity a facts blob belongs to *before* constructing a typed object from it.
+
+This is written down because skipping the step is not a graceful failure. A corroboration heal rebuilt every conflict-hold as a balance-family facts object and died on a held brokerage statement, which has no opening balance at all — one document of an unexpected shape taking down a pass that had nothing to do with it.
+
 ---
 
-## Slice 2 — Doc-type registry + credit card & savings
+## Doc-type registry + credit card & savings
 
 **Blocks seeded:** the **format-profile registry** (doc_type → {kind, extraction profile, identity}) + **account kind** (asset/liability) + the classify→profile→extract structure.
 
@@ -121,7 +127,7 @@ fields.
 - Classify → select profile → extract. Checking/savings/**card** share one **balance-statement profile** (the shapes match); the model classifies which of the three and returns the shared shape + the account kind.
 - **A1 sign reframe (prompt → v3):** each transaction reports whether it **increases or decreases the printed balance** (universal across asset and liability), tying directly to `opening + Σ = closing`. Checking values are unchanged (a deposit increases the balance), so **no data migration** for existing checking reads.
 - **Account kind:** `depository` (checking/savings, an asset) vs `liability` (credit card, balance = money owed). Kind drives display ("held" vs "owed") and, later, net-worth sign.
-- **Reuse:** identity resolution (Slice 1.5) applies to cards unchanged (a card has a number, institution, holders). The universal gate, diagnosis, backfill, and the Ledger all apply as-is.
+- **Reuse:** identity resolution (the account matcher) applies to cards unchanged (a card has a number, institution, holders). The universal gate, diagnosis, backfill, and the Ledger all apply as-is.
 
 **Final state:** credit-card and savings statements post and reconcile; a card shows as **owed**; the same account is recognized across its statements (identity); adding another balance-shaped type is a **registry row**, not code.
 

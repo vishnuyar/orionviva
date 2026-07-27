@@ -1,4 +1,4 @@
-# Net Worth (Slice 7) — a curve, not a number
+# Net Worth — a curve, not a number
 
 **Status:** ✅ **BUILT 2026-07-26** — and hardened the same day by its first real-vault run: the liability-sign defect (two cards booked as assets; see D1's postscript) and unvalued accounts silently dropped from the total, both fixed · **Created:** 2026-07-26 · **Origin:** Vishnu, on being asked what date a net-worth figure carries: *"net worth is always as-of date, it should be from the earliest date available to latest date."* · **Blocks seeded:** the **net-worth projection** · the **provable subtotal** (Slice 13's first primitive, derived for free).
 
@@ -20,7 +20,7 @@ It isn't. It is **a curve**, and asking "what is my net worth?" is asking for a 
 
 That dissolves the problem rather than answering it. There is no *the* net worth to be wrong about; there is `net_worth(D)` for any `D`, and each point is honestly constructed from what was known at that date. It also falls straight out of what the ledger already is — an append-only log of dated observations — so it needs **no new event type and no new machinery**, and it hands us trends for free, which the roadmap had waiting on this slice.
 
-**The residue, named rather than hidden.** At any point on the curve, some accounts' last measurement may be months older than the point itself. That is a real limitation, not a rounding error, so **every point carries the age of its oldest input**. The curve visibly firms up as documents arrive — which is the product telling the truth about its own coverage, and the same honesty the `provisional` aggregate established in Slice 6.5.
+**The residue, named rather than hidden.** At any point on the curve, some accounts' last measurement may be months older than the point itself. That is a real limitation, not a rounding error, so **every point carries the age of its oldest input**. The curve visibly firms up as documents arrive — which is the product telling the truth about its own coverage, and the same honesty the `provisional` aggregate established with movement nature.
 
 ---
 
@@ -35,12 +35,14 @@ That dissolves the problem rather than answering it. There is no *the* net worth
 | account kind | the measurement | why this and not something else |
 |---|---|---|
 | depository, liability (card) | the **observed closing balance** | the issuer attests it; summing our own postings would be *our* arithmetic over a possibly incomplete run |
-| investment | `Σ(market_value)` of each holding's latest observation ≤ `D`, plus the account's cash | a holding is a dated measurement (Slice 6, M1) |
+| investment | `Σ(market_value)` of each holding's latest observation ≤ `D`, plus the account's cash | a holding is a dated measurement (positions and investments, M1) |
 | asserted (`Assets:` / `Liabilities:` from a ruling) | **cost at the ruling's date** | what you paid, never what it is now worth |
 
 **The side is decided by the account's KIND, never by the sign of its balance.** The registry is explicit: a `liability` account's balance is *money owed*, stored as a **positive** magnitude, because that is the figure printed on the bill. So a liability's contribution is `-balance` — negated rather than absolute-valued, which keeps the real edge case honest: an overpaid card owes *you*, its owed figure is negative, and `abs()` would book that credit as another debt.
 
 This is written down because the first implementation got it backwards, from a docstring that asserted liabilities were "already negative" — inferred from defensive `abs()` calls in the answer path instead of read from the one comment that states the convention. On a real vault two cards were added to **assets**, and the report printed `liabilities 0.00` directly beneath two lines labelled `[liability]`. The test agreed with the code because the fixture fed a negative closing balance: **one wrong assumption, held in both places, so the suite confirmed the bug rather than catching it.**
+
+The transferable half is not about liabilities. **`abs()` erases the one bit that matters**, and it has now done so twice in unrelated code: here, where it turned two debts into assets; and in the merchant view, where wrapping every amount in `abs()` before summing added both directions of a transfer together, so every row read positive and a total combined money going out with money coming in. Reach for `abs()` and the question to ask is what direction is being discarded, and who was relying on it.
 
 An account with no measurement at or before `D` **does not contribute** to that point. It did not exist to us then, and inventing a zero would be a claim.
 
@@ -63,13 +65,13 @@ This is the decision that makes the honesty machinery *cost nothing today*. We r
 
 **The ruling:** *ask, record it, and correct it when the document arrives.* The queue asks what you roughly owe; your answer is recorded as `asserted` with its own as-of date, exactly like the car; the 1098 or the mortgage statement later **upgrades** it to `corroborated` rather than unlocking it. Until you answer, the liability appears in the list with its amount unknown and the total is marked **incomplete** — knowingly too favourable, and saying so.
 
-A missing document must never block an answer (the Slice 9a ruling), and it must never be silently absorbed either.
+A missing document must never block an answer (the ruling from Viva listens), and it must never be silently absorbed either.
 
 ### D4 · Reuse the grade ladder; do not invent an issued/asserted badge
 
 "Provable" is not a new property. It is `corroborated`: **we hold the document that attests the figure, and the arithmetic checks.** Every figure in this ledger already carries a grade.
 
-Adding a parallel `issued`/`asserted` vocabulary for net worth would mean two systems describing one fact — which is precisely the bug that inflated the spending figure in Slice 6.5, where a transfer *link* and a category saying `transfers` described the same movement and the aggregate listened to only one. `origin` stays on the account, where it answers *"who says this account exists?"*; the **grade** answers *"can this figure be proved?"*, and that is the one net worth reads.
+Adding a parallel `issued`/`asserted` vocabulary for net worth would mean two systems describing one fact — which is precisely the bug that inflated the spending figure before honest aggregates, where a transfer *link* and a category saying `transfers` described the same movement and the aggregate listened to only one. `origin` stays on the account, where it answers *"who says this account exists?"*; the **grade** answers *"can this figure be proved?"*, and that is the one net worth reads.
 
 The provable subtotal is therefore `Σ(lines where grade == corroborated)` — derived, not stored, and built when Slice 13 has a counterparty to show it to.
 
@@ -99,7 +101,7 @@ NetWorthPoint
 
 ## Honesty properties (the point of the slice)
 
-1. **Every line carries its own as-of date and grade.** No figure is ever dressed as "current" (the valuation-class invariant, inherited from Slice 6).
+1. **Every line carries its own as-of date and grade.** No figure is ever dressed as "current" (the valuation-class invariant, inherited from positions and investments).
 2. **Every point names its stalest input.** A total resting on a four-month-old brokerage statement says so.
 3. **Incompleteness is stated, never absorbed.** An obligation we cannot value keeps the total marked incomplete and names the document that would fix it.
 4. **Cost is never presented as value.** A car holds its purchase price. Any present-day worth is an `estimated` layer on top, and is not built in this slice.

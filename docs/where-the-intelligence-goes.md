@@ -1,6 +1,6 @@
 # Where the Intelligence Goes
 
-**Status:** ✅ **BUILT 2026-07-25** — all six steps; see *What the build showed* at the end · **Created:** 2026-07-25 · **Origin:** Vishnu, after using Slice 9a on his own vault: *"any merchant we have by enrichment we already get category and subcategory, they should be assigned by default… it is only when we get categories under zelle or checks that we should ask… we are thinking about a financial AI agent, which means it has intelligence… it is ok to be a rule maker, but to the user it should feel like intelligence."*
+**Status:** ✅ **BUILT 2026-07-25** — all six steps; see *What the build showed* at the end · **Created:** 2026-07-25 · **Origin:** Vishnu, after using rulings in your own words on his own vault: *"any merchant we have by enrichment we already get category and subcategory, they should be assigned by default… it is only when we get categories under zelle or checks that we should ask… we are thinking about a financial AI agent, which means it has intelligence… it is ok to be a rule maker, but to the user it should feel like intelligence."*
 
 **Invariants touched:** **T2 / ADR-010** (a model may perceive and infer; deterministic code decides and posts) · T4 (everything new is an event) · **T9** (the impersonal/personal boundary — this doc leans on it hard) · X2 (a proposal states its confidence and what it does not know) · X3 (nothing irreversible without a yes) · **I5** (code universal, specifics are data) · principle 5 (serve, don't overwhelm).
 
@@ -8,7 +8,7 @@
 
 ## The diagnosis
 
-Slice 9a works and is aimed at the wrong moment.
+Viva listens works and is aimed at the wrong moment.
 
 **It made the *answer* intelligent and left the *question* stupid.** The queue asks *"Is this money spent, or is it something you now own?"* about a counterparty the vault has **already enriched as `loan_payments / mortgage`.* We knew it was a mortgage servicer. We asked anyway. Then a model was spent interpreting a sentence whose content we could have proposed ourselves.
 
@@ -22,7 +22,7 @@ The correct shape is the inverse: **the product forms the belief; the person con
 
 ### And a self-inflicted one
 
-While building 9a I wrote **five separate keyword tables** — `_TRANSFER_HINT_CATEGORIES`, `suggest_answers`'s substring matching, `CORROBORATION`, `_group_for`, `_CONDUIT_MARKERS`. The project's own anti-goals say: *"No per-institution parsers or a keyword classification engine; that whole class of workaround is obsolete."* Each felt local and reasonable. Together they are exactly the engine we said we would not build, and they are why the product feels like a rule-follower rather than a reader. That drift is the thing to correct, not just the question ordering.
+While building Viva listens I wrote **five separate keyword tables** — `_TRANSFER_HINT_CATEGORIES`, `suggest_answers`'s substring matching, `CORROBORATION`, `_group_for`, `_CONDUIT_MARKERS`. The project's own anti-goals say: *"No per-institution parsers or a keyword classification engine; that whole class of workaround is obsolete."* Each felt local and reasonable. Together they are exactly the engine we said we would not build, and they are why the product feels like a rule-follower rather than a reader. That drift is the thing to correct, not just the question ordering.
 
 ---
 
@@ -64,7 +64,7 @@ So it belongs in **`merchantcore`, produced during enrichment, cached in the cat
 - **retroactive** (it arrives as `MerchantEnriched`, and the read side re-derives),
 - and **shareable** — this is precisely the commons the project has been building toward. *"Mortgage servicers imply a home loan"* is knowledge every user benefits from and no user's privacy is spent on.
 
-Compare with where 9a put it: one personal call, per sentence, uncacheable, unshareable. **Same reasoning, wrong side of the boundary.**
+Compare with where Viva listens put it: one personal call, per sentence, uncacheable, unshareable. **Same reasoning, wrong side of the boundary.**
 
 > **Industry note.** Enrichment vendors already infer "financial products held with other institutions" from transaction data — and sell it to banks for cross-sell ([Open Banking Tracker](https://www.openbankingtracker.com/embedded-finance/category/transaction-enrichment), [Personetics](https://personetics.com/products/enrich/)). The capability is proven; the *direction* is what differs. They infer your products to market to you. Here the same inference describes you to yourself, on your machine, with the derived knowledge shared only in its impersonal form. Worth stating plainly in the build log: **we are not inventing the inference, we are inverting who it serves.**
 
@@ -92,7 +92,7 @@ Options composed from the implication; the person taps one, or writes a sentence
 
 Conduits (check, ATM, wire, teller, money order) and peers (Zelle, Venmo, a person's name). The descriptor names the *pipe*, not the payee, so no amount of enrichment will ever help. One question per transaction, free text first-class.
 
-**This is the only tier where Slice 9a's machinery was pointed at the right target** — and it is where the earnest-money-vs-account-opening failure lives.
+**This is the only tier where the machinery of rulings in your own words was pointed at the right target** — and it is where the earnest-money-vs-account-opening failure lives.
 
 ---
 
@@ -134,14 +134,14 @@ document → classify → extract → verify → post                    [unchan
   │  DERIVE   — read side · deterministic · retroactive · free         │
   │   • category → every transaction, automatically       (Tier 1)     │
   │   • implication × direction → proposed major + account             │
-  │   • existing accounts matched by the Slice-1.5 matcher             │
+  │   • existing accounts matched by the account matcher               │
   │   • confidence → forced | suggested | unlocalized                  │
   └────────────────────────────────────────────────────────────────────┘
                                             ↓
               questions raised ONLY for `suggested` and `unlocalized`
 ```
 
-**Note what is absent: a second personal model call.** The impersonal step already did the thinking; turning an implication into this person's options is *matching against their account registry*, which is Slice 1.5's matcher pointed at yet another target. Deterministic, free, offline, testable.
+**Note what is absent: a second personal model call.** The impersonal step already did the thinking; turning an implication into this person's options is *matching against their account registry*, which is the account matcher pointed at yet another target. Deterministic, free, offline, testable.
 
 That is the answer to *"send it to a model call saying I have this, what could it be"* — **yes, but once per merchant category rather than once per person per transaction.** Same intelligence, ~1000× less of it, and it becomes an asset instead of a cost.
 
@@ -161,13 +161,13 @@ The resolution is a distinction the project already uses elsewhere and lost sigh
 - The implication is **stored as data**, versioned, correctable.
 - Applying it is **deterministic**: auditable, free, offline, unit-testable, and incapable of inventing a number.
 
-This is the same stance as *"we own the schema, the model assists authoring"* (Slice 2) and *"read documents like a person would — no per-institution parsers"* (a founding anti-goal). A hardcoded table is a rule *we* wrote and will be wrong about; a learned implication is a rule *the world* wrote that we can check, cache and share.
+This is the same stance as *"we own the schema, the model assists authoring"* (the doc-type registry) and *"read documents like a person would — no per-institution parsers"* (a founding anti-goal). A hardcoded table is a rule *we* wrote and will be wrong about; a learned implication is a rule *the world* wrote that we can check, cache and share.
 
 **And a person's correction beats both, permanently** — which is the moat: *"memory of the user is the moat, not the model."*
 
 ---
 
-## What survives from 9a, and what changes
+## What survives from Viva listens, and what changes
 
 **Keep — all of it earned its place:**
 
@@ -180,7 +180,7 @@ This is the same stance as *"we own the schema, the model assists authoring"* (S
 
 **Change:**
 
-- **The entry point.** 9a assumed the person opens with a sentence. The product should open with a belief; the sentence becomes the correction channel and the Tier-3 primary.
+- **The entry point.** Viva listens assumed the person opens with a sentence. The product should open with a belief; the sentence becomes the correction channel and the Tier-3 primary.
 - **The model call moves upstream** — from per-sentence to per-merchant-category, from personal to impersonal, from uncached to cached.
 - **The five keyword tables go**, replaced by enrichment output.
 - **Tier 1 stops being asked about at all**, which is most of the queue.
@@ -204,8 +204,8 @@ Nothing is thrown away. The machinery was built for the hard tier and gets to ke
 **My lean: (b).** This is the "feels intelligent" lever, and *report what you did* is what keeps it honest rather than presumptuous.
 
 **D4 — Rebuild or extend?**
- · (a) new slice extending 9a in place · **(b) a 6.8-shaped restructure: enrichment gains implications, the queue is rewritten around the three tiers, 9a's machinery is retargeted** · (c) revert 9a.
-**My lean: (b).** Not a revert — 9a's write side is right and its read side is retroactive, so this is repointing, not rebuilding. (c) would throw away work that is correct for Tier 3.
+ · (a) new slice extending Viva listens in place · **(b) this restructure: enrichment gains implications, the queue is rewritten around the three tiers, the machinery of rulings in your own words is retargeted** · (c) revert Viva listens.
+**My lean: (b).** Not a revert — the write side of Viva listens is right and its read side is retroactive, so this is repointing, not rebuilding. (c) would throw away work that is correct for Tier 3.
 
 ---
 
@@ -251,7 +251,7 @@ Cost: unchanged. Same batched call, ~40 merchants at a time, a few more output t
 This is where the felt change happens.
 
 - **Tier 1 raises nothing.** `_nature_questions` currently fires for every enriched merchant decided by hint-or-default. That is the "we already knew and asked anyway" bug, and removing it is the single biggest improvement in this document.
-- **Tier 2 becomes a proposal, not a question**: what we believe, what we're unsure of, and options composed from the implication matched against existing accounts (Slice 1.5's matcher, deterministic). Free text stays as the escape.
+- **Tier 2 becomes a proposal, not a question**: what we believe, what we're unsure of, and options composed from the implication matched against existing accounts (the account matcher, deterministic). Free text stays as the escape.
 - **Tier 3 keeps today's per-transaction question** — checks, ATMs, Zelle — which is already correct.
 
 ## Step 4 — `listen.py` sheds its rules and keeps its spine
@@ -264,7 +264,7 @@ Delete `CORROBORATION`, `_DEFAULT_GROUP`, `_group_for`, and `suggest_answers`'s 
 
 - `test_tiers.py`: a supermarket asks nothing; a mortgage servicer proposes; a check asks per transaction.
 - Extend `eval_listen` (or a sibling) to score **implication quality**, with *invented structure* as ruin.
-- The real-vault run, which the standing practice requires and 9a never got: **Step 0's numbers, before and after.**
+- The real-vault run, which the standing practice requires and Viva listens never got: **Step 0's numbers, before and after.**
 
 ## Order, and why
 
@@ -280,7 +280,7 @@ Multi-party or household implications. Using implications to *predict* future ob
 
 ## What the build showed (2026-07-25)
 
-**The audit was worse than the diagnosis.** Counting properly found **nine** raw-text classifiers, not five, and **four predate Slice 9a**: `_TRANSFER_WORDS` / `_CARD_WORDS` / `_DEPOSITORY_WORDS` (Slice 3), `_CASH_MARKERS` (Slice 6), `_PEER_MARKERS` (Slice 5.5). So this was never one slice drifting — it is a **reflex**: every time the code met ambiguity in raw text, it reached for a word list. Naming that is more useful than blaming a slice, because the reflex will recur unless the alternative is easier than the list, which is the point of putting implications where enrichment already runs.
+**The audit was worse than the diagnosis.** Counting properly found **nine** raw-text classifiers, not five, and **four predate Viva listens**: `_TRANSFER_WORDS` / `_CARD_WORDS` / `_DEPOSITORY_WORDS` (transfer links), `_CASH_MARKERS` (positions and investments), `_PEER_MARKERS` (the merchant catalog). So this was never one slice drifting — it is a **reflex**: every time the code met ambiguity in raw text, it reached for a word list. Naming that is more useful than blaming a slice, because the reflex will recur unless the alternative is easier than the list, which is the point of putting implications where enrichment already runs.
 
 *(Not everything that looks like a table is drift. `PRIMARY_CATEGORIES`, `DEDUCTION_ACCOUNTS`, `BROKERAGE_CASH_IN/OUT` are **schema we deliberately own**, mapping our own structured field values. The drift is specifically **classifying raw descriptors by substring**.)*
 
@@ -304,6 +304,10 @@ after:   2 questions          — 33 per 100 movements
 - **Confirming a `suggested` implication changes no figure — it removes the doubt about one.** That surfaced when a test asserted spending would drop on confirmation and it didn't: the implication had already excluded it, provisionally. That is the ladder working, and it is a better story than the old one: *"I believed this, and now I'm sure."*
 - **Unenriched counterparties raise no nature question at all.** Asking what money *became* before knowing *who received it* is the wrong order, so the flow is strictly ingest → enrich → ask. `debug_tiers` says so out loud when a vault has unenriched merchants, because otherwise the measurement would look artificially question-heavy.
 - **Tolerant on transport noise, strict on claims.** `clean_implications` accepts `" Asset "` (whitespace and case are noise) and drops `"assets"` or `"liability payment"` outright. An unrecognised `confidence` degrades to `suggested` and an unrecognised direction to `both` — always toward the rung that **asks** rather than the rung that **acts**.
+
+### The instance that sized the tier work
+
+On the first real run, **185 counterparties sat in `unenriched`** — the tier meaning "we will identify this later" — about counterparties nothing will ever identify, because the privacy boundary means enrichment can never see a peer or an instrument. A tier that promises a future that cannot arrive is not merely inaccurate; it hides the size of the genuinely unknown set behind a much larger number.
 
 ### Still to do
 
