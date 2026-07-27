@@ -63,6 +63,7 @@ TRANSFER = "transfer"              # are these two movements the same money?
 MERCHANT = "merchant"              # what is this merchant?
 NATURE = "nature"                  # is this money spent, or moved?
 CORROBORATION = "corroboration"    # do you have the document that proves this?
+EXPECTATION = "expectation"        # a document that should exist, somewhere (6.11)
 
 
 @dataclass
@@ -358,15 +359,56 @@ def _corroboration_questions(proj) -> list[Question]:
     return out
 
 
+def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question]:
+    """Documents that should exist somewhere (Slice 6.11) — the knowledge
+    registry's unmet expectations, asked as questions and ranked with everything
+    else by the money the document would attest. The ask is never a gate, and a
+    "Not right now" is a decline like any other (6.10): quiet until the stake
+    changes. The cadence asks carry amount 0 deliberately — they settle no
+    money, they improve currency, so they rank below every money question."""
+    from .knowledge import evaluate
+    out: list[Question] = []
+    for e in evaluate(proj, as_of, jurisdiction):
+        why_fields = {"money": e.fields.get("money", "")} \
+            if e.kind == "investment_account" else {}
+        out.append(Question(
+            id=e.id, kind=EXPECTATION,
+            text=say(f"expectation_{e.kind}", **e.fields),
+            why=say(f"expectation_{e.kind}_why", **why_fields),
+            amount=e.amount, currency=e.currency, count=e.count,
+            scope="pattern" if e.count > 1 else "one",
+            options=[{"label": "I have it", "action": "upload",
+                      "args": {"document": e.document}},
+                     {"label": "Not right now", "action": "dismiss",
+                      "args": {"subject": e.subject}}],
+            refs={"document": e.document, "subject": e.subject,
+                  "registry_entry": e.entry_id}))
+    return out
+
+
 # ----------------------------------------------------------------- the queue
 
 
-def open_questions(source, limit: int = DEFAULT_LIMIT) -> dict:
+def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
+                   jurisdiction: str = "") -> dict:
     """Everything awaiting the person, ranked by how much money answering moves.
 
     Returns ``{"questions": [...], "tail": {"count": n, "amount": "…"}, "total":
     n}``. The tail is what ranking pushed below the fold — reported with its size
-    and value so nothing is hidden, just not pushed (principle 5)."""
+    and value so nothing is hidden, just not pushed (principle 5).
+
+    ``as_of`` grounds the cadence expectations (6.11) — it defaults to today,
+    and tests pass it explicitly so the queue stays reproducible. ``jurisdiction``
+    filters the knowledge registry; it defaults from ``VIVA_LOCALE``'s region."""
+    if not as_of:
+        from datetime import date as _date
+        as_of = _date.today().isoformat()
+    if not jurisdiction:
+        # The ONE locale accessor (env.py) — the four-defaults lesson. A locale
+        # with no region part filters to universal registry entries only.
+        from .env import locale_from_env
+        parts = locale_from_env().split("-")
+        jurisdiction = parts[1].upper() if len(parts) > 1 else ""
     proj = getattr(source, "projection", lambda: source)()
     qs: list[Question] = []
     qs += _held_questions(proj)
@@ -374,6 +416,7 @@ def open_questions(source, limit: int = DEFAULT_LIMIT) -> dict:
     qs += _merchant_questions(proj)
     qs += _nature_questions(proj)
     qs += _corroboration_questions(proj)
+    qs += _expectation_questions(proj, as_of, jurisdiction)
     # A declined question stays declined while it would say exactly what it said
     # before, and returns the moment new evidence changes its stake (6.10). The
     # comparison is the whole policy — no timers, no jurisdiction-of-the-mind.

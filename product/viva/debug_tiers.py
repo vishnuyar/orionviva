@@ -59,7 +59,13 @@ def report(proj) -> str:
         lines.append(f"  {tier:11} {row['count']:5}  {share:5.1%} {bar}")
         lines.append(f"  {'':11} {_money(row['amount']):>13}  across "
                      f"{row['merchants']} counterpart(y|ies)   {TIER_MEANS[tier]}")
-    asked = open_questions(proj, limit=10_000)
+    # as_of = the newest date the ledger itself attests, so the report is a
+    # pure function of the events (the wall clock would make the cadence
+    # expectations flap between runs of the same vault).
+    dates = [b.dated for i in proj.account_infos()
+             for b in [proj.balance(i.account)] if b.dated]
+    asked = open_questions(proj, limit=10_000,
+                           as_of=max(dates) if dates else "1970-01-01")
     per_hundred = asked["total"] / total * 100
     lines += [
         "",

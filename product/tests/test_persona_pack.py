@@ -83,16 +83,24 @@ def test_question_text_no_longer_lives_in_code():
             "in the persona pack")
 
 
-# A released pack is FROZEN: to change wording, add a new pack directory. This
-# digest is pack-v1's fingerprint; if it changes, the fix is a new version id,
-# never an edit (same rule, same reason as the prompt library's FROZEN table).
-PACK_V1_DIGEST = "7f8b573addd143e5"
+# A released pack is FROZEN: to change wording, add a new pack directory. These
+# digests are each pack's fingerprint; if one changes, the fix is a new version
+# id, never an edit (same rule, same reason as the prompt library's FROZEN
+# table). pack-v1 is the original wording verbatim; pack-v2 is the Viva-manner
+# pass plus the 6.11 expectation phrasings.
+FROZEN_PACKS = {
+    "pack-v1": "16c9bf533d3d4e31",
+    "pack-v2": "7e8f38e3db15c2f9",
+}
 
 
-def test_pack_v1_is_frozen():
-    h = hashlib.sha256()
-    for p in _pack_files("pack-v1"):
-        h.update(p.name.encode())
-        h.update(p.read_bytes())
-    assert h.hexdigest()[:16] == PACK_V1_DIGEST, (
-        "pack-v1 changed — a released pack is immutable; add pack-v2 instead")
+def test_released_packs_are_frozen():
+    assert persona.ACTIVE_PACK in FROZEN_PACKS, "the active pack must be released"
+    for version, digest in FROZEN_PACKS.items():
+        h = hashlib.sha256()
+        for p in _pack_files(version):
+            h.update(p.name.encode())
+            h.update(p.read_bytes())
+        assert h.hexdigest()[:16] == digest, (
+            f"{version} changed — a released pack is immutable; add a new "
+            "pack directory instead")

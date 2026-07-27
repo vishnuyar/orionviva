@@ -35,7 +35,10 @@ _DIR = pathlib.Path(__file__).resolve().parent
 
 # The voice currently speaking. Bump by ADDING a pack directory, never by
 # editing a released one — declines record the pack that asked (T8 discipline).
-ACTIVE_PACK = "pack-v1"
+# pack-v1: the queue's original wording, verbatim. pack-v2: the wording pass in
+# Viva's manner (docs/viva-persona.md), model-drafted, author-reviewed (D2) —
+# and the Slice 6.11 expectation phrasings.
+ACTIVE_PACK = "pack-v2"
 
 # ------------------------------------------------------------- the contract
 #
@@ -69,12 +72,20 @@ INTENT_FIELDS: dict[str, frozenset] = {
     "corroboration_why":           frozenset(),
     "corroboration_why_unreliable": frozenset(),
     "free_text_invite":            frozenset(),
+    # Slice 6.11 — the expectations engine. One phrasing pair per mechanism;
+    # the document name comes from the registry (data), never from the model.
+    "expectation_retirement_flow":         frozenset({"money", "document"}),
+    "expectation_retirement_flow_why":     frozenset(),
+    "expectation_investment_account":      frozenset({"account_name", "document"}),
+    "expectation_investment_account_why":  frozenset({"money"}),
+    "expectation_account_cadence":         frozenset({"account_name", "last_date"}),
+    "expectation_account_cadence_why":     frozenset(),
 }
 
 # Moment key -> its slots. Moments are the relationship lines (welcome, return,
-# the "I don't know" reassurance) — the Winston guide's General section. The
-# only personal slot is the name, derived deterministically from the vault's
-# own account holders, never asked of a model.
+# the "I don't know" reassurance) from the persona guide (docs/viva-persona.md).
+# The only personal slot is the name, derived deterministically from the
+# vault's own account holders, never asked of a model.
 MOMENT_FIELDS: dict[str, frozenset] = {
     "welcome_empty":  frozenset({"name_part"}),
     "welcome_back":   frozenset({"name_part"}),

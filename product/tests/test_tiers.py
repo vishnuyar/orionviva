@@ -77,7 +77,7 @@ def test_an_ordinary_counterparty_is_settled_and_silent(tmp_path):
     _enrich(ledger, "netflix com", "entertainment", sub="streaming")
 
     assert set(_tiers(ledger).values()) == {TIER_SETTLED}
-    assert open_questions(ledger)["total"] == 0
+    assert open_questions(ledger, as_of="2026-04-01")["total"] == 0
 
 
 def test_a_counterparty_that_implies_structure_is_proposed_not_asked(tmp_path):
