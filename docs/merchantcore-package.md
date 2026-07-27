@@ -1,6 +1,6 @@
 # merchantcore — the merchant enrichment package
 
-**Status:** Implemented (Slice 5.6, core) · **Last updated:** 2026-07-24 · **Origin:** Slice 5.5 built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
+**Status:** Implemented · **Last updated:** 2026-07-24 · **Origin:** the merchant catalog built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
 
 **Invariants touched:** **T5 drawn at a package boundary** (only *impersonal* data crosses product → merchantcore: a normalized merchant key and a privacy-linted example — never amounts, dates, accounts, or peer/PII descriptors), T4 (the product's ledger stays the source of truth: merchantcore is a knowledge *cache/service*, and the product imports its results as events, so a replay is self-contained), T6 (contributing to the commons is an opt-in decision), T8 (merchantcore makes provider-agnostic, pinned model calls through `vivacore.models`), I3/I5/I6 (merchants are locale-sharded, categories/attributes are open data, the commons is pack-extensible). Principle 2 (an enriched attribute is a *graded* claim; the personal override always wins).
 
@@ -102,8 +102,14 @@ The goal of enrichment is to let a person slice their finances any way. That is 
 
 - **merchantcore (impersonal, shareable):** primary **category** (16) + **subcategory** (model value) + **MCC** + **logo** + website. Done (enrich-v2).
 - **the product, from transaction patterns:** **recurrence / subscriptions** — recurring inflow/outflow *streams* grouped by merchant + amount + cadence (Plaid/Ntropy both do this; matured at 3+ occurrences). This is **Slice 8 (Obligations)** and a first-class slice axis ("my subscriptions", "recurring vs discretionary").
-- **the product, from the user:** **tags** — the free, many-to-many personal axis ("reimbursable", "vacation-2024", "business"). Deferred in Slice 5; the axis that lets someone slice *their own way* (Ntropy's "custom categories"). A strong pull-forward candidate.
+- **the product, from the user:** **tags** — the free, many-to-many personal axis ("reimbursable", "vacation-2024", "business"). Deferred in the category overlay; the axis that lets someone slice *their own way* (Ntropy's "custom categories"). A strong pull-forward candidate.
 - **per-transaction (from the statement read):** **location** (city/store) and **payment_channel** (in-store vs online) — these are transaction attributes (a merchant has many locations), so they belong to the reader/extraction, not the merchant record.
+
+## Two operational rules, and what forced them
+
+**Enrichment is chunked, and the chunk size is not a tuning knob.** An oversized batch does not fail loudly — it returns zero records, which reads exactly like "there was nothing to enrich". Chunking bounds the reply so that a parse failure costs one chunk and the rest of the run still lands.
+
+**The pending set is every uncategorized counterparty, not the expense-shaped ones.** Walking only expenses made employers, transfers, card payments and every inflow structurally invisible to enrichment — permanently unidentified, never asked about, never settled. It surfaced when two instruments that should have agreed did not: one reported 46 unknown merchants while the other reported 428 unenriched movements. The gap between two counts of the same population *was* the bug. Two instruments disagreeing is a finding, not a nuisance.
 
 ## Notes for future slices
 
@@ -114,9 +120,9 @@ The goal of enrichment is to let a person slice their finances any way. That is 
 
 ---
 
-## Slice 5.6 — extract merchantcore + the live enrichment engine
+## Extract merchantcore + the live enrichment engine
 
-**Block(s) seeded:** the `merchantcore` package (normalize · MerchantRecord · Enricher · Catalog · commons), the impersonal product↔package boundary, and the sync-as-events import. Reuses `vivacore.models` (the model socket), the grade + provenance spine, and the Slice-5.5 events/projection (generalized).
+**Block(s) seeded:** the `merchantcore` package (normalize · MerchantRecord · Enricher · Catalog · commons), the impersonal product↔package boundary, and the sync-as-events import. Reuses `vivacore.models` (the model socket), the grade + provenance spine, and the merchant catalog's events/projection (generalized).
 
 **Open state:** merchant knowledge lives inside the product, is category-only, and the enrichment model call is an unwired stub. *Proof:* there is no package boundary, no `MerchantRecord`, and `categorize_fn` is injected with no real prompt.
 

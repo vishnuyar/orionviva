@@ -1,4 +1,4 @@
-# The Presentation Layer (Slice 6.7)
+# The Presentation Layer
 
 **Status:** BUILT, and **explicitly a debug surface, not the product's presentation layer** (Vishnu, 2026-07-25) · **Last updated:** 2026-07-25
 
@@ -10,9 +10,9 @@
 
 ## Why now
 
-The engine has outrun the surface, and it is now measurable. The server exposes **four endpoints the page never calls** — `/api/questions` and `/api/rule-nature` (Move 2), plus `/api/categorize` and `/api/assign-category`, which have been reachable only by `curl` **since Slice 5**. The overview payload carries **seven fields the page ignores**: `positions` (all of Slice 6 — holdings are invisible), `provisional_spending` and `excluded_from_spending` (Move 1's honesty signals), `other_holds` (a held brokerage statement — its invisibility was fixed in the *data* and remains on screen), `spending_by_subcategory`, `uncategorized_count`, `nature`.
+The engine has outrun the surface, and it is now measurable. The server exposes **four endpoints the page never calls** — `/api/questions` and `/api/rule-nature` (the question queue), plus `/api/categorize` and `/api/assign-category`, which have been reachable only by `curl` **since the category overlay shipped**. The overview payload carries **seven fields the page ignores**: `positions` (all of positions and investments — holdings are invisible), `provisional_spending` and `excluded_from_spending` (movement nature's honesty signals), `other_holds` (a held brokerage statement — its invisibility was fixed in the *data* and remains on screen), `spending_by_subcategory`, `uncategorized_count`, `nature`.
 
-So roughly three slices' output has no surface at all, and Move 2's whole point — *one front door* — currently exists only in a CLI. A product whose promise is "open it and it's handled" cannot keep its best work in JSON.
+So roughly three slices' output has no surface at all, and the question queue's whole point — *one front door* — currently exists only in a CLI. A product whose promise is "open it and it's handled" cannot keep its best work in JSON.
 
 ## The spine
 
@@ -27,15 +27,15 @@ Today: total → four conditional review cards → accounts → upload. Proposed
 ## Decisions — RULED (Vishnu, 2026-07-25)
 
 - **D1 → hybrid.** One-tap answers (transfer, identity, nature, merchant) inline in the ranked list; anything needing context (a held statement, a merchant's transactions, two sides of a transfer) opens a **focused detail view**. Cheap once routing exists — which D4 provides. Rationale: the highest-stakes decision shouldn't be visually squashed between quick ones, and clearing ten small items shouldn't cost ten page loads.
-- **D2 → implicit storage, explicit affordance.** The picker offers the 16 primaries (suggestions) **plus every category you've already used** (implicit) **plus "add your own"**. No `CategoryDefined` event — a category exists by being used, consistent with *abstract the write side late*. **Known wrinkle, accepted:** a category named but not yet applied does not survive a reload. If that friction shows up in real use, it is the signal to make categories first-class (Move 3).
-- **D3 → confirmed.** Peer descriptors (`scope: "one"`) get per-transaction categorization, finally wiring `/api/categorize` and `/api/assign-category`, dead since Slice 5.
+- **D2 → implicit storage, explicit affordance.** The picker offers the 16 primaries (suggestions) **plus every category you've already used** (implicit) **plus "add your own"**. No `CategoryDefined` event — a category exists by being used, consistent with *abstract the write side late*. **Known wrinkle, accepted:** a category named but not yet applied does not survive a reload. If that friction shows up in real use, it is the signal to make categories first-class (the generic scoped ruling, since arrived).
+- **D3 → confirmed.** Peer descriptors (`scope: "one"`) get per-transaction categorization, finally wiring `/api/categorize` and `/api/assign-category`, dead since the category overlay shipped.
 - **D4 → React + Vite, static output.** Chosen over my recommendation of a zero-dependency file split, and the reasoning is sound: the repo is employer-facing and React is the strongest legible signal, it has the largest ecosystem, and it is where AI-written code is most reliable — which matters on a project where "the AI drifts and the human catches it" is a documented failure mode. **Binding constraints:** the build emits **static files served by the existing stdlib server**; **no runtime CDN fetches** (local-first would break); lockfile committed; and **zero new dependencies in `core/` or `product/`** — the ledger and verification path stay dependency-free. The toolchain is a UI-only concern.
 
 ## The original options (kept for the record)
 
 **D1 — How the queue carries its answers.** Each retired card had an affordance: a correction form (held statement), Same/New (identity), confirm/reject (transfer), a category select (merchant). Options: **(a) inline** — every question answerable in place, richest but most code, and the held-statement correction form is genuinely complex; **(b) inline for the one-tap kinds** (identity, transfer, merchant, nature) **and an expandable detail for reconciliation**, which needs the statement's context. _My lean: (b)._ It keeps the queue scannable and gives the one genuinely complex case the room it needs.
 
-**D2 — Custom categories: implicit or first-class?** Still open from [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md), and this slice forces it because the picker needs a "+ New category". **(a) Implicit** — any string used in a ruling *is* a category; the picker offers the 16 primaries plus every category you've already used. No new event, consistent with *abstract the write side late*. **(b) First-class** — a `CategoryDefined` event so categories can be listed, renamed, coloured. _My lean: (a) now, (b) with Move 3 if renaming becomes a real want._
+**D2 — Custom categories: implicit or first-class?** Still open from [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md), and this slice forces it because the picker needs a "+ New category". **(a) Implicit** — any string used in a ruling *is* a category; the picker offers the 16 primaries plus every category you've already used. No new event, consistent with *abstract the write side late*. **(b) First-class** — a `CategoryDefined` event so categories can be listed, renamed, coloured. _My lean: (a) now, (b) with the generic scoped ruling if renaming becomes a real want._
 
 **D3 — Peer descriptors get per-transaction categorization.** This is what `/api/categorize` and `/api/assign-category` were built for and never wired. A peer question (`scope: "one"`) offers a per-transaction picker rather than "categorize everywhere" — so one Zelle can be a gift and the next a loan repayment. _No real fork; confirming it lands here._
 
@@ -62,4 +62,4 @@ The page itself has no unit tests today and this slice does not pretend otherwis
 
 ## Deferred
 
-Chat/NL entry (Slice 9 — the surface stays dashboard-first). Charts and trends (Slice 7 gives net worth first). Tap-to-source region highlighting on the document image (T1's full payoff; the provenance is carried today but not rendered as a crop). Mobile-specific layout. Any framework.
+Chat/NL entry (Slice 9 — the surface stays dashboard-first). Charts and trends (net worth comes first). Tap-to-source region highlighting on the document image (T1's full payoff; the provenance is carried today but not rendered as a crop). Mobile-specific layout. Any framework.

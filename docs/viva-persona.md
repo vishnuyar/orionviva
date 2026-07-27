@@ -38,13 +38,13 @@ Viva's questions are not free compositions — each kind is machinery this produ
 
 | She asks about | The machinery |
 |---|---|
-| Whose account a statement belongs to | identity resolution (Slice 1.5) |
+| Whose account a statement belongs to | account identity resolution |
 | A statement that didn't add up | the finding ladder + review |
-| Whether two movements are the same money | transfer links (Slice 3) |
-| What a merchant is | the catalog + commons (Slice 5.5) |
-| What a payment *was*, when only the person can say | the four majors (Slice 9a), tiers (6.8) |
-| The document that would prove an assertion | corroboration asks (9a) |
-| The document that must exist somewhere | the expectations engine (6.11) |
+| Whether two movements are the same money | transfer links |
+| What a merchant is | the merchant catalog + commons |
+| What a payment *was*, when only the person can say | the four majors (rulings in your own words), the three tiers |
+| The document that would prove an assertion | corroboration asks |
+| The document that must exist somewhere | the expectations engine |
 | An entity's missing attributes (rate, term, nickname) | attribute schemas (P3, planned) |
 
 ## Handling "I don't know"

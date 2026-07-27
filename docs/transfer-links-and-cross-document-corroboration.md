@@ -1,14 +1,14 @@
 # Transfer Links & Cross-Document Corroboration — one movement, two witnesses
 
-**Status:** Implemented (Slice 3, core) · **Last updated:** 2026-07-24 · **Origin:** Slice 2 lets a person hold several of their own accounts. The moment they do, an internal payment (checking → their own card) appears on *two* statements, so "how much did I spend" counts the same money twice. Real ingests surfaced a second, deeper case: a statement whose reconciliation gap is *exactly* a movement the counterparty document already attests (a card missing a payment that the checking statement plainly shows). Both are the same recognition — **two legs, one movement** — so this slice builds them together.
+**Status:** Implemented · **Last updated:** 2026-07-24 · **Origin:** the doc-type registry lets a person hold several of their own accounts. The moment they do, an internal payment (checking → their own card) appears on *two* statements, so "how much did I spend" counts the same money twice. Real ingests surfaced a second, deeper case: a statement whose reconciliation gap is *exactly* a movement the counterparty document already attests (a card missing a payment that the checking statement plainly shows). Both are the same recognition — **two legs, one movement** — so this slice builds them together.
 
 **Invariants touched:** T1 (every posting carries provenance — a link cites *both* source lines; a corroborated leg cites the issuer that actually attested it), T2 (verification: cross-document corroboration is a *second, independent* reconciliation identity, run by deterministic code), T4 (a link/correction is an append-only event, reversible, nothing overwritten). Principle 2 (**never bluff a number** — a gap is never closed on a non-decisive link) and principle 7 (autonomous where safe, deferential where it counts) are the load-bearing constraints. This is the verification layer — "the actual hard problem" — getting a new, cheap, strong rung.
 
 ## The architecture (decisions locked with Vishnu, 2026-07-24)
 
-**1. Internal own-account transfers only.** The data-model spike found transfer-linking is really two jobs: **own-account netting** (both accounts are yours → the movement isn't spending) and **external Party attribution** (a mortgage servicer, a peer, an employer → a real outflow to someone else). This slice does the first — the load-bearing spending-accuracy fix. External counterparties ride the *same* entity-resolution block later (categorization / Party, S5).
+**1. Internal own-account transfers only.** The data-model spike found transfer-linking is really two jobs: **own-account netting** (both accounts are yours → the movement isn't spending) and **external Party attribution** (a mortgage servicer, a peer, an employer → a real outflow to someone else). This slice does the first — the load-bearing spending-accuracy fix. External counterparties ride the *same* entity-resolution block later (categorization / Party).
 
-**2. Netting is minimal here; the economic sign waits for S7.** Our postings sign each movement by its **effect on that account's printed balance** (Slice 2 / A1) — locally correct for reconciliation, but *not* globally additive across asset and liability (a checking outflow and a card payment can both read `-2400`). Making a transfer pair *self-net to zero* needs a kind-aware economic sign, and that is Slice 7's job. So here, `Transfers` is an **exclusion category**, not a self-balancing clearing account: both legs are recategorized out of Uncategorized into `Transfers`, and every aggregate (spending, external cash flow) **excludes** `Transfers`. The link additionally asserts the two legs are equal magnitude. That fully delivers "spending excludes moving your own money" without the sign machinery; the self-netting upgrade arrives with S7.
+**2. Netting is minimal here; the economic sign waits for net worth.** Our postings sign each movement by its **effect on that account's printed balance** (the doc-type registry / A1) — locally correct for reconciliation, but *not* globally additive across asset and liability (a checking outflow and a card payment can both read `-2400`). Making a transfer pair *self-net to zero* needs a kind-aware economic sign, and that is net worth's job. So here, `Transfers` is an **exclusion category**, not a self-balancing clearing account: both legs are recategorized out of Uncategorized into `Transfers`, and every aggregate (spending, external cash flow) **excludes** `Transfers`. The link additionally asserts the two legs are equal magnitude. That fully delivers "spending excludes moving your own money" without the sign machinery; the self-netting upgrade arrives with net worth.
 
 **3. Auto-link on decisive evidence; ask otherwise.** A wrong link double-counts or hides real spending, so autonomy is earned by evidence (principle 7). A **decisive** match auto-links (grade `corroborated`); anything softer surfaces as a **Finding** to confirm (grade `suggested` → `verified` on confirmation). A confirmed pattern is **learned**, so the next one of its kind auto-links — the ask-once-then-learn spine, reused.
 
@@ -16,7 +16,7 @@
 
 **5. v1 auto-links only when both legs are already ingested own accounts.** That is the decisive case (both sides are accounts we hold, exact amount, tight date, description hint). A transfer that *names* a destination we haven't ingested ("Payment to card …9876") cannot be auto-confirmed as internal — it becomes a Finding that doubles as the own-account question ("is …9876 yours?"), answered once and learned.
 
-**6. A link references a stable movement key, not an event id.** Reingest mints new event ids (Slice 2), so a link points at `doc_id + a within-document movement fingerprint` (date + amount + normalized description + occurrence index) so it survives re-reads and heals rather than dangles. _Known risk: a re-read that reorders or merges lines can move a fingerprint; revisit if reingest-stability bites._
+**6. A link references a stable movement key, not an event id.** Reingest mints new event ids (the doc-type registry), so a link points at `doc_id + a within-document movement fingerprint` (date + amount + normalized description + occurrence index) so it survives re-reads and heals rather than dangles. _Known risk: a re-read that reorders or merges lines can move a fingerprint; revisit if reingest-stability bites._
 
 ## Representation — an overlay, never a re-posting
 
@@ -38,7 +38,7 @@ Signals for "these two movements are one internal transfer":
 - **description hints** ("Payment to Card", "Transfer to Savings", "ONLINE PAYMENT THANK YOU", a counterparty naming an own-account label/number);
 - **both accounts are the user's own.**
 
-Two unrelated $50 movements on the same day are the trap, so **decisive = exact amount + tight date + description/own-account evidence that pins the pair uniquely.** Decisive → auto-link (`corroborated`). Ambiguous (more than one candidate, or amount-only) → a **Finding** citing the candidates, `suggested`, awaiting a human. On confirmation, the ruling is learned as a pattern (keyed on the recurring description/counterparty), so "payments to …9876 are always my Amex" auto-links thereafter — the same *signals → graded match → ask → learn* block that Slice 1.5 built for account identity, pointed at transfer counterparties.
+Two unrelated $50 movements on the same day are the trap, so **decisive = exact amount + tight date + description/own-account evidence that pins the pair uniquely.** Decisive → auto-link (`corroborated`). Ambiguous (more than one candidate, or amount-only) → a **Finding** citing the candidates, `suggested`, awaiting a human. On confirmation, the ruling is learned as a pattern (keyed on the recurring description/counterparty), so "payments to …9876 are always my Amex" auto-links thereafter — the same *signals → graded match → ask → learn* block that the account matcher built for account identity, pointed at transfer counterparties.
 
 ## Cross-document corroboration — the reconciliation witness
 
@@ -59,7 +59,7 @@ Why this matters beyond robustness: "the other party vouches" is cross-**issuer*
 
 ## Own-account membership — a learned set
 
-Netting is only correct if both accounts are the user's. Most of this is already known: **every ingested account is, by definition, the user's** (Slice 1.5). The gap is a transfer that *names* a destination we haven't ingested. So own-account membership is a learned set: ingested accounts are automatic members; a named-but-unseen account is **asked once and learned** (an own-account confirmation event, reusing the identity block). Mislabeling an *external* payment as internal is the failure mode — it would hide real spending — so v1 auto-links only when **both** legs are ingested own accounts, and everything else asks.
+Netting is only correct if both accounts are the user's. Most of this is already known: **every ingested account is, by definition, the user's** (account identity resolution). The gap is a transfer that *names* a destination we haven't ingested. So own-account membership is a learned set: ingested accounts are automatic members; a named-but-unseen account is **asked once and learned** (an own-account confirmation event, reusing the identity block). Mislabeling an *external* payment as internal is the failure mode — it would hide real spending — so v1 auto-links only when **both** legs are ingested own accounts, and everything else asks.
 
 ## Grades & provenance
 
@@ -78,7 +78,7 @@ Core built and tested (`ingest/transfers.py`, projection transfer overlay,
 - ✅ **Netting = exclusion** — `spending_by_currency()` excludes linked
   movements; `answer_spending` reports external spending with transfers removed.
   The kind-aware *economic sign* / self-netting clearing account stays deferred
-  to S7 (only a minimal source/destination read is used, for matching).
+  to net worth (only a minimal source/destination read is used, for matching).
 - ✅ **Decisive auto-link, ambiguous asks** — decisive (unique magnitude+currency
   match within the date window, with a strong own-account hint) auto-links at
   `corroborated`; ambiguous/weak surfaces a `TransferSuggested`; confirm →
@@ -127,13 +127,13 @@ Deferred (noted, not built — a clean v1 boundary):
 
 ## Notes for future slices (read these when you build them)
 
-- **Slice 5 (categorization + external Party):** external counterparty attribution (a payment to a mortgage servicer or a person is a *real* outflow, not a transfer) is the second half of transfer-linking, built on the same entity-resolution block. The **general** cross-document corroboration (a peer's or a third party's statement corroborating a movement your account dropped) uses the *same witness mechanism* as this slice, but the counterparty is external and the evidence is softer, so it needs the Party primitive and a lower default autonomy.
-- **Slice 7 (net worth):** the kind-aware **economic sign** turns the `Transfers` exclusion category into a true **self-netting clearing account** (a linked pair nets to zero across assets − liabilities). The magnitude-match this slice records is the precondition; S7 supplies the sign.
+- **Categorization + external Party:** external counterparty attribution (a payment to a mortgage servicer or a person is a *real* outflow, not a transfer) is the second half of transfer-linking, built on the same entity-resolution block. The **general** cross-document corroboration (a peer's or a third party's statement corroborating a movement your account dropped) uses the *same witness mechanism* as this slice, but the counterparty is external and the evidence is softer, so it needs the Party primitive and a lower default autonomy.
+- **Net worth:** the kind-aware **economic sign** turns the `Transfers` exclusion category into a true **self-netting clearing account** (a linked pair nets to zero across assets − liabilities). The magnitude-match this slice records is the precondition; net worth supplies the sign.
 - **Slice 11 (FX):** cross-currency internal transfers (a USD checking debit funding an INR account) have legs that differ by an FX rate, not equal magnitudes — matched by the answer-time cited rate, not by amount. Out of scope here; this slice is same-currency only.
 
 ---
 
-## Slice 3 — Transfer links + cross-document corroboration
+## Transfer links + cross-document corroboration
 
 **Block(s) seeded:** the **Transfer link** (two postings = one economic non-event, graded, with evidence) and the **cross-document reconciliation witness** (a decisive counterparty leg closes another statement's gap). Both reuse Finding, correction-as-event, entity-resolution learning, grade, provenance, and the heal pass.
 
@@ -148,7 +148,7 @@ Deferred (noted, not built — a clean v1 boundary):
 - **Own-account membership** learning: ingested accounts auto-member; a named-but-unseen destination asks once and learns. v1 auto-links only when both legs are ingested own accounts.
 - **Correction-as-event** for confirm / reject / unlink — reversible, replayable.
 
-> _Amended 2026-07-25 (Slice 6.5): this slice excludes a transfer from spending **only when a link was formed**. A real-vault run showed that internal movements which never linked — a card payment whose counterpart statement isn't ingested, a brokerage contribution — were still counted as spending, and that a *category* saying "transfers" did not exclude anything. The exclusion rule is generalized to **movement nature** in [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md); the auto-link bar here is deliberately **not** loosened._
+> _Amended 2026-07-25 (honest aggregates): this slice excludes a transfer from spending **only when a link was formed**. A real-vault run showed that internal movements which never linked — a card payment whose counterpart statement isn't ingested, a brokerage contribution — were still counted as spending, and that a *category* saying "transfers" did not exclude anything. The exclusion rule is generalized to **movement nature** in [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md); the auto-link bar here is deliberately **not** loosened._
 
 **Final state:** internal transfers are recognized and excluded from spending; "how much did I spend" reflects only real external outflow; a statement whose gap is attested by a counterparty is **rescued and posts `corroborated`** with dual-issuer provenance; wrong or ambiguous links **surface**, never silently applied; confirmed patterns auto-link thereafter.
 
@@ -160,4 +160,4 @@ Deferred (noted, not built — a clean v1 boundary):
 - A **confirmed** link is `verified` and **persists across reingest**; an **unlink** event reverses it.
 - A transfer naming an **unseen** destination raises the own-account question and, once answered, **learns** it (the next one auto-links).
 
-**Why now + future use:** without it, spending (S5) and cash flow are simply wrong — load-bearing for job-1 accuracy. It is the **first cross-account fact**, seeding the operational graph. The cross-document witness makes the **verification layer** materially stronger (a cheap, model-free, dual-issuer reconciliation rung) and is a live, early instance of the **endgame's cross-issuer corroboration** primitive. And it is a **composition proof** — almost entirely reuse (Finding + correction + entity-resolution + grade + provenance + heal), with only the `TransferLink` overlay, the `Transfers` category, and the matcher as new parts.
+**Why now + future use:** without it, spending and cash flow are simply wrong — load-bearing for job-1 accuracy. It is the **first cross-account fact**, seeding the operational graph. The cross-document witness makes the **verification layer** materially stronger (a cheap, model-free, dual-issuer reconciliation rung) and is a live, early instance of the **endgame's cross-issuer corroboration** primitive. And it is a **composition proof** — almost entirely reuse (Finding + correction + entity-resolution + grade + provenance + heal), with only the `TransferLink` overlay, the `Transfers` category, and the matcher as new parts.

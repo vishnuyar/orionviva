@@ -147,6 +147,18 @@ Roughly: Step 1 ~60 lines, Step 2 mechanical (a script does the extraction, the 
 - **`PromptNotFound`** raises rather than defaulting. A silent fallback to the *current* prompt would re-explain an old reading with new instructions and look like it worked — the most dangerous possible failure for a system whose product is trust.
 - **`package-data` in all three `pyproject.toml`s.** A packaging slip is invisible in a checkout and fatal in an install (X1).
 
+### A recorded version resolves to a family, not only to itself
+
+Because a version id is self-describing and permanent, it can answer a question it was never designed for: what *type* of document a stored read was. The balance family's extraction JSON does not name its own type, so replaying from stored claims has only the recorded `prompt_version` to go on — and that turns out to be enough, provided recovery matches the version's *family* rather than the exact string. Matching exactly fails on any document read under an earlier version of a profile that has since been bumped: the type was written down, and we were asking for an exact match on the one part designed to change.
+
+### Retained versions in circulation
+
+Every version below still resolves; records written under any of them keep their meaning.
+
+- `enrich-v2` — the sixteen controlled primaries plus a model-supplied subcategory.
+- `enrich-v3` — adds `counterparty_kind` and the implication block.
+- `enrich-v4` — shows the model the subcategories this vault already uses, so minting a new label is a deliberate act rather than the path of least resistance.
+
 ### Deferred, deliberately
 
 User-editable prompts (P1 (b)). `promptstore.load()` takes a directory argument precisely so an override path is later a second lookup rather than a rewrite — but an edited prompt breaks the digest chain, so overrides must arrive as **content-addressed new versions**, not edits. That is a slice, not a config flag.

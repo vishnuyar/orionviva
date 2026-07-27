@@ -1,6 +1,6 @@
 # Account Identity & Entity Resolution — a learning building block
 
-**Status:** Implemented (Slice 1.5) · **Last updated:** 2026-07-23 · **Origin:** real-run finding — the same checking account arrived sometimes labelled by product name, sometimes by holder name, so a free-text `account_ref` produced different account ids and statements failed to stitch. The fix is not a smarter label; it is a *learning* identity block. Code: `viva/ledger/identity.py` (keys + name matching), `LedgerProjection.resolve` (the matcher), `viva/ingest/review.apply_identity_ruling` (ask-once-and-learn via `AccountAliasConfirmed`).
+**Status:** Implemented · **Last updated:** 2026-07-23 · **Origin:** real-run finding — the same checking account arrived sometimes labelled by product name, sometimes by holder name, so a free-text `account_ref` produced different account ids and statements failed to stitch. The fix is not a smarter label; it is a *learning* identity block. Code: `viva/ledger/identity.py` (keys + name matching), `LedgerProjection.resolve` (the matcher), `viva/ingest/review.apply_identity_ruling` (ask-once-and-learn via `AccountAliasConfirmed`).
 **Invariants touched:** T1 (provenance on every identity signal), T2 (a match is graded, never guessed), T4 (identity rulings are correction-events, append-only), T7 (honest about ambiguity), I5 (no country-shaped identity table — format specifics are data). Serves the moat: identity learned per-user, per-institution, forever.
 
 ## The multi-problem, and why we don't enumerate it in code
@@ -24,7 +24,7 @@ That one shape absorbs every case, including unseen ones. The *intelligence we a
 
 ---
 
-## Slice 1.5 — Account identity & entity resolution (learning)
+## Account identity & entity resolution (learning)
 
 **Blocks seeded:** Account (identity set) · Party (names, joint) · the universal entity-resolution matcher · the identity-map projection · the per-format registry (seed).
 
@@ -40,6 +40,6 @@ That one shape absorbs every case, including unseen ones. The *intelligence we a
 
 **Final state:** the same account is recognized across statements regardless of how it is labelled; ambiguous identity is asked once and learned forever, for all account types; joint accounts link two Parties; backfilled statements read in date order.
 
-**Done criteria / tests:** two statements of one account with different labels but the same number stitch into one chain; same name / different number raises a Finding and, once confirmed "new account," never asks again for that pattern; a joint statement links two Parties; a confirmed alias auto-resolves on the next matching statement (no re-ask); transactions display in date order after a backfill; existing Slice-1 tests stay green.
+**Done criteria / tests:** two statements of one account with different labels but the same number stitch into one chain; same name / different number raises a Finding and, once confirmed "new account," never asks again for that pattern; a joint statement links two Parties; a confirmed alias auto-resolves on the next matching statement (no re-ask); transactions display in date order after a backfill; existing any-order ingestion tests stay green.
 
-**Why now + future use:** it is the true fix for what blocked real stitching, and it is a prerequisite for Slice 2 (multi-account). It seeds the Account/Party primitives and the **entity-resolution block that later resolves merchants, employers, and transfer counterparties** — one learning mechanism, reused everywhere. The learning-from-corrections is the moat, turned on for identity from the first ambiguous statement.
+**Why now + future use:** it is the true fix for what blocked real stitching, and it is a prerequisite for the doc-type registry (multi-account). It seeds the Account/Party primitives and the **entity-resolution block that later resolves merchants, employers, and transfer counterparties** — one learning mechanism, reused everywhere. The learning-from-corrections is the moat, turned on for identity from the first ambiguous statement.

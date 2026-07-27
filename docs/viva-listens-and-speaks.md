@@ -1,6 +1,6 @@
 # Viva Listens, and Viva Speaks — the agent and the learning loop
 
-**Status:** Design spec — **9a is BUILT** (see [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)); the read direction (Viva speaks) is unbuilt and still reserved as 9b · **Created:** 2026-07-25 · **Origin:** Vishnu, using the debug surface to categorize: *"I am feeling a lot of deficiency and I do not want to create deterministic answers."*
+**Status:** Design spec — **rulings in your own words is BUILT** (see [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)); the read direction (Viva speaks) is unbuilt and still reserved as Slice 9 · **Created:** 2026-07-25 · **Origin:** Vishnu, using the debug surface to categorize: *"I am feeling a lot of deficiency and I do not want to create deterministic answers."*
 
 **Invariants touched:** **T2 / ADR-010 (a model may parse what a person *means*; it must never supply a figure or do arithmetic)** · T3 (the person's own sentence and the model's parse are captured verbatim — raw capture applies to interpretation too) · T4 (a confirmed ruling is an append-only event; we reuse the writers we have) · T6 (nothing leaves silently) · X2 (a proposal states what it would change and how sure it is) · **X3 (nothing irreversible without an explicit yes — structurally, not by prompt)** · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts).
 
@@ -58,16 +58,16 @@ The project's rule is that a small set of primitives compose, and *the same bloc
 
 | Already built | Is really a Proposal that… |
 |---|---|
-| `TransferSuggested` (Slice 3) | proposes linking two movements; awaits confirmation |
-| A model's category suggestion (Slice 5) | proposes a category, graded `unverified` until confirmed |
-| A **forced** correction (Slice 2/3) | is a Proposal decisive enough to auto-apply, and reports that it did |
-| A Question's options (Slice 6.5) | are pre-baked Proposals with the free text removed |
+| `TransferSuggested` (transfer links) | proposes linking two movements; awaits confirmation |
+| A model's category suggestion (the category overlay) | proposes a category, graded `unverified` until confirmed |
+| A **forced** correction (the doc-type registry and transfer links) | is a Proposal decisive enough to auto-apply, and reports that it did |
+| A Question's options (the question queue) | are pre-baked Proposals with the free text removed |
 
 And things not yet built become instances too, with no new mechanism:
 
 | Later | Is a Proposal that… |
 |---|---|
-| Free-text ruling (9a) | a model parsed from your sentence |
+| Free-text ruling | a model parsed from your sentence |
 | A drafted budget or payoff plan (Slice 10) | proposes a plan; you accept or edit |
 | A Phase-3 *action* | proposes to do something irreversible — **X3 is satisfied structurally**, because a Proposal by definition is not applied until confirmed |
 
@@ -83,7 +83,7 @@ Model access (`ModelSpec`/adapters) · Claims record (the verbatim capture, exte
 
 > _Concretised 2026-07-25 in [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md), which settles what the parse may emit: the **four majors** (expense/asset/liability/income) plus an account hint and an optional split. That supersedes the A1-vs-A2 framing below — the schema is neither "per question kind" nor "a union of ruling types" but **the counter-leg vocabulary**, which is the same for every question. The open decisions are now D1 (accounting words vs plain English on the surface) and D2 (when a parse may auto-apply)._
 
-## Stage A — Viva listens, *inside a question* (Slice 9a)
+## Stage A — Viva listens, *inside a question*
 
 The narrow, safe beginning: you answer an existing question in your own words. Crucially, **the question supplies the context**, so the model is never parsing open-world intent — it is answering *"given that I asked about this merchant, what did they mean?"* That single constraint removes most of the hallucination surface.
 
@@ -114,7 +114,7 @@ Unify what already exists. `TransferSuggested`, model category suggestions, and 
 
 The prize: the surface, the CLI and later the agent all consume *one* thing, so a new kind of proposal costs a row rather than a feature.
 
-## Stage C — Viva speaks (Slice 9b)
+## Stage C — Viva speaks (Slice 9)
 
 Now the read direction, which needs two things Stage A does not:
 
@@ -150,7 +150,7 @@ Budgets, payoff plans, and eventually real actions. **No new safety machinery is
 - **Over-asking.** Free text invites conversation; the product's rule is *speak when spoken to*. Stage A adds a way to answer, not a reason to chat.
 - **The abstraction trap.** Stage B is a refactor with no user-visible gain. It must wait for Stage A's evidence, or it is exactly the premature generalization this project has avoided four times.
 
-# Done criteria for Stage A (9a)
+# Done criteria for Stage A (rulings in your own words)
 
 - Answering a question in your own words produces the **same event** as pressing the button would, with the same grade and reversibility.
 - The sentence and the parse are captured verbatim in the claims layer (`phase="interpret"`), so a better model can re-derive later without asking again.
@@ -160,4 +160,4 @@ Budgets, payoff plans, and eventually real actions. **No new safety machinery is
 
 # Deferred
 
-Open-world free text with no question attached (Stage A's harder sibling). The tool registry and planner (9b). Proposal unification (Stage B). Voice/persona beyond the minimum. Anything that acts.
+Open-world free text with no question attached (Stage A's harder sibling). The tool registry and planner (Slice 9 — Viva speaks). Proposal unification (Stage B). Voice/persona beyond the minimum. Anything that acts.

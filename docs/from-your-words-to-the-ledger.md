@@ -1,6 +1,6 @@
-# From Your Words to the Ledger (Slice 9a — Viva listens)
+# From Your Words to the Ledger — Viva listens
 
-**Status:** ✅ **BUILT 2026-07-25** (A1–A3 settled during the build; see *What changed in the building* at the bottom) · **Created:** 2026-07-25 · **Design by:** Vishnu (the flow and the four-category framing); mechanism and reuse mapping by Claude. **Block seeded:** the **Proposal** (see [viva-listens-and-speaks.md](viva-listens-and-speaks.md)) and **account resolution** — the Slice-1.5 matcher pointed at a new target.
+**Status:** ✅ **BUILT 2026-07-25** (A1–A3 settled during the build; see *What changed in the building* at the bottom) · **Created:** 2026-07-25 · **Design by:** Vishnu (the flow and the four-category framing); mechanism and reuse mapping by Claude. **Block seeded:** the **Proposal** (see [viva-listens-and-speaks.md](viva-listens-and-speaks.md)) and **account resolution** — the account matcher pointed at a new target.
 
 **Invariants touched:** **T2 / ADR-010 (the model parses meaning; it never supplies a figure, picks an account, or posts)** · T3 (your sentence and the parse are captured verbatim) · T4 (a confirmed ruling is an append-only event; postings use the builders we already have) · **X2 (a proposal states what it changes, how much money it moves, and what it does *not* know)** · X3 (nothing applied without an explicit yes — a property of Proposal, not a rule to remember) · I5 (the four majors are universal; everything beneath is data) · **M1 (cash-flow over accrual — a created asset records what you *paid*, not what it's *worth*)**.
 
@@ -54,9 +54,9 @@ Interpretation(
 
 `share` is present only when the person states proportions. **If the split is unknown, that is a valid and expected outcome** — see below.
 
-### Step 4 — account resolution *is* Slice 1.5's matcher
+### Step 4 — account resolution *is* the account matcher
 
-This is the reuse that makes the slice cheap. Resolving *"which account does this belong to?"* is the same problem as *"is this the same account as one I've seen?"*, which Slice 1.5 already solves: **signals → graded match → ask only when ambiguous → learn the ruling → never ask again.**
+This is the reuse that makes the slice cheap. Resolving *"which account does this belong to?"* is the same problem as *"is this the same account as one I've seen?"*, which account identity resolution already solves: **signals → graded match → ask only when ambiguous → learn the ruling → never ask again.**
 
 - **Exact match** → post, no question. (The default should be silence.)
 - **Candidate** → *"Does this belong to your Chase mortgage, or is it a different loan?"*
@@ -66,7 +66,7 @@ This is the reuse that makes the slice cheap. Resolving *"which account does thi
 
 ## The three cases that shaped this
 
-**"I bought a car."** → one leg, `Asset`, new account `Assets:Vehicles:<name>`. It records **cost**, not value: what you paid is a measured fact, what it's worth now is unknown. So the account carries cost basis plus a valuation class of `estimated` — exactly what Slice 6's valuation discipline was built for. Without this, net worth silently claims the car is still worth what you paid.
+**"I bought a car."** → one leg, `Asset`, new account `Assets:Vehicles:<name>`. It records **cost**, not value: what you paid is a measured fact, what it's worth now is unknown. So the account carries cost basis plus a valuation class of `estimated` — exactly what the valuation-class discipline was built for. Without this, net worth silently claims the car is still worth what you paid.
 
 **"This is my mortgage."** → **three legs**: `Expense` (interest), `Liability` (principal), `Asset` (escrow — money you still own). The proportions are unknown *to you as well*, because they are printed on a statement neither of us has.
 
@@ -78,7 +78,7 @@ This is the reuse that makes the slice cheap. Resolving *"which account does thi
 
 > **Big purchases have paperwork. Ask for it — never to unblock, always to prove.** (Vishnu, 2026-07-25)
 
-Provenance is the product, so every account this slice creates should invite the document that vouches for it: a **car → invoice or bill of sale**; a **home → closing disclosure**; a **mortgage → statement or 1098**; a **loan → the loan statement**. These are corroboration in exactly the Slice 3 sense — a second, independent issuer confirming what a bank line only implies. A purchase inferred from one bank line is `unverified`; the same purchase with its invoice is `verified`, with an amount, a date, a counterparty and often an itemization the bank line never carried.
+Provenance is the product, so every account this slice creates should invite the document that vouches for it: a **car → invoice or bill of sale**; a **home → closing disclosure**; a **mortgage → statement or 1098**; a **loan → the loan statement**. These are corroboration in exactly the cross-document sense — a second, independent issuer confirming what a bank line only implies. A purchase inferred from one bank line is `unverified`; the same purchase with its invoice is `verified`, with an amount, a date, a counterparty and often an itemization the bank line never carried.
 
 Two rules keep this from turning into nagging: **the ask is never a gate** (the account is already created, the posting already made), and **the ask is ranked with everything else** in the question queue by consequence, so a $40k invoice surfaces and a $200 one does not. These asks route into [document-coverage.md](document-coverage.md)'s list rather than a separate mechanism.
 
@@ -86,22 +86,22 @@ Two rules keep this from turning into nagging: **the ask is never a gate** (the 
 
 A pass over `postings.py` / `projection.py` before building corrected two claims this spec made:
 
-**The chart of accounts is already *derived*, not posted.** A category is an **overlay keyed on `movement_key`** (Slice 5); the posted counter-leg stays `Expenses:Uncategorized` forever and every aggregate reads the overlay — which is why the `Income:Uncategorized` / `Expenses:Uncategorized` balances are recorded as cosmetically stale with no answer path reading them. So a **`Liabilities:` root is a read-side change**: cheap, retroactive, reversible, exactly as [principle: read side early, write side late](honest-aggregates-and-the-learning-loop.md) predicts. `Assets:Vehicles:<name>` and `Liabilities:Mortgage:<lender>` are *materialized by the projection* from the ruling, not written into postings. The overlay carries everything a real posting would need, so re-posting later remains possible without losing anything.
+**The chart of accounts is already *derived*, not posted.** A category is an **overlay keyed on `movement_key`** (the category overlay); the posted counter-leg stays `Expenses:Uncategorized` forever and every aggregate reads the overlay — which is why the `Income:Uncategorized` / `Expenses:Uncategorized` balances are recorded as cosmetically stale with no answer path reading them. So a **`Liabilities:` root is a read-side change**: cheap, retroactive, reversible, exactly as [principle: read side early, write side late](honest-aggregates-and-the-learning-loop.md) predicts. `Assets:Vehicles:<name>` and `Liabilities:Mortgage:<lender>` are *materialized by the projection* from the ruling, not written into postings. The overlay carries everything a real posting would need, so re-posting later remains possible without losing anything.
 
 **`split_transaction` is not this slice's first customer.** It requires split magnitudes summing to the movement total, so it cannot express *"three legs, proportions unknown."* The unknown-ratio mortgage posts **one leg with the decomposition pending**. `split_transaction` waits for Slice 11, when the 1098 supplies real ratios — which is the honest reading of "post nothing you cannot justify."
 
 Still genuinely needed:
 
-- **Asset accounts** for things that are not securities — the general Asset primitive, with valuation class. `Position` (Slice 6) becomes a subtype rather than the only kind.
+- **Asset accounts** for things that are not securities — the general Asset primitive, with valuation class. `Position` (from positions and investments) becomes a subtype rather than the only kind.
 - A pointer from the **merchant catalog to an account**, so the ruling generalizes: once *"Harborline is my mortgage"* is settled, every future payment posts without asking.
 
 ## Architectural decisions (A1–A3) — the write-side, one-way doors
 
 The read side is reversible and can be built freely. These three are not.
 
-**A1 — the ruling event: build Move 3's generic `Ruling` now.** The alternatives were extending `CategoryAssigned` a fourth time, or adding narrow per-question event types. `Ruling` was deferred until *a fifth question type earned it* — this is that type, and it needs exactly what `Ruling` was designed to carry: **its own scope** (movement / merchant / account). Deferring costs a fourth narrow event that `Ruling` would then have to subsume anyway.
+**A1 — the ruling event: build the generic scoped `Ruling` now.** The alternatives were extending `CategoryAssigned` a fourth time, or adding narrow per-question event types. `Ruling` was deferred until *a fifth question type earned it* — this is that type, and it needs exactly what `Ruling` was designed to carry: **its own scope** (movement / merchant / account). Deferring costs a fourth narrow event that `Ruling` would then have to subsume anyway.
 
-**A2 — accounts born from a sentence live in the *same* registry.** Every account today is born from a document with identity signals (number, institution, holder names); `Assets:Vehicles:<name>` has none. One registry is what makes step 4 cheap — the Slice 1.5 matcher, sprawl control and merge-later all work unchanged. The cost is a registry containing accounts nobody issued, which is handled by A3 rather than by a second namespace.
+**A2 — accounts born from a sentence live in the *same* registry.** Every account today is born from a document with identity signals (number, institution, holder names); `Assets:Vehicles:<name>` has none. One registry is what makes step 4 cheap — the account matcher, sprawl control and merge-later all work unchanged. The cost is a registry containing accounts nobody issued, which is handled by A3 rather than by a second namespace.
 
 **A3 — every account records its `origin`: `issued` or `asserted`.** *(The expensive-to-miss one.)* Everything in the ledger traces to a document from an issuer. A car account's existence rests on **the person saying so** — fine for a butler, and *not* fine at the endgame, where a claim is proven to a counterparty and an asserted account is not evidence in the way a statement is. **The distinction is only capturable at write time**; miss it and the ledger quietly becomes un-vouchable, with no way to reconstruct which accounts a third party could ever rely on. It is near-free today and unrecoverable later, so it goes in now.
 
@@ -113,7 +113,7 @@ This also makes the corroboration ask **structural rather than a nicety**: the i
 
 > **Forward note — question phrasing is a job for a small local model.** Today the templates are fixed strings. Later, a **small in-house model can phrase the question in the person's own language and preferred tone** — a Swedish user gets a Swedish question, not a translated one, and someone who wants terse gets terse. This is the right shape for three reasons: phrasing touches **no figure and no account**, so it sits entirely outside the T2 boundary and cannot corrupt anything; it is small enough to run **locally**, so the warmest surface in the product needs no cloud; and it turns I5 from "we avoided US-shaped assumptions" into something actually felt. Because the majors are stored, never spoken, this is a **surface-only change** — no event, projection or prompt moves. Record it as a candidate for the local-model thread (ADR-001's flip-to-local bar).
 
-**D2 — Confirmation is scoped to the account, not to every parse: the first time an account is involved, always confirm; after that, the learned ruling applies silently.** This is Slice 1.5's ask-once-and-learn contract, and it is a sharper rule than a blanket "never auto-apply" — the expensive, sprawl-creating, hard-to-reverse act is **binding money to an account for the first time**, and that is exactly what gets the explicit yes. Once *"Harborline is my mortgage"* is confirmed, the next twelve payments post without a question. The default, after the first answer, is silence.
+**D2 — Confirmation is scoped to the account, not to every parse: the first time an account is involved, always confirm; after that, the learned ruling applies silently.** This is the account matcher's ask-once-and-learn contract, and it is a sharper rule than a blanket "never auto-apply" — the expensive, sprawl-creating, hard-to-reverse act is **binding money to an account for the first time**, and that is exactly what gets the explicit yes. Once *"Harborline is my mortgage"* is confirmed, the next twelve payments post without a question. The default, after the first answer, is silence.
 
 ## Done criteria / tests
 
@@ -129,7 +129,7 @@ This also makes the corroboration ask **structural rather than a nicety**: the i
 
 ## Deferred
 
-Open-world free text with no question attached (Stage A's harder sibling). Proposal unification across sources (Stage B). The tool registry and planner — **Slice 9b, Viva speaking**. Splitting a mortgage by real amortization ratios (Slice 11, once the statement is ingested). Asset *valuation* over time as opposed to cost at acquisition. **Locally-phrased questions** (the small in-house model in D1's forward note) — the templates stay fixed strings for now.
+Open-world free text with no question attached (Stage A's harder sibling). Proposal unification across sources (Stage B). The tool registry and planner — **Slice 9 — Viva speaks**. Splitting a mortgage by real amortization ratios (Slice 11, once the statement is ingested). Asset *valuation* over time as opposed to cost at acquisition. **Locally-phrased questions** (the small in-house model in D1's forward note) — the templates stay fixed strings for now.
 
 ---
 
@@ -137,7 +137,7 @@ Open-world free text with no question attached (Stage A's harder sibling). Propo
 
 Reading the code before writing it corrected two claims, and the tests found two bugs the design had not anticipated. Both are recorded here rather than quietly fixed, because a build log that only reports its wins would refute this project's own thesis.
 
-**A fifth nature: `mixed`.** The spec said a compound payment with unknown proportions "posts nothing it cannot justify." Building it forced the sharper question — *is it spending or isn't it?* Counting the whole mortgage payment as spending restates the exact overstatement Slice 6.5 fixed; dropping it understates. Neither is true, so it is neither: `MIXED` is its own nature with its own line, `undecomposed()`, reporting the total, the count, the accounts and **the document that would resolve it**. The headline now reads *"X spent, plus Y I can't split yet — your 1098 would settle it."* That sentence is the thing the three-button question could never say.
+**A fifth nature: `mixed`.** The spec said a compound payment with unknown proportions "posts nothing it cannot justify." Building it forced the sharper question — *is it spending or isn't it?* Counting the whole mortgage payment as spending restates the exact overstatement honest aggregates fixed; dropping it understates. Neither is true, so it is neither: `MIXED` is its own nature with its own line, `undecomposed()`, reporting the total, the count, the accounts and **the document that would resolve it**. The headline now reads *"X spent, plus Y I can't split yet — your 1098 would settle it."* That sentence is the thing the three-button question could never say.
 
 **The ruling rung was promoted above the own-account rung.** Nature was decided: link → own-account → ruling → category → default. A ruling is *a person telling us what something is*; the own-account rung is a **heuristic over description text**. When they disagree the person is right, so rungs 2 and 3 swapped. The product quietly overriding what it was told would be the worst class of bug this codebase could have.
 
@@ -204,7 +204,7 @@ Two problems, both spotted by Vishnu on reading the rendered prompt (2026-07-25)
 
 **It assumed a bank.** *"one payment from their bank account"*, *"the counterparty on the statement"* — but the vault already holds cards, brokerages and retirement accounts, and will hold loan accounts and wallets. That framing quietly mis-describes every one of them, and it is the same I5 failure the project has caught before in other places: an assumption baked into universal code instead of arriving as data. `interpret-v1` now says *"ONE movement of their money"*, names the actual instrument through a `{source}` placeholder the service fills from the account's own kind, and states explicitly that the movement may come from any instrument in any country.
 
-**It was a module constant, not a versioned prompt.** Slice 2 established prompts as **retained, addressable, append-only data**, with a frozen-hash test enforcing that a released version's text can never change. `INTERPRET_PROMPT` lived in `listen.py` as a plain string — rewritable in place. Tuning it would have silently reinterpreted every ruling recorded before the change, with no way to recover what the model had actually been told, and would have made eval runs incomparable across time. It now lives in `prompt_library.py` as `interpret-v1` with named placeholders, and **every ruling stamps its `prompt_version`** so a stored ruling resolves to the exact instructions that read it (T8).
+**It was a module constant, not a versioned prompt.** The doc-type registry established prompts as **retained, addressable, append-only data**, with a frozen-hash test enforcing that a released version's text can never change. `INTERPRET_PROMPT` lived in `listen.py` as a plain string — rewritable in place. Tuning it would have silently reinterpreted every ruling recorded before the change, with no way to recover what the model had actually been told, and would have made eval runs incomparable across time. It now lives in `prompt_library.py` as `interpret-v1` with named placeholders, and **every ruling stamps its `prompt_version`** so a stored ruling resolves to the exact instructions that read it (T8).
 
 The general shape, again: a discipline the project already had, not applied to new code because the new code arrived from a different direction. Worth a habit — *when a slice makes a model call, its prompt goes in the library and its version goes on the event.*
 
@@ -256,4 +256,4 @@ Six live failures, all of the same shape: **a design shaped by its hard cases, t
 
 ### Not done yet
 
-**No real-document run.** Every slice is supposed to meet real statements before being called done, and this one has met only fixtures. The standing practice says that is when concept errors surface — Slice 6 was declared done without one and had two defects. Until a real mortgage or car purchase goes through the sentence path, treat this as built but unproven.
+**No real-document run.** Every slice is supposed to meet real statements before being called done, and this one has met only fixtures. The standing practice says that is when concept errors surface — positions and investments was declared done without one and had two defects. Until a real mortgage or car purchase goes through the sentence path, treat this as built but unproven.
