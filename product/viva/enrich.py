@@ -22,6 +22,35 @@ from .env import load_dotenv
 from .logs import configure as configure_logging
 
 
+def catalog_path(vault_dir) -> pathlib.Path:
+    """Where the merchant catalog lives — SHARED across vaults, by default.
+
+    It used to live inside the vault directory, which quietly contradicted the
+    reason it exists. The catalog holds **impersonal** merchant knowledge (T9):
+    a normalized key, a category, a counterparty kind. Nothing about anyone's
+    money is in it, which is exactly why it can be kept once, reused across
+    every vault, and eventually shared with other people — "Costco is a
+    warehouse club" is true for everybody and nobody should pay a model to
+    learn it twice.
+
+    Keeping it beside the vault meant every rebuild started from zero and paid
+    again for knowledge already bought. That is the network effect the catalog
+    was built for, working in reverse.
+
+    So: `VIVA_CATALOG` if set, else `~/.viva/merchant-catalog.json`. An existing
+    in-vault catalog is still honoured when the shared one does not exist yet,
+    so nobody loses what they have already paid for."""
+    explicit = os.environ.get("VIVA_CATALOG")
+    if explicit:
+        return pathlib.Path(explicit).expanduser()
+    shared = pathlib.Path("~/.viva/merchant-catalog.json").expanduser()
+    legacy = pathlib.Path(vault_dir) / "merchant-catalog.json"
+    if not shared.exists() and legacy.exists():
+        return legacy
+    shared.parent.mkdir(parents=True, exist_ok=True)
+    return shared
+
+
 def main() -> None:
     load_dotenv()
     configure_logging()
@@ -50,9 +79,8 @@ def main() -> None:
         base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
         api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "OPENROUTER_API_KEY"),
         json_mode=True)
-    # The catalog lives beside the vault, unencrypted — it holds only impersonal
-    # merchant knowledge (T9), never anything about your money.
-    catalog = Catalog(pathlib.Path(vault_dir) / "merchant-catalog.json")
+    catalog = Catalog(catalog_path(vault_dir))
+    print(f"catalog: {catalog.path if hasattr(catalog, 'path') else ''}")
 
     result = enrich_merchants(vault.ledger, catalog, model_extractor(spec))
     print(f"submitted {result['submitted']} new merchant(s); enriched "
