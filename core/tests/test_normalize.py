@@ -1,7 +1,7 @@
-"""Tests for verify.normalize — product-embryo standard.
+"""Tests for verify.normalize.
 
-Every invariant claim the docs make about normalization is a test here.
-If a rule isn't tested, it doesn't exist.
+Every normalization rule is a test here. If a rule isn't tested, it doesn't
+exist.
 """
 
 from decimal import Decimal

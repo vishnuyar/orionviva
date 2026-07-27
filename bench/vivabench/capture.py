@@ -1,4 +1,4 @@
-"""Raw capture: append-only, hash-chained JSONL run records (T3, ADR-004 spirit).
+"""Raw capture: append-only, hash-chained JSONL run records.
 
 Every model interaction becomes one record. Each record embeds the hash of the
 previous record, so any later tampering breaks the chain visibly. This is a
@@ -43,7 +43,7 @@ class RunStore:
     def _cell(record: dict) -> tuple[str, str, int, str]:
         """A cell's identity. input_mode is part of it: the same document read by
         the same model in a different mode is a different answer, not a repeat.
-        Records written before modes existed were all image mode."""
+        A record carrying no input_mode is an image-mode record."""
         return (
             record["doc_id"],
             record["candidate"],

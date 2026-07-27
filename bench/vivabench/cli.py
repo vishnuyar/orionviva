@@ -4,9 +4,10 @@ Commands:
   validate    check configs, corpus files, and the run plan (no network)
   run         administer the exam (respects budget ceiling; resumable)
   verify-log  recheck the hash chain of the run log
-  draft-key   (step 3 — not yet built)
-  score       (step 4 — not yet built)
-  report      (step 4 — not yet built)
+  draft-key   two models draft an answer key per document
+  freeze-key  fold resolved audits into a key, freeze it, hash it
+  score       grade runs against frozen keys and write the findings
+  report      alias for score
 """
 
 from __future__ import annotations

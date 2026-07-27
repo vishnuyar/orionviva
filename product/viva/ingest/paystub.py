@@ -1,6 +1,6 @@
 """PayStubFacts — the structured read of one pay stub, on the honesty contract.
 
-The divergent sibling of StatementFacts (Slice 4). A pay stub's shape is not a
+The divergent sibling of StatementFacts. A pay stub's shape is not a
 balance — it is `gross - deductions = net` — so it has its own facts type, its
 own parser, and its own verification identity, all selected by its registry
 profile. Same discipline as statements: amounts and dates go through the shared
@@ -9,7 +9,7 @@ facts (the pay stub goes to review), never a silent guess.
 
 Deductions carry a **category** — the universal bucket (tax / retirement /
 insurance / other) the deduction belongs to, kept jurisdiction-free so a US 401k,
-an Indian EPF, and a UK ISA all land in `retirement` (I5). The category is the
+an Indian EPF, and a UK ISA all land in `retirement`. The category is the
 model's *proposal*, graded downstream, never a US-shaped table.
 """
 

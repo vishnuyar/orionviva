@@ -16,7 +16,7 @@ Usage (from product/, auto-loads ./.env for the passphrase + model config):
 everything costs one model call per document; re-reading the family whose prompt
 you actually changed costs a handful. The filter matches a doc_type or any
 substring of it, and the type comes from the stored claim — recovered from the
-extract PROMPT VERSION when a document has no classify claim (T8).
+extract PROMPT VERSION when a document has no classify claim.
 
 **`--dry-run` spends nothing** and prints exactly which documents would be read.
 Use it first, every time: this is the one command here that costs real money.
@@ -56,7 +56,7 @@ def _source_state(source, passphrase, doc_ids):
 
     Read before a single re-read happens, so the run can report what changed
     rather than only what happened. The type falls back to the extract prompt
-    version (T8) for documents captured without a classify claim — which is most
+    version for documents captured without a classify claim — which is most
     of a real vault's older documents."""
     from .ingest.reader import _peek_classification
     from .ingest.registry import doc_type_for_prompt_version

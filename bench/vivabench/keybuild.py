@@ -1,8 +1,7 @@
 """Answer-key construction: two model families draft, agreement auto-verifies,
 disagreements go to human audit, then freeze + hash.
 
-The circularity break (design doc §4): we never trust a single model to write
-ground truth. Two independent families extract; where they agree on a value,
+The circularity break: we never trust a single model to write ground truth. Two independent families extract; where they agree on a value,
 that value is corroborated and auto-accepted; where they disagree, a human
 rules. The frozen key's hash is committed so re-runs prove they used it.
 

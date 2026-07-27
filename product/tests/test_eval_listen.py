@@ -135,14 +135,11 @@ def test_the_key_carries_no_real_financial_data():
 
 
 def test_a_broken_pipe_is_never_reported_as_a_clean_result():
-    """The bug this harness shipped with, and the reason it exists.
-
-    On its first real run every call failed before reaching the model — and the
-    report said "0% ruin, clean, safe but weak". An eval that cannot tell a
-    declining model from a broken connection is worse than no eval, because it
-    is *reassuring*. So: BROKEN is its own verdict, it is excluded from the
-    denominator, and the confidently-wrong rate becomes None rather than zero —
-    an unknown rate is not a good one."""
+    """A run whose every call fails before reaching the model must not report as
+    clean. An eval that cannot tell a declining model from a broken connection
+    is worse than no eval, because it is *reassuring*. So: BROKEN is its own
+    verdict, it is excluded from the denominator, and the confidently-wrong rate
+    becomes None rather than zero — an unknown rate is not a good one."""
     from viva.eval_listen import BROKEN
 
     cases = load_cases()
@@ -199,7 +196,7 @@ def test_a_declining_model_is_still_distinguished_from_a_broken_one():
 
 
 def test_inventing_structure_where_none_exists_is_the_new_ruin():
-    """Slice 9b's equivalent of the invented split, and a worse one.
+    """Inventing structure is the invented split's equivalent, and worse.
 
     A fabricated ratio corrupts one payment. A fabricated IMPLICATION — deciding
     a coffee shop means a loan — creates an account nobody has, applies it to

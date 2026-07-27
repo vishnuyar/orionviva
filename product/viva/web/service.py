@@ -38,8 +38,8 @@ def overview(vault: Vault) -> dict:
         ba = proj.balance(info.account)
         liability = info.kind == "liability"
         investment = info.kind == "investment"
-        # An investment account's headline is its TOTAL value — cash + the latest
-        # measured holdings (Slice 6) — not the bare cash balance.
+        # An investment account's headline is its TOTAL value — cash + the
+        # latest measured holdings — not the bare cash balance.
         amount = proj.account_value(info.account) if investment else (
             abs(ba.amount) if liability else ba.amount)
         row = {
@@ -73,10 +73,10 @@ def overview(vault: Vault) -> dict:
         "spending_by_category": {c: str(a) for c, a
                                  in proj.spending_by_category().items()},
         # How much of the spending figure rests on weak evidence, and what was
-        # kept out of it and why (Slice 6.5) — the number states its own doubt.
+        # kept out of it and why — the number states its own doubt.
         "provisional_spending": str(proj.provisional_spending()),
-        # Money whose components are known but whose PROPORTIONS are not
-        # (Slice 9a). Its own line, deliberately: folding it into spending
+        # Money whose components are known but whose PROPORTIONS are not.
+        # Its own line, deliberately: folding it into spending
         # would overstate and dropping it would understate, so the headline
         # says "X spent, plus Y I can't split yet" and names the document.
         "undecomposed": {k: (str(v) if not isinstance(v, list) else v)
@@ -109,7 +109,7 @@ def overview(vault: Vault) -> dict:
 
 def _income_breakdown(proj) -> list[dict]:
     """Where recognized pay went — the universal deduction buckets that carry a
-    balance, so the dashboard can show gross → net decomposition (Slice 4)."""
+    balance, so the dashboard can show gross → net decomposition."""
     from ..ledger.postings import DEDUCTION_ACCOUNTS
     rows = []
     for label, account in [("Retirement", DEDUCTION_ACCOUNTS["retirement"]),
@@ -126,25 +126,20 @@ def _income_breakdown(proj) -> list[dict]:
 
 
 def questions(vault: Vault, limit: int = 10) -> dict:
-    """The one ranked list of what Viva needs (Slice 6.5 Move 2) — highest stake
-    first, with the tail summarized rather than hidden. The existing review cards
-    still answer these; this is the front door that says which to do first."""
+    """The one ranked list of what Viva needs — highest stake first, with the
+    tail summarized rather than hidden. The existing review cards still answer
+    these; this is the front door that says which to do first."""
     from ..questions import open_questions
     return open_questions(vault.ledger, limit=limit)
 
 
-# `rule_nature` lived here until 2026-07-26. It answered with the OLD three
-# natures — spending / transfer / settlement — which the four majors replaced in
-# Slice 9a, and one of its three options was wired wrong from the start
-# ("settlement" meant debt repayment while the button said "something I now
-# own"). Live code contradicting the current design is worse than no code, so it
-# is gone; `rule_major` below is the only answer path. Vaults holding old
+# `rule_major` below is the only answer path. Vaults holding old
 # `MerchantNatureRuled` events still replay — the projection reads them — but
 # nothing new can be written in that vocabulary.
 
 
 def net_worth(vault: Vault, as_of: str = "", curve: bool = False) -> dict:
-    """Net worth as a CURVE (Slice 7) — pure projection, no model, no writes.
+    """Net worth as a CURVE — pure projection, no model, no writes.
 
     `as_of` empty means the latest date we have evidence for. `curve` returns
     every point instead of one, which is what a trend line reads."""
@@ -158,7 +153,7 @@ def net_worth(vault: Vault, as_of: str = "", curve: bool = False) -> dict:
 
 def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
                kind: str = "", movement_key: str = "", group: str = "") -> dict:
-    """Answer with one of the four majors (Slice 9a) — the button path.
+    """Answer with one of the four majors — the button path.
 
     Deterministic end to end: no model is involved when a person taps an answer,
     so this works with nothing configured. It goes through the same `propose` /
@@ -174,8 +169,7 @@ def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
     # A `movement_key` scopes the answer to ONE transaction. The unknown tier —
     # a cheque, an ATM withdrawal, a peer — asks one at a time precisely because
     # the descriptor says nothing about what the money was for, so generalizing
-    # would settle a whole bucket on a single answer. Passing it through was
-    # missing: the surface sent an undefined merchant for every such question.
+    # would settle a whole bucket on a single answer.
     proposal = propose(proj, interp, descriptor or merchant,
                        movement_key=movement_key)
     applied = apply_proposal(vault.ledger, proposal, _today())
@@ -185,7 +179,7 @@ def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
 def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
               category: str = "", subcategory: str = "",
               amount: str = "", currency: str = "") -> dict:
-    """Read a sentence and return a **Proposal** — nothing is written (X3).
+    """Read a sentence and return a **Proposal** — nothing is written.
 
     The person sees what would change and how much money it moves before any of
     it happens. With no model configured this returns `understood: False` and
@@ -194,7 +188,7 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
     from ..listen import interpret, propose
     proj = vault.ledger.projection()
     # Name the instrument the movement actually sat in — a card, a brokerage, a
-    # loan account — instead of letting the prompt assume a bank (I5).
+    # loan account — instead of letting the prompt assume a bank.
     source = ""
     for m in proj.movements():
         if movement_key and m.key == movement_key:
@@ -206,11 +200,10 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
     interp = interpret(said, descriptor, category, subcategory, _interpreter(),
                        source=source)
     if not interp.legs:
-        # Four different failures used to share one unhelpful sentence, so
-        # neither the person nor the log could tell a model that was DOWN from
-        # one that was rambling from one that genuinely didn't understand.
-        # Saying which is the difference between a product that admits a limit
-        # and one that just seems broken.
+        # Each failure gets its own sentence. A model that is DOWN, one that is
+        # rambling, and one that genuinely didn't understand are different
+        # things, and saying which is the difference between a product that
+        # admits a limit and one that just seems broken.
         message = {
             "unreachable": "I can't reach my reader right now — the buttons "
                            "still work, and nothing was lost.",
@@ -265,8 +258,8 @@ def _interpreter():
     under-read every statement. So `VIVA_INTERPRET_*` overrides `VIVA_MODEL_*`
     per-field, and falls back to it when unset.
 
-    This is also the seam the local model goes through (D1's forward note):
-    point `VIVA_INTERPRET_BASE_URL` at Ollama or LM Studio and set
+    This is also the seam the local model goes through: point
+    `VIVA_INTERPRET_BASE_URL` at Ollama or LM Studio and set
     `VIVA_INTERPRET_KEY_ENV=none`, and no sentence a person types ever leaves
     the machine — which is the whole promise, applied to the warmest surface in
     the product."""
@@ -312,30 +305,27 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
     """Every movement with one merchant — the context behind a question.
 
     Keyed on the NORMALIZED merchant, the same unit a ruling generalizes over, so
-    what you're shown is exactly what your answer will settle. (The first cut
-    reused the categorization queue and filtered by substring, which returned
-    nothing for a nature question: that queue only holds *uncategorized*
-    movements, and a nature question is asked about a merchant that already has a
-    category.)
+    what you're shown is exactly what your answer will settle. It reads every
+    movement, not the categorization queue: that queue holds only
+    *uncategorized* movements, while a nature question is asked about a merchant
+    that already has a category.
 
-    Direction is kept, and named. The first cut wrapped every amount in abs()
-    and summed the magnitudes — invisible for a one-way merchant, wrong twice
-    for a counterparty money flows BOTH ways with (the broker EFTs): every row
-    showed positive, and the "total" added the two directions together. Same
-    defect family as the liability abs() in the first net-worth cut (see
-    net-worth.md, D1: abs() erases the one bit that matters). So: amounts stay
-    SIGNED as the account recorded them, each row carries a kind-aware
-    `direction`, and the summary is three figures — out, in, net — never one."""
+    Direction is kept, and named. Wrapping every amount in abs() and summing the
+    magnitudes is invisible for a one-way merchant and wrong twice for a
+    counterparty money flows BOTH ways with: every row reads positive, and the
+    "total" adds the two directions together — abs() erases the one bit that
+    matters. So: amounts stay SIGNED as the account recorded them, each row
+    carries a kind-aware `direction`, and the summary is three figures — out,
+    in, net — never one."""
     from ..ledger.merchants import normalize_merchant
     proj = vault.ledger.projection()
     key = normalize_merchant(merchant)
 
     def _direction(m) -> str:
-        # Money toward this counterparty ("out") or from it ("in). Kind-aware,
-        # the Slice 5 distinction: an asset-side account records outflows
-        # negative, while a liability records a charge — money out to the
-        # merchant — POSITIVE. Reading the raw sign alone would call every card
-        # purchase "in".
+        # Money toward this counterparty ("out") or from it ("in). Kind-aware:
+        # an asset-side account records outflows negative, while a liability
+        # records a charge — money out to the merchant — POSITIVE. Reading the
+        # raw sign alone would call every card purchase "in".
         if m.kind == "liability":
             return "out" if m.amount > 0 else "in"
         return "out" if m.amount < 0 else "in"
@@ -371,13 +361,13 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
             # The tag vocabulary rides along so the surface can offer what
             # exists before anything new is minted — the same prevention that
             # keeps categories from sprawling, applied where it matters more:
-            # nothing outside this device can ever help clean up tags (T9).
+            # nothing outside this device can ever help clean up tags.
             "known_tags": proj.known_tags(),
             "merchant_tags": proj._merchant_tags.get(key, [])}
 
 
 def tag(vault: Vault, subject: str, tags: list, scope: str = "movement") -> dict:
-    """Tag one movement, or every movement from a merchant (Slice 7.6).
+    """Tag one movement, or every movement from a merchant.
 
     ``tags`` is the COMPLETE set for that subject — removing one is sending the
     set without it, so the log stays append-only and replay stays trivial."""
@@ -396,7 +386,7 @@ def assign_category_to(vault: Vault, movement_key: str, category: str) -> dict:
 
 
 def merchant_review(vault: Vault, limit: int = 50) -> dict:
-    """The categorization queue, by MERCHANT (Slice 5.5): deduped unknown
+    """The categorization queue, by MERCHANT: deduped unknown
     merchants with how many transactions each covers, so one ruling clears many."""
     proj = vault.ledger.projection()
     rows = sorted(proj.uncategorized_merchants().items(),
@@ -414,7 +404,7 @@ def assign_merchant(vault: Vault, merchant: str, category: str) -> dict:
 
 def paystub_review(vault: Vault) -> dict:
     """Pay stubs read but not fully posted — awaiting their deposit, or held
-    because gross − deductions did not equal net (Slice 4)."""
+    because gross − deductions did not equal net."""
     from ..ingest import PayStubFacts
     proj = vault.ledger.projection()
     items = []
@@ -517,7 +507,7 @@ def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
 
 
 def greeting(vault: Vault) -> dict:
-    """Viva's opening line (Slice 6.10) — a moment from the persona pack.
+    """Viva's opening line — a moment from the persona pack.
 
     The name is derived deterministically from the vault's own account holders
     (the most common first token, title-cased) — read from documents the person
@@ -544,7 +534,7 @@ def greeting(vault: Vault) -> dict:
 
 def decline_question(vault: Vault, question_id: str,
                      reason: str = "not_now") -> dict:
-    """"Not now" is an answer (Slice 6.10): record it, and answer in Viva's voice.
+    """"Not now" is an answer: record it, and answer in Viva's voice.
 
     The stake snapshot (amount, count) is taken SERVER-SIDE from the live queue
     — the surface only names the question, so a stale page cannot pin the wrong

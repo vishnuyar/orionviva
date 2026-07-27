@@ -1,14 +1,14 @@
-"""The encrypted, append-only, hash-chained event store (ADR-004 + ADR-005).
+"""The encrypted, append-only, hash-chained event store.
 
 The events are the source of truth; everything else is a projection rebuilt by
 replaying them. This store is where they live, and it reconciles two invariants
 at once:
 
-  - **Append-only + tamper-evident** (ADR-004). Each record embeds the hash of
+  - **Append-only + tamper-evident**. Each record embeds the hash of
     the record before it, so dropping, reordering, or splicing records breaks
     the chain visibly. The chain can be verified *without the key* — integrity
     is checkable even by someone who cannot read the contents.
-  - **Encrypted from commit one** (ADR-005). Each event body is sealed with
+  - **Encrypted from commit one**. Each event body is sealed with
     AES-256-GCM under a passphrase-derived key. The record's position (sequence
     number + previous hash) is bound into the GCM aad, so a ciphertext cannot be
     moved to a different slot and still decrypt. Confidentiality and per-record
@@ -18,9 +18,6 @@ File format (one JSON object per line):
     line 0   header:  {"v", "kdf", "check"}   — the versioned crypto envelope +
              a sealed check token that fails fast on a wrong passphrase.
     line 1.. records: {"seq", "prev_hash", "sealed", "record_hash"} — the chain.
-
-This is the product-grade sibling of viva-bench's ``capture.py``: the same
-hash-chain pattern, now carrying real money and therefore encrypted.
 """
 
 from __future__ import annotations

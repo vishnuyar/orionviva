@@ -1,13 +1,13 @@
-"""Raw capture: every uploaded file, encrypted, before any judgment (ADR-003/T3).
+"""Raw capture: every uploaded file, encrypted, before any judgment.
 
 The doctrine is absolute — capture the raw bytes of everything, always, even a
-document v0 cannot yet model. You can re-project a held document later; you can
+document we cannot yet model. You can re-project a held document later; you can
 never re-derive one you discarded. This store is where the raw bytes live.
 
-Content-addressed by SHA-256 (ADR-007 record identity): the address *is* the
+Content-addressed by SHA-256: the address *is* the
 fingerprint, so re-uploading the same file is a free no-op rather than a
 duplicate. Each blob is sealed with the same versioned AES-256-GCM envelope as
-the event log (ADR-005), with the content hash bound into the aad.
+the event log, with the content hash bound into the aad.
 """
 
 from __future__ import annotations

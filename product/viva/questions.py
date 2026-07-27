@@ -1,11 +1,10 @@
 """The question queue — everything Viva needs from you, in the order that matters.
 
-The learning loop's front door (Slice 6.5 Move 2, docs/the-question-queue.md).
+The learning loop's front door.
 
-The project had built four ask-and-learn loops separately — *whose account is
-this?* (Slice 1.5), *are these the same money?* (Slice 3), *what is this
-merchant?* (Slice 5.5), *is this spending or moving?* (Slice 6.5) — four queues,
-four cards, one primitive. This gathers them into one ranked list.
+Four ask-and-learn loops — *whose account is this?*, *are these the same
+money?*, *what is this merchant?*, *is this spending or moving?* — are four
+queues, four cards, one primitive. This gathers them into one ranked list.
 
 It is a **read-side projection**: no new event type, no ingest change. Answering
 routes to the writers that already exist, so a ruling is recorded exactly as it
@@ -21,20 +20,20 @@ Three rules keep it a butler rather than a chore list:
      future), a peer descriptor or an ambiguous pair does not.
   3. **Silence by ranking, not hiding.** The top N surface; the tail is
      *summarized* with its count and total, never dropped. An unanswered question
-     leaves its figure provisional and labelled (Move 1), so silence costs
-     precision, never honesty.
+     leaves its figure provisional and labelled, so silence costs precision,
+     never honesty.
 
 Question text is a deterministic template, never a model call: the queue must be
 reproducible, free and offline-testable, and a model that phrased a question
-could smuggle a claim into it. Since Slice 6.10 the templates live in the
-persona pack (`viva/persona/`) — the queue supplies the intent (figures,
-evidence, options), the pack supplies the words, and a lint test guarantees a
-phrasing can only place fields the intent supplied. The content stays
-deterministic; only the voice is data.
+could smuggle a claim into it. The templates live in the persona pack
+(`viva/persona/`) — the queue supplies the intent (figures, evidence, options),
+the pack supplies the words, and a lint test guarantees a phrasing can only
+place fields the intent supplied. The content stays deterministic; only the
+voice is data.
 
-Slice 6.10 also made "not now" an answer: a declined question is suppressed
-while its stake (amount, count) is unchanged, and returns the moment new
-evidence moves it — settled → silence, applied to the questions themselves.
+"Not now" is an answer: a declined question is suppressed while its stake
+(amount, count) is unchanged, and returns the moment new evidence moves it —
+settled → silence, applied to the questions themselves.
 """
 
 from __future__ import annotations
@@ -52,18 +51,18 @@ from .listen import suggest_answers
 from .persona import say
 
 # How many questions to surface before summarizing the rest. Not a materiality
-# threshold in money — that would be a currency- and jurisdiction-shaped guess
-# (I1/I5). Rank, show the top, and say honestly what is left.
+# threshold in money — that would be a currency- and jurisdiction-shaped guess.
+# Rank, show the top, and say honestly what is left.
 DEFAULT_LIMIT = 10
 
-# Question kinds, in the order they were originally built as separate loops.
+# Question kinds.
 IDENTITY = "identity"              # whose account is this?
 RECONCILIATION = "reconciliation"  # this document didn't add up
 TRANSFER = "transfer"              # are these two movements the same money?
 MERCHANT = "merchant"              # what is this merchant?
 NATURE = "nature"                  # is this money spent, or moved?
 CORROBORATION = "corroboration"    # do you have the document that proves this?
-EXPECTATION = "expectation"        # a document that should exist, somewhere (6.11)
+EXPECTATION = "expectation"        # a document that should exist, somewhere
 
 
 @dataclass
@@ -77,7 +76,7 @@ class Question:
     id: str
     kind: str
     text: str                      # Viva's voice, deterministic
-    why: str                       # the evidence it rests on (T1)
+    why: str                       # the evidence it rests on
     amount: Decimal                # what answering moves — the ranking key
     currency: str = ""
     count: int = 1                 # how many movements/documents it settles
@@ -181,7 +180,7 @@ def _transfer_questions(proj) -> list[Question]:
 
 def _merchant_questions(proj) -> list[Question]:
     """Merchants we have no category for. Scoped to the MERCHANT — one ruling
-    fills every transaction from it, past and future (the Slice 5.5 lesson)."""
+    fills every transaction from it, past and future."""
     from .ingest.categorize import SEED_CATEGORIES
     out: list[Question] = []
     totals: dict[str, Decimal] = {}
@@ -195,7 +194,7 @@ def _merchant_questions(proj) -> list[Question]:
             movements.setdefault(key, []).append(m.key)
     # The picker's options: the shared suggestions PLUS every category this person
     # has actually used. Categories are implicit — one exists by being used — so
-    # the vocabulary grows without an event or a migration (Slice 6.7 D2).
+    # the vocabulary grows without an event or a migration.
     used = sorted({(r.get("category") or "").strip()
                    for r in proj.merchant_categories().values()} - {""})
     categories = list(SEED_CATEGORIES) + [c for c in used if c not in SEED_CATEGORIES]
@@ -225,10 +224,7 @@ def _merchant_questions(proj) -> list[Question]:
 def _nature_questions(proj) -> list[Question]:
     """What is this money, really? — asked ONLY where the counterparty cannot say.
 
-    Rebuilt in Slice 9b. It used to fire for every enriched merchant whose nature
-    rested on a hint or a default — which meant asking *"is this spent or
-    something you now own?"* about a supermarket we had already identified. We
-    knew, and we asked anyway. The tiers make the rule explicit:
+    The tiers make the rule explicit:
 
       settled     an ordinary counterparty implying nothing  → SILENCE
       structural  the counterparty implies a relationship    → an informed proposal
@@ -318,7 +314,7 @@ def _nature_questions(proj) -> list[Question]:
 
 
 def _corroboration_questions(proj) -> list[Question]:
-    """Documents that would PROVE what you told us (Slice 9a).
+    """Documents that would PROVE what you told us.
 
     Every account a ruling created is `asserted` — only you say it exists. That
     is honest and it is enough to run your finances on, but it is not evidence a
@@ -360,11 +356,10 @@ def _corroboration_questions(proj) -> list[Question]:
 
 
 def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question]:
-    """Documents that should exist somewhere (Slice 6.11) — the knowledge
-    registry's unmet expectations, asked as questions and ranked with everything
-    else by the money the document would attest. The ask is never a gate, and a
-    "Not right now" is a decline like any other (6.10): quiet until the stake
-    changes. The cadence asks carry amount 0 deliberately — they settle no
+    """Documents that should exist somewhere — the knowledge registry's unmet
+    expectations, asked as questions and ranked with everything else by the
+    money the document would attest. The ask is never a gate, and a "Not right
+    now" is a decline like any other: quiet until the stake changes. The cadence asks carry amount 0 deliberately — they settle no
     money, they improve currency, so they rank below every money question."""
     from .knowledge import evaluate
     out: list[Question] = []
@@ -395,17 +390,17 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
 
     Returns ``{"questions": [...], "tail": {"count": n, "amount": "…"}, "total":
     n}``. The tail is what ranking pushed below the fold — reported with its size
-    and value so nothing is hidden, just not pushed (principle 5).
+    and value so nothing is hidden, just not pushed.
 
-    ``as_of`` grounds the cadence expectations (6.11) — it defaults to today,
+    ``as_of`` grounds the cadence expectations — it defaults to today,
     and tests pass it explicitly so the queue stays reproducible. ``jurisdiction``
     filters the knowledge registry; it defaults from ``VIVA_LOCALE``'s region."""
     if not as_of:
         from datetime import date as _date
         as_of = _date.today().isoformat()
     if not jurisdiction:
-        # The ONE locale accessor (env.py) — the four-defaults lesson. A locale
-        # with no region part filters to universal registry entries only.
+        # The one locale accessor. A locale with no region part filters to
+        # universal registry entries only.
         from .env import locale_from_env
         parts = locale_from_env().split("-")
         jurisdiction = parts[1].upper() if len(parts) > 1 else ""
@@ -418,7 +413,7 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
     qs += _corroboration_questions(proj)
     qs += _expectation_questions(proj, as_of, jurisdiction)
     # A declined question stays declined while it would say exactly what it said
-    # before, and returns the moment new evidence changes its stake (6.10). The
+    # before, and returns the moment new evidence changes its stake. The
     # comparison is the whole policy — no timers, no jurisdiction-of-the-mind.
     declined = proj.declined_questions()
     qs = [q for q in qs

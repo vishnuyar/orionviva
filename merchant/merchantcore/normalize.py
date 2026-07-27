@@ -8,7 +8,7 @@ strips the noisy tail that varies transaction-to-transaction — store numbers,
 order ids, phone numbers, payment-processor prefixes — leaving the merchant words
 as read. The model does the actual grouping/categorization on the deduped list.
 
-``is_shareable`` is the privacy lint (T5/T9): a peer-payment or person-name
+``is_shareable`` is the privacy lint: a peer-payment or person-name
 descriptor ("VENMO TO JOHN SMITH", "ZELLE FROM …") is personal and must never
 enter the unencrypted catalog or the commons — only clearly *commercial*
 merchants are shareable.
@@ -56,17 +56,6 @@ def normalize_merchant(descriptor: str) -> str:
     s = _NONWORD.sub(" ", s)
     s = _WS.sub(" ", s).strip()
     return s
-
-
-# `_CONDUIT_MARKERS` and `is_conduit` lived here and are GONE (Slice 9b).
-# Whether "check" names a payment instrument rather than a business is exactly
-# the kind of universal a MODEL should tell us once, at enrichment, and cache —
-# not a word list maintained by hand in every language and every country. It now
-# arrives as `counterparty_kind` on the enriched record.
-#
-# The lesson that removed it is worth keeping: every time this codebase met
-# ambiguity in raw text it reached for a substring list, and nine of them had
-# accumulated before anyone counted (docs/where-the-intelligence-goes.md).
 
 
 def is_shareable(descriptor: str) -> bool:

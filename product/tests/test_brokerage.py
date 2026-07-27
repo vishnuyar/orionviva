@@ -1,4 +1,4 @@
-"""Slice 6 Stage 1 — brokerage holdings as dated measurements (Option A).
+"""Brokerage holdings as dated measurements.
 
 A brokerage statement reconciles on the snapshot identity (Σ market_value + cash =
 total), its holdings are recorded as PositionObserved MEASUREMENTS (never posted),
@@ -76,7 +76,7 @@ def test_unrealized_gain_is_a_derived_as_of_view_not_a_ledger_fact(tmp_path):
     assert proj.unrealized_gain() == Decimal("8000.00")
     aapl = next(p for p in proj.positions() if p.instrument == "AAPL")
     assert aapl.unrealized_gain() == Decimal("6400.00")
-    # It is NEVER an event in the ledger (M1: cash-flow over accrual).
+    # It is NEVER an event in the ledger (cash-flow over accrual).
     types = {e.event_type for e in ledger.events()}
     assert "PositionObserved" in types
     assert not any("nrealized" in t or "Gain" in t for t in types)
@@ -130,8 +130,8 @@ def test_a_later_statement_revalues_the_same_holding(tmp_path):
 
 
 def test_a_cash_row_is_cash_not_a_holding(tmp_path):
-    """A real run returned the sweep balance as a position named CASH. The tally
-    passes either way, so no gate catches it — treat it as cash instead."""
+    """A position row named CASH is the account's cash, not a holding. The tally
+    passes either way, so no gate catches it."""
     ledger, res = _brokerage(
         [("CASH", "15507.13", "15507.13", None),
          ("AAPL", "10", "117.36", None)],
@@ -147,9 +147,9 @@ def test_a_cash_row_is_cash_not_a_holding(tmp_path):
 
 
 def test_a_legacy_cash_position_self_corrects_on_read(tmp_path):
-    """An EXISTING vault already holds PositionObserved(CASH) events from before
-    the fix. The projection reinterprets them as cash on the next query — no
-    re-ingest, no model cost, nothing rewritten (the read-side payoff)."""
+    """A vault holding PositionObserved(CASH) events has them reinterpreted as
+    cash on the next query — no re-ingest, no model cost, nothing rewritten
+    (the read-side payoff)."""
     from viva.ledger.events import position_observed
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
     # Simulate the legacy shape directly: a cash row recorded as a holding.
@@ -190,7 +190,7 @@ def test_a_composed_value_reports_its_oldest_as_of(tmp_path):
     assert as_of == "2026-03-31"                    # honest to the OLDEST part
 
 
-# ------------------------- the sweep, from two real Fidelity statements -------
+# --------------------------------------------------------------- the sweep ---
 
 _SWEEP = "FIDELITY GOVERNMENT MONEY MARKET (SPAXX)"
 
@@ -206,7 +206,7 @@ def test_sweep_counted_once_when_the_cash_line_already_includes_it(tmp_path):
          ("TSLA PUT SHT", "-1", "-1770.00", "-2788.24"),
          ("TSLA PUT", "1", "4790.00", "5964.68")],
         cash="139.77", total="17569.77", tmp_path=tmp_path)
-    assert res.action == "posted"                      # was held before this fix
+    assert res.action == "posted"                      # the reading reconciles
     proj = ledger.projection()
     (acct,) = [i.account for i in proj.account_infos()]
     assert _SWEEP not in [p.instrument for p in proj.positions()]
@@ -328,10 +328,9 @@ def test_a_contribution_ties_to_the_funding_account(tmp_path):
 
 
 def test_opening_cash_carries_forward_when_the_statement_omits_it(tmp_path):
-    """The real December case: no opening cash printed, 24 activity items that
-    would otherwise be silently dropped. The ledger already knows the opening —
-    it is November's closing cash (Slice 1's forward-stitching rule, applied to
-    brokerage cash)."""
+    """A statement printing no opening cash would otherwise have its whole
+    activity list silently dropped. The ledger already knows the opening — it is
+    the previous statement's closing cash, forward-stitched."""
     raw = RawStore.open(tmp_path / "raw", "pw")
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
     # November: closes with 200.00 cash.
@@ -369,7 +368,7 @@ def test_opening_cash_carries_forward_when_the_statement_omits_it(tmp_path):
 
 def test_activity_is_never_dropped_in_silence(tmp_path):
     """If the flow still can't be reconciled, the result SAYS the activity is held
-    back — an incomplete picture must be visibly incomplete (X2), not quiet."""
+    back — an incomplete picture must be visibly incomplete, not quiet."""
     raw = RawStore.open(tmp_path / "raw", "pw")
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
     facts = BrokerageFacts(
@@ -386,10 +385,9 @@ def test_activity_is_never_dropped_in_silence(tmp_path):
 
 
 def test_a_held_brokerage_statement_does_not_break_the_sweep(tmp_path):
-    """The real crash: startup ran sweep() -> heal_corroboration(), which rebuilt
-    EVERY conflict-hold as a StatementFacts and died on a held brokerage
-    statement's missing opening_amount. Holds are polymorphic; consumers must
-    route on the registry, not on the shape of the dict."""
+    """Holds are polymorphic: a held brokerage statement has no opening_amount,
+    so a consumer that rebuilds every conflict-hold as a StatementFacts dies on
+    it. Consumers must route on the registry, not on the shape of the dict."""
     from viva.ingest import held_items, other_holds, sweep
     # A brokerage statement whose tally fails -> held as a conflict.
     ledger, res = _brokerage([("AAPL", "10", "100.00", None)],

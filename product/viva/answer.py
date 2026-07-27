@@ -1,10 +1,10 @@
 """The v0 answer path — deterministic, and honest about what it doesn't know.
 
-No model sits here (the v0 decision). A "question" is a fixed function call over
+No model sits here. A "question" is a fixed function call over
 the projection, and the whole job of this layer is the *honesty envelope* around
 the number: a cited source, a confidence grade, a coverage statement, and — the
 part that is the actual product — a clean refusal when the honest answer is "I
-can't tell you that reliably" rather than a bluffed figure (principle 2).
+can't tell you that reliably" rather than a bluffed figure.
 
 Three questions, and their refusals:
   - ``answer_balance``  — one account's balance, or a refusal (unknown account,
@@ -184,10 +184,10 @@ def answer_total(source, as_of: str | None = None) -> Answer:
 
 
 def answer_spending(source, as_of: str | None = None) -> Answer:
-    """Real spending, by category (Slice 5): every expense — card purchases
-    included — grouped by its assigned category, with internal transfers excluded
-    (Slice 3). Honest about how much is still uncategorized (the figure firms up
-    as you confirm categories)."""
+    """Real spending, by category: every expense — card purchases included —
+    grouped by its assigned category, with internal transfers excluded. Honest
+    about how much is still uncategorized (the figure firms up as you confirm
+    categories)."""
     proj = _projection(source, as_of)
     q = "spending by category" + (f" as of {as_of}" if as_of else "")
     by_cat = proj.spending_by_category()
@@ -215,7 +215,7 @@ def answer_spending(source, as_of: str | None = None) -> Answer:
 
 def _single_currency(proj) -> str:
     """The account currency when the ledger holds exactly one, else '' (spending
-    buckets are shared and carry no currency of their own — I1 honesty)."""
+    buckets are shared and carry no currency of their own)."""
     held = {i.currency for i in proj.account_infos()
             if i.kind in ("depository", "liability") and i.currency}
     return next(iter(held)) if len(held) == 1 else ""

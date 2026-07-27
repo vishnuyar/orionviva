@@ -16,9 +16,9 @@ class AdapterError(Exception):
 # can exceed the model's output budget, so the provider truncates mid-text and
 # reports finish_reason "length". Re-asking from scratch just truncates again, so
 # we ask the model to *continue* from the partial and stitch the pieces — bounded
-# so a runaway can't loop forever. This lived inside one adapter; it belongs to
-# every adapter, so it lives here and both drive through it (T-modular: one place
-# to reason about truncation safety, not per-provider copies that drift).
+# so a runaway can't loop forever. It lives here rather than in an adapter so
+# that there is one place to reason about truncation safety, not per-provider
+# copies that drift.
 MAX_CONTINUATIONS = 6
 CONTINUE_INSTRUCTION = (
     "Continue the output from exactly where it stopped. Output ONLY the remaining "
@@ -90,14 +90,14 @@ class PageImage:
 
 @dataclass(frozen=True)
 class ModelResult:
-    """Everything the runner needs, with nothing thrown away (T3).
+    """Everything the runner needs, with nothing thrown away.
 
     ``request`` and ``response`` are the verbatim JSON payloads sent and
     received — raw capture happens on these, not on any parsed view.
     """
 
     text: str                     # the model's text output (unparsed)
-    resolved_model: str           # model identity AS REPORTED by the endpoint (T8)
+    resolved_model: str           # model identity AS REPORTED by the endpoint
     input_tokens: int
     output_tokens: int
     cost_usd: float               # computed from candidate cost config
@@ -110,8 +110,7 @@ class ModelResult:
 class ModelAdapter(Protocol):
     """One extraction call: pages + prompt in, ModelResult out. Nothing else.
 
-    Adapters have no tools, no write access, no retries-with-mutation —
-    structurally bounded per the model trust policy's guardrails.
+    Adapters have no tools, no write access, and no retries-with-mutation.
     """
 
     def extract(self, pages: list[PageImage], prompt: str) -> ModelResult: ...

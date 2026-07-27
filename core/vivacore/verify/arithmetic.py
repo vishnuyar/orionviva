@@ -1,4 +1,4 @@
-"""The identities financial documents impose on themselves. Product embryo (T2).
+"""The identities financial documents impose on themselves. Product embryo.
 
 Exact Decimal arithmetic, no floats, no tolerance by default: a statement that
 doesn't reconcile to the cent is a finding, not a rounding error. (A tolerance
@@ -76,8 +76,7 @@ def check_paystub_identity(
 
     A pay stub's self-check, the divergent sibling of the balance identity: if it
     passes, the gross, every deduction, and the net corroborate each other at
-    once. The universal gate runs it; the formula is the pay stub profile's data
-    (the registry's 'code universal, per-type formula is data' claim, Slice 4).
+    once. The universal gate runs it; the formula is the pay stub profile's data.
     """
     gross_d = _as_decimal(gross)
     net_d = _as_decimal(net)
@@ -104,11 +103,10 @@ def check_brokerage_identity(
     """sum(position market values) + cash == account total.
 
     A brokerage statement's self-check, the divergent sibling of the balance
-    identity (Slice 6): a point-in-time *snapshot* consistency test rather than a
-    flow. If it passes, every position value and the cash corroborate the stated
-    total at once — the densest, most model-free cross-check, so a single misread
-    holding fails it loudly. The formula is the brokerage profile's data (the
-    registry's 'code universal, per-type formula is data' claim).
+    identity: a point-in-time *snapshot* consistency test rather than a flow. If
+    it passes, every position value and the cash corroborate the stated total at
+    once — the densest, most model-free cross-check, so a single misread holding
+    fails it loudly. The formula is the brokerage profile's data.
     """
     cash_d = _as_decimal(cash)
     total_d = _as_decimal(total)

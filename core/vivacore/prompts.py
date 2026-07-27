@@ -3,7 +3,7 @@
 Version the prompt like everything else on the trust path: results are only
 comparable within a prompt version, and the run records carry it.
 
-p2: one page per call. A whole dense document needs ~62k output tokens, which
+One page per call. A whole dense document needs ~62k output tokens, which
 exceeds the output ceiling of every small candidate (32k for the Qwen class) —
 scoring them on a truncated answer would measure the ceiling, not the reading.
 Pages are therefore extracted one at a time and merged; the model is told which
@@ -12,14 +12,14 @@ page it is looking at so claim page numbers stay absolute.
 Input modes: the same question, asked over different inputs, so the benchmark
 can measure whether preprocessing helps rather than assume it. Versions are
 per-mode so that adding a mode never invalidates results already collected
-under another one — "p2" image records stay comparable forever.
+under another one — image records stay comparable forever.
 """
 
 import pathlib
 
 from . import promptstore
 
-PROMPT_VERSION = "p2"        # the image-mode prompt; unchanged since p2
+PROMPT_VERSION = "p2"        # the image-mode prompt
 
 INPUT_MODES = ("image", "text", "text+image")
 
@@ -31,9 +31,7 @@ PROMPT_VERSIONS = {
 
 PROMPTS = pathlib.Path(__file__).resolve().parent / "prompts"
 
-# The text lives in `prompts/extract-image-p2.txt`, not here. A literal was
-# editable in place while its version constant was bumped independently — the
-# exact mechanism that lost merchantcore's earlier enrichment prompts.
+# The text lives in `prompts/extract-image-<version>.txt`, not here.
 EXTRACTION_PROMPT = promptstore.load(PROMPTS, f"extract-image-{PROMPT_VERSION}")
 
 
@@ -41,11 +39,8 @@ EXTRACTION_PROMPT = promptstore.load(PROMPTS, f"extract-image-{PROMPT_VERSION}")
 # Each mode owns its opening: what the input IS, and how the page is identified.
 # The task itself (everything from "Extract EVERY factual claim") is shared
 # verbatim, so a mode comparison measures the input, not a reworded question.
-# The image header is byte-identical to p2 — image results stay comparable.
-# Each mode owns its opening: what the input IS, and how the page is identified.
-# The task itself (everything from "Extract EVERY factual claim") is shared
-# verbatim, so a mode comparison measures the input, not a reworded question.
-# The image header is byte-identical to p2 — image results stay comparable.
+# The image header is byte-identical to the image-mode prompt, so image results
+# stay comparable.
 #
 # The three headers are FILES (prompts/header-*.txt). A benchmark that reworded
 # its own question between runs would measure nothing, so the exam text is

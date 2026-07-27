@@ -6,10 +6,9 @@ with each appended event rather than replaying and decrypting the whole log on
 every read. Reads call :meth:`projection`; appends go through :meth:`append` so
 the cache stays current.
 
-This is the performance spine (see the standing practice: optimize regularly,
-watch for redundant replays). Before it, a single ingest re-decrypted the entire
-log several times; now an append is O(1) over the cache and a read is free.
-Historical (`as_of`) queries are rarer and build a filtered projection on demand.
+This is the performance spine: an append is O(1) over the cache and a read is
+free. Historical (`as_of`) queries are rarer and build a filtered projection
+on demand.
 """
 
 from __future__ import annotations

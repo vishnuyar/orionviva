@@ -1,4 +1,4 @@
-"""Viva's voice is data, and it cannot invent facts (Slice 6.10).
+"""Viva's voice is data, and it cannot invent facts.
 
 Two disciplines, both enforced here rather than remembered:
 
@@ -39,7 +39,7 @@ def test_every_intent_has_a_phrasing_and_no_orphans():
 
 def test_phrasings_use_only_their_intent_fields():
     """The no-new-facts lint: every {slot} must name a field the intent
-    supplies. This is the T2 boundary at the wording layer."""
+    supplies. This is the no-invented-figures boundary at the wording layer."""
     for key, template in persona.load()["phrasings"].items():
         if key.startswith("_"):
             continue
@@ -71,8 +71,8 @@ def test_moments_render_with_and_without_a_name():
 
 
 def test_question_text_no_longer_lives_in_code():
-    """The prompts lesson, applied before it can drift: the moved sentences must
-    not survive as literals in questions.py."""
+    """Question sentences live in the pack, and must not survive as literals in
+    questions.py."""
     src = (pathlib.Path(persona.__file__).resolve().parents[1] /
            "questions.py").read_text()
     for sentinel in ("Can you check the figure I flagged",
@@ -87,7 +87,7 @@ def test_question_text_no_longer_lives_in_code():
 # digests are each pack's fingerprint; if one changes, the fix is a new version
 # id, never an edit (same rule, same reason as the prompt library's FROZEN
 # table). pack-v1 is the original wording verbatim; pack-v2 is the Viva-manner
-# pass plus the 6.11 expectation phrasings.
+# pass plus the expectation phrasings.
 FROZEN_PACKS = {
     "pack-v1": "16c9bf533d3d4e31",
     "pack-v2": "7e8f38e3db15c2f9",

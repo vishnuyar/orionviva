@@ -1,32 +1,26 @@
-"""Net worth (Slice 7) — a CURVE, not a number with a date attached.
+"""Net worth — a CURVE, not a number with a date attached.
 
     net_worth(proj)            what you are worth at the latest date we know
     net_worth(proj, "2026-03-31")   ... and at any other date
     series(proj)               the whole curve
 
-The reframe that made this simple (Vishnu, 2026-07-26): *"net worth is always
-as-of date, it should be from the earliest date available to latest date."*
+Net worth is a FUNCTION of date, not a NUMBER that needs one, and asking "what
+am I worth?" is asking for a point on it. That dissolves the question of which
+date a single figure should carry: one coherent date lets a stale statement
+drag the headline months backwards, and latest-known-per-account yields a
+number that was never true at any instant. There is no *the* net worth to be
+wrong about.
 
-Three plausible answers to "what date does a net-worth figure carry?" were on
-the table — one coherent date (pure, but one stale statement drags the headline
-months backwards), latest-known-per-account (current, but a number that was
-never true at any instant), or both. All three assume net worth is a NUMBER that
-needs a date. It is a FUNCTION of date, and asking "what am I worth?" is asking
-for a point on it. That dissolves the problem instead of answering it: there is
-no *the* net worth to be wrong about.
-
-It also needs no new event type. The ledger is already an append-only log of
-dated observations, so `net_worth(D)` is just "every account's last-known
-measurement at or before D" — which is why this whole slice is a projection.
+It needs no event type of its own. The ledger is already an append-only log of
+dated observations, so `net_worth(D)` is "every account's last-known
+measurement at or before D" — which is why this is a projection.
 
 WHY OBSERVATIONS AND NOT OUR OWN ARITHMETIC. A depository balance here is the
 **observed closing balance** the issuer attested, not the sum of postings we
 hold. Summing postings would be *our* arithmetic over a run that may be missing
 a month, and it would produce a confident figure from incomplete data — the
 exact failure this product exists to refuse. A statement's closing balance is a
-measurement (M1: measurements, not generations).
-
-See docs/net-worth.md for the four decisions.
+measurement, not a generation.
 """
 
 from __future__ import annotations
@@ -51,15 +45,11 @@ class NetWorthLine:
     held as a positive magnitude, because that is the figure on the bill.
 
     So the side is decided by the account's KIND, never by the sign of the
-    number (see `_side`). Guessing the convention from the sign is exactly the
-    bug this line used to carry: it claimed liabilities were "already negative",
-    which was inferred from defensive `abs()` calls in the answer path rather
-    than read from the registry that states it. On a real vault two cards worth
-    a few hundred owed were added to ASSETS, and the report said
-    `liabilities 0.00` next to two lines labelled `[liability]`.
+    number (see `_side`). Guessing the convention from the sign books a card's
+    owed balance as an asset and reports liabilities of zero.
 
     `as_of` is the date this figure was measured, usually EARLIER than the point
-    it belongs to; that gap is the honesty the whole slice exists to report."""
+    it belongs to; that gap is the honesty this module exists to report."""
     account: str
     amount: Decimal
     currency: str
@@ -67,14 +57,14 @@ class NetWorthLine:
     grade: str
     origin: str
     kind: str
-    proves: str = ""          # the document behind the figure (T1)
+    proves: str = ""          # the document behind the figure
 
     @property
     def provable(self) -> bool:
         """`corroborated` means we hold the attesting document AND the
         arithmetic checks. That is exactly what "provable" means, which is why
         net worth reads the existing grade instead of inventing a second
-        issued/asserted vocabulary for the same idea (D4)."""
+        issued/asserted vocabulary for the same idea."""
         return self.grade == CORROBORATED
 
 
@@ -83,12 +73,9 @@ class NetWorthPoint:
     as_of: str
     lines: list = field(default_factory=list)
     missing: list = field(default_factory=list)
-    # Real accounts that contributed NOTHING to this point, and why. Added
-    # 2026-07-26 after the first real run: it valued 4 accounts out of a vault
-    # holding 11 and said nothing about the other 7. Silently dropping an
-    # account from a net-worth total is the same lie of omission the `missing`
-    # list exists to prevent — this instrument had the flaw it was built to
-    # warn about, which is now the sixth time that has happened here.
+    # Real accounts that contributed NOTHING to this point, and why. Silently
+    # dropping an account from a net-worth total is the same lie of omission
+    # the `missing` list exists to prevent.
     skipped: list = field(default_factory=list)
 
     @property
@@ -104,7 +91,7 @@ class NetWorthPoint:
         return min((ln.as_of for ln in self.lines), default="")
 
     def by_currency(self) -> dict:
-        """Per-currency subtotals, and deliberately **no grand total** (D5).
+        """Per-currency subtotals, and deliberately **no grand total**.
 
         One financial life can hold several currencies, and we have no FX source
         with a date, a provenance and a grade of its own. A converted total would
@@ -189,14 +176,14 @@ def _holdings_at(state, as_of: str) -> dict:
 
 
 def _asserted_lines(proj, as_of: str):
-    """Accounts a person's own rulings brought into being (Slice 9a), and the
-    ones we must refuse to value.
+    """Accounts a person's own rulings brought into being, and the ones we must
+    refuse to value.
 
-    Three cases, and the difference between them is the whole of decision D3:
+    Three cases:
 
     * ``Assets:`` with every contributing movement decided — include at **cost**,
-      what you paid, never what it is now worth (M1). Badged `asserted`: your
-      word, trusted, and honestly marked (D2).
+      what you paid, never what it is now worth. Badged `asserted`: your
+      word, trusted, and honestly marked.
     * ``Assets:`` where any movement was ``MIXED`` — the cash is a fact but how
       much of it bought equity is not. Refuse, and say what is missing.
     * ``Liabilities:`` — **always refused from cash flow alone.** Money reaching
@@ -234,10 +221,10 @@ def _asserted_lines(proj, as_of: str):
         lines.append(NetWorthLine(
             account=account, amount=g["paid"], currency=currency,
             # VERIFIED, deliberately not CORROBORATED: a human attested this
-            # figure, and no document has checked it. That single character of
-            # difference is what keeps it out of the provable subtotal until an
-            # invoice or a 1098 arrives — the grade ladder doing the work a
-            # separate issued/asserted badge would have duplicated (D4).
+            # figure, and no document has checked it. That difference is what
+            # keeps it out of the provable subtotal until an invoice or a 1098
+            # arrives — the grade ladder doing the work a separate
+            # issued/asserted badge would have duplicated.
             as_of=g["as_of"], grade=VERIFIED,
             origin=ASSERTED, kind="asserted"))
     return lines, missing

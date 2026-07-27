@@ -1,9 +1,8 @@
-"""Slice 7 — net worth is a curve, and every point is honest about itself.
+"""Net worth is a curve, and every point is honest about itself.
 
-The design decision these tests protect (Vishnu, 2026-07-26): *"net worth is
-always as-of date, it should be from the earliest date available to latest
-date."* Net worth is not a number that needs a date attached; it is a function
-of date. So the properties worth asserting are less about arithmetic — that part
+Net worth is always as-of a date, running from the earliest date available to
+the latest. It is not a number that needs a date attached; it is a function of
+date. So the properties worth asserting are less about arithmetic — that part
 is a sum — and more about **what the product refuses to claim**:
 
   * an account contributes NOTHING before its first measurement, never zero
@@ -30,10 +29,8 @@ def _statement(ledger, raw, *, account, kind_doc, opening, closing,
                opening_date, closing_date, txns=None, number="000000001122",
                institution="Chase", captured="2026-04-01", blob=b"doc"):
     """A statement that RECONCILES, because the pipeline rightly refuses one
-    that does not. Writing these by hand first produced five held documents and
-    an empty net worth — the reconciliation gate doing its job on the test
-    author. When no transactions are given, one is invented for exactly the
-    difference, so every fixture below is a document that could exist."""
+    that does not. When no transactions are given, one is invented for exactly
+    the difference, so every fixture below is a document that could exist."""
     if txns is None:
         delta = Decimal(closing) - Decimal(opening)
         txns = ([(opening_date, "ACTIVITY", str(delta))] if delta else [])
@@ -109,7 +106,7 @@ def test_an_account_contributes_nothing_before_its_first_measurement(vault):
     proj = ledger.projection()
     march = net_worth(proj, "2026-03-31")
     # Accounts are identified by institution + number, not by the label printed
-    # on the statement — two banks may both call it "Total Checking" (Slice 1.5).
+    # on the statement — two banks may both call it "Total Checking".
     assert len(march.lines) == 1 and "chase" in march.lines[0].account
     assert march.by_currency()["USD"]["net"] == Decimal("1500.00")
     assert len(net_worth(proj, "2026-06-30").lines) == 2
@@ -119,11 +116,9 @@ def test_a_card_lands_on_the_liability_side(vault):
     """A card's stored balance is money OWED, positive — the figure on the bill
     (registry: "a card whose balance is money owed"). Net worth must subtract it.
 
-    This test passed while the code was wrong, because it fed a NEGATIVE closing
-    balance: the fixture and the code shared one mistaken assumption about the
-    convention, so the test confirmed the bug instead of catching it. On a real
-    vault two cards were added to assets and the report showed
-    `liabilities 0.00` beside two lines labelled `[liability]`."""
+    The fixture feeds a POSITIVE closing balance deliberately. A negative one
+    would share the same mistaken assumption about the convention as the code
+    under test, and confirm a bug instead of catching it."""
     raw, ledger = vault
     _checking(vault, opening="1000.00", closing="1500.00",
               opening_date="2026-03-01", closing_date="2026-03-31", blob=b"a")
@@ -141,7 +136,7 @@ def test_a_card_lands_on_the_liability_side(vault):
 
 
 def test_an_overpaid_card_is_an_asset_not_a_debt(vault):
-    """The reason the fix negates rather than takes an absolute value. If you
+    """The reason net worth negates rather than takes an absolute value. If you
     overpay a card it owes YOU, its owed figure is negative, and abs() would
     book that credit as another debt — turning money you are owed into money you
     owe, which is the worst possible direction for this error."""
@@ -175,8 +170,8 @@ def test_every_point_names_its_stalest_input(vault):
 # --- holdings ----------------------------------------------------------------
 
 def test_holdings_use_the_measurement_current_at_that_date(vault):
-    """A revaluation is a new observation, never a correction of the old one
-    (M1). So March's point keeps March's price."""
+    """A revaluation is a new observation, never a correction of the old one.
+    So March's point keeps March's price."""
     raw, ledger = vault
     _statement(ledger, raw, account="Vanguard Brokerage",
                kind_doc="checking_statement", opening="0.00", closing="0.00",
@@ -199,9 +194,9 @@ def test_holdings_use_the_measurement_current_at_that_date(vault):
 # --- the honesty properties --------------------------------------------------
 
 def test_a_liability_from_cash_flow_alone_is_refused_and_named(vault):
-    """The Kind B unknown. Money reaching a lender says nothing about the balance
-    owed — part of it was interest — and trusting the person does not fix that,
-    because they do not know either. Only the statement does.
+    """Money reaching a lender says nothing about the balance owed — part of it
+    was interest — and trusting the person does not fix that, because they do
+    not know either. Only the statement does.
 
     So the total stays INCOMPLETE, the account is named, and the product says
     both what it would ask and what document would settle it."""
@@ -225,10 +220,10 @@ def test_a_liability_from_cash_flow_alone_is_refused_and_named(vault):
 
 
 def test_provable_is_the_existing_grade_not_a_new_badge(vault):
-    """D4. `corroborated` already means "we hold the document and the arithmetic
+    """`corroborated` already means "we hold the document and the arithmetic
     checks", which is exactly what provable means. A figure a person asserted is
     `verified` — a human attested it, nothing checked it — so it counts toward
-    net worth (we trust the user, D2) and NOT toward the provable subtotal."""
+    net worth (we trust the user) and NOT toward the provable subtotal."""
     from viva.ledger.events import ruling_recorded
     ledger = _checking(vault, opening="30000.00", closing="10000.00",
                        opening_date="2026-03-01", closing_date="2026-03-31",
@@ -247,7 +242,7 @@ def test_provable_is_the_existing_grade_not_a_new_badge(vault):
 
 
 def test_two_currencies_give_two_subtotals_and_no_grand_total(vault):
-    """D5. We have no FX source with a date, a provenance and a grade, so a
+    """We have no FX source with a date, a provenance and a grade, so a
     converted total would be a figure no document attests."""
     raw, ledger = vault
     _checking(vault, opening="1000.00", closing="1500.00",
@@ -280,8 +275,8 @@ def test_an_empty_vault_says_nothing_rather_than_zero(vault):
 
 def test_the_debug_report_names_what_it_will_not_count(vault):
     """An instrument that prints a confident total while silently omitting a
-    mortgage is the exact failure this project keeps finding in its own tools.
-    The report must say what is missing, in words, on the page."""
+    mortgage is the failure the instrument exists to prevent. The report must
+    say what is missing, in words, on the page."""
     from viva.debug_networth import report_point, report_series
     from viva.ledger.events import ruling_recorded
 
@@ -301,8 +296,7 @@ def test_the_debug_report_names_what_it_will_not_count(vault):
 
 
 def test_an_empty_vault_reports_absence_not_zero(vault):
-    """The instrument lesson, applied before it can bite: a vault with nothing
-    in it must not print a confident 0.00 net worth."""
+    """A vault with nothing in it must not print a confident 0.00 net worth."""
     from viva.debug_networth import report_point
     _raw, ledger = vault
     text = report_point(net_worth(ledger.projection()))
@@ -311,13 +305,9 @@ def test_an_empty_vault_reports_absence_not_zero(vault):
 
 
 def test_an_account_it_cannot_value_is_named_not_dropped(vault):
-    """The first real run valued 4 accounts from a vault holding 11 and said
-    nothing about the other 7 — among them a brokerage whose statements were
-    parked, so the author's investments were missing from his net worth and the
-    report looked complete.
-
-    Silently omitting an account is the same failure as silently omitting a
-    mortgage. An account we hold but cannot value at this date must be NAMED."""
+    """Silently omitting an account is the same failure as silently omitting a
+    mortgage: whole accounts go missing while the report still looks complete.
+    An account we hold but cannot value at this date must be NAMED."""
     raw, ledger = vault
     _checking(vault, opening="1000.00", closing="1500.00",
               opening_date="2026-03-01", closing_date="2026-03-31", blob=b"a")

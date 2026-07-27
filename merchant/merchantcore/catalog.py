@@ -2,7 +2,7 @@
 
 Holds enriched ``MerchantRecord``s keyed by normalized merchant, plus a *pending
 queue* of merchants submitted for enrichment. Persists to a plain JSON file (it
-carries no personal data — only merchant knowledge, T9). ``export`` produces the
+carries no personal data — only merchant knowledge). ``export`` produces the
 privacy-linted, commercial-only snapshot a commons contribution is hashed from;
 ``merge`` imports commons priors (a local ruling always outranks an import).
 """

@@ -1,15 +1,14 @@
 """Transfer detection — recognizing that two movements are one internal transfer.
 
-Deterministic, no model calls (T2). A transfer is an *overlay* over two existing
-postings (never a re-post), so each statement still reconciles on its own; see
-docs/transfer-links-and-cross-document-corroboration.md.
+Deterministic, no model calls. A transfer is an *overlay* over two existing
+postings (never a re-post), so each statement still reconciles on its own.
 
 The trust discipline mirrors the reconciliation ladder's forced/suggested split:
 a **decisive** match auto-links (grade ``corroborated``); anything softer is
 **surfaced** as a suggestion for a human ruling and nothing is netted until
-confirmed (principle 2 — never bluff). v1 links only movements on accounts we
-already hold (all ingested accounts are the user's own); a named-but-unseen
-destination is Stage 3's own-account question.
+confirmed — never bluff a number. Links are only formed between movements on
+accounts we already hold (all ingested accounts are the user's own); a
+named-but-unseen destination is left to the own-account question.
 """
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ _DEPOSITORY_WORDS = ("saving", "checking", "chequing", "current", "transfer")
 
 def _flow(m: MovementInfo) -> str:
     """Classify a movement's role in a possible transfer — a *matching* read of
-    direction only (the full economic sign for net worth is Slice 7):
+    direction only (net worth uses the full economic sign):
       - an asset (depository) going down is a **source** (money out);
       - an asset going up, or a liability going down (a paydown), is a
         **destination** (money arriving);
@@ -60,7 +59,7 @@ def _flow(m: MovementInfo) -> str:
     """
     # An investment account's cash behaves like a depository for matching: money
     # in (a contribution) is a destination, money out (a withdrawal) a source
-    # (Slice 6 Stage 2 — a checking→brokerage contribution is an internal transfer).
+    # (a checking→brokerage contribution is an internal transfer).
     if m.kind in ("depository", "investment"):
         return "source" if m.amount < 0 else "destination"
     if m.kind == "liability":
@@ -86,9 +85,9 @@ def _last4(proj: LedgerProjection, account: str) -> str:
 def account_tokens_from(institution: str, number: str, ref: str) -> set[str]:
     """Distinctive tokens that identify one account in a transaction description.
 
-    The single implementation lives in the ledger's identity layer (Slice 6.5:
-    the projection's nature derivation needs the same tokens); this stays as the
-    ingest-side name so existing callers are unchanged. Works even for an account
+    The single implementation lives in the ledger's identity layer (the
+    projection's nature derivation needs the same tokens); this stays as the
+    ingest-side name so callers here are unchanged. Works even for an account
     not yet opened (a statement mid-post that is failing to reconcile)."""
     return account_tokens(institution, number, ref)
 
@@ -126,7 +125,7 @@ def _transfer_signal(m: MovementInfo) -> bool:
     """True when a movement's description carries a transfer-ish word — the weak
     signal that gates whether an ambiguous match is worth *asking* about. Without
     it, an equal-amount coincidence (a $50 purchase vs a $50 card paydown) is
-    treated as ordinary spending, not a question — the fix for review-flooding."""
+    treated as ordinary spending, not a question, which keeps review from flooding."""
     low = m.description.lower()
     return any(w in low for w in _TRANSFER_WORDS)
 
@@ -189,7 +188,7 @@ def link_transfers(ledger: Ledger) -> dict:
             linked += 1
         # Only ASK when there is a transfer signal on either side — a pure
         # amount coincidence with no such word is treated as ordinary spending,
-        # not a question (the fix for review-flooding).
+        # not a question, which keeps review from flooding.
         elif (skey not in open_suggestions
               and (_transfer_signal(src) or any(_transfer_signal(c) for c in cands))):
             log.info("transfer: ambiguous for %s (%d candidate(s)) — suggesting",
@@ -208,15 +207,15 @@ def find_corroborating_legs(proj: LedgerProjection, account: str, kind: str,
                             delta: Decimal, currency: str, o_date: str,
                             c_date: str, own_tokens: set[str] | None = None
                             ) -> list[MovementInfo]:
-    """Cross-document corroboration (Slice 3): a statement is off by ``delta`` —
+    """Cross-document corroboration: a statement is off by ``delta`` —
     the net effect on *its* balance of one or more movements it is missing (e.g.
     a card whose whole payments section was dropped). Find counterparty movements
     on other own accounts that **distinctively name this account** (so the
     candidate set is small and safe) and whose magnitudes **uniquely sum** to
     ``|delta|``. Return that subset — its lines supply what this document dropped.
 
-    Returns [] unless the subset is unique: a gap is never closed on a guess
-    (principle 2). Single-leg (one payment) is the size-1 case; the missing
+    Returns [] unless the subset is unique: a gap is never closed on a guess.
+    Single-leg (one payment) is the size-1 case; the missing
     section (several payments) is the size-N case, gated by uniqueness."""
     if delta == 0:
         return []
@@ -267,7 +266,7 @@ def _subsets_summing_to(items: list[MovementInfo], target: Decimal,
 
 def confirm_transfer(ledger: Ledger, movement_a: str, movement_b: str) -> bool:
     """A person confirms a suggested pair — a `verified` link (their attestation
-    is our highest grade), recorded as an event (correction-as-event, T4).
+    is our highest grade), recorded as an event (correction-as-event).
 
     Guards against double-linking: if either movement is already part of a live
     link (e.g. it was confirmed under a different suggestion), this is a no-op —

@@ -1,12 +1,11 @@
-"""Measure a model on the one job Slice 9a gives it: reading a sentence.
+"""Measure a model on its one job: reading a sentence.
 
     python -m viva.eval_listen                    # the configured interpreter
     python -m viva.eval_listen --model qwen3:4b --base-url http://localhost:11434/v1
     python -m viva.eval_listen --repeat 3         # variance, not a single lucky run
 
-**The headline metric is not accuracy.** It is the *confidently-wrong rate* —
-the eval-harness thesis, applied to its first real subject. A model that returns
-nothing costs a person one tap on a button that was already there; a model that
+**The headline metric is not accuracy.** It is the *confidently-wrong rate*. A
+model that returns nothing costs a person one tap on a button that was already there; a model that
 invents a 60/40 mortgage split writes a wrong number into someone's finances,
 grades it `verified` because a human confirmed a sentence they did believe, and
 generalizes it across every future payment to that counterparty. Those two
@@ -15,12 +14,11 @@ failures are not on the same scale, so this scores them apart:
   SAFE      unreadable         no JSON, or no legs → the buttons still work
   WRONG     wrong_majors       a confident misreading
   RUIN      invented_split     a fabricated ratio nobody stated  ← never non-zero
-  RUIN      leaked_amount      a figure from the model's head (T2 / ADR-010)
+  RUIN      leaked_amount      a figure from the model's head
   WEAK      missed_compound    read a mortgage as one thing
 
 `missed_compound` sits between: it does not fabricate, but it silently collapses
-a three-way payment into one nature, which is exactly the error that started
-this slice. Worth watching, not disqualifying.
+a three-way payment into one nature. Worth watching, not disqualifying.
 
 Everything runs against a **frozen, synthetic key** (`evals/listen_cases.json`)
 so it is free, offline-capable, reproducible, and safe in a public repo.
@@ -43,12 +41,12 @@ from .listen import interpret
 CASES = pathlib.Path(__file__).parent / "evals" / "listen_cases.json"
 
 SAFE, WRONG, RUIN, WEAK, OK = "unreadable", "wrong", "RUIN", "weak", "ok"
-# A verdict this harness needed on its very first real run. The pipe was broken
-# — wrong model name, server unreachable, a rejected parameter — and every case
-# came back with no legs in 10ms. Scored as `unreadable` that reads "safe, 0%
-# ruin, clean", which is a HARNESS making exactly the confidently-wrong error it
-# exists to catch. An eval that cannot tell "the model declined" from "we never
-# reached the model" is worse than no eval, because it is reassuring.
+# A call that never reached the model at all — a wrong model name, an
+# unreachable server, a rejected parameter. Scoring that as `unreadable` reads
+# "safe, 0% ruin, clean", which is a HARNESS making exactly the
+# confidently-wrong error it exists to catch. An eval that cannot tell "the
+# model declined" from "we never reached the model" is worse than no eval,
+# because it is reassuring.
 BROKEN = "BROKEN"
 
 

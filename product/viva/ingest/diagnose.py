@@ -2,8 +2,7 @@
 
 When a statement's opening + transactions do not equal its closing, this module
 localizes *why*, using arithmetic alone — no model calls. It returns a typed
-``ReconciliationFinding`` whose ``status`` draws the trust boundary described in
-docs/verification-findings-and-correction.md:
+``ReconciliationFinding`` whose ``status`` draws the trust boundary:
 
   - **forced**      — a correction implied by an *independent* identity (the
                       printed running-balance chain) that ALSO closes the

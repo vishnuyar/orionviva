@@ -62,16 +62,14 @@ def test_registering_a_new_balance_type_is_data_only():
 
 
 def test_a_read_names_its_own_type_through_its_prompt_version():
-    """T8 required the extract version to be self-describing —
-    `extract:<base>+<fragment>` — and a fragment belongs to exactly one profile.
-    So a claim that lost its classify phase can still say what it is.
+    """The extract version is self-describing — `extract:<base>+<fragment>` —
+    and a fragment belongs to exactly one profile. So a claim that lost its
+    classify phase can still say what it is.
 
-    This is not a convenience. A real vault held 40 documents whose claims had an
-    EXTRACT phase and no CLASSIFY phase; the balance family's extract JSON does
-    not name its own type, so every one replayed as `unknown`, found no
-    projector, and parked. A rebuild produced an EMPTY vault out of forty
-    perfectly good stored reads — while the answer sat one field away, written
-    down at ingest time by a rule adopted for a completely different reason.
+    This is not a convenience. The balance family's extract JSON does not name
+    its own type, so without it a stored claim with no CLASSIFY phase replays as
+    `unknown`, finds no projector, and parks — an empty vault out of perfectly
+    good stored reads, while the answer sits one field away.
 
     Reading it back is recovering a recorded fact, not inferring one."""
     from viva.ingest.registry import doc_type_for_prompt_version
@@ -83,10 +81,8 @@ def test_a_read_names_its_own_type_through_its_prompt_version():
     # An unknown fragment must return "" so the caller parks honestly rather
     # than defaulting to a plausible type — a wrong projector is worse than none.
     # A document read a YEAR AGO carries whatever version was current then, and
-    # the registry only holds today's. Three real documents recorded under
-    # `brokerage-v1` were unrecoverable against a registry holding
-    # `brokerage-v2` and parked as `unknown` — the type was written down; we
-    # were asking for an exact match on the one part designed to change.
+    # the registry only holds today's, so the FAMILY is matched rather than the
+    # exact version — the one part designed to change.
     assert doc_type_for_prompt_version("extract:brokerage-base-v1+brokerage-v1") \
         == "brokerage_statement"
     assert doc_type_for_prompt_version("extract:base-v1+checking-v9") == \
@@ -123,23 +119,19 @@ def test_reingest_can_filter_to_one_document_family_and_cost_nothing_first():
 def test_one_locale_default_for_every_entry_point(monkeypatch):
     """A setting that four programs each default separately is four defaults.
 
-    `rebuild` defaulted to "US" while `web`, `debug_claim` and `debug_read` all
-    defaulted to "en-US". "US" is not a language tag, so the amount parser had no
-    decimal convention for it and refused every THREE-DECIMAL figure as
-    ambiguous — silently, because an unknown locale is not an error in a money
-    parser, it just makes it stricter.
-
-    The visible consequence: two brokerage statements parsed perfectly under
-    `debug_claim` and parked under `rebuild`, on identical code and the same
-    stored reply. Chasing that contradiction invented a "unit-quantity defect"
-    that never existed and left real holdings out of a net-worth figure."""
+    "US" is not a language tag, so the amount parser has no decimal convention
+    for it and refuses every THREE-DECIMAL figure as ambiguous — silently,
+    because an unknown locale is not an error in a money parser, it just makes
+    it stricter. Two entry points disagreeing on the default therefore parse the
+    same stored reply differently, and leave holdings out of a net-worth
+    figure."""
     from vivacore.verify.normalize import known_language_tags, parse_amount
     from viva.env import locale_from_env
 
     monkeypatch.delenv("VIVA_LOCALE", raising=False)
     assert locale_from_env() == "en-US"
 
-    # The exact figures from the real statements.
+    # Three-decimal figures, as a brokerage statement prints them.
     for raw in ("295.120", "139.770"):
         assert parse_amount(raw, "en-US", "USD").status == "ok"
         assert parse_amount(raw, "US", "USD").status == "ambiguous", \
@@ -158,7 +150,7 @@ def test_one_locale_default_for_every_entry_point(monkeypatch):
 
 
 def test_no_entry_point_defaults_the_locale_by_hand():
-    """The class of bug, closed structurally rather than fixed four times."""
+    """One place resolves the locale; no entry point may default it by hand."""
     import pathlib
     viva = pathlib.Path(__file__).resolve().parents[1] / "viva"
     offenders = [p.name for p in viva.rglob("*.py")

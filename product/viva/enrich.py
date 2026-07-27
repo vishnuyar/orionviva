@@ -2,7 +2,7 @@
 
 Gathers the shareable unknown merchants, sends ONLY impersonal hints (a
 normalized key + a linted example) to a batched model call via merchantcore,
-persists the merchant catalog beside the vault (plain JSON — impersonal, T9), and
+persists the merchant catalog beside the vault (plain JSON — impersonal), and
 syncs the results back into the ledger as events so categorization is
 retrospective. Repeatable and idempotent.
 
@@ -25,17 +25,13 @@ from .logs import configure as configure_logging
 def catalog_path(vault_dir) -> pathlib.Path:
     """Where the merchant catalog lives — SHARED across vaults, by default.
 
-    It used to live inside the vault directory, which quietly contradicted the
-    reason it exists. The catalog holds **impersonal** merchant knowledge (T9):
-    a normalized key, a category, a counterparty kind. Nothing about anyone's
-    money is in it, which is exactly why it can be kept once, reused across
-    every vault, and eventually shared with other people — "Costco is a
-    warehouse club" is true for everybody and nobody should pay a model to
-    learn it twice.
-
-    Keeping it beside the vault meant every rebuild started from zero and paid
-    again for knowledge already bought. That is the network effect the catalog
-    was built for, working in reverse.
+    The catalog holds **impersonal** merchant knowledge: a normalized key, a
+    category, a counterparty kind. Nothing about anyone's money is in it, which
+    is exactly why it can be kept once, reused across every vault, and
+    eventually shared with other people — "Costco is a warehouse club" is true
+    for everybody and nobody should pay a model to learn it twice. A catalog
+    kept inside a vault directory instead starts every rebuild from zero and
+    pays again for knowledge already bought.
 
     So: `VIVA_CATALOG` if set, else `~/.viva/merchant-catalog.json`. An existing
     in-vault catalog is still honoured when the shared one does not exist yet,

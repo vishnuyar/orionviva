@@ -1,4 +1,4 @@
-"""Slice 4 — pay stubs & income: the first divergent document.
+"""Pay stubs & income: the first divergent document.
 
 The identity is gross − deductions = net (not a balance); a pay stub decomposes
 the checking deposit it explains, income is counted once, deductions land in

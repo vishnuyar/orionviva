@@ -1,5 +1,5 @@
-"""Slice 5.5 — merchant catalog: categorize the merchant once, fill every
-transaction; the per-transaction override still wins; unknown merchants wait."""
+"""Merchant catalog: categorize the merchant once, fill every transaction; the
+per-transaction override still wins; unknown merchants wait."""
 
 from decimal import Decimal
 

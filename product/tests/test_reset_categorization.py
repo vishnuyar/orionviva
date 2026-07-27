@@ -59,7 +59,7 @@ def _counts(vault):
 
 def test_reset_drops_model_categorization_but_keeps_my_rulings(tmp_path):
     """The guard: a model's categorization is derived data and goes; a ruling YOU
-    made is the moat and stays (Slice 6.5)."""
+    made is the moat and stays."""
     src = _seed_vault(tmp_path / "src")
     before = _counts(src)
     assert before["MerchantEnriched"] > 0        # model-made
@@ -118,7 +118,7 @@ def test_reset_preserves_the_ledger_and_raw_store(tmp_path):
     assert set(clean.raw.doc_ids()) == src_docs
     # The model's categorization is a clean slate, but the human ruling on Costco
     # survives — so groceries remains and only the model-categorized two return
-    # to the queue (Slice 6.5: rulings are the asset).
+    # to the queue (rulings are the asset).
     assert proj.spending_by_category() == {"Uncategorized": Decimal("65.00"),
                                            "groceries": Decimal("80.00")}
     assert len(proj.uncategorized_merchants()) == 2

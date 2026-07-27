@@ -1,4 +1,4 @@
-"""Viva's voice lives here, as data — the persona pack (Slice 6.10).
+"""Viva's voice lives here, as data — the persona pack.
 
 Everything Viva says is an entry in a versioned pack directory, never a Python
 literal. The discipline is prompts-as-files applied to the persona: her whole
@@ -19,9 +19,9 @@ Two hard rules, enforced mechanically (test_persona_pack.py):
    supply raises immediately rather than rendering a hole — a question with a
    blank where a figure should be is a bluff by omission.
 
-The pack is impersonal by construction (T9): it contains no user data, so it is
+The pack is impersonal by construction: it contains no user data, so it is
 shareable, reviewable in a PR, and swappable — a terser Viva, or another
-language (I5), is a pack, not a code change.
+language, is a pack, not a code change.
 """
 
 from __future__ import annotations
@@ -34,17 +34,15 @@ from functools import lru_cache
 _DIR = pathlib.Path(__file__).resolve().parent
 
 # The voice currently speaking. Bump by ADDING a pack directory, never by
-# editing a released one — declines record the pack that asked (T8 discipline).
-# pack-v1: the queue's original wording, verbatim. pack-v2: the wording pass in
-# Viva's manner (docs/viva-persona.md), model-drafted, author-reviewed (D2) —
-# and the Slice 6.11 expectation phrasings.
+# editing a released one — a decline records the pack that asked, and that
+# pack_version must keep resolving to the exact words it recorded.
 ACTIVE_PACK = "pack-v2"
 
 # ------------------------------------------------------------- the contract
 #
 # Phrasing key -> the slots its template MAY use. These are the fields the
 # question queue's deterministic intent supplies — nothing else may appear in a
-# template, so a phrasing cannot smuggle a claim into a question (T2).
+# template, so a phrasing cannot smuggle a claim into a question.
 # Slot values arrive PRE-FORMATTED (money already carries its currency): the
 # pack places figures, it never computes them.
 
@@ -72,7 +70,7 @@ INTENT_FIELDS: dict[str, frozenset] = {
     "corroboration_why":           frozenset(),
     "corroboration_why_unreliable": frozenset(),
     "free_text_invite":            frozenset(),
-    # Slice 6.11 — the expectations engine. One phrasing pair per mechanism;
+    # The expectations engine. One phrasing pair per mechanism;
     # the document name comes from the registry (data), never from the model.
     "expectation_retirement_flow":         frozenset({"money", "document"}),
     "expectation_retirement_flow_why":     frozenset(),
@@ -82,8 +80,8 @@ INTENT_FIELDS: dict[str, frozenset] = {
     "expectation_account_cadence_why":     frozenset(),
 }
 
-# Moment key -> its slots. Moments are the relationship lines (welcome, return,
-# the "I don't know" reassurance) from the persona guide (docs/viva-persona.md).
+# Moment key -> its slots. Moments are the relationship lines: welcome, return,
+# the "I don't know" reassurance.
 # The only personal slot is the name, derived deterministically from the
 # vault's own account holders, never asked of a model.
 MOMENT_FIELDS: dict[str, frozenset] = {

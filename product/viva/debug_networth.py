@@ -1,4 +1,4 @@
-"""What are you worth, and on what evidence? — the net-worth curve (Slice 7).
+"""What are you worth, and on what evidence? — the net-worth curve.
 
     VIVA_VAULT_DIR=<vault> python -m viva.debug_networth            # latest point
     VIVA_VAULT_DIR=<vault> python -m viva.debug_networth 2026-03-31 # any date

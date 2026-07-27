@@ -2,11 +2,11 @@
 
 Everything else in ingest is deterministic and unit-tested offline. This module
 is deliberately thin and quarantined: render the pages, fold in the issuer's own
-embedded text (the measured product default is text+image — see
-docs/document-preprocessing.md), call a shared adapter, and hand the raw output
+embedded text (the measured product default is text+image), call a shared
+adapter, and hand the raw output
 to the deterministic ``from_model_json`` parser. It proposes; it never certifies.
 
-The read is **two-phase** (the Slice 2 design): a cheap **classify** pass names
+The read is **two-phase**: a cheap **classify** pass names
 the document (first page + its embedded text — no full extraction), then, if a
 profile exists for that type, an **extract** pass runs the prompt that type's
 profile owns (a shared base + a per-type fragment). A type with no projector yet
@@ -109,7 +109,7 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
 
     prompt_text, prompt_version = composed
     # The profile's identity selects the facts parser — a pay stub is not a
-    # balance statement (Slice 4). Same two-phase read, different shape.
+    # balance statement. Same two-phase read, different shape.
     profile = profile_for(doc_type)
     identity = profile.identity if profile else ""
     parse_fn = {PAYSTUB_IDENTITY: from_paystub_json,
@@ -120,8 +120,8 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
                          _with_embedded(prompt_text, embedded_text),
                          doc_id, locale, currency, prompt_version=prompt_version,
                          parse_fn=parse_fn)
-    # Classification is authoritative for the type (the extract prompt no longer
-    # asks the model to re-decide it); stamp it onto the facts and the result.
+    # Classification is authoritative for the type (the extract prompt does not
+    # ask the model to re-decide it); stamp it onto the facts and the result.
     rr.doc_type = doc_type
     rr.doc_type_confidence = conf
     if rr.facts is not None:
@@ -149,10 +149,10 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
                     err, tries)
         # Two different failures need two different asks. A JSON *syntax* error
         # means "reply again, valid this time". A *value* that wouldn't normalize
-        # (a real run returned a cost basis of 'not applicable') means the JSON
-        # was fine and only one field is wrong — saying "your reply was not valid
-        # JSON" there is untrue, wastes a call, and doesn't tell the model what to
-        # fix. Name the offending field instead (T1: be specific about evidence).
+        # (a cost basis of 'not applicable') means the JSON was fine and only one
+        # field is wrong — saying "your reply was not valid JSON" there is untrue,
+        # wastes a call, and doesn't tell the model what to fix. Name the
+        # offending field instead: be specific about the evidence.
         if _is_syntax_error(err):
             retry_prompt = (prompt + "\n\nYour previous reply was NOT valid JSON "
                             f"({err}). Return ONLY one valid JSON object: escape "

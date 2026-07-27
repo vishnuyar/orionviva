@@ -4,20 +4,19 @@
 
 `reingest` re-*reads* every document with the model: it tests the reader, and it
 costs one call per document. This does the other half, and it is free: every
-model reply is already stored verbatim (`ReadRecorded`, ADR-003/T3), so a vault
+model reply is already stored verbatim (`ReadRecorded`), so a vault
 can be reconstructed by running **today's parsers** over **yesterday's replies**.
 
 What that buys, all at once:
 
   * **The largest regression test available.** Every parser meets every document
-    you have ever ingested, in one run, for nothing. Brokerage Stage 2 has never
-    met real data; this is its first encounter.
+    you have ever ingested, in one run, for nothing.
   * **A clean slate for measurement.** A queue with pre-answered questions
     measures nothing. Rebuilding drops the derived overlays, so tier counts and
     question counts are honest.
-  * **Proof the claims layer was worth building.** It has been carried since v0
-    on the argument that a stored reply makes re-derivation free. This is that
-    argument being cashed.
+  * **Proof the claims layer was worth building.** The claims layer rests on the
+    argument that a stored reply makes re-derivation free; this is that argument
+    being cashed.
 
 **It writes a NEW vault and never touches the source.** Your real money, one
 shot: the old vault stays until you have looked at the new one.
@@ -96,14 +95,10 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     # A rebuild reads the doc TYPE from the classify-phase claim and the figures
     # from the extract-phase one. If the classify claims are missing, every
     # balance-family document comes back `unknown` — because that family's
-    # extract JSON does not name its own type — and all 40 park with an
-    # identical, uninformative message.
-    #
-    # That happened on a real vault and the run said nothing about it: forty
-    # lines of "no projector yet for 'unknown'" and no hint that the INPUT was
-    # short a phase. An instrument that cannot say which of its inputs is
-    # missing is making the person guess, which is this project's most repeated
-    # failure. Counted and printed up front, before a single parse.
+    # extract JSON does not name its own type — and every one of them parks with
+    # an identical, uninformative message. An instrument that cannot say which
+    # of its inputs is missing makes the person guess, so both phases are
+    # counted and printed up front, before a single parse.
     with_classify = sum(1 for d in doc_ids if (claims[d].get("classify") or {}).get("response_text"))
     with_extract = sum(1 for d in doc_ids if (claims[d].get("extract") or {}).get("response_text"))
 
@@ -123,22 +118,15 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     # WHICH ORDER, and why it is a question at all.
     #
     # `src_raw.doc_ids()` yields content hashes, so a replay arrives in
-    # effectively random order. Slice 1 promises that ordering does not matter —
-    # "every ordering of a 3-month run yields the identical posted chain, zero
-    # gaps" — so hash order SHOULD be fine, and running it that way is how we
-    # find out whether that promise still holds on 40 real documents.
+    # effectively random order. Ordering is not supposed to matter: every
+    # ordering of a run should yield the identical posted chain with zero gaps.
     #
-    # `by_date` replays oldest-first, and IS THE DEFAULT since 2026-07-26,
-    # because the two orders were run against 40 real documents and disagreed:
-    #
-    #   hash order:  16 posted, 14 held as gaps  }  919 movements
-    #   date order:  31 posted,  0 held as gaps  }  919 movements
-    #
-    # The MONEY is order-independent — 919 either way, so Slice 1's substantive
-    # promise holds. The GRADE is not: the same statements are `conflicted` in
-    # one order and `corroborated` in the other. For a product whose output is
-    # trust, the grade IS the product, so this is a real defect and not cosmetic.
-    # See docs/stocktake-2026-07.md. Use --hash-order to reproduce it.
+    # `by_date` replays oldest-first and IS THE DEFAULT, because the two orders
+    # do not in fact agree. The MONEY is order-independent — the same movement
+    # total either way — but the GRADE is not: the same statements come back
+    # `conflicted` in one order and `corroborated` in the other. For a product
+    # whose output is trust, the grade IS the product, so that is a real defect
+    # and not cosmetic. Use --hash-order to reproduce it.
     if by_date:
         def _period(doc):
             e = claims[doc].get("extract") or {}
@@ -168,17 +156,13 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
             classify.get("response_text") or text)
         if doc_type == "unknown":
             # No classify claim (or an unreadable one). The EXTRACT claim still
-            # names its own type: T8 made the version a self-describing
+            # names its own type: the version is a self-describing
             # `extract:<base>+<fragment>` composite, and a fragment belongs to
             # exactly one profile — a read recorded under `card-v1` WAS a
             # credit-card statement. This reads a fact we wrote down; it does
-            # not infer one.
-            #
-            # Without it, 40 real documents whose claims carried an extract
-            # phase and no classify phase replayed as `unknown`, found no
-            # projector, and parked — an empty vault out of forty perfectly good
-            # stored reads, with the answer sitting one field away the whole
-            # time.
+            # not infer one. Without it, a document whose claims carry an
+            # extract phase and no classify phase replays as `unknown`, finds no
+            # projector, and parks, with the answer one field away.
             recovered = doc_type_for_prompt_version(extract.get("prompt_version", ""))
             if recovered:
                 doc_type, confidence = recovered, 1.0
@@ -196,14 +180,13 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
 
             The original `prompt_version` and `model` ride along, so the rebuilt
             vault's claims still name the instructions that actually produced
-            the text (T8). A rebuild must not relabel history as its own."""
+            the text. A rebuild must not relabel history as its own."""
             facts, err = _parse(_t, _text, new_doc_id, locale, currency)
             if facts is not None:
                 # The balance family's extract JSON carries no doc_type — that
                 # comes from the CLASSIFY phase, and the reader stamps it onto
-                # the facts after parsing. Omitting this is what parked 33 of 40
-                # documents on the first real rebuild: every statement came back
-                # as `unknown`, which has no projector, so nothing could post.
+                # the facts after parsing. Omit it and every statement comes
+                # back as `unknown`, which has no projector, so nothing posts.
                 facts.doc_type = _t
                 facts.doc_type_confidence = _c
             return ReadResult(doc_type=(facts.doc_type if facts else _t),
@@ -231,15 +214,13 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     # neighbour arrives. During normal use that neighbour comes later and the
     # heal fires; in a single batch run, the last arrivals have nobody left to
     # trigger them. So the sweep runs once at the end — the same sweep `rescan`
-    # exists for, which is precisely Slice 1's order-independence promise being
-    # kept rather than assumed.
+    # exists for, so order-independence is kept rather than assumed.
     from .ingest import sweep
 
     swept = sweep(vault.ledger)
     proj = vault.ledger.projection()
-    # ALWAYS report the sweep, including when it healed nothing. A silent zero
-    # is how the first run of this looked identical to the run before it and
-    # nobody could tell whether the sweep had even happened (2026-07-26).
+    # ALWAYS report the sweep, including when it healed nothing: a silent zero
+    # leaves no way to tell whether the sweep happened at all.
     log(f"\nsweep: healed {swept.get('gaps', 0)} gap(s), corroborated "
         f"{swept.get('corroborated', 0)} conflict(s), linked "
         f"{swept.get('auto', 0)} transfer(s)")
@@ -249,24 +230,19 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     # The per-document lines record what happened the MOMENT each document
     # landed. A statement that arrives before its neighbour is a gap at that
     # instant and posts minutes later when the neighbour heals it — but the
-    # arrival line still says "gap" forever.
-    #
-    # Reading those arrival counts as an outcome produced a false alarm: a run
-    # summarised as "14 gap" had ZERO gaps left in the vault, and I reported a
-    # defect in Slice 1's order-independence that does not exist (2026-07-26).
-    # A transient state counted as a result is still a reporting failure.
+    # arrival line still says "gap" forever. A transient state counted as a
+    # result is a reporting failure, so the outcome is read from the vault.
     if recovered_types:
         log(f"\n  {recovered_types} document(s) had no classify claim; their type\n"
-            "  was recovered from the extract prompt version (T8).")
+            "  was recovered from the extract prompt version.")
     still_held = len([b for b in proj.gap_holds()])
     log(f"still held after everything: {still_held} gap(s)")
     if counts.get("gap") and not still_held:
         log(f"  ({counts['gap']} statement(s) were a gap ON ARRIVAL and healed "
             "when their neighbours landed — that is the cascade working.)")
 
-    # A tool must check its own outcome. `enrich` on the last rebuilt vault said
-    # "0 merchants, 0 transactions" — the vault was empty and nothing had said
-    # so, because per-document lines are not a result (2026-07-26).
+    # A tool must check its own outcome: per-document lines are not a result, so
+    # say plainly whether anything was rebuilt at all.
     movements = len(proj.movements())
     log(f"\nrebuilt vault: {len(proj.accounts())} account(s), {movements} movement(s)")
     if movements == 0:

@@ -16,12 +16,10 @@ from urllib.parse import parse_qs, urlparse
 
 from . import service
 
-# The surface is a built React app (Slice 6.7) whose STATIC output is committed,
-# so cloning the repo and running this server gives a working page with no Node
-# and no network — the toolchain is a contributor's concern, never a user's.
-# `static/` IS the surface — plain HTML and JS, no build step (Slice 6.9), so
-# the file served is the file a contributor reads. If it is missing we say
-# so plainly rather than serving a blank page.
+# `static/` IS the surface — plain HTML and JS, committed, no build step — so
+# cloning the repo and running this server gives a working page with no Node and
+# no network, and the file served is the file a contributor reads. If it is
+# missing we say so plainly rather than serving a blank page.
 _STATIC = Path(__file__).parent / "static"
 _LEGACY_INDEX = Path(__file__).parent / "index.html"
 _TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
@@ -62,7 +60,7 @@ def make_handler(vault, read_fn):
             built = _asset("index.html")
             if built:
                 return self._bytes(*built)
-            if _LEGACY_INDEX.is_file():          # the pre-6.7 single-file page
+            if _LEGACY_INDEX.is_file():          # the single-file fallback page
                 return self._bytes(_LEGACY_INDEX.read_bytes(),
                                    "text/html; charset=utf-8")
             self._bytes(

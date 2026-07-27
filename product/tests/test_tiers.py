@@ -1,12 +1,8 @@
-"""Slice 6.8 — ask only where the counterparty cannot tell us.
+"""Ask only where the counterparty cannot tell us.
 
-(Committed originally as "Slice 9b"; renamed 2026-07-26 because 9b is reserved
-for the READ direction — Viva speaking. This is the question queue getting
-smarter, which is the 6.x family. See docs/implementation-roadmap.md.)
-
-The failure this replaces, in one sentence: the queue asked *"is this money spent,
-or is it something you now own?"* about a counterparty already enriched as
-`loan_payments / mortgage`. We knew, and we asked anyway (Vishnu, 2026-07-25).
+Asking *"is this money spent, or is it something you now own?"* about a
+counterparty already enriched as `loan_payments / mortgage` asks for something
+we already know.
 
 So these tests are mostly about **silence** — the hardest thing to assert and the
 whole point of the design. A product that asks about a supermarket is not being
@@ -198,10 +194,11 @@ def test_the_tier_summary_is_the_before_and_after_number(tmp_path):
 
 
 def test_every_cli_reads_dotenv_the_same_way():
-    """`debug_tiers` shipped without it and told the author to set a variable he
-    had already set in `.env`. One entry point behaving differently from its
-    siblings is a small bug with an outsized cost: it makes the tool look broken
-    at the exact moment someone is trying to use it for the first time."""
+    """A CLI that reads VIVA_PASSPHRASE without loading `.env` tells the user to
+    set a variable they have already set. One entry point behaving differently
+    from its siblings is a small bug with an outsized cost: it makes the tool
+    look broken at the exact moment someone is trying to use it for the first
+    time."""
     import ast
     import pathlib
 
@@ -363,11 +360,10 @@ def test_the_diff_writes_nothing(tmp_path):
 
 
 def test_a_rebuild_that_produces_nothing_says_so(tmp_path):
-    """`enrich` on the first rebuilt vault reported "0 merchants, 0 transactions"
-    — the vault was empty, and the rebuild had printed 35 tidy per-document
-    lines and a cheerful summary. Per-document output is not a result. Same
-    lesson as the eval harness: a tool must check its own outcome, and the
-    failure has to be louder than the progress."""
+    """Per-document output is not a result. A rebuild that prints tidy
+    per-document lines and a cheerful summary while producing an EMPTY vault has
+    reported nothing: a tool must check its own outcome, and the failure has to
+    be louder than the progress."""
     from viva.ingest import RawStore
     from viva.ingest.pipeline import ReadResult
     from viva.rebuild import rebuild
@@ -395,14 +391,12 @@ def test_a_rebuild_that_produces_nothing_says_so(tmp_path):
 
 
 def test_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):
-    """The bug that parked 33 of 40 real documents on the first rebuild.
-
-    The balance family's extract JSON carries no `doc_type` — that comes from
+    """The balance family's extract JSON carries no `doc_type` — that comes from
     the CLASSIFY phase, and the reader stamps it onto the facts after parsing.
-    The rebuild's replay skipped that step, so every statement came back as
-    `unknown`, which has no projector, so nothing could post. Brokerage and pay
-    stubs were unaffected because their extract JSON names its own type — which
-    is exactly why the failure looked selective and confusing."""
+    A replay that skips that step brings every statement back as `unknown`,
+    which has no projector, so nothing can post. Brokerage and pay stubs are
+    unaffected because their extract JSON names its own type, which is what
+    makes the failure look selective."""
     from viva.rebuild import rebuild
     from viva.vault import Vault
 
@@ -420,12 +414,11 @@ def test_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):
 
 
 def test_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
-    """Slice 1's promise — any ingest order yields the same posted chain — is a
-    CASCADE: a statement that cannot connect yet waits for its neighbour. In
-    normal use the neighbour arrives later and the heal fires. In one batch run
-    the last arrivals have nobody left to trigger them, so 14 of 40 real
-    documents held as gaps. The sweep at the end is that promise being kept
-    rather than assumed."""
+    """Any ingest order yielding the same posted chain is a CASCADE: a statement
+    that cannot connect yet waits for its neighbour. In normal use the neighbour
+    arrives later and the heal fires. In a batch run the last arrivals have
+    nobody left to trigger them and hold as gaps, so the sweep at the end is
+    that promise being kept rather than assumed."""
     import inspect
 
     from viva import rebuild as mod
@@ -437,17 +430,13 @@ def test_a_rebuild_sweeps_at_the_end_so_order_does_not_decide(tmp_path):
 
 
 def test_a_gap_on_arrival_is_not_a_gap_in_the_vault(tmp_path):
-    """The correction to a false alarm (2026-07-26).
+    """A gap counted on arrival is TRANSIENT. A statement arriving before its
+    neighbour is a gap at that instant and posts the moment the neighbour heals
+    it — the cascade working as designed.
 
-    A rebuild summarised as "14 gap" was read as a defect in Slice 1's
-    order-independence, written up with a table and a diagnosis. `debug_gaps`
-    on that very vault then reported ZERO holds: the gaps were TRANSIENT. A
-    statement arriving before its neighbour is a gap at that instant and posts
-    the moment the neighbour heals it — the cascade working as designed.
-
-    The arrival counters kept saying "gap" forever, so a sum of MOMENTS was read
-    as a STATE, and correct code was accused of a bug. Report the vault's final
-    state; never the sum of moments."""
+    Arrival counters keep saying "gap" forever, so a sum of MOMENTS read as a
+    STATE accuses correct code of a bug. Report the vault's final state; never
+    the sum of moments."""
     from viva.rebuild import rebuild
     from viva.vault import Vault
 
@@ -463,10 +452,9 @@ def test_a_gap_on_arrival_is_not_a_gap_in_the_vault(tmp_path):
 
 
 def test_an_unshareable_counterparty_is_unknown_not_unenriched(tmp_path):
-    """Found on the real vault: 185 counterparties sat in `unenriched`, which
-    promises "we'll identify this later" — but T9 forbids sending a peer name or
-    a cheque number to the commons, so enrichment will never see them and they
-    could never become `settled`.
+    """`unenriched` promises "we'll identify this later" — but sending a peer
+    name or a cheque number to the commons is forbidden, so enrichment will
+    never see those counterparties and they could never become `settled`.
 
     `unknown` is the truth about them, and it is also the tier that asks one
     transaction at a time, which is exactly right for a Zelle or a check."""

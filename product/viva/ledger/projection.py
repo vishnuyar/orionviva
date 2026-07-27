@@ -1,16 +1,15 @@
 """The running-balance projection — a view rebuilt by replaying the event log.
 
-The projection layer owns no truth; it re-derives it (data-model-considerations.md).
+The projection layer owns no truth; it re-derives it.
 Feed it the events, ask for a balance, and it returns not just a number but the
 number's *grade* and *provenance* — because a finance answer without a cited
-source and a confidence signal is exactly what this project refuses to ship
-(principle 2).
+source and a confidence signal is exactly what this project refuses to ship.
 
-The v0 grade ladder, constructed deterministically (never model-reported):
+The grade ladder, constructed deterministically (never model-reported):
 
   - **corroborated** — the issuer's closing figure is attested AND the opening
     balance plus the period's transactions reconcile to it. Two independent
-    routes to the same number agree. The strongest thing v0 can say.
+    routes to the same number agree. The strongest thing the ledger can say.
   - **verified**     — a closing figure is attested but there are no transactions
     to reconcile it against (a lone snapshot, trusted because the issuer wrote
     it).
@@ -79,13 +78,13 @@ class AccountInfo:
     institution: str = ""
     number: str = ""                       # as extracted (mask for display)
     names: list[str] = field(default_factory=list)   # account holder name(s)
-    origin: str = ISSUED     # Slice 9a (A3): who says this account exists
+    origin: str = ISSUED     # who says this account exists
 
 
 @dataclass
 class PositionRecord:
-    """One holding measured at a date (Slice 6). A measurement, not a posting —
-    unrealized gain is DERIVED here, as-of-date, never a stored/ledger fact (M1)."""
+    """One holding measured at a date. A measurement, not a posting —
+    unrealized gain is DERIVED here, as-of-date, never a stored/ledger fact."""
     account: str
     instrument: str
     units: Decimal
@@ -148,7 +147,7 @@ def _grade_rank(grade: str | None) -> int:
 
 def movement_key(doc_id: str, account: str, date: str, amount: Decimal | str,
                  description: str, occurrence: int = 0) -> str:
-    """A stable reference to one posted movement, for transfer links (Slice 3).
+    """A stable reference to one posted movement, for transfer links.
 
     Anchored to content — document, account, date, amount, description — plus an
     occurrence index that disambiguates identical siblings in the same document.
@@ -158,44 +157,37 @@ def movement_key(doc_id: str, account: str, date: str, amount: Decimal | str,
     return f"{doc_id}|{account}|{date}|{amount}|{description}|{occurrence}"
 
 
-# --------------------------------------------------------- movement nature (S6.5)
+# ------------------------------------------------------------- movement nature
 
 # What a movement *is*, economically — the distinction that makes "spending" mean
-# money that left your LIFE, not money that left an ACCOUNT (M1). Derived, never
-# stored: a projection over events we already write (T4), so it is retroactive for
+# money that left your LIFE, not money that left an ACCOUNT. Derived, never
+# stored: a projection over events we already write, so it is retroactive for
 # free and costs no re-ingest.
 SPENDING = "spending"        # real external outflow — the only thing aggregates count
 TRANSFER = "transfer"        # the money is still yours (own card, own brokerage, ...)
 SETTLEMENT = "settlement"    # a person's ruling: repaid a loan, was paid back, ...
-# Slice 9a. A COMPOUND movement whose components are known but whose PROPORTIONS
+# A COMPOUND movement whose components are known but whose PROPORTIONS
 # are not — a mortgage payment is interest (spending) and principal (settlement)
 # and escrow (still yours) at once, and the split is printed on a statement we
 # do not have. Counting it all as spending overstates; counting none understates.
 # So it is neither: it gets its own line, named, with the document that would
 # resolve it. Stating "part of this is spending, I can't say how much" is the
-# honest answer, and it is the one the three-button question could not give.
+# honest answer.
 MIXED = "mixed"
 
 # How a nature was decided, strongest first. Carried on the movement so a figure
-# can explain itself (T1) and so the surface can show WHY something was excluded.
+# can explain itself and so the surface can show WHY something was excluded.
 BY_LINK = "linked"                   # rung 1: a live TransferLinked (decisive)
 BY_OWN_ACCOUNT = "own_account"       # rung 2: names an account you hold
 BY_RULING = "ruling"                 # rung 3: a human said so
 BY_CATEGORY = "category_hint"        # rung 4: category/subcategory SUGGESTS it
 BY_DEFAULT = "default"               # rung 5: nothing said otherwise
 
-# Category/subcategory labels that merely *suggest* a non-spending nature. They
-# never decide alone: the real-vault run showed one category (`loan_payments`)
-# covering opposite natures — a mortgage payment (real outflow) and a payment to
-# your own card (internal). A movement resting only on this rung stays counted and
-# is flagged PROVISIONAL, so the number is honest about its own uncertainty (X2).
-# Slice 9b. The keyword sets that used to live here — `_TRANSFER_HINT_CATEGORIES`
-# and `_TRANSFER_HINT_SUBCATEGORIES` — are GONE. Guessing a movement's nature by
-# matching category names against a hand-kept word list was the project's own
-# stated anti-goal ("no keyword classification engine") wearing a small enough
-# disguise to slip through. What replaces it is the counterparty's IMPLICATION,
-# learned once per merchant at enrichment time, cached, versioned and shareable
-# (docs/where-the-intelligence-goes.md).
+# Category/subcategory labels that merely *suggest* a non-spending nature never
+# decide alone: one category (`loan_payments`) can cover opposite natures — a
+# mortgage payment (real outflow) and a payment to your own card (internal). A
+# movement resting only on this rung stays counted and is flagged PROVISIONAL,
+# so the number is honest about its own uncertainty.
 
 # Which tier a movement falls in, and therefore whether it is worth a person's
 # attention at all. The whole rule: ASK ONLY WHERE THE COUNTERPARTY CANNOT TELL US.
@@ -219,23 +211,23 @@ class MovementInfo:
     currency: str
     provenance: Provenance
     linked: bool = False
-    # Slice 6.5 — derived, with the rung that decided it. `provisional` means the
+    # Derived, with the rung that decided it. `provisional` means the
     # nature rests only on a category hint (or the default), so the figure is
     # counted but its uncertainty is reported rather than hidden.
     nature: str = SPENDING
     nature_reason: str = BY_DEFAULT
     provisional: bool = False
-    # Slice 9a — the chart-of-accounts path a ruling put this movement's
+    # The chart-of-accounts path a ruling put this movement's
     # counter-leg on ("Liabilities:Mortgage:Acme"). Derived, never posted: the
     # posted counter-leg stays an Uncategorized bucket and this overlay is what
     # every aggregate reads, so the whole chart of accounts stays reversible.
     ruling_account: str = ""
 
 
-# --- majors → nature (Slice 9a) ---------------------------------------------
+# --- majors → nature ---------------------------------------------------------
 # `nature` answers one question: did this money leave your LIFE, or only an
-# account? Each major answers it directly, which is why the four majors could
-# replace the three buttons without changing a single aggregate.
+# account? Each major answers it directly, which is why the four majors decide
+# nature without a single aggregate having to change.
 _NATURE_OF_MAJOR = {
     MAJOR_EXPENSE: SPENDING,      # gone — the only thing a spending figure counts
     MAJOR_ASSET: TRANSFER,        # you still have it, in another form
@@ -248,8 +240,8 @@ _NATURE_OF_MAJOR = {
 # Expense and income are deliberately ABSENT. Only "you now own it" or "you now
 # owe it" names a thing worth tracking as an account; ordinary spending is
 # described by its CATEGORY, in the Uncategorized bucket the ledger already has.
-# Including them here made an evening's cash turn into `Expenses:Other:Unnamed`
-# and show up beside a car in "things you hold" — sprawl, and a false claim.
+# Including them would turn an evening's cash into `Expenses:Other:Unnamed`,
+# shown beside a car in "things you hold" — sprawl, and a false claim.
 _LEG_PRIORITY = (MAJOR_LIABILITY, MAJOR_ASSET)
 
 
@@ -288,24 +280,24 @@ class _AccountState:
     institution: str = ""
     number: str = ""
     names: list = field(default_factory=list)
-    origin: str = ISSUED          # who says this account exists (Slice 9a, A3)
+    origin: str = ISSUED          # who says this account exists
     closing_confirmed: bool = False            # a human attested the closing
-    # Slice 7. Every dated closing, not just the latest — net worth is a CURVE,
-    # so "the balance at D" must be answerable for any D, not only for today.
-    # The latest-wins fields above stay exactly as they were: this is additive,
-    # read-side, and changes no existing answer.
+    # Every dated closing, not just the latest — net worth is a CURVE, so "the
+    # balance at D" must be answerable for any D, not only for today. The
+    # latest-wins fields above answer for today; this list is additive and
+    # read-side.
     closings: list = field(default_factory=list)   # (date, Decimal, grade, doc_id)
     lines: list = field(default_factory=list)  # TxnLine per posting on this account
-    # Holdings (Slice 6): instrument -> latest PositionObserved measurement (by
+    # Holdings: instrument -> latest PositionObserved measurement (by
     # as_of). Measurements, not postings — they never touch `balance`.
     positions: dict = field(default_factory=dict)
-    # Slice 7: every position measurement ever seen, per instrument, for the same
+    # Every position measurement ever seen, per instrument, for the same
     # reason — an earlier point on the curve must not move when a later
     # statement arrives. {instrument: [observation, ...]} in arrival order.
     position_history: dict = field(default_factory=dict)
-    # Cash/sweep lines that were recorded as "positions" before we recognized them
-    # (Slice 6 fix). Kept apart so an existing vault reads correctly with no
-    # re-ingest: they compose into the account's cash, never its holdings.
+    # Cash/sweep lines recorded as "positions" by a read that did not
+    # recognize them. Kept apart so a vault reads correctly with no re-ingest:
+    # they compose into the account's cash, never its holdings.
     position_cash: dict = field(default_factory=dict)
 
 
@@ -317,10 +309,10 @@ class LedgerProjection:
     ``apply`` — the `Ledger` facade keeps one live instance so reads never
     re-replay the whole encrypted log.
 
-    Opening Balance Equity is the *earliest known* opening (individual-as-
-    enterprise.md): the injection is computed from ``st.opening`` at query time,
-    not accumulated per opening — so a backfilled older statement simply re-seats
-    the earliest opening, with no double-count and no event to reverse.
+    Opening Balance Equity is the *earliest known* opening: the injection is
+    computed from ``st.opening`` at query time, not accumulated per opening — so
+    a backfilled older statement simply re-seats the earliest opening, with no
+    double-count and no event to reverse.
     """
 
     def __init__(self, events: Iterable[Event], as_of: str | None = None) -> None:
@@ -331,37 +323,37 @@ class LedgerProjection:
         self._posted: set[str] = set()           # doc_ids with posting events
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
         self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
-        # Transfer overlay (Slice 3): links between two movement keys, and
+        # Transfer overlay: links between two movement keys, and
         # unresolved suggestions awaiting a human ruling. Links are ledger-wide,
         # not per-account (a transfer spans two accounts).
         self._links: dict[frozenset, dict] = {}         # {a,b} -> {status,grade,by}
         self._transfer_suggestions: dict[str, dict] = {}  # movement key -> body
-        # Category overlay (Slice 5): movement key -> {category, grade, by,
+        # Category overlay: movement key -> {category, grade, by,
         # descriptor}. A human confirmation (verified) supersedes a model
         # suggestion (unverified); we keep the highest-trust ruling.
         self._categories: dict[str, dict] = {}
-        # Slice 7.6 — the tag overlay, kept in its own state (and its own event
+        # The tag overlay, kept in its own state (and its own event
         # type) so "tags never leave this device" stays an event-level rule.
         self._movement_tags: dict[str, list] = {}
         self._merchant_tags: dict[str, list] = {}
         self._category_alias_map: dict[str, str] = {}
         self._tag_alias_map: dict[str, str] = {}
-        # Merchant catalog (Slice 5.5): normalized merchant -> {category, grade,
+        # Merchant catalog: normalized merchant -> {category, grade,
         # by}. The prior a transaction's category derives from when it has no
         # per-movement override. Highest-trust ruling wins.
         self._merchant_categories: dict[str, dict] = {}
-        # Rulings (Slice 9a): (scope, subject) -> body. One dict for all three
+        # Rulings: (scope, subject) -> body. One dict for all three
         # scopes, which is the point of a generic Ruling — a movement ruling and
         # a merchant ruling are looked up the same way, and a fourth scope later
         # costs a constant, not an event type.
         self._rulings: dict[tuple[str, str], dict] = {}
-        # Declined questions (Slice 6.10): question id -> the decline body, which
+        # Declined questions: question id -> the decline body, which
         # snapshots the stake (amount, count) the question showed when set
         # aside. The queue suppresses a question while its stake is unchanged
         # and lets it return the moment new evidence moves it. "Not now" is an
         # answer, and it is remembered.
         self._declined: dict[str, dict] = {}
-        # Own-account token index (Slice 6.5), built lazily and invalidated when a
+        # Own-account token index, built lazily and invalidated when a
         # new account is opened — used to recognize an internal movement even when
         # no transfer link was formed.
         self._own_tokens_cache: dict[str, set[str]] | None = None
@@ -390,9 +382,8 @@ class LedgerProjection:
             st.institution = event.body.get("institution", "")
             st.number = event.body.get("account_number", "")
             st.names = list(event.body.get("account_names", []))
-            # Slice 9a (A3). Older events pre-date `origin` and are all
-            # document-born, so absent means `issued` — the honest reading, and
-            # it keeps every existing vault's meaning exactly as it was.
+            # An absent `origin` means `issued`: an event without the field
+            # is document-born, which is the honest reading of it.
             st.origin = event.body.get("origin", ISSUED)
             self._own_tokens_cache = None      # a new account changes the index
 
@@ -455,11 +446,9 @@ class LedgerProjection:
             if event.body["scope"] == SCOPE_ACCOUNT:
                 self._own_tokens_cache = None
             # Label aliases are maintained HERE rather than derived per lookup.
-            # Deriving them was O(movements x rulings): `derived_category` is the
-            # funnel every aggregate reads through, and it was rebuilding the
-            # whole alias map on each call. The test suite went from 32s to over
-            # 44s, which is the cheap version of the lesson — on a real vault
-            # with a thousand movements it would have been the expensive one.
+            # Deriving them is O(movements x rulings): `derived_category` is
+            # the funnel every aggregate reads through, so a per-lookup
+            # derivation rebuilds the whole alias map on every call.
             scope = event.body["scope"]
             if scope in (SCOPE_CATEGORY, SCOPE_TAG) and event.body.get("same_as"):
                 target = (self._category_alias_map if scope == SCOPE_CATEGORY
@@ -609,7 +598,7 @@ class LedgerProjection:
     def gap_holds(self) -> list[dict]:
         return [b for b in self.open_holds() if b.get("reason") == "gap"]
 
-    # ------------------------------------------------------- transfers (Slice 3)
+    # ----------------------------------------------------------- transfers
 
     def linked_keys(self) -> set[str]:
         """Movement keys that are part of a *live* transfer link (not unlinked)."""
@@ -633,7 +622,7 @@ class LedgerProjection:
         for account in self.accounts():
             st = self._acct[account]
             # depository/liability movements, plus an investment account's cash
-            # activity (Slice 6 Stage 2) — so a contribution into a brokerage ties
+            # activity — so a contribution into a brokerage ties
             # to the funding account as a transfer.
             if st.kind not in ("depository", "liability", "investment"):
                 continue
@@ -657,12 +646,11 @@ class LedgerProjection:
         """Distinctive tokens for every account we hold, so a movement naming one
         of them can be recognized as internal even when no link was formed.
 
-        ISSUED accounts only (Slice 9a). An `asserted` account is named after the
-        very counterparty whose payments created it — `Liabilities:Mortgage:Acme`
-        from "ACME MORTGAGE SERVICING" — so including it would make every one of
-        those payments look like an internal transfer to itself, silently
-        overriding the ruling the person just gave. Found by a test, not by a
-        real run, which is the whole reason this rung is tested at all."""
+        ISSUED accounts only. An `asserted` account is named after the very
+        counterparty whose payments created it — `Liabilities:Mortgage:Acme`
+        from "ACME MORTGAGE SERVICING" — so including it would make every one
+        of those payments look like an internal transfer to itself, silently
+        overriding the ruling the person just gave."""
         if self._own_tokens_cache is None:
             self._own_tokens_cache = {
                 a: account_tokens(s.institution, s.number, s.name)
@@ -672,7 +660,7 @@ class LedgerProjection:
         return self._own_tokens_cache
 
     def _decide_nature(self, m: "MovementInfo") -> None:
-        """Decide what a movement IS, strongest evidence first (Slice 6.5).
+        """Decide what a movement IS, strongest evidence first.
 
         1. linked            — a live TransferLink. Decisive.
         2. a human ruling    — you said what this is.
@@ -683,20 +671,20 @@ class LedgerProjection:
                                because one category can cover opposite natures.
         5. default           — spending.
 
-        Rungs 2 and 3 swapped in Slice 9a. A ruling is a person telling us what
-        something is; the own-account rung is a *heuristic* over description
-        text. When the two disagree the person is right, and letting a token
-        match override an explicit answer would be the worst kind of bug — the
-        product quietly ignoring what it was told."""
+        A ruling outranks the own-account rung: a ruling is a person telling
+        us what something is, while the own-account rung is a *heuristic* over
+        description text. When the two disagree the person is right, and letting
+        a token match override an explicit answer would be the worst kind of bug
+        — the product quietly ignoring what it was told."""
         if m.linked:
             m.nature, m.nature_reason = TRANSFER, BY_LINK
             return
         # Rung 2: a person's explicit ruling. Three places, strongest first — a
         # RulingRecorded on this movement, then one on its MERCHANT (so a single
         # answer settles every transaction from that counterparty, past and
-        # future), then the older nature field carried on the category overlay /
-        # merchant attributes, which pre-date the generic Ruling and must keep
-        # working forever (an event written is a promise kept).
+        # future), then the nature field carried on the category overlay /
+        # merchant attributes, which must keep working forever (an event
+        # written is a promise kept).
         ruling = (self._rulings.get((SCOPE_MOVEMENT, m.key))
                   or self._rulings.get((SCOPE_MERCHANT, normalize_merchant(m.description))))
         if ruling and ruling.get("legs"):
@@ -751,17 +739,16 @@ class LedgerProjection:
         """RECOGNIZED income (income we have actually attributed), per currency —
         the sum of `Income:*` accounts as a positive magnitude, **excluding the
         `Income:Uncategorized` placeholder**. Today the only attributed income is
-        a decomposed pay stub (`Income:Salary` at gross, Slice 4).
+        a decomposed pay stub (`Income:Salary` at gross).
 
         We deliberately do NOT report `Income:Uncategorized`: it is the undiffer-
-        entiated inflow bucket, and — until categorization (Slice 5) makes the
-        counter-leg *kind-aware* — it is also polluted, because a liability's
-        counter-leg sign is inverted (a card purchase currently lands here as if
-        it were income). Reporting it would be a number we can't stand behind
-        (principle 2); attributed income is the honest figure.
+        entiated inflow bucket, and it is polluted wherever a counter-leg sign is
+        inverted (a card purchase landing there as if it were income). Reporting
+        it would be a number we can't stand behind; attributed income is the
+        honest figure.
 
         Income buckets carry no currency of their own; with exactly one account
-        currency we attribute income to it, otherwise '?' (I1)."""
+        currency we attribute income to it, otherwise '?'."""
         held = {s.currency for a, s in self._acct.items()
                 if s.seen and s.kind in ("depository", "liability", "investment")
                 and s.currency}
@@ -779,7 +766,7 @@ class LedgerProjection:
 
     def spending_by_currency(self) -> dict[str, Decimal]:
         """Minimal external-spending seed (superseded by spending_by_category):
-        depository outflows, excluding non-spending natures (Slice 6.5). Positive
+        depository outflows, excluding non-spending natures. Positive
         magnitudes, per currency. Kept for back-compat; the category view is the
         real one."""
         out: dict[str, Decimal] = {}
@@ -789,23 +776,23 @@ class LedgerProjection:
             out[m.currency] = out.get(m.currency, Decimal("0")) + (-m.amount)
         return out
 
-    # ------------------------------------------------------- categories (Slice 5)
+    # ----------------------------------------------------------- categories
 
     @staticmethod
     def _is_expense(m: "MovementInfo") -> bool:
         """A movement with the *shape* of spending: money out of an asset, or a
         charge on a liability (a card purchase). A card *payment* (liability,
-        negative) is a transfer — the kind-aware distinction from Slice 5.
+        negative) is a transfer — the kind-aware distinction.
 
         Shape is necessary but not sufficient: what a movement *is* economically
-        is its `nature` (Slice 6.5). ``_counts_as_spending`` applies both."""
+        is its `nature`. ``_counts_as_spending`` applies both."""
         return ((m.kind == "depository" and m.amount < 0)
                 or (m.kind == "liability" and m.amount > 0))
 
     def _counts_as_spending(self, m: "MovementInfo") -> bool:
         """Does this movement belong in a spending figure? It must have the shape
         of an expense AND have `spending` nature — money that left your LIFE, not
-        merely an account (M1). This one predicate is what makes the headline
+        merely an account. This one predicate is what makes the headline
         honest: a card payment, a brokerage contribution, or a movement naming
         another account you hold is excluded whether or not a link was formed."""
         return self._is_expense(m) and m.nature == SPENDING
@@ -813,7 +800,7 @@ class LedgerProjection:
     def provisional_spending(self, currency: str | None = None) -> Decimal:
         """How much of the reported spending rests on *weak* evidence — movements
         excluded (or kept) only on a category hint. Surfaced alongside the total so
-        the figure states its own uncertainty instead of hiding it (X2): 'I count
+        the figure states its own uncertainty instead of hiding it: 'I count
         X as spending; Y of that I'm not certain about.'"""
         total = Decimal("0")
         for m in self.movements():
@@ -832,13 +819,13 @@ class LedgerProjection:
                 if self._is_expense(m) and m.nature != SPENDING]
 
     def undecomposed(self, currency: str | None = None) -> dict:
-        """Money whose components are known but whose proportions are not — the
-        Slice 9a bucket (``MIXED``). A mortgage payment is interest *and*
+        """Money whose components are known but whose proportions are not (the
+        ``MIXED`` bucket). A mortgage payment is interest *and*
         principal *and* escrow; the ratio lives on a statement we do not have.
 
         It is reported as its OWN line rather than folded into spending, because
-        both alternatives lie: counting it all restates the very overstatement
-        Slice 6.5 fixed, and dropping it silently understates. The honest answer
+        both alternatives lie: counting it all overstates spending, and dropping
+        it silently understates. The honest answer
         is "part of this was spent, I can't yet say how much — here is the
         document that would tell us", and this is the figure behind it.
 
@@ -870,7 +857,7 @@ class LedgerProjection:
         to it, how many movements, and whether the figure can be trusted as a
         BALANCE.
 
-        Three honesty properties, all load-bearing for net worth (Slice 7):
+        Three honesty properties, all load-bearing for net worth:
 
         * ``origin`` is ``asserted`` — nobody issued these accounts, you said so.
         * ``reliable_balance`` is False whenever any contributing movement was
@@ -878,7 +865,7 @@ class LedgerProjection:
           cash as debt *reduction* is not, because part of it was interest. Net
           worth must never quietly claim otherwise.
         * the value recorded is **cost — what you paid** — never what a thing is
-          now worth (M1). A car account holds its purchase price, and any
+        now worth. A car account holds its purchase price, and any
           present-day value is an `estimated` presentation layer on top."""
         out: dict[str, dict] = {}
         for m in self.movements():
@@ -945,12 +932,11 @@ class LedgerProjection:
         if self.counterparty_kind(m) in ("instrument", "peer"):
             return TIER_UNKNOWN
         # A descriptor that cannot be SHARED is, by that fact, a peer or an
-        # instrument: T9 forbids sending "ZELLE TO SAM" or "Check # 1201" to the
-        # commons, so enrichment will never see it and it can never become
-        # `settled`. Leaving it `unenriched` said "we'll identify this later"
-        # about counterparties nothing will ever identify — 185 of them on a
-        # real vault. They are `unknown`, which is the truth and is also the
-        # tier that asks one transaction at a time (2026-07-26).
+        # instrument: sending "ZELLE TO SAM" or "Check # 1201" to the commons
+        # is forbidden, so enrichment will never see it and it can never become
+        # `settled`. Calling it `unenriched` would promise to identify a
+        # counterparty nothing will ever identify. It is `unknown`, which is
+        # the truth and is also the tier that asks one transaction at a time.
         if not is_shareable(m.description):
             return TIER_UNKNOWN
         if self.derived_category(m) is None:
@@ -960,8 +946,7 @@ class LedgerProjection:
     def tier_summary(self, currency: str | None = None) -> dict:
         """Counts and money per tier — the measurement that sizes the queue.
 
-        This is the number that decides whether the whole three-tier design was
-        worth doing, and it is the honest 'before' to compare against."""
+        The number that says whether the tiering is doing its job."""
         out: dict[str, dict] = {}
         for m in self.movements():
             if currency is not None and m.currency != currency:
@@ -974,13 +959,13 @@ class LedgerProjection:
         return {k: {"count": v["count"], "amount": v["amount"],
                     "merchants": len(v["merchants"])} for k, v in out.items()}
 
-    # --- category identity (Slice 7.5) ---------------------------------------
+    # --- category identity ---------------------------------------------------
     #
     # The root cause of category sprawl: accounts and merchants are resolved
-    # IDENTITIES, and a category was a bare string. So `poker` and `playing
-    # poker` both lived in a real vault, quietly halving every total that
-    # touched either — and no amount of care at the point of typing prevents
-    # that, because enrichment mints labels from the other end too.
+    # IDENTITIES, while a bare-string category is not. `poker` and `playing
+    # poker` can both exist, quietly halving every total that touches either —
+    # and no amount of care at the point of typing prevents that, because
+    # enrichment mints labels from the other end too.
     #
     # The fix reuses the one primitive this project already has four instances
     # of (accounts, transfers, merchants, and now labels): ask only when
@@ -990,12 +975,11 @@ class LedgerProjection:
     # re-merge and un-merge between runs. A recorded alias is auditable, stable,
     # and reversed by appending rather than editing.
 
-    # --- tags (Slice 7.6) ----------------------------------------------------
+    # --- tags ----------------------------------------------------------------
     #
     # A category PARTITIONS (one per movement, parts sum to the whole); a tag
     # OVERLAYS (many per movement, overlapping, and the totals deliberately do
-    # NOT sum). The discovery rule, finally built: double-entry governs the
-    # money, tags govern the meaning.
+    # NOT sum). Double-entry governs the money; tags govern the meaning.
 
     def tags_of(self, m: "MovementInfo") -> list[str]:
         """Every tag on this movement: its own, plus its merchant's.
@@ -1027,7 +1011,7 @@ class LedgerProjection:
         """The tag vocabulary — offered before a new one can be minted, exactly
         as the category vocabulary is. Tags sprawl for the same reason
         categories did, and are harder to fix afterwards: nothing outside this
-        device can ever help, because a tag is personal meaning (T9)."""
+        device can ever help, because a tag is personal meaning."""
         out = {self.canonical_tag(t)
                for tags in list(self._movement_tags.values())
                + list(self._merchant_tags.values()) for t in tags}
@@ -1061,7 +1045,7 @@ class LedgerProjection:
                 "overlaps": True}
 
     def declined_questions(self) -> dict[str, dict]:
-        """Questions the person set aside (Slice 6.10), by the queue's stable
+        """Questions the person set aside, by the queue's stable
         question id. Each body carries the stake snapshot (amount, count) from
         the moment of decline — the queue compares against the live stake and
         stays silent only while they match. Kept as data, not policy: THIS
@@ -1112,7 +1096,7 @@ class LedgerProjection:
         return sorted(out)
 
     def derived_category(self, m: "MovementInfo") -> dict | None:
-        """A movement's effective category (Slice 5.5): a per-transaction override
+        """A movement's effective category: a per-transaction override
         wins; else the merchant catalog (by normalized descriptor); else None.
         Returns the ruling dict ({category, grade, ...}) or None if unknown."""
         override = self._categories.get(m.key)
@@ -1140,19 +1124,19 @@ class LedgerProjection:
         return self._categories.get(key)
 
     def merchant_categories(self) -> dict[str, dict]:
-        """The merchant catalog: normalized merchant -> ruling (Slice 5.5)."""
+        """The merchant catalog: normalized merchant -> ruling."""
         return dict(self._merchant_categories)
 
     def spending_by_category(self, currency: str | None = None) -> dict[str, Decimal]:
-        """Real spending, grouped by category (Slice 5): every expense movement —
-        card purchases included — **excluding transfers**, bucketed by its
-        *derived* category (override → merchant catalog → ``Uncategorized``, per
-        Slice 5.5). Positive magnitudes; ``currency`` filters if given.
+        """Real spending, grouped by category: every expense movement — card
+        purchases included — **excluding transfers**, bucketed by its *derived*
+        category (override → merchant catalog → ``Uncategorized``). Positive
+        magnitudes; ``currency`` filters if given.
 
-        Slice 6.5: exclusion is by **nature**, not merely by link — so an internal
-        movement that never linked (a card payment, a brokerage contribution) is
-        no longer counted as consumption, and `transfers` can never appear as a
-        line item inside spending."""
+        Exclusion is by **nature**, not merely by link — so an internal movement
+        that never linked (a card payment, a brokerage contribution) is not
+        counted as consumption, and `transfers` can never appear as a line item
+        inside spending."""
         out: dict[str, Decimal] = {}
         for m in self.movements():
             if not self._counts_as_spending(m):
@@ -1164,11 +1148,11 @@ class LedgerProjection:
         return out
 
     def spending_by_subcategory(self, currency: str | None = None) -> dict[str, Decimal]:
-        """Finer spending slice (Slice 5.6): expense movements grouped by the
+        """Finer spending view: expense movements grouped by the
         merchant's model-provided **subcategory** ("streaming", "warehouse club"),
         falling back to the primary category, then ``Uncategorized``. The extra
         axis for slicing and dicing. Positive magnitudes; non-spending natures
-        excluded (Slice 6.5)."""
+        excluded."""
         out: dict[str, Decimal] = {}
         for m in self.movements():
             if not self._counts_as_spending(m):
@@ -1184,7 +1168,7 @@ class LedgerProjection:
     def uncategorized_expenses(self) -> list["MovementInfo"]:
         """Expense movements whose *derived* category is still unknown — no
         override and no merchant-catalog entry. The categorization queue;
-        non-spending natures excluded (Slice 6.5) — we never ask you to categorize
+        non-spending natures excluded — we never ask you to categorize
         money that didn't leave your life."""
         return [m for m in self.movements()
                 if self._counts_as_spending(m)
@@ -1192,18 +1176,16 @@ class LedgerProjection:
 
     def uncategorized_merchants(self, expenses_only: bool = False) -> dict[str, dict]:
         """Every counterparty we have not identified yet, deduped by normalized
-        key (Slice 5.5): {merchant -> {count, example, shareable}}. The batched
-        enricher's pending set.
+        key: {merchant -> {count, example, shareable}}. The batched enricher's
+        pending set.
 
-        **Every counterparty, not just the expense-shaped ones.** Until
-        2026-07-25 this walked `uncategorized_expenses()`, so employers,
-        transfers, card payments and every inflow were structurally invisible to
-        enrichment — permanently unidentified, never asked about, never settled.
-        The blind spot was found by comparing this count (46 merchants) against
-        `debug_tiers` (428 unenriched movements) on a real vault: two tools
-        counting different populations, and the gap was the bug.
+        **Every counterparty, not just the expense-shaped ones.** Walking only
+        the expense-shaped movements would leave employers, transfers, card
+        payments and every inflow structurally invisible to enrichment —
+        permanently unidentified, never asked about, never settled.
 
-        `expenses_only=True` keeps the old, narrower view for the spending queue."""
+        `expenses_only=True` gives the narrower, expense-only view for the
+        spending queue."""
         from .merchants import is_shareable
         out: dict[str, dict] = {}
         source = (self.uncategorized_expenses() if expenses_only
@@ -1316,7 +1298,7 @@ class LedgerProjection:
         ans.dated = st.closing_date or st.opening_date
         return ans
 
-    # ------------------------------------------------- positions (Slice 6)
+    # ------------------------------------------------------------ positions
 
     def positions(self, account: str | None = None) -> list[PositionRecord]:
         """Latest measured holdings, across investment accounts (or one). Each is a
@@ -1345,7 +1327,7 @@ class LedgerProjection:
 
     def cash_value(self, account: str) -> Decimal:
         """An account's cash: its observed balance plus any cash/sweep line that an
-        older read misfiled as a "position" (Slice 6 fix). This is what the person
+        older read misfiled as a "position". This is what the person
         actually holds in cash, regardless of how the statement was read."""
         st = self._acct.get(account)
         if st is None or not st.seen:
@@ -1358,12 +1340,12 @@ class LedgerProjection:
         """The as-of date an account's composed value is honest at, and whether
         the measurements it sums were taken on DIFFERENT dates.
 
-        A real run mixed a cash measurement from one month with holdings from the
-        next and presented one total. Summing measurements of different vintages
-        is exactly the stale-price dressing the valuation-class invariant exists to
-        prevent — so the composed figure reports the OLDEST measurement it rests on
-        (the date the whole number is truly good as of) and flags the mix, rather
-        than quietly implying it is all current (Slice 6 fix, 2026-07-25)."""
+        A cash measurement from one month can sit beside holdings from the next.
+        Summing measurements of different vintages is exactly the stale-price
+        dressing the valuation class exists to prevent — so the composed figure
+        reports the OLDEST measurement it rests on (the date the whole number is
+        truly good as of) and flags the mix, rather than quietly implying it is
+        all current."""
         st = self._acct.get(account)
         measured = (list(st.positions.values()) + list(st.position_cash.values())
                     if st else [])
@@ -1391,7 +1373,7 @@ class LedgerProjection:
 
     def unrealized_gain(self, account: str | None = None) -> Decimal | None:
         """The derived paper gain over held positions (Σ market_value − Σ cost
-        basis), as-of the latest measurements — a PRESENTATION view (M1), never a
+        basis), as-of the latest measurements — a PRESENTATION view, never a
         ledger fact. None when no position carries a cost basis to compare."""
         total = Decimal("0")
         any_basis = False

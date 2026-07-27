@@ -1,20 +1,16 @@
-"""Prompts as versioned, addressable DATA — now literally files on disk.
+"""Prompts as versioned, addressable DATA — files on disk.
 
-The read happens in two phases (the Slice 2 design, decision 1): a cheap
-**classify** pass names the document, then an **extract** pass runs the prompt
-that belongs to that type's profile. Slice 9a added a third: **interpret**,
-which reads a person's own sentence.
+The read happens in phases: a cheap **classify** pass names the document, then
+an **extract** pass runs the prompt that belongs to that type's profile. A
+third, **interpret**, reads a person's own sentence.
 
 **Every version lives in `viva/prompts/<id>.txt`.** This module holds no prompt
-text at all — only the composition rules and the accessors. That is the whole
-point of the 2026-07-25 move (docs/prompts-as-files.md): the library had been
-Python, so adding a prompt meant editing a module while a local triple-quoted
-string was one line, and the friction decided the outcome twice in a row.
+text at all — only the composition rules and the accessors.
 
 Retention discipline (enforced by ``test_prompt_library``): the files are
 **append-only**. To change a prompt you add a NEW id; you never edit an existing
 one. A read recorded under ``card-v1`` must resolve to card-v1's text forever,
-even after ``card-v2`` exists — and now the only way to break that is to edit a
+even after ``card-v2`` exists — and the only way to break that is to edit a
 file whose digest is pinned, which fails the freeze.
 
 The extraction prompt is *composed*: a shared ``base`` (the parse shape +
@@ -32,8 +28,8 @@ from vivacore import promptstore
 PROMPTS = pathlib.Path(__file__).resolve().parent.parent / "prompts"
 
 # Filenames carry a family prefix so three namespaces share one directory
-# without colliding. The ids RECORDED ON EVENTS stay exactly what they always
-# were, so no stored read is disturbed by the move.
+# without colliding. The ids RECORDED ON EVENTS omit the extract prefix, so a
+# stored read resolves to the same text whatever the filename convention.
 _EXTRACT_PREFIX = "extract-"
 
 
@@ -50,7 +46,7 @@ def classify_prompt(version: str = "classify-v2") -> tuple[str, str]:
 
 
 def interpret_prompt(version: str = "interpret-v2") -> tuple[str, str]:
-    """The interpretation prompt and its version id (Slice 9a). The caller fills
+    """The interpretation prompt and its version id. The caller fills
     the placeholders; the version is stamped on the ruling so the reading stays
     reproducible after the text is superseded."""
     return promptstore.load(PROMPTS, version), version
@@ -69,7 +65,7 @@ def resolve(version: str) -> str:
     """Reconstruct the exact prompt text for any recorded ``prompt_version`` — a
     classify id, an interpret id, a base/fragment id, or a composite
     ``extract:base+frag``. This is what makes a stored read reproducible without
-    leaving the app (T8), and it must never fall back to the *current* text: a
+    leaving the app, and it must never fall back to the *current* text: a
     silent default would re-explain an old reading with new instructions."""
     if version.startswith("extract:"):
         base_v, frag_v = version[len("extract:"):].split("+", 1)

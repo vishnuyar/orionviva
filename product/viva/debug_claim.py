@@ -1,6 +1,6 @@
 """Diagnose a read we ALREADY PAID FOR — from the claims layer, offline and free.
 
-Every model read is stored verbatim (`ReadRecorded`, ADR-003/T3). So when a
+Every model read is stored verbatim (`ReadRecorded`). So when a
 document parks or holds, the evidence is already in the vault: we never need to
 re-ask the model to find out what it said. This tool prints that stored response
 and re-runs today's parser and identity check over it.
@@ -155,7 +155,7 @@ def main() -> None:
         doc_type = cap.get("doc_type", "unknown")
         if doc_type in ("", "unknown"):
             # The capture never recorded a type (no classify claim), but the
-            # EXTRACT prompt version names it: T8's self-describing
+            # EXTRACT prompt version names it: a self-describing
             # `extract:<base>+<fragment>`. Printing "unknown" while the very
             # next line of this report shows `prompt=extract:base-v1+card-v1`
             # is the tool withholding an answer it already has.

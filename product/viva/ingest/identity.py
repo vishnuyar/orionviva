@@ -1,4 +1,4 @@
-"""Back-compat re-export. Account identity now lives in the ledger layer
+"""Back-compat re-export. Account identity lives in the ledger layer
 (``viva.ledger.identity``) because the projection resolves identity while
 replaying events. Import from there in new code."""
 

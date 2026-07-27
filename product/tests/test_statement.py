@@ -18,7 +18,7 @@ def _stmt(txns, opening="$1,000.00", closing="$1,457.58"):
 
 
 def test_parses_and_signs_by_balance_effect():
-    # stmt-v3 (A1): the sign is the movement's effect on the printed balance.
+    # stmt-v3: the sign is the movement's effect on the printed balance.
     out = _stmt([
         {"date_raw": "01/10/2026", "description": "Payroll", "amount_raw": "$500.00", "balance_effect": "increase", "page": 2},
         {"date_raw": "01/15/2026", "description": "Coffee", "amount_raw": "$42.42", "balance_effect": "decrease", "page": 3},

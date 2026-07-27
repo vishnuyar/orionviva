@@ -1,20 +1,18 @@
-"""The expectations engine (Slice 6.11) — documents are evidence that other
-documents exist.
+"""The expectations engine — documents are evidence that other documents exist.
 
-The reframe is knowledge-and-expectations.md's: completeness knowledge is not a
-parser and not a nag — it is a small set of universal MECHANISMS (code, below)
-driven by a declarative REGISTRY (data, ``expectations-v1.json``). A registry
-entry states what exists in the world and how it relates — never how to read
-anything. Jurisdiction tags make an entry set a knowledge pack (I6, the fourth
-pack after benchmarks, taxonomy and knowledge itself was specced).
+Completeness knowledge is not a parser and not a nag — it is a small set of
+universal MECHANISMS (code, below) driven by a declarative REGISTRY (data,
+``expectations-v1.json``). A registry entry states what exists in the world and
+how it relates — never how to read anything. Jurisdiction tags make an entry set
+a knowledge pack.
 
 Deliberately READ-SIDE (the read-early/write-late principle): an expectation is
 *derived* on every projection from evidence already in the ledger — no new
 event type, nothing to migrate, wrong entries fixable by editing data. The two
-states that need memory already have it: *declined* is the 6.10 decline event
-(the question stays quiet until the stake changes), and *satisfied* is
-deterministic — the expected document type is present among captured documents.
-Model-suggested expectations (tier 3 of the spec) are deliberately not built.
+states that need memory already have it: *declined* is the decline event (the
+question stays quiet until the stake changes), and *satisfied* is deterministic
+— the expected document type is present among captured documents.
+Model-suggested expectations are deliberately not built.
 
 What ships in v1 is three mechanisms:
 
@@ -156,8 +154,8 @@ def evaluate(proj, as_of: str, jurisdiction: str = "US",
     """Every unmet expectation the registry raises against this ledger.
 
     Pure and deterministic: same events + same registry + same date → same
-    expectations. Declines are NOT filtered here — that is the queue's job
-    (6.10), so the suppression rule lives in exactly one place."""
+    expectations. Declines are NOT filtered here — that is the queue's job, so
+    the suppression rule lives in exactly one place."""
     out: list[Expectation] = []
     for entry in load(version)["entries"]:
         allowed = entry.get("jurisdictions", ["*"])

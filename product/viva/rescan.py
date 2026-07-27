@@ -6,7 +6,7 @@ Statements ingested *before* that machinery existed (or before a counterpart
 arrived) are eligible but were never re-scanned. This runs the full sweep once
 over the current vault: stitch gaps, close conflict-holds a counterparty now
 attests, and detect transfers among all posted movements. It appends only links
-and heals (append-only, T4) — nothing is overwritten, and it is idempotent.
+and heals (append-only) — nothing is overwritten, and it is idempotent.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 

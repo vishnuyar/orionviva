@@ -1,8 +1,8 @@
-"""The three failures the first real Stage-2 brokerage statement produced.
+"""Three brokerage-parsing behaviours.
 
-Each is a red test written from the actual log: an optional field's junk value
-killed a whole read; a year-less activity date was rejected outright; and the
-retry told the model its JSON was invalid when the JSON was fine.
+An optional field's junk value must not kill a whole read; a year-less activity
+date resolves against the statement period; and the retry names the actual
+failure rather than calling every failure a syntax error.
 """
 
 import json
@@ -30,7 +30,7 @@ def _doc(**over):
 # --- 1. an optional field's junk value must not kill the read ----------------
 
 def test_unreadable_cost_basis_is_unknown_not_fatal():
-    """The real failure: cost_basis 'not applicable' lost the whole statement."""
+    """An unreadable cost_basis is unknown; the statement still reads."""
     text = _doc(positions=[{"instrument": "SPXS", "units_raw": "100",
                             "market_value_raw": "2000.00",
                             "cost_basis_raw": "not applicable"}])
@@ -91,7 +91,7 @@ def test_a_full_date_is_respected_over_the_period():
 def test_syntax_and_value_failures_are_told_apart():
     assert _is_syntax_error("JSON did not parse: Expecting ',' delimiter")
     assert _is_syntax_error("no JSON object found in model output")
-    # The real one: valid JSON, one unreadable value — NOT a syntax error.
+    # Valid JSON with one unreadable value is NOT a syntax error.
     assert not _is_syntax_error(
         "position 0 cost_basis amount 'not applicable': invalid")
     assert not _is_syntax_error("activity 0 date '11/04': invalid")
