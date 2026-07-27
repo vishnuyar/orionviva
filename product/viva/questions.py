@@ -26,8 +26,15 @@ Three rules keep it a butler rather than a chore list:
 
 Question text is a deterministic template, never a model call: the queue must be
 reproducible, free and offline-testable, and a model that phrased a question
-could smuggle a claim into it. Slice 9 re-voices these through the persona; the
-content — figure, evidence, options — stays deterministic.
+could smuggle a claim into it. Since Slice 6.10 the templates live in the
+persona pack (`viva/persona/`) — the queue supplies the intent (figures,
+evidence, options), the pack supplies the words, and a lint test guarantees a
+phrasing can only place fields the intent supplied. The content stays
+deterministic; only the voice is data.
+
+Slice 6.10 also made "not now" an answer: a declined question is suppressed
+while its stake (amount, count) is unchanged, and returns the moment new
+evidence moves it — settled → silence, applied to the questions themselves.
 """
 
 from __future__ import annotations
@@ -42,6 +49,7 @@ from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_SETTLED, TIER_STRUCTURAL,
                                 TIER_UNENRICHED, TIER_UNKNOWN)
 from .listen import suggest_answers
+from .persona import say
 
 # How many questions to surface before summarizing the rest. Not a materiality
 # threshold in money — that would be a currency- and jurisdiction-shaped guess
@@ -100,17 +108,15 @@ def _held_questions(proj) -> list[Question]:
         f = h.facts
         amount = abs(f.closing_amount)
         if h.reason == "gap":
-            text = (f"Your {f.account_ref} statement for {f.opening_date} – "
-                    f"{f.closing_date} doesn't continue from the balance I hold. "
-                    "A statement between them looks missing — is one?")
-            why = f"It opens at {_money(f.opening_amount, f.currency)}; my chain ends elsewhere."
+            text = say("reconciliation_gap", account_ref=f.account_ref,
+                       opening_date=f.opening_date, closing_date=f.closing_date)
+            why = say("reconciliation_gap_why",
+                      opening_money=_money(f.opening_amount, f.currency))
         elif h.reason == "identity":
-            text = (f"I read a statement for {f.account_ref}, but I can't tell "
-                    "whose account it is. Is it one you already have, or a new one?")
+            text = say("identity", account_ref=f.account_ref)
             why = (h.finding or {}).get("message", "")
         else:
-            text = (f"Your {f.account_ref} statement didn't add up, so I haven't "
-                    "posted it. Can you check the figure I flagged?")
+            text = say("reconciliation_flagged", account_ref=f.account_ref)
             why = (h.finding or {}).get("message", "")
         kind = IDENTITY if h.reason == "identity" else RECONCILIATION
         out.append(Question(
@@ -129,9 +135,11 @@ def _held_questions(proj) -> list[Question]:
     for b in other_holds(proj):
         out.append(Question(
             id=f"{RECONCILIATION}:{b['doc_id'][:12]}", kind=RECONCILIATION,
-            text=(f"I'm holding a {b['doc_type'].replace('_', ' ')} "
-                  f"{('for ' + b['account_ref']) if b['account_ref'] else ''}"
-                  " that didn't reconcile, so its figures aren't on your books."),
+            text=" ".join(say(
+                "reconciliation_held",
+                doc_type=b["doc_type"].replace("_", " "),
+                for_account=(("for " + b["account_ref"]) if b["account_ref"] else "")
+            ).split()),
             why=b.get("message", "") or f"held: {b.get('reason', '')}",
             amount=Decimal("0"), currency="", count=1, scope="one",
             options=[{"label": "Show me the document", "action": "review",
@@ -157,11 +165,10 @@ def _transfer_questions(proj) -> list[Question]:
         amount = abs(src.amount)
         out.append(Question(
             id=f"{TRANSFER}:{src.key}", kind=TRANSFER,
-            text=(f"On {src.date} you moved {_money(amount, src.currency)} "
-                  f"({src.description}). Was that money moving between your own "
-                  "accounts rather than being spent?"),
-            why=(f"{len(cands)} movement(s) of the same amount within a few days "
-                 f"on another account you hold."),
+            text=say("transfer", date=src.date,
+                     money=_money(amount, src.currency),
+                     description=src.description),
+            why=say("transfer_why", candidates=len(cands)),
             amount=amount, currency=src.currency, count=1, scope="one",
             options=[{"label": "Yes — same money", "action": "confirm_transfer",
                       "args": {"movement_a": src.key, "movement_b": cands[0]}},
@@ -197,12 +204,10 @@ def _merchant_questions(proj) -> list[Question]:
         shareable = row.get("shareable", True)
         out.append(Question(
             id=f"{MERCHANT}:{key}", kind=MERCHANT,
-            text=(f"What is {row['example']}? You have {row['count']} "
-                  f"transaction(s) with it, {_money(amount, cur)} in total."
-                  + ("" if shareable else
-                     " (This looks like a payment to a person, so I'll only "
-                     "apply your answer here — not as a rule.)")),
-            why="I have no category for this merchant yet.",
+            text=(say("merchant", example=row["example"], count=row["count"],
+                      money=_money(amount, cur))
+                  + ("" if shareable else " " + say("merchant_peer_note"))),
+            why=say("merchant_why"),
             amount=amount, currency=cur, count=row["count"],
             # A commercial merchant generalizes; a peer descriptor does not.
             scope="pattern" if shareable else "one",
@@ -263,15 +268,14 @@ def _nature_questions(proj) -> list[Question]:
         ruling = proj.derived_category(m) or {}
         out.append(Question(
             id=f"{NATURE}:{m.key}", kind=NATURE,
-            text=(f"{m.date}: {m.description} — {_money(abs(m.amount), m.currency)}. "
-                  "What was this one for?"),
-            why=("This names how the money moved, not who received it — so I "
-                 "have to ask about each one separately."),
+            text=say("nature_single", date=m.date, description=m.description,
+                     money=_money(abs(m.amount), m.currency)),
+            why=say("nature_single_why"),
             amount=abs(m.amount), currency=m.currency, count=1, scope="one",
             options=[{"label": s["label"], "action": "rule_major",
                       "args": {"movement_key": m.key, "major": s["major"]}}
                      for s in suggest_answers()],
-            free_text="Or tell me in your own words",
+            free_text=say("free_text_invite"),
             refs={"movement": m.key, "movements": [m.key],
                   "descriptor": m.description,
                   "category": ruling.get("category", ""),
@@ -281,16 +285,18 @@ def _nature_questions(proj) -> list[Question]:
     for key, g in groups.items():
         implied = g["implied"]
         what = implied.get("relationship") or g["subcategory"] or g["category"]
-        head = (f"You have {g['count']} payment(s) to {g['example']} totalling "
-                f"{_money(g['amount'], g['currency'])}.")
-        text = f"{head} These normally mean {what}."
+        head = say("nature_group_head", count=g["count"], example=g["example"],
+                   money=_money(g["amount"], g["currency"]))
+        text = f"{head} " + say("nature_group_meaning", what=what)
         if implied.get("compound"):
-            text += (" A payment like that is usually several things at once, and "
-                     "I can't tell the split without the paperwork.")
-        text += f" {implied.get('ask') or 'Shall I set that up?'}"
-        why = f"Because of who they are, not because of anything you told me."
+            text += " " + say("nature_group_compound")
+        # The ask may come from the implication data itself (enrichment knows
+        # what setting up a mortgage means); the pack only supplies the default.
+        text += f" {implied.get('ask') or say('nature_group_ask')}"
+        why = say("nature_group_why")
         if implied.get("documents"):
-            why += f" Your {implied['documents']} would let me prove it."
+            why += " " + say("nature_group_why_documents",
+                             documents=implied["documents"])
         options = [{"label": f"Yes — {what}", "action": "rule_major",
                     "args": {"merchant": key, "major": implied.get("major", "expense"),
                              "descriptor": g["example"],
@@ -302,7 +308,7 @@ def _nature_questions(proj) -> list[Question]:
             id=f"{NATURE}:{key}", kind=NATURE, text=text, why=why,
             amount=g["amount"], currency=g["currency"], count=g["count"],
             scope="pattern", options=options,
-            free_text="Or tell me in your own words",
+            free_text=say("free_text_invite"),
             refs={"merchant": key, "movements": g["keys"],
                   "descriptor": g["example"], "category": g["category"],
                   "subcategory": g["subcategory"],
@@ -335,12 +341,11 @@ def _corroboration_questions(proj) -> list[Question]:
         if not doc:
             continue
         name = account.split(":")[-1]
-        text = (f"You told me about {name} — {_money(row['paid'], row['currency'])} "
-                f"so far. Do you have the {doc}? It would let me prove this, "
-                "not just record it.")
-        why = ("This account exists because you said so; nothing has attested it. "
-               + ("Its balance also can't be trusted yet, because part of those "
-                  "payments was interest." if not row["reliable_balance"] else ""))
+        text = say("corroboration", name=name,
+                   money=_money(row["paid"], row["currency"]), document=doc)
+        why = (say("corroboration_why")
+               + (" " + say("corroboration_why_unreliable")
+                  if not row["reliable_balance"] else ""))
         out.append(Question(
             id=f"{CORROBORATION}:{account}", kind=CORROBORATION, text=text.strip(),
             why=why.strip(), amount=row["paid"], currency=row["currency"],
@@ -369,6 +374,14 @@ def open_questions(source, limit: int = DEFAULT_LIMIT) -> dict:
     qs += _merchant_questions(proj)
     qs += _nature_questions(proj)
     qs += _corroboration_questions(proj)
+    # A declined question stays declined while it would say exactly what it said
+    # before, and returns the moment new evidence changes its stake (6.10). The
+    # comparison is the whole policy — no timers, no jurisdiction-of-the-mind.
+    declined = proj.declined_questions()
+    qs = [q for q in qs
+          if (d := declined.get(q.id)) is None
+          or d.get("amount") != str(q.amount)
+          or int(d.get("count", 0)) != q.count]
     # Highest stake first; ties broken by id so the order is stable between reads.
     qs.sort(key=lambda q: (-q.amount, q.id))
     shown, rest = qs[:limit], qs[limit:]

@@ -52,7 +52,7 @@ Question(
 
 ## Viva's voice
 
-Question text is a **deterministic template**, not a model call: the queue must be reproducible, free, and offline-testable, and a model that phrases a question could smuggle a claim into it. Templates carry the figure, the evidence, and the choice:
+Question text is a **deterministic template**, not a model call: the queue must be reproducible, free, and offline-testable, and a model that phrases a question could smuggle a claim into it. _Amended 2026-07-27 (Slice 6.10): the templates now live in the persona pack (`viva/persona/`, [viva-persona-and-interview.md](viva-persona-and-interview.md)) rather than in `questions.py` — the rule stands unchanged; a lint test guarantees a phrasing can only place fields the deterministic intent supplied. 6.10 also made "not now" an answer: a declined question is suppressed while its stake (amount, count) is unchanged and returns on new evidence._ Templates carry the figure, the evidence, and the choice:
 
 > "On 3 March you moved $2,400 to Chase. I've treated that as a payment to your own card rather than spending — is that right?"
 > "You have 12 transactions with FIRST AMERICAN TITLE totalling $23,512. Is that money spent, or a property purchase — something you now own?"

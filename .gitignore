@@ -58,3 +58,6 @@ dist/
 
 # Slice 6.7: the surface source builds to web/static (committed); deps do not ship.
 product/viva/web/ui/node_modules/
+
+# The Cowork device bridge cannot delete files; deletions are parked here for manual removal.
+_to_delete/

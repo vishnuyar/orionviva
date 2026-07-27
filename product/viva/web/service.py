@@ -316,10 +316,30 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
     reused the categorization queue and filtered by substring, which returned
     nothing for a nature question: that queue only holds *uncategorized*
     movements, and a nature question is asked about a merchant that already has a
-    category.)"""
+    category.)
+
+    Direction is kept, and named. The first cut wrapped every amount in abs()
+    and summed the magnitudes — invisible for a one-way merchant, wrong twice
+    for a counterparty money flows BOTH ways with (the broker EFTs): every row
+    showed positive, and the "total" added the two directions together. Same
+    defect family as the liability abs() in the first net-worth cut (see
+    net-worth.md, D1: abs() erases the one bit that matters). So: amounts stay
+    SIGNED as the account recorded them, each row carries a kind-aware
+    `direction`, and the summary is three figures — out, in, net — never one."""
     from ..ledger.merchants import normalize_merchant
     proj = vault.ledger.projection()
     key = normalize_merchant(merchant)
+
+    def _direction(m) -> str:
+        # Money toward this counterparty ("out") or from it ("in). Kind-aware,
+        # the Slice 5 distinction: an asset-side account records outflows
+        # negative, while a liability records a charge — money out to the
+        # merchant — POSITIVE. Reading the raw sign alone would call every card
+        # purchase "in".
+        if m.kind == "liability":
+            return "out" if m.amount > 0 else "in"
+        return "out" if m.amount < 0 else "in"
+
     items = []
     for m in proj.movements():
         if normalize_merchant(m.description) != key:
@@ -327,16 +347,25 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
         ruling = proj.derived_category(m) or {}
         items.append({
             "key": m.key, "date": m.date, "description": m.description,
-            "amount": str(abs(m.amount)), "currency": m.currency,
+            "amount": str(m.amount), "currency": m.currency,
+            "direction": _direction(m),
             "account": m.account,
             "category": ruling.get("category", ""),
             "subcategory": ruling.get("subcategory", ""),
             "nature": m.nature, "counts_as_spending": proj._counts_as_spending(m),
             "tags": proj.tags_of(m)})
     items.sort(key=lambda i: i["date"])
-    total = sum(abs(Decimal(i["amount"])) for i in items) if items else Decimal("0")
+    zero = Decimal("0")
+    money_out = sum((abs(Decimal(i["amount"])) for i in items
+                     if i["direction"] == "out"), zero)
+    money_in = sum((abs(Decimal(i["amount"])) for i in items
+                    if i["direction"] == "in"), zero)
     return {"merchant": key, "items": items[:limit], "count": len(items),
-            "total": str(total),
+            # Three figures, deliberately not one: a single "total" over a
+            # mixed-direction counterparty is a bluff. `net` is out minus in —
+            # positive means money net LEFT you toward this counterparty.
+            "money_out": str(money_out), "money_in": str(money_in),
+            "net": str(money_out - money_in),
             "currency": items[0]["currency"] if items else "",
             "categories": list(SEED_CATEGORIES),
             # The tag vocabulary rides along so the surface can offer what
@@ -485,6 +514,55 @@ def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
     res = apply_identity_ruling(vault.ledger, doc_id, decision)
     return {"action": res.action, "grade": res.grade, "account": res.account,
             "message": res.message}
+
+
+def greeting(vault: Vault) -> dict:
+    """Viva's opening line (Slice 6.10) — a moment from the persona pack.
+
+    The name is derived deterministically from the vault's own account holders
+    (the most common first token, title-cased) — read from documents the person
+    provided, never asked of a model. An empty vault gets the welcome; anything
+    else gets the return. `all_settled` rides along so the queue card can speak
+    it when there is nothing to ask."""
+    from collections import Counter
+
+    from ..persona import ACTIVE_PACK, moment
+    proj = vault.ledger.projection()
+    firsts: Counter = Counter()
+    for info in proj.account_infos():
+        for n in info.names:
+            tok = (n.split() or [""])[0].strip()
+            if tok:
+                firsts[tok.title()] += 1
+    name = firsts.most_common(1)[0][0] if firsts else ""
+    part = f", {name}" if name else ""
+    key = "welcome_back" if proj.accounts() else "welcome_empty"
+    return {"moment": key, "text": moment(key, name_part=part),
+            "all_settled": moment("all_settled", name_part=part),
+            "pack": ACTIVE_PACK}
+
+
+def decline_question(vault: Vault, question_id: str,
+                     reason: str = "not_now") -> dict:
+    """"Not now" is an answer (Slice 6.10): record it, and answer in Viva's voice.
+
+    The stake snapshot (amount, count) is taken SERVER-SIDE from the live queue
+    — the surface only names the question, so a stale page cannot pin the wrong
+    fingerprint. Declining a question that is no longer open is not an error;
+    it is a no-op, said honestly."""
+    from ..ledger.events import question_declined
+    from ..persona import ACTIVE_PACK, moment
+    from ..questions import open_questions
+    qs = open_questions(vault.ledger, limit=100000)
+    q = next((x for x in qs["questions"] if x["id"] == question_id), None)
+    if q is None:
+        return {"ok": False,
+                "message": "That question is no longer open — nothing to set aside."}
+    vault.ledger.append(question_declined(
+        q["id"], q["kind"], _today(), reason=reason,
+        amount=q["amount"], count=q["count"], pack_version=ACTIVE_PACK))
+    ack = "dont_know_ack" if reason == "dont_know" else "not_now_ack"
+    return {"ok": True, "message": moment(ack, name_part="")}
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:

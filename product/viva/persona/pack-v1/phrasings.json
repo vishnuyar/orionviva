@@ -1,0 +1,33 @@
+{
+  "_comment": "pack-v1 carries the queue's existing wording VERBATIM — the mechanism ships first, the Winston-manner wording pass is pack-v2, once the copywriter workflow is ruled (viva-persona-and-interview.md, open question 2). A released pack is never edited; add a new pack directory instead.",
+
+  "identity": "I read a statement for {account_ref}, but I can't tell whose account it is. Is it one you already have, or a new one?",
+
+  "reconciliation_gap": "Your {account_ref} statement for {opening_date} – {closing_date} doesn't continue from the balance I hold. A statement between them looks missing — is one?",
+  "reconciliation_gap_why": "It opens at {opening_money}; my chain ends elsewhere.",
+  "reconciliation_flagged": "Your {account_ref} statement didn't add up, so I haven't posted it. Can you check the figure I flagged?",
+  "reconciliation_held": "I'm holding a {doc_type} {for_account} that didn't reconcile, so its figures aren't on your books.",
+
+  "transfer": "On {date} you moved {money} ({description}). Was that money moving between your own accounts rather than being spent?",
+  "transfer_why": "{candidates} movement(s) of the same amount within a few days on another account you hold.",
+
+  "merchant": "What is {example}? You have {count} transaction(s) with it, {money} in total.",
+  "merchant_peer_note": "(This looks like a payment to a person, so I'll only apply your answer here — not as a rule.)",
+  "merchant_why": "I have no category for this merchant yet.",
+
+  "nature_single": "{date}: {description} — {money}. What was this one for?",
+  "nature_single_why": "This names how the money moved, not who received it — so I have to ask about each one separately.",
+
+  "nature_group_head": "You have {count} payment(s) to {example} totalling {money}.",
+  "nature_group_meaning": "These normally mean {what}.",
+  "nature_group_compound": "A payment like that is usually several things at once, and I can't tell the split without the paperwork.",
+  "nature_group_ask": "Shall I set that up?",
+  "nature_group_why": "Because of who they are, not because of anything you told me.",
+  "nature_group_why_documents": "Your {documents} would let me prove it.",
+
+  "corroboration": "You told me about {name} — {money} so far. Do you have the {document}? It would let me prove this, not just record it.",
+  "corroboration_why": "This account exists because you said so; nothing has attested it.",
+  "corroboration_why_unreliable": "Its balance also can't be trusted yet, because part of those payments was interest.",
+
+  "free_text_invite": "Or tell me in your own words"
+}

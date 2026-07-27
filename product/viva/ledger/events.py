@@ -601,3 +601,53 @@ def movement_tagged(subject: str, tags: list, occurred_at: str,
         body={"subject": subject, "scope": scope, "tags": clean, "by": by},
         provenance=provenance or Provenance(),
     )
+
+
+# --------------------------------------------------------------------------
+# Slice 6.10 — the decline: "not now" is an answer, and it is remembered.
+#
+# The queue's rule is settled → silence. A decline extends that rule to the
+# QUESTIONS themselves: a person who set something aside has told us something,
+# and asking again tomorrow would be forgetting it — the nag the persona
+# exists to never be (principle 6: you direct the pace).
+#
+# WHY A SNAPSHOT INSTEAD OF A TIMER. Silence-until-a-date is arbitrary and
+# jurisdiction-of-the-mind stuff — why three days and not ten? The honest
+# trigger is NEW EVIDENCE: the question stays quiet while it would say exactly
+# what it said before, and returns the moment its stake changes (a new
+# statement adds movements; the amount or count moves). So the event records
+# the stake the question showed when declined, and the queue compares.
+#
+# The amount here is NOT a claim about money (T2 is untouched) — it is a
+# fingerprint of the question as asked, computed by the same deterministic
+# projection that asked it.
+
+QUESTION_DECLINED = "QuestionDeclined"
+
+DECLINE_NOT_NOW = "not_now"        # "set it aside" — respected until new evidence
+DECLINE_DONT_KNOW = "dont_know"    # "I don't know" — reassured, same silence
+DECLINE_REASONS = (DECLINE_NOT_NOW, DECLINE_DONT_KNOW)
+
+
+def question_declined(question_id: str, kind: str, occurred_at: str,
+                      reason: str = DECLINE_NOT_NOW, amount: str = "",
+                      count: int = 0, pack_version: str = "",
+                      by: str = "human",
+                      provenance: Provenance | None = None) -> Event:
+    """The person set a question aside — recorded so it stays set aside.
+
+    ``question_id`` is the queue's stable id (derived from what the question is
+    about, not from event ids). ``amount``/``count`` snapshot the stake shown
+    at decline time. ``pack_version`` records which voice asked — the same
+    discipline as ``prompt_version``: a recorded version must keep resolving."""
+    if reason not in DECLINE_REASONS:
+        raise ValueError(f"reason must be one of {DECLINE_REASONS}, got {reason!r}")
+    if not question_id:
+        raise ValueError("a decline must name the question it sets aside")
+    return Event(
+        QUESTION_DECLINED, occurred_at,
+        body={"question_id": question_id, "kind": kind, "reason": reason,
+              "amount": str(amount), "count": int(count),
+              "pack_version": pack_version, "by": by},
+        provenance=provenance or Provenance(),
+    )
