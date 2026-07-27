@@ -16,13 +16,18 @@ import re
 import pytest
 
 WEB = pathlib.Path(__file__).resolve().parents[1] / "viva" / "web"
-UI_SRC = WEB / "ui" / "src"
+UI_SRC = WEB / "static"
 
 
 def _ui_text() -> str:
     if not UI_SRC.is_dir():
-        pytest.skip("UI source not present")
-    return "\n".join(p.read_text() for p in UI_SRC.rglob("*.js*"))
+        pytest.skip("surface not present")
+    # Slice 6.9: the surface is plain JS + HTML in `static/`, with NO build step.
+    # The source and the served artifact are the same file, so this test now
+    # checks the thing that actually runs rather than a source that is compiled
+    # into it — which is the entire reason the build was removed.
+    return "\n".join(p.read_text() for p in
+                      list(UI_SRC.glob("*.js")) + list(UI_SRC.glob("*.html")))
 
 
 def _overview_keys() -> set[str]:
@@ -68,11 +73,16 @@ def test_every_endpoint_the_server_exposes_is_called_by_the_surface():
 
 
 def test_the_built_surface_ships_with_the_repo():
-    """The build output is committed so that cloning and running the server gives
-    a working page with no Node and no network (X1: the toolchain is a
-    contributor's concern, never a user's)."""
+    """Cloning and running the server gives a working page with no Node, no
+    network and no build (X1). Slice 6.9 went further: there is no toolchain at
+    all, so the file a contributor reads IS the file the browser runs — the
+    surface can no longer be silently stale."""
     static = WEB / "static"
-    assert (static / "index.html").is_file(), "run `npm run build` in web/ui"
+    assert (static / "index.html").is_file()
+    assert (static / "app.js").is_file()
+    assert not (WEB / "ui").exists(), (
+        "the build step was removed deliberately; do not reintroduce one "
+        "without answering docs/the-surface-cards.md")
     assert (static / "app.js").is_file()
 
 
@@ -121,7 +131,8 @@ def test_an_answer_carries_the_scope_the_question_chose():
     The fix is that the button forwards the option's `args` wholesale."""
     ui = _ui_text()
     assert "api.ruleMajor(" in ui
-    assert "...o.args" in ui, "options must be forwarded whole, not unpacked by hand"
+    assert "...opt.args" in ui or "...o.args" in ui, \
+        "an option's args must be forwarded WHOLE, not unpacked field by field"
     server = (WEB / "server.py").read_text()
     for field in ("movement_key", "group"):
         assert field in server, f"/api/rule-major must accept {field}"

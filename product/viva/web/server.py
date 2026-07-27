@@ -19,7 +19,8 @@ from . import service
 # The surface is a built React app (Slice 6.7) whose STATIC output is committed,
 # so cloning the repo and running this server gives a working page with no Node
 # and no network — the toolchain is a contributor's concern, never a user's.
-# `ui/` holds the source; `static/` is what ships. If the build is missing we say
+# `static/` IS the surface — plain HTML and JS, no build step (Slice 6.9), so
+# the file served is the file a contributor reads. If it is missing we say
 # so plainly rather than serving a blank page.
 _STATIC = Path(__file__).parent / "static"
 _LEGACY_INDEX = Path(__file__).parent / "index.html"
@@ -66,7 +67,7 @@ def make_handler(vault, read_fn):
                                    "text/html; charset=utf-8")
             self._bytes(
                 b"<h1>The surface isn't built yet</h1><p>Run <code>npm install "
-                b"&amp;&amp; npm run build</code> in <code>product/viva/web/ui</code>."
+                b"static/index.html and static/app.js are missing."
                 b"</p>", "text/html; charset=utf-8", 503)
 
         def do_GET(self):
