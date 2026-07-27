@@ -109,3 +109,45 @@ def test_sync_is_idempotent(tmp_path):
     n_events = len(list(ledger.events()))
     enrich_merchants(ledger, cat, ext)                    # again, nothing new
     assert len(list(ledger.events())) == n_events         # no duplicate events
+
+
+def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monkeypatch):
+    """The catalog used to live inside the vault directory, which quietly
+    contradicted the reason it exists.
+
+    It holds IMPERSONAL merchant knowledge (T9) — a normalized key, a category,
+    a counterparty kind — and nothing about anyone's money. That is exactly why
+    it can be kept once, reused by every vault, and eventually shared with other
+    people: "Costco is a warehouse club" is true for everybody, and nobody
+    should pay a model to learn it twice.
+
+    Keeping it beside the vault meant every rebuild started from zero and paid
+    again for knowledge already bought — the network effect the catalog exists
+    for, running in reverse. Vishnu caught it: "I already have enrich from the
+    previous one, I want to use the merchant-catalog.json — isn't having that
+    the reason for having it, for others to use?" """
+    from viva.enrich import catalog_path
+
+    monkeypatch.delenv("VIVA_CATALOG", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    vault = tmp_path / "some-vault"
+    vault.mkdir()
+
+    # With no legacy file, the shared location wins — and crucially it is NOT
+    # inside the vault, so a rebuild into a new directory keeps the knowledge.
+    shared = catalog_path(vault)
+    assert vault not in shared.parents, "a rebuild must not start from zero"
+    assert shared == tmp_path / ".viva" / "merchant-catalog.json"
+
+    # An explicit path always wins, so a catalog can be pointed at a shared or
+    # checked-out location.
+    monkeypatch.setenv("VIVA_CATALOG", str(tmp_path / "team.json"))
+    assert catalog_path(vault) == tmp_path / "team.json"
+
+    # And nobody loses what they already paid for: an existing in-vault catalog
+    # is still honoured while no shared one exists.
+    monkeypatch.delenv("VIVA_CATALOG", raising=False)
+    (tmp_path / ".viva" / "merchant-catalog.json").unlink(missing_ok=True)
+    legacy = vault / "merchant-catalog.json"
+    legacy.write_text("{}")
+    assert catalog_path(vault) == legacy
