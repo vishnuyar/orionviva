@@ -1,5 +1,5 @@
 {
-  "_comment": "The relationship lines — the Winston guide's General & Relationship section, in Viva's voice. {name_part} is either an empty string or ', <FirstName>', derived deterministically from the vault's own account holders.",
+  "_comment": "The relationship lines of the persona guide (docs/viva-persona.md), in Viva's voice. {name_part} is either an empty string or ', <FirstName>', derived deterministically from the vault's own account holders.",
 
   "welcome_empty": "Welcome{name_part}. I'm Viva — I'm here to help you organize your financial world. The best way to start is a single, simple step: add one statement below, and I'll show you what I can do.",
   "welcome_back": "Welcome back{name_part}. It's good to see you. We can continue right where we left off, whenever you're ready.",

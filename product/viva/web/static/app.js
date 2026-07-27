@@ -150,7 +150,7 @@ function netWorthCard(nw) {
   </section>`
 }
 
-/* ONE question at a time (Slice 6.10, D3) — Winston's rule made structural:
+/* ONE question at a time (Slice 6.10, D3) — the persona's rule made structural:
  * the queue ranks by consequence, the card shows rank #1 and says honestly how
  * many wait behind it. "Show me another" browses without recording anything;
  * "Not now" and "I don't know" are ANSWERS — recorded as decline events, so

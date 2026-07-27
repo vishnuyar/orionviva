@@ -52,7 +52,9 @@ def test_the_tail_is_summarized_never_dropped(tmp_path):
     ledger = _checking(tmp_path, [
         (f"2026-03-{d:02d}", f"SHOP {d}", f"-{d}.00") for d in range(1, 13)
     ])
-    result = open_questions(ledger, limit=3)
+    # as_of pinned near the fixture dates so the 6.11 cadence expectation
+    # stays quiet and this asserts exactly the twelve merchant questions.
+    result = open_questions(ledger, limit=3, as_of="2026-04-01")
     assert len(result["questions"]) == 3
     assert result["total"] == 12
     assert result["tail"]["count"] == 9

@@ -1,5 +1,5 @@
 {
-  "_comment": "pack-v1 carries the queue's existing wording VERBATIM — the mechanism ships first, the Winston-manner wording pass is pack-v2, once the copywriter workflow is ruled (viva-persona-and-interview.md, open question 2). A released pack is never edited; add a new pack directory instead.",
+  "_comment": "pack-v1 carries the queue's existing wording VERBATIM — the mechanism shipped first; pack-v2 is the wording pass in Viva's own manner (docs/viva-persona.md). A released pack is never edited; add a new pack directory instead.",
 
   "identity": "I read a statement for {account_ref}, but I can't tell whose account it is. Is it one you already have, or a new one?",
 

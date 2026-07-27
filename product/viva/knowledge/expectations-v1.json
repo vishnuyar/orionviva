@@ -1,0 +1,30 @@
+{
+  "_comment": "The knowledge registry (Slice 6.11): declarative expectations about what exists in the world and how it relates — NEVER how to read a document (the parser anti-goal). Each entry names a universal mechanism ('given'), the document to pursue in plain words, and the jurisdictions it holds in ('*' = everywhere). Seeded deliberately small — only what this vault's own evidence can raise (resist encyclopedism; the tiers grow it). Versioned like every other data pack: edit by adding expectations-v2.json.",
+  "version": "expectations-v1",
+  "entries": [
+    {
+      "id": "retirement-statements",
+      "given": "retirement_flow",
+      "expect_doc_types": ["retirement_statement", "401k_statement"],
+      "jurisdictions": ["*"],
+      "document": "retirement account statement — a 401(k), pension or similar",
+      "cadence": "quarterly"
+    },
+    {
+      "id": "investment-1099",
+      "given": "investment_account",
+      "expect_doc_types": ["form_1099", "form_1099_b", "form_1099_div"],
+      "jurisdictions": ["US"],
+      "document": "1099 (B and DIV) from the broker",
+      "cadence": "annual"
+    },
+    {
+      "id": "statement-currency",
+      "given": "account_cadence",
+      "expect_doc_types": [],
+      "jurisdictions": ["*"],
+      "document": "a newer statement",
+      "cadence_days": 45
+    }
+  ]
+}

@@ -33,4 +33,4 @@ testpaths = ["tests"]
 # version that plainly exists in the repo. X1 — the toolchain is a contributor's
 # problem, never a user's.
 [tool.setuptools.package-data]
-"viva" = ["prompts/*.txt", "persona/*/*.json", "persona/*/*.md"]
+"viva" = ["prompts/*.txt", "persona/*/*.json", "persona/*/*.md", "knowledge/*.json"]
