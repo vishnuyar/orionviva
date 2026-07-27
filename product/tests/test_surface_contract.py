@@ -72,6 +72,25 @@ def test_every_endpoint_the_server_exposes_is_called_by_the_surface():
         "or delete them; a dead endpoint is a promise the product isn't keeping")
 
 
+def test_every_question_action_the_queue_emits_has_a_surface_handler():
+    """The contract that actually drifted (found 2026-07-27): the queue offered
+    "A new account" (action=confirm_identity) for the held Imprint statements,
+    and app.js had no branch for it — the click did nothing, silently, and the
+    question was unanswerable from the surface. The endpoint test above cannot
+    catch this: `/api/confirm-identity` appears in the api table whether or not
+    any button reaches it. What must stay in step is ACTIONS → HANDLERS."""
+    q_src = (pathlib.Path(__file__).resolve().parents[1] /
+             "viva" / "questions.py").read_text()
+    actions = set(re.findall(r'"action":\s*"([a-z_]+)"', q_src))
+    assert actions, "found no actions in questions.py — the regex has rotted"
+    handled = set(re.findall(r"opt\.action === '([a-z_]+)'", _ui_text()))
+    missing = sorted(actions - handled)
+    assert not missing, (
+        f"the question queue emits {missing} and the surface has no branch for "
+        "them — the button would do nothing, silently. Wire it, or name it in "
+        "a branch that says honestly that no flow exists yet")
+
+
 def test_the_built_surface_ships_with_the_repo():
     """Cloning and running the server gives a working page with no Node, no
     network and no build (X1). Slice 6.9 went further: there is no toolchain at

@@ -1,6 +1,6 @@
 # Net Worth (Slice 7) — a curve, not a number
 
-**Status:** Spec — decisions settled 2026-07-26, implementation next · **Created:** 2026-07-26 · **Origin:** Vishnu, on being asked what date a net-worth figure carries: *"net worth is always as-of date, it should be from the earliest date available to latest date."* · **Blocks seeded:** the **net-worth projection** · the **provable subtotal** (Slice 13's first primitive, derived for free).
+**Status:** ✅ **BUILT 2026-07-26** — and hardened the same day by its first real-vault run: the liability-sign defect (two cards booked as assets; see D1's postscript) and unvalued accounts silently dropped from the total, both fixed · **Created:** 2026-07-26 · **Origin:** Vishnu, on being asked what date a net-worth figure carries: *"net worth is always as-of date, it should be from the earliest date available to latest date."* · **Blocks seeded:** the **net-worth projection** · the **provable subtotal** (Slice 13's first primitive, derived for free).
 
 **Invariants touched:** **T1** (every line names the document behind it) · **T2** (arithmetic is deterministic; no model anywhere near this) · **T4** (pure projection over events already written — no new event type, retroactive, no re-ingest) · **M1** (cash-flow over accrual: a holding is a dated *measurement*, unrealized change is a presentation view) · **X2** (a figure carries its as-of date and its grade, always) · principle 2 (never bluff a number) · principle 7 (deferential where it counts).
 

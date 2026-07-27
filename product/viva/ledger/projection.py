@@ -355,6 +355,12 @@ class LedgerProjection:
         # a merchant ruling are looked up the same way, and a fourth scope later
         # costs a constant, not an event type.
         self._rulings: dict[tuple[str, str], dict] = {}
+        # Declined questions (Slice 6.10): question id -> the decline body, which
+        # snapshots the stake (amount, count) the question showed when set
+        # aside. The queue suppresses a question while its stake is unchanged
+        # and lets it return the moment new evidence moves it. "Not now" is an
+        # answer, and it is remembered.
+        self._declined: dict[str, dict] = {}
         # Own-account token index (Slice 6.5), built lazily and invalidated when a
         # new account is opened — used to recognize an internal movement even when
         # no transfer link was formed.
@@ -459,6 +465,11 @@ class LedgerProjection:
                 target = (self._category_alias_map if scope == SCOPE_CATEGORY
                           else self._tag_alias_map)
                 target[event.body["subject"]] = event.body["same_as"]
+
+        elif et == "QuestionDeclined":
+            # Last decline wins; a question re-declined after returning simply
+            # updates its snapshot to the new stake.
+            self._declined[event.body["question_id"]] = event.body
 
         elif et in ("MerchantCategorized", "MerchantEnriched"):
             merchant = event.body["merchant"]
@@ -1048,6 +1059,14 @@ class LedgerProjection:
                 by_tag[tag] = by_tag.get(tag, Decimal("0")) + amount
         return {"by_tag": by_tag, "untagged": untagged, "total": total,
                 "overlaps": True}
+
+    def declined_questions(self) -> dict[str, dict]:
+        """Questions the person set aside (Slice 6.10), by the queue's stable
+        question id. Each body carries the stake snapshot (amount, count) from
+        the moment of decline — the queue compares against the live stake and
+        stays silent only while they match. Kept as data, not policy: THIS
+        projection remembers; the queue decides."""
+        return dict(self._declined)
 
     def category_aliases(self) -> dict[str, str]:
         """{duplicate label -> the label it is really the same as}."""

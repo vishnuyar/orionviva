@@ -39,7 +39,9 @@ const post = async (url, body, headers) => {
 
 const api = {
   overview:     ()            => get('/api/overview'),
+  greeting:     ()            => get('/api/greeting'),
   questions:    (limit = 10)  => get(`/api/questions?limit=${limit}`),
+  decline:      (id, reason)  => post('/api/decline', JSON.stringify({id, reason})),
   netWorth:     (asOf = '')   => get(`/api/net-worth?as_of=${asOf}`),
   account:      (id)          => get(`/api/account?id=${encodeURIComponent(id)}`),
   review:       ()            => get('/api/review'),
@@ -148,14 +150,24 @@ function netWorthCard(nw) {
   </section>`
 }
 
+/* ONE question at a time (Slice 6.10, D3) — Winston's rule made structural:
+ * the queue ranks by consequence, the card shows rank #1 and says honestly how
+ * many wait behind it. "Show me another" browses without recording anything;
+ * "Not now" and "I don't know" are ANSWERS — recorded as decline events, so
+ * the question stays quiet until new evidence changes its stake. */
 function questionsCard(q) {
   const items = (q && q.questions) || []
+  const ack = state.ack ? `<div class="quiet">${esc(state.ack)}</div>` : ''
   if (!items.length) {
+    const settled = (state.greeting && state.greeting.all_settled)
+      || 'Nothing right now. Everything I can settle, I have.'
     return `<section class="card"><h3>What Viva needs</h3>
-      <div class="muted">Nothing right now. Everything I can settle, I have.</div></section>`
+      ${ack}<div class="muted">${esc(settled)}</div></section>`
   }
-  // Ranked by CONSEQUENCE — answer the one that moves the most money first.
-  const rows = items.map((item, i) => `
+  const i = Math.min(state.qIndex || 0, items.length - 1)
+  const item = items[i]
+  const waiting = q.total - 1
+  const one = `
     <div class="q">
       <div class="text">${esc(item.text)}</div>
       <div class="why">${esc(item.why || '')}</div>
@@ -166,10 +178,24 @@ function questionsCard(q) {
         ${item.refs && item.refs.merchant
           ? `<button class="link" data-open="${esc(item.refs.merchant)}">see the transactions</button>` : ''}
       </div>
-    </div>`).join('')
+      ${item.free_text ? `
+      <div class="row">
+        <input type="text" id="said" class="grow"
+               placeholder="${esc(item.free_text)}…">
+      </div>
+      <div id="proposal"></div>` : ''}
+      <div class="row">
+        <button class="link" data-decline="not_now">Not now</button>
+        <button class="link" data-decline="dont_know">I don't know</button>
+        ${items.length > 1
+          ? `<button class="link" id="next-q">Show me another</button>` : ''}
+      </div>
+    </div>`
   return `<section class="card"><h3>What Viva needs
-    <span class="quiet">${items.length} of ${q.total}, most consequential first</span></h3>
-    ${rows}</section>`
+    <span class="quiet">${waiting > 0
+      ? `${waiting} more waiting — most consequential first`
+      : 'the last one'}</span></h3>
+    ${ack}${one}</section>`
 }
 
 /* One card per kind. The lines come from net worth, which already carries every
@@ -293,7 +319,8 @@ function addDocumentsCard() {
 // --- the page -----------------------------------------------------------------
 
 const root = document.getElementById('root')
-let state = {nw: null, questions: null, overview: null}
+let state = {nw: null, questions: null, overview: null, greeting: null,
+             qIndex: 0, ack: '', proposal: null}
 
 /* A card that throws must not take the page down with it.
  *
@@ -314,9 +341,12 @@ function safely(name, fn) {
 }
 
 function render() {
-  const {nw, questions, overview} = state
+  const {nw, questions, overview, greeting} = state
   const lines = (nw && nw.lines) || []
   root.innerHTML = [
+    // Viva's opening line — a moment from the persona pack, never hardcoded.
+    greeting && greeting.text
+      ? `<div class="quiet greeting">${esc(greeting.text)}</div>` : '',
     safely("What you're worth", () => netWorthCard(nw)),
     safely('What Viva needs', () => questionsCard(questions)),
     ...KINDS.map(([k, t, b]) => safely(t, () => kindCard(k, t, b, lines, nw || {}))),
@@ -345,6 +375,35 @@ function wire() {
           await api.rejectTransfer(opt.args.movement_a)
         } else if (opt.action === 'assign_merchant') {
           return openMerchant(opt.args.merchant)
+        } else if (opt.action === 'confirm_identity') {
+          // args carry {doc_id, decision: 'same' | 'new'} wholesale from the
+          // queue — the same pass-through rule ruleMajor follows.
+          await api.confirmIdentity(opt.args)
+        } else if (opt.action === 'upload') {
+          // No flow of its own: the Add-documents card IS the answer.
+          el.disabled = false
+          const target = document.getElementById('upload')
+          if (target) target.scrollIntoView({behavior: 'smooth'})
+          return
+        } else if (opt.action === 'dismiss') {
+          // "Not right now" is an ANSWER (6.10): recorded as a decline, quiet
+          // until new evidence changes the question's stake.
+          const r = await api.decline(q.id, 'not_now')
+          state.ack = r.message || ''
+          state.qIndex = 0
+        } else if (opt.action === 'review') {
+          // Named here so the action contract test can see it is KNOWN, and
+          // answered honestly: no flow exists behind it yet. The alternative
+          // — a button that does nothing, silently — is how the Imprint
+          // identity question sat unanswerable (found 2026-07-27).
+          el.disabled = false
+          alert(`"${opt.label}" has no flow built behind it yet — nothing was recorded.`)
+          return
+        } else {
+          // An action this surface has never heard of must say so, not no-op.
+          el.disabled = false
+          alert(`This button ("${opt.label}") is wired to nothing this surface knows — nothing was recorded.`)
+          return
         }
         await load()
       } catch (e) { el.disabled = false; alert(e.message) }
@@ -352,6 +411,69 @@ function wire() {
   })
   root.querySelectorAll('[data-open]').forEach(el => {
     el.addEventListener('click', () => openMerchant(el.dataset.open))
+  })
+  // Declining IS answering (6.10): the server snapshots the live stake and
+  // replies in Viva's voice; the question returns only on new evidence.
+  root.querySelectorAll('[data-decline]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const items = state.questions.questions
+      const item = items[Math.min(state.qIndex || 0, items.length - 1)]
+      el.disabled = true
+      try {
+        const r = await api.decline(item.id, el.dataset.decline)
+        state.ack = r.message || ''
+        state.qIndex = 0
+        await load()
+      } catch (e) { el.disabled = false; alert(e.message) }
+    })
+  })
+  const nextQ = document.getElementById('next-q')
+  if (nextQ) nextQ.addEventListener('click', () => {
+    // Browsing, not answering — nothing is recorded, the ranking stands.
+    state.qIndex = ((state.qIndex || 0) + 1) % state.questions.questions.length
+    state.ack = ''
+    render()
+  })
+  // "Tell me in your own words" (9a, finally on the surface): sentence →
+  // proposal shown back in plain language → explicit yes → deterministic
+  // writers. Nothing is written until the person confirms (X3).
+  const said = document.getElementById('said')
+  if (said) said.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter' || !e.target.value.trim()) return
+    const items = state.questions.questions
+    const item = items[Math.min(state.qIndex || 0, items.length - 1)]
+    const refs = item.refs || {}
+    const box = document.getElementById('proposal')
+    box.innerHTML = `<div class="quiet">reading…</div>`
+    try {
+      const r = await api.listen({
+        said: e.target.value.trim(),
+        descriptor: refs.descriptor || refs.example || '',
+        movement_key: refs.movement || '',
+        category: refs.category || '', subcategory: refs.subcategory || '',
+        amount: item.amount || '', currency: item.currency || ''})
+      if (!r.understood) {
+        box.innerHTML = `<div class="why">${esc(r.message || "I couldn't read that one — the buttons still work.")}</div>`
+        return
+      }
+      state.proposal = r.proposal
+      box.innerHTML = `
+        <div class="why">${esc(r.proposal.summary || 'Here is what I understood.')}</div>
+        <div class="row">
+          <button id="apply-proposal">Yes — do that</button>
+          <button class="ghost" id="cancel-proposal">No, hold on</button>
+        </div>`
+      document.getElementById('apply-proposal').addEventListener('click', async () => {
+        await api.applyRuling(state.proposal)
+        state.proposal = null
+        state.qIndex = 0
+        await load()
+      })
+      document.getElementById('cancel-proposal').addEventListener('click', () => {
+        state.proposal = null
+        box.innerHTML = ''
+      })
+    } catch (err) { box.innerHTML = `<div class="why">${esc(err.message)}</div>` }
   })
   root.querySelectorAll('[data-account]').forEach(el => {
     el.addEventListener('click', () => openAccount(el.dataset.account))
@@ -389,16 +511,28 @@ async function openAccount(id) {
  * confusion the split exists to remove. */
 async function openMerchant(merchant) {
   const d = await api.merchantTxns(merchant)
+  /* Direction is part of the number. Amounts arrive SIGNED with a kind-aware
+   * `direction`; showing magnitudes alone made every EFT to the broker read
+   * positive and dressed a gross two-way total as one figure. The magnitude
+   * here is display (like the liability card's "owed"); the ledger decided
+   * out/in and the three summary figures. */
   const rows = (d.items || []).map(t => `
     <tr><td>${esc(t.date)}</td><td>${esc(t.description)}</td>
         <td>${esc(t.category || '')}</td>
         <td class="quiet">${esc((t.tags || []).join(', '))}</td>
-        <td class="num">${esc(money(t.amount, t.currency))}</td></tr>`).join('')
+        <td class="num">${t.direction === 'in' ? '+' : '−'}&nbsp;${esc(money(Math.abs(Number(t.amount)), t.currency))}</td></tr>`).join('')
   const known = (d.known_tags || []).filter(t => !(d.merchant_tags || []).includes(t))
+  const bothWays = Number(d.money_out) > 0 && Number(d.money_in) > 0
+  const flow = bothWays
+    ? `${esc(money(d.money_out, d.currency))} out · ${esc(money(d.money_in, d.currency))} in
+       · net ${esc(money(Math.abs(Number(d.net)), d.currency))} ${Number(d.net) >= 0 ? 'out' : 'in'}`
+    : Number(d.money_in) > 0
+      ? `${esc(money(d.money_in, d.currency))} in`
+      : `${esc(money(d.money_out, d.currency))} out`
   root.innerHTML = `<section class="card">
     <a class="back" href="#" id="back">← back</a>
     <h3>${esc(d.merchant)}</h3>
-    <div class="quiet">${d.count} transaction(s) · ${esc(money(d.total, d.currency))} in total</div>
+    <div class="quiet">${d.count} transaction(s) · ${flow}</div>
 
     <div class="row" style="margin-top:12px">
       <select id="cat">${(d.categories || []).map(c =>
@@ -443,13 +577,16 @@ async function openMerchant(merchant) {
 
 async function load() {
   try {
-    const [nw, questions, overview] = await Promise.all([
+    const [nw, questions, overview, greeting] = await Promise.all([
       api.netWorth().catch(() => null),
       api.questions(10).catch(() => ({questions: [], total: 0})),
       api.overview().catch(() => null),
+      api.greeting().catch(() => null),
     ])
-    state = {nw, questions, overview}
+    state = {...state, nw, questions, overview, greeting,
+             qIndex: Math.min(state.qIndex, Math.max(0, (questions.questions || []).length - 1))}
     render()
+    state.ack = ''                       // an ack shows once, then retires
   } catch (e) {
     // Only reached when a FETCH failed. A rendering fault is caught per card
     // above, because blaming the ledger for a display bug sends you looking in

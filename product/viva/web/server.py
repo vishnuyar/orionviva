@@ -96,6 +96,8 @@ def make_handler(vault, read_fn):
                 return self._send(service.net_worth(
                     vault, (q.get("as_of") or [""])[0],
                     curve=(q.get("curve") or [""])[0] == "1"))
+            if u.path == "/api/greeting":
+                return self._send(service.greeting(vault))
             if u.path == "/api/questions":
                 n = parse_qs(u.query).get("limit", ["10"])[0]
                 return self._send(service.questions(
@@ -119,6 +121,10 @@ def make_handler(vault, read_fn):
                     return self._send(service.confirm_correction(
                         vault, d["doc_id"], d["field"], d["value"],
                         d.get("target_index")))
+                if u.path == "/api/decline":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.decline_question(
+                        vault, d["id"], d.get("reason", "not_now")))
                 if u.path == "/api/confirm-identity":
                     d = json.loads(raw or b"{}")
                     return self._send(service.confirm_identity(
