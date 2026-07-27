@@ -17,6 +17,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# Only needed to GENERATE the synthetic corpus PDFs (bench/synthetic).
+# Nothing in core/ or product/ imports it, and no run-time path touches it:
+# it writes test documents, it never reads one.
+corpus = ["reportlab>=4.0"]
 
 [project.scripts]
 viva-bench = "vivabench.cli:main"

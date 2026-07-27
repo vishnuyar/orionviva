@@ -1,0 +1,1315 @@
+{
+  "locale": "en-US",
+  "currency": "USD",
+  "holder": "ROWAN E VANCE",
+  "accounts": {
+    "checking": {
+      "institution": "Northbank",
+      "name": "Everyday Checking",
+      "number": "\u2022\u2022\u2022\u20224417"
+    },
+    "savings": {
+      "institution": "Northbank",
+      "name": "High-Yield Savings",
+      "number": "\u2022\u2022\u2022\u20228802"
+    },
+    "card": {
+      "institution": "Meridian",
+      "name": "Signature Card",
+      "number": "\u2022\u2022\u2022\u20222291"
+    },
+    "brokerage": {
+      "institution": "Vantage",
+      "name": "Brokerage Individual",
+      "number": "\u2022\u2022\u2022\u20227734"
+    }
+  },
+  "documents": {
+    "checking-2026-01": {
+      "doc_type": "checking_statement",
+      "account": {
+        "institution": "Northbank",
+        "name": "Everyday Checking",
+        "number": "\u2022\u2022\u2022\u20224417"
+      },
+      "period": [
+        "2026-01-01",
+        "2026-01-31"
+      ],
+      "entries": [
+        {
+          "label": "opening balance",
+          "value_raw": "4,182.66",
+          "value": "4182.66",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing balance",
+          "value_raw": "7,293.29",
+          "value": "7293.29",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "transaction count",
+          "value_raw": "11",
+          "value": "11",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-05 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "-142.83",
+          "value": "-142.83",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-07 BRIGHT LEAF COFFEE CEDAR PARK TX",
+          "value_raw": "-6.75",
+          "value": "-6.75",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-09 LUMEN ENERGY UTILITY PMT AUTOPAY",
+          "value_raw": "-128.40",
+          "value": "-128.40",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-12 TRANSFER TO NORTHBANK SAVINGS 8802",
+          "value_raw": "-500.00",
+          "value": "-500.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-15 PAYMENT TO MERIDIAN CARD 2291",
+          "value_raw": "-1,204.55",
+          "value": "-1204.55",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-16 STREAMLINE MEDIA MONTHLY",
+          "value_raw": "-17.99",
+          "value": "-17.99",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-20 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "-96.12",
+          "value": "-96.12",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-22 PINEGROVE PHARMACY #7 CEDAR PARK",
+          "value_raw": "-34.20",
+          "value": "-34.20",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-26 VECTOR FUEL #88 LEANDER TX",
+          "value_raw": "-52.10",
+          "value": "-52.10",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-28 CONTRIBUTION TO VANTAGE BROKERAGE 7734",
+          "value_raw": "-1,000.00",
+          "value": "-1000.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-01-30 HALCYON SYSTEMS PAYROLL DIRECT DEP",
+          "value_raw": "6,293.57",
+          "value": "6293.57",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "card-2026-01": {
+      "doc_type": "credit_card_statement",
+      "account": {
+        "institution": "Meridian",
+        "name": "Signature Card",
+        "number": "\u2022\u2022\u2022\u20222291"
+      },
+      "period": [
+        "2026-01-01",
+        "2026-01-31"
+      ],
+      "entries": [
+        {
+          "label": "previous balance",
+          "value_raw": "1,204.55",
+          "value": "1204.55",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "new balance",
+          "value_raw": "885.66",
+          "value": "885.66",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "payment",
+          "value_raw": "1,204.55",
+          "value": "1204.55",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-03 GOLDEN FORK BISTRO CEDAR PARK TX",
+          "value_raw": "78.40",
+          "value": "78.40",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-08 ARBOR HOME SUPPLY #14 AUSTIN TX",
+          "value_raw": "215.66",
+          "value": "215.66",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-11 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "88.90",
+          "value": "88.90",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-14 CEDAR PARK PARKING AUTH",
+          "value_raw": "12.00",
+          "value": "12.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-17 VECTOR FUEL #88 LEANDER TX",
+          "value_raw": "46.75",
+          "value": "46.75",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-21 NORTHSTAR AIRLINES 0192244178",
+          "value_raw": "412.30",
+          "value": "412.30",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-24 BRIGHT LEAF COFFEE CEDAR PARK TX",
+          "value_raw": "9.50",
+          "value": "9.50",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-01-27 PINEGROVE PHARMACY #7 CEDAR PARK",
+          "value_raw": "22.15",
+          "value": "22.15",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "brokerage-2026-01": {
+      "doc_type": "brokerage_statement",
+      "account": {
+        "institution": "Vantage",
+        "name": "Brokerage Individual",
+        "number": "\u2022\u2022\u2022\u20227734"
+      },
+      "period": [
+        "2026-01-01",
+        "2026-01-31"
+      ],
+      "entries": [
+        {
+          "label": "opening cash",
+          "value_raw": "1,240.18",
+          "value": "1240.18",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing cash",
+          "value_raw": "1,464.10",
+          "value": "1464.10000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "total account value",
+          "value_raw": "21,490.95",
+          "value": "21490.95000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VTI units",
+          "value_raw": "45.000",
+          "value": "45.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VXUS units",
+          "value_raw": "61.000",
+          "value": "61.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding BND units",
+          "value_raw": "55.000",
+          "value": "55.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VTI market value",
+          "value_raw": "12,078.00",
+          "value": "12078.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VXUS market value",
+          "value_raw": "3,955.85",
+          "value": "3955.85",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding BND market value",
+          "value_raw": "3,993.00",
+          "value": "3993.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "checking-2026-02": {
+      "doc_type": "checking_statement",
+      "account": {
+        "institution": "Northbank",
+        "name": "Everyday Checking",
+        "number": "\u2022\u2022\u2022\u20224417"
+      },
+      "period": [
+        "2026-02-01",
+        "2026-02-28"
+      ],
+      "entries": [
+        {
+          "label": "opening balance",
+          "value_raw": "7,293.29",
+          "value": "7293.29",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing balance",
+          "value_raw": "10,719.81",
+          "value": "10719.81",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "transaction count",
+          "value_raw": "10",
+          "value": "10",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-04 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "-118.44",
+          "value": "-118.44",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-06 LUMEN ENERGY UTILITY PMT AUTOPAY",
+          "value_raw": "-141.07",
+          "value": "-141.07",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-10 CEDAR PARK WATER UTILITY",
+          "value_raw": "-63.18",
+          "value": "-63.18",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-12 TRANSFER TO NORTHBANK SAVINGS 8802",
+          "value_raw": "-500.00",
+          "value": "-500.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-16 STREAMLINE MEDIA MONTHLY",
+          "value_raw": "-17.99",
+          "value": "-17.99",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-16 PAYMENT TO MERIDIAN CARD 2291",
+          "value_raw": "-885.66",
+          "value": "-885.66",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-19 BRIGHT LEAF COFFEE CEDAR PARK TX",
+          "value_raw": "-7.40",
+          "value": "-7.40",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-24 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "-88.31",
+          "value": "-88.31",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-25 CONTRIBUTION TO VANTAGE BROKERAGE 7734",
+          "value_raw": "-1,000.00",
+          "value": "-1000.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-02-27 HALCYON SYSTEMS PAYROLL DIRECT DEP",
+          "value_raw": "6,248.57",
+          "value": "6248.57",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "card-2026-02": {
+      "doc_type": "credit_card_statement",
+      "account": {
+        "institution": "Meridian",
+        "name": "Signature Card",
+        "number": "\u2022\u2022\u2022\u20222291"
+      },
+      "period": [
+        "2026-02-01",
+        "2026-02-28"
+      ],
+      "entries": [
+        {
+          "label": "previous balance",
+          "value_raw": "885.66",
+          "value": "885.66",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "new balance",
+          "value_raw": "477.93",
+          "value": "477.93",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "payment",
+          "value_raw": "885.66",
+          "value": "885.66",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-02-02 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "134.08",
+          "value": "134.08",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-02-06 GOLDEN FORK BISTRO CEDAR PARK TX",
+          "value_raw": "52.75",
+          "value": "52.75",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-02-09 VECTOR FUEL #88 LEANDER TX",
+          "value_raw": "49.20",
+          "value": "49.20",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-02-13 ORCHID FLORAL AUSTIN TX",
+          "value_raw": "86.00",
+          "value": "86.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-02-18 ARBOR HOME SUPPLY #14 AUSTIN TX",
+          "value_raw": "41.99",
+          "value": "41.99",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-02-23 BRIGHT LEAF COFFEE CEDAR PARK TX",
+          "value_raw": "11.25",
+          "value": "11.25",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-02-25 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "102.66",
+          "value": "102.66",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "brokerage-2026-02": {
+      "doc_type": "brokerage_statement",
+      "account": {
+        "institution": "Vantage",
+        "name": "Brokerage Individual",
+        "number": "\u2022\u2022\u2022\u20227734"
+      },
+      "period": [
+        "2026-02-01",
+        "2026-02-28"
+      ],
+      "entries": [
+        {
+          "label": "opening cash",
+          "value_raw": "1,464.10",
+          "value": "1464.10000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing cash",
+          "value_raw": "1,668.30",
+          "value": "1668.30000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "total account value",
+          "value_raw": "22,688.50",
+          "value": "22688.50000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VTI units",
+          "value_raw": "45.000",
+          "value": "45.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VXUS units",
+          "value_raw": "73.000",
+          "value": "73.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding BND units",
+          "value_raw": "55.000",
+          "value": "55.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VTI market value",
+          "value_raw": "12,246.75",
+          "value": "12246.75",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VXUS market value",
+          "value_raw": "4,810.70",
+          "value": "4810.70",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding BND market value",
+          "value_raw": "3,962.75",
+          "value": "3962.75",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "checking-2026-03": {
+      "doc_type": "checking_statement",
+      "account": {
+        "institution": "Northbank",
+        "name": "Everyday Checking",
+        "number": "\u2022\u2022\u2022\u20224417"
+      },
+      "period": [
+        "2026-03-01",
+        "2026-03-31"
+      ],
+      "entries": [
+        {
+          "label": "opening balance",
+          "value_raw": "10,719.81",
+          "value": "10719.81",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing balance",
+          "value_raw": "14,143.18",
+          "value": "14143.18",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "transaction count",
+          "value_raw": "11",
+          "value": "11",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-03 LUMEN ENERGY UTILITY PMT AUTOPAY",
+          "value_raw": "-135.62",
+          "value": "-135.62",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-05 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "-127.90",
+          "value": "-127.90",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-11 CEDAR PARK WATER UTILITY",
+          "value_raw": "-58.44",
+          "value": "-58.44",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-12 TRANSFER TO NORTHBANK SAVINGS 8802",
+          "value_raw": "-500.00",
+          "value": "-500.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-16 STREAMLINE MEDIA MONTHLY",
+          "value_raw": "-17.99",
+          "value": "-17.99",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-16 PAYMENT TO MERIDIAN CARD 2291",
+          "value_raw": "-477.93",
+          "value": "-477.93",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-20 VECTOR FUEL #88 LEANDER TX",
+          "value_raw": "-55.30",
+          "value": "-55.30",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-25 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "-104.77",
+          "value": "-104.77",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-27 ATM WITHDRAWAL 1400 ASTER ROW",
+          "value_raw": "-200.00",
+          "value": "-200.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-28 CONTRIBUTION TO VANTAGE BROKERAGE 7734",
+          "value_raw": "-1,500.00",
+          "value": "-1500.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "txn 2026-03-31 HALCYON SYSTEMS PAYROLL DIRECT DEP",
+          "value_raw": "6,601.32",
+          "value": "6601.32",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "card-2026-03": {
+      "doc_type": "credit_card_statement",
+      "account": {
+        "institution": "Meridian",
+        "name": "Signature Card",
+        "number": "\u2022\u2022\u2022\u20222291"
+      },
+      "period": [
+        "2026-03-01",
+        "2026-03-31"
+      ],
+      "entries": [
+        {
+          "label": "previous balance",
+          "value_raw": "477.93",
+          "value": "477.93",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "new balance",
+          "value_raw": "728.19",
+          "value": "728.19",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "payment",
+          "value_raw": "477.93",
+          "value": "477.93",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-03-04 GOLDEN FORK BISTRO CEDAR PARK TX",
+          "value_raw": "64.10",
+          "value": "64.10",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-03-07 SAFEHARBOR MARKET #221 CEDAR PARK TX",
+          "value_raw": "119.42",
+          "value": "119.42",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-03-10 VECTOR FUEL #88 LEANDER TX",
+          "value_raw": "51.85",
+          "value": "51.85",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-03-15 ARBOR HOME SUPPLY #14 AUSTIN TX",
+          "value_raw": "308.77",
+          "value": "308.77",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-03-19 BRIGHT LEAF COFFEE CEDAR PARK TX",
+          "value_raw": "8.75",
+          "value": "8.75",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-03-22 PINEGROVE PHARMACY #7 CEDAR PARK",
+          "value_raw": "46.30",
+          "value": "46.30",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "charge 2026-03-28 STREAMLINE MEDIA ANNUAL RENEWAL",
+          "value_raw": "129.00",
+          "value": "129.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "brokerage-2026-03": {
+      "doc_type": "brokerage_statement",
+      "account": {
+        "institution": "Vantage",
+        "name": "Brokerage Individual",
+        "number": "\u2022\u2022\u2022\u20227734"
+      },
+      "period": [
+        "2026-03-01",
+        "2026-03-31"
+      ],
+      "entries": [
+        {
+          "label": "opening cash",
+          "value_raw": "1,668.30",
+          "value": "1668.30000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing cash",
+          "value_raw": "1,803.66",
+          "value": "1803.66000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "total account value",
+          "value_raw": "23,916.21",
+          "value": "23916.21000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VTI units",
+          "value_raw": "49.000",
+          "value": "49.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VXUS units",
+          "value_raw": "73.000",
+          "value": "73.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding BND units",
+          "value_raw": "61.000",
+          "value": "61.000",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VTI market value",
+          "value_raw": "12,730.20",
+          "value": "12730.20",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding VXUS market value",
+          "value_raw": "4,920.20",
+          "value": "4920.20",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "holding BND market value",
+          "value_raw": "4,462.15",
+          "value": "4462.15",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "savings-2026-01": {
+      "doc_type": "savings_statement",
+      "account": {
+        "institution": "Northbank",
+        "name": "High-Yield Savings",
+        "number": "\u2022\u2022\u2022\u20228802"
+      },
+      "period": [
+        "2026-01-01",
+        "2026-01-31"
+      ],
+      "entries": [
+        {
+          "label": "opening balance",
+          "value_raw": "12,400.00",
+          "value": "12400.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing balance",
+          "value_raw": "12,941.33",
+          "value": "12941.33",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "interest paid",
+          "value_raw": "41.33",
+          "value": "41.33",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "savings-2026-02": {
+      "doc_type": "savings_statement",
+      "account": {
+        "institution": "Northbank",
+        "name": "High-Yield Savings",
+        "number": "\u2022\u2022\u2022\u20228802"
+      },
+      "period": [
+        "2026-02-01",
+        "2026-02-28"
+      ],
+      "entries": [
+        {
+          "label": "opening balance",
+          "value_raw": "12,941.33",
+          "value": "12941.33",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "closing balance",
+          "value_raw": "13,481.20",
+          "value": "13481.20",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "interest paid",
+          "value_raw": "39.87",
+          "value": "39.87",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "paystub-2026-01": {
+      "doc_type": "pay_stub",
+      "employer": "Halcyon Systems Inc.",
+      "pay_date": "2026-01-30",
+      "entries": [
+        {
+          "label": "gross pay",
+          "value_raw": "9,850.00",
+          "value": "9850.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "net pay",
+          "value_raw": "6,293.57",
+          "value": "6293.57",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Federal Income Tax",
+          "value_raw": "1,772.00",
+          "value": "1772.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Social Security",
+          "value_raw": "610.70",
+          "value": "610.70",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Medicare",
+          "value_raw": "142.83",
+          "value": "142.83",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction 401(k) Pre-Tax",
+          "value_raw": "788.00",
+          "value": "788.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Medical PPO",
+          "value_raw": "214.50",
+          "value": "214.50",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Dental",
+          "value_raw": "28.40",
+          "value": "28.40",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "paystub-2026-02": {
+      "doc_type": "pay_stub",
+      "employer": "Halcyon Systems Inc.",
+      "pay_date": "2026-02-27",
+      "entries": [
+        {
+          "label": "gross pay",
+          "value_raw": "9,850.00",
+          "value": "9850.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "net pay",
+          "value_raw": "6,248.57",
+          "value": "6248.57",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Federal Income Tax",
+          "value_raw": "1,772.00",
+          "value": "1772.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Social Security",
+          "value_raw": "610.70",
+          "value": "610.70",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Medicare",
+          "value_raw": "142.83",
+          "value": "142.83",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction 401(k) Pre-Tax",
+          "value_raw": "788.00",
+          "value": "788.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Medical PPO",
+          "value_raw": "214.50",
+          "value": "214.50",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Dental",
+          "value_raw": "28.40",
+          "value": "28.40",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Commuter Parking",
+          "value_raw": "45.00",
+          "value": "45.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    },
+    "paystub-2026-03": {
+      "doc_type": "pay_stub",
+      "employer": "Halcyon Systems Inc.",
+      "pay_date": "2026-03-31",
+      "entries": [
+        {
+          "label": "gross pay",
+          "value_raw": "10,350.00",
+          "value": "10350.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "net pay",
+          "value_raw": "6,601.32",
+          "value": "6601.32",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Federal Income Tax",
+          "value_raw": "1,886.00",
+          "value": "1886.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Social Security",
+          "value_raw": "641.70",
+          "value": "641.70",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Medicare",
+          "value_raw": "150.08",
+          "value": "150.08",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction 401(k) Pre-Tax",
+          "value_raw": "828.00",
+          "value": "828.00",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Medical PPO",
+          "value_raw": "214.50",
+          "value": "214.50",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        },
+        {
+          "label": "deduction Dental",
+          "value_raw": "28.40",
+          "value": "28.40",
+          "locale": "en-US",
+          "currency": "USD",
+          "page": 1
+        }
+      ]
+    }
+  },
+  "cross_document_facts": [
+    {
+      "kind": "card_payment",
+      "from": "checking",
+      "to": "card",
+      "amount": "1204.55",
+      "expect": "one movement recognised as a transfer, counted once, excluded from spending"
+    },
+    {
+      "kind": "payroll",
+      "stub": "paystub-2026-01",
+      "to": "checking",
+      "amount": "6293.57",
+      "expect": "the stub decomposes this deposit; gross recognised once"
+    },
+    {
+      "kind": "brokerage_contribution",
+      "from": "checking",
+      "to": "brokerage",
+      "amount": "1000.00",
+      "expect": "counted once, not spending"
+    },
+    {
+      "kind": "card_payment",
+      "from": "checking",
+      "to": "card",
+      "amount": "885.66",
+      "expect": "one movement recognised as a transfer, counted once, excluded from spending"
+    },
+    {
+      "kind": "payroll",
+      "stub": "paystub-2026-02",
+      "to": "checking",
+      "amount": "6248.57",
+      "expect": "the stub decomposes this deposit; gross recognised once"
+    },
+    {
+      "kind": "brokerage_contribution",
+      "from": "checking",
+      "to": "brokerage",
+      "amount": "1000.00",
+      "expect": "counted once, not spending"
+    },
+    {
+      "kind": "card_payment",
+      "from": "checking",
+      "to": "card",
+      "amount": "477.93",
+      "expect": "one movement recognised as a transfer, counted once, excluded from spending"
+    },
+    {
+      "kind": "payroll",
+      "stub": "paystub-2026-03",
+      "to": "checking",
+      "amount": "6601.32",
+      "expect": "the stub decomposes this deposit; gross recognised once"
+    },
+    {
+      "kind": "brokerage_contribution",
+      "from": "checking",
+      "to": "brokerage",
+      "amount": "1500.00",
+      "expect": "counted once, not spending"
+    }
+  ],
+  "derived": {
+    "net_worth_2026-03-31": "50812.40",
+    "note": "savings has no March statement, so its February closing is the latest measurement at that date and is the stalest input to the point",
+    "total_gross_income": "30050.00",
+    "total_net_income": "19143.46"
+  }
+}
