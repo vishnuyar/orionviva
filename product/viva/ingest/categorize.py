@@ -196,30 +196,52 @@ def categorize_merchants_batch(ledger: Ledger, categorize_fn,
     return n
 
 
-def enrich_merchants(ledger: Ledger, catalog, extract_fn) -> dict:
-    """The product↔merchantcore loop. Submit the unknown, shareable
-    merchants to the catalog as **impersonal** hints (a normalized key + a linted
-    example — nothing about amounts, dates, or accounts crosses); let
-    merchantcore enrich the pending set in one batched call; then **sync** the
-    catalog records back into the ledger as `MerchantEnriched` events, so
+def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
+                     kind_for=None) -> dict:
+    """The product↔merchantcore loop, keyed on the BRAND rather than the descriptor.
+
+    What crosses is a brand and the impersonal context every occurrence of it
+    agreed on. Nothing about amounts, dates or accounts; no raw descriptor; and
+    no person, ever. merchantcore enriches the pending set in batched calls, and
+    the records sync back into the ledger as `MerchantEnriched` events so
     categorization is retrospective and the ledger stays self-contained.
 
-    ``catalog`` is a ``merchantcore.Catalog``; ``extract_fn`` is the injected
-    model call. Returns counts."""
+    **What changed, and why it is not a tidy-up.** This used to walk movements,
+    key each on `normalize_merchant(raw)`, and gate on `is_shareable` — a
+    ten-item substring list that refused every English descriptor containing
+    " to " and admitted a name in any other language. Three consequences, all
+    now gone:
+
+    - Two locations of one shop were two keys, two calls, two commons rows.
+      They are one brand.
+    - A person was withheld only if their descriptor happened to contain a word
+      on the list. Now a person is withheld because a grammar slot *said* they
+      are a person, and a company on the same peer rail crosses normally.
+    - Your own card payments and a brokerage's own activity lines were offered
+      to a model as merchants. They have no counterparty at all and are not
+      offered.
+
+    ``profile_for(movement)`` supplies the induced grammar for the movement's
+    (institution × kind) or None, and ``kind_for(movement)`` the account kind.
+    Both optional: with neither, the resolution falls back through published
+    rules and the normalizer, which is worse and still correct.
+    """
     from merchantcore import Enricher
 
+    from ..ledger.hints import enrichment_hints
+    from ..ledger.streams import build_streams
+
     proj = ledger.projection()
-    hints = [(key, row["example"])
-             for key, row in proj.uncategorized_merchants().items()
-             if row["shareable"]]
-    submitted = catalog.submit(hints)
+    streams = build_streams(proj.movements(), profile_for, kind_for)
+    offered = enrichment_hints(streams)
+    submitted = catalog.submit((h.key, h.example()) for h in offered.values())
     enriched = 0
     if catalog.pending():
         # Show the model the labels this vault already uses, so a new one is a
         # deliberate act rather than the path of least resistance.
         records = Enricher(
             extract_fn,
-            known_subcategories=ledger.projection().known_subcategories()
+            known_subcategories=proj.known_subcategories()
         ).enrich(catalog.pending())
         catalog.add_all(records)
         enriched = len(records)
@@ -234,10 +256,13 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn) -> dict:
                 r.key, r.category, r.subcategory, r.canonical_name,
                 r.attributes, r.grade, date.today().isoformat()))
             synced += 1
+    withheld = len([s for s in streams if s.is_person])
     if submitted or enriched or synced:
-        log.info("merchants: submitted %d, enriched %d, synced %d",
-                 submitted, enriched, synced)
-    return {"submitted": submitted, "enriched": enriched, "synced": synced}
+        log.info("merchants: offered %d brand(s), submitted %d, enriched %d, "
+                 "synced %d; %d person stream(s) withheld",
+                 len(offered), submitted, enriched, synced, withheld)
+    return {"submitted": submitted, "enriched": enriched, "synced": synced,
+            "offered": len(offered), "withheld_people": withheld}
 
 
 def export_catalog(ledger: Ledger) -> dict:
