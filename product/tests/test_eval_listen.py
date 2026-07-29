@@ -7,6 +7,10 @@ severity, not just the counts.
 """
 
 import json
+import pathlib
+import re
+
+import pytest
 
 from viva.eval_listen import OK, RUIN, SAFE, WEAK, WRONG, load_cases, report, run
 
@@ -119,15 +123,49 @@ def test_repeat_surfaces_instability():
     assert "unstable across runs" in report(r)
 
 
-def test_the_key_carries_no_real_financial_data():
-    """It ships in a public repo. Synthetic counterparties, no amounts, no
-    account numbers, no names."""
-    raw = (load_cases.__globals__["CASES"]).read_text()
-    for leaked in ("chase", "amex", "wells fargo", "citi", "harborline", "servicerco"):
-        assert leaked not in raw.lower()
+def _local_denylist():
+    """Real names to hunt for, read from a git-ignored file at the repo root.
+
+    They used to be spelled out in this file. A list of names that must never be
+    published, written into a file that IS published, is the same mistake a
+    commit script here made and caught: the guard was the leak. So they live in
+    `.denylist`, which `.gitignore` refuses to track.
+
+    Absent — on any machine but the author's, and in CI — the name check does not
+    run, and that is the honest trade. A check that needs private input to work
+    cannot also ship. The shape check below needs none and always runs.
+    """
+    f = pathlib.Path(__file__).resolve().parents[2] / ".denylist"
+    if not f.exists():
+        return None
+    return [ln.strip().lower() for ln in f.read_text().splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")]
+
+
+def test_the_key_names_nobody_real():
+    """The eval key ships in a public repo, so a real name in it is permanent.
+
+    Matched CASE-INSENSITIVELY, which is the whole lesson rather than a detail.
+    Every paranoia check in this project was case-sensitive until 2026-07-29,
+    reported clean, and was wrong for that one reason: the list held a name in
+    title case and the fixture printed it in capitals. A guard that appears to
+    work and does not is worse than no guard, because it buys confidence.
+
+    And note what this docstring does NOT do: give the example. Naming the name
+    to explain why the name must not be named is how the last guard leaked.
+    """
+    names = _local_denylist()
+    if names is None:
+        pytest.skip("no .denylist on this machine (see _local_denylist)")
+    raw = (load_cases.__globals__["CASES"]).read_text().lower()
+    hits = sorted(n for n in names if n in raw)
+    assert not hits, f"real name(s) in the eval key: {hits}"
+
+
+def test_the_key_carries_no_amounts_or_account_numbers():
+    """Needs no private input, so unlike the check above this one always runs."""
     # Not "no digits" — "401k" is a plan type, not a value. What must never
     # appear is anything money- or account-shaped.
-    import re
     money = re.compile(r"[$£€₹]|\d+\.\d{2}|\d,\d{3}|\d{4,}")
     for case in load_cases()["cases"]:
         blob = f"{case['said']} {case['descriptor']}"
