@@ -11,9 +11,18 @@ CLAUDE.md
 docs/TODO.md
 docs/phases.md
 
+# Throwaway commit scripts. They carry a deny-list of real names spelled out in
+# full — the guard against real names in the repo is itself a file full of them,
+# and the first run of one caught exactly that. Local tools, like the vault.
+commit-*.sh
+
 # Environments and secrets
 .env
 .env.*
+# ...but the EXAMPLE is documentation, not a secret. It names every knob a
+# shipped install has and carries no values — a package nobody can configure
+# is a package nobody can run.
+!.env.example
 *.key
 *.pem
 
@@ -61,3 +70,10 @@ product/viva/web/ui/node_modules/
 
 # The Cowork device bridge cannot delete files; deletions are parked here for manual removal.
 _to_delete/
+
+# merchantcore's SHIPPED seed is committed on purpose — impersonal grammars and
+# merchant records that every install starts from. What an installation LEARNS
+# is written to ~/.merchantcore (or MERCHANTCORE_HOME), outside any working
+# tree, so it cannot be committed by accident rather than merely should not be.
+!merchant/merchantcore/data/
+!merchant/merchantcore/data/**

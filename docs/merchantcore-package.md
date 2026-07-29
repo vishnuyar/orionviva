@@ -1,6 +1,6 @@
 # merchantcore — the merchant enrichment package
 
-**Status:** Implemented · **Last updated:** 2026-07-24 · **Origin:** the merchant catalog built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
+**Status:** Implemented · **Superseded-in-part 2026-07-28** (see the note at the end) · **Last updated:** 2026-07-24 · **Origin:** the merchant catalog built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
 
 **Invariants touched:** **T5 drawn at a package boundary** (only *impersonal* data crosses product → merchantcore: a normalized merchant key and a privacy-linted example — never amounts, dates, accounts, or peer/PII descriptors), T4 (the product's ledger stays the source of truth: merchantcore is a knowledge *cache/service*, and the product imports its results as events, so a replay is self-contained), T6 (contributing to the commons is an opt-in decision), T8 (merchantcore makes provider-agnostic, pinned model calls through `vivacore.models`), I3/I5/I6 (merchants are locale-sharded, categories/attributes are open data, the commons is pack-extensible). Principle 2 (an enriched attribute is a *graded* claim; the personal override always wins).
 
@@ -133,3 +133,42 @@ The goal of enrichment is to let a person slice their finances any way. That is 
 **Done criteria / tests:** the product→merchantcore boundary accepts only key + linted example (a test asserts no amount/date/account can cross, and a peer-payment hint is rejected); `Enricher.run` makes one batched, injected model call and produces graded `MerchantRecord`s; the product syncs records to `MerchantEnriched` events and categorizes retrospectively (survives replay with merchantcore absent); `Catalog.export` contains only linted merchant records (no financial data); a human `verified` override still wins; the full suite stays green through the extraction.
 
 **Why now + future use:** it makes the merchant knowledge base a first-class, reusable, shareable asset — the home for the enrichment prompt, multi-attribute records, web enrichers, and the commons registry — cleanly separated from the personal ledger by the impersonal boundary. It is the second shared crown-jewel package (after vivacore), and the concrete substrate for the network effect the format-commons chapter promised.
+
+
+---
+
+## What 2026-07-28 changed
+
+Three claims in this document are no longer accurate, and the reasons are worth
+more than the corrections.
+
+**"The product submits a normalized key and a linted example."** It submitted
+`m.description` — the raw bank descriptor, verbatim — and the pending queue
+persisted those raw lines into plain JSON that is unencrypted by decision and
+shared across vaults by decision. Repair-list C2. Fixed twice over: the example
+is linted at the call site, and the store lints again on submit, so the
+invariant is a property of the store rather than of whoever writes the next
+caller.
+
+**The key was the descriptor, so a chain was one row per city.** Two locations of
+one shop were two keys, two model calls, two commons rows and two chances to
+disagree with itself — while this project's own research chapter records the
+whole field converging on brand-level identity. Enrichment now keys on the
+`{brand}` slot an induced grammar produces, and the context that travels is only
+what every occurrence agreed on: a shop seen in one city keeps its city, a chain
+seen in five has none.
+
+**The gate was `is_shareable`.** A ten-item substring list, which refused every
+English descriptor containing " to " and admitted a name in any other language —
+on the author's real vault, 183 of 365 keys blocked. A stream is now withheld
+because a grammar *slot* said a person is in it. The list survives only where no
+grammar exists, as the conservative answer to "we cannot tell". See
+[the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md).
+
+**And the catalog moved.** It sat under the product's home directory, which
+quietly said it belonged to the product. A brand's category is nobody's money
+and outlives every ledger: it is merchantcore's. Two locations now — a shipped
+seed committed inside the package, and learned data at `~/.merchantcore`
+(`MERCHANTCORE_HOME`), deliberately outside any working tree so a record that
+should not be published cannot be committed by accident. Learned wins on lookup;
+promotion into the shipped seed is a person's decision.
