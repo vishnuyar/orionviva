@@ -1,5 +1,7 @@
 """merchantcore — the merchant knowledge base: normalize, enrich, catalog."""
 
+from merchantcore.descriptor import (brand_candidate,
+                                     parse_descriptor)
 from merchantcore import (Catalog, Enricher, MerchantRecord, PRIMARY_CATEGORIES,
                           canonical_primary, is_shareable, normalize_merchant,
                           NORMALIZER_VERSION)
@@ -51,7 +53,7 @@ def test_enricher_is_one_call_and_grades_records():
     assert recs["amzn mktp us"].category == "shopping"
     assert recs["amzn mktp us"].attributes["website"] == "amazon.com"
     assert recs["amzn mktp us"].grade == "corroborated"   # a model batch, not verified
-    assert "merch-v1" in recs["amzn mktp us"].version     # normalizer version carried
+    assert "merch-v2" in recs["amzn mktp us"].version     # normalizer version carried
 
 
 def test_enricher_chunks_a_large_batch_into_several_calls():
@@ -115,3 +117,75 @@ def test_catalog_merge_prior_loses_to_local_verified():
     cat.merge({"amzn mktp us": {"key": "amzn mktp us", "category": "shopping",
                                 "grade": "corroborated"}})
     assert cat.get("amzn mktp us").category == "groceries"   # local verified wins
+
+
+# --- a posting date is not part of a merchant's name ------------------------
+
+def test_a_date_fragment_does_not_become_part_of_the_key():
+    """One merchant seen in two months was becoming two merchants, because the
+    non-word pass turned "02/14 STORE" into "02 14 store" and the bare month
+    then headed a key of its own. On a real vault 118 of 492 keys — a quarter —
+    were headed by a bare month number."""
+    assert normalize_merchant("02/14 SAFEHARBOR MARKET") == "safeharbor market"
+    assert (normalize_merchant("02/14 SAFEHARBOR MARKET")
+            == normalize_merchant("03/09 SAFEHARBOR MARKET"))
+    assert normalize_merchant("12-31 LUMEN ENERGY") == "lumen energy"
+
+
+def test_a_bare_number_can_still_be_part_of_a_name():
+    """Only a fragment carrying a separator is a date. A number on its own is
+    as likely to be the name itself."""
+    assert normalize_merchant("7 ELEVEN 33412") == "7 eleven"
+
+
+# --- Layer 0: claim what a published rule proves, and name the rest ---------
+
+def test_the_asterisk_separates_an_aggregator_from_what_it_sold():
+    """The asterisk sits at index 3, 7 or 12 by processor mandate, so this is
+    parsing rather than guessing."""
+    p = parse_descriptor("SQ *BLUE BOTTLE COFFEE SAN FRANCISCO CA")
+    assert p.get("aggregator") == "SQ"
+    assert "BLUE BOTTLE COFFEE" in brand_candidate(p)
+
+
+def test_a_trailing_two_letter_code_is_the_region_subfield():
+    p = parse_descriptor("COSTCO WHSE #0664 PLANO TX")
+    assert p.get("region") == "TX"
+    assert p.get("store_number") == "#0664"
+    assert brand_candidate(p) == "COSTCO WHSE"
+
+
+def test_a_phone_where_the_city_belongs_means_the_card_was_not_present():
+    """The networks require the 13-character city slot to carry a phone number
+    or URL for card-absent transactions, so this is a signal rather than a
+    misread location."""
+    assert parse_descriptor("SOME MERCHANT 617-SERVICE").card_not_present
+    assert parse_descriptor("COSTCO WHSE #0664 PLANO TX").card_not_present is False
+
+
+def test_a_city_is_marked_inferred_because_adjacency_is_not_proof():
+    """The region code is proved by the layout. The city is only adjacent to it,
+    and the flattening destroyed the offsets that would settle where the name
+    ends — so the slot carries how it was obtained."""
+    p = parse_descriptor("COSTCO WHSE #0664 PLANO TX")
+    city = [s for s in p.slots if s.name == "city"][0]
+    region = [s for s in p.slots if s.name == "region"][0]
+    assert city.certain is False and region.certain is True
+    assert p.to_dict()["slots"][-1]["provenance"] in ("parsed", "inferred")
+
+
+def test_a_descriptor_layer_zero_cannot_explain_says_so():
+    """A bank-composed sentence over structured data. No published card rule
+    touches it, and reporting zero coverage is how the need for a per-institution
+    grammar becomes visible instead of being papered over."""
+    p = parse_descriptor("ZELLE TO JOHN SMITH")
+    assert p.coverage == 0.0
+    assert p.slots == []
+
+
+def test_leftovers_must_be_contiguous():
+    """Layer 0 cannot claim the merchant name, so demanding no residue would
+    fail on everything. What it can demand is that the leftovers form ONE run:
+    scattered fragments mean the rules fired in the wrong places."""
+    assert parse_descriptor("COSTCO WHSE #0664 PLANO TX").clean
+    assert parse_descriptor("TST* GOLDEN FORK BISTRO AUSTIN TX").clean

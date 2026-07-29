@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-NORMALIZER_VERSION = "merch-v1"
+NORMALIZER_VERSION = "merch-v2"
 
 # Payment-processor / POS prefixes that wrap the real merchant name.
 _PREFIXES = (
@@ -33,6 +33,13 @@ _PEER_MARKERS = (
     "quickpay", "popmoney", " to ", " from ",
 )
 
+# A posting date printed inside the descriptor. It has to go before the
+# non-word pass removes its separators, because "02/14 STORE" survives that
+# pass as "02 14 store" and then heads a merchant key of its own — so one
+# merchant seen in two months becomes two merchants, and every total that
+# touches either is split. Only a fragment with a separator is stripped: a
+# bare number can be part of a name ("7 eleven", "76").
+_DATE_FRAGMENT = re.compile(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b")
 _ORDER_ID = re.compile(r"\*[a-z0-9]{3,}")          # US*RA30Z3BP0, *RH4DD6YM1
 _STORE_NUM = re.compile(r"#\s*\d+")                 # #0664
 _PHONE = re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b")
@@ -49,6 +56,7 @@ def normalize_merchant(descriptor: str) -> str:
         if s.startswith(p):
             s = s[len(p):]
             break
+    s = _DATE_FRAGMENT.sub(" ", s)
     s = _PHONE.sub(" ", s)
     s = _ORDER_ID.sub(" ", s)
     s = _STORE_NUM.sub(" ", s)

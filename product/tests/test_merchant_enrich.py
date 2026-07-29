@@ -128,6 +128,7 @@ def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monke
 
     monkeypatch.delenv("VIVA_CATALOG", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("MERCHANTCORE_HOME", raising=False)
     vault = tmp_path / "some-vault"
     vault.mkdir()
 
@@ -135,7 +136,7 @@ def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monke
     # inside the vault, so a rebuild into a new directory keeps the knowledge.
     shared = catalog_path(vault)
     assert vault not in shared.parents, "a rebuild must not start from zero"
-    assert shared == tmp_path / ".viva" / "merchant-catalog.json"
+    assert shared == tmp_path / ".merchantcore" / "catalog.json"
 
     # An explicit path always wins, so a catalog can be pointed at a shared or
     # checked-out location.
