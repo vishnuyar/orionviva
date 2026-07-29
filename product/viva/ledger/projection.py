@@ -33,6 +33,7 @@ from .events import (SCOPE_CATEGORY, SCOPE_MERCHANT, SCOPE_TAG, ASSERTED, CONFLI
                      VERIFIED, Event, Provenance, postings_of)
 from .identity import (account_key, account_tokens, names_overlap,
                        number_key, slug)
+from merchantcore.descriptor import linted_example
 from .merchants import is_shareable, normalize_merchant
 from .postings import EQUITY_OPENING, INCOME_UNCATEGORIZED
 
@@ -1200,7 +1201,12 @@ class LedgerProjection:
             key = normalize_merchant(m.description)
             if not key:
                 continue
-            row = out.setdefault(key, {"count": 0, "example": m.description,
+            # The LINTED example, never the raw line. The raw descriptor carries
+            # store numbers, cities, order ids and posting dates, none of which
+            # help identify a brand and all of which used to cross to a model
+            # provider and persist unencrypted (repair-list C2).
+            row = out.setdefault(key, {"count": 0,
+                                       "example": linted_example(m.description),
                                        "shareable": is_shareable(m.description)})
             row["count"] += 1
         return out

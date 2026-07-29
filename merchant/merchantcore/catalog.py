@@ -13,6 +13,7 @@ import json
 import logging
 from pathlib import Path
 
+from .descriptor import linted_example
 from .normalize import is_shareable
 from .record import MerchantRecord
 
@@ -26,10 +27,17 @@ def _rank(grade: str) -> int:
 
 
 class Catalog:
-    def __init__(self, path: str | Path | None = None):
+    def __init__(self, path: str | Path | None = None, shipped=None):
         self._records: dict[str, MerchantRecord] = {}
         self._pending: dict[str, str] = {}       # key -> example (awaiting enrichment)
         self._path = Path(path) if path else None
+        # The seed that travels with the package, laid down FIRST so anything
+        # this installation learned or a person confirmed sits on top of it.
+        # Same precedence as a commons import: what you worked out beats what
+        # you were handed.
+        self._shipped = Path(shipped) if shipped else None
+        if self._shipped and self._shipped.exists():
+            self._load_file(self._shipped)
         if self._path and self._path.exists():
             self.load()
 
@@ -43,7 +51,13 @@ class Catalog:
         for key, example in hints:
             if not key or key in self._records or key in self._pending:
                 continue
-            self._pending[key] = example
+            # Linted HERE as well as at the caller, deliberately. The pending
+            # queue is persisted to plain JSON that is unencrypted by decision
+            # and shared across vaults by decision, and anything submitted but
+            # never enriched sits in it indefinitely. Making the lint a property
+            # of the store rather than of every call site is what stops the next
+            # caller from reintroducing repair-list C2.
+            self._pending[key] = linted_example(example)
             n += 1
         return n
 
