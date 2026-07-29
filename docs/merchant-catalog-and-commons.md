@@ -32,6 +32,10 @@ The raw descriptor never leaves the encrypted ledger. The unencrypted catalog ho
 
 ## Implementation status (as built, 2026-07-24)
 
+- ⚠️ **Superseded 2026-07-28 — the privacy lint.** `is_shareable` was the
+  last of the nine raw-text keyword tables this project deleted, surviving
+  because it was filed under privacy rather than classification. It now
+  applies only where no induced grammar exists.
 - ✅ **Deterministic, versioned normalizer.** `ledger/merchants.py`
   `normalize_merchant` (strips store #, order-ids `US*…`, phones, POS prefixes,
   punctuation; `NORMALIZER_VERSION`) + `is_shareable` (peer-payment / PII lint).
@@ -66,6 +70,13 @@ self-healing) — `export_catalog` is its input; merchant-as-Party + per-locatio
 analytics. Tests: `test_merchants.py` (7); full suite 234 green.
 
 ## Where the catalog lives, and why that is load-bearing
+
+> **Moved 2026-07-28.** "Beside the vaults" was right about the reason and
+> wrong about the address: it sat under the *product's* home. It is
+> merchantcore's — a shipped seed inside the package, and learned data at
+> `~/.merchantcore`, outside any working tree. See
+> [merchantcore-package.md](merchantcore-package.md).
+
 
 The catalog sits beside the vaults, not inside one. It began inside the vault directory, which quietly contradicted the reason it exists: merchant knowledge is impersonal and cumulative, so a catalog scoped to a single vault made every rebuild start from zero and pay the model again for knowledge already bought — the network effect this design was built for, running in reverse. The enrichment run now also reports which catalog it loaded and how much is in it, because a shared store that silently loads the wrong file is worse than no sharing at all.
 

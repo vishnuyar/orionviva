@@ -22,28 +22,29 @@ from .env import load_dotenv
 from .logs import configure as configure_logging
 
 
-def catalog_path(vault_dir) -> pathlib.Path:
-    """Where the merchant catalog lives — SHARED across vaults, by default.
+def catalog_path(vault_dir=None) -> pathlib.Path:
+    """Where the merchant catalog lives — merchantcore's, not the vault's.
 
-    The catalog holds **impersonal** merchant knowledge: a normalized key, a
-    category, a counterparty kind. Nothing about anyone's money is in it, which
-    is exactly why it can be kept once, reused across every vault, and
-    eventually shared with other people — "Costco is a warehouse club" is true
-    for everybody and nobody should pay a model to learn it twice. A catalog
-    kept inside a vault directory instead starts every rebuild from zero and
-    pays again for knowledge already bought.
+    It holds impersonal merchant knowledge: a brand, a category, attributes.
+    Nothing about anyone's money is in it, which is exactly why it is kept once,
+    reused across every vault, and eventually shipped. It used to sit under the
+    product's home directory, which quietly said it belonged to the product.
 
-    So: `VIVA_CATALOG` if set, else `~/.viva/merchant-catalog.json`. An existing
-    in-vault catalog is still honoured when the shared one does not exist yet,
-    so nobody loses what they have already paid for."""
+    `VIVA_CATALOG` still overrides, and an older catalog is honoured while the
+    new location is empty, so nobody loses what they have already paid for.
+    """
+    from merchantcore import home
     explicit = os.environ.get("VIVA_CATALOG")
     if explicit:
         return pathlib.Path(explicit).expanduser()
-    shared = pathlib.Path("~/.viva/merchant-catalog.json").expanduser()
-    legacy = pathlib.Path(vault_dir) / "merchant-catalog.json"
-    if not shared.exists() and legacy.exists():
-        return legacy
-    shared.parent.mkdir(parents=True, exist_ok=True)
+    shared = home.catalog_file()
+    if not shared.exists():
+        older = [pathlib.Path("~/.viva/merchant-catalog.json").expanduser()]
+        if vault_dir:
+            older.append(pathlib.Path(vault_dir) / "merchant-catalog.json")
+        for old in older:
+            if old.exists():
+                return old
     return shared
 
 
@@ -76,7 +77,8 @@ def main() -> None:
         api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "OPENROUTER_API_KEY"),
         json_mode=True)
     cpath = catalog_path(vault_dir)
-    catalog = Catalog(cpath)
+    from merchantcore import home
+    catalog = Catalog(cpath, shipped=home.shipped_catalog_file())
     known = len(catalog.records()) if hasattr(catalog, "records") else len(catalog._records)
     # THE line that answers "why is it calling the model again?". `submit` skips
     # anything already in the catalog, so a model call means the catalog it
