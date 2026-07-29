@@ -15,6 +15,11 @@ docs/phases.md
 # full — the guard against real names in the repo is itself a file full of them,
 # and the first run of one caught exactly that. Local tools, like the vault.
 commit-*.sh
+scrub-*.sh
+
+# The names those scripts hunt for, in one place instead of copied into
+# every guard. Never tracked, for the same reason.
+.denylist
 
 # Environments and secrets
 .env
