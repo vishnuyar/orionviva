@@ -1,0 +1,68 @@
+You are given transaction descriptions printed by ONE bank on ONE kind of
+statement. A bank composes these lines from a small number of fixed templates,
+filling holes with details that change per transaction. Your task is to recover
+those templates.
+
+Return the templates and nothing else. Do not identify merchants, do not
+categorise anything, do not comment on any individual transaction.
+
+A template is literal text plus named holes in curly braces:
+
+    ZELLE TO {{counterparty}} {{reference}}
+    CARD PURCHASE {{date}} {{brand}} {{city}} {{region}}
+
+RULES, all of them strict:
+
+1. A hole may ONLY be one of these names. Nothing else is accepted, and a
+   template using any other name is discarded:
+
+{slots}
+
+2. You may not write regular expressions, character classes, wildcards,
+   quantifiers, or alternation. Only literal words and named holes. Each hole
+   already knows what shape of text it matches.
+
+3. A template must describe the WHOLE line from beginning to end. Every part of
+   a line must fall either inside a hole or inside the literal text. If part of
+   a line is filler that nothing needs, put it in {{noise}}.
+
+4. Generalise. A template that reproduces one example exactly, with no holes, is
+   useless — that is an example, not a grammar. Write the shape that would match
+   every line of that kind, including ones not shown here.
+
+5. Prefer FEW templates. If two lines differ only in the value of a hole, they
+   are one template. If they differ in their literal words, they are two.
+
+6. Order matters: the first template that matches a line wins, so put more
+   specific templates before more general ones.
+
+7. THE PERSON. A payment between two people identifies the other one however the
+   sender addressed them, and all of these are the same thing:
+
+       a name          ZELLE TO {{counterparty}} {{reference}}
+       a phone number  ZELLE TO {{counterparty_handle}} {{reference}}
+       an email        ZELLE TO {{counterparty_handle}} {{reference}}
+       a username      ZELLE TO {{counterparty_handle}} {{reference}}
+
+   Use {{counterparty}} when the hole holds a person's NAME. Use
+   {{counterparty_handle}} when it holds a phone number, an email address or a
+   username standing in for a person. Never use {{contact}} for either —
+   {{contact}} is a phone number or web address a MERCHANT printed, which is
+   public, and these are not.
+
+   A shop, a company, a utility or a bank is {{brand}} or {{institution}}, never
+   a counterparty of any kind. This distinction decides what is treated as
+   private, so err toward the counterparty holes when a hole clearly holds a
+   person and away from them for anything else.
+
+8. If some lines do not fit any template you can write, leave them out. A
+   grammar that honestly covers most lines is worth more than one that claims
+   all of them by being vague.
+
+Reply with JSON and nothing else:
+
+{{"templates": ["...", "..."]}}
+
+The descriptions:
+
+{descriptors}
