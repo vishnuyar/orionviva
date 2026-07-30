@@ -1,19 +1,19 @@
 """The proctor: administers the exam identically to every candidate.
 
-Responsibilities (and nothing more):
+What it does:
 - iterate the (document x candidate x run) matrix, skipping completed cells;
 - render pages once, call the adapter page by page, capture everything raw;
-- enforce the budget ceiling — hard stop, loud report.
+- stop at the budget ceiling by raising BudgetExceeded.
 
-One cell = one document x candidate x run, but N calls: one per page.
-A dense 12-page statement needs ~62k output tokens to extract whole, which is
-past the output ceiling of every small candidate — asking for it in one call
-would score the ceiling rather than the reading. Pages are extracted
-independently and merged here, so candidates with a 32k cap and candidates
-with a 128k cap answer the same question under the same conditions.
+One cell is one (document, candidate, run), but N calls: one per page. Pages are
+extracted independently and merged here, so a candidate with a 32k output cap and
+one with a 128k cap answer the same question under the same conditions.
 
-Failures are recorded as records too: a crashed call is evidence, not noise.
-Truncation is recorded too, per page, and never silently accepted.
+A crashed call and a truncated page are both recorded as records rather than
+dropped.
+
+Design rationale for page-at-a-time extraction and input modes:
+docs/document-preprocessing.md
 """
 
 from __future__ import annotations
@@ -64,10 +64,11 @@ def plan(config: BenchConfig, corpus: Corpus, store: RunStore) -> RunPlan:
 
 
 def _finish_reason(response: dict[str, Any]) -> str | None:
-    """The endpoint's own word for why generation stopped, across both adapters.
+    """The endpoint's own stop signal, across both adapters, or None.
 
-    We never infer truncation from output shape — a model may legitimately emit
-    short JSON. Only the provider's stop signal counts as evidence.
+    Reads `choices[0].finish_reason` (or `native_finish_reason`) for
+    OpenAI-compatible responses and `stop_reason` for Anthropic's. Truncation is
+    never inferred from the shape of the output, only from this value.
     """
     if not isinstance(response, dict):
         return None
@@ -82,7 +83,7 @@ _TRUNCATED = ("length", "max_tokens", "MAX_TOKENS")
 
 @dataclass
 class PageOutcome:
-    """One page's call, kept whole for the record."""
+    """One page's call and everything recorded about it."""
 
     page_number: int
     result: ModelResult
@@ -98,10 +99,10 @@ class PageOutcome:
 def _extract_one_page(
     adapter, page: PageImage, page_count: int, mode: str, page_text: str
 ) -> PageOutcome:
-    """One page, one call. Pure per-page work, safe to run in a worker thread."""
+    """One page, one call. Touches no shared state, so it is thread-safe."""
     prompt = page_prompt(page.page_number, page_count, mode, page_text)
-    # In pure text mode the model is given the issuer's characters and no pixels;
-    # sending the image anyway would silently make it text+image.
+    # "text" means characters only; sending the image too would make it
+    # text+image under another name.
     images = [] if mode == "text" else [page]
     result = adapter.extract(images, prompt)
     claims, parse_error = parse_claims(result.text)
@@ -122,24 +123,23 @@ def extract_by_page(
     mode: str = "image",
     texts: list[str] | None = None,
 ) -> tuple[list[PageOutcome], dict]:
-    """Call the adapter once per page; merge the claims into one answer.
+    """Call the adapter once per page and merge the claims into one answer.
 
-    Returns (per-page outcomes, merged record fields). The merged ``text`` is a
-    single {"claims": [...]} object so the scorer sees one answer per cell,
-    exactly as it did when the whole document went in one call.
+    Returns `(outcomes, fields)`: one PageOutcome per page in page order, and the
+    merged record fields for the store. ``fields["text"]`` is a single
+    ``{"claims": [...]}`` object, so the scorer sees one answer per cell.
 
-    Pages are independent by construction (each call sees exactly one image and
-    is told its own page number), so they may be extracted concurrently without
-    changing what is measured — only how long it takes. Outcomes are always
-    assembled in page order regardless of completion order, so the merged answer
-    and the record are byte-identical to a sequential run.
+    `texts` is indexed by absolute page number and must cover every page in
+    `pages` when `mode` is "text" or "text+image"; otherwise ValueError. An
+    AdapterError from any page propagates and no answer is returned.
+
+    With `concurrency` > 1 the per-page calls run in a thread pool, but outcomes
+    are assembled in page order, so nothing here depends on completion order.
     """
     n = len(pages)
     started = time.monotonic()
     by_page: dict[int, PageOutcome] = {}
     texts = texts or []
-    # texts is indexed by absolute page number, so it covers the whole document
-    # even when `pages` is a subset. Require an entry for every page requested.
     if mode in ("text", "text+image"):
         highest = max((p.page_number for p in pages), default=0)
         if highest > len(texts):
@@ -165,8 +165,8 @@ def extract_by_page(
         )
 
     if concurrency > 1 and n > 1:
-        # AdapterError from any page propagates and fails the whole cell, exactly
-        # as in the sequential path: a partially-read document is not an answer.
+        # AdapterError from any page propagates and fails the whole cell, as in
+        # the sequential path.
         with ThreadPoolExecutor(max_workers=min(concurrency, n)) as pool:
             futures = [
                 pool.submit(_extract_one_page, adapter, p, n, mode, _text_for(p))
@@ -183,9 +183,8 @@ def extract_by_page(
     merged: list[dict] = []
     for outcome in outcomes:
         claims, _ = parse_claims(outcome.result.text)
-        # The model is told its absolute page number, but a claim's own page
-        # field is the model's assertion, not ground truth — pin it to the page
-        # we actually sent so a merged answer can never misattribute a value.
+        # A claim's own page field is the model's assertion; the merged row uses
+        # the page that was actually sent.
         for claim in claims:
             row = {
                 "type": claim.type,
@@ -198,7 +197,8 @@ def extract_by_page(
             if claim.confidence is not None:
                 row["confidence"] = claim.confidence
             if claim.group is not None:
-                # Namespace per page: "txn-1" on page 2 and page 7 are different items.
+                # Namespaced per page: "txn-1" on page 2 and on page 7 are
+                # different items.
                 row["group"] = f"p{outcome.page_number}-{claim.group}"
             merged.append(row)
 
@@ -208,11 +208,10 @@ def extract_by_page(
         "input_tokens": sum(o.result.input_tokens for o in outcomes),
         "output_tokens": sum(o.result.output_tokens for o in outcomes),
         "cost_usd": sum(o.result.cost_usd for o in outcomes),
-        # latency_s is total MODEL time (the sum of per-page calls), which is what
-        # compares candidates fairly — it does not move when page_concurrency does.
-        # wall_clock_s is what this machine actually waited, and is therefore a
-        # property of the harness config, not of the candidate. Keep both, named
-        # honestly, so no one reads a concurrency setting as a speed result.
+        # latency_s is model time: the sum of the per-page calls, unaffected by
+        # page_concurrency, and the figure that compares candidates.
+        # wall_clock_s is what this machine waited, so it is a property of the
+        # harness configuration rather than of the candidate.
         "latency_s": round(sum(o.result.latency_s for o in outcomes), 3),
         "wall_clock_s": round(time.monotonic() - started, 3),
         "page_concurrency": min(concurrency, n) if concurrency > 1 else 1,
@@ -222,7 +221,7 @@ def extract_by_page(
         "pages_called": len(outcomes),
         "pages_truncated": [o.page_number for o in outcomes if o.truncated],
         "pages_unparsed": [o.page_number for o in outcomes if o.parse_error],
-        # Nothing is thrown away: every page's verbatim exchange is kept.
+        # Every page's verbatim request and response, kept whole.
         "page_calls": [
             {
                 "page": o.page_number,
@@ -250,7 +249,12 @@ def run_exam(
     page_cache: Path,
     log=print,
 ) -> None:
-    """Run all remaining cells. Raises BudgetExceeded at the ceiling."""
+    """Run every cell not already completed in `store`.
+
+    Appends one record per cell, ``status`` "ok" or "error". Raises
+    BudgetExceeded before spending anything once actual spend reaches
+    `config.budget_usd`, and ValueError if the configured input mode would miss
+    printed content on a document with no text layer."""
     adapters = {c.name: adapter_for(c) for c in config.candidates}
 
     mode = config.input_mode
@@ -264,7 +268,7 @@ def run_exam(
                 if store.is_done(doc.id, cand.name, run_index, mode):
                     continue
 
-                # ---- budget guard: check BEFORE spending, on actuals
+                # ---- budget guard: checked before spending, against actuals
                 if store.spent_usd >= config.budget_usd:
                     raise BudgetExceeded(
                         f"Budget ceiling reached: spent ${store.spent_usd:.2f} of "
@@ -280,8 +284,8 @@ def run_exam(
                         texts = page_texts(doc, page_cache)
                         gaps = text_gaps(doc, page_cache)
                         if gaps:
-                            # Printed content with no text layer: a scan. Refusing
-                            # beats handing a model blank pages and grading silence.
+                            # Printed content with no text layer: a scan. Refuse
+                            # rather than send blank pages and grade the silence.
                             raise ValueError(
                                 f"Document '{doc.id}' has printed content but no "
                                 f"text layer on page(s) {gaps}, so input mode "
@@ -302,8 +306,8 @@ def run_exam(
                     "candidate": cand.name,
                     "configured_model": cand.model,
                     "run_index": run_index,
-                    # prompt_version and input_mode are supplied by extract_by_page,
-                    # which owns the mode; an error record falls back to them here.
+                    # extract_by_page supplies these on success; an error record,
+                    # which has no fields to merge, falls back to them here.
                     "prompt_version": PROMPT_VERSIONS[mode],
                     "input_mode": mode,
                     "page_hashes": [p.sha256 for p in pages],

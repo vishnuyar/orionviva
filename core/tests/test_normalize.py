@@ -1,8 +1,4 @@
-"""Tests for verify.normalize.
-
-Every normalization rule is a test here. If a rule isn't tested, it doesn't
-exist.
-"""
+"""Tests for verify.normalize — one test per normalization rule."""
 
 from decimal import Decimal
 
@@ -51,7 +47,7 @@ def test_german_comma_decimal():
     assert parse_amount("1.234,56", "de-DE").decimal() == Decimal("1234.56")
 
 def test_german_grouping_only():
-    # "1.234" in a German document is one thousand two hundred thirty-four.
+    # "1.234" under de-DE is one thousand two hundred thirty-four.
     assert parse_amount("1.234", "de-DE").decimal() == Decimal("1234")
 
 def test_french_with_euro():
@@ -67,7 +63,7 @@ def test_swiss_apostrophe_grouping():
 
 
 def test_indian_lakh_grouping():
-    # 12,34,567.89 — grouping by lakh/crore must parse without special-casing.
+    # 12,34,567.89 — lakh/crore grouping, parsed without a special case.
     assert parse_amount("12,34,567.89", "en-IN").decimal() == Decimal("1234567.89")
 
 def test_indian_rupee_symbol():
@@ -81,11 +77,11 @@ def test_japanese_yen():
     assert r.currency == "JPY"
 
 
-# ----------------------------------------------------- amounts: honesty rules
+# ------------------------------------------ amounts: ambiguity and conflict
 
 
 def test_ambiguous_without_locale_is_ambiguous_not_guessed():
-    # THE core honesty test: "1.234" with no locale could be 1.234 or 1234.
+    # "1.234" with no locale could be 1.234 or 1234.
     r = parse_amount("1.234", None)
     assert r.status == "ambiguous"
     assert r.value is None
@@ -115,7 +111,7 @@ def test_assumptions_are_recorded():
     assert len(r.assumptions) >= 2  # parentheses + separator reasoning
 
 def test_no_floats_anywhere():
-    # Classic float trap: 0.1 + 0.2. Decimal must make this exact.
+    # 0.1 + 0.2 is exact under Decimal.
     a = parse_amount("0.10", "en-US").decimal()
     b = parse_amount("0.20", "en-US").decimal()
     assert a + b == Decimal("0.30")
@@ -134,7 +130,7 @@ def test_european_numeric_date():
     assert parse_date("03/04/2025", "de-DE").value == "2025-04-03"
 
 def test_the_trap_without_locale_is_ambiguous():
-    # The load-bearing honesty test for dates.
+    # Both readings valid and no locale to choose between them.
     r = parse_date("03/04/2025", None)
     assert r.status == "ambiguous"
 
@@ -181,9 +177,8 @@ def test_yearless_date_needs_default_year():
 
 @pytest.mark.parametrize("locale", ["en-US", "en-us", "en_US", "EN-us"])
 def test_every_spelling_of_one_locale_reads_a_date_the_same_way(locale):
-    """03/04/2025 is the trap: both readings are valid and only the locale
-    decides. A tag that decides differently depending on its capitalisation is
-    a silently wrong date, which is worse than a refused one."""
+    """Every spelling of one locale tag resolves 03/04/2025 the same way:
+    capitalisation and the '_' separator do not change the date read."""
     assert parse_date("03/04/2025", locale=locale).value == "2025-03-04"
 
 

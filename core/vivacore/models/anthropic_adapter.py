@@ -1,8 +1,7 @@
 """Anthropic Messages API adapter — plain HTTP, no SDK.
 
-The Messages API is stable, documented, and small enough that ~100 lines of
-inspectable code beat an SDK dependency on the trust path. If Anthropic ships
-a breaking change, the exam fails loudly and we update one file.
+Shapes one request and reads one response; the loop across truncated replies
+belongs to `run_to_completion` in `base`.
 """
 
 from __future__ import annotations
@@ -41,10 +40,10 @@ class AnthropicAdapter:
         first_content.append({"type": "text", "text": prompt})
 
         def call_once(accumulated: str, attempt: int) -> Turn:
-            # Continuation on Anthropic is an assistant *prefill*: re-send the
-            # prompt (text only, no images) and hand back the partial as an
-            # assistant turn; the model continues it. The API forbids trailing
-            # whitespace on a prefill, so it is stripped for the request only —
+            # Continuation here is an assistant prefill: re-send the prompt
+            # (text only, no images) and hand the partial back as an assistant
+            # turn for the model to continue. The API rejects trailing
+            # whitespace on a prefill, so it is stripped for the request only;
             # the stitched text keeps the model's own spacing.
             if attempt == 0:
                 messages = [{"role": "user", "content": first_content}]
@@ -89,8 +88,8 @@ class AnthropicAdapter:
                 for block in data.get("content", [])
                 if block.get("type") == "text"
             )
-            # Anthropic's own name for truncation is stop_reason "max_tokens";
-            # normalize it to "length" so the shared driver continues.
+            # Anthropic names truncation stop_reason "max_tokens"; normalize it
+            # to "length", which is what the shared driver continues on.
             stop = data.get("stop_reason") or ""
             finish = "length" if stop == "max_tokens" else stop
             usage = data.get("usage", {})
@@ -108,7 +107,7 @@ class AnthropicAdapter:
                          if attempt == 0 else None),
                 response=data)
 
-        # A spec may say "one shot, no stitching" — see ModelSpec.max_continuations.
+        # None means the driver's own default; see ModelSpec.max_continuations.
         if c.max_continuations is None:
             return run_to_completion(call_once)
         return run_to_completion(call_once, max_continuations=c.max_continuations)

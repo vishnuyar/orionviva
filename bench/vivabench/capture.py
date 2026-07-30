@@ -1,8 +1,8 @@
 """Raw capture: append-only, hash-chained JSONL run records.
 
 Every model interaction becomes one record. Each record embeds the hash of the
-previous record, so any later tampering breaks the chain visibly. This is a
-deliberate small rehearsal of the product's event log.
+previous record, so any later edit breaks the chain and `verify_chain` reports
+where.
 """
 
 from __future__ import annotations
@@ -41,9 +41,11 @@ class RunStore:
 
     @staticmethod
     def _cell(record: dict) -> tuple[str, str, int, str]:
-        """A cell's identity. input_mode is part of it: the same document read by
-        the same model in a different mode is a different answer, not a repeat.
-        A record carrying no input_mode is an image-mode record."""
+        """A cell's identity: (doc_id, candidate, run_index, input_mode).
+
+        input_mode is part of the identity, so the same document read by the same
+        model in another mode is a separate cell. A record with no input_mode
+        reads as "image"."""
         return (
             record["doc_id"],
             record["candidate"],
@@ -55,7 +57,7 @@ class RunStore:
 
     def iter_records(self) -> Iterator[dict]:
         if not self.path.exists():
-            return          # no log yet is an empty history, not an error
+            return          # no log yet yields no records, not an error
         with self.path.open() as f:
             for line in f:
                 line = line.strip()

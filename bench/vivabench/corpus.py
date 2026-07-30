@@ -1,15 +1,16 @@
 """Document handling: content hashing, PDF/image -> page images, and the
 issuer's own embedded text layer.
 
-Pages are rendered to PNG once and cached content-addressed (by the source
-file's sha256), so re-runs are cheap and every run record can point at the
-exact bytes a model saw. Extracted text is cached the same way, beside them.
+Pages are rendered to PNG once and cached by the source file's sha256, so
+re-runs are cheap and every run record can point at the exact bytes a model saw.
+Extracted text is cached the same way, beside them.
 
-On the text layer: a digital PDF already carries the characters the institution
-rendered. That is not a reading to be verified — it is what the issuer wrote.
-Extracting it is lossless, local, and free, and it removes the OCR error class
-outright for documents that have one. Scans have no text layer; ``page_texts``
-reports that honestly (empty strings) rather than inventing coverage.
+The text layer is the characters the issuer embedded in a digital PDF; a scan
+has none, and ``page_texts`` returns empty strings for those pages rather than
+substituting anything.
+
+Design rationale for input modes and the text layer:
+docs/document-preprocessing.md
 """
 
 from __future__ import annotations
@@ -21,13 +22,12 @@ from pathlib import Path
 from .config import Document
 from vivacore.models.base import PageImage
 
-# A page with no text layer is only a problem if something is PRINTED on it.
-# "Intentionally left blank" pages and true blanks have no claims to miss; a
-# scanned page does. Ink above this fraction of pixels means real content.
+# Fraction of non-white pixels above which a page counts as carrying printed
+# content. Used to tell a scanned page from a genuinely blank one.
 _INK_FRACTION_BLANK = 0.005
 
-# Rendering scale: ~200 DPI equivalent. High enough that small print survives,
-# low enough that a page stays in the low hundreds of KB.
+# Rendering scale: ~200 DPI equivalent, which keeps small print legible while a
+# page stays in the low hundreds of KB.
 _RENDER_SCALE = 200 / 72
 _MAX_EDGE_PX = 2000  # uniform cap so every candidate sees comparable input
 
@@ -74,14 +74,13 @@ def render_pages(doc: Document, cache_dir: Path) -> list[PageImage]:
 def page_texts(doc: Document, cache_dir: Path) -> list[str]:
     """The issuer's embedded text, one string per page, cached by source hash.
 
-    Returns one entry per page, in page order. An empty string means this page
-    has no usable text layer — a scan. Callers must treat that as a fact about
-    the document, never as an extraction failure to paper over.
+    One entry per page, in page order; empty for a page with no usable text
+    layer. Returns [] for a non-PDF, which has no text layer at all.
     """
     if not doc.file.exists():
         raise FileNotFoundError(f"Document '{doc.id}': file not found: {doc.file}")
     if doc.file.suffix.lower() != ".pdf":
-        return []                       # images have no text layer, by definition
+        return []                       # an image file carries no text layer
 
     doc_cache = cache_dir / file_sha256(doc.file)
     doc_cache.mkdir(parents=True, exist_ok=True)
@@ -107,12 +106,11 @@ def page_texts(doc: Document, cache_dir: Path) -> list[str]:
 
 
 def text_gaps(doc: Document, cache_dir: Path) -> list[int]:
-    """Page numbers where a text mode would silently miss printed content.
+    """1-based page numbers where a text mode would miss printed content.
 
-    A page qualifies only if it has no embedded text AND has ink on it — i.e. a
-    scan. Genuinely blank pages ("This Page Intentionally Left Blank") are not
-    gaps: there is nothing on them to lose. This is the concrete form of the
-    "would we miss data?" risk, checked rather than assumed.
+    A page counts only when it has no embedded text and its ink fraction exceeds
+    ``_INK_FRACTION_BLANK``, so a genuinely blank page is not reported. Returns
+    [] for a document with no text layer at all.
     """
     texts = page_texts(doc, cache_dir)
     if not texts:
@@ -140,8 +138,11 @@ def text_gaps(doc: Document, cache_dir: Path) -> list[int]:
 
 
 def text_coverage(texts: list[str]) -> float:
-    """Fraction of pages carrying embedded text. Blank pages count against it,
-    so read it alongside ``text_gaps``, which is the one that matters."""
+    """Fraction of pages carrying embedded text.
+
+    Blank pages count against it, so a document can have full coverage of its
+    printed pages and still score below 1.0; ``text_gaps`` is the check that
+    distinguishes the two."""
     if not texts:
         return 0.0
     return sum(1 for t in texts if t.strip()) / len(texts)

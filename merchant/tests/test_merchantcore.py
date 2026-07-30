@@ -16,7 +16,7 @@ def test_sixteen_primary_categories():
 
 def test_enrichment_returns_subcategory_mcc_and_logo():
     def extract(prompt):
-        assert "subcategory" in prompt and "mcc" in prompt      # v2 asks for them
+        assert "subcategory" in prompt and "mcc" in prompt      # the prompt asks
         return ('{"costco whse": {"canonical_name":"Costco","category":"groceries",'
                 '"subcategory":"Warehouse Club","mcc":"5300",'
                 '"website":"costco.com","logo":"logo.clearbit.com/costco.com"}}')
@@ -57,7 +57,7 @@ def test_enricher_is_one_call_and_grades_records():
 
 
 def test_enricher_chunks_a_large_batch_into_several_calls():
-    # More merchants than one chunk holds → several calls, all merged, none lost.
+    # More merchants than one chunk holds: several calls, merged, none lost.
     merchants = {f"m{i}": f"MERCHANT {i}" for i in range(95)}
     seen = []
 
@@ -122,10 +122,8 @@ def test_catalog_merge_prior_loses_to_local_verified():
 # --- a posting date is not part of a merchant's name ------------------------
 
 def test_a_date_fragment_does_not_become_part_of_the_key():
-    """One merchant seen in two months was becoming two merchants, because the
-    non-word pass turned "02/14 STORE" into "02 14 store" and the bare month
-    then headed a key of its own. On a real vault 118 of 492 keys — a quarter —
-    were headed by a bare month number."""
+    """A posting date is stripped, so one merchant seen in two months is one
+    key rather than two headed by a bare month number."""
     assert normalize_merchant("02/14 SAFEHARBOR MARKET") == "safeharbor market"
     assert (normalize_merchant("02/14 SAFEHARBOR MARKET")
             == normalize_merchant("03/09 SAFEHARBOR MARKET"))
@@ -133,16 +131,16 @@ def test_a_date_fragment_does_not_become_part_of_the_key():
 
 
 def test_a_bare_number_can_still_be_part_of_a_name():
-    """Only a fragment carrying a separator is a date. A number on its own is
-    as likely to be the name itself."""
+    """Only a fragment carrying a separator is a date; a bare number stays,
+    because it can be the name itself."""
     assert normalize_merchant("7 ELEVEN 33412") == "7 eleven"
 
 
 # --- Layer 0: claim what a published rule proves, and name the rest ---------
 
 def test_the_asterisk_separates_an_aggregator_from_what_it_sold():
-    """The asterisk sits at index 3, 7 or 12 by processor mandate, so this is
-    parsing rather than guessing."""
+    """The asterisk sits at a processor-mandated index, so the prefix is the
+    aggregator and what follows is the brand candidate."""
     p = parse_descriptor("SQ *BLUE BOTTLE COFFEE SAN FRANCISCO CA")
     assert p.get("aggregator") == "SQ"
     assert "BLUE BOTTLE COFFEE" in brand_candidate(p)
@@ -157,16 +155,16 @@ def test_a_trailing_two_letter_code_is_the_region_subfield():
 
 def test_a_phone_where_the_city_belongs_means_the_card_was_not_present():
     """The networks require the 13-character city slot to carry a phone number
-    or URL for card-absent transactions, so this is a signal rather than a
-    misread location."""
+    or URL for card-absent transactions, so a phone there sets
+    `card_not_present` and an ordinary city does not."""
     assert parse_descriptor("SOME MERCHANT 617-SERVICE").card_not_present
     assert parse_descriptor("COSTCO WHSE #0664 PLANO TX").card_not_present is False
 
 
 def test_a_city_is_marked_inferred_because_adjacency_is_not_proof():
-    """The region code is proved by the layout. The city is only adjacent to it,
-    and the flattening destroyed the offsets that would settle where the name
-    ends — so the slot carries how it was obtained."""
+    """The region code is proved by the layout; the city is only adjacent to
+    it, so the region slot is `certain` and the city slot is not, and the
+    distinction reaches `to_dict` as `provenance`."""
     p = parse_descriptor("COSTCO WHSE #0664 PLANO TX")
     city = [s for s in p.slots if s.name == "city"][0]
     region = [s for s in p.slots if s.name == "region"][0]
@@ -175,18 +173,16 @@ def test_a_city_is_marked_inferred_because_adjacency_is_not_proof():
 
 
 def test_a_descriptor_layer_zero_cannot_explain_says_so():
-    """A bank-composed sentence over structured data. No published card rule
-    touches it, and reporting zero coverage is how the need for a per-institution
-    grammar becomes visible instead of being papered over."""
+    """A bank-composed sentence that no published card rule touches parses to
+    zero coverage and no slots, rather than to a plausible-looking brand."""
     p = parse_descriptor("ZELLE TO JOHN SMITH")
     assert p.coverage == 0.0
     assert p.slots == []
 
 
 def test_leftovers_must_be_contiguous():
-    """Layer 0 cannot claim the merchant name, so demanding no residue would
-    fail on everything. What it can demand is that the leftovers form ONE run:
-    scattered fragments mean the rules fired in the wrong places."""
+    """Layer 0 cannot claim the merchant name, so `clean` demands one
+    contiguous run of residue rather than none."""
     assert parse_descriptor("COSTCO WHSE #0664 PLANO TX").clean
     assert parse_descriptor("TST* GOLDEN FORK BISTRO AUSTIN TX").clean
 
@@ -202,10 +198,8 @@ def _card_profile(institution="Alpha", version="v1"):
 
 
 def test_another_banks_grammar_may_explain_this_banks_line():
-    """The reason borrowing is worth having: an account with twenty distinct
-    lines can never teach a grammar — the minimum is thirty, forever — and is
-    perfectly explicable by one. A sentence shape is not the exclusive property
-    of the bank it was learned from."""
+    """With no grammar of its own, a line matched by another institution's
+    grammar resolves through it, and the lender's profile id is recorded."""
     from merchantcore.resolve import resolve_descriptor
     line = "Card Purchase 04/02 STOREB Frisco TX Card 9876"
     res = resolve_descriptor(line, profile=None, borrowed=[_card_profile()])
@@ -215,11 +209,8 @@ def test_another_banks_grammar_may_explain_this_banks_line():
 
 
 def test_a_borrowed_grammar_is_still_a_grammar():
-    """Recorded as `grammar`, not as a weaker layer. It is structurally the same
-    claim — same closed vocabulary, same compiled expression, same rule that a
-    person is whatever landed in a slot named for one — and every downstream
-    privacy check keys on that word. A separate layer name would silently send
-    borrowed lines down the guess-from-substrings path."""
+    """A borrowed match reports layer `grammar`, not a weaker layer name; every
+    downstream privacy check keys on that word."""
     from merchantcore.resolve import resolve_descriptor
     res = resolve_descriptor("Card Purchase 04/02 STOREB Frisco TX Card 9876",
                              borrowed=[_card_profile()])
@@ -227,8 +218,7 @@ def test_a_borrowed_grammar_is_still_a_grammar():
 
 
 def test_the_banks_own_grammar_always_wins():
-    """Own first, always: a bank's own grammar was measured against its own
-    lines and a borrowed one was not."""
+    """When the bank's own grammar matches, nothing is borrowed."""
     from merchantcore.resolve import resolve_descriptor
     line = "Card Purchase 04/02 STOREB Frisco TX Card 9876"
     res = resolve_descriptor(line, profile=_card_profile("Beta"),
@@ -237,9 +227,7 @@ def test_the_banks_own_grammar_always_wins():
 
 
 def test_borrowing_never_reaches_a_refused_line():
-    """A wire is refused every layer, and borrowing is a layer. The sender's
-    free text can hold a street address, and no grammar from anywhere may claim
-    a field somebody typed freely."""
+    """A wire is refused every layer, borrowing included."""
     from merchantcore.resolve import resolve_descriptor
     wire = ("Via: WELLS FARGO NA A/C: 0000000123 Imad: 20260304B1QGC01R "
             "Trn: 1234567890 Ref: INVOICE 44")
@@ -248,8 +236,8 @@ def test_borrowing_never_reaches_a_refused_line():
 
 
 def test_which_lender_wins_does_not_depend_on_dict_order():
-    """Two grammars that both match must give the same answer every run, or two
-    reports over one vault disagree about who explained what."""
+    """When two borrowed grammars both match, the one chosen is the same
+    whichever order they are supplied in."""
     from merchantcore.resolve import resolve_descriptor
     line = "Card Purchase 04/02 STOREB Frisco TX Card 9876"
     a, b = _card_profile("Alpha"), _card_profile("Zeta")
@@ -258,16 +246,12 @@ def test_which_lender_wins_does_not_depend_on_dict_order():
             == "alpha-depository-v1")
 
 
-# ------------------------- the two lists that carried raw English, and are gone
+# ------------------------------ position, and silence that is not a clearance
 
 
 def test_a_processor_prefix_is_recognised_by_POSITION_not_by_name():
-    """There used to be a `_PROCESSORS` tuple — "sq *", "tst*", "paypal *" — and
-    alongside them "pos debit", "checkcard", "ach pmt". Two different things
-    under one name: the asterisk forms were already caught by the positional
-    rule, and the rest were English bank phrases doing classification. The
-    position is processor-mandated and identical in every country; the words
-    were not."""
+    """A processor prefix is claimed by the asterisk's index, and no list of
+    processor names exists to claim it by spelling."""
     from merchantcore.descriptor import parse_descriptor
     import merchantcore.descriptor as d
     assert not hasattr(d, "_PROCESSORS"), "the name list is gone, not renamed"
@@ -278,11 +262,9 @@ def test_a_processor_prefix_is_recognised_by_POSITION_not_by_name():
 
 
 def test_a_line_the_english_list_cannot_read_is_not_cleared_by_its_silence():
-    """`is_shareable` decides whether a descriptor may be sent to a model
-    provider. Its markers are English and ASCII, so on a Hindi or Japanese peer
-    payment it says nothing — and saying nothing meant "safe". Failing closed
-    instead: a line carrying letters outside ASCII is withheld until a grammar
-    exists, at which point a slot name answers the question properly."""
+    """`is_shareable` fails closed on a line its English, ASCII markers cannot
+    read: a descriptor carrying non-ASCII letters is withheld rather than
+    cleared by the list's silence."""
     from merchantcore.normalize import is_shareable
     assert is_shareable("COSTCO WHSE PLANO TX")
     assert not is_shareable("VENMO TO JOHN SMITH")

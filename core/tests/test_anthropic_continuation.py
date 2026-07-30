@@ -1,6 +1,5 @@
-"""The Anthropic adapter now shares the continuation driver: a response truncated
-at stop_reason 'max_tokens' is continued via an assistant prefill and stitched —
-the same truncation safety the OpenAI-compatible adapter has, one code path."""
+"""The Anthropic adapter continues a reply truncated at stop_reason 'max_tokens'
+via an assistant prefill, and stitches the parts into one result."""
 
 import vivacore.models.anthropic_adapter as an
 from vivacore.models.base import PageImage
@@ -44,8 +43,8 @@ def test_continuation_stitches_via_assistant_prefill(monkeypatch):
     assert len(calls) == 2                     # continued once
     assert abs(r.cost_usd - 0.00006) < 1e-9    # (10+20)/1e6 summed across 2 turns
 
-    # First turn carried the image; the continuation dropped it and handed the
-    # partial back as an assistant prefill for the model to continue.
+    # The first turn carries the image; the continuation drops it and hands the
+    # partial back as an assistant prefill.
     assert any(b.get("type") == "image"
                for b in calls[0]["messages"][0]["content"])
     assert calls[1]["messages"][0]["content"] == [{"type": "text", "text": "PROMPT"}]

@@ -89,11 +89,11 @@ def test_grade_perfect_run():
 
 def test_grade_normalized_match_counts_correct():
     key = _key()
-    # "1234.56" (no symbol/commas) is semantically the closing balance.
+    # "1234.56" normalizes to the same value as the printed "$1,234.56".
     out = _wrap([{"type": "amount", "label": "Closing Balance", "value_raw": "1234.56"}])
     g = grade_run("d1", "m1", 1, out, key)
     correct = [x for x in g.grades if x.matched]
-    assert len(correct) == 1 and not correct[0].strict  # right value, not char-exact
+    assert len(correct) == 1 and not correct[0].strict  # matched, not char-exact
 
 
 def test_grade_catches_silent_omission():
@@ -120,7 +120,7 @@ def test_parse_fail_run_scores_zero_recall():
 def test_scorecards_group_and_calibrate():
     key = _key()
     runs = []
-    # A model that is right but claims 0.5 confidence -> underconfident (ECE > 0).
+    # Right every time while stating 0.5 confidence: underconfident, so ECE > 0.
     for i in range(1, 6):
         out = _wrap([
             {"type": "amount", "label": "closing balance", "value_raw": "$1,234.56", "confidence": 0.5},
@@ -133,5 +133,5 @@ def test_scorecards_group_and_calibrate():
     assert c.candidate == "m1" and c.doc_type == "combined_bank_statement"
     assert c.accuracy == 1.0 and c.recall == 1.0
     assert c.self_consistency == 1.0          # unanimous across runs
-    assert c.ece is not None and c.ece > 0.3   # said 50%, was 100% -> badly calibrated
+    assert c.ece is not None and c.ece > 0.3   # stated 50%, was 100%
     assert c.system_confidently_wrong == 0.0

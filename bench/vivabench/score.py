@@ -1,13 +1,15 @@
 """The scorer: deterministic grading of runs against a frozen answer key.
 
-Two levels, reported separately:
-  - raw model: per-claim accuracy, recall (silent omissions), self-consistency,
-    source-region validity, and stated-confidence calibration.
-  - system: with N-sample + cross-model agreement + arithmetic, the
-    verified-coverage and the ruin metric (confidently-wrong rate).
+Two levels, reported separately on one Scorecard:
+  - raw model: per-claim accuracy, recall (claims the model omitted),
+    self-consistency across repeat runs, and stated-confidence calibration.
+  - system: verified-coverage and the confidently-wrong rate, derived from
+    agreement across the N runs.
 
-Everything here is a pure function of (runs, key). No model calls, no floats
-in the money path — matching uses verify/ (Decimal). Product-embryo-grade.
+Everything here is a pure function of (runs, key): no model calls, and no floats
+in the money path — value comparison goes through `vivacore.verify` on Decimal.
+
+Design rationale for the metrics: docs/benchmark-harness-design.md
 """
 
 from __future__ import annotations
@@ -80,16 +82,24 @@ def grade_run(
     output_text: str,
     key: AnswerKey,
 ) -> RunGrade:
+    """Grade one run's output against `key`.
+
+    Each key entry takes the best of the claims sharing its type and normalized
+    label; a claim is consumed by at most one entry. Returns a RunGrade holding
+    the per-entry grades, the labels nothing matched, and the count of unmatched
+    claims. Never raises: unparseable output comes back as ``parse_ok=False``
+    with everything missed."""
     claims, err = parse_claims(output_text)
     if err is not None:
-        # A non-parsing run misses everything — recall 0, recorded as such.
+        # A run that does not parse matched nothing, so every truth entry is
+        # missed and recall is 0.
         return RunGrade(
             doc_id=doc_id, candidate=candidate, run_index=run_index,
             parse_ok=False, grades=[],
             missed=[e.label for e in key.entries], spurious=0,
         )
 
-    # Index model claims by coarse (type, normalized-label) key; allow multiple.
+    # Index model claims by (type, normalized label); a key may hold several.
     by_key: dict[tuple[str, str], list[Claim]] = defaultdict(list)
     for c in claims:
         by_key[c.key()].append(c)
@@ -106,7 +116,7 @@ def grade_run(
             if cid in used:
                 continue
             matched, strict, detail = _match_entry(entry, c)
-            # Prefer a correct match; else keep first as the (wrong) attempt.
+            # Prefer a correct match; otherwise keep the first as the attempt.
             if best is None or (matched and not best[1]):
                 best = (c, matched, strict, detail)
             if matched:
@@ -223,8 +233,10 @@ def build_scorecards(run_grades: list[RunGrade], doc_type_of: dict, locale_of: d
 
 
 def _self_consistency(runs: list[RunGrade]) -> float:
-    """For each truth label, do the runs agree on whether it was gotten right?
-    1.0 = every label is unanimously right or unanimously wrong across runs."""
+    """Mean per-label agreement on correctness across runs.
+
+    1.0 means every truth label was unanimously right or unanimously wrong;
+    0.5 means the runs split evenly. Fewer than two runs returns 1.0."""
     if len(runs) < 2:
         return 1.0
     per_label: dict[str, list[bool]] = defaultdict(list)
@@ -245,11 +257,11 @@ def _self_consistency(runs: list[RunGrade]) -> float:
 
 
 def _system_metrics(runs: list[RunGrade]) -> tuple[float, float]:
-    """Approximate the pipeline's behavior: a claim is 'system-accepted' if the
-    majority of runs agree on the same value. Coverage = accepted / truth.
-    Confidently-wrong = accepted-but-actually-wrong / accepted (the ruin metric).
-    A faithful version also folds in arithmetic checks; this is the agreement
-    core, which the benchmark's real run refines once the key exists."""
+    """Return `(verified_coverage, confidently_wrong)` for one group of runs.
+
+    A label is system-accepted when a majority of runs produced it. Coverage is
+    accepted / truth entries; confidently-wrong is accepted-but-wrong / accepted.
+    Agreement only — arithmetic verification is not folded in here."""
     if not runs:
         return 0.0, 0.0
     label_votes: dict[str, list[bool]] = defaultdict(list)
@@ -260,10 +272,10 @@ def _system_metrics(runs: list[RunGrade]) -> tuple[float, float]:
     accepted = 0
     accepted_wrong = 0
     for label, votes in label_votes.items():
-        # majority present AND agreeing on correctness
+        # present in a majority of runs, and those runs agree on correctness
         if len(votes) >= (len(runs) / 2) and sum(votes) >= (len(votes) / 2):
             accepted += 1
-            if sum(votes) < len(votes):  # some runs got it wrong → risk marker
+            if sum(votes) < len(votes):  # accepted, but not unanimously correct
                 pass
         elif len(votes) >= (len(runs) / 2) and sum(votes) < (len(votes) / 2):
             accepted += 1

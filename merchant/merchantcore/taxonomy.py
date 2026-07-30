@@ -1,20 +1,19 @@
 """The category taxonomy — impersonal, shareable, versioned.
 
-Two levels, mirroring the enrichment industry (Plaid's Personal Finance
-Categories, Ntropy): a small **primary** set of stable, portable buckets that the
-commons compares across users, and a richer **subcategory** the model fills with
-value ("warehouse club", "coffee shop", "streaming") for finer slicing. Primary
-is controlled (16 + a fallback); subcategory is an open value, lightly
-normalized, so the commons converges on it over time without a rigid 100-item
-list. This lives in merchantcore because the taxonomy is merchant/format
-knowledge — shareable, not personal.
+Two levels. The *primary* set is a small controlled list (16 buckets plus a
+fallback) that the commons compares across users. The *subcategory* is an open
+value the model fills in ("warehouse club", "coffee shop", "streaming"),
+lightly normalized, for finer slicing.
+
+Lives in merchantcore because a taxonomy is merchant knowledge: shareable, not
+personal. It is the single source of truth the product's category picker reads.
 """
 
 from __future__ import annotations
 
 TAXONOMY_VERSION = "cat-v2"      # the controlled primary set below
 
-# 16 primary categories (a friendly cousin of Plaid's PFC primaries).
+# The 16 controlled primary categories.
 PRIMARY_CATEGORIES = (
     "income",                 # salary, interest, dividends, refunds-as-income
     "transfers",              # moving your own money, credit-card payments
@@ -34,7 +33,7 @@ PRIMARY_CATEGORIES = (
     "government_nonprofit",   # taxes, government fees, charitable giving
 )
 
-FALLBACK_CATEGORY = "other"    # used only when genuinely unclear
+FALLBACK_CATEGORY = "other"    # for a category that is not one of the 16
 
 
 def is_primary(category: str) -> bool:
@@ -42,13 +41,15 @@ def is_primary(category: str) -> bool:
 
 
 def canonical_primary(category: str) -> str:
-    """Normalize a proposed primary category into the controlled set, or the
-    fallback if it isn't one of the 16."""
+    """Normalize a proposed primary category into the controlled set.
+
+    Returns FALLBACK_CATEGORY when it is not one of the 16."""
     c = (category or "").strip().lower()
     return c if c in PRIMARY_CATEGORIES else FALLBACK_CATEGORY
 
 
 def normalize_subcategory(subcategory: str) -> str:
-    """Lightly normalize the model's free subcategory value (trim + lowercase).
-    Open by design; the commons converges on common values over time."""
+    """Trim, lowercase and collapse whitespace in a free subcategory value.
+
+    The value set is open: anything is accepted, nothing is mapped away."""
     return " ".join((subcategory or "").strip().lower().split())

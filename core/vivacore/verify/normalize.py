@@ -1,14 +1,13 @@
-"""Locale-aware normalization of printed values. Product embryo.
+"""Locale-aware normalization of printed values.
 
-The honesty contract, enforced by types rather than intentions:
-- Every parse returns a status: "ok", "ambiguous", or "invalid".
-- "ambiguous" is a first-class outcome — the caller decides what doubt means
-  (in the product: grade `conflicted`, never guess). We NEVER pick silently.
-- Every assumption used (e.g. "locale de-DE implies comma decimal") is
-  recorded in the result, so a verdict can always explain itself.
+The contract every parse here honours:
+- it returns a status — "ok", "ambiguous", or "invalid" — rather than raising;
+- "ambiguous" is a first-class outcome, left to the caller to act on; a reading
+  is never picked silently between two valid ones;
+- every assumption used (e.g. "locale de-DE implies comma decimal") is recorded
+  in the result, so a verdict can explain itself.
 
-Amounts are Decimal. Floats do not appear in this module: 0.1 + 0.2
-must equal 0.3 in a product that promises to never bluff a number.
+Amounts are Decimal; floats do not appear in this module.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from decimal import Decimal, InvalidOperation
 
 RULES_VERSION = "nv1"
 
-# Locale families for separator conventions. Extend deliberately, with tests.
+# Language families for separator conventions, keyed by the language subtag.
 _COMMA_DECIMAL_LOCALES = ("de", "fr", "es", "it", "pt", "nl", "tr")   # 1.234,56
 _DOT_DECIMAL_LOCALES = ("en", "ja", "zh", "ko", "hi", "th")           # 1,234.56
 
@@ -58,9 +57,12 @@ def parse_amount(raw: str, locale: str | None = None, currency: str | None = Non
     """Parse a printed monetary amount.
 
     ``locale`` (e.g. "en-US", "de-DE") decides separator conventions; without
-    it, genuinely ambiguous strings (like "1.234") come back "ambiguous".
+    it, genuinely ambiguous strings such as "1.234" come back "ambiguous".
     ``currency`` is the document's declared currency; a conflicting printed
-    symbol makes the parse invalid rather than silently preferring either.
+    symbol makes the parse invalid rather than preferring either.
+
+    Handles parentheses, leading and trailing minus, and DR/CR suffixes as
+    negativity conventions, and apostrophe, dot and comma grouping.
     """
     if raw is None or not str(raw).strip():
         return Normalized(status="invalid", reason="empty value")
@@ -155,17 +157,12 @@ def parse_amount(raw: str, locale: str | None = None, currency: str | None = Non
 
 
 def known_language_tags() -> tuple:
-    """The language tags whose decimal convention this module knows.
+    """The language tags whose decimal convention this module knows, sorted.
 
-    Exposed because an UNKNOWN tag is not an error here — `parse_amount` simply
-    has no separator convention to apply, and every three-decimal figure becomes
-    `ambiguous`. That is the right behaviour for a money parser (refuse rather
-    than guess) and a terrible thing to discover by accident: a caller that
-    passes "US" instead of "en-US" gets a stricter parser and no indication why.
-
-    So callers validate their configured locale against this list at startup,
-    where the fix is obvious, instead of meeting it as a parse failure on one
-    document three tools later."""
+    An unknown tag is not an error here: `parse_amount` then has no separator
+    convention to apply, so every three-digit-group figure comes back
+    `ambiguous`. Callers validate a configured locale against this list at
+    startup rather than meeting it later as a parse failure on one document."""
     return tuple(sorted(_COMMA_DECIMAL_LOCALES + _DOT_DECIMAL_LOCALES))
 
 
@@ -181,15 +178,19 @@ def _decimal_separator_for(locale: str | None) -> str | None:
 
 
 def _resolve_separators(text: str, locale: str | None, assumptions: list[str]) -> Normalized:
-    """Turn a digits-with-separators string into a plain Decimal string."""
+    """Turn a digits-with-separators string into a plain Decimal string.
+
+    Appends to `assumptions` in place. Returns status "ambiguous" when only a
+    locale could decide and none was given."""
     has_dot, has_comma = "." in text, "," in text
 
     if not has_dot and not has_comma:
         return Normalized(status="ok", value=text)
 
     if has_dot and has_comma:
-        # Whichever separator appears LAST is the decimal separator; the other
-        # is grouping. Unambiguous regardless of locale: "1.234,56" / "1,234.56".
+        # Whichever separator appears last is the decimal separator and the
+        # other is grouping — the same either way round, so no locale is needed:
+        # "1.234,56" / "1,234.56".
         last_dot, last_comma = text.rfind("."), text.rfind(",")
         dec = "," if last_comma > last_dot else "."
         grp = "." if dec == "," else ","
@@ -200,21 +201,21 @@ def _resolve_separators(text: str, locale: str | None, assumptions: list[str]) -
     sep = "." if has_dot else ","
     parts = text.split(sep)
 
-    # Multiple occurrences of one separator => it is grouping: "1.234.567",
-    # "1,23,45,678" (Indian grouping falls out naturally here).
+    # Repeated occurrences of one separator make it grouping: "1.234.567",
+    # "1,23,45,678" (lakh/crore grouping falls out of this without a case).
     if len(parts) > 2:
         assumptions.append(f"repeated '{sep}' taken as grouping separator")
         return Normalized(status="ok", value=text.replace(sep, ""))
 
-    # Exactly one separator occurrence: the interesting case.
+    # Exactly one separator occurrence.
     head, tail = parts
     if len(tail) != 3:
-        # "1234.56", "0,5", "12.3456" — grouping would demand exactly 3 digits,
-        # so this must be a decimal separator.
+        # "1234.56", "0,5", "12.3456" — grouping would take exactly 3 trailing
+        # digits, so this separator is decimal.
         assumptions.append(f"single '{sep}' with {len(tail)} trailing digits taken as decimal")
         return _validate_single_decimal(f"{head}.{tail}")
 
-    # Exactly 3 trailing digits: "1.234" / "1,234" — the truly ambiguous shape.
+    # Exactly 3 trailing digits: "1.234" / "1,234" — only a locale can decide.
     locale_dec = _decimal_separator_for(locale)
     if locale_dec is None:
         return Normalized(
@@ -245,14 +246,15 @@ _MONTHS = {
     "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
 }
 
-# Locales whose numeric dates read month-first. Everyone else: day-first.
-# Compared against a NORMALIZED tag, because 'en-us' and 'en-US' naming
-# different date conventions is a silent wrong answer, not a typo.
+# Locales whose numeric dates read month-first; every other locale is
+# day-first. Membership is tested against a tag put through
+# `normalize_locale`, so all spellings of one tag read a date the same way.
 _MONTH_FIRST_LOCALES = ("en-us", "en-ph")
 
 
 def normalize_locale(locale: str | None) -> str:
-    """Canonical form of a language tag: lowercase, '-' separated."""
+    """Canonical form of a language tag: lowercased, '-' separated. None
+    becomes the empty string."""
     return (locale or "").strip().replace("_", "-").lower()
 
 
@@ -260,14 +262,14 @@ def parse_date(raw: str, locale: str | None = None,
                default_year: int | None = None) -> Normalized:
     """Parse a printed date to ISO yyyy-mm-dd.
 
-    The infamous trap — "03/04/2025" — is March 4 in the US and April 3 in
-    most of the world. With a locale we resolve it and record the assumption;
-    without one, if both readings are valid, the answer is "ambiguous".
+    Accepts ISO, month-name and numeric forms, with a two- or four-digit year.
+    A numeric date like "03/04/2025" is March 4 under a month-first locale and
+    April 3 otherwise; the locale that decided it is recorded as an assumption.
+    With no locale and both readings valid, the status is "ambiguous".
 
-    ``default_year`` supplies the year for a date printed WITHOUT one (bank
-    statements print transaction lines as "04/17"); the caller derives it from
-    the statement period. Without it, a year-less date stays invalid — we never
-    invent a year.
+    ``default_year`` supplies the year for a date printed without one (statement
+    transaction lines print "04/17"); the caller derives it from the statement
+    period. Without it a year-less date is invalid — no year is invented.
     """
     if raw is None or not str(raw).strip():
         return Normalized(status="invalid", reason="empty value")
@@ -309,7 +311,7 @@ def parse_date(raw: str, locale: str | None = None,
             return Normalized(status="invalid", reason=f"no valid month reading of {raw!r}")
         if a == b:
             return _make_date(y, a, b, assumptions)  # 3/3/2026 — same either way
-        # Both readings valid: the trap. Locale or bust.
+        # Both readings valid: only the locale can decide.
         if normalize_locale(locale) in _MONTH_FIRST_LOCALES:
             return _make_date(y, a, b, assumptions + [f"locale {locale} reads month-first"])
         if locale:
@@ -319,8 +321,8 @@ def parse_date(raw: str, locale: str | None = None,
             reason=f"{raw!r}: both month-first and day-first readings are valid; no locale to decide",
         )
 
-    # Year-less numeric: "04/17", "4-17" — common on statement transaction lines.
-    # Only resolvable with a default_year the caller derived from the period.
+    # Year-less numeric: "04/17", "4-17", as printed on statement transaction
+    # lines. Resolvable only with a default_year the caller supplies.
     m = re.fullmatch(r"(\d{1,2})[-/.](\d{1,2})", text)
     if m and default_year is not None:
         a, b = int(m.group(1)), int(m.group(2))

@@ -1,17 +1,17 @@
-"""Merchant normalization — a raw transaction descriptor to a canonical merchant.
+"""Merchant normalization — a raw transaction descriptor to a canonical key.
 
-Deterministic and **versioned**: the normalized key is what the merchant catalog
-is keyed by, and — for a shareable commons — two users must derive the *same* key
-from the same descriptor, so the rules are fixed and carried by a version. This
-is NOT fuzzy matching (which would merge "Costco" and "Costa Coffee"); it only
-strips the noisy tail that varies transaction-to-transaction — store numbers,
-order ids, phone numbers, payment-processor prefixes — leaving the merchant words
-as read. The model does the actual grouping/categorization on the deduped list.
+Deterministic and versioned: the key is what the merchant catalog is keyed by,
+and two users derive the same key from the same descriptor, so the rules are
+fixed and carried by ``NORMALIZER_VERSION``.
 
-``is_shareable`` is the privacy lint: a peer-payment or person-name
-descriptor ("VENMO TO JOHN SMITH", "ZELLE FROM …") is personal and must never
-enter the unencrypted catalog or the commons — only clearly *commercial*
-merchants are shareable.
+Not fuzzy matching — it never merges two different spellings. It strips the
+tail that varies transaction to transaction (store numbers, order ids, phone
+numbers, payment-processor prefixes, posting dates) and leaves the merchant
+words as read.
+
+``is_shareable`` is the fallback privacy lint, used where no induced grammar
+exists to name a slot. A peer-payment or person-name descriptor must not enter
+the unencrypted catalog or the commons.
 """
 
 from __future__ import annotations
@@ -33,14 +33,12 @@ _PEER_MARKERS = (
     "quickpay", "popmoney", " to ", " from ",
 )
 
-# A posting date printed inside the descriptor. It has to go before the
-# non-word pass removes its separators, because "02/14 STORE" survives that
-# pass as "02 14 store" and then heads a merchant key of its own — so one
-# merchant seen in two months becomes two merchants, and every total that
-# touches either is split. Only a fragment with a separator is stripped: a
-# bare number can be part of a name ("7 eleven", "76").
+# A posting date printed inside the descriptor. Stripped before the non-word
+# pass, which would otherwise remove the separators and leave "02 14 store" —
+# a distinct key per month for one merchant. Only a fragment carrying a
+# separator is a date: a bare number can be part of a name.
 _DATE_FRAGMENT = re.compile(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b")
-_ORDER_ID = re.compile(r"\*[a-z0-9]{3,}")          # US*RA30Z3BP0, *RH4DD6YM1
+_ORDER_ID = re.compile(r"\*[a-z0-9]{3,}")          # *RA30Z3BP0, *RH4DD6YM1
 _STORE_NUM = re.compile(r"#\s*\d+")                 # #0664
 _PHONE = re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b")
 _LONGNUM = re.compile(r"\b\d{3,}\b")                # order/ref numbers, ids
@@ -49,8 +47,9 @@ _WS = re.compile(r"\s+")
 
 
 def normalize_merchant(descriptor: str) -> str:
-    """Canonical merchant key for a raw descriptor (deterministic, versioned).
-    Empty string if nothing meaningful remains."""
+    """Canonical merchant key for a raw descriptor.
+
+    Deterministic and versioned. Returns "" if nothing remains after stripping."""
     s = (descriptor or "").lower().strip()
     for p in _PREFIXES:
         if s.startswith(p):
@@ -67,22 +66,17 @@ def normalize_merchant(descriptor: str) -> str:
 
 
 def is_shareable(descriptor: str) -> bool:
-    """True when a descriptor names a *commercial* merchant safe to put in the
-    unencrypted catalog / commons — i.e. NOT a peer payment or a person's name.
-    Conservative: anything with a peer-payment marker is filtered out."""
+    """True when a descriptor may enter the unencrypted catalog or the commons.
+
+    Three ways to be refused: a peer-payment marker anywhere in the line, any
+    alphabetic character outside ASCII, or nothing left after normalization.
+    Fails closed — a refusal costs enrichment coverage, never a name."""
     low = (descriptor or "").lower()
     if any(mark in low for mark in _PEER_MARKERS):
         return False
-    # THE MARKER LIST IS ENGLISH AND ASCII, so on a line it cannot read its
-    # SILENCE IS NOT EVIDENCE — and silence here means "safe to send to a model
-    # provider". A Hindi or Japanese peer payment contains none of these words,
-    # so the list cleared it by never having had a chance to look.
-    #
-    # Failing closed instead. A descriptor carrying letters outside ASCII is
-    # withheld until a grammar exists for that institution, at which point a
-    # slot name answers the question properly and this function is not consulted
-    # at all. Costs enrichment coverage on a new non-English vault; the
-    # alternative is a person's name crossing because a word list was mute.
+    # Constraint: silence from this English, ASCII marker list is not a
+    # clearance. A descriptor carrying non-ASCII letters is withheld until a
+    # grammar exists for that institution and a slot name answers instead.
     if any(c.isalpha() and ord(c) > 127 for c in (descriptor or "")):
         return False
     return bool(normalize_merchant(descriptor))

@@ -1,14 +1,15 @@
 """Generate a synthetic three-month financial life as PDF statements.
 
-The corpus is one coherent life, not a bag of documents: a card payment leaves
-the checking account and arrives on the card, a pay stub's net equals the
-payroll deposit, a brokerage contribution leaves checking and lands as cash.
-Those cross-document facts are what an end-to-end run has to recognise, and no
-unit test with a stubbed reader can produce them.
+The documents are one connected set: a card payment leaves the checking account
+and arrives on the card, a pay stub's net equals the payroll deposit, a brokerage
+contribution leaves checking and lands as cash. Those cross-document facts are
+what an end-to-end run has to recognise.
 
-Every arithmetic identity is computed here and asserted before a page renders:
-a statement that does not reconcile would be indistinguishable from a model
-misreading one that does.
+Every arithmetic identity is computed in `build_life` and checked by
+`assert_identities` before any page is rendered, so a document that does not
+reconcile never reaches the corpus.
+
+Every institution, person, address and amount here is invented.
 
 Output: a PDF per document, plus answer-key.json carrying every true figure in
 raw-as-printed form alongside its normalized value, currency and locale.
@@ -35,7 +36,7 @@ ADDRESS = ["1400 ASTER ROW APT 3B", "CEDAR PARK TX 78613"]
 
 
 def money(d: Decimal) -> str:
-    """Printed form: thousands separated, two decimals, no sign."""
+    """Printed form: thousands separated, two decimals, minus sign if negative."""
     neg = d < 0
     s = f"{abs(d):,.2f}"
     return f"-{s}" if neg else s
@@ -68,8 +69,8 @@ CHECKING_OPEN = D("4182.66")
 SAVINGS_OPEN = D("12400.00")
 CARD_OPEN = D("1204.55")
 
-# --- pay: monthly, last business day. Nets deliberately differ month to month
-#     so a deposit can only be explained by one stub.
+# Pay is monthly, on the last business day. The three nets differ, so each
+# payroll deposit matches exactly one stub.
 PAY = [
     {"period": ("2026-01-01", "2026-01-31"), "pay_date": "2026-01-30", "gross": D("9850.00"),
      "deductions": [("Federal Income Tax", "tax", D("1772.00")), ("Social Security", "tax", D("610.70")),
@@ -88,7 +89,7 @@ PAY = [
 for p in PAY:
     p["net"] = p["gross"] - sum(d[2] for d in p["deductions"])
 
-CARD_PAYMENTS = {  # (checking date, card posting date, amount) — one movement, two witnesses
+CARD_PAYMENTS = {  # (checking date, card posting date, amount) — one movement on two statements
     1: ("2026-01-15", "2026-01-15", CARD_OPEN),
     2: ("2026-02-16", "2026-02-16", None),   # filled once January's closing is known
     3: ("2026-03-16", "2026-03-16", None),
@@ -201,8 +202,8 @@ def build_life() -> dict:
                                "txns": [Txn(*t) for t in txns]}
         bal = closing
 
-    # --- savings: January and February only. March is deliberately absent, so
-    #     the net-worth curve has to name savings as its stalest input.
+    # --- savings: January and February only. There is no March statement, so at
+    #     the end of March savings is the stalest input to the net-worth curve.
     sbal = SAVINGS_OPEN
     for m in (1, 2):
         txns = [Txn(f"2026-{m:02d}-12", "TRANSFER FROM NORTHBANK CHECKING 4417", D("500.00")),

@@ -1,15 +1,16 @@
-"""Comparing an extracted claim against ground truth. Product embryo.
+"""Comparing an extracted claim against ground truth.
 
-Two verdicts per comparison, reported separately because they answer
-different questions:
+Two verdicts per comparison, reported separately:
 
 - strict:      the model reproduced the printed characters exactly
-               ("value_raw fidelity" — matters for provenance display).
-- normalized:  the model's value MEANS the same thing as the truth
-               ("semantic accuracy" — what accuracy metrics use).
+               (value_raw fidelity, which provenance display depends on).
+- normalized:  the model's value means the same thing as the truth
+               (semantic accuracy, which the accuracy metrics use).
 
-A model can fail strict while passing normalized ("1234.00" for "1,234.00");
-that's a fidelity note, not an error. Failing normalized is an error.
+Failing strict while passing normalized ("1234.00" for "1,234.00") is a
+fidelity note, not an error. Failing normalized is an error. `normalized` is
+None when the comparison could not be made because the ground truth itself
+failed to parse.
 """
 
 from __future__ import annotations
@@ -28,7 +29,8 @@ class MatchResult:
 
     @property
     def correct(self) -> bool:
-        """The headline verdict: semantically right?"""
+        """The headline verdict: semantically right. False when normalized is
+        None."""
         return bool(self.normalized)
 
 
@@ -99,7 +101,9 @@ _WS = re.compile(r"\s+")
 
 
 def match_text(extracted_raw: str, truth_raw: str) -> MatchResult:
-    """Payees/descriptions: exact, then case/whitespace-insensitive."""
+    """Payees and descriptions: exact, then case- and whitespace-insensitive.
+
+    `normalized` is never None here — text needs no parse to compare."""
     strict = _strict_equal(extracted_raw, truth_raw)
     a = _WS.sub(" ", extracted_raw.strip().lower())
     b = _WS.sub(" ", truth_raw.strip().lower())

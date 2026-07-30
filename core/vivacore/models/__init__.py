@@ -1,20 +1,20 @@
-"""Model access layer — product embryo.
+"""Model access layer.
 
-Two adapters cover the known universe:
+Two adapters cover every provider in use:
 
 - ``anthropic``           — Anthropic's Messages API, spoken directly over HTTP.
-- ``openai-compatible``   — the universal socket ("Open Responses" era): OpenAI,
+- ``openai-compatible``   — the OpenAI chat-completions protocol: OpenAI,
   OpenRouter, Ollama, Hugging Face router, LM Studio, vLLM — same protocol,
   different base_url.
 
-Both are deliberately plain-HTTP via httpx (one dependency, fully inspectable)
-rather than provider SDKs or a multi-provider wrapper library: less
-third-party code sits on the trust path, and every byte sent is visible here.
+Both speak plain HTTP via httpx; no provider SDKs.
 
 Contract every adapter honors:
-- request/response are returned VERBATIM for raw capture;
+- request and response are returned verbatim, for raw capture;
 - the endpoint-reported model identity is surfaced as ``resolved_model``;
 - adapters never parse, never retry silently, never editorialize.
+
+``adapter_for`` raises AdapterError for an unknown adapter name.
 """
 
 from .base import AdapterError, ModelAdapter, ModelResult, PageImage

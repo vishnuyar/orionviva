@@ -1,5 +1,5 @@
 """The OpenAI-compatible adapter stitches a truncated (finish_reason=length)
-response by asking the model to continue — without re-sending the images."""
+reply by asking the model to continue, without re-sending the images."""
 
 import vivacore.models.openai_compat as oc
 from vivacore.models.base import PageImage
@@ -45,7 +45,7 @@ def test_continuation_stitches_and_drops_images(monkeypatch):
     assert len(calls) == 2                     # continued once
     assert abs(r.cost_usd - 0.02) < 1e-9       # cost summed across turns
 
-    # First turn carried the image; the continuation dropped it (text prompt +
+    # The first turn carries the image; the continuation drops it (text prompt +
     # the assistant partial + a continue instruction).
     assert isinstance(calls[0]["messages"][0]["content"], list)   # images + text
     assert "response_format" in calls[0]                           # json_mode, turn 1 only

@@ -53,7 +53,7 @@ def cmd_validate(args) -> int:
         exists = d.file.exists()
         missing += 0 if exists else 1
         mark = "ok " if exists else "MISSING"
-        # Text coverage decides which input modes a document can even be run in.
+        # Text coverage decides which input modes a document can be run in.
         cov = ""
         if exists:
             texts = page_texts(d, config.data_dir / "pages")
@@ -82,9 +82,9 @@ def cmd_validate(args) -> int:
 
 def cmd_run(args) -> int:
     config, corpus, store = _load(args)
-    # A subset run is the same exam, just less of it: same prompt, same roster,
-    # same log. Records land in the real chain, so a subset used to check
-    # quality first is not throwaway spend — the full run resumes around it.
+    # --doc and --runs narrow the matrix without changing the exam: same prompt,
+    # same roster, same log. Records land in the real chain, so a later full run
+    # resumes around them.
     if args.doc:
         wanted = [d.strip() for d in args.doc.split(",") if d.strip()]
         for doc_id in wanted:
@@ -143,9 +143,9 @@ def cmd_draft_key(args) -> int:
 
     logged: dict[tuple[str, str], list] = {}
     if args.from_log:
-        # Reuse extractions already paid for, instead of re-calling the models.
-        # A key is ground truth about the DOCUMENT, so any input mode's read is a
-        # valid source; --mode picks which logged read to draft from.
+        # Draft from extractions already in the log instead of re-calling the
+        # models. A key describes the document, so any input mode's read is a
+        # valid source; --mode picks which logged read to use.
         for rec in store.iter_records():
             if rec.get("status") != "ok" or rec.get("input_mode", "image") != args.mode:
                 continue
@@ -166,7 +166,8 @@ def cmd_draft_key(args) -> int:
             key, drafts = merge_drafts(doc, extractions, drafters)
         else:
             key, drafts = draft_key(doc, config, drafters, config.data_dir / "pages")
-        # Auto-resolve nothing; write draft + an audit worksheet the human fills in.
+        # Nothing is auto-resolved: the draft key holds the agreed entries, and
+        # the disagreements go to a worksheet for a person to fill in.
         save_key(key, keys_dir / f"{doc.id}.key.json")
         worksheet = keys_dir / f"{doc.id}.audit.json"
         worksheet.write_text(_json.dumps(

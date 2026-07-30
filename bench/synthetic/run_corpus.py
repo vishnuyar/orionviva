@@ -1,18 +1,17 @@
 """Ingest the synthetic corpus into a fresh vault with a real model, and report.
 
-This is the end-to-end run the unit suite cannot do: real PDFs, a real model
-reading them, the real verification gate, the real ledger. Nothing is stubbed.
+An end-to-end run with nothing stubbed: the generated PDFs, a live model reading
+them, the verification gate, the ledger.
 
     python run_corpus.py --vault ~/.viva-vault-corpus
 
-Reads model configuration from product/.env exactly as the surface does, so the
-model that reads these documents is the model configured for real ones.
+Model configuration is read from product/.env, the same file the surface uses.
+The vault directory must not already exist.
 
-The report has two halves. First, what the vault believes — accounts, balances
-and their grades, movements, transfer links, spending, the net-worth curve, and
-the questions Viva would ask. Second, that belief checked against
-answer-key.json, which holds what every figure actually is because the corpus
-generator computed it.
+The report has two halves: what the vault believes — accounts, balances and their
+grades, movements, transfer links, spending, the net-worth curve, and the
+questions Viva would ask — and that belief checked against answer-key.json, which
+the corpus generator computed.
 
 Exit code is 0 when every check passes, 1 otherwise.
 """
@@ -38,9 +37,8 @@ def money(v) -> str:
     return f"{D(str(v)):,.2f}"
 
 
-# Documents are ingested in a deliberately awkward order: the March statements
-# arrive before January's. Order-independence is a promise the ledger makes, and
-# a run that only ever feeds documents in date order never tests it.
+# Ingestion order, deliberately not date order — March statements arrive before
+# January's — so the run exercises the ledger's order-independence.
 ORDER = [
     "vantage-brokerage-2026-03.pdf",
     "northbank-checking-2026-03.pdf",
@@ -79,8 +77,8 @@ def main() -> int:
     from viva.env import currency_from_env, load_dotenv, locale_from_env
 
     # Find product/.env by walking up from this script and from the working
-    # directory, and say which file was loaded. A config that is silently not
-    # loaded looks exactly like a config that is empty.
+    # directory. The path that was loaded is printed below, since an unloaded
+    # config and an empty one otherwise look the same.
     env_file = None
     for base in [pathlib.Path.cwd(), *HERE.parents]:
         candidate = base / "product" / ".env"
@@ -208,7 +206,7 @@ def report(proj, results) -> None:
 
 
 def checks(proj, results, key) -> int:
-    """The vault's belief, against what the generator computed."""
+    """Check the vault against the answer key. Returns 0 if all checks pass."""
     from viva.ledger.networth import net_worth, series
 
     bar("CHECKS — the vault against the answer key")
@@ -272,9 +270,8 @@ def checks(proj, results, key) -> int:
           sum((D(str(v)) for v in proj.income_by_currency().values()), start=D("0")).quantize(D("0.01")),
           want_income.quantize(D("0.01")), "pay stubs decompose their deposits")
 
-    # A link needs both legs on the ledger, so the expectation is scoped to the
-    # accounts that actually posted. Otherwise one held statement is counted as
-    # a failure twice: once for being held, once for the links it could not form.
+    # A link needs both legs on the ledger, so the expected count is scoped to
+    # the accounts that posted; otherwise one held statement fails two checks.
     have_savings = any("8802" in a for a in proj.accounts())
     want_links = 9 if have_savings else 6
     check("transfer links found", len(proj.transfer_links()), want_links,
