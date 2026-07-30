@@ -54,6 +54,7 @@ def main() -> None:
     from merchantcore import Catalog
     from merchantcore.enrich import model_extractor
     from vivacore.models import ModelSpec
+    from .induce_profile import profile_store
     from .ingest import enrich_merchants
     from .vault import Vault
 
@@ -94,7 +95,35 @@ def main() -> None:
              "        first — the whole purpose of the catalog is that this\n"
              "        knowledge is bought once."))
 
-    result = enrich_merchants(vault.ledger, catalog, model_extractor(spec))
+    # Both closures, deliberately. Without `profile_for` this buys records keyed
+    # by the normalizer alone, under names an induced grammar then rewrites;
+    # without `kind_for` the account-kind allowlist cannot fire at all and an
+    # investment activity line would be offered to a model as a merchant.
+    proj0 = vault.ledger.projection()
+    _profiles: dict = {}
+
+    def profile_for(m):
+        try:
+            info = proj0.account_info(m.account)
+        except Exception:                                   # noqa: BLE001
+            return None
+        pair = (info.institution or "?", info.kind or "?")
+        if pair not in _profiles:
+            _profiles[pair] = profile_store().latest_for(*pair)
+        return _profiles[pair]
+
+    _kinds: dict = {}
+
+    def kind_for(m):
+        if m.account not in _kinds:
+            try:
+                _kinds[m.account] = proj0.account_info(m.account).kind or ""
+            except Exception:                               # noqa: BLE001
+                _kinds[m.account] = ""
+        return _kinds[m.account]
+
+    result = enrich_merchants(vault.ledger, catalog, model_extractor(spec),
+                              profile_for=profile_for, kind_for=kind_for)
     print(f"submitted {result['submitted']} new merchant(s); enriched "
           f"{result['enriched']}; synced {result['synced']} into the ledger.")
     proj = vault.ledger.projection()

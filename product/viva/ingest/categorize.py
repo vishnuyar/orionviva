@@ -231,20 +231,44 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
     from ..ledger.hints import enrichment_hints
     from ..ledger.streams import build_streams
 
+    from merchantcore.profile import is_inducible
+
     proj = ledger.projection()
-    streams = build_streams(proj.movements(), profile_for, kind_for)
+    # ONLY accounts whose descriptors name a party. A bank statement line and a
+    # card line have a merchant in them; an investment activity line names a
+    # security, and a kind nobody has modelled yet names who-knows-what. The
+    # same allowlist the grammar uses, for the same reason, applied one layer
+    # further out — so a new account kind is silent here until somebody decides
+    # it should not be, rather than shipped to a model by default.
+    movements = proj.movements()
+    if kind_for is not None:
+        movements = [m for m in movements if is_inducible(kind_for(m))]
+        held_back = len(proj.movements()) - len(movements)
+        if held_back:
+            log.info("merchants: %d movement(s) held back — their account kind "
+                     "names no party", held_back)
+    streams = build_streams(movements, profile_for, kind_for)
     offered = enrichment_hints(streams)
     submitted = catalog.submit((h.key, h.example()) for h in offered.values())
-    enriched = 0
-    if catalog.pending():
+    enriched, unanswered = 0, 0
+    batch = catalog.pending()
+    if batch:
         # Show the model the labels this vault already uses, so a new one is a
         # deliberate act rather than the path of least resistance.
-        records = Enricher(
-            extract_fn,
-            known_subcategories=proj.known_subcategories()
-        ).enrich(catalog.pending())
+        enricher = Enricher(extract_fn,
+                            known_subcategories=proj.known_subcategories())
+        records = enricher.enrich(batch)
         catalog.add_all(records)
         enriched = len(records)
+        # What the model LOOKED AT and declined to name. Recording it is what
+        # stops the queue re-asking the same unanswerable question every run.
+        #
+        # Deliberately excludes chunks whose reply never parsed: nothing about
+        # those merchants failed, and marking them would silence forty brands
+        # because one reply was truncated. They stay pending and are asked again.
+        transport = set(enricher.unparsed)
+        unanswered = catalog.mark_unanswered(
+            k for k in batch if k not in records and k not in transport)
 
     # Sync: import catalog records the ledger doesn't already reflect (idempotent).
     existing = proj.merchant_categories()
@@ -262,6 +286,7 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
                  "synced %d; %d person stream(s) withheld",
                  len(offered), submitted, enriched, synced, withheld)
     return {"submitted": submitted, "enriched": enriched, "synced": synced,
+            "unanswered": unanswered,
             "offered": len(offered), "withheld_people": withheld}
 
 

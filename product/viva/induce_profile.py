@@ -6,8 +6,17 @@
 
 A grammar is per (institution × kind): a checking line and a card line from one
 bank are unrelated languages, and the peer-payment templates are a third. `--list`
-shows which pairs this vault contains and how many movements sit behind each, so
-the largest is induced first and read by a person before the rest are automated.
+shows which pairs this vault contains and how many movements sit behind each.
+
+**This is the hand tool; `python3 -m viva.agent` is the one that runs itself.**
+That sentence used to end "…so the largest is induced first and read by a person
+before the rest are automated", which described bootstrapping and read like a
+rule — and contradicted the rule that actually holds. A person reads a grammar
+before PUBLISHING it, because a wrong one in the commons is wrong for everybody
+and no automated check catches the failure that matters. A grammar used on one
+vault needs no such gate: it is wrong for one person, reversibly, and the drift
+check surfaces it. Requiring a reading before use would make the agent a chore
+with a wrapper around it.
 
 **What crosses the boundary here, and why it is allowed.** This is the one call
 that sees a descriptor whole, including a counterparty's name — because the name
@@ -332,13 +341,19 @@ def main() -> int:
         if args.best_of > 1:
             print(f"\n  attempt {attempt} of {args.best_of} …")
         attempts.append(inducer.induce(*key, counts))
-    # Best by coverage, ties to the SMALLER grammar: two grammars explaining the
-    # same lines are not equal, and the one with fewer templates has generalised
-    # rather than enumerated.
-    result = max(attempts, key=lambda r: (r.coverage,
+    # Best by the HELD-OUT score, ties to the SMALLER grammar: two grammars
+    # explaining the same lines are not equal, and the one with fewer templates
+    # has generalised rather than enumerated.
+    #
+    # Held-out and not training coverage, which is what this selected on until
+    # 2026-07-29. Choosing the best of N on the number the model was fitted to
+    # picks the luckiest overfit — and a fifth of the lines were withheld
+    # precisely so that a grammar could be judged on lines it had never seen.
+    # Selecting on the other number gave that back.
+    result = max(attempts, key=lambda r: (r.scored,
                                           -len(r.profile.templates) if r.profile else 0))
     if len(attempts) > 1:
-        spread = [f"{r.coverage:.1%}" for r in attempts]
+        spread = [f"{r.scored:.1%}" for r in attempts]
         print(f"\n  attempts: {', '.join(spread)} — kept the best. Induction is "
               f"stochastic;\n  one run of this vault gave 84% and the next 82% "
               f"from the same forty lines.")
