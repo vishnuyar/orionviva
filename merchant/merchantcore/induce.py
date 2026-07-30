@@ -37,7 +37,8 @@ import re
 from vivacore import promptstore
 
 from .descriptor import is_never_templatable
-from .profile import (PROFILE_FORMAT, Profile, ProfileError, SLOTS, Template,
+from .profile import (PACK_RULES, PROFILE_FORMAT, Profile, ProfileError, SLOTS, Template,
+                      validate_evidence,
                       validate)
 
 log = logging.getLogger(__name__)
@@ -53,7 +54,16 @@ log = logging.getLogger(__name__)
 # because a peer payment addresses somebody by name, phone, email or username,
 # and a vocabulary with only a name slot sent the model looking for somewhere
 # else to put a phone number.
-INDUCTION_VERSION = "induce-profile-v1"
+# v2 (2026-07-29) exists because the pack rules were written down TWICE — stated
+# here for the model, enforced in code — and only the enforcement was versioned.
+# `PACK_RULES` went to v2 and then v3 teaching the code that a bank's fixed
+# phrase is a template, while rule 4 of v1 went on telling the model the
+# opposite. We were discouraging the single line this vault most needed
+# (`PAYMENT THANK YOU - WEB`, 78 movements) and then accepting it when the model
+# disobeyed. v2 also names two failures the first live run produced: a truncated
+# fixed phrase, and one hole name used twice on a line that carries two
+# identifiers.
+INDUCTION_VERSION = "induce-profile-v2"
 
 # How many descriptors ride in one induction call. Enough to show every line
 # shape a statement uses, small enough that the model is reading rather than
@@ -134,7 +144,17 @@ def build_induction_prompt(descriptors) -> tuple[str, str]:
     it (prompt + profile format, so a grammar can be re-derived)."""
     lines = "\n".join(f"  {d}" for d in descriptors)
     prompt = _PROMPT.format(slots=vocabulary_block(), descriptors=lines)
-    return prompt, f"{INDUCTION_VERSION}+{PROFILE_FORMAT}"
+    return prompt, machinery_version()
+
+
+def machinery_version() -> str:
+    """Everything that decides what an induction produces, in one string.
+
+    The prompt, the storage format that bounds the vocabulary, and the pack
+    rules that judge what comes back. Composed here rather than in each caller,
+    because two places that build the same version string are two places that
+    can disagree about what a recorded version meant."""
+    return f"{INDUCTION_VERSION}+{PROFILE_FORMAT}+{PACK_RULES}"
 
 
 _DIGITY = re.compile(r"\d")
@@ -304,8 +324,31 @@ def _find_json(text: str) -> str | None:
     return None
 
 
+def _fixed_phrase(rx, counts) -> bool:
+    """Whether a slotless template is a bank's FIXED PHRASE, not a memorised line.
+
+    Rule 4 refused every template with no holes, on the reasoning that a template
+    reproducing one line is an example rather than a grammar. That is right about
+    memorised lines and wrong about a whole class of real ones: a fee has no
+    variable part. `Payment Thank You - Web`, `Domestic Incoming Wire Fee`, an
+    ATM fee — the bank prints the identical string every time, and that
+    constancy is what the line IS. On the first live agent run those were
+    proposed correctly and dropped twenty-odd times, burning a round of calls per
+    attempt re-discovering them, and leaving the commonest line on a card
+    statement permanently unexplained in the one pair that then missed the gate.
+
+    The signal needs no new rule and no new data: an example memorised from the
+    sample occurs ONCE; a bank's fixed phrase RECURS. Same principle as the rest
+    of this layer — what does not vary is what the thing is.
+
+    Matched through the compiled expression rather than by string equality, so a
+    truncated template (`Non-Chase ATM Fee-With`) still explains nothing and is
+    still dropped — now for the reason that is actually true of it."""
+    return any(n > 1 and rx.match(d) for d, n in (counts or {}).items())
+
+
 def parse_induction(text: str, institution: str, kind: str, version: str,
-                    induced_from: int = 0) -> Profile | None:
+                    induced_from: int = 0, counts: dict | None = None) -> Profile | None:
     """Parse a reply into a Profile, dropping templates the vocabulary refuses.
 
     One unusable template does not sink the call — the others are still a
@@ -328,9 +371,10 @@ def parse_induction(text: str, institution: str, kind: str, version: str,
             continue
         t = Template(raw.strip())
         try:
-            t.compile()
-            if not t.slots():
-                raise ProfileError("no slots — an example, not a grammar")
+            rx = t.compile()
+            if not t.slots() and not _fixed_phrase(rx, counts):
+                raise ProfileError("no slots, and no line it explains occurs "
+                                   "more than once — an example, not a grammar")
         except ProfileError as e:
             log.warning("induce: dropping template %r — %s", raw, e)
             continue
@@ -471,8 +515,11 @@ class Inducer:
             log.info("induce: %s/%s round %d — %d line(s) left, showing %d (%s)",
                      institution, kind, round_no, len(remaining), len(sample), version)
             used = round_no
+            # Judged against the TRAINING lines, never the holdout: what is kept
+            # must not be decided by the lines that will later score it.
             got = parse_induction(self._extract(prompt), institution, kind,
-                                  version, induced_from=len(sample))
+                                  version, induced_from=len(sample),
+                                  counts=eligible)
             if got is None:
                 break
             fresh = [t for t in got.templates
@@ -510,6 +557,7 @@ class Inducer:
         profile = Profile(institution=institution, kind=kind, version="v1",
                           templates=templates, induced_from=len(first_sample))
         validate(profile)
+        validate_evidence(profile, eligible)
         # Scored on every eligible line, never the sample, and weighted by
         # movements: a template that explains one rare line and misses the daily
         # one is not half right.

@@ -189,3 +189,103 @@ def test_leftovers_must_be_contiguous():
     scattered fragments mean the rules fired in the wrong places."""
     assert parse_descriptor("COSTCO WHSE #0664 PLANO TX").clean
     assert parse_descriptor("TST* GOLDEN FORK BISTRO AUSTIN TX").clean
+
+
+# ------------------------------------------- a grammar borrowed from another bank
+
+
+def _card_profile(institution="Alpha", version="v1"):
+    from merchantcore.profile import Profile, Template
+    return Profile(institution, "depository", version,
+                   [Template("Card Purchase {date} {brand} {city} {region} "
+                             "Card {account_ref}")], measured=0.95)
+
+
+def test_another_banks_grammar_may_explain_this_banks_line():
+    """The reason borrowing is worth having: an account with twenty distinct
+    lines can never teach a grammar — the minimum is thirty, forever — and is
+    perfectly explicable by one. A sentence shape is not the exclusive property
+    of the bank it was learned from."""
+    from merchantcore.resolve import resolve_descriptor
+    line = "Card Purchase 04/02 STOREB Frisco TX Card 9876"
+    res = resolve_descriptor(line, profile=None, borrowed=[_card_profile()])
+    assert res.layer == "grammar"
+    assert res.borrowed_from == "alpha-depository-v1"
+    assert res.brand == "STOREB"
+
+
+def test_a_borrowed_grammar_is_still_a_grammar():
+    """Recorded as `grammar`, not as a weaker layer. It is structurally the same
+    claim — same closed vocabulary, same compiled expression, same rule that a
+    person is whatever landed in a slot named for one — and every downstream
+    privacy check keys on that word. A separate layer name would silently send
+    borrowed lines down the guess-from-substrings path."""
+    from merchantcore.resolve import resolve_descriptor
+    res = resolve_descriptor("Card Purchase 04/02 STOREB Frisco TX Card 9876",
+                             borrowed=[_card_profile()])
+    assert res.layer == "grammar" and res.template
+
+
+def test_the_banks_own_grammar_always_wins():
+    """Own first, always: a bank's own grammar was measured against its own
+    lines and a borrowed one was not."""
+    from merchantcore.resolve import resolve_descriptor
+    line = "Card Purchase 04/02 STOREB Frisco TX Card 9876"
+    res = resolve_descriptor(line, profile=_card_profile("Beta"),
+                             borrowed=[_card_profile("Alpha")])
+    assert res.borrowed_from == "", "the own grammar matched, so nothing was borrowed"
+
+
+def test_borrowing_never_reaches_a_refused_line():
+    """A wire is refused every layer, and borrowing is a layer. The sender's
+    free text can hold a street address, and no grammar from anywhere may claim
+    a field somebody typed freely."""
+    from merchantcore.resolve import resolve_descriptor
+    wire = ("Via: WELLS FARGO NA A/C: 0000000123 Imad: 20260304B1QGC01R "
+            "Trn: 1234567890 Ref: INVOICE 44")
+    res = resolve_descriptor(wire, borrowed=[_card_profile()])
+    assert res.refused and res.layer == "refused" and res.borrowed_from == ""
+
+
+def test_which_lender_wins_does_not_depend_on_dict_order():
+    """Two grammars that both match must give the same answer every run, or two
+    reports over one vault disagree about who explained what."""
+    from merchantcore.resolve import resolve_descriptor
+    line = "Card Purchase 04/02 STOREB Frisco TX Card 9876"
+    a, b = _card_profile("Alpha"), _card_profile("Zeta")
+    assert (resolve_descriptor(line, borrowed=[a, b]).borrowed_from
+            == resolve_descriptor(line, borrowed=[b, a]).borrowed_from
+            == "alpha-depository-v1")
+
+
+# ------------------------- the two lists that carried raw English, and are gone
+
+
+def test_a_processor_prefix_is_recognised_by_POSITION_not_by_name():
+    """There used to be a `_PROCESSORS` tuple — "sq *", "tst*", "paypal *" — and
+    alongside them "pos debit", "checkcard", "ach pmt". Two different things
+    under one name: the asterisk forms were already caught by the positional
+    rule, and the rest were English bank phrases doing classification. The
+    position is processor-mandated and identical in every country; the words
+    were not."""
+    from merchantcore.descriptor import parse_descriptor
+    import merchantcore.descriptor as d
+    assert not hasattr(d, "_PROCESSORS"), "the name list is gone, not renamed"
+    for line in ("TST* TEXAS CARD HOUSE Dallas TX", "SQ *BLUE BOTTLE OAKLAND CA",
+                 "IC* INSTACART SAN FRANCISCO CA"):
+        rules = {s.rule for s in parse_descriptor(line).slots}
+        assert any(r.startswith("asterisk_at_") for r in rules), line
+
+
+def test_a_line_the_english_list_cannot_read_is_not_cleared_by_its_silence():
+    """`is_shareable` decides whether a descriptor may be sent to a model
+    provider. Its markers are English and ASCII, so on a Hindi or Japanese peer
+    payment it says nothing — and saying nothing meant "safe". Failing closed
+    instead: a line carrying letters outside ASCII is withheld until a grammar
+    exists, at which point a slot name answers the question properly."""
+    from merchantcore.normalize import is_shareable
+    assert is_shareable("COSTCO WHSE PLANO TX")
+    assert not is_shareable("VENMO TO JOHN SMITH")
+    # The list is mute on both of these; it may not clear them.
+    assert not is_shareable("スイカ 東京 JP")
+    assert not is_shareable("CAFÉ MÜLLER MÜNCHEN DE")

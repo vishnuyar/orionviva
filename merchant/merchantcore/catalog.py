@@ -30,6 +30,11 @@ class Catalog:
     def __init__(self, path: str | Path | None = None, shipped=None):
         self._records: dict[str, MerchantRecord] = {}
         self._pending: dict[str, str] = {}       # key -> example (awaiting enrichment)
+        # key -> the example that was ASKED ABOUT and came back with nothing.
+        # Without this, a merchant whose reply never parses is re-sent on every
+        # single run, at full price, silently — invisible when a person runs
+        # enrichment by hand and expensive the moment an agent does.
+        self._unanswered: dict[str, str] = {}
         self._path = Path(path) if path else None
         # The seed that travels with the package, laid down FIRST so anything
         # this installation learned or a person confirmed sits on top of it.
@@ -49,20 +54,63 @@ class Catalog:
         merchants are skipped (idempotent). Returns how many were newly queued."""
         n = 0
         for key, example in hints:
-            if not key or key in self._records or key in self._pending:
+            if not key or key in self._records:
                 continue
+            example = linted_example(example)
+            if self._pending.get(key) == example:
+                continue                 # already queued, against this same evidence
             # Linted HERE as well as at the caller, deliberately. The pending
             # queue is persisted to plain JSON that is unencrypted by decision
             # and shared across vaults by decision, and anything submitted but
             # never enriched sits in it indefinitely. Making the lint a property
             # of the store rather than of every call site is what stops the next
             # caller from reintroducing repair-list C2.
-            self._pending[key] = linted_example(example)
+            self._pending[key] = example
+            # New evidence retires an old non-answer. The same snapshot rule the
+            # question queue uses for a decline: stay quiet while nothing has
+            # changed, ask again the moment it has.
+            self._unanswered.pop(key, None)
             n += 1
         return n
 
     def pending(self) -> dict:
+        """Merchants worth spending a model call on right now.
+
+        Excludes anything already asked about, against this very example, that
+        came back with nothing. A model that could not name a brand from one
+        example will not name it from the same example an hour later, and the
+        difference between those two beliefs is a call per merchant per run."""
+        return {k: v for k, v in self._pending.items()
+                if self._unanswered.get(k) != v}
+
+    def queued(self) -> dict:
+        """Everything in the queue, answered or not.
+
+        Separate from `pending` deliberately: this is what persists to plain
+        JSON, so it is what a privacy audit has to look at, while `pending` is
+        what a spender has to look at. One method answering both questions is how
+        a lint that guards the file drifts away from the file."""
         return dict(self._pending)
+
+    def unanswered(self) -> dict:
+        """What was asked and not answered, with the example that was sent."""
+        return dict(self._unanswered)
+
+    def mark_unanswered(self, keys) -> int:
+        """Record that these keys were sent to a model and nothing came back.
+
+        Called with the keys of a batch minus the keys that returned a record —
+        parsing failures, omissions, and merchants the model declined to name,
+        which are indistinguishable from here and want the same treatment."""
+        n = 0
+        for k in keys:
+            example = self._pending.get(k)
+            if example is not None and self._unanswered.get(k) != example:
+                self._unanswered[k] = example
+                n += 1
+        if n:
+            self._save()
+        return n
 
     # --- enriched records ---------------------------------------------------
 
@@ -71,6 +119,7 @@ class Catalog:
         if prior is None or _rank(record.grade) >= _rank(prior.grade):
             self._records[record.key] = record
         self._pending.pop(record.key, None)
+        self._unanswered.pop(record.key, None)
         self._save()
 
     def add_all(self, records) -> None:
@@ -113,10 +162,14 @@ class Catalog:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(
             {"records": {k: r.to_dict() for k, r in self._records.items()},
-             "pending": self._pending}, indent=2))
+             "pending": self._pending,
+             "unanswered": self._unanswered}, indent=2))
 
     def load(self) -> None:
         data = json.loads(self._path.read_text())
         self._records = {k: MerchantRecord.from_dict(v)
                          for k, v in data.get("records", {}).items()}
         self._pending = dict(data.get("pending", {}))
+        # Absent in catalogs written before this existed. An old catalog simply
+        # starts with nothing marked, which costs one more round of calls once.
+        self._unanswered = dict(data.get("unanswered", {}))

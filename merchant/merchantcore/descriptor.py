@@ -22,17 +22,25 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-PARSER_VERSION = "desc-v1"
+PARSER_VERSION = "desc-v2"
 
-# The asterisk is a separator at exactly these indexes: a 3, 7 or 12 character
-# brand prefix, then '*', then the product or sub-merchant. Processor-mandated.
-_ASTERISK_AT = (3, 7, 12)
-
-# Payment facilitators and terminals that put themselves where the merchant goes.
-_PROCESSORS = ("sq *", "sq*", "sp *", "sp*", "tst*", "tst *", "pp*", "paypal *",
-               "paypal*", "ven*", "venmo*", "wpy*", "eb *", "ic*", "pos debit",
-               "pos purchase", "debit card purchase", "checkcard", "ach pmt",
-               "web pymt", "ppd id:")
+# The asterisk is a separator at exactly these indexes: a 2, 3, 7 or 12
+# character brand prefix, then '*', then the product or sub-merchant.
+# Processor-mandated, positional, and the same in every country.
+#
+# THIS REPLACED A LIST OF PROCESSOR NAMES (2026-07-29). There used to be a
+# `_PROCESSORS` tuple — "sq *", "tst*", "paypal *", and alongside them "pos
+# debit", "checkcard", "ach pmt", "web pymt". Two different things wearing one
+# name: the asterisk forms were already caught by this positional rule, and the
+# rest were English bank phrases doing classification, which is the exact thing
+# this package has deleted four times before. Adding index 2 catches the last
+# two the position missed (`ic*`, `pp*`) and the list goes.
+#
+# What is lost, honestly: on a US statement with no grammar, "POS DEBIT" and
+# "CHECKCARD" now stay in the brand candidate instead of being stripped. That
+# is a worse fallback for English and a correct one everywhere else, and a
+# grammar retires the fallback entirely.
+_ASTERISK_AT = (2, 3, 7, 12)
 
 _DATE = re.compile(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b")
 _PHONE_SLOT = re.compile(r"\b\d{3}-[A-Za-z0-9]{4,9}\b")
@@ -193,14 +201,6 @@ def parse_descriptor(raw: str) -> DescriptorParse:
                 out.slots.append(Slot("aggregator", text[:i].strip(), 0, i + 1,
                                       f"asterisk_at_{i}"))
             break
-    else:
-        low = text.lower()
-        for p in _PROCESSORS:
-            if low.startswith(p):
-                if _claim(taken, 0, len(p)):
-                    out.slots.append(Slot("aggregator", text[:len(p)].strip(),
-                                          0, len(p), "processor_prefix"))
-                break
 
     # The ACH tail, before anything else can claim its digits. The Company
     # Identification is a long number and the reference rules would otherwise

@@ -34,6 +34,34 @@ from .descriptor import is_never_templatable
 
 PROFILE_FORMAT = "prof-v1"
 
+# What the pack RULES currently are — deliberately NOT the same string as
+# PROFILE_FORMAT, though the first attempt at this conflated them.
+#
+# PROFILE_FORMAT is a COMPATIBILITY version: `from_dict` refuses a profile that
+# does not carry it, and `holdout_split` salts its hash with it. Bumping it to
+# announce a rule change would therefore make every grammar already on disk
+# unloadable and reshuffle which lines are withheld — punishing the work for the
+# improvement.
+#
+# PACK_RULES is a BEHAVIOUR version: what a fresh induction would now do
+# differently. Nothing loads by it and nothing is salted by it; it exists so
+# that a refusal recorded under old rules can expire by itself when the rules
+# change, instead of waiting for a person to remember.
+#
+# v1 was implicit — the rules as they stood before a slotless template could
+# earn its place by explaining a line the bank prints more than once.
+# v2 taught that to induction and left a second copy of the old rule in
+# `validate`, which refused what induction had just admitted. v3 is one rule in
+# one place, and the bump is what makes the agent forget the refusal v2 caused.
+# v4 gives {brand} a shape that can express a card merchant name. PROFILE_FORMAT
+# stays prof-v1 on purpose: a wider shape only ever matches MORE, so every
+# grammar already on disk still loads and still means what it meant, and the
+# holdout salt does not move — which is what makes the before/after comparable.
+# v5 makes every shape Unicode-aware. v4 fixed {brand} because that is where one
+# US vault bled; the same defect sat in `words`, the DEFAULT shape, and would
+# have failed on the Indian statements this same corpus already contains.
+PACK_RULES = "pack-v5"
+
 # The closed slot vocabulary. A profile may name these and nothing else.
 SLOTS = {
     "brand":        "the merchant or payee as the statement prints it",
@@ -96,18 +124,84 @@ PARTY_SLOTS = frozenset({"counterparty", "counterparty_handle", "brand",
 # decision. Until it exists the honest answer for an investment line is that no
 # grammar applies, which is the same answer the stream engine reaches when it
 # marks those movements `activity` rather than giving them a counterparty.
+#
+# AN ALLOWLIST, AND IT GOVERNS ENRICHMENT TOO (2026-07-29). These are the
+# account kinds whose descriptors NAME A PARTY, which is the property both
+# gates actually depend on: a grammar has a counterparty slot to fill, and an
+# enrichment call has a merchant to ask about. Anything else has neither.
+#
+# It was previously an allowlist for induction and a denylist of one
+# (`kind == "investment"`) for enrichment, which meant any kind nobody had
+# thought of — crypto, property, a pension — would have had its lines shipped
+# to a model as merchants by default. A list of what is permitted cannot be
+# wrong about a thing that did not exist when it was written; a list of what is
+# forbidden always can.
+#
+# The name is narrower than the concept and is left alone deliberately: renaming
+# it in the same change that alters behaviour would make the diff unreadable.
 INDUCIBLE_KINDS = frozenset({"depository", "liability"})
 
 
 def is_inducible(kind: str) -> bool:
-    """Whether a grammar may be induced for an account kind, and applied to it."""
+    """Whether an account kind's descriptors name a party.
+
+    Two consequences, and they are the same rule: a grammar may be induced for
+    it and applied to it, and its merchants may be enriched. A kind that names
+    no party gets neither."""
     return (kind or "").strip().lower() in INDUCIBLE_KINDS
+
+# Unicode combining marks — general category M. Python's `re` has no \p{M} and
+# `\w` excludes marks, so `स्विगी` (a Devanagari virama and a vowel sign) fails a
+# shape built from `\w` alone. Enumerated by range because the alternative is a
+# third-party regex engine and this package takes no dependencies.
+_MARKS = (r"̀-ͯ҃-҉֑-ֽֿׁ-ׂ"
+          r"ׄ-ׅؐ-ًؚ-ٰٟۖ-ۜ"
+          r"ܑܰ-݊ަ-ްࠖ-ࣣࠣ-ः"
+          r"ऺ-ॏ॑-ॗॢ-ॣঁ-ঃ"
+          r"়-্ৗਁ-ਃ਼-ੑଁ-ଃ"
+          r"଼-ୗா-்ఀ-ౖഀ-്"
+          r"ั-ฺ็-๎༘-྄ါ-ှ"
+          r"ᬀ-ᬄ᷀-᷿⃐-⃰︠-︯")
 
 # What a hole may match. Deliberately few: a bank template is words and numbers
 # in a fixed order, and every shape added here is a shape a model can misuse.
+#
+# UNICODE, AND NOT BY ACCIDENT (2026-07-29). Every shape here was `[A-Za-z]`,
+# which is a US-English assumption wearing a character class. Measured on
+# fifteen realistic statement lines from five countries, eight could not be
+# expressed AT ALL — `CAFÉ MÜLLER`, `SÃO PAULO`, Devanagari, Japanese, and every
+# Indian rail (`UPI-…`, `NEFT-…`, `IMPS/…`) whose bank code is letters followed
+# by digits. This project already holds INR statements from two Indian banks.
+#
+# Two rules, and the difference between them is the point:
+#
+#   a NAME starts with a letter          {city} {institution} {counterparty}
+#   a MERCHANT STRING may start with a   {brand} {noise}
+#   digit
+#
+# Keeping the first narrow is what stops {city} matching a bare number and
+# quietly swallowing a store id.
 SHAPES = {
-    "words":   r"[A-Za-z][A-Za-z.'&/-]*(?:\s+[A-Za-z0-9][A-Za-z0-9.'&/-]*)*",
-    "word":    r"[A-Za-z][A-Za-z.'&/-]*",
+    "words":   rf"[^\W\d_][\w{_MARKS}.'&/-]*(?:\s+[\w{_MARKS}.'&/-]+)*",
+    # A CARD MERCHANT STRING, which `words` cannot express. On one real credit
+    # card account, `words` explained 71% of the withheld movements and this
+    # explains 97% — every one of them slotted correctly. What it adds, and each
+    # is a merchant name printed by a real US issuer:
+    #
+    #   a leading digit   `278 BRAUMS STORE`, `4977 GREAT CLIPS AT SIGNA`
+    #   an ampersand      `QUALITY INN & SUITES` — `&` was legal INSIDE a word
+    #                     and not AS one, which is a bug rather than a policy
+    #   a processor mark  `TST* TEXAS CARD HOUSE`, `I3V*FRISCO` — the asterisk
+    #                     Layer 0 already reads as an ISO 8583 DE43 marker
+    #
+    # `#` is deliberately LEFT OUT. `CIRCLE K # 03453 WEST MONROE LA` matches
+    # once `#` is admitted, and slots as brand `CIRCLE K # 03453 WEST` with city
+    # `MONROE` — a greedy brand eating a word of the city. That is a confident
+    # wrong answer where a miss was honest, and this product prefers the miss.
+    # The right fix for that line is a template writing `#` as literal text with
+    # {store_number} after it, which slots correctly and costs no vocabulary.
+    "merchant": rf"[^\W_][\w{_MARKS}.'&/*+,()-]*(?:\s+[\w{_MARKS}.'&/*+,()-]+)*",
+    "word":    rf"[^\W\d_][\w{_MARKS}.'&/-]*",
     "number":  r"\d+",
     "alnum":   r"[A-Za-z0-9*#-]+",
     "date":    r"\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?",
@@ -127,6 +221,14 @@ SHAPES = {
 # vocabulary whose obvious spelling is the wrong one is a trap for the model
 # that writes into it, and the model does not get to see this file.
 SLOT_SHAPE = {
+    # Only `brand`. A counterparty is a PERSON's name and `words` is right for
+    # one; widening that would let a person's slot swallow punctuation it has no
+    # business holding, in the one slot the privacy guarantee rests on.
+    "brand": "merchant",
+    # Filler the template does not need. It may legitimately begin with a digit
+    # — a UK card line ends `ON 12 MAR` — and a name may not, which is the whole
+    # distinction `merchant` exists to draw.
+    "noise": "merchant",
     "date": "date", "store_number": "number", "account_ref": "masked",
     "amount": "number", "reference": "alnum", "region": "word",
     "trace": "alnum", "company_id": "alnum", "contact": "contact",
@@ -326,16 +428,44 @@ class Profile:
 def validate(profile: Profile) -> Profile:
     """Refuse a grammar the vocabulary does not permit, before it is applied.
 
-    Every template must compile under the closed slot and shape sets, and a
-    template with no holes is a literal that matches one exact line — almost
-    always a sign the model copied an example instead of generalizing it."""
+    FORMAT ONLY: a profile has at least one template, and every template
+    compiles under the closed slot and shape sets.
+
+    Deliberately NOT "every template has a hole". That rule needs evidence — a
+    slotless template is a copied example when its line occurred once and the
+    bank's own fixed phrase when the line recurs — so it lives in
+    `validate_evidence`. Keeping it here would also run it at LOAD time, where
+    there is no evidence, and a legitimately frozen fixed phrase would be
+    refused by the very check that admitted it."""
     if not profile.templates:
         raise ProfileError("a profile with no templates explains nothing")
     for t in profile.templates:
         t.compile()
-        if not t.slots():
-            raise ProfileError(f"template {t.pattern!r} has no slots — it is an example, "
-                               "not a grammar")
+    return profile
+
+
+def validate_evidence(profile: Profile, counts: dict | None) -> Profile:
+    """Refuse a template the LINES do not support. Induction and write time only.
+
+    A template with no holes matches one exact line. That is a copied example
+    when the line occurred once, and it is the bank's own fixed phrase when the
+    line recurs — a fee prints the identical string every month, and that
+    sameness is what the line IS.
+
+    Split out of `validate` after the first live agent run, where this rule
+    existed in two places: the induction-time copy had been taught the
+    difference and the format-time copy had not, so a template describing a
+    credit Chase prints repeatedly was admitted by one and refused by the other,
+    three model calls into the job. One rule, one place, or they diverge exactly
+    like that."""
+    for t in profile.templates:
+        if t.slots():
+            continue
+        rx = t.compile()
+        if not any(n > 1 and rx.match(d) for d, n in (counts or {}).items()):
+            raise ProfileError(
+                f"template {t.pattern!r} has no slots and matches no line this "
+                f"institution prints more than once — an example, not a grammar")
     return profile
 
 
@@ -438,6 +568,11 @@ class ProfileStore:
         case where a worse number is wanted deliberately — a grammar that covers
         less but slots more honestly — and it has to be asked for."""
         validate(profile)
+        # Evidence is checked only where there is evidence. A caller with no
+        # `against` is freezing a grammar it cannot justify, which the coverage
+        # guard below already refuses to reward.
+        if against:
+            validate_evidence(profile, against)
         if not is_inducible(profile.kind):
             raise ProfileError(
                 f"{profile.kind!r} descriptors name no counterparty, so a grammar "

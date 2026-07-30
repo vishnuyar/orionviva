@@ -13,9 +13,11 @@ from .descriptor import (PARSER_VERSION, DescriptorParse, brand_candidate,
                          is_never_templatable, linted_example,
                          parse_descriptor, split_ach_heads)
 from .normalize import NORMALIZER_VERSION, is_shareable, normalize_merchant
-from .induce import INDUCTION_VERSION, Inducer, build_induction_prompt
-from .profile import (INDUCIBLE_KINDS, PARTY_SLOTS, PERSONAL_SLOTS,
+from .induce import (INDUCTION_VERSION, Inducer, build_induction_prompt,
+                     machinery_version)
+from .profile import (INDUCIBLE_KINDS, PACK_RULES, PARTY_SLOTS, PERSONAL_SLOTS,
                       PROFILE_FORMAT, SLOTS, Profile, ProfileError,
+                      validate, validate_evidence,
                       ProfileStore, Template, is_inducible, party_slot)
 from .resolve import (RESOLVER_VERSION, Resolution, channel_of,
                       resolve_descriptor)
@@ -31,8 +33,9 @@ __all__ = [
     "MerchantRecord",
     "Profile", "ProfileStore", "ProfileError", "Template", "SLOTS",
     "PERSONAL_SLOTS", "PROFILE_FORMAT", "INDUCIBLE_KINDS", "is_inducible",
-    "PARTY_SLOTS", "party_slot",
+    "PARTY_SLOTS", "party_slot", "validate", "validate_evidence",
     "Inducer", "build_induction_prompt", "INDUCTION_VERSION",
+    "machinery_version", "PACK_RULES",
     "Enricher", "build_enrichment_prompt", "ENRICHMENT_VERSION",
     "Catalog", "home",
     "PRIMARY_CATEGORIES", "FALLBACK_CATEGORY", "TAXONOMY_VERSION",
