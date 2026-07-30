@@ -89,14 +89,34 @@ def _find_json(text: str) -> str | None:
 def parse_enrichment(text: str, keys, version: str) -> dict:
     """Parse a model reply into ``{key: MerchantRecord}``. Unknown/missing keys
     are skipped (never guessed into existence)."""
+    return parse_enrichment_chunk(text, keys, version)[0]
+
+
+def parse_enrichment_chunk(text: str, keys, version: str) -> tuple[dict, bool]:
+    """The records, AND whether the reply parsed at all.
+
+    Two failures hide behind an empty result and they are not the same thing:
+
+      * the reply parsed and this merchant was not in it — the model looked and
+        declined to name it. Asking again, with the same example, buys the same
+        silence.
+      * the reply did not parse — truncated, a stray delimiter, a wrapper the
+        finder missed. Nothing about the MERCHANT failed. A retry, or a smaller
+        chunk, is likely to work.
+
+    Collapsing them costs real money in one direction and buys a permanent
+    silence in the other. On the first live agent run, one chunk of forty came
+    back as `Expecting ',' delimiter: line 298` and every one of those forty
+    merchants would have been recorded as unanswerable."""
     blob = _find_json(text)
     if blob is None:
-        return {}
+        log.warning("enrich: no JSON object found in the reply")
+        return {}, False
     try:
         data = json.loads(blob)
     except json.JSONDecodeError as e:
         log.warning("enrich: reply not valid JSON: %s", e)
-        return {}
+        return {}, False
     out: dict[str, MerchantRecord] = {}
     for key in keys:
         d = data.get(key)
@@ -120,7 +140,7 @@ def parse_enrichment(text: str, keys, version: str) -> dict:
             subcategory=normalize_subcategory(d.get("subcategory", "")),
             attributes=attrs, grade="corroborated", source="model",
             version=version)
-    return out
+    return out, True
 
 
 def clean_implications(raw) -> list[dict]:
@@ -168,6 +188,10 @@ class Enricher:
         self._extract = extract_fn
         self._chunk_size = max(1, int(chunk_size))
         self._known = list(known_subcategories or [])
+        # Keys whose CHUNK never parsed. Reported separately from keys the model
+        # simply did not mention, because a caller that remembers "asked and got
+        # nothing" must not remember a transport failure that way.
+        self.unparsed: list[str] = []
 
     def enrich(self, merchants: dict) -> dict:
         """Enrich ``{key: example}`` → ``{key: MerchantRecord}``, one model call
@@ -182,14 +206,21 @@ class Enricher:
         log.info("enrich: %d merchant(s) in %d call(s) of <=%d (%s)",
                  len(items), len(chunks), self._chunk_size, version)
         out: dict[str, MerchantRecord] = {}
+        self.unparsed = []
         for n, chunk in enumerate(chunks, 1):
             prompt, version = build_enrichment_prompt(chunk, self._known)
             text = self._extract(prompt)
-            records = parse_enrichment(text, list(chunk.keys()), version)
-            log.info("enrich: chunk %d/%d → %d/%d record(s)",
-                     n, len(chunks), len(records), len(chunk))
+            records, parsed = parse_enrichment_chunk(
+                text, list(chunk.keys()), version)
+            log.info("enrich: chunk %d/%d → %d/%d record(s)%s",
+                     n, len(chunks), len(records), len(chunk),
+                     "" if parsed else "   [reply did not parse — not an answer]")
+            if not parsed:
+                self.unparsed.extend(chunk.keys())
             out.update(records)
-        log.info("enrich: got %d record(s) total", len(out))
+        log.info("enrich: got %d record(s) total%s", len(out),
+                 f", {len(self.unparsed)} in chunk(s) that did not parse"
+                 if self.unparsed else "")
         return out
 
 

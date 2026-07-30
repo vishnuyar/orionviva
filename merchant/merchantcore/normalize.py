@@ -73,4 +73,16 @@ def is_shareable(descriptor: str) -> bool:
     low = (descriptor or "").lower()
     if any(mark in low for mark in _PEER_MARKERS):
         return False
+    # THE MARKER LIST IS ENGLISH AND ASCII, so on a line it cannot read its
+    # SILENCE IS NOT EVIDENCE — and silence here means "safe to send to a model
+    # provider". A Hindi or Japanese peer payment contains none of these words,
+    # so the list cleared it by never having had a chance to look.
+    #
+    # Failing closed instead. A descriptor carrying letters outside ASCII is
+    # withheld until a grammar exists for that institution, at which point a
+    # slot name answers the question properly and this function is not consulted
+    # at all. Costs enrichment coverage on a new non-English vault; the
+    # alternative is a person's name crossing because a word list was mute.
+    if any(c.isalpha() and ord(c) > 127 for c in (descriptor or "")):
+        return False
     return bool(normalize_merchant(descriptor))

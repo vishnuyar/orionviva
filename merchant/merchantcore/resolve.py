@@ -13,8 +13,17 @@ answering only what it can prove:
 
     refused        a wire dump — no layer may claim it; it stays local and whole
     Layer 1        an induced grammar for THIS bank, if one exists
+    Layer 1'       a grammar induced for ANOTHER bank that explains this line
     Layer 0        published card and NACHA rules, which need no grammar
     the normalizer the deterministic fallback that has always been there
+
+A BORROWED grammar is still a grammar and is recorded as one, because it is
+structurally the same claim: the same closed vocabulary, the same compiled
+expression, the same rule that a person is whatever landed in a slot named for
+one. What differs is only where it came from, so that rides along in
+`borrowed_from` rather than becoming a weaker layer. This matters most for an
+account too small to induce from — twenty distinct lines can never teach a
+grammar, and can perfectly well be explained by one.
 
 The result carries **where each field came from**, because "Costco, from a
 grammar slot" and "Costco, from stripping punctuation" are different claims and
@@ -53,6 +62,7 @@ class Resolution:
     fields: dict = field(default_factory=dict)      # impersonal slots
     personal: dict = field(default_factory=dict)    # slots declared personal
     template: str = ""
+    borrowed_from: str = ""              # profile id, when another bank's grammar explained it
     refused: bool = False
 
     @property
@@ -107,7 +117,8 @@ class Resolution:
         return {"layer": self.layer, "local_key": self.local_key,
                 "brand": self.brand, "channel": self.channel,
                 "is_person": self.is_person, "refused": self.refused,
-                "template": self.template, "fields": dict(self.fields),
+                "template": self.template, "borrowed_from": self.borrowed_from,
+                "fields": dict(self.fields),
                 "resolver_version": RESOLVER_VERSION}
 
 
@@ -152,7 +163,37 @@ def channel_of(descriptor: str, parse=None) -> str:
     return "unknown"
 
 
-def resolve_descriptor(descriptor: str, profile=None, ach_split=None) -> Resolution:
+def _slot_from(res: Resolution, match, parse, ach_split, raw: str) -> Resolution:
+    """Fill a resolution from a grammar match. One body, two callers — the
+    bank's own grammar and a borrowed one decompose identically, and writing it
+    twice is how they would come to differ."""
+    res.layer, res.template = "grammar", match.template
+    res.fields = match.shareable()
+    res.personal = match.personal()
+    # However the sender addressed them — a name, a phone, an email, a
+    # username, or a contact slot sitting where the party belongs.
+    res.counterparty = match.party()
+    res.brand = (res.fields.get("brand") or res.fields.get("institution") or "")
+    # A rail that carries people is a rail the GRAMMAR identified as such,
+    # by putting a person in a slot named for one. Not a list of app names —
+    # that list is the thing this design deleted, and it does not survive
+    # a new country.
+    if res.counterparty and res.channel in ("unknown", "ach"):
+        res.channel = "p2p"
+    # A grammar usually makes the NACHA Company Entry Description part of
+    # its literal text — `{brand} PAYROLL PPD ID: {company_id}` — because
+    # that is what it is. Correct, and it means the field vanishes from the
+    # slots, where Layer 0 had it. Recovered here so the better layer does
+    # not quietly return less than the worse one.
+    if parse.ach and ach_split and raw in ach_split:
+        _name, entry = ach_split[raw]
+        if entry:
+            res.fields.setdefault("entry_description", entry)
+    return res
+
+
+def resolve_descriptor(descriptor: str, profile=None, ach_split=None,
+                       borrowed=None) -> Resolution:
     """Decompose one bank line, using the best layer that can prove its claim.
 
     `profile` is an induced grammar for the (institution × kind) this line came
@@ -163,7 +204,13 @@ def resolve_descriptor(descriptor: str, profile=None, ach_split=None) -> Resolut
     `ach_split` is `split_ach_heads()` over the whole statement, or None. It is
     corpus-level by necessity — the Company Name / Entry Description boundary
     does not exist on any single line — so it is passed in rather than computed
-    here."""
+    here.
+
+    `borrowed` is other institutions' grammars, tried only after this one's has
+    failed. A sentence shape is not the exclusive property of the bank it was
+    learned from, and an account with twenty distinct lines will never teach a
+    grammar while being perfectly explicable by one. Own first, always: a bank's
+    own grammar was measured against its own lines, and a borrowed one was not."""
     raw = (descriptor or "").strip()
     res = Resolution(raw=raw, local_key=normalize_merchant(raw))
     if not raw:
@@ -182,29 +229,17 @@ def resolve_descriptor(descriptor: str, profile=None, ach_split=None) -> Resolut
     # match is a decomposition with no residue to explain away.
     match = profile.apply(raw) if profile is not None else None
     if match is not None:
-        res.layer, res.template = "grammar", match.template
-        res.fields = match.shareable()
-        res.personal = match.personal()
-        # However the sender addressed them — a name, a phone, an email, a
-        # username, or a contact slot sitting where the party belongs.
-        res.counterparty = match.party()
-        res.brand = (res.fields.get("brand") or res.fields.get("institution") or "")
-        # A rail that carries people is a rail the GRAMMAR identified as such,
-        # by putting a person in a slot named for one. Not a list of app names —
-        # that list is the thing this design deleted, and it does not survive
-        # a new country.
-        if res.counterparty and res.channel in ("unknown", "ach"):
-            res.channel = "p2p"
-        # A grammar usually makes the NACHA Company Entry Description part of
-        # its literal text — `{brand} PAYROLL PPD ID: {company_id}` — because
-        # that is what it is. Correct, and it means the field vanishes from the
-        # slots, where Layer 0 had it. Recovered here so the better layer does
-        # not quietly return less than the worse one.
-        if parse.ach and ach_split and raw in ach_split:
-            _name, entry = ach_split[raw]
-            if entry:
-                res.fields.setdefault("entry_description", entry)
-        return res
+        return _slot_from(res, match, parse, ach_split, raw)
+
+    # Layer 1' — somebody else's grammar. Tried in a fixed order so the answer
+    # does not depend on how a dict happened to iterate.
+    for other in sorted(borrowed or [], key=lambda p: p.id):
+        if profile is not None and other.id == profile.id:
+            continue
+        match = other.apply(raw)
+        if match is not None:
+            res.borrowed_from = other.id
+            return _slot_from(res, match, parse, ach_split, raw)
 
     # Layer 0 — published rules. They cannot claim the merchant name (no
     # specification says where it ends), so the brand is a candidate from what

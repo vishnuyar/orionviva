@@ -41,8 +41,25 @@ def test_the_model_cannot_smuggle_in_a_regex():
 
 
 def test_a_template_with_no_holes_is_an_example_not_a_grammar():
+    """Still refused — but by the check that has the evidence to say so, and
+    only when the line it matches occurred once."""
+    from merchantcore.profile import validate_evidence
     with pytest.raises(ProfileError):
-        validate(_profile("COSTCO WHSE PLANO TX"))
+        validate_evidence(_profile("COSTCO WHSE PLANO TX"),
+                          {"COSTCO WHSE PLANO TX": 1})
+
+
+def test_format_validation_admits_a_frozen_fixed_phrase():
+    """`validate` runs at LOAD time, where there is no evidence. If it still
+    refused slotless templates, a grammar containing a legitimate fixed phrase
+    could be written and then never read back."""
+    validate(_profile("PAYMENT THANK YOU - WEB"))
+
+
+def test_a_fixed_phrase_the_bank_repeats_passes_the_evidence_check():
+    from merchantcore.profile import validate_evidence
+    validate_evidence(_profile("PAYMENT THANK YOU - WEB"),
+                      {"PAYMENT THANK YOU - WEB": 78})
 
 
 def test_a_slot_may_not_appear_twice_in_one_template():
@@ -530,3 +547,220 @@ def test_an_accepted_grammar_carries_its_number_and_its_leftovers():
     assert ind.accepted and ind.unmatched == ["MYSTERY LINE 4"]
     assert round(ind.coverage, 3) == round(40 / 41, 3)
     assert ind.profile.induced_from == 3
+
+
+# --------------------------------------- rule 4 and the bank's fixed phrases
+
+
+def _reply(*templates):
+    import json
+    return json.dumps({"templates": list(templates)})
+
+
+def test_a_fee_line_is_a_grammar_when_the_bank_prints_it_repeatedly():
+    """A fee has no variable part. `Payment Thank You - Web` is the identical
+    string every month, and that constancy is what the line IS. Rule 4 refused
+    every slotless template; on the first live agent run those were proposed
+    correctly and dropped twenty-odd times, burning a round of calls per attempt
+    and leaving the commonest line on a card statement unexplained."""
+    from merchantcore.induce import parse_induction
+    counts = {"Payment Thank You - Web": 14,
+              "Card Purchase 03/04 Shop A Plano TX": 9}
+    p = parse_induction(_reply("Payment Thank You - Web"), "Chase", "liability",
+                        "v", counts=counts)
+    assert p is not None and len(p.templates) == 1
+    assert p.apply("Payment Thank You - Web") is not None
+
+
+def test_a_line_seen_once_is_still_an_example_not_a_grammar():
+    """The half of rule 4 that was always right: a template that reproduces one
+    line memorised the sample, and a name baked into literal text lands here too
+    because it can only ever match its own line."""
+    from merchantcore.induce import parse_induction
+    counts = {"Some One Off Line": 1}
+    assert parse_induction(_reply("Some One Off Line"), "Chase", "liability",
+                           "v", counts=counts) is None
+
+
+def test_a_truncated_template_explains_nothing_and_is_still_dropped():
+    """`Non-Chase ATM Fee-With` — the model's own truncation of a real line. It
+    is still refused, now for the reason that is actually true of it rather than
+    for having no slots."""
+    from merchantcore.induce import parse_induction
+    counts = {"Non-Chase ATM Fee-Withdrawal": 22}
+    assert parse_induction(_reply("Non-Chase ATM Fee-With"), "Chase",
+                           "depository", "v", counts=counts) is None
+
+
+def test_without_counts_the_old_rule_still_holds():
+    """No evidence means no exception. A caller that cannot say how often a line
+    occurs gets the conservative answer, not the permissive one."""
+    from merchantcore.induce import parse_induction
+    assert parse_induction(_reply("Payment Thank You - Web"), "Chase",
+                           "liability", "v") is None
+
+
+def test_the_pack_rules_version_is_not_the_storage_format():
+    """Bumping PROFILE_FORMAT to announce a rule change would make every grammar
+    already on disk unloadable and reshuffle the holdout salt — punishing the
+    work for the improvement. PACK_RULES says what a fresh induction would now
+    do differently; nothing loads by it and nothing is salted by it."""
+    from merchantcore.induce import machinery_version
+    from merchantcore.profile import PACK_RULES, PROFILE_FORMAT
+    assert PACK_RULES != PROFILE_FORMAT
+    assert PACK_RULES in machinery_version() and PROFILE_FORMAT in machinery_version()
+
+
+# ---------------------------- the rules are written twice; keep them agreeing
+
+
+def test_the_prompt_and_the_code_agree_about_fixed_phrases():
+    """The pack rules exist in two forms — STATED in the prompt and ENFORCED in
+    code — and only the enforcement carries `PACK_RULES`. They diverged once:
+    the code was taught that a bank's fixed phrase is a template while rule 4 of
+    the prompt went on calling it useless, so the single largest unexplained
+    line in a real vault was being discouraged and then accepted when the model
+    disobeyed. This is the cheapest guard against that happening silently
+    again."""
+    import re
+    from merchantcore.induce import INDUCTION_VERSION, build_induction_prompt
+    prompt, version = build_induction_prompt(["ANY LINE"])
+    assert version.startswith(INDUCTION_VERSION)
+    # Whitespace-normalised: the prompt is hard-wrapped for a human to read, and
+    # a test that broke when a line was rewrapped would be a test about wrapping.
+    low = re.sub(r"\s+", " ", prompt.lower())
+    # The exception must be stated, not merely tolerated by the parser.
+    assert "no holes at all" in low
+    assert "fee" in low and "identical string every time" in low
+    # And the two failures the first live run produced.
+    assert "at most once" in low, "a repeated hole name discards the template"
+    assert "truncated" in low, "a shortened fixed phrase matches nothing"
+
+
+def test_every_recorded_prompt_version_still_resolves():
+    """T8: a recorded version must always resolve. A superseded prompt is kept,
+    never edited over — a grammar induced under v1 names v1, and that name has
+    to keep meaning the text it meant."""
+    from vivacore import promptstore
+    from merchantcore.induce import PROMPTS
+    have = set(promptstore.ids(PROMPTS))
+    assert {"induce-profile-v1", "induce-profile-v2"} <= have
+    assert promptstore.load(PROMPTS, "induce-profile-v1") != \
+        promptstore.load(PROMPTS, "induce-profile-v2")
+
+
+# ------------------------------------ {brand} must be able to hold a merchant
+
+
+def _brand_city_region():
+    return Template("{brand} {city} {region}")
+
+
+def test_a_card_merchant_name_fits_in_the_brand_slot():
+    """The finding that explained a whole account. On a real credit card
+    statement the merchant IS the line, so a merchant the vocabulary cannot
+    express is a completely unexplained line — which is why one account sat at
+    79% against an 80% gate through six independent inductions."""
+    rx = _brand_city_region().compile()
+    for line, brand in (
+            ("278 BRAUMS STORE ALLEN TX", "278 BRAUMS STORE"),
+            ("4977 GREAT CLIPS AT SIGNA PLANO TX", "4977 GREAT CLIPS AT SIGNA"),
+            ("QUALITY INN & SUITES PEARL MS", "QUALITY INN & SUITES"),
+            ("TST* TEXAS CARD HOUSE - D Dallas TX", "TST* TEXAS CARD HOUSE - D"),
+            ("SPICE RACK GROCERY PLANO TX", "SPICE RACK GROCERY")):
+        m = rx.match(line)
+        assert m, f"{line!r} matched nothing"
+        assert m.group("brand") == brand, f"{line!r} slotted as {m.group('brand')!r}"
+        assert m.group("region") in ("TX", "MS")
+
+
+def test_a_hash_is_left_out_because_it_slots_wrongly():
+    """`CIRCLE K # 03453 WEST MONROE LA` matches once `#` is admitted, and files
+    the brand as `CIRCLE K # 03453 WEST` with the city as `MONROE`. A confident
+    wrong answer where a miss was honest. The right fix is a template writing
+    `#` as literal text with {store_number} after it."""
+    assert _brand_city_region().compile().match("CIRCLE K # 03453 WEST MONROE LA") is None
+    ok = Template("{brand} # {store_number} {city} {region}").compile()
+    m = ok.match("CIRCLE K # 03453 WEST MONROE LA")
+    assert m and m.group("brand") == "CIRCLE K" and m.group("store_number") == "03453"
+    assert m.group("city") == "WEST MONROE"
+
+
+def test_a_name_may_not_start_with_a_digit_and_a_merchant_string_may():
+    """The distinction the two shapes exist to draw.
+
+    A counterparty is a person's NAME and a city is a place's; letting either
+    begin with a digit would let them swallow a store id or a date fragment. A
+    merchant string genuinely does — `278 BRAUMS STORE` — and so does filler:
+    a UK card line ends `ON 12 MAR`."""
+    from merchantcore.profile import DEFAULT_SHAPE, SLOT_SHAPE, shape_for
+    assert shape_for("brand", None) == shape_for("noise", None) == "merchant"
+    assert shape_for("counterparty", None) == DEFAULT_SHAPE == "words"
+    assert shape_for("city", None) == shape_for("institution", None) == "words"
+    assert sorted(k for k, v in SLOT_SHAPE.items() if v == "merchant") == \
+        ["brand", "noise"]
+
+    import re
+    from merchantcore.profile import SHAPES
+    name, string = re.compile(SHAPES["words"]), re.compile(SHAPES["merchant"])
+    assert not name.fullmatch("12 MAR") and string.fullmatch("12 MAR")
+    assert name.fullmatch("HDFC0000123"), "a bank code is a name with digits in it"
+
+
+def test_a_wider_shape_only_ever_matches_more():
+    """Why PROFILE_FORMAT stays prof-v1. Every grammar already on disk still
+    loads and still means what it meant, and the holdout salt does not move —
+    which is what makes a before/after measurement comparable at all."""
+    import re
+    from merchantcore.profile import PROFILE_FORMAT, SHAPES
+    assert PROFILE_FORMAT == "prof-v1"
+    narrow, wide = re.compile(SHAPES["words"]), re.compile(SHAPES["merchant"])
+    for s in ("SPICE RACK GROCERY", "CARENOW ALLEN", "MVP FOODS", "WHOOP"):
+        assert narrow.fullmatch(s) and wide.fullmatch(s)
+
+
+# ------------------------------- the vocabulary outside the United States
+
+
+CROSS_COUNTRY = [
+    ("US card",    "SPICE RACK GROCERY PLANO TX", "{brand} {city} {region}"),
+    ("US card",    "TST* TEXAS CARD HOUSE - D Dallas TX", "{brand} {city} {region}"),
+    ("IN UPI",     "UPI-SWIGGY-SWIGGY@YBL-YESB0000001-123456789012",
+                   "UPI-{brand}-{counterparty_handle}-{institution}-{trace}"),
+    ("IN POS",     "POS 4213XXXXXXXX1234 RELIANCE SMART BAZAAR",
+                   "POS {account_ref} {brand}"),
+    ("IN NEFT",    "NEFT-CITIN12345678-RAHUL SHARMA-HDFC0000123",
+                   "NEFT-{trace}-{counterparty}-{institution}"),
+    ("IN IMPS",    "IMPS/P2A/123456789012/RAHUL/SBIN0001234",
+                   "IMPS/{noise}/{trace}/{counterparty}/{institution}"),
+    ("UK card",    "CARD PAYMENT TO TESCO STORES 3286 ON 12 MAR",
+                   "CARD PAYMENT TO {brand} ON {noise}"),
+    ("UK DD",      "DIRECT DEBIT PAYMENT TO BRITISH GAS REF 1234567",
+                   "DIRECT DEBIT PAYMENT TO {brand} REF {reference}"),
+    ("UK FPS",     "FASTER PAYMENT TO J SMITH REF RENT",
+                   "FASTER PAYMENT TO {counterparty} REF {purpose}"),
+    ("DE SEPA",    "SEPA-LASTSCHRIFT DEUTSCHE TELEKOM MANDAT M12345",
+                   "SEPA-LASTSCHRIFT {brand} MANDAT {reference}"),
+    ("FR carte",   "CARTE 12/03 CARREFOUR MARKET PARIS",
+                   "CARTE {date} {brand} {city}"),
+    ("DE accents", "CAFÉ MÜLLER MÜNCHEN DE", "{brand} {city} {region}"),
+    ("BR accents", "MERCADO LIVRE SÃO PAULO BR", "{brand} {city} {region}"),
+    ("IN script",  "स्विगी बेंगलुरु KA",
+                   "{brand} {city} {region}"),
+    ("JP script",  "セブンイレブン 東京 JP",
+                   "{brand} {city} {region}"),
+]
+
+
+def test_the_vocabulary_can_express_a_statement_line_from_five_countries():
+    """The regression test for a US-shaped assumption.
+
+    Every shape here was `[A-Za-z]`, and on this list eight of fifteen could not
+    be expressed AT ALL — accented Latin, Devanagari, Japanese, and every Indian
+    rail whose bank code is letters followed by digits. Induction is
+    country-agnostic in principle because the templates come from a model; the
+    vocabulary was the only thing stopping it, and this is that claim measured
+    rather than asserted."""
+    cannot = [(tag, line) for tag, line, tmpl in CROSS_COUNTRY
+              if not Template(tmpl).compile().match(line)]
+    assert not cannot, f"inexpressible: {cannot}"
