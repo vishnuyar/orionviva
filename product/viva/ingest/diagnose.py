@@ -1,22 +1,21 @@
-"""Deterministic diagnosis of a reconciliation failure — Rung 0 of the ladder.
+"""Deterministic diagnosis of a reconciliation failure — rung 1 of the ladder.
 
-When a statement's opening + transactions do not equal its closing, this module
-localizes *why*, using arithmetic alone — no model calls. It returns a typed
-``ReconciliationFinding`` whose ``status`` draws the trust boundary:
+When a statement's opening + transactions do not equal its closing, this
+localizes why, using arithmetic alone and no model calls. It returns a
+``ReconciliationFinding`` whose ``status`` says what the caller may do with it:
 
-  - **forced**      — a correction implied by an *independent* identity (the
-                      printed running-balance chain) that ALSO closes the
-                      opening→closing reconciliation. Two identities agree, so it
-                      is safe to auto-apply (at grade `corroborated`) and report.
-  - **suggested**   — a correction a *heuristic* proposes (the gap equals a
-                      line, a digit transposition). NEVER auto-applied; shown to
-                      the human against the source.
-  - **unlocalized** — the gap has no clean explanation; likely not this document
-                      type at all → reclassify, don't correct.
+  - **forced**      — a correction implied by an independent identity (the
+                      printed running-balance chain) that also closes the
+                      opening→closing reconciliation. Two identities agree, so
+                      the pipeline auto-applies it at grade `corroborated`.
+  - **suggested**   — a correction a heuristic proposes (the gap equals a line,
+                      a digit transposition). Never auto-applied; shown to the
+                      person against the source.
+  - **unlocalized** — the gap has no clean explanation; likely a misclassified
+                      document, to be reclassified rather than corrected.
 
-The rules are deterministic and versioned, so a verdict can always reproduce and
-explain itself — a "forced" fix that were actually a heuristic misfire would post
-a wrong number, the one failure a trust product cannot survive.
+The rules are deterministic and versioned (``DIAGNOSIS_VERSION``), so a verdict
+reproduces and explains itself.
 """
 
 from __future__ import annotations
@@ -44,7 +43,7 @@ class ReconciliationFinding:
     message: str
     target: str = ""               # human-readable locus
     target_index: int | None = None
-    observed: str | None = None    # the value we read at the target
+    observed: str | None = None    # the value read at the target
     implied: str | None = None     # the value that would repair it (forced/suggested)
     confidence: float = 0.0
     version: str = DIAGNOSIS_VERSION
@@ -64,7 +63,10 @@ def _cents(d: Decimal) -> int:
 
 
 def diagnose(facts: StatementFacts) -> ReconciliationFinding:
-    """Localize a reconciliation failure with arithmetic alone."""
+    """Localize a reconciliation failure with arithmetic alone.
+
+    Returns a finding at status NONE when the statement reconciles, FORCED,
+    SUGGESTED or UNLOCALIZED otherwise."""
     opening = facts.opening_amount
     closing = facts.closing_amount
     txns = facts.transactions
@@ -76,14 +78,14 @@ def diagnose(facts: StatementFacts) -> ReconciliationFinding:
             reconciles=True, kind="ok", status=NONE, delta="0",
             message="Statement reconciles.", confidence=1.0)
 
-    # --- forced: the running-balance chain, an independent identity -----------
+    # forced: the running-balance chain, an independent identity
     if txns and all(t.running_balance is not None for t in txns):
         forced = _via_running_balance(opening, closing, total, txns, delta)
         if forced is not None:
             return forced
 
-    # --- suggested: heuristics that localize but cannot force ------------------
-    # The gap equals one line's amount → a likely missing or duplicated line.
+    # suggested: heuristics that localize but cannot force.
+    # The gap equals one line's amount → a missing or duplicated line.
     for i, t in enumerate(txns):
         if abs(t.amount) == abs(delta):
             return ReconciliationFinding(
@@ -103,7 +105,7 @@ def diagnose(facts: StatementFacts) -> ReconciliationFinding:
                      "two swapped digits somewhere. I couldn't pin the line; "
                      "please check the figures against the statement."))
 
-    # --- unlocalized: no clean explanation ------------------------------------
+    # unlocalized: no clean explanation
     return ReconciliationFinding(
         reconciles=False, kind="unknown", status=UNLOCALIZED, delta=str(delta),
         confidence=0.1,
@@ -113,19 +115,22 @@ def diagnose(facts: StatementFacts) -> ReconciliationFinding:
 
 def _via_running_balance(opening: Decimal, closing: Decimal, total: Decimal,
                          txns, delta: Decimal) -> ReconciliationFinding | None:
-    """Walk the printed running-balance chain. Return a FORCED finding if it
-    localizes to exactly one repair that also closes the reconciliation, else None."""
+    """Walk the printed running-balance chain.
+
+    Returns a FORCED finding when the chain localizes to exactly one repair that
+    also closes the reconciliation, else None. Requires every line to carry a
+    printed running balance."""
     breaks: list[int] = []
     prev = opening
     for i, t in enumerate(txns):
         if t.running_balance != prev + t.amount:
             breaks.append(i)
-        prev = t.running_balance          # continue from the printed (trusted) figure
+        prev = t.running_balance          # continue from the printed figure
     last_printed = prev
 
     # Chain fully consistent, but the closing figure disagrees → closing misread.
     if not breaks:
-        # A consistent chain telescopes to opening+total, so this is forced.
+        # A consistent chain telescopes to opening + total, so this is forced.
         return ReconciliationFinding(
             reconciles=False, kind="balance_misread", status=FORCED,
             delta=str(delta), target="closing balance",

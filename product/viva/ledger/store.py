@@ -1,18 +1,18 @@
 """The encrypted, append-only, hash-chained event store.
 
 The events are the source of truth; everything else is a projection rebuilt by
-replaying them. This store is where they live, and it reconciles two invariants
-at once:
+replaying them. This store is where they live, and it holds two properties at
+once:
 
-  - **Append-only + tamper-evident**. Each record embeds the hash of
-    the record before it, so dropping, reordering, or splicing records breaks
-    the chain visibly. The chain can be verified *without the key* — integrity
-    is checkable even by someone who cannot read the contents.
-  - **Encrypted from commit one**. Each event body is sealed with
-    AES-256-GCM under a passphrase-derived key. The record's position (sequence
-    number + previous hash) is bound into the GCM aad, so a ciphertext cannot be
-    moved to a different slot and still decrypt. Confidentiality and per-record
-    integrity from GCM; sequence integrity from the chain — defence in depth.
+  - **Append-only and tamper-evident.** Each record embeds the hash of the
+    record before it, so dropping, reordering or splicing records breaks the
+    chain visibly. The chain verifies *without the key*, so integrity is
+    checkable by someone who cannot read the contents.
+  - **Encrypted at rest.** Each event body is sealed with AES-256-GCM under a
+    passphrase-derived key. The record's position (sequence number + previous
+    hash) is bound into the GCM aad, so a ciphertext cannot be moved to a
+    different slot and still decrypt. GCM gives confidentiality and per-record
+    integrity; the chain gives sequence integrity.
 
 File format (one JSON object per line):
     line 0   header:  {"v", "kdf", "check"}   — the versioned crypto envelope +
@@ -49,8 +49,9 @@ def _record_hash(seq: int, prev_hash: str, sealed: dict) -> str:
 class EventStore:
     """An encrypted, append-only, hash-chained log of ledger events.
 
-    Open (or create) with a passphrase. The key is derived on open and held only
-    in memory for the store's lifetime; it is never written anywhere."""
+    Open (or create) with a passphrase via :meth:`open`. The key is derived on
+    open and held only in memory for the store's lifetime; it is never written
+    anywhere."""
 
     def __init__(self, path: Path, key: bytes, kdf: KdfParams) -> None:
         # Prefer EventStore.open(); this constructor assumes an initialised file.
@@ -70,8 +71,8 @@ class EventStore:
     def open(cls, path: Path, passphrase: str) -> "EventStore":
         """Open an existing store or create a new one, verifying the passphrase.
 
-        A wrong passphrase fails immediately on the header check token, even for
-        an empty store — you never get a silently-unreadable ledger."""
+        A wrong passphrase raises CryptoError immediately on the header check
+        token, even for an empty store."""
         path = Path(path)
         if path.exists():
             with path.open() as f:
@@ -136,7 +137,7 @@ class EventStore:
         """Replay the log as decrypted events, verifying the chain as it goes.
 
         Raises CryptoError on a broken chain or a record that fails to
-        authenticate — a corrupted ledger must refuse to read, never guess."""
+        authenticate; it never yields a partially-trusted event."""
         prev = GENESIS
         for seq, rec_prev, sealed, rec_hash in self._iter_raw():
             if rec_prev != prev:
@@ -152,8 +153,8 @@ class EventStore:
     def verify_chain(self) -> tuple[bool, int]:
         """Recompute the hash chain without decrypting. Returns (intact, count).
 
-        This is the integrity check someone can run who holds the file but not
-        the passphrase — the tamper-evidence promise, standing on its own."""
+        Needs no key, so it runs for someone who holds the file but not the
+        passphrase. Returns False and the count reached at the first break."""
         prev = GENESIS
         count = 0
         for seq, rec_prev, sealed, rec_hash in self._iter_raw():

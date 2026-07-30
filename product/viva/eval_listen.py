@@ -1,31 +1,28 @@
-"""Measure a model on its one job: reading a sentence.
+"""Measure a model on one job: reading a sentence into a structured reading.
 
     python -m viva.eval_listen                    # the configured interpreter
     python -m viva.eval_listen --model qwen3:4b --base-url http://localhost:11434/v1
-    python -m viva.eval_listen --repeat 3         # variance, not a single lucky run
+    python -m viva.eval_listen --repeat 3         # variance across runs
 
-**The headline metric is not accuracy.** It is the *confidently-wrong rate*. A
-model that returns nothing costs a person one tap on a button that was already there; a model that
-invents a 60/40 mortgage split writes a wrong number into someone's finances,
-grades it `verified` because a human confirmed a sentence they did believe, and
-generalizes it across every future payment to that counterparty. Those two
-failures are not on the same scale, so this scores them apart:
+The headline metric is the confidently-wrong rate rather than accuracy. Every
+reading is graded into one of:
 
   SAFE      unreadable         no JSON, or no legs → the buttons still work
   WRONG     wrong_majors       a confident misreading
-  RUIN      invented_split     a fabricated ratio nobody stated  ← never non-zero
+  RUIN      invented_split     a ratio nobody stated
   RUIN      leaked_amount      a figure from the model's head
-  WEAK      missed_compound    read a mortgage as one thing
+  WEAK      missed_compound    a compound payment collapsed into one leg
 
-`missed_compound` sits between: it does not fabricate, but it silently collapses
-a three-way payment into one nature. Worth watching, not disqualifying.
+A call that never reached the model is BROKEN: it is excluded from every rate and
+reported on its own.
 
-Everything runs against a **frozen, synthetic key** (`evals/listen_cases.json`)
-so it is free, offline-capable, reproducible, and safe in a public repo.
+Cases come from a frozen synthetic key (`evals/listen_cases.json`), so a run is
+free, offline-capable and reproducible. Each case accepts a *set* of correct
+readings, since some sentences have more than one right answer.
 
-Several cases are genuinely ambiguous — is an ATM withdrawal cash you still have,
-or money spent? — so the key accepts a *set* of correct readings. A key that
-insisted on one would measure obedience rather than understanding.
+`--repeat N` runs each case N times and names the ids whose verdict varied.
+`--json` prints the aggregate without the per-reading rows. `--probe` makes one
+call and prints the raw reply. `--no-json-mode` drops `response_format`.
 """
 
 from __future__ import annotations
@@ -42,11 +39,9 @@ CASES = pathlib.Path(__file__).parent / "evals" / "listen_cases.json"
 
 SAFE, WRONG, RUIN, WEAK, OK = "unreadable", "wrong", "RUIN", "weak", "ok"
 # A call that never reached the model at all — a wrong model name, an
-# unreachable server, a rejected parameter. Scoring that as `unreadable` reads
-# "safe, 0% ruin, clean", which is a HARNESS making exactly the
-# confidently-wrong error it exists to catch. An eval that cannot tell "the
-# model declined" from "we never reached the model" is worse than no eval,
-# because it is reassuring.
+# unreachable server, a rejected parameter. Distinct from `unreadable`, which is
+# the model answering with something unusable: BROKEN readings are excluded from
+# every rate rather than counted as safe.
 BROKEN = "BROKEN"
 
 
@@ -72,7 +67,7 @@ def score_one(case: dict, interp, raw_text: str = "") -> dict:
     accept = [sorted(a) for a in case["accept"]]
     problems = []
 
-    # RUIN 1 — a ratio nobody stated. The single worst thing this model can do.
+    # RUIN 1 — a share, where the case records that nobody stated one.
     if not case.get("shares_stated") and any(leg.get("share") for leg in interp.legs):
         problems.append((RUIN, "invented a split nobody stated"))
     # RUIN 2 — a figure from the model's own head.
@@ -95,9 +90,12 @@ def score_one(case: dict, interp, raw_text: str = "") -> dict:
 
 
 def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
-    """Run every case `repeat` times. Repetition is not padding: a model that
-    answers correctly two times in three is a different product than one that
-    always does, and a single run cannot tell them apart."""
+    """Run every case `repeat` times and aggregate.
+
+    Returns the verdict counts, the rates over readings that reached the model,
+    `confidently_wrong` (None when nothing was measured), latency p50 and max,
+    `unstable` — the case ids whose verdict varied across attempts — and every
+    scored row."""
     rows, latencies = [], []
     for case in cases["cases"]:
         for attempt in range(repeat):
@@ -122,8 +120,8 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
     n = len(rows) or 1
     counts = {v: sum(1 for r in rows if r["verdict"] == v)
               for v in (OK, SAFE, WEAK, WRONG, RUIN, BROKEN)}
-    # Rates are over readings that ACTUALLY HAPPENED. A broken run must not be
-    # able to launder itself into a good score by counting non-events as safe.
+    # Rates are over readings that reached the model; BROKEN ones are excluded
+    # from the denominator rather than counted as safe.
     scored = n - counts[BROKEN] or 1
     unstable = sorted({r["id"] for r in rows
                        if len({x["verdict"] for x in rows if x["id"] == r["id"]}) > 1})
@@ -132,8 +130,7 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
         "counts": counts,
         "scored": n - counts[BROKEN],
         "rates": {k: round(v / scored, 3) for k, v in counts.items()},
-        # The number that decides whether this model may be trusted at all.
-        # `None` when nothing was measured — an unknown rate is not a zero rate.
+        # `None` when nothing was measured: an unknown rate is not a zero rate.
         "confidently_wrong": (None if counts[BROKEN] == n
                               else round((counts[WRONG] + counts[RUIN]) / scored, 3)),
         "latency_p50": round(statistics.median(latencies), 2) if latencies else 0,
@@ -146,7 +143,7 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
 def report(result: dict, key_version: str = "") -> str:
     c, r = result["counts"], result["rates"]
     if c[BROKEN] == result["n"]:
-        # Say nothing about the model. We learned nothing about the model.
+        # Nothing reached the model, so the report makes no claim about it.
         first = next(x for x in result["rows"] if x["verdict"] == BROKEN)
         return "\n".join([
             f"NOTHING WAS MEASURED — all {result['n']} calls failed before "
@@ -189,7 +186,6 @@ def report(result: dict, key_version: str = "") -> str:
                 continue
             seen.add(x["id"])
             out.append(f"    [{x['verdict']:10}] {x['id']:18} \"{x['said'][:44]}\" — {x['why']}")
-    # An honest verdict, stated in the terms the project actually cares about.
     out += ["", "  " + _verdict(result)]
     return "\n".join(out)
 
@@ -261,9 +257,9 @@ def main() -> None:
 
 def _probe(spec, said: str = "i bought a car",
            counterparty: str = "NORTHSIDE MOTORS") -> None:
-    """One call, everything printed, nothing swallowed — the tool to reach for
-    the moment a run comes back BROKEN. The eval deliberately degrades on
-    failure; this deliberately does not."""
+    """One call, with the prompt version, the endpoint, the raw reply, the parsed
+    legs and the failure all printed. An exception here is not swallowed the way
+    the eval swallows it: it prints and exits 1."""
     from .listen import interpret, one_shot_extractor
     from .ingest.prompt_library import interpret_prompt
     from .listen import INTERPRET_VERSION

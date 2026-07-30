@@ -149,3 +149,62 @@ def test_a_card_and_a_checking_account_are_still_two_accounts(tmp_path):
                   name="Everyday Checking", number="••••4417")
     assert proj.resolve("Meridian", "••••2291", "Signature Card",
                         ["ROWAN E VANCE"], kind="liability").verdict == "new"
+
+
+# --- what a closing figure is, and what an opening one seeds ----------------
+
+def test_a_closing_balance_is_observed_not_posted():
+    """A closing figure is a reconciliation target, not a leg: it never enters
+    the replayed sum, so observing the same one twice changes no balance."""
+    base = _statement(closing=None)
+    replayed = LedgerProjection(base).balance("chk").amount
+    proj = LedgerProjection(base + [
+        closing_balance_observed("chk", "1457.58", "2026-01-31"),
+        closing_balance_observed("chk", "1457.58", "2026-01-31")])
+    assert proj.running_balance("chk") == replayed
+    assert proj.balance("chk").amount == replayed
+
+
+def test_a_backfilled_opening_reseats_the_earliest_rather_than_accumulating():
+    """Opening Balance Equity is injected once, from the earliest known opening.
+    A statement backfilled in front of the chain re-seats it; it does not add a
+    second seed."""
+    proj = LedgerProjection(_statement(closing=None) + [
+        opening_balance_observed("chk", "250.00", "2025-12-01")])
+    assert proj.earliest_opening("chk") == Decimal("250.00")
+    assert proj.running_balance("chk") == Decimal("707.58")   # 250 + 500 - 42.42
+
+
+def test_the_uncategorized_inflow_bucket_is_never_reported_as_income():
+    """`income_by_currency` reports attributed income only. The paycheck's
+    counter-leg sits in `Income:Uncategorized`, which is excluded."""
+    proj = LedgerProjection(_statement())
+    assert "Income:Uncategorized" in proj.accounts()
+    assert proj.income_by_currency() == {}
+
+
+def test_the_enrichment_example_is_linted_never_the_raw_descriptor():
+    """`uncategorized_merchants` offers a linted example, so store numbers and
+    order ids in a raw descriptor never reach a model provider."""
+    raw_line = "COFFEE HOUSE #1234 SEATTLE WA 0123456"
+    proj = LedgerProjection([
+        account_opened("chk", "depository", "Checking", "USD", "2026-01-01"),
+        simple_transaction("chk", "-8.50", raw_line, "2026-01-15"),
+    ])
+    row = proj.uncategorized_merchants()["coffee house seattle wa"]
+    assert row["example"] == "COFFEE HOUSE SEATTLE WA"
+    assert "1234" not in row["example"] and "0123456" not in row["example"]
+
+
+def test_the_cached_projection_matches_a_full_replay(tmp_path):
+    """`Ledger` folds each append into one live projection instead of replaying.
+    The cached answer is the same one a cold replay of the log gives."""
+    from viva.ledger import EventStore, Ledger
+
+    ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
+    for event in _statement():
+        ledger.append(event)
+    cached = ledger.projection().balance("chk")
+    replayed = LedgerProjection(ledger.store.events()).balance("chk")
+    assert (cached.amount, cached.grade) == (replayed.amount, replayed.grade)
+    assert cached.amount == Decimal("1457.58") and cached.grade == CORROBORATED

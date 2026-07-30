@@ -1,24 +1,21 @@
-"""How much of your money does Viva already understand? — the tier measurement.
+"""Print how a vault's movements distribute across the four tiers.
 
     python -m viva.debug_tiers            # VIVA_PASSPHRASE / VIVA_VAULT_DIR
 
-This is the number that decides whether the three-tier design was worth doing,
-and the honest *before* to compare against.
-
-The rule the whole queue rests on: **ask only where the counterparty cannot tell
-us.** Every movement lands in one of four states, and only two of them deserve a
-person's attention at all:
+Every movement lands in one of four states, and only two of them are asked about:
 
   settled     an ordinary counterparty implying nothing   → silence
   structural  the counterparty implies a relationship     → an informed proposal
   unknown     an instrument or a peer                     → a real question
-  unenriched  we have not identified the counterparty yet → enrich first
+  unenriched  the counterparty is not identified yet      → enrich first
 
-A high `settled` share is the point, not a disappointment: it is the fraction of
-a person's financial life the product handles without troubling them. The
-questions-per-hundred-movements line is the one to watch over time.
+For each tier it prints the count, share, money and number of counterparties,
+then the number of questions the queue would raise and that figure per hundred
+movements. Where anything is unenriched it says so, since that understates
+`settled` and overstates the queue.
 
-Pure projection — reads the vault, writes nothing, needs no model.
+Pure projection — reads the vault, writes nothing, needs no model. The
+passphrase may be given as the first argument instead of in the environment.
 """
 
 from __future__ import annotations
@@ -59,9 +56,8 @@ def report(proj) -> str:
         lines.append(f"  {tier:11} {row['count']:5}  {share:5.1%} {bar}")
         lines.append(f"  {'':11} {_money(row['amount']):>13}  across "
                      f"{row['merchants']} counterpart(y|ies)   {TIER_MEANS[tier]}")
-    # as_of = the newest date the ledger itself attests, so the report is a
-    # pure function of the events (the wall clock would make the cadence
-    # expectations flap between runs of the same vault).
+    # `as_of` is the newest date the ledger attests, never the wall clock, so
+    # the report is a pure function of the events.
     dates = [b.dated for i in proj.account_infos()
              for b in [proj.balance(i.account)] if b.dated]
     asked = open_questions(proj, limit=10_000,
@@ -76,8 +72,8 @@ def report(proj) -> str:
     if settled:
         lines.append(f"  handled without asking:        {settled}"
                      f"   ({settled / total:.0%} of everything)")
-    # Say plainly what is NOT yet knowable, rather than implying the picture is
-    # complete. An unenriched vault will look artificially question-heavy.
+    # An unenriched vault understates `settled` and overstates the queue, so the
+    # report says so rather than presenting the picture as complete.
     if summary.get("unenriched"):
         lines += ["", "  NOTE: some counterparties are not enriched yet, so this "
                   "understates",
@@ -90,8 +86,8 @@ def main() -> None:
     from .env import load_dotenv
     from .vault import Vault
 
-    # Load `.env` first, as every CLI in this package does, so a variable that
-    # is already set in the file is never reported as missing.
+    # Load `.env` before reading the environment, as every CLI here does, so a
+    # variable set only in the file is never reported as missing.
     load_dotenv()
     passphrase = os.environ.get("VIVA_PASSPHRASE") or (
         sys.argv[1] if len(sys.argv) > 1 else None)

@@ -2,8 +2,8 @@
 
 import pytest
 
-from viva.crypto import (KdfParams, CryptoError, derive_key, open_sealed, seal,
-                         VERSION, KEY_LEN)
+from viva.crypto import (KdfParams, CryptoError, derive_key, new_vault_header,
+                         open_sealed, open_vault_header, seal, VERSION, KEY_LEN)
 
 
 def _key(passphrase="correct horse battery staple"):
@@ -71,3 +71,31 @@ def test_kdf_params_roundtrip():
     p = KdfParams.new()
     p2 = KdfParams.from_dict(p.to_dict())
     assert p2.salt == p.salt and p2.n == p.n and p2.r == p.r and p2.p == p.p
+
+
+def test_the_vault_header_never_stores_the_passphrase_or_the_key():
+    """The header carries the KDF parameters and a sealed check token. Neither
+    the passphrase nor the derived key appears anywhere in what is written."""
+    import base64
+    import json
+
+    passphrase = "correct horse battery staple"
+    header, key = new_vault_header(passphrase)
+    written = json.dumps(header)
+
+    assert passphrase not in written
+    assert base64.b64encode(key).decode("ascii") not in written
+    assert key.hex() not in written
+    # The salt is stored — it is not secret and the key cannot be re-derived
+    # without the passphrase.
+    assert header["kdf"]["salt"]
+    assert derive_key(passphrase, KdfParams.from_dict(header["kdf"])) == key
+
+
+def test_a_wrong_passphrase_is_refused_by_the_header_alone():
+    """`open_vault_header` fails before any record is read, and the failure is
+    a CryptoError rather than a silently different key."""
+    header, key = new_vault_header("right")
+    assert open_vault_header(header, "right") == key
+    with pytest.raises(CryptoError):
+        open_vault_header(header, "wrong")

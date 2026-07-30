@@ -1,10 +1,11 @@
-"""Seed a vault with fabricated sample data so the surface is alive to look at.
+"""Seed a vault with fabricated sample data so the surface has something to show.
 
-Everything here is invented — fake bank names, fake amounts, no real person's
-data ever. It exercises the whole surface: a clean posted account, an account
-whose statement self-corrected via the running balance, a statement held for
-review, and a non-checking document parked. Idempotent (content-addressed
-capture dedups), so running it twice is harmless.
+Every institution, amount and date here is invented. The four documents cover the
+outcomes the surface renders: a statement that posts clean, one that self-corrects
+from its running balance and posts, one held for review, and a document type with
+no projector, which parks.
+
+Idempotent — capture is content-addressed, so a second run deduplicates.
 """
 
 from __future__ import annotations
@@ -52,9 +53,9 @@ def seed_sample(vault: Vault) -> None:
             ReadResult("checking_statement", 0.98, clean),
             "northwind-jan.pdf", "2026-02-01")
 
-    # 2. A second account whose Fee line was misread as -12.33, but its running
-    #    balance (1487.58) implies -12.42 and closes the reconciliation — it
-    #    self-corrects and posts.
+    # 2. A second account whose Fee line reads -12.33 while its running balance
+    #    (1487.58) implies -12.42. The running balance closes the
+    #    reconciliation, so it self-corrects and posts.
     fixable = _facts(
         "Cedar Savings 7788", "1000.00",
         [("2026-01-07", "Transfer in", "500.00", "1500.00"),
@@ -75,7 +76,7 @@ def seed_sample(vault: Vault) -> None:
             ReadResult("checking_statement", 0.9, held),
             "northwind-feb.pdf", "2026-03-01")
 
-    # 4. A non-checking document — parked, acknowledged, not discarded.
+    # 4. A document type with no projector — parked, not discarded.
     _ingest(vault, b"sample-paystub",
             ReadResult("pay_stub", 0.95, None, "no projector yet"),
             "paystub-jan.pdf", "2026-02-01")

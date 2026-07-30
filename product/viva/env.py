@@ -1,9 +1,8 @@
-"""Load a local ``.env`` into the process environment.
+"""Load a local ``.env`` into the process environment, and read the locale.
 
 The vault passphrase and model keys live in ``.env`` (git-ignored, never
-committed). This loads them so you can just run the surface. Existing
-environment variables always win — an explicit ``export`` overrides the file,
-and a secret already in the environment is never clobbered.
+committed). Existing environment variables always win: an explicit ``export``
+overrides the file, and a secret already in the environment is never clobbered.
 """
 
 from __future__ import annotations
@@ -27,19 +26,19 @@ def load_dotenv(path: str = ".env") -> bool:
 
 
 def locale_from_env() -> str:
-    """The configured locale, validated — the single source for every entry point.
+    """The configured locale, canonicalized — the one accessor every entry point
+    uses. ``VIVA_LOCALE`` defaults to ``en-US``.
 
-    An unrecognised language tag stops the run and lists the valid ones: a parser
-    with no decimal convention for the tag refuses every three-decimal figure as
-    ambiguous, and the documents containing them park for no visible reason."""
+    Raises ``SystemExit``, listing the valid language tags, when the language
+    part is unknown or the region part is not a 2- or 3-letter code."""
     import os
 
     from vivacore.verify.normalize import known_language_tags
 
     locale = os.environ.get("VIVA_LOCALE", "en-US").strip()
-    # The region subtag decides the date convention, so a typo in it is a silent
-    # wrong answer rather than a stricter parser: 'en-us' and 'en-US' must not
-    # name different conventions, and an unrecognised shape must stop the run.
+    # The region subtag decides the date convention. `_` becomes `-` and the
+    # language part is compared case-insensitively, so `en_us` and `en-US` name
+    # one convention; anything else about the shape stops the run.
     canonical = locale.replace("_", "-")
     parts = canonical.split("-")
     shape_ok = (len(parts) <= 2 and all(parts)

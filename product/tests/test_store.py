@@ -85,3 +85,18 @@ def test_empty_store_wrong_passphrase_still_caught(tmp_path):
     EventStore.open(path, PW)      # header only, no records
     with pytest.raises(CryptoError):
         EventStore.open(path, "wrong")
+
+
+def test_the_chain_verifies_without_the_passphrase(tmp_path):
+    """`verify_chain` recomputes the hash chain from the header and the record
+    envelopes alone, so integrity is checkable by a holder of the file who
+    cannot decrypt it. Reading the events still requires the key."""
+    from viva.crypto import KdfParams
+
+    path = tmp_path / "ledger.jsonl"
+    _seed(EventStore.open(path, PW))
+    header = json.loads(path.read_text().splitlines()[0])
+    blind = EventStore(path, b"\x00" * 32, KdfParams.from_dict(header["kdf"]))
+    assert blind.verify_chain() == (True, 3)
+    with pytest.raises(CryptoError):
+        list(blind.events())

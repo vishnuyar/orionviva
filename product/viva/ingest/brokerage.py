@@ -1,21 +1,19 @@
 """BrokerageFacts — the structured read of one brokerage/retirement statement.
 
-The second divergent sibling of StatementFacts. A brokerage statement's
-shape is not a balance and not a pay stub: it holds a list of *positions*
-(instrument + units + market value) plus a cash balance, and its self-check is a
-snapshot — ``Σ position market_value + cash = account total`` — not a flow. So it
-has its own facts type, its own parser, and its own verification identity, all
-selected by its registry profile.
+A divergent sibling of StatementFacts: it holds a list of *positions*
+(instrument + units + market value) plus a cash balance, and its self-check is
+the snapshot ``Σ position market_value + cash = account total`` rather than a
+flow. So it has its own facts type, parser and verification identity, selected
+by its registry profile.
 
-The load-bearing rule: a position is a dated MEASUREMENT, never a posting;
-unrealized gain is a derived presentation view, never a ledger fact — cash flow
-over accrual. This module only reads the numbers; the projector decides
-what to measure and what (cash only) to post.
+A position is a dated measurement, never a posting; unrealized gain is a derived
+view, never a ledger fact. This module only reads the numbers — the projector
+decides what to measure and what (cash only) to post.
 
-Same honesty contract as statements: amounts go through the shared deterministic
-normalizer, and any ambiguous/invalid figure fails the whole parse — a brokerage
-statement we cannot read to the cent goes to review, never guessed. Cost basis is
-optional: absent when the statement omits it, never invented.
+Amounts go through the shared deterministic normalizer, and any ambiguous or
+invalid figure the identity depends on fails the whole parse, sending the
+statement to review. Cost basis is optional: absent when omitted or unreadable,
+never invented.
 """
 
 from __future__ import annotations
@@ -61,10 +59,11 @@ class PositionFact:
 
 @dataclass(frozen=True)
 class BrokerageActivity:
-    """One cash-affecting event in the period. ``amount`` is the
-    positive magnitude; the sign is implied by ``kind``. ``realized_gain`` is the
-    booked gain/loss on a sell when the statement reports it (else None — never
-    invented)."""
+    """One cash-affecting event in the period.
+
+    ``amount`` is the positive magnitude; the sign is implied by ``kind``.
+    ``realized_gain`` is the booked gain or loss on a sell when the statement
+    reports it, else None."""
     date: str
     kind: str                          # contribution|withdrawal|dividend|interest|fee|buy|sell
     amount: Decimal
@@ -101,9 +100,9 @@ class BrokerageFacts:
     account_number: str = ""
     institution: str = ""
     account_names: list[str] = field(default_factory=list)
-    # Cross-account cash flow — optional; when both are present the cash
-    # is reconciled as a flow (opening + Σ activity = closing) and posted, tying
-    # contributions to the funding account and recognizing income/fees/gains.
+    # Optional. With both present the cash reconciles as a flow
+    # (opening + Σ activity = closing) and posts, tying contributions to the
+    # funding account and recognizing income, fees and gains.
     opening_cash: Decimal | None = None
     activity: list[BrokerageActivity] = field(default_factory=list)
 
@@ -141,28 +140,26 @@ class BrokerageFacts:
             activity=[BrokerageActivity.from_dict(x) for x in d.get("activity", [])])
 
 
-# A brokerage account's "cash" is usually a money-market fund — Fidelity's core
-# position is SPAXX — so the same money can appear as a cash line, as a holding,
-# or (across two months of the SAME account) as one then the other: one month
-# prints cash = the sweep balance exactly, the next prints cash EXCLUDING a
-# separately-listed sweep. Treating the sweep as a holding double-counts in the
-# first case; treating it as cash under-counts in the second. So we recognize it
-# here and let the projector decide which reading reconciles.
+# A brokerage account's "cash" is usually a money-market fund, so the same money
+# can be printed as a cash line, as a holding, or as one then the other across
+# two months of one account. Treating the sweep as a holding double-counts in
+# the first case and treating it as cash under-counts in the second, so it is
+# recognized here and the projector decides which reading reconciles.
 _CASH_INSTRUMENTS = frozenset({
     "cash", "cash balance", "cash & cash investments", "cash and equivalents",
     "cash equivalents", "sweep", "cash sweep", "core position", "money market"})
 
 # Substrings that mark a holding as the cash sweep whatever else its label says
-# (e.g. "FIDELITY GOVERNMENT MONEY MARKET (SPAXX)").
+# (e.g. "NORTHGATE GOVERNMENT MONEY MARKET (NGXX)").
 _CASH_MARKERS = ("money market", "cash sweep", "core position", "sweep account")
 
 
 def is_cash_row(instrument: str) -> bool:
     """True when a listed 'position' is really the account's cash.
 
-    Being wrong here is safe: the projector only *acts* on this when one reading
-    of the tally reconciles exactly and the other doesn't. A misclassified holding
-    simply fails to close and the statement is held, never silently mis-posted."""
+    A recognition, not a decision: the projector acts on it only when one
+    reading of the tally reconciles exactly and the other does not, so a
+    misclassified holding fails to close and the statement is held."""
     label = (instrument or "").strip().lower()
     if label in _CASH_INSTRUMENTS:
         return True
@@ -173,13 +170,12 @@ def resolve_sweep_cash(facts: "BrokerageFacts") -> tuple["BrokerageFacts", str]:
     """Decide whether the statement's cash line already includes the money-market
     sweep, and normalize so that it always does.
 
-    The same account can print it either way month to month, so we don't guess: we
-    try both readings and take the one whose tally closes **exactly**. If neither
-    closes (or there is no sweep), the facts come back untouched and the ordinary
-    gate decides — decisive-or-hold, never a fitted answer.
+    Tries both readings and takes the one whose tally closes exactly. When
+    neither closes, or there is no sweep, the facts come back untouched and the
+    ordinary gate decides.
 
     Returns (facts, note); ``note`` is empty when nothing was decided. Shared by
-    the projector and the claims diagnostic so they can never disagree."""
+    the projector and the claims diagnostic, so the two cannot disagree."""
     from vivacore.verify.arithmetic import check_brokerage_identity
 
     sweeps = [p for p in facts.positions if is_cash_row(p.instrument)]
@@ -219,14 +215,12 @@ def _amount(raw, locale: str, currency: str) -> tuple[Decimal | None, str | None
 
 
 def _optional_amount(raw, locale: str, currency: str, what: str) -> Decimal | None:
-    """An OPTIONAL figure: absent when the statement omits it, and absent when it
+    """An optional figure: None when the statement omits it, and None when it
     prints something unreadable ("not applicable", "N/A", "—").
 
-    The discipline: **fail a parse only on figures the identity depends on.**
-    Units, market value, cash and total are load-bearing — an unreadable one sends
-    the document to review. An optional attribute that can't be read is simply
-    *unknown*, which the model already represents as None. It is logged, never
-    guessed and never fatal."""
+    Only figures the identity depends on — units, market value, cash, total —
+    fail a parse. An unreadable optional attribute is logged and recorded as
+    unknown, never guessed and never fatal."""
     if raw in (None, ""):
         return None
     n = parse_amount(str(raw), locale, currency)
@@ -241,10 +235,10 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
                         currency: str) -> tuple[BrokerageFacts | None, str | None]:
     """Parse a model's brokerage read into canonical BrokerageFacts.
 
-    Returns (facts, error). Any ambiguous/invalid figure fails the whole parse — a
-    holding we cannot read to the cent sends the statement to review, never
-    guessed. Units parse as a plain Decimal (a share count is locale-light);
-    cost basis is optional and absent (not zero) when unreadable/omitted."""
+    Returns (facts, error). Any ambiguous or invalid figure the identity depends
+    on fails the whole parse, sending the statement to review. Cost basis and
+    realized gain are optional and come back absent — not zero — when unreadable
+    or omitted. An activity date without a year is resolved against ``as_of``."""
     blob = _find_json(text)
     if blob is None:
         return None, "no JSON object found in model output"
@@ -280,19 +274,18 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
         mv, err = _amount(rp.get("market_value_raw"), locale, currency)
         if err:
             return None, f"position {i} market_value {err}"
-        # Optional: unreadable means unknown, never fatal (never invented either).
+        # Optional: unreadable means unknown, never fatal and never invented.
         cost = _optional_amount(rp.get("cost_basis_raw"), locale, currency,
                                 f"position {i} cost_basis")
-        # Sweep rows are kept AS READ here; only the projector can tell whether the
-        # statement's cash line already includes them (it needs the stated total to
-        # decide), so folding at parse time would destroy the evidence.
+        # Sweep rows are kept as read: deciding whether the cash line already
+        # includes them needs the stated total, which is the projector's call.
         positions.append(PositionFact(
             instrument=str(rp.get("instrument", "")).strip(),
             units=units_n.decimal(), market_value=mv,
             cost_basis=cost, page=rp.get("page")))
 
-    # Optional: opening cash + the period's cash activity. Absent on a
-    # holdings-only statement — then only the snapshot is recorded.
+    # Optional: opening cash and the period's cash activity. Absent on a
+    # holdings-only statement, where only the snapshot is recorded.
     opening_cash = None
     if data.get("opening_cash_raw") not in (None, ""):
         opening_cash, err = _amount(data.get("opening_cash_raw"), locale, currency)
@@ -314,8 +307,8 @@ def from_brokerage_json(text: str, doc_id: str, locale: str,
                                     f"activity {i} realized_gain")
             adate = ""
             if ra.get("date_raw") not in (None, ""):
-                # Activity lines print "11/04" — the year is in the header. Resolve
-                # it against the statement's as-of date (never invent a year).
+                # Activity lines print "11/04"; the year is in the header, so it
+                # is resolved against the as-of date rather than invented.
                 adate, derr = period_date(ra.get("date_raw"), locale, as_of)
                 if derr:
                     return None, f"activity {i} {derr}"

@@ -1,13 +1,12 @@
 """Human-in-the-loop review: list held statements, and apply a person's ruling.
 
-A statement that did not reconcile was *held* (its read persisted, never
-posted). Here the person rules on it, and their ruling is a **correction
-event** — appended, never an overwrite — after which the corrected
-statement posts at `verified`, the highest grade, because a human attested
-it against the source.
+A statement that did not reconcile was held — its read persisted, never posted.
+Here a person rules on it. The ruling is appended as a correction event rather
+than overwriting anything, and the corrected statement re-enters the same
+reconciliation gate, posting at `verified` if it now holds and being held again
+if it does not.
 
-Everything here is deterministic and offline: the person supplies the value, the
-same reconciliation gate decides whether it now holds.
+Deterministic and offline: the person supplies the value, the gate decides.
 """
 
 from __future__ import annotations
@@ -71,9 +70,9 @@ def held_items(source) -> list[HeldItem]:
     for body in proj.open_holds():
         fdict = body.get("facts", {})
         # Route on the registry, not on the shape of the dict: a pay stub or a
-        # brokerage statement is held with entirely different facts.
+        # brokerage statement is held with different facts.
         if identity_of_facts(fdict) != BALANCE_IDENTITY:
-            continue                      # see other_holds() — never just dropped
+            continue                      # reported by other_holds() instead
         facts = StatementFacts.from_dict(fdict)
         held_bal = proj.running_balance(account_id_for(facts))
         items.append(HeldItem(
@@ -85,13 +84,12 @@ def held_items(source) -> list[HeldItem]:
 
 
 def other_holds(source) -> list[dict]:
-    """Held documents that are NOT balance-family — a pay stub awaiting its
-    deposit, a brokerage statement whose tally didn't close.
+    """Held documents that are not balance-family — a pay stub awaiting its
+    deposit, a brokerage statement whose tally did not close.
 
-    They have no fix-it affordance yet, but a document the system is sitting on
-    must never be invisible: silence would let a held statement look like one
-    that was never uploaded. Returns enough to say what it is and why it's
-    waiting."""
+    The complement of ``held_items`` over the same open holds, so between them
+    no held document goes unreported. Returns dicts saying what each is and why
+    it is waiting; there is no correction affordance for these."""
     proj = source if isinstance(source, LedgerProjection) else LedgerProjection(source)
     out: list[dict] = []
     for body in proj.open_holds():
@@ -111,12 +109,13 @@ def other_holds(source) -> list[dict]:
 
 
 def apply_identity_ruling(ledger: Ledger, doc_id: str, decision: str) -> IngestResult:
-    """The person rules on an ambiguous account identity, and we *learn* it.
+    """Apply a person's ruling on an ambiguous account identity, and learn it.
 
-    ``decision='same'`` merges the statement into the candidate account it matched
-    by name; ``decision='new'`` confirms it is its own account. Either way the
-    ruling is an `AccountAliasConfirmed` event, so the same pattern never asks
-    again — then the statement is re-posted (it resolves cleanly now)."""
+    ``decision='same'`` merges the statement into the candidate account it
+    matched by name; ``decision='new'`` confirms it is its own account. Either
+    is recorded as an `AccountAliasConfirmed`, so the same pattern is not asked
+    about again, and the statement is then re-posted. Raises ValueError when the
+    document is not identity-held or the decision is not one of the two."""
     body = next((b for b in ledger.projection().open_holds()
                  if b["doc_id"] == doc_id and b.get("reason") == "identity"), None)
     if body is None:
@@ -138,7 +137,7 @@ def apply_identity_ruling(ledger: Ledger, doc_id: str, decision: str) -> IngestR
              doc_id[:12], key, target, decision)
     ledger.append(account_alias_confirmed(key, target, doc_id, facts.closing_date,
                                           by="human"))
-    res = post_statement(ledger, facts)     # resolves cleanly now (alias learned)
+    res = post_statement(ledger, facts)     # resolves cleanly now: alias learned
     if res.action == "posted":
         heal_gaps(ledger)
     return res
@@ -158,8 +157,9 @@ def apply_human_correction(ledger: Ledger, doc_id: str, field: str,
 
     ``field`` is 'amount' (with ``target_index``) or 'closing'; ``value`` is the
     corrected figure the person read off the source. The ruling is recorded as a
-    correction event; if it now reconciles, the statement posts at `verified`.
-    If it still doesn't, it is held again — we don't post what we can't verify."""
+    correction event either way. If the statement now reconciles it posts at
+    `verified`; if not, it is held again. Raises ValueError for an unknown field
+    or an amount correction with no target index."""
     from dataclasses import replace
     facts = _held_facts(ledger, doc_id)
     to_value = str(Decimal(value))
@@ -187,5 +187,5 @@ def apply_human_correction(ledger: Ledger, doc_id: str, field: str,
         provenance=Provenance(doc_id=doc_id)))
     res = post_statement(ledger, corrected, confirmed_by="human")
     if res.action == "posted":
-        heal_gaps(ledger)            # this post may unblock statements waiting on it
+        heal_gaps(ledger)            # this post may unblock a waiting statement
     return res

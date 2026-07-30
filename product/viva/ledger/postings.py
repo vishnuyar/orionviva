@@ -1,6 +1,6 @@
 """Double-entry posting shapes for a checking statement.
 
-Two mechanisms of categorization, kept apart on purpose:
+Two mechanisms of categorization, kept apart:
 
   1. **Split by amount** → double-entry. One movement whose counter-side is
      several postings that sum to the whole. ``split_transaction`` builds it;
@@ -8,10 +8,9 @@ Two mechanisms of categorization, kept apart on purpose:
   2. **Overlapping labels** → the ``tags`` overlay on the transaction, a
      many-to-many descriptive layer that never has to balance.
 
-A movement's counter-leg goes to an Uncategorized bucket graded
-``unverified``: the amount is attested, the classification is not. The
-structure is already the real one, so categorization only has to raise that
-leg's grade and fill its account/tags — no rewrite.
+A movement's counter-leg goes to an Uncategorized bucket graded ``unverified``:
+the amount is attested, the classification is not. Categorization raises that
+leg's grade and fills its account and tags; the structure does not change.
 
 Sign convention: an ``amount`` is the signed change to the named account.
 Positive means money into the account (a deposit into checking); negative means
@@ -33,17 +32,14 @@ EQUITY_OPENING = "Equity:OpeningBalance"      # the "unexplained history" bucket
 INCOME_UNCATEGORIZED = "Income:Uncategorized"
 EXPENSE_UNCATEGORIZED = "Expenses:Uncategorized"
 # A liability's payment reduces what's owed — a debt reduction funded by a
-# transfer, NOT an expense. It lands here so it never inflates spending.
+# transfer, not an expense. It lands here so it never inflates spending.
 TRANSFERS_UNCATEGORIZED = "Transfers:Uncategorized"
 
 # --- the four majors, as account roots --------------------------------------
-# A category is an OVERLAY keyed on movement_key, so the `Liabilities:` root is
-# a READ-SIDE concern, not a schema change — the posted counter-leg stays an
-# Uncategorized bucket forever and every aggregate reads the overlay. So the
-# chart of accounts below is *materialized by the projection* from rulings, and
-# `Assets:Vehicles:Tesla` never has to be written into a posting to be real.
-# That keeps this cheap and reversible, and leaves re-posting available later
-# (abstract the read side early, the write side late).
+# A category is an overlay keyed on movement_key, so these roots are a read-side
+# concern: the posted counter-leg stays an Uncategorized bucket, the projection
+# materializes the chart of accounts from rulings, and a path such as
+# `Assets:Vehicles:Roadster` is never written into a posting.
 LIABILITIES_UNCATEGORIZED = "Liabilities:Uncategorized"
 
 MAJOR_ROOTS = {
@@ -61,13 +57,13 @@ MAJOR_UNCATEGORIZED = {
 
 
 def account_path(major: str, *parts: str) -> str:
-    """Build a chart-of-accounts path: the major's root is fixed CODE, and every
-    level beneath it is free DATA — `Assets:Vehicles:<name>`,
-    `Liabilities:Mortgage:<lender>`. Exactly the shape the 16 primary categories
-    already use with a free subcategory, so nothing new has to be learned.
+    """Build a chart-of-accounts path: the major's root is fixed code and every
+    level beneath it is free data — `Assets:Vehicles:<name>`,
+    `Liabilities:Mortgage:<lender>`.
 
-    Empty parts are dropped, and a `:` inside a part is collapsed so a merchant
-    name can never inject a fake level into the hierarchy."""
+    Empty parts are dropped, and a `:` inside a part is collapsed to a space so
+    a name can never inject a level into the hierarchy. Raises ValueError on a
+    major outside ``MAJOR_ROOTS``."""
     if major not in MAJOR_ROOTS:
         raise ValueError(f"unknown major {major!r}")
     clean = [p.strip().replace(":", " ").strip() for p in parts]
@@ -77,16 +73,16 @@ def account_path(major: str, *parts: str) -> str:
 def counter_account(kind: str, amount: Decimal) -> str:
     """The Uncategorized counter-leg for a movement, chosen by account kind and
     direction. Asset and liability signs are opposite: money out of an asset and
-    a charge on a liability are both expenses; money into an asset is income; a
-    payment on a liability is a transfer — a debt reduction, not income."""
+    a charge on a liability are both expenses, money into an asset is income,
+    and a payment on a liability is a transfer — a debt reduction, not income."""
     if kind == "liability":
         return EXPENSE_UNCATEGORIZED if amount > 0 else TRANSFERS_UNCATEGORIZED
     return INCOME_UNCATEGORIZED if amount > 0 else EXPENSE_UNCATEGORIZED
 
 # Pay-stub decomposition targets. Universal buckets — jurisdiction is an
-# attribute, never a per-country table: a US 401k and an Indian EPF both land
-# in Assets:Retirement. Retirement is an ASSET (money moved to your retirement),
-# not spending; tax and insurance are expenses.
+# attribute rather than a per-country table, so a US 401k and an Indian EPF both
+# land in Assets:Retirement. Retirement is an asset, not spending; tax and
+# insurance are expenses.
 INCOME_SALARY = "Income:Salary"
 DEDUCTION_ACCOUNTS = {
     "tax": "Expenses:Tax",
@@ -95,12 +91,11 @@ DEDUCTION_ACCOUNTS = {
     "other": "Expenses:Other",
 }
 
-# Brokerage cash-activity targets. The investment account's cash
-# moves for real reasons; each reason has a counter-leg the aggregates already
-# read: income buckets (dividends/interest/capital gains) feed income; a fee is an
-# expense; a buy/sell moves cash to/from Assets:Investments (an internal
-# reallocation, NOT spending or income); a contribution/withdrawal is a transfer
-# that ties to the funding account, never spending.
+# Brokerage cash-activity targets, one counter-leg per reason the investment
+# account's cash moved: dividends/interest/capital gains feed income; a fee is
+# an expense; a buy or sell moves cash to or from Assets:Investments, an
+# internal reallocation that is neither spending nor income; a contribution or
+# withdrawal is a transfer tying to the funding account.
 INCOME_DIVIDENDS = "Income:Dividends"
 INCOME_INTEREST = "Income:Interest"
 INCOME_CAPITAL_GAINS = "Income:CapitalGains"   # REALIZED gain on a sell (a tax event)
@@ -128,15 +123,17 @@ def brokerage_activity_transaction(account: str, kind: str, amount: Decimal | st
                                    instrument: str = "",
                                    realized_gain: Decimal | str | None = None,
                                    provenance=None) -> Event:
-    """One brokerage cash movement, posted with the counter-leg its *reason*
-    dictates. ``amount`` is the positive magnitude; the cash
-    leg's sign comes from the kind. A contribution/withdrawal balances against
-    Transfers (it ties to the funding account and is excluded from spending); a
-    dividend/interest against Income (recognized); a fee against Expenses; a
-    buy/sell against Assets:Investments (an internal cash↔holdings reallocation,
-    never income/expense) — with a sell's ``realized_gain``, if the statement
-    reports it, split off to Income:CapitalGains (proceeds = basis + gain). Only
-    realized cash events post; the unrealized paper change never does."""
+    """One brokerage cash movement, posted with the counter-leg its reason
+    dictates.
+
+    ``amount`` is a positive magnitude; the cash leg's sign comes from ``kind``.
+    A contribution or withdrawal balances against Transfers, a dividend or
+    interest against Income, a fee against Expenses, and a buy or sell against
+    Assets:Investments. A sell's ``realized_gain``, when the statement reports
+    it, is split off to Income:CapitalGains (proceeds = basis + gain).
+
+    Only realized cash events post; an unrealized paper change never does.
+    Raises ValueError on a non-positive amount or an unknown kind."""
     amt = Decimal(amount)
     if amt <= 0:
         raise ValueError("a brokerage activity amount must be a positive magnitude")
@@ -172,13 +169,12 @@ def paystub_decomposition(gross: Decimal | str, net: Decimal | str,
                           provenance=None) -> Event:
     """Decompose a net-pay deposit into what the bank could not see.
 
-    The pay stub *explains* a checking deposit already booked as uncategorized
-    income. This posts: gross recognized as salary income; each deduction into its
-    universal bucket (graded ``unverified`` — the category is the model's proposal
-    until confirmed); and a reversal of the deposit's ``Income:Uncategorized``
-    placeholder for the net, so the net is counted ONCE (the checking inflow stays;
-    its placeholder income is replaced by the real gross-and-deductions picture).
-    The legs sum to zero: −gross + net + Σdeductions = 0, since gross − Σ = net.
+    The pay stub explains a checking deposit already booked as uncategorized
+    income. This posts gross as salary income; each deduction into its universal
+    bucket, graded ``unverified`` until confirmed; and a reversal of the
+    deposit's ``Income:Uncategorized`` placeholder for the net, so the net is
+    counted once. The legs sum to zero: −gross + net + Σdeductions = 0, since
+    gross − Σdeductions = net.
 
     ``deductions`` is a list of objects with ``.amount`` and ``.category``.
     """
@@ -199,9 +195,8 @@ def transaction_balances(postings: list[Posting],
                          tolerance: Decimal | str = "0") -> CheckResult:
     """The double-entry law: a transaction's postings sum to exactly zero.
 
-    Reuses the shared deterministic arithmetic (exact Decimal, no float, no
-    silent tolerance) — the same check that reconciles a statement reconciles a
-    transaction."""
+    Runs on the shared deterministic arithmetic (exact Decimal, no float, no
+    silent tolerance) — the same check that reconciles a statement."""
     return check_sum(
         [p.amount for p in postings], Decimal("0"),
         label="transaction postings sum to zero", tolerance=tolerance,
@@ -225,12 +220,13 @@ def simple_transaction(account: str, amount: Decimal | str, description: str,
     """A single-category movement on ``account``.
 
     ``amount`` is the signed effect on the account's printed balance. The named
-    account's leg is ``verified`` by default (the statement attests the
-    movement); the Uncategorized counter-leg mirrors the amount but is
-    ``unverified`` — its category is not yet inferred. ``kind`` picks the correct
-    counter-leg: a card purchase is an expense, a card payment a transfer,
-    never income. A leg *supplied by cross-document corroboration* passes
-    ``account_grade=CORROBORATED``."""
+    account's leg is ``verified`` by default; the Uncategorized counter-leg
+    mirrors the amount but is ``unverified``, its category not yet inferred.
+    ``kind`` picks the counter-leg: a card purchase is an expense, a card
+    payment a transfer, never income. A leg supplied by cross-document
+    corroboration passes ``account_grade=CORROBORATED``.
+
+    Raises ValueError on a zero amount."""
     amt = Decimal(amount)
     if amt == 0:
         raise ValueError("a transaction of zero is not a movement")
@@ -250,11 +246,12 @@ def split_transaction(account: str, amount: Decimal | str,
 
     ``amount`` is the signed change to ``account`` (negative for money out).
     ``splits`` are (category_account, magnitude) pairs whose magnitudes sum to
-    ``abs(amount)`` — they are the counter-legs, signed opposite to the account
-    leg. The account leg is ``verified``; each split leg is ``verified`` for its
-    amount but the classification is the user's, so we grade it ``corroborated``
-    only once confirmed — here, at construction from a statement, they inherit
-    ``unverified`` until categorization confirms them."""
+    ``abs(amount)``; they are the counter-legs, signed opposite to the account
+    leg. The account leg is ``verified`` and each split leg is ``unverified``
+    until categorization confirms its classification.
+
+    Raises ValueError on a zero amount, a non-positive split magnitude, or
+    magnitudes that do not sum to the whole movement."""
     amt = Decimal(amount)
     if amt == 0:
         raise ValueError("a transaction of zero is not a movement")

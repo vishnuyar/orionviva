@@ -1,47 +1,20 @@
-"""Why transfers link the way they do, and what a different window would change.
+"""What the transfer matcher has done, and what it would do at other windows.
 
     PYTHONPATH=../core:../merchant:. python3 -m viva.transfer_report
     PYTHONPATH=../core:../merchant:. python3 -m viva.transfer_report --private
 
-No model calls. Read-only unless you pass `--unlink-stale`, which is the single
-write here and is described where it is defined. Otherwise it re-runs the
-matcher's own decision on the current projection at several window widths and
-reports what each would have done.
+No model calls. Read-only unless `--unlink-stale` is passed.
 
-TWO THINGS THAT ARE EASY TO GET BACKWARDS, and both are why this exists.
+Reports, in order: the links that already exist with their leg gaps and the rule
+that decided each; which of them today's rule would still make; what a scan would
+auto-link and ask at each window width from 0 to `--max-window`; and how far apart
+the legs of the candidate pairs actually are.
 
-**A narrower window can produce MORE auto-links, not fewer.** Auto-linking needs
-`len(candidates) == 1`. A wider window finds more candidates per source, which
-pushes pairs OUT of decisive and into ambiguous — so widening tends to convert
-auto-links into questions, and narrowing does the reverse. If the complaint is
-"too many are being caught", the window is the wrong dial.
+`--private` adds the descriptions behind each decision. Calls `transfers.weigh`
+and `transfers.decide` rather than reimplementing them, so the rehearsal matches
+what a scan performs.
 
-**Narrowing it does not unlink anything.** `_candidates` only looks at movements
-where `linked` is false, so every link already made stays made. The constant
-governs the next scan, never the last one.
-
-THE DIAL THAT ACTUALLY DECIDES is `_strong_hint`, and on 2026-07-29 it changed.
-It used to accept a GENERIC English word — "card", "credit", "checking" — found
-anywhere in either description. A credit card statement prints "card" on nearly
-every line, so for a card destination that hint was close to always-true and the
-only surviving constraints were equal amount and uniqueness. It now accepts one
-thing only: a token that belongs to one of these two accounts and to no other
-account you hold (its last four, or its institution when that is unique).
-
-So the question this report answers first is not "what would a different window
-do" but **"which links that already exist would today's rule still make?"** The
-ones it would not are the ones the old word list caught, and they are the honest
-answer to 'too many are being caught'.
-
-AND THE SECOND QUESTION, which turned out to matter more. Removing the word list
-left 29 unanswerable questions on a real vault, and 24 of them were unanswerable
-only because nothing was reading the date the bank had printed on the line —
-"02/17 Payment To Acme Card Ending IN 2222" against four identical "Payment
-Thank You" credits. `weigh` and `decide` now score every pair on account evidence
-(worth 2) plus a printed date that matches (worth 1), so the date breaks ties
-between pairs that already qualify and never creates a link by itself. This
-report calls those two functions rather than reproducing them, so what it
-rehearses cannot drift from what a scan performs.
+Design rationale: docs/transfer-links-and-cross-document-corroboration.md
 """
 
 from __future__ import annotations
@@ -93,11 +66,8 @@ def main() -> int:
           "  only ever looks at movements where `linked` is false, so the\n"
           "  setting governs the next scan and never the last one.")
 
-    # --- THE LINKS YOU ALREADY HAVE ----------------------------------------
-    # The forward sweep below sees only what is still unlinked, which on a vault
-    # that has been scanned is almost nothing. The question worth answering is
-    # about the links that exist: how far apart their legs were, and — since the
-    # rule changed under them — whether today's rule would still make each one.
+    # Existing links. The forward sweep below sees only unlinked movements,
+    # which on a scanned vault is almost nothing.
     dist = T._distinctive(proj)
     profile_for = T.default_profile_for(proj)
     by_key = {m.key: m for m in movements}
@@ -140,20 +110,14 @@ def main() -> int:
             print(f"  Of the automatic ones, today's rule would still make "
                   f"{len(auto) - len(stale)}.")
             if stale:
-                print(f"\n  {len(stale)} would NOT be made today. Nothing in either")
-                print("  description names one of the two accounts distinctively, so")
-                print("  they rest on the generic word list that was deleted on")
-                print("  2026-07-29 — equal amount, opposite direction, one candidate,")
-                print("  and the word 'card'. Those are the ones worth looking at;")
+                print(f"\n  {len(stale)} would NOT be made today: nothing in either")
+                print("  description names one of the two accounts distinctively.")
                 print("  --private prints them.")
             else:
-                print("\n  Every automatic link still stands under the stricter rule,")
-                print("  so 'too many are being caught' is not coming from the hint.")
+                print("\n  Every automatic link still stands under today's rule.")
 
             if stale and args.unlink_stale:
-                # Append-only, and deliberately `by="auto"`: a rule change
-                # revoked these, not a person looking at them. Recording it as
-                # human would put a judgement in the log that nobody made.
+                # `by="auto"`: a rule revoked these, not a person.
                 from .ledger.events import transfer_unlinked
                 from datetime import date
                 today = date.today().isoformat()
@@ -175,9 +139,7 @@ def main() -> int:
         for w in range(0, max(1, args.max_window) + 1):
             T.DATE_WINDOW_DAYS = w
             graph, sources = T._candidates(proj)
-            # The matcher's own scoring and its own verdict — imported, never
-            # reimplemented. A report that reproduces the rule is a report that
-            # is right until the rule changes and wrong silently afterwards.
+            # The matcher's own scoring and verdict, not a reimplementation.
             strength, reasons = T.weigh(proj, graph, sources, dist, profile_for)
             verdicts = T.decide(graph, strength)
 
@@ -192,13 +154,7 @@ def main() -> int:
                     detail.append((T._days_apart(src.date, dst.date), src, dst,
                                    reasons.get((skey, dkey), "")))
                 else:
-                    # WHY it would be a question, not just that it would. Four
-                    # situations land here and they want different fixes, so
-                    # each is named: no account evidence at all (the case the
-                    # deleted word list used to rubber-stamp), several candidates
-                    # the evidence cannot choose between, a destination some
-                    # other source claims more strongly, and a dead heat with
-                    # another source for the same credit.
+                    # Name which of the four situations produced the question.
                     scores = {c.key: strength.get((skey, c.key), 0) for c in cands}
                     best = max(scores.values(), default=0)
                     if best < T._EV_FLOOR:
@@ -293,11 +249,9 @@ def main() -> int:
 
 
 def _names(T, proj, src, dst, dist=None) -> bool:
-    """Whether today's rule would call this pair decisive.
+    """True when `transfers._strong_hint` accepts this pair.
 
-    Deliberately calls `_strong_hint` itself rather than reimplementing it. The
-    point of the column is 'what would the CURRENT code do', and a copy of the
-    current code drifts from it the first time the rule changes again."""
+    `dist` is the distinctive-token map; it is recomputed if omitted."""
     d = dist if dist is not None else T._distinctive(proj)
     return bool(T._strong_hint(proj, src, dst, d))
 

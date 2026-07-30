@@ -2,8 +2,8 @@
 
 Bundles the encrypted event log (`events.jsonl`, via a `Ledger` with a cached
 live projection) and the encrypted raw-blob store (`raw/`) under a single
-directory, opened with one passphrase. This is the unit the surface (and later
-the agent) works against.
+directory, opened with one passphrase. This is the unit the surface and the
+agent work against. `open` creates the directory if it does not exist.
 """
 
 from __future__ import annotations

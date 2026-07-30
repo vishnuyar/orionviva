@@ -216,3 +216,29 @@ def test_a_ruling_must_speak_the_closed_vocabulary():
             ruling_recorded(SCOPE_MOVEMENT, "k", "2026-07-25", legs=legs)
     with pytest.raises(ValueError):
         ruling_recorded("everything", "k", "2026-07-25")
+
+
+def test_only_a_liability_or_asset_leg_names_the_account_a_ruling_creates(tmp_path):
+    """A ruling materializes an account only for what you now owe or now own,
+    and the liability leg leads. An expense leg names no account, so ordinary
+    spending never appears beside a car in what you hold."""
+    raw, ledger = _vault(tmp_path)
+    _checking(raw, ledger, [("2026-03-04", "NEWCO MORTGAGE SERVICING", "-4400.00"),
+                            ("2026-03-06", "DINNER OUT", "-90.00")])
+    loan = account_path(MAJOR_LIABILITY, "Mortgage", "Newco")
+    escrow = account_path(MAJOR_ASSET, "Escrow", "Newco")
+    ledger.append(ruling_recorded(
+        SCOPE_MERCHANT, "newco mortgage servicing", "2026-07-25",
+        legs=[{"major": MAJOR_EXPENSE, "account": "Expenses:Interest"},
+              {"major": MAJOR_ASSET, "account": escrow},
+              {"major": MAJOR_LIABILITY, "account": loan}]))
+    ledger.append(ruling_recorded(
+        SCOPE_MERCHANT, "dinner out", "2026-07-25",
+        legs=[{"major": MAJOR_EXPENSE, "account": "Expenses:Dining"}]))
+
+    proj = ledger.projection()
+    mortgage = next(m for m in proj.movements() if "NEWCO" in m.description)
+    dinner = next(m for m in proj.movements() if "DINNER" in m.description)
+    assert mortgage.ruling_account == loan     # the liability leads the asset leg
+    assert dinner.ruling_account == ""         # an expense names nothing
+    assert sorted(proj.ruled_accounts()) == [loan]

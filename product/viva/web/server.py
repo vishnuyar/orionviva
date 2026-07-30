@@ -1,9 +1,9 @@
-"""A tiny local web server — Python standard library only, no dependencies.
+"""A small local web server — Python standard library only, no dependencies.
 
-Bound to localhost by default: the surface is for the person at this machine,
-reading their own vault with their own passphrase. It serves one static page and
-a handful of JSON endpoints over the service layer. Kept deliberately thin —
-the logic and its tests live in ``service``.
+Binds to localhost by default. It serves one static page and a set of JSON
+endpoints over the service layer, and holds no logic of its own: each handler
+parses the request and calls one ``service`` function, which is where the tests
+are.
 """
 
 from __future__ import annotations
@@ -16,10 +16,9 @@ from urllib.parse import parse_qs, urlparse
 
 from . import service
 
-# `static/` IS the surface — plain HTML and JS, committed, no build step — so
-# cloning the repo and running this server gives a working page with no Node and
-# no network, and the file served is the file a contributor reads. If it is
-# missing we say so plainly rather than serving a blank page.
+# `static/` holds the built surface: committed files served as they are, with no
+# toolchain and no network fetch at runtime. `index.html` beside this module is
+# the older single-file page, used as a fallback when `static/` is absent.
 _STATIC = Path(__file__).parent / "static"
 _LEGACY_INDEX = Path(__file__).parent / "index.html"
 _TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
@@ -29,7 +28,8 @@ log = logging.getLogger(__name__)
 
 
 def _asset(path: str) -> tuple[bytes, str] | None:
-    """Read a built asset, refusing anything outside the static directory."""
+    """Return `(bytes, content_type)` for a built asset, or None when the path
+    resolves outside the static directory or is not a regular file."""
     target = (_STATIC / path.lstrip("/")).resolve()
     if not str(target).startswith(str(_STATIC.resolve())) or not target.is_file():
         return None
@@ -167,7 +167,7 @@ def make_handler(vault, read_fn):
                 if u.path == "/api/upload":
                     fn = self.headers.get("X-Filename", "upload.bin")
                     return self._send(service.upload(vault, fn, raw, read_fn))
-            except Exception as e:                       # surface, never 500-silently
+            except Exception as e:                       # reported as 400, not swallowed
                 return self._send({"error": str(e)}, 400)
             self._send({"error": "not_found"}, 404)
 
@@ -175,5 +175,6 @@ def make_handler(vault, read_fn):
 
 
 def serve(vault, read_fn, host: str = "127.0.0.1", port: int = 8765):
-    """Build (do not start) a threading HTTP server bound to localhost."""
+    """Build, but do not start, a threading HTTP server on `host`:`port`. The
+    caller runs `serve_forever()`."""
     return ThreadingHTTPServer((host, port), make_handler(vault, read_fn))

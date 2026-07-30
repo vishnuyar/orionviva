@@ -1,11 +1,9 @@
 """Viva listens — a sentence becomes double-entry.
 
-What a movement's counter-leg IS has a complete, centuries-old vocabulary —
-expense, asset, liability, income — with too many members and too many compound
-cases to put behind a fixed set of buttons: a mortgage payment is interest
-**and** principal **and** escrow at once, and a car purchase is something you
-now *own*. But it fits in a sentence. So free text here is not a convenience; it
-is the only practical interface to a complete ontology.
+What a movement's counter-leg is — expense, asset, liability, income — has too
+many members and too many compound cases for a fixed set of buttons: a mortgage
+payment is interest and principal and escrow at once. So the interface is a
+sentence, and this module is the path from one to a recorded ruling.
 
 The pipeline, and where the boundary sits:
 
@@ -16,19 +14,18 @@ The pipeline, and where the boundary sits:
     5  propose             deterministic   legs, accounts, what changes
     6  apply               deterministic   RulingRecorded (+ an asserted account)
 
-**The model touches step 3 only.** It never sees the ledger, never chooses an
-account, and never supplies a figure — amounts come from the movement, and
-`ruling_recorded` refuses an amount outright, so the boundary is structural
-rather than a line in a prompt.
+The model touches step 3 only. It never sees the ledger, never chooses an
+account, and never supplies a figure: amounts come from the movement, and
+`ruling_recorded` refuses an amount outright.
 
 Two rules this path keeps:
 
-* **A missing document never blocks a ruling.** Create the account, post the
-  cash, mark only the *decomposition* provisional, and ask for the 1098 or the
-  invoice as corroboration. Blocking would be deferential where it doesn't count.
-* **Confirmation is scoped to the account, not to every parse.** The expensive,
-  hard-to-reverse act is binding money to an account for the first time. After
-  that, the learned ruling applies in silence.
+* **A missing document never blocks a ruling.** The account is created, the cash
+  is posted, only the *decomposition* is marked provisional, and the 1098 or the
+  invoice is asked for as corroboration.
+* **Confirmation is scoped to the account, not to every parse.** Binding money
+  to an account for the first time is confirmed; after that the learned ruling
+  applies in silence.
 """
 
 from __future__ import annotations
@@ -48,18 +45,11 @@ from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 log = logging.getLogger("viva.listen")
 
 # An out-of-band marker for "the model ran past its token limit". Not an
-# exception, because the partial text is still worth logging and diagnosing.
+# exception: the partial text still travels, for logging and diagnosis.
 TRUNCATED_MARK = "\x00truncated\x00"
 
-# The surface never speaks these words: the four majors are stored and never
-# shown. A person is asked whether they still *have* it, not whether it
-# is "an asset". Nobody should have to learn bookkeeping to use this product.
-#
-# Forward note: today these strings are fixed templates. A small local model
-# should later phrase them in the person's own language and tone — a Swedish user
-# getting a Swedish question, not a translated one. That is safe precisely
-# because phrasing touches no figure and no account, so it sits entirely outside
-# the model boundary, and it is small enough to run locally.
+# The plain-language label for each major. The majors are what is stored; these
+# are what a person is shown, so the surface never says "asset".
 PLAIN = {
     MAJOR_EXPENSE: "Spent — the money is gone",
     MAJOR_ASSET: "I still have it, in another form",
@@ -67,12 +57,10 @@ PLAIN = {
     MAJOR_INCOME: "Money that came to me",
 }
 
-# The fallback for when nothing is known about the counterparty, and it is
-# deliberately dull: one level under the root, named "Other". A product that
-# knows nothing should look like it knows nothing. Where an account belongs,
-# which document corroborates a claim, and how the answers are ordered are all
-# properties of the counterparty's IMPLICATION — `documents` and
-# `account_group` — learned once at enrichment, cached, versioned and shareable.
+# The account group used when the counterparty implies nothing: one level under
+# the major's root. Otherwise the group, the corroborating document and the
+# ordering of the answers all come from the counterparty's implication
+# (`account_group`, `documents`), learned once at enrichment.
 _FALLBACK_GROUP = "Other"
 
 
@@ -80,17 +68,15 @@ _FALLBACK_GROUP = "Other"
 
 
 def suggest_answers(implied: dict | None = None) -> list[dict]:
-    """Plain-language answers to offer *before* anyone types anything.
+    """Plain-language answers to offer before anyone types anything.
 
-    The common case should still be one tap. Free text is the escape hatch for
-    the cases a button genuinely cannot hold, not a replacement for the fast
-    path — and because this is deterministic, the queue keeps working with **no
-    model configured at all**."""
+    Three labels, deterministic, so the queue keeps working with no model
+    configured. Where `implied` names a major, that one leads and two others
+    follow."""
     ordered = [MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY]
     if implied and implied.get("major") in PLAIN:
-        # Lead with what the counterparty implies. Ordering the answers is
-        # knowledge about the counterparty, and knowledge about counterparties
-        # is learned at enrichment, not kept in a word list here.
+        # Lead with what the counterparty implies. That ordering is learned at
+        # enrichment, not kept in a word list here.
         lead = implied["major"]
         ordered = [lead] + [m for m in (MAJOR_EXPENSE, MAJOR_ASSET,
                                         MAJOR_LIABILITY, MAJOR_INCOME)
@@ -106,17 +92,14 @@ class Interpretation:
     """What a model may return from a sentence — meaning only, never money."""
     legs: list[dict] = field(default_factory=list)   # {major, account_hint, share}
     kind: str = ""                 # vehicle | property | mortgage | loan | ...
-    # A label the PERSON named ("poker"), not a guess about them. One sentence
-    # can carry both a major and a label — "spent on playing poker, add it to
-    # poker category" — and both halves must reach the ledger.
+    # A label the person named, not a guess about them. One sentence can carry
+    # both a major and a label, and both halves reach the ledger.
     category: str = ""
     confidence: float = 0.0
     said: str = ""                 # the person's own words, kept
-    # WHY there are no legs, when there are none. "The model declined" and "we
-    # never reached the model" look identical from the outside and mean opposite
-    # things — one is a model's honest limit, the other is a broken pipe wearing
-    # a model's failure as a costume. Anything that reports on this must be able
-    # to tell them apart, so the reason is carried rather than inferred.
+    # Why there are no legs, when there are none. `unreachable` — the call never
+    # landed — is carried distinctly from `unparseable` and `empty`, which are
+    # the model answering with something unusable.
     failure: str = ""              # "" | unreachable | unparseable | empty
     detail: str = ""               # the underlying error, verbatim
     raw: str = ""                  # what the model actually said
@@ -131,10 +114,10 @@ class Interpretation:
         return bool(self.legs) and all(leg.get("share") for leg in self.legs)
 
 
-# The prompt lives in the versioned, append-only library with every other one
-# (`viva/ingest/prompt_library.py`), not as a constant here. A recorded ruling
-# stamps its `prompt_version`, so tuning the text never silently invalidates the
-# readings made before the change — and eval runs stay comparable across time.
+# The prompt text lives in the versioned, append-only library
+# (`viva/ingest/prompt_library.py`); this names the version to read. A recorded
+# ruling stamps its `prompt_version`, so every reading names the instructions
+# that produced it.
 INTERPRET_VERSION = "interpret-v2"
 
 
@@ -143,10 +126,10 @@ def interpret(said: str, descriptor: str = "", category: str = "",
               source: str = "", version: str = INTERPRET_VERSION) -> Interpretation:
     """The one model call. Turns a sentence into a structured reading.
 
-    Anything the model returns that isn't in the closed vocabulary is dropped
-    rather than trusted, and an unparseable reply yields an empty
-    Interpretation — the caller then falls back to the buttons. A model being
-    unavailable or wrong must degrade the surface, never the ledger."""
+    Anything the model returns that is not in the closed vocabulary is dropped,
+    and an unparseable reply yields an Interpretation with no legs and a
+    `failure` naming why. Never raises: a model that is unavailable or wrong
+    degrades the surface, never the ledger."""
     if extract_fn is None:
         return Interpretation(said=said, failure="unreachable",
                               detail="no model configured", version=version)
@@ -154,15 +137,15 @@ def interpret(said: str, descriptor: str = "", category: str = "",
     prompt = text.format(
         said=said, counterparty=descriptor or "(unknown)",
         # The movement may come from a bank, a card, a brokerage, a loan account
-        # or a wallet — the reading must not assume one. When we do know,
-        # say so plainly; when we do not, say that instead of implying a bank.
+        # or a wallet, so the prompt is told the source when it is known and told
+        # that it is unknown otherwise, rather than being left to assume a bank.
         source=source or "(an account they hold)",
         category=category or "(unknown)", subcategory=subcategory or "(unknown)")
     try:
         raw = extract_fn(prompt)
     except Exception as exc:                       # noqa: BLE001 - degrade, never raise
         # The call never landed: wrong model name, server down, bad base URL,
-        # a rejected parameter. NOT the model declining.
+        # a rejected parameter. Not the model declining.
         log.warning("interpret: could not reach the model (%s)", exc)
         return Interpretation(said=said, failure="unreachable", detail=str(exc),
                               version=version)
@@ -182,9 +165,8 @@ def interpret(said: str, descriptor: str = "", category: str = "",
                               detail="no complete JSON object in the reply",
                               raw=raw or "", version=version)
     legs = []
-    # A model's reply is untrusted input, not a contract: `legs` arriving as a
-    # string, a number, or anything but a list of objects must degrade to "I
-    # didn't understand", never raise into the caller.
+    # A model's reply is untrusted input: `legs` arriving as a string, a number,
+    # or anything but a list of objects yields no legs rather than raising.
     raw_legs = body.get("legs")
     for leg in raw_legs if isinstance(raw_legs, list) else []:
         if not isinstance(leg, dict):
@@ -196,9 +178,8 @@ def interpret(said: str, descriptor: str = "", category: str = "",
             continue
         legs.append({"major": major,
                      "account_hint": str(leg.get("account_hint", "")).strip(),
-                     # A share is only ever honoured if the PERSON stated it;
-                     # a model-invented ratio is exactly the kind of confident
-                     # wrong number this project exists to refuse.
+                     # Carried verbatim. A share is honoured only where the
+                     # person stated it, which `propose` decides.
                      "share": str(leg.get("share", "")).strip()})
     return Interpretation(
         legs=legs, kind=str(body.get("kind", "")).strip().lower(),
@@ -210,19 +191,13 @@ def interpret(said: str, descriptor: str = "", category: str = "",
 
 
 def _first_json_object(text: str, require_key: str = "") -> dict | None:
-    """The first COMPLETE, balanced JSON object in a reply — preferring one that
-    actually carries ``require_key`` — or None.
+    """The first complete, balanced JSON object in a reply — preferring one that
+    carries ``require_key`` — or None.
 
-    Requiring the whole reply to be JSON is too brittle. Models wrap objects in
-    code fences, prefix them with reasoning, or append a cheerful sentence
-    afterwards — none of which is a failure of understanding, and all of which
-    would throw away a perfectly good reading.
-
-    Scanning for balance (respecting strings and escapes) also means a reply cut
-    off mid-object is correctly rejected rather than half-parsed. That matters
-    more than the leniency: a *truncated* reading is not a partial reading, it
-    is an unknown one, and guessing at the rest is how a wrong ruling gets
-    written."""
+    The whole reply need not be JSON: an object wrapped in a code fence,
+    prefixed with reasoning or followed by a sentence is still found. Scanning
+    for balance respects strings and escapes, so a reply cut off mid-object is
+    rejected rather than half-parsed."""
     if not text:
         return None
     for start in range(len(text)):
@@ -253,10 +228,8 @@ def _first_json_object(text: str, require_key: str = "") -> dict | None:
                     if not isinstance(found, dict):
                         break
                     # Some providers and json_mode wrappers nest the answer:
-                    # {"response": {"legs": [...]}}. Taking the OUTER object
-                    # then finds no legs and reports "I couldn't read that",
-                    # which is both wrong and unhelpfully indistinguishable
-                    # from the model genuinely not understanding.
+                    # {"response": {"legs": [...]}}. The outer object carries no
+                    # legs, so `require_key` descends to the one that does.
                     if require_key:
                         hit = _find_key(found, require_key)
                         if hit is not None:
@@ -285,9 +258,8 @@ def _find_key(obj, key: str, depth: int = 0):
 
 @dataclass
 class AccountMatch:
-    """How an account hint resolves. Deliberately the same three verdicts as the
-    statement matcher — `same` / `ambiguous` / `new` — because this is that
-    matcher pointed at a new target, not a second mechanism."""
+    """How an account hint resolves — the same verdicts the statement matcher
+    uses: `same`, `existing`, `ambiguous`, `new`."""
     account: str
     verdict: str               # "same" | "existing" | "ambiguous" | "new"
     candidate: str = ""
@@ -295,21 +267,16 @@ class AccountMatch:
 
 
 def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatch:
-    """Which account does this belong to?
+    """Which account a leg belongs to.
 
-    Exact match posts in silence; a near match asks; nothing matching proposes a
-    new account, which is the ONE thing this path always confirms.
-
-    Account sprawl is the failure mode here — `Assets:Car`, `Assets:Tesla`,
-    `Assets:My Car` — so the cure is the same one that tamed merchant
-    descriptors: normalize the name, and suggest what exists before offering to
-    create anything."""
-    # Not every leg names a thing. Ordinary spending — cash at a poker table,
-    # a restaurant bill — is an expense, not an asset with a name, and minting
-    # `Expenses:Other:Unnamed` for it is exactly how account sprawl starts. Only
-    # a major that means "you now OWN or OWE something" can bring an account
-    # into being; the rest go to the Uncategorized bucket the ledger already
-    # has, where the CATEGORY does the descriptive work.
+    Names are normalized before comparison. An exact match on the last segment
+    returns `same`; a substring match either way returns `ambiguous` with the
+    candidate; nothing matching returns `new` with a proposed path, and that is
+    the one verdict this path always confirms."""
+    # An expense or income leg with no named thing goes to the Uncategorized
+    # bucket the ledger already has, where the category does the descriptive
+    # work. Only a major that means "you now own or owe something" brings an
+    # account into being.
     if major in (MAJOR_EXPENSE, MAJOR_INCOME) and not hint.strip():
         return AccountMatch(MAJOR_UNCATEGORIZED[major], "existing",
                             reason="ordinary spending needs no account of its own")
@@ -339,12 +306,11 @@ def _norm(text: str) -> str:
 
 @dataclass
 class Proposal:
-    """A structured, *un-applied* intent — what would change, how much money it
-    moves, what it rests on, and what it does NOT know.
+    """A structured, un-applied intent: what would change, how much money it
+    moves, what it rests on, and what it does not know.
 
-    `Finding` is the read side's version of this; Proposal is its write-side
-    twin, and it is what makes "nothing irreversible without an explicit yes" a
-    property of the type rather than a rule anyone has to remember."""
+    Nothing is written until `apply_proposal` is called with it. `Finding` is
+    the read side's equivalent."""
     scope: str
     subject: str
     legs: list[dict] = field(default_factory=list)
@@ -360,8 +326,9 @@ class Proposal:
     prompt_version: str = ""       # which instructions read the sentence
 
     def summary(self) -> str:
-        """What Viva says back before anything is written. It must state the
-        money moved and — the part that matters — what it still doesn't know."""
+        """One sentence back before anything is written: the money moved and
+        what it becomes, any account this would create, an unknown split, the
+        category, and the document that would corroborate it."""
         what = ", ".join(PLAIN[leg["major"]].lower() for leg in self.legs)
         head = (f"{self.currency} {self.amount}".strip()
                 + (f" across {self.settles} payments" if self.settles > 1 else ""))
@@ -393,17 +360,17 @@ class Proposal:
 
 def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
             currency: str = "", movement_key: str = "") -> Proposal:
-    """Turn a reading into a concrete, reviewable proposal — deterministically.
+    """Turn a reading into a concrete, reviewable proposal, deterministically.
 
-    Scope follows the rule already in force: a **commercial** merchant
-    generalizes (one answer settles every payment to them, past and future), a
-    peer descriptor — a person's name on a Zelle — does not, because one payment
-    to a friend can be a gift and the next a loan."""
+    A commercial merchant generalizes: the proposal is scoped to the merchant
+    and settles every payment to it, past and future. A peer descriptor or an
+    instrument is scoped to one movement. Raises ValueError when a
+    movement-scoped answer has no key and the descriptor covers more than one
+    movement."""
     merchant = normalize_merchant(descriptor)
-    # An INSTRUMENT — a check, an ATM withdrawal, a wire — is never generalized,
-    # even when several share a descriptor: what the money was FOR differs every
-    # time. That is learned from enrichment (`counterparty_kind`) rather than
-    # matched against a list of words kept by hand.
+    # An instrument — a check, an ATM withdrawal, a wire — never generalizes,
+    # even when several share a descriptor. The kind comes from enrichment
+    # (`counterparty_kind`), not from a list of words kept by hand.
     is_instrument = proj.kind_of_merchant(merchant) in ("instrument", "peer")
     generalizes = bool(merchant) and is_shareable(descriptor) and not is_instrument
     scope = SCOPE_MERCHANT if generalizes and not movement_key else SCOPE_MOVEMENT
@@ -437,10 +404,8 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     return Proposal(
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
         confirm_accounts=confirm,
-        # The document comes from the counterparty's IMPLICATION (learned at
-        # enrichment), never from the interpreter's free text: a model asked to
-        # name it per-sentence answers with words the surface then renders as a
-        # document name.
+        # The document comes from the counterparty's implication, learned at
+        # enrichment, and never from the interpreter's free text.
         corroborates=(implied or {}).get("documents", ""),
         category=interp.category, said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
@@ -449,16 +414,12 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
 
 
 def one_shot_extractor(spec):
-    """The live model edge for interpretation — **one call, never continued.**
+    """The live model edge for interpretation — one call, never continued.
 
-    The shared driver continues across truncation, which is right for reading a
-    statement (a long transaction list really does get cut off, and stitching
-    the tail back is the correct repair) and wrong here. This reply is ~60
-    tokens by construction. If it hits the limit the model is rambling, and
-    continuing six more times turns one cheap, recoverable failure into
-    unparseable garbage at seven times the cost and seven times the latency.
-
-    So: one shot, and truncation is REPORTED rather than repaired."""
+    The shared driver continues across truncation; this sets
+    `max_continuations=0`, so a reply that hits the token limit is reported
+    rather than stitched back together. The returned text is prefixed with
+    `TRUNCATED_MARK` in that case."""
     from vivacore.models import adapter_for
 
     adapter = adapter_for(replace(spec, max_continuations=0))
@@ -466,12 +427,9 @@ def one_shot_extractor(spec):
     def _extract(prompt: str) -> str:
         result = adapter.extract([], prompt)
         if result.finish_reason == "length":
-            # Not a transport failure and not a bad reading — a third thing,
-            # and it is the caller's job to refuse rather than to guess. Marked
-            # so `interpret` can say "the model ran long" instead of the far
-            # less useful "couldn't make sense of it": those have different
-            # causes and different fixes (a smaller/less chatty model vs a
-            # clearer sentence), and a person deserves the one that helps.
+            # Neither a transport failure nor a bad reading, but a third case,
+            # marked so `interpret` reports it as `too_long` rather than as
+            # `unparseable`.
             log.warning("interpret: the model ran past its limit (%d output tokens) "
                         "— refusing to stitch a bounded answer back together",
                         result.output_tokens)
@@ -488,10 +446,10 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
                    by: str = "human") -> dict:
     """Write it. Deterministic, and the only path from a sentence to the ledger.
 
-    An account the person brought into being is opened with `origin=asserted`
-    — the ledger must never lose track of the difference between what an
-    issuer attests and what you told it, because that is precisely what it can
-    and cannot vouch for later."""
+    An account the person brought into being is opened with `origin=asserted`,
+    which is how the ledger keeps what an issuer attests separate from what a
+    person told it. Returns the scope, subject, accounts opened, how many
+    movements it settles, and the category, if any."""
     grade = VERIFIED if by == "human" else UNVERIFIED
     opened = []
     for account in proposal.new_accounts:
@@ -506,9 +464,8 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
         by=by, grade=grade, said=proposal.said,
         corroborates=proposal.corroborates,
         prompt_version=proposal.prompt_version))
-    # One sentence can carry two rulings — "spent on poker, add it to poker
-    # category" is a major AND a label. Both are written, through the writers
-    # that already exist, at the same scope the ruling used.
+    # One sentence can carry two rulings — a major and a label. Both are
+    # written, through the existing writers, at the scope the ruling used.
     if proposal.category:
         from .ingest.categorize import assign_category, assign_merchant_category
         if proposal.scope == SCOPE_MERCHANT:

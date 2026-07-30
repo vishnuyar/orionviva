@@ -5,10 +5,9 @@ Environment:
   VIVA_VAULT_DIR   (optional) — vault location; default ~/.viva-vault.
   VIVA_SAMPLE=1    (optional) — seed fabricated sample data on start.
 
-The live document reader (a real model call) is intentionally NOT wired here by
-default — uploads park until a model is configured, so nothing leaves the
-machine until you choose the real run. The vault is opened locally, the server
-binds to localhost only.
+With no model configured the reader parks every upload instead of reading it, so
+no document leaves the machine. The vault is opened locally and the server binds
+to localhost only.
 """
 
 from __future__ import annotations
@@ -25,19 +24,19 @@ from .server import serve
 
 
 def _parking_reader(data, doc_id):
-    """Default reader: no model configured, so a real read can't happen — the
-    document is captured and parked rather than guessed at."""
+    """Default reader: capture the document and park it, unread."""
     return ReadResult("unknown", 0.0, None, "no model configured for live reading")
 
 
 def build_reader():
-    """Return (read_fn, is_live). A live reader is wired only when a model is
-    configured in the environment — until then uploads park, so nothing leaves
-    the machine by accident.
+    """Return `(read_fn, is_live)`.
+
+    A live reader is returned only when both VIVA_MODEL_ADAPTER and VIVA_MODEL
+    are set; otherwise `(_parking_reader, False)` and uploads park.
 
     Env to enable live reading:
       VIVA_MODEL_ADAPTER   'anthropic' or 'openai-compatible'
-      VIVA_MODEL           a PINNED model id (never a 'latest' alias)
+      VIVA_MODEL           a pinned model id (not a 'latest' alias)
       VIVA_MODEL_KEY_ENV   name of the env var holding the API key
       VIVA_MODEL_BASE_URL  (openai-compatible only, e.g. OpenRouter)
       VIVA_LOCALE          default 'en-US'      VIVA_CURRENCY default 'USD'
@@ -66,7 +65,7 @@ def build_reader():
 
 def main() -> None:
     load_dotenv()          # pick up VIVA_PASSPHRASE / VIVA_MODEL_* from ./.env
-    configure_logging()    # chatty console logs (VIVA_LOG_LEVEL=DEBUG for more)
+    configure_logging()    # console logs; VIVA_LOG_LEVEL=DEBUG for more
     passphrase = os.environ.get("VIVA_PASSPHRASE")
     if not passphrase:
         raise SystemExit("Set VIVA_PASSPHRASE (it is never stored), in your "

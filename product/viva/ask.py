@@ -1,12 +1,14 @@
-"""What Viva needs from you, ranked — against a real vault, read-only.
-
-The question queue on the command line, the way debug_vault works. Shows the highest-stake questions first and summarizes the tail, so you
-can see at a glance what answering would actually move.
+"""Print a vault's question queue, highest stake first.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
     PYTHONPATH=../core:../merchant:. python3 -m viva.ask          # top 10
     PYTHONPATH=../core:../merchant:. python3 -m viva.ask 25       # top 25
+
+A bare number sets how many questions to show; a non-numeric first argument is
+taken as the passphrase. Each question prints its kind, amount, scope, text,
+evidence and option labels, followed by a one-line summary of the tail ranking
+pushed below the fold.
 
 Nothing is written and no model is called.
 """

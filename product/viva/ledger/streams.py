@@ -1,33 +1,21 @@
 """Streams — the same money, arriving again.
 
-A **stream** is every movement sharing a counterparty and a rail. It is the unit
-at which recurring money is actually understandable: one rent, one payroll, one
-subscription, one person you settle up with. A transaction is too small a unit to
-carry that meaning and a category is too large.
+A **stream** is every movement sharing a counterparty and a rail: one rent, one
+payroll, one subscription, one person you settle up with.
 
-Two decisions shape everything here.
-
-**The key is (counterparty, rail), not counterparty alone.** A large retailer
-is both a monthly subscription and a shop you visit; one institution receives both
-a savings sweep and a loan repayment. Keyed on the counterparty alone, the
-interval and amount statistics are computed over a mixture and describe nothing.
+**The key is (counterparty, rail), not counterparty alone.** A large retailer is
+both a monthly subscription and a shop you visit; one institution receives both a
+savings sweep and a loan repayment. Keyed on the counterparty alone, the interval
+and amount statistics would be computed over a mixture.
 
 **Streams are derived, never stored.** This module is a projection over the
-ledger and holds no state between calls, which is what makes the invariant in
-`order_independent` true rather than aspirational: a person who loads a year in
-one afternoon and a person who loads one statement a month must arrive at the
-same beliefs about the same money. Every tempting optimisation here — incremental
-feature updates, cached statistics keyed by last-seen — breaks that quietly.
+ledger and holds no state between calls, so a person who loads a year in one
+afternoon and a person who loads one statement a month arrive at the same
+beliefs about the same money.
 
-**Not every movement has a counterparty.** A real vault made that obvious in a
-way the design had not: the two largest streams by count were a person paying
-their own credit cards, and dozens of singleton streams were brokerage activity
-lines — `You Sold Short-term gain: $155.46` mints a stream key of its own, and
-there is no counterparty anywhere in it. Measuring a rhythm in money that never
-left your life, or in a phrase describing a capital gain, is measuring noise with
-a straight face.
-
-So a stream carries a **role**:
+**Not every movement has a counterparty** — a payment to your own card, or a
+brokerage activity line such as `You Sold Short-term gain`. So a stream carries a
+**role**:
 
     counterparty   somebody was on the other side
     internal       the other side is an account of YOURS — proven by a live
@@ -35,27 +23,20 @@ So a stream carries a **role**:
     activity       an investment account's own line, which names no party
     mixed          the occurrences disagree, which is itself a finding
 
-Marked, never dropped. Dropping would hide movements the totals still contain;
-marking lets the report separate them and lets a later layer decide.
+Marked, never dropped: the totals still contain those movements, and marking
+lets a report separate them.
 
-Two corrections a real vault forced, both worth keeping visible.
+**Role is derived from the stream, not carried in its key**, so a counterparty
+whose movements are only partly linked stays one stream and is reported `mixed`
+rather than splitting in two.
 
-**Role is derived from the stream, not carried in its key.** Keyed on role, one
-counterparty split in two the moment the transfer matcher linked *some* of its
-movements and not others — the same money appearing twice under one name, which
-is exactly the failure this module exists to prevent. A stream whose occurrences
-disagree is now `mixed`, and that is a signal about missing links rather than a
-second stream.
+**Role does not consult `nature`.** `nature` answers "does this count as
+spending?" and role answers "is there someone on the other side?" A mortgage
+payment is not spending and still has a party; only a live transfer link proves
+the other side is yours.
 
-**Role does not consult `nature`.** It did, and a mortgage servicer came back
-`internal`: `nature` answers *"does this count as spending?"* and role answers
-*"is there someone on the other side?"* A mortgage payment is not spending and
-still has a party. Only a live transfer link proves the other side is yours.
-
-This module deliberately contains **no hypotheses**. It reports what the ledger
-holds: how often, how much, how steady, through which rail. That is useful on its
-own, it is checkable against a statement by hand, and it is the evidence any later
-inference has to be measured against.
+This module contains no hypotheses. It reports what the ledger holds: how often,
+how much, how steady, through which rail.
 """
 
 from __future__ import annotations
@@ -71,32 +52,26 @@ from merchantcore.resolve import resolve_descriptor
 
 STREAM_VERSION = "stream-v1"
 
-# Below this many observations there is no cadence to speak of — one interval is
-# not a rhythm. Reported, but never described as recurring.
+# Below this many observations a stream is reported but never described as
+# recurring: one interval is not a rhythm.
 MIN_FOR_CADENCE = 3
 
 # An interval is "steady" when its mean absolute deviation is within this share
-# of the median. Deliberately generous: a monthly bill lands on business days,
-# so 30/31/28-day gaps and weekend drift are the same rhythm.
+# of the median. Generous enough that a monthly bill landing on business days —
+# 28, 30 and 31-day gaps — reads as one rhythm.
 STEADY_INTERVAL_RATIO = 0.25
 
 # Amounts are "fixed" below this coefficient of variation. A subscription that
-# changes price once a year is still fixed; a utility never is.
+# changes price once a year is still fixed; a utility is not.
 FIXED_AMOUNT_CV = 0.05
 
 
 def _as_date(value):
-    """Coerce a movement's date to a real `date`.
+    """Coerce a movement's date to a real `date`, or None if it will not parse.
 
-    The ledger carries dates as **ISO strings** — `MovementInfo.date` is a `str`,
-    and every other projection compares them lexically, which is correct for
-    ordering and silently wrong for arithmetic. Streams are the first thing here
-    that subtracts two dates, so this is where the two representations have to
-    meet.
-
-    Coerced at the boundary rather than defended against everywhere: an interval
-    is the whole point of a stream, and `str - str` failing deep inside a
-    property is a worse error than a bad date failing here."""
+    The ledger carries dates as ISO strings, which other projections compare
+    lexically; streams subtract them, so the two representations meet here at
+    the boundary rather than inside an interval property."""
     if isinstance(value, date):
         return value
     text = str(value or "").strip()[:10]
@@ -108,8 +83,8 @@ def _as_date(value):
 
 @dataclass
 class Occurrence:
-    """One movement's place in a stream — enough to compute features and to show
-    a person the receipt, and nothing else."""
+    """One movement's place in a stream: the date, amount, account and
+    description its features are computed from."""
     date: date
     amount: Decimal
     account: str
@@ -130,10 +105,7 @@ class Stream:
     refused: bool = False
     roles: list = field(default_factory=list)     # one per occurrence
     # Every impersonal value each slot has ever held on this stream, not just
-    # the first. A brand's city is only its city if every visit agreed — and a
-    # stream that kept one occurrence's slots could never notice the
-    # disagreement, so it would report a chain's first city as a fact about the
-    # chain.
+    # the first, so `agreed` can tell a brand-level fact from a per-visit one.
     field_values: dict = field(default_factory=dict)   # slot -> set of values
 
     @property
@@ -141,12 +113,11 @@ class Stream:
         return _stream_role(self.roles) if self.roles else COUNTERPARTY
 
     def agreed(self) -> dict:
-        """Slot values every occurrence of this stream agreed on.
+        """Slot values every occurrence of this stream agreed on, `{slot: value}`.
 
         What varies belongs to the visit; what does not belongs to the
         counterparty. A shop seen once in one city keeps its city; a chain seen
-        in five has none, and that absence is the correct answer rather than a
-        missing one."""
+        in five has none."""
         return {k: next(iter(v)) for k, v in sorted(self.field_values.items())
                 if len(v) == 1}
 
@@ -193,9 +164,9 @@ class Stream:
 
     @property
     def interval_mad(self):
-        """Mean absolute deviation from the median interval. Chosen over standard
-        deviation because one missed month should not make a steady stream look
-        erratic, and MAD is what a person would compute by eye."""
+        """Mean absolute deviation from the median interval, or None with no
+        intervals. Used instead of standard deviation so one missed month does
+        not make a steady stream look erratic."""
         iv, med = self.intervals, self.median_interval_days
         return (sum(abs(x - med) for x in iv) / len(iv)) if iv else None
 
@@ -223,9 +194,8 @@ class Stream:
 
     @property
     def amount_cv(self):
-        """Coefficient of variation. `None` below two observations — a single
-        amount has no variation, and reporting 0.0 would read as 'perfectly
-        fixed' when it means 'nothing to compare'."""
+        """Coefficient of variation, or None below two observations — a single
+        amount has nothing to compare, which is not the same as 0.0."""
         vals = [float(abs(o.amount)) for o in self.occurrences]
         if len(vals) < 2:
             return None
@@ -246,9 +216,9 @@ class Stream:
 
     @property
     def day_of_month_is_stable(self) -> bool:
-        """Within three days of one anchor. A bill due on the 1st posts on the
-        1st, the 2nd or the 3rd depending on the weekend, and treating those as
-        three different rhythms would hide every real one."""
+        """True when every occurrence falls within three days of one anchor day,
+        wrapping around month end. A bill due on the 1st posts on the 1st, 2nd
+        or 3rd depending on the weekend, and those are one rhythm."""
         mode = self.day_of_month_mode
         if mode is None or self.n < MIN_FOR_CADENCE:
             return False
@@ -259,13 +229,12 @@ class Stream:
 
     @property
     def cadence_class(self) -> str:
-        """Observed, never asked for. §2 of the transaction-intelligence spec
-        classes this K3 for exactly this reason: which cadence a person is on is
-        a fact about their plan, and the ledger holds it directly.
+        """weekly | biweekly | monthly | quarterly | annual | irregular |
+        unknown — measured from this stream's own intervals, never borrowed from
+        a brand's usual cadence.
 
-        `unknown` below the observation floor, and it stays `unknown` rather than
-        borrowing a brand's usual cadence — that borrowing is what the precedence
-        rule forbids."""
+        `unknown` below ``MIN_FOR_CADENCE`` observations; `irregular` above it
+        when the intervals are not steady or match no band."""
         if self.n < MIN_FOR_CADENCE or not self.interval_is_steady:
             return "unknown" if self.n < MIN_FOR_CADENCE else "irregular"
         med = self.median_interval_days
@@ -314,21 +283,19 @@ COUNTERPARTY, INTERNAL, ACTIVITY, MIXED = ("counterparty", "internal",
 def movement_role(movement, account_kind=None) -> str:
     """One movement's role, from evidence about the OTHER SIDE only.
 
-    `linked` is a live transfer link — the transfer matcher proved the other
-    side is an account of yours. That is the only thing consulted, deliberately:
-    `nature` was tried and removed, because it answers a spending question and a
-    mortgage servicer is not spending and is still a party."""
+    An investment account's own line is `activity`. Otherwise the only signal
+    consulted is `linked`, a live transfer link proving the other side is an
+    account of yours; `nature` is not consulted, because it answers a spending
+    question rather than a counterparty one."""
     if (account_kind or "") == "investment":
         return ACTIVITY
     return INTERNAL if getattr(movement, "linked", False) else COUNTERPARTY
 
 
 def _stream_role(roles) -> str:
-    """One role for the whole stream. Disagreement is reported, not resolved.
-
-    A counterparty whose movements are partly linked is one counterparty with
-    some links missing — a finding about the transfer matcher, not two
-    counterparties."""
+    """One role for the whole stream. Disagreement is reported, not resolved:
+    a stream mixing `counterparty` and `internal` roles is `mixed`, and any
+    other disagreement resolves to `activity` if present, else `mixed`."""
     seen = set(roles)
     if len(seen) == 1:
         return seen.pop()
@@ -347,9 +314,8 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
     `kind_for(movement) -> str` gives the account kind, so an investment
     account's own activity lines are marked rather than read as counterparties.
 
-    Ingest order is never consulted, and no state survives the call. That is the
-    whole of the order-independence guarantee; there is nowhere else for it to
-    leak from."""
+    Ingest order is never consulted and no state survives the call, so the
+    result depends only on the set of movements passed in."""
     movements = list(movements)
     # The ACH name/description split needs the statement as a whole, so it is
     # computed once here over every descriptor rather than per line.
@@ -360,12 +326,10 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
         res = resolve_descriptor(m.description,
                                  profile_for(m) if profile_for else None,
                                  ach_split)
-        # A refused line still recurs and is still money; it simply gets no
-        # decomposition. Keying it on the whole normalized line keeps it visible
-        # instead of dropping it, which is what "kept local and whole" means.
-        # The brand when a layer could name one, the deterministic key when not.
-        # `normalize_merchant` runs over the brand too, so the key stays a
-        # canonical form rather than whatever casing the bank used this month.
+        # The brand when a layer could name one, the resolver's deterministic
+        # key when not — so a refused line is still keyed and still counted, it
+        # simply gets no decomposition. `normalize_merchant` runs over the brand
+        # too, so the key is canonical rather than whatever casing the bank used.
         counterparty = (res.counterparty if res.is_person
                         else (normalize_merchant(res.brand) or res.key))
         if not counterparty:
@@ -380,9 +344,8 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
             streams[st.key] = st
         when = _as_date(m.date)
         if when is None:
-            # A movement with an unreadable date cannot join a rhythm. Skipped
-            # from the stream rather than defaulted into one, because a wrong
-            # date does not make a stream noisy — it makes its cadence wrong.
+            # A movement with an unreadable date is skipped rather than
+            # defaulted into a rhythm it would put wrong.
             continue
         st.occurrences.append(Occurrence(date=when, amount=m.amount,
                                          account=m.account,

@@ -50,18 +50,9 @@ def account_key(institution: str, account_number: str, account_ref: str) -> str:
 
 # Words that are not distinctive account tokens — shared across institutions or
 # products, so they can't identify WHICH account a description names.
-# A token is generic when SOMEBODY ELSE'S ACCOUNT ALSO HAS IT — not when it
-# appears on a list somebody wrote in English.
+# A token is generic when another account also carries it.
 #
-# There used to be a stopword list here: "chase", "bank", "card", "checking",
-# "the", "and", "for". It was guessing at what `distinctive_tokens` can simply
-# look up. "chase" is generic in a vault where every account is Chase and
-# perfectly distinctive in one holding a single Chase account beside a Citi
-# card — a fixed list cannot know which vault it is in, and the vault can.
-#
-# What remains here is the shape rule only: a token must be long enough to be a
-# word rather than an initial, and the holder's own name is excluded because it
-# is shared by every account they own and so distinguishes none of them.
+# Minimum length for a token to count as a word rather than an initial.
 MIN_TOKEN = 4
 
 
@@ -88,26 +79,16 @@ def account_tokens(institution: str, number: str, ref: str) -> set[str]:
 
 
 def distinctive_tokens(per_account: dict, institution_of: dict | None = None) -> dict:
-    """Per account, the tokens that actually NAME it. Two rules, both structural.
+    """Map each account to the tokens that name it, from `per_account`.
 
-    **Unique among your accounts.** A token two of your accounts both carry
-    names neither of them. This is the job a stopword list was doing, done from
-    the accounts in front of us: "chase" is generic in a vault where every
-    account is Chase and distinctive in one holding a single Chase account, and
-    a fixed list cannot know which vault it is in.
+    A token is kept when it is unique across the given accounts AND either
+    contains a digit or equals that account's institution in `institution_of`.
+    The digit rule excludes label words such as "card" that are unique by
+    accident; the institution is exempt because uniqueness is the whole test
+    for a name.
 
-    **Identifier-shaped, or the institution.** Uniqueness alone is not enough,
-    and a real test caught why: an account LABELLED "Card 2222" contributes the
-    token "card", which is unique among two accounts and is still the most
-    generic word on a card statement. So a label word must carry a digit to
-    count — `2222`, `401k`, `plus2` — because a digit is what makes a token an
-    identifier rather than a description. The institution is exempt: it is a
-    name, not a description, and uniqueness is the whole test for it.
-
-    What this deliberately gives up: "TRANSFER TO SAVINGS" between two accounts
-    at one bank no longer links itself, because "savings" describes a kind and
-    names no account. It becomes a question, which is the honest answer — that
-    is exactly the guess the old `_DEPOSITORY_WORDS` list was making."""
+    A token describing a kind rather than an account ("savings") therefore names
+    nothing, and a transfer relying on it is left as a question."""
     inst = {a: (i or "").strip().lower() for a, i in (institution_of or {}).items()}
     seen: dict = {}
     for toks in per_account.values():

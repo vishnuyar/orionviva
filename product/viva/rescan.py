@@ -1,16 +1,21 @@
-"""Rescan an existing vault — link internal transfers and corroborate held
-statements across everything already ingested, without a new upload.
+"""Sweep an existing vault: heal gaps, corroborate held statements, and link
+internal transfers across everything already ingested.
 
-Transfer detection and cross-document corroboration normally run during ingest.
-Statements ingested *before* that machinery existed (or before a counterpart
-arrived) are eligible but were never re-scanned. This runs the full sweep once
-over the current vault: stitch gaps, close conflict-holds a counterparty now
-attests, and detect transfers among all posted movements. It appends only links
-and heals (append-only) — nothing is overwritten, and it is idempotent.
+Transfer detection and cross-document corroboration normally run during ingest,
+so statements ingested before their counterpart arrived were never re-scanned.
+This runs the full sweep once over the current vault: stitch gaps, close
+conflict-holds a counterparty now attests, and detect transfers among all posted
+movements. Append-only: it writes links and heals, overwrites nothing, and is
+idempotent.
+
+Prints what the sweep did, the transfer link count before and after, external
+spending by currency, and how many possible transfers await confirmation.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
     PYTHONPATH=../core:. python3 -m viva.rescan
+
+The passphrase may be given as the first argument instead of in the environment.
 """
 
 from __future__ import annotations

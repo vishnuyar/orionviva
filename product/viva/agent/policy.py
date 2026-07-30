@@ -1,60 +1,29 @@
 """What should happen next, and whether anyone needs to be asked.
 
-Everything built so far is a tool a person types. An agent cannot type. This is
-the layer between: it looks at a vault and returns **proposed actions with their
-preconditions already evaluated** — no model calls, no side effects, no
-questions. The agent reads the list, checks it against a budget, and acts.
+`assess` reads a vault's shape and returns proposed `Action`s with their
+preconditions already evaluated and their cost estimated. Pure: no model calls,
+no writes, no questions. The thresholds are data in `RULES`.
 
-Three ideas hold it together.
+Every action proposed here is mechanical — a pair has enough lines and no
+grammar, a grammar's recent coverage has dropped, brands are unknown. What a
+movement means is the question queue's, not this module's. `AUTONOMOUS` names
+the rules an agent may act on alone; `NEEDS_RATIFICATION` names the ones a
+person must approve.
 
-**The rules are data.** `RULES` below is a list of conditions and consequences,
-not logic buried in a CLI. Changing when the agent induces a grammar is editing
-a value, not editing a function — the same choice this project already made for
-the document-type registry and the expectations registry.
-
-**Autonomy over procedure, deference over meaning.** An action here is always
-mechanical: a pair has enough lines and no grammar; a grammar's recent coverage
-has dropped; brands are unknown. Nothing in this module decides what a movement
-*means* — that is the question queue's job, and it goes to a person because only
-a person knows whether five hundred to a friend was rent or a loan. An agent that
-answered those itself would be less useful, not more autonomous.
-
-**Blast radius decides who ratifies.** An agent may induce a grammar and use it
-on this vault without asking, because a wrong grammar here is wrong for one
-person and the drift check will catch it. Publishing one to the commons needs a
-human, because a wrong grammar there is wrong for everybody and no automated
-check can catch the failure that matters — a grammar can cover 90% of lines
-while putting cities in `{brand}`, and only reading it finds that.
-
-That last point is worth stating plainly rather than burying: **every quality
-gate in this system assumes a human eventually reads the templates.** Coverage,
-holdout, drift and narrow-template checks all measure whether a template
-*matched*, never whether it *slotted correctly*. There is no automated substitute
-today, so the boundary is drawn where an unread grammar can do the least harm.
+Design rationale: docs/the-maintenance-agent.md
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# --- what an action costs, so a budget can be applied before anything runs ---
-# Deliberately an estimate in CALLS, not currency: the price of a call is the
-# adapter's business and changes without warning, while the count is a property
-# of the plan and is what a runaway loop inflates.
-#
-# For induction this is calls PER ATTEMPT — merchantcore's MAX_ROUNDS, each round
-# shown only what the last one missed. The number of attempts is `best_of` below,
-# and the two MULTIPLY. Stating that here because they did not multiply until
-# 2026-07-29: the first dry run against a real vault planned three inductions at
-# three calls each against a ceiling of twelve, and would have spent up to
-# twenty-seven. A ceiling computed from an estimate that omits a multiplier is
-# not a ceiling; it is a number printed next to the spending.
+# What an action costs, in model calls, so a budget can be applied before
+# anything runs. For induction this is calls PER ATTEMPT (merchantcore's
+# MAX_ROUNDS); an estimate multiplies it by the rule's `best_of`.
 CALLS = {"induce": 3, "reinduce": 3, "enrich": 1}   # enrich: per batch of ~40
 
-# --- the rules, as data ------------------------------------------------------
-#
-# Each is (name, why it fires, what it proposes). The thresholds live here so
-# that tuning the agent is editing a value rather than editing behaviour.
+# The rules, as data: the thresholds each one fires on and the sentence it
+# reports itself with.
 RULES = {
     "induce_missing": {
         "min_lines": 30,          # below this, a grammar memorises rather than learns
@@ -73,22 +42,18 @@ RULES = {
     },
 }
 
-# Actions an agent may take unattended, because a mistake stays inside this
-# vault and is recoverable. Anything not listed here is proposed and waits.
+# Rules an agent may act on unattended. Anything not listed here is proposed
+# and waits.
 AUTONOMOUS = frozenset({"induce_missing", "reinduce_drifted", "enrich_unknown"})
 
-# Actions that change what other people see. A human ratifies these, always.
+# Rules that change what other people see. A human ratifies these, always.
 NEEDS_RATIFICATION = frozenset({"publish_grammar", "publish_merchant"})
 
 
 def best_of(rule: dict) -> int:
-    """How many independent attempts a rule buys.
+    """How many independent attempts a rule buys; at least 1.
 
-    Induction is stochastic — the same prompt over the same forty lines has
-    returned 27 templates at 84% and 33 at 82% — so one attempt is a coin toss
-    reported as a measurement. Living in RULES rather than in the executing code
-    means the estimate and the execution read the same number, which is exactly
-    what they did not do the first time."""
+    Read by both the call estimate and the executing code, so the two agree."""
     return max(1, int(rule.get("best_of", 1)))
 
 
@@ -98,7 +63,7 @@ class Action:
 
     rule: str
     kind: str                       # induce | reinduce | enrich | publish | ask
-    target: str                     # "Chase/depository", "brands", …
+    target: str                     # "Northgate/depository", "brands", …
     why: str
     evidence: dict = field(default_factory=dict)
     estimated_calls: int = 0
@@ -120,8 +85,8 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
 
     Pure: no model calls, no writes, no questions. `pairs` and `recent` are
     `{(institution, kind): {descriptor: movements}}` all-time and recent; `store`
-    is a `ProfileStore`. Deterministic, so two runs a minute apart propose the
-    same things and an agent can safely re-assess on every wake.
+    is a `ProfileStore`. Deterministic: the same inputs always yield the same
+    list, in the same order — grammars, then brands, then waits.
     """
     from merchantcore.induce import drift
     from merchantcore.profile import is_inducible
@@ -131,7 +96,7 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
 
     for (inst, kind), counts in pairs.items():
         if not is_inducible(kind):
-            continue                       # names no party; instrumentcore's job
+            continue                       # names no party; nothing to induce
         target = f"{inst}/{kind}"
         current = store.latest_for(inst, kind)
 
@@ -145,8 +110,7 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
                     evidence={"distinct_lines": len(counts),
                               "movements": sum(counts.values())}))
             else:
-                # Named, not silently skipped: an agent that reports nothing to
-                # do is indistinguishable from one that is broken.
+                # Below the threshold: reported as a `wait`, not omitted.
                 out.append(Action(
                     rule="induce_missing", kind="wait", target=target,
                     why=f"only {len(counts)} distinct line(s); a grammar fitted "
@@ -173,20 +137,18 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
             estimated_calls=max(1, (unknown_brands + 39) // 40) * CALLS["enrich"],
             evidence={"unknown_brands": unknown_brands}))
 
-    # A grammar first, brands second, waiting last. Not arbitrary: a grammar
-    # changes what a brand IS, so enriching before inducing buys records keyed on
-    # a string the next hour will rewrite.
+    # Grammars first, brands second, waits last: a grammar changes how a brand
+    # is keyed, so induction has to run before enrichment.
     order = {"induce": 0, "reinduce": 1, "enrich": 2, "publish": 3, "wait": 4}
     return sorted(out, key=lambda a: (order.get(a.kind, 9), a.target))
 
 
 def within_budget(actions, remaining_calls: int) -> tuple[list, list]:
-    """Split into what fits and what does not, in the order given.
+    """Split into `(fits, deferred)` by cumulative `estimated_calls`.
 
-    An agent that triggers model calls needs a ceiling, or one bad loop is
-    expensive in a way nobody notices until the invoice. The ceiling is counted
-    in calls rather than currency because a call count is a property of the plan
-    while a price is the adapter's business and changes without warning."""
+    Walks `actions` in the order given and admits each while the running total
+    stays within `remaining_calls`. A `wait` action always fits and costs
+    nothing."""
     fits, deferred, spent = [], [], 0
     for a in actions:
         if a.kind == "wait" or spent + a.estimated_calls <= remaining_calls:

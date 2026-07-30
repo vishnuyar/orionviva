@@ -1,21 +1,17 @@
-"""What are you worth, and on what evidence? — the net-worth curve.
+"""Print net worth at one date, or the whole curve.
 
     VIVA_VAULT_DIR=<vault> python -m viva.debug_networth            # latest point
     VIVA_VAULT_DIR=<vault> python -m viva.debug_networth 2026-03-31 # any date
     VIVA_VAULT_DIR=<vault> python -m viva.debug_networth --series   # the curve
 
-Net worth here is a **function of date**, not a number with a date attached, so
-there is no single figure to be wrong about — only `net_worth(D)`, built from
-every account's last-known measurement at or before D.
+Net worth is a function of date: `net_worth(D)` is built from every account's
+last-known measurement at or before D.
 
-What this prints that a bank app will not:
-
-  * every line's **own** as-of date, which is usually earlier than the point it
-    belongs to. That gap is the truth about your coverage.
-  * the **provable** subtotal — the part backed by a document whose arithmetic
-    checks. The rest counts (we trust you) and is marked.
-  * what is **missing**, and the document that would settle it. A total that
-    silently omits a mortgage is a lie of omission; this one says so.
+A point prints, per currency, assets, liabilities, net and the provable subtotal
+— the part backed by a document whose arithmetic checks. Then every line with
+its own as-of date, marked where that is earlier than the point; the accounts
+the total excludes and why; and what is missing, with the document that would
+settle it. `--series` prints net and provable at each point instead.
 
 Pure projection: reads the vault, writes nothing, needs no model.
 """
