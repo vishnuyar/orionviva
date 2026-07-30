@@ -1,6 +1,6 @@
 # Transfer Links & Cross-Document Corroboration — one movement, two witnesses
 
-**Status:** Implemented · **Last updated:** 2026-07-24 · **Origin:** the doc-type registry lets a person hold several of their own accounts. The moment they do, an internal payment (checking → their own card) appears on *two* statements, so "how much did I spend" counts the same money twice. Real ingests surfaced a second, deeper case: a statement whose reconciliation gap is *exactly* a movement the counterparty document already attests (a card missing a payment that the checking statement plainly shows). Both are the same recognition — **two legs, one movement** — so this slice builds them together.
+**Status:** Implemented · **Last updated:** 2026-07-30 · **Origin:** the doc-type registry lets a person hold several of their own accounts. The moment they do, an internal payment (checking → their own card) appears on *two* statements, so "how much did I spend" counts the same money twice. Real ingests surfaced a second, deeper case: a statement whose reconciliation gap is *exactly* a movement the counterparty document already attests (a card missing a payment that the checking statement plainly shows). Both are the same recognition — **two legs, one movement** — so this slice builds them together.
 
 **Invariants touched:** T1 (every posting carries provenance — a link cites *both* source lines; a corroborated leg cites the issuer that actually attested it), T2 (verification: cross-document corroboration is a *second, independent* reconciliation identity, run by deterministic code), T4 (a link/correction is an append-only event, reversible, nothing overwritten). Principle 2 (**never bluff a number** — a gap is never closed on a non-decisive link) and principle 7 (autonomous where safe, deferential where it counts) are the load-bearing constraints. This is the verification layer — "the actual hard problem" — getting a new, cheap, strong rung.
 
@@ -97,13 +97,12 @@ Core built and tested (`ingest/transfers.py`, projection transfer overlay,
   `python -m viva.rescan`, so statements ingested *before* transfer detection
   existed get linked without a re-upload. Idempotent.
 - ✅ **Matcher tuned for real data** — date window 5 days; the strong hint
-  recognizes the counterparty's institution / last-4 / product token (e.g. a bank
-  line "PAYMENT TO IMPRINT" naming the card); the holder's name is deliberately
-  not a token (shared across a person's own accounts). Auto-link needs that
-  naming hint; a match is only *suggested* when a leg carries a **transfer word**
-  ("payment", "autopay", "transfer", …) — a pure amount coincidence with no such
-  word is treated as ordinary spending, not a question (the fix for the
-  review-flooding a real vault showed: 29 → the plausible few).
+  recognizes a token that belongs to one of the two accounts and to **no other
+  account the person holds**. The holder's name is deliberately not a token
+  (shared across a person's own accounts). _Superseded in part on 2026-07-30 —
+  the keyword tables this bullet used to describe are gone, and the printed date
+  now breaks ties. See **[The evidence a link stands
+  on](#the-evidence-a-link-stands-on)** below._
 - ✅ **Clean confirmation** — within one scan a movement is *consumed* once linked
   and never offered again; `confirm_transfer` is a guarded no-op if either
   movement is already linked (a movement joins at most one transfer);
@@ -124,6 +123,112 @@ Deferred (noted, not built — a clean v1 boundary):
   event vocabulary and the entity-resolution block it will reuse are in place;
   this is the next increment. Until then a one-sided transfer degrades gracefully
   (counts as spending until the other account is ingested, then auto-nets).
+
+## The evidence a link stands on
+
+**Amended 2026-07-30.** This section replaces the description of the matcher
+above and is the authoritative account of what makes a pair decisive. It exists
+in this document rather than in comments beside the code, so that the code can
+say what it does and this can say why it does it that way.
+
+### What was deleted, and why it must not come back
+
+Five English word lists used to decide this: `STOPWORDS`, `_STOPWORDS`,
+`_TRANSFER_WORDS`, `_CARD_WORDS`, `_DEPOSITORY_WORDS`. `_CARD_WORDS` was
+load-bearing and **always true** — a credit card statement prints "card" on
+nearly every line, so for any card destination the hint held for anything, and
+the surviving constraints were equal amount and uniqueness alone.
+
+A rule that is always true is not a loose rule. It is a rubber stamp that reads,
+in the log, exactly like a check that passed. On a real vault it linked a cash
+withdrawal to an unrelated card payment of the same amount a day apart, which
+removed both legs from spending: real cash spending vanished from the figure,
+and a card payment was recorded as a transfer that never happened. Two wrong
+numbers from one word.
+
+The replacement is a property of the data rather than of the language: a token
+that belongs to one of these two accounts **and to no other account the person
+holds**. Computed from the accounts themselves, so nothing has to guess which
+words are generic — genericness is measured. One refinement earned by a failing
+test: a *label* token must also carry a digit, because an account labelled
+"Card 2222" otherwise donates the word "card" back to the very list that was
+just deleted. The institution is exempt, being a name rather than a kind.
+
+### Why the printed date, and why it can never link on its own
+
+Removing the word lists left 29 matches the software could no longer decide.
+Twenty-four were unanswerable only because nothing read the date the bank had
+printed on the source line — one checking account paying one card four times in
+eight days, every credit reading identically, the account evidence equally true
+of all four candidates. The descriptor parser had been extracting that date as a
+named slot the whole time (`{date}` under an induced grammar, `posting_date`
+under the published rules); the matcher never looked.
+
+`weigh()` scores every (source, destination) pair:
+
+| signal | worth |
+| --- | --- |
+| account evidence (a distinctive token, or a proven `account_ref` slot) | 2 |
+| the printed date matches the candidate's date | 1 |
+| **floor — nothing links below this** | **2** |
+
+The floor is the design. **A matching date can never create a link**; it only
+separates pairs that already qualify. A rent payment whose description happens
+to contain a date still scores 1 and is still asked about. The new signal had to
+be strictly a discriminator and never a second way in, because the thing just
+deleted was a signal that had quietly become a way in.
+
+`decide()` requires both directions to be unambiguous — the source's best
+candidate is strictly best, and the source is strictly the best claimant of it —
+and refuses ties outright, so no outcome depends on the order a dict iterated.
+
+**Dates are read without knowing the country.** Both orders are tried. Every
+candidate is already inside the window, and two dates that close cannot be six
+months apart, so at most one reading can ever match: the ambiguity that would
+demand a locale setting is arithmetically unreachable. The year is never parsed
+either, which is what lets a 12/31 line posting on 01/02 match with no year
+arithmetic (I5).
+
+### `DATE_WINDOW_DAYS` is not the dial
+
+Two intuitions about it are both backwards, and both cost time before being
+written down.
+
+- **Narrowing it unlinks nothing.** `_candidates` only looks at movements where
+  `linked` is false. The constant governs the next scan, never the last one.
+- **A narrower window can produce MORE auto-links, not fewer.** Auto-linking
+  needs exactly one candidate; a wider window finds more candidates and pushes
+  pairs out of decisive and into questions. On the real vault, window 0 gave 9
+  auto-links and window 1 gave 0.
+
+The dial is the evidence, not the window.
+
+### What a link records
+
+`decided_by` names the **rule** that fired (`named_account+printed_date`), never
+the value it matched. `account_ref` is a personal slot; the matcher lives inside
+that boundary and may read it, but nothing it reads may reach anything shareable
+(T9). The projection surfaces `decided_by` so a link can be audited later without
+re-deriving it.
+
+### Questions that cannot be answered stop being asked
+
+A suggestion whose candidates have **all** since been linked elsewhere is
+dropped on the read side. `confirm_transfer` refuses a movement already in a
+transfer, so the only answer available was "no". Filtered rather than withdrawn
+by an event: revoke the link that took the candidate and the question returns.
+
+`sweep` used to report the *delta* of open questions and printed "-23" on a
+sweep that answered twenty-three of them. Open questions are a level.
+
+### Result on the real vault
+
+Sixty-seven of sixty-eight existing links survived the stricter hint; the one
+that did not was the ATM coincidence, and revoking it was correct. Of the 29
+questions the deletion produced, 24 resolved on the printed date. The five that
+remain are the five that should: the ATM again, a tuition payment that collided
+by amount, a duplicated statement line, and two whose true counterpart is not in
+the vault because that month's statement was never ingested.
 
 ## Notes for future slices (read these when you build them)
 
