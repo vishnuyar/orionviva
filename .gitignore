@@ -10,6 +10,8 @@
 CLAUDE.md
 docs/TODO.md
 docs/phases.md
+.claude/agents/chronicler.md
+briefs/
 
 # Throwaway commit scripts. They carry a deny-list of real names spelled out in
 # full — the guard against real names in the repo is itself a file full of them,
