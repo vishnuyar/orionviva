@@ -1,8 +1,9 @@
 """Reporter: turn scorecards into a findings document (markdown + JSON).
 
-No composite leaderboard, by design — one scorecard per
-(candidate, doc_type, locale). The confidently-wrong rate leads, because the
-whole thesis rides on it.
+One scorecard per (candidate, doc_type, locale); no composite score is computed
+or emitted. The confidently-wrong rate is the first table.
+
+Design rationale: docs/benchmark-harness-design.md
 """
 
 from __future__ import annotations

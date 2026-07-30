@@ -1,4 +1,4 @@
-"""Tests for verify.match and the hash-chained capture store."""
+"""Tests for vivacore.verify.match and the hash-chained capture store."""
 
 import json
 
@@ -15,8 +15,7 @@ def test_amount_strict_and_normalized_both_pass():
 
 
 def test_amount_normalized_passes_when_strict_fails():
-    # Model wrote "1234.56" for printed "$1,234.56": semantically right,
-    # fidelity note only.
+    # "1234.56" against a printed "$1,234.56": same value, different characters.
     r = match_amount("1234.56", "$1,234.56", "en-US", "USD")
     assert not r.strict
     assert r.normalized
@@ -31,8 +30,8 @@ def test_amount_wrong_value_fails():
 
 def test_german_amount_cross_format():
     r = match_amount("1234.56", "1.234,56", "de-DE", "EUR")
-    # extracted uses dot-decimal; under de-DE rules "1234.56" -> single '.' with
-    # 2 trailing digits -> decimal. Equal after normalization.
+    # Under de-DE rules a single '.' with two trailing digits reads as the
+    # decimal separator, so "1234.56" and "1.234,56" normalize equal.
     assert r.normalized
 
 
@@ -81,7 +80,7 @@ def test_tampering_breaks_the_chain(tmp_path):
     store.append({"doc_id": "d1", "candidate": "m1", "run_index": 1, "status": "ok", "cost_usd": 1.00})
     store.append({"doc_id": "d1", "candidate": "m1", "run_index": 2, "status": "ok", "cost_usd": 2.00})
 
-    # Adversary edits a cost in place.
+    # Edit a cost in place, leaving the record's own hash untouched.
     lines = path.read_text().splitlines()
     record = json.loads(lines[0])
     record["cost_usd"] = 0.0

@@ -1,9 +1,9 @@
 """ModelSpec — how to call one pinned model. Shared by the product and the bench.
 
-A model spec describes a model to call: which adapter, which pinned version,
-where, with what limits and (for cost accounting) what prices. Both the product
-and the benchmark describe models to call the same way, so this lives in the
-core. Keys come from environment variables only — never from a spec object.
+A spec names the adapter, the pinned model version, where to reach it, its
+limits, and (for cost accounting) its prices. API keys are not part of it: a
+spec carries the name of an environment variable, and the key is read from the
+environment at call time.
 """
 
 from __future__ import annotations
@@ -20,22 +20,18 @@ class ModelSpec:
     adapter: str                      # "anthropic" | "openai-compatible"
     model: str                        # pinned model identifier
     base_url: str | None = None       # required for openai-compatible
-    api_key_env: str | None = None    # env var holding the key (None = keyless, e.g. Ollama)
+    api_key_env: str | None = None    # env var holding the key (None = keyless, e.g. a local server)
     temperature: float = 0.2
     max_tokens: int = 8192
     cost_per_mtok_in: float = 0.0     # USD per million input tokens (0 for local)
     cost_per_mtok_out: float = 0.0
     timeout_s: float = 300.0
     json_mode: bool = False           # ask the provider for guaranteed-valid JSON
-    # How many times to CONTINUE across provider truncation. The default suits
-    # document extraction, where a long transaction list genuinely gets cut off
-    # and stitching the tail back on is the right repair.
-    #
-    # Set to 0 for any call whose output is SHORT AND BOUNDED. Continuation is
-    # the wrong repair there: hitting the limit means the model is misbehaving,
-    # not that the answer was too long, and stitching six more chunks onto a
-    # runaway reply turns one recoverable failure into unparseable garbage at
-    # six times the cost. Truncation should then be REPORTED, not repaired.
+    # How many times to continue across provider truncation. The shared default
+    # suits document extraction, where a long transaction list genuinely gets
+    # cut off and stitching the tail back on is the repair. A call whose output
+    # is short and bounded sets this to 0, so truncation is reported rather than
+    # repaired. docs/from-your-words-to-the-ledger.md
     max_continuations: int | None = None   # None = the shared default
     notes: str = ""
 

@@ -1,16 +1,16 @@
 """The enrichment engine — merchantcore makes its own batched model calls.
 
-Given a batch of merchants (a normalized key + a privacy-linted example), the
-Enricher builds a versioned prompt, calls a model through a ``vivacore.models``
-adapter (provider-agnostic, pinned, cost-tracked — the same socket the reader
-uses), and parses each result into a graded ``MerchantRecord``. A model batch is
-graded ``corroborated`` — stronger than a lone guess, weaker than a human
-``verified``. The model call is *injected* (``extract_fn(prompt) -> text``), so
-this is offline-testable and the live edge is swappable; ``model_extractor``
-wraps a real adapter for production.
+Given a batch of merchants (a normalized key plus a privacy-linted example),
+the Enricher builds a versioned prompt, calls a model, and parses each result
+into a ``MerchantRecord`` graded ``corroborated`` — above a lone guess, below a
+human ``verified``.
 
-Only impersonal data is ever seen here — the keys and linted examples the product
-submits. The Enricher cannot learn anything about amounts, dates, or accounts.
+The model call is injected as ``extract_fn(prompt) -> text``, so this path is
+offline-testable and the live edge is swappable. ``model_extractor`` wraps a
+``vivacore.models`` adapter for production.
+
+Only impersonal data reaches here: the keys and linted examples the product
+submits. Nothing about amounts, dates or accounts crosses.
 """
 
 from __future__ import annotations
@@ -32,41 +32,35 @@ log = logging.getLogger(__name__)
 
 ENRICHMENT_VERSION = "enrich-v4"       # the version stamped on records
 
-# The four majors, repeated here rather than imported: merchantcore must not
-# depend on the product — the commons knows nothing about a ledger. These are
-# the closed answer space an implication may name.
+# The closed answer space an implication may name. Spelled out here rather than
+# imported: merchantcore does not depend on the product.
 MAJORS = ("expense", "asset", "liability", "income")
 KINDS = ("business", "instrument", "peer")
 
-# Enrichment is N *independent* merchants, so a whole run is never gambled on one
-# giant JSON that overruns the model's output budget and truncates mid-object,
-# returning nothing. The batch is split into chunks small enough that each call
-# returns a complete, valid JSON object, and merged. One bad chunk cannot sink
-# the rest, and progress is logged per chunk.
+# How many merchants ride in one call. Bounds the reply so that a parse failure
+# costs one chunk and the rest of the run still lands.
 DEFAULT_CHUNK_SIZE = 40
 
 PROMPTS = pathlib.Path(__file__).resolve().parent / "prompts"
 
-# The enrichment prompt lives in `prompts/<version>.txt`, never in a literal
-# here: a recorded version must always resolve to the exact text that produced
-# the record.
+# The prompt lives in `prompts/<version>.txt`, so a recorded version resolves
+# to the exact text that produced the record.
 _PROMPT = promptstore.load(PROMPTS, ENRICHMENT_VERSION)
 
 
 
 def build_enrichment_prompt(merchants: dict,
                             known_subcategories=None) -> tuple[str, str]:
-    """Compose the enrichment prompt for a batch (``{key: example}``) and its
-    version (taxonomy + prompt + normalizer, so a record can be re-derived).
+    """Compose the enrichment prompt for a batch, and the version it carries.
 
-    ``known_subcategories`` is the vault's EXISTING finer vocabulary. It crosses
-    the impersonal-data boundary safely because a subcategory is impersonal by
-    construction — "coffee shop" says nothing about who bought coffee, or when,
-    or how much."""
+    ``merchants`` is ``{key: example}``. Returns ``(prompt, version)``, where
+    the version is enrichment prompt + taxonomy + normalizer, so a record can
+    be re-derived from what produced it.
+
+    ``known_subcategories`` is the vault's existing finer vocabulary, shown to
+    the model so it reuses a value rather than inventing a synonym. Impersonal:
+    a subcategory says nothing about who bought what, when, or for how much."""
     lines = "\n".join(f"- {key}: {example}" for key, example in merchants.items())
-    # The vocabulary that already exists is shown to the model BEFORE it invents
-    # a new one: preventing subcategory sprawl costs nothing, while resolving or
-    # cleaning it up afterwards does.
     header = _PROMPT.format(
         primaries=", ".join(PRIMARY_CATEGORIES) + ", other",
         known_subcategories=", ".join(known_subcategories or []) or "none yet")
@@ -87,27 +81,25 @@ def _find_json(text: str) -> str | None:
 
 
 def parse_enrichment(text: str, keys, version: str) -> dict:
-    """Parse a model reply into ``{key: MerchantRecord}``. Unknown/missing keys
-    are skipped (never guessed into existence)."""
+    """Parse a model reply into ``{key: MerchantRecord}``.
+
+    Keys the reply does not carry are absent from the result rather than
+    guessed into existence."""
     return parse_enrichment_chunk(text, keys, version)[0]
 
 
 def parse_enrichment_chunk(text: str, keys, version: str) -> tuple[dict, bool]:
-    """The records, AND whether the reply parsed at all.
+    """Returns ``(records, parsed)`` — the records, and whether the reply
+    parsed at all.
 
-    Two failures hide behind an empty result and they are not the same thing:
+    Two different failures produce an empty ``records``, and the caller needs
+    to tell them apart:
 
-      * the reply parsed and this merchant was not in it — the model looked and
-        declined to name it. Asking again, with the same example, buys the same
-        silence.
-      * the reply did not parse — truncated, a stray delimiter, a wrapper the
-        finder missed. Nothing about the MERCHANT failed. A retry, or a smaller
-        chunk, is likely to work.
-
-    Collapsing them costs real money in one direction and buys a permanent
-    silence in the other. On the first live agent run, one chunk of forty came
-    back as `Expecting ',' delimiter: line 298` and every one of those forty
-    merchants would have been recorded as unanswerable."""
+      * ``parsed`` is True — the reply was well-formed and this merchant was
+        not in it. The same example will buy the same silence.
+      * ``parsed`` is False — the reply was truncated or otherwise unreadable.
+        Nothing was learned about any merchant in the chunk, and a retry or a
+        smaller chunk may work."""
     blob = _find_json(text)
     if blob is None:
         log.warning("enrich: no JSON object found in the reply")
@@ -144,14 +136,14 @@ def parse_enrichment_chunk(text: str, keys, version: str) -> tuple[dict, bool]:
 
 
 def clean_implications(raw) -> list[dict]:
-    """Keep only implications that speak the closed vocabulary, and drop the rest.
+    """Keep only implications that speak the closed vocabulary.
 
-    An implication is a claim that someone HOLDS something — a loan, a property,
-    an investment account. Acting on a wrong one would create an account nobody
-    has, across every transaction with that counterparty, in every vault that
-    ever syncs this record. So the parser is strict on the closed fields and
-    forgiving on the free ones, and **silence is always an acceptable answer**:
-    a merchant that implies nothing is the normal case, not a parse failure."""
+    An implication is a claim that someone holds something — a loan, a
+    property, an investment account. An item whose ``major`` is not one of
+    MAJORS is dropped and logged; ``on`` and ``confidence`` fall back to
+    "both" and "suggested"; the free-text fields are truncated. Returns [] for
+    anything that is not a list; an empty list is a normal answer, not a parse
+    failure."""
     out: list[dict] = []
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
@@ -179,24 +171,29 @@ def clean_implications(raw) -> list[dict]:
 
 
 class Enricher:
-    """Chunked merchant enrichment. ``extract_fn(prompt) -> text`` is injected;
-    ``chunk_size`` bounds how many merchants ride in a single call so the reply
-    stays a complete, parseable JSON object."""
+    """Chunked merchant enrichment.
+
+    ``extract_fn(prompt) -> text`` is injected. ``chunk_size`` bounds how many
+    merchants ride in a single call, so the reply stays a complete JSON
+    object."""
 
     def __init__(self, extract_fn, chunk_size: int = DEFAULT_CHUNK_SIZE,
                  known_subcategories=None):
         self._extract = extract_fn
         self._chunk_size = max(1, int(chunk_size))
         self._known = list(known_subcategories or [])
-        # Keys whose CHUNK never parsed. Reported separately from keys the model
-        # simply did not mention, because a caller that remembers "asked and got
-        # nothing" must not remember a transport failure that way.
+        # Keys whose chunk never parsed, reset at the start of every `enrich`.
+        # Reported separately from keys the model did not mention, so a caller
+        # recording "asked and got nothing" does not record a transport failure.
         self.unparsed: list[str] = []
 
     def enrich(self, merchants: dict) -> dict:
-        """Enrich ``{key: example}`` → ``{key: MerchantRecord}``, one model call
-        per chunk of at most ``chunk_size`` merchants, merged. A chunk whose reply
-        fails to parse contributes nothing but never aborts the others."""
+        """Enrich ``{key: example}`` into ``{key: MerchantRecord}``.
+
+        One model call per chunk of at most ``chunk_size`` merchants, merged. A
+        chunk whose reply does not parse contributes nothing and does not abort
+        the others; its keys land in ``self.unparsed``. Returns {} for an empty
+        input, without calling the model."""
         if not merchants:
             return {}
         items = list(merchants.items())
@@ -232,9 +229,8 @@ def model_extractor(spec):
 
     def _extract(prompt: str) -> str:
         result = adapter.extract([], prompt)
-        # The adapter continues across provider truncation; if it STILL comes back
-        # truncated, the chunk may be incomplete — say so rather than quietly
-        # dropping the tail records. Never bluff.
+        # The adapter continues across provider truncation. A reply still
+        # truncated after that may be missing tail records, so it is logged.
         if result.finish_reason == "length":
             log.warning("enrich: reply still truncated after continuation — "
                         "a chunk may be incomplete; consider a smaller chunk_size")

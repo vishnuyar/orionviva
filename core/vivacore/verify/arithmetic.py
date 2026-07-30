@@ -1,9 +1,11 @@
-"""The identities financial documents impose on themselves. Product embryo.
+"""The identities financial documents impose on themselves.
 
-Exact Decimal arithmetic, no floats, no tolerance by default: a statement that
-doesn't reconcile to the cent is a finding, not a rounding error. (A tolerance
-parameter exists because some documents legitimately round displayed subtotals;
-using it is a recorded decision, never a silent default.)
+Exact Decimal arithmetic, no floats, and no tolerance by default: a statement
+that does not reconcile to the cent fails. Every check takes an explicit
+``tolerance`` for documents that round their displayed subtotals; it defaults to
+zero and is recorded in the result.
+
+Passing a float raises TypeError rather than being coerced (T2).
 """
 
 from __future__ import annotations
@@ -47,8 +49,8 @@ def check_balance_identity(
 ) -> CheckResult:
     """opening + sum(signed transactions) == closing.
 
-    The single strongest check a bank/card statement offers: if it passes,
-    every transaction amount and both balances corroborate each other at once.
+    A bank or card statement's own flow check: passing it corroborates every
+    transaction amount and both balances at once. Transactions carry their sign.
     """
     opening_d = _as_decimal(opening)
     closing_d = _as_decimal(closing)
@@ -74,9 +76,8 @@ def check_paystub_identity(
 ) -> CheckResult:
     """gross - sum(deductions) == net.
 
-    A pay stub's self-check, the divergent sibling of the balance identity: if it
-    passes, the gross, every deduction, and the net corroborate each other at
-    once. The universal gate runs it; the formula is the pay stub profile's data.
+    A pay stub's own check: passing it corroborates the gross, every deduction
+    and the net at once. Deductions are given as positive magnitudes.
     """
     gross_d = _as_decimal(gross)
     net_d = _as_decimal(net)
@@ -102,11 +103,9 @@ def check_brokerage_identity(
 ) -> CheckResult:
     """sum(position market values) + cash == account total.
 
-    A brokerage statement's self-check, the divergent sibling of the balance
-    identity: a point-in-time *snapshot* consistency test rather than a flow. If
-    it passes, every position value and the cash corroborate the stated total at
-    once — the densest, most model-free cross-check, so a single misread holding
-    fails it loudly. The formula is the brokerage profile's data.
+    A brokerage statement's own check: a point-in-time snapshot test rather than
+    a flow. Passing it corroborates every position value and the cash against
+    the stated total at once, so a single misread holding fails it.
     """
     cash_d = _as_decimal(cash)
     total_d = _as_decimal(total)
@@ -130,7 +129,9 @@ def check_sum(
     label: str = "line items sum to total",
     tolerance: Decimal | str = "0",
 ) -> CheckResult:
-    """sum(items) == total — subtotals, fee totals, deposit totals, etc."""
+    """sum(items) == total — subtotals, fee totals, deposit totals.
+
+    ``label`` names the check in the result."""
     tol = _as_decimal(tolerance)
     total_d = _as_decimal(total)
     expected = sum((_as_decimal(i) for i in items), start=Decimal("0"))

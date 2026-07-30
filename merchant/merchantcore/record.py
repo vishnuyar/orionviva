@@ -1,10 +1,11 @@
 """MerchantRecord — the merchant as a multi-attribute entity.
 
 Category is attribute #1; ``attributes`` is an open bag (website, description,
-socials, reviews) so the record grows by adding fields, never by restructuring.
-Every record is graded (a model enrichment is `corroborated`, a human ruling
-`verified`, a commons prior `corroborated`) and versioned (normalizer + the
-enrichment prompt that produced it), so a stale record can be re-derived.
+socials, reviews), so the record grows by adding fields rather than by
+restructuring. Every record carries a grade — ``corroborated`` for a model
+enrichment or a commons prior, ``verified`` for a human ruling — and a version
+(normalizer + the enrichment prompt that produced it), so a stale record can be
+re-derived.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from dataclasses import dataclass, field
 @dataclass
 class MerchantRecord:
     key: str                              # the normalized merchant id
-    canonical_name: str = ""              # "Amazon"
+    canonical_name: str = ""              # the merchant's own name for itself
     category: str = ""                    # PRIMARY category (one of the 16 buckets)
     subcategory: str = ""                 # the finer, model-provided value ("streaming")
     attributes: dict = field(default_factory=dict)   # website, logo_url, mcc, description

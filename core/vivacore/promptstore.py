@@ -1,26 +1,15 @@
-"""Prompts live in FILES, not in Python. The loader that makes that true.
+"""The loader for prompts held as files.
 
 Every prompt this project sends to a model is a `.txt` file in a `prompts/`
-directory beside the code that uses it, one file per version, **the filename is
-the version id**. Nothing else. No YAML, no front-matter, no templating engine —
-placeholders stay ordinary `str.format` fields.
-
-Why files rather than a versioned dict in Python:
-
-  * A recorded `prompt_version` must resolve to the exact text that produced a
-    reading. A literal can be edited in place, and then the version a stored
-    reading names no longer resolves to anything.
-  * The path of least resistance decides. Creating a file is the cheap way to
-    add a prompt, and model-facing text written as a Python literal fails a
-    test.
-  * A prompt is not code. It is the most domain-specific data in the system, it
-    is what a reviewer most needs to read, and one day it is what a person tunes
-    for their own agent. None of that wants a Python file.
+directory beside the code that uses it, one file per version, the filename being
+the version id. No YAML, no front-matter, no templating engine — placeholders
+stay ordinary `str.format` fields.
 
 Prompts are read-only package data. There is no user-editable override
-directory: an edited prompt breaks the digest chain, so a stored read would
-resolve to text the person changed. `load()` takes the directory as an argument
-so that an override can later become a second search path rather than a rewrite.
+directory; `load()` takes the directory as an argument, so an override can later
+become a second search path rather than a rewrite.
+
+Design rationale: docs/prompts-as-files.md
 """
 
 from __future__ import annotations
@@ -32,12 +21,10 @@ SUFFIX = ".txt"
 
 
 class PromptNotFound(KeyError):
-    """A recorded version that resolves to nothing.
+    """A recorded prompt version that resolves to no file.
 
-    Some stored read claims to have been produced by instructions that cannot be
-    shown. Raised loudly rather than defaulted, because a silent fallback to the
-    *current* prompt would quietly re-explain old readings with new
-    instructions."""
+    Raised rather than defaulted: a stored reading must resolve to the exact
+    instructions that produced it (T8), never to the current ones."""
 
 
 def _dir(package_dir: str | pathlib.Path) -> pathlib.Path:
@@ -45,7 +32,9 @@ def _dir(package_dir: str | pathlib.Path) -> pathlib.Path:
 
 
 def load(package_dir: str | pathlib.Path, version: str) -> str:
-    """The exact bytes of one prompt version. No interpolation, no stripping."""
+    """The exact text of one prompt version — no interpolation, no stripping.
+
+    Raises PromptNotFound if the version has no file."""
     path = _dir(package_dir) / f"{version}{SUFFIX}"
     if not path.is_file():
         raise PromptNotFound(
@@ -58,14 +47,15 @@ def load(package_dir: str | pathlib.Path, version: str) -> str:
 
 
 def ids(package_dir: str | pathlib.Path) -> list[str]:
-    """Every version present, sorted. The inventory a retention test walks."""
+    """Every version present in the directory, sorted. Empty if it does not
+    exist."""
     d = _dir(package_dir)
     return sorted(p.stem for p in d.glob(f"*{SUFFIX}")) if d.is_dir() else []
 
 
 def digest(package_dir: str | pathlib.Path, version: str) -> str:
-    """sha256[:16] of a version's text — the pin that makes a released prompt
-    immutable. Changing a released file changes this and fails the freeze."""
+    """sha256[:16] of a version's text — the pin a released prompt is frozen
+    against. Editing a released file changes this."""
     return hashlib.sha256(load(package_dir, version).encode()).hexdigest()[:16]
 
 

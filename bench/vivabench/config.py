@@ -5,10 +5,10 @@ Two files drive everything:
 - ``models.yaml``  — the candidate roster, budget ceiling, data directory.
 - ``corpus.yaml``  — the exam paper: documents, types, locales.
 
-Design rules enforced here rather than politely suggested:
-- Unpinned model aliases ("latest") are refused outright.
+Rules enforced at load time, each raising ``ConfigError``:
+- Unpinned model aliases ("latest") are refused.
 - Every document must declare a locale and currency.
-- API keys come from environment variables only — never from config files.
+- API keys are named by environment variable; no key is ever read from a file.
 """
 
 from __future__ import annotations
@@ -18,9 +18,8 @@ from pathlib import Path
 
 import yaml
 
-# The model spec and shared error live in the core (vivacore), so the product
-# and the bench describe models to call the same way. In bench, a "candidate"
-# (a model sitting the admission exam) is exactly a ModelSpec.
+# The model spec and shared error live in vivacore, so the product and the bench
+# describe models the same way. A bench "candidate" is exactly a ModelSpec.
 from vivacore.errors import ConfigError
 from vivacore.models import ModelSpec
 
@@ -37,12 +36,10 @@ class BenchConfig:
     data_dir: Path
     runs_per_document: int = 5
     # Pages of one document extracted in parallel. Pages are independent calls,
-    # so this changes only wall-clock, never what is measured. Kept modest so a
-    # provider's rate limiter is not mistaken for a candidate's failure.
+    # so this moves wall-clock only, never what is measured.
     page_concurrency: int = 6
     # What the model is shown: "image" (page pixels), "text" (the issuer's own
-    # embedded PDF text), or "text+image" (both). A benchmark dimension, not a
-    # setting to guess at.
+    # embedded PDF text), or "text+image" (both).
     input_mode: str = "image"
 
     def candidate(self, name: str) -> Candidate:

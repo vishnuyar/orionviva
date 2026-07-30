@@ -1,13 +1,15 @@
 """Answer-key construction: two model families draft, agreement auto-verifies,
 disagreements go to human audit, then freeze + hash.
 
-The circularity break: we never trust a single model to write ground truth. Two independent families extract; where they agree on a value,
-that value is corroborated and auto-accepted; where they disagree, a human
-rules. The frozen key's hash is committed so re-runs prove they used it.
+Two independent model families extract the same document. Where they agree a
+value is accepted with ``verified_by="cross-model"``; where they disagree it goes
+to an audit worksheet for a person to rule on. `freeze` returns the key's
+canonical hash, which a later run cites to show it used the same key.
 
-Model calls happen on the author's machine (their keys). This module is
-structured so the deterministic parts (merge, freeze, hash) are testable
-without any network.
+`merge_drafts`, `apply_audit` and `freeze` make no model calls; only `draft_key`
+needs the network.
+
+Design rationale: docs/benchmark-harness-design.md
 """
 
 from __future__ import annotations
@@ -49,7 +51,10 @@ def draft_key(
     page_cache: Path,
     log=print,
 ) -> tuple[AnswerKey, list[DraftEntry]]:
-    """Run the drafter models, merge into a draft key. Requires network + keys."""
+    """Run the drafter models and merge their claims, as `merge_drafts` returns.
+
+    Needs the network and the candidates' API keys. Raises ValueError with fewer
+    than two drafters."""
     if len(drafter_names) < 2:
         raise ValueError("Key drafting needs at least two different model families.")
     pages = render_pages(doc, page_cache)
@@ -64,9 +69,9 @@ def draft_key(
         if err:
             log(f"    WARNING: {name} output did not parse ({err}); skipping its draft")
             claims = []
-        # A drafter that was cut off saw only part of the document. Say so loudly:
-        # a key drafted from a truncated read would look corroborated while
-        # silently missing everything past the cut.
+        # A truncated or unparsed page contributed no claims, so the draft is
+        # incomplete for that page. Warn rather than fail: the entries that did
+        # come through are still usable, and the gap is visible in the log.
         if fields["pages_truncated"]:
             log(f"    WARNING: {name} was TRUNCATED on pages "
                 f"{fields['pages_truncated']} — its draft is incomplete.")
@@ -89,13 +94,16 @@ def merge_drafts(
     drafter_names: list[str],
     log=print,
 ) -> tuple[AnswerKey, list[DraftEntry]]:
-    """Merge two+ drafters' claims into a draft key by (type, normalized label).
+    """Merge two or more drafters' claims into a draft key.
 
-    Pure and network-free: the extractions come from wherever the caller got
-    them — a live run, or the raw log (draft-key --from-log). Where every
-    drafter agrees on a value, it is auto-corroborated (verified_by=cross-model);
-    everything else becomes a disagreement for human audit. This is the one
-    place cross-model agreement becomes ground truth, so it stays deterministic.
+    Claims are grouped by (type, normalized label). An entry reaches the key only
+    when every drafter produced that claim and their values agree under `_agree`,
+    stamped ``verified_by="cross-model"``; everything else comes back as a
+    DraftEntry with ``agree=False`` for audit.
+
+    Returns `(key, drafts)`: an unfrozen AnswerKey and one DraftEntry per distinct
+    claim, ordered by (type, label). Makes no model calls, so `extractions` may
+    come from a live run or from the raw log (``draft-key --from-log``).
     """
     from .corpus import file_sha256
 
@@ -148,5 +156,6 @@ def apply_audit(key: AnswerKey, drafts: list[DraftEntry]) -> AnswerKey:
 
 
 def freeze(key: AnswerKey) -> tuple[AnswerKey, str]:
+    """Mark the key frozen in place and return `(key, canonical_hash)`."""
     key.frozen = True
     return key, key.canonical_hash()

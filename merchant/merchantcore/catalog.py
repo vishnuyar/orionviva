@@ -1,10 +1,13 @@
 """The merchant catalog — the knowledge base, unencrypted because impersonal.
 
-Holds enriched ``MerchantRecord``s keyed by normalized merchant, plus a *pending
-queue* of merchants submitted for enrichment. Persists to a plain JSON file (it
-carries no personal data — only merchant knowledge). ``export`` produces the
-privacy-linted, commercial-only snapshot a commons contribution is hashed from;
-``merge`` imports commons priors (a local ruling always outranks an import).
+Holds enriched ``MerchantRecord``s keyed by normalized merchant, a pending
+queue of merchants submitted for enrichment, and the subset of that queue that
+was asked about and came back with nothing. Persists to a plain JSON file,
+which carries merchant knowledge and no personal data.
+
+``export`` produces the privacy-linted, commercial-only snapshot a commons
+contribution is hashed from; ``merge`` imports commons priors, where a local
+higher-grade ruling outranks an import.
 """
 
 from __future__ import annotations
@@ -30,16 +33,13 @@ class Catalog:
     def __init__(self, path: str | Path | None = None, shipped=None):
         self._records: dict[str, MerchantRecord] = {}
         self._pending: dict[str, str] = {}       # key -> example (awaiting enrichment)
-        # key -> the example that was ASKED ABOUT and came back with nothing.
-        # Without this, a merchant whose reply never parses is re-sent on every
-        # single run, at full price, silently — invisible when a person runs
-        # enrichment by hand and expensive the moment an agent does.
+        # key -> the example that was asked about and came back with nothing.
+        # Holding the example, not just the key, is what retires a non-answer
+        # when new evidence arrives.
         self._unanswered: dict[str, str] = {}
         self._path = Path(path) if path else None
-        # The seed that travels with the package, laid down FIRST so anything
+        # The seed that travels with the package, laid down first so anything
         # this installation learned or a person confirmed sits on top of it.
-        # Same precedence as a commons import: what you worked out beats what
-        # you were handed.
         self._shipped = Path(shipped) if shipped else None
         if self._shipped and self._shipped.exists():
             self._load_file(self._shipped)
@@ -49,9 +49,12 @@ class Catalog:
     # --- the pending queue (what the product submits) ----------------------
 
     def submit(self, hints) -> int:
-        """Queue unknown merchants for enrichment. ``hints`` is an iterable of
-        ``(key, example)`` — impersonal only. Already-known or already-pending
-        merchants are skipped (idempotent). Returns how many were newly queued."""
+        """Queue unknown merchants for enrichment.
+
+        ``hints`` is an iterable of ``(key, example)``. Each example is linted
+        here before it is stored. Merchants already in the catalog, and
+        merchants already queued against this same example, are skipped, so
+        this is idempotent. Returns how many were newly queued."""
         n = 0
         for key, example in hints:
             if not key or key in self._records:
@@ -59,16 +62,11 @@ class Catalog:
             example = linted_example(example)
             if self._pending.get(key) == example:
                 continue                 # already queued, against this same evidence
-            # Linted HERE as well as at the caller, deliberately. The pending
-            # queue is persisted to plain JSON that is unencrypted by decision
-            # and shared across vaults by decision, and anything submitted but
-            # never enriched sits in it indefinitely. Making the lint a property
-            # of the store rather than of every call site is what stops the next
-            # caller from reintroducing repair-list C2.
+            # Linted here as well as at the caller, so the lint is a property of
+            # the store: the pending queue persists to unencrypted JSON and
+            # anything submitted but never enriched sits in it indefinitely.
             self._pending[key] = example
-            # New evidence retires an old non-answer. The same snapshot rule the
-            # question queue uses for a decline: stay quiet while nothing has
-            # changed, ask again the moment it has.
+            # New evidence retires an old non-answer.
             self._unanswered.pop(key, None)
             n += 1
         return n
@@ -76,20 +74,17 @@ class Catalog:
     def pending(self) -> dict:
         """Merchants worth spending a model call on right now.
 
-        Excludes anything already asked about, against this very example, that
-        came back with nothing. A model that could not name a brand from one
-        example will not name it from the same example an hour later, and the
-        difference between those two beliefs is a call per merchant per run."""
+        The pending queue minus anything already asked about against this very
+        example and answered with nothing. A merchant returns here as soon as
+        its example changes."""
         return {k: v for k, v in self._pending.items()
                 if self._unanswered.get(k) != v}
 
     def queued(self) -> dict:
         """Everything in the queue, answered or not.
 
-        Separate from `pending` deliberately: this is what persists to plain
-        JSON, so it is what a privacy audit has to look at, while `pending` is
-        what a spender has to look at. One method answering both questions is how
-        a lint that guards the file drifts away from the file."""
+        This is what persists to plain JSON, so it is what a privacy audit
+        reads; `pending` is what a caller about to spend a model call reads."""
         return dict(self._pending)
 
     def unanswered(self) -> dict:
@@ -99,9 +94,9 @@ class Catalog:
     def mark_unanswered(self, keys) -> int:
         """Record that these keys were sent to a model and nothing came back.
 
-        Called with the keys of a batch minus the keys that returned a record —
-        parsing failures, omissions, and merchants the model declined to name,
-        which are indistinguishable from here and want the same treatment."""
+        Called with the keys of a batch minus the keys that returned a record.
+        A key not currently pending is ignored. Returns how many marks were
+        newly written, and saves only if any were."""
         n = 0
         for k in keys:
             example = self._pending.get(k)
@@ -135,14 +130,18 @@ class Catalog:
     # --- the commons --------------------------------------------------------
 
     def export(self) -> dict:
-        """The privacy-linted, shareable snapshot: commercial merchants only, no
-        pending queue, no personal data. The content a commons PR is hashed from."""
+        """The privacy-linted, shareable snapshot a commons PR is hashed from.
+
+        Records whose key passes ``is_shareable``, and nothing else — no
+        pending queue, no unanswered set."""
         return {k: r.to_dict() for k, r in self._records.items()
                 if is_shareable(k)}
 
     def merge(self, exported: dict) -> int:
-        """Import a commons snapshot as priors — a local higher-grade ruling wins.
-        Returns how many entries were newly applied."""
+        """Import a commons snapshot as priors.
+
+        An imported record is applied only when no local record exists or the
+        import's grade is strictly higher. Returns how many were applied."""
         n = 0
         for k, d in exported.items():
             r = MerchantRecord.from_dict(d)
@@ -170,6 +169,5 @@ class Catalog:
         self._records = {k: MerchantRecord.from_dict(v)
                          for k, v in data.get("records", {}).items()}
         self._pending = dict(data.get("pending", {}))
-        # Absent in catalogs written before this existed. An old catalog simply
-        # starts with nothing marked, which costs one more round of calls once.
+        # A catalog written without this key loads with nothing marked.
         self._unanswered = dict(data.get("unanswered", {}))

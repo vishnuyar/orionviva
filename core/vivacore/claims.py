@@ -1,11 +1,8 @@
 """Claim parsing and the answer-key schema.
 
-A model returns free-ish JSON (per prompts.EXTRACTION_PROMPT). This module
-turns that into typed Claim objects, tolerantly (models wrap JSON in prose,
-fences, etc.), and defines the frozen answer-key format.
-
-Product-embryo-adjacent: the Claim shape here is the first draft of the
-product's claims-layer schema.
+Turns the free-form JSON a model returns (per prompts.EXTRACTION_PROMPT) into
+typed Claim objects, tolerating the prose and code fences models wrap it in, and
+defines the frozen answer-key format.
 """
 
 from __future__ import annotations
@@ -32,7 +29,8 @@ class Claim:
 
     def key(self) -> tuple[str, str]:
         """A coarse identity for matching model output to truth: (type, label),
-        normalized. Values are compared separately by the verifier."""
+        with the label whitespace-collapsed and lowercased. Values are compared
+        separately, by the verifier."""
         return (self.type, _norm_label(self.label))
 
 
@@ -43,9 +41,10 @@ def _norm_label(label: str) -> str:
 def parse_claims(text: str) -> tuple[list[Claim], str | None]:
     """Extract claims from a model's text output.
 
-    Returns (claims, error). Tolerant of code fences and surrounding prose;
-    strict about the claim shape once JSON is found. A parse failure is data,
-    not an exception — the runner already recorded the raw text.
+    Returns ``(claims, error)`` and never raises: a parse failure comes back as
+    the error string with an empty claim list. Tolerant of code fences and
+    surrounding prose; strict about the claim shape once JSON is found. Entries
+    of an unknown type, or with no ``value_raw``, are skipped.
     """
     blob = _find_json(text)
     if blob is None:
@@ -113,7 +112,7 @@ def _find_json(text: str) -> str | None:
 
 @dataclass
 class KeyEntry:
-    """One ground-truth claim, human-verified. Carries locale and currency."""
+    """One ground-truth claim, with the locale and currency it is read under."""
 
     type: str
     label: str
@@ -147,8 +146,8 @@ class AnswerKey:
         }
 
     def canonical_hash(self) -> str:
-        """Stable hash over the entries (the frozen ground truth). Order-independent
-        so re-serialization can't change it."""
+        """sha256 over the entries. Independent of entry order, so
+        re-serialization cannot change it."""
         payload = sorted(
             json.dumps(asdict(e), sort_keys=True, ensure_ascii=False)
             for e in self.entries

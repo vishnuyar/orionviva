@@ -2,19 +2,19 @@
 
 A card descriptor is the flattened tail of ISO 8583 DE43, which is positional
 and fixed-width — merchant name, then city, then a state or country code. The
-card networks additionally specify structures that hold at every bank on earth:
-an asterisk at index 3, 7 or 12 separating a brand prefix from a product or
-sub-merchant; the 13-character city slot carrying a phone number or URL instead
-of a place when the card was not present; a small set of processor prefixes.
+card networks specify further structures that hold at every bank: an asterisk
+at index 2, 3, 7 or 12 separating a brand prefix from a product or
+sub-merchant, and the 13-character city slot carrying a phone number or URL
+instead of a place when the card was not present. An ACH line carries the NACHA
+Standard Entry Class code and Company Identification in its tail. All of that
+is specification, so it is parsed rather than learned or guessed.
 
-None of that needs to be learned, guessed, or asked about. It is specification,
-so it is parsed.
+A span is claimed only where a rule proves the claim. What is left over comes
+back as ``residue`` rather than being assigned to a plausible-looking field,
+and ``coverage`` reports how much of the string went unclaimed, so a parse that
+explains nothing says so.
 
-What this module refuses to do is as important as what it does. It claims a span
-only when a rule proves the claim. Whatever is left over is returned as
-``residue`` rather than assigned to a plausible-looking field, and ``coverage``
-reports how much of the string went unclaimed. A parse that explains nothing
-says so, instead of returning a confident brand that is really a city.
+Design rationale: docs/the-conduit-and-the-counterparty.md
 """
 
 from __future__ import annotations
@@ -28,18 +28,8 @@ PARSER_VERSION = "desc-v2"
 # character brand prefix, then '*', then the product or sub-merchant.
 # Processor-mandated, positional, and the same in every country.
 #
-# THIS REPLACED A LIST OF PROCESSOR NAMES (2026-07-29). There used to be a
-# `_PROCESSORS` tuple — "sq *", "tst*", "paypal *", and alongside them "pos
-# debit", "checkcard", "ach pmt", "web pymt". Two different things wearing one
-# name: the asterisk forms were already caught by this positional rule, and the
-# rest were English bank phrases doing classification, which is the exact thing
-# this package has deleted four times before. Adding index 2 catches the last
-# two the position missed (`ic*`, `pp*`) and the list goes.
-#
-# What is lost, honestly: on a US statement with no grammar, "POS DEBIT" and
-# "CHECKCARD" now stay in the brand candidate instead of being stripped. That
-# is a worse fallback for English and a correct one everywhere else, and a
-# grammar retires the fallback entirely.
+# Constraint: a processor prefix is claimed by the asterisk's position, never by
+# a list of processor names.
 _ASTERISK_AT = (2, 3, 7, 12)
 
 _DATE = re.compile(r"\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b")
@@ -52,25 +42,15 @@ _REGION_TAIL = re.compile(r"\b([A-Z]{2})\s*$")
 _REFERENCE = re.compile(r"\b(?=[A-Z0-9]*\d)[A-Z0-9]{6,}\b")
 _LONGNUM = re.compile(r"\b\d{4,}\b")
 
-# A wire is not a descriptor with more fields in it. It is a Fedwire/SWIFT
-# message dumped into a display line: the beneficiary bank's routing number, the
-# beneficiary's account and name, and — the reason this matters — an operator
-# free-text ``Ref:`` field carrying whatever the sender typed. On a property
-# purchase that is a street address; on a family transfer it can be anything.
+# Fedwire/SWIFT field tags. `Imad:` and `Omad:` are the input and output
+# message accountability data identifiers, `Bnf/` the beneficiary tag, `A/C:`
+# the account tag — message format, not English words.
 #
-# No slot name can protect a field whose contents are unconstrained, so this is
-# the one line shape refused a grammar outright rather than parsed carefully. It
-# stays local and whole. Two distinct markers are required, so an ordinary line
-# that happens to print "Ref:" is not swept up with it.
-#
-# These are Fedwire/SWIFT **field tags**, not words. `Imad:` and `Omad:` are the
-# input and output message accountability data identifiers, `Bnf/` the
-# beneficiary tag, `A/C:` the account tag — they are the message format, the same
-# category of thing as `PPD ID:`. An earlier version of this tuple also carried
-# the English phrases "wire transfer" and "swift", which would have been a
-# keyword list wearing a specification's clothes: they classify by language, so
-# they fail on the first non-English statement. Removed. Coverage is slightly
-# narrower and the rule is honest.
+# A wire is a Fedwire/SWIFT message dumped into a display line, and it carries
+# an operator free-text `Ref:` field holding whatever the sender typed. No slot
+# name can describe a field whose contents are unconstrained, so this is the one
+# line shape refused a grammar rather than parsed. Two distinct markers are
+# required, so an ordinary line printing "Ref:" is not swept up.
 _WIRE_MARKERS = (r"\bvia:", r"\ba/c:", r"\bimad:", r"\bomad:", r"\btrn:",
                  r"\bbnf/", r"\bref:")
 _WIRE = re.compile("|".join(_WIRE_MARKERS), re.I)
@@ -78,42 +58,39 @@ WIRE_RULE = "wire_message_dump"
 
 
 # The NACHA batch header, rendered. An ACH line ends with the Standard Entry
-# Class code and the Company Identification, in that order, always:
+# Class code and the Company Identification, in that order:
 #
 #     <Company Name (16)> <Company Entry Description (10)> <SEC (3)> ID: <id (10)>
 #
-# This is specification, not a bank convention — the same shape at every US bank
-# — so it is parsed rather than induced. What it CANNOT give deterministically is
-# the split between Company Name and Company Entry Description: the fields are
-# fixed-width in the file and the bank collapsed the padding on its way to the
-# display line, so the boundary is gone from any single line. `split_ach_heads`
+# The split between Company Name and Company Entry Description is not
+# recoverable from one line: the fields are fixed-width in the file and the
+# bank collapsed the padding on the way to the display line. `split_ach_heads`
 # recovers it from the statement as a whole.
-# The complete, closed set of NACHA Standard Entry Class codes. An enumeration
-# from a published standard, not a guess about the world — the same category of
-# constant as the asterisk indexes above, and unlike them it is US-scope, which
-# is why nothing outside this rule may depend on an SEC code existing.
+#
+# _SEC_CODES is the complete closed set from the published standard. Unlike the
+# asterisk indexes it is US-scope: nothing outside this rule may depend on an
+# SEC code being present.
 _SEC_CODES = ("PPD", "CCD", "CTX", "WEB", "TEL", "ARC", "BOC", "POP", "RCK", "IAT")
 _ACH_TAIL = re.compile(
     r"\b(" + "|".join(_SEC_CODES) + r")\s+ID:\s*(\S+)\s*$", re.I)
 
 
 def is_never_templatable(raw: str) -> bool:
-    """True for a line no induced grammar may ever claim.
+    """True for a line no induced grammar may claim: two or more wire markers.
 
-    Not a parsing judgement — a boundary one. A template that matched a wire
-    would put an operator free-text field into a named slot, and every slot name
-    in the vocabulary asserts something about its contents that a free-text
-    field cannot honour. Refusing the shape is the only honest answer, and it is
-    checked in one place so a future grammar cannot reintroduce the claim."""
+    A boundary judgement rather than a parsing one: a wire's operator free-text
+    field can hold anything, so no slot name can describe it. Consulted before
+    any template is tried."""
     return len({m.group(0).lower() for m in _WIRE.finditer(raw or "")}) >= 2
 
 
 @dataclass(frozen=True)
 class Slot:
-    """One claimed span, the rule that claimed it, and whether the rule PROVES
-    it. A published layout proves its slot; adjacency only suggests one, and the
-    difference has to survive into the record or the parse will be read as more
-    certain than it is."""
+    """One claimed span, the rule that claimed it, and how it was obtained.
+
+    `certain` is True when a published layout proves the slot and False when
+    only adjacency suggests it; the distinction rides into the record as
+    `provenance`."""
     name: str
     text: str
     start: int
@@ -146,16 +123,12 @@ class DescriptorParse:
 
     @property
     def clean(self) -> bool:
-        """At most ONE unclaimed run remains.
+        """At most one unclaimed run remains.
 
-        Layer 0 deliberately cannot claim the merchant name — no published rule
-        says where it ends — so demanding zero residue would fail on every
-        descriptor. What it can demand is that the leftovers be *contiguous*:
-        one run is a brand with its structure stripped away around it, while
-        scattered fragments mean the rules fired in the wrong places and the
-        parse should not be trusted. This is Layer 0's reconciliation identity;
-        the stricter every-character version belongs to an induced profile,
-        which does claim the name."""
+        Layer 0 cannot claim the merchant name, since no published rule says
+        where it ends, so zero residue is not achievable here. One contiguous
+        run is a brand with the structure stripped away around it; scattered
+        fragments mean the rules fired in the wrong places."""
         return self.residue_runs <= 1
 
     def to_dict(self) -> dict:
@@ -172,8 +145,10 @@ class DescriptorParse:
 
 
 def _claim(taken: list[bool], start: int, end: int) -> bool:
-    """Mark a span as claimed. Refuses to claim a span that overlaps another,
-    so two rules can never both own the same characters."""
+    """Mark a span as claimed, returning whether it was.
+
+    A span overlapping an already-claimed one is refused and nothing is marked,
+    so two rules cannot both own the same characters."""
     if any(taken[start:end]):
         return False
     for i in range(start, end):
@@ -203,8 +178,8 @@ def parse_descriptor(raw: str) -> DescriptorParse:
             break
 
     # The ACH tail, before anything else can claim its digits. The Company
-    # Identification is a long number and the reference rules would otherwise
-    # take it, losing the one field that identifies an originator across months.
+    # Identification is a long number, so the reference rules below would
+    # otherwise take it.
     am = _ACH_TAIL.search(text)
     if am:
         if _claim(taken, am.start(1), am.end(1)):
@@ -268,33 +243,12 @@ def parse_descriptor(raw: str) -> DescriptorParse:
 
 
 def word_owners(descriptors) -> dict:
-    """`{word: set of normalized keys printing it}` — evidence, not a rule.
+    """`{word: set of normalized keys printing it}`, for alphabetic words only.
 
-    **A rule built on this was removed on 2026-07-28, and the removal is the
-    useful part of this docstring.** It classified a word as the bank's own
-    template text when it appeared under enough distinct counterparties, and
-    stripped such words out of brand candidates. On a real vault of 1,076
-    movements it produced, in descending order of frequency:
+    A diagnostic for the streams report; nothing keys on the counts. The count
+    is over normalized keys, which fragment one merchant into several.
 
-        141 tx · 70 payment · 59 zelle · 58 plano · 45 to · 29 card · 29 id
-        · 25 dallas · 23 frisco · 20 purchase · 20 mckinney · 16 you
-        · 15 <a real merchant> · 13 ppd · 12 web · 8 atm · 7 <a real merchant>
-
-    Three populations — the bank's sentence words, geography, and merchants —
-    interleaved by frequency, so no threshold separates them. Cut high and the
-    genuine ACH markers are missed; cut low and merchant names are destroyed.
-
-    Worse, the metric is circular. It counts distinct *normalized keys*, and
-    normalization fragments one merchant into many keys — a merchant with
-    fifteen descriptor variants looks like fifteen counterparties agreeing. The
-    rule needed merchant identity to count correctly and existed to help produce
-    it.
-
-    Identifying a bank's own sentence is Layer 1's job, and Layer 1 does it from
-    evidence with a lossless check rather than from a frequency cut. This
-    function survives only as a diagnostic for the streams report — it describes
-    a vault, it decides nothing.
-    """
+    Returns {} for fewer than ten distinct non-empty lines."""
     lines = [d for d in {x for x in descriptors if x} if d.strip()]
     if len(lines) < 10:
         return {}
@@ -309,25 +263,18 @@ def word_owners(descriptors) -> dict:
 
 
 def linted_example(descriptor: str) -> str:
-    """The most the boundary may carry: brand words, and nothing else.
+    """The most the enrichment boundary may carry: brand words, and nothing else.
 
-    The docs have said for weeks that what crosses to enrichment is "a normalized
-    key and a **linted** example". What actually crossed was the raw bank
-    descriptor — so store numbers, cities, order ids and posting dates travelled
-    to a model provider, and the pending queue persisted them in plain JSON
-    (repair-list C2).
+    Every span a published rule can prove is removed first, then every
+    remaining token carrying a digit, then anything shorter than two
+    characters. Truncated to 64 characters. Lossy by design — the example
+    exists to help identify a brand.
 
-    This is the lint. Every span a published rule can prove is removed first,
-    then every remaining token carrying a digit, then anything too short to be a
-    word. What is left is brand words. It is deliberately *lossy*: the example
-    exists to help identify a brand, and a store number has never helped identify
-    a brand.
-
-    It cannot promise the result is impersonal — a peer payment's residue is a
-    person's name, and only the slot it came from can settle that (an induced
-    grammar's ``{counterparty}``, or ``is_shareable`` until then). What it does
-    promise is that no number, date, reference or contact detail crosses, which
-    is what C2 is about."""
+    Guarantees that no number, date, reference or contact detail crosses. Does
+    not guarantee the result is impersonal: a peer payment's residue is a
+    person's name, and only the slot it came from settles that (an induced
+    grammar's ``{counterparty}``, or ``is_shareable`` where no grammar
+    exists)."""
     candidate = brand_candidate(parse_descriptor(descriptor or ""))
     words = [w for w in re.split(r"\s+", candidate)
              if w and not any(c.isdigit() for c in w)]
@@ -339,23 +286,19 @@ def split_ach_heads(descriptors) -> dict:
     """Split each ACH head into Company Name and Company Entry Description,
     using the statement as a whole.
 
-    A single line cannot give this. The two fields are fixed-width in the NACHA
-    file — 16 characters then 10 — but the bank collapsed the padding on the way
-    to the display line, so `Acmeco ACH Pmt` and `Bluewave Holdings Payroll`
-    offer no boundary a per-line rule could find.
+    A single line cannot give this: the two fields are fixed-width in the NACHA
+    file (16 characters then 10), and the bank collapsed the padding on the way
+    to the display line, so `Acmeco ACH Pmt` carries no boundary a per-line
+    rule could find.
 
-    The statement gives it, from the same property `skeletons()` uses: **the
-    entry description recurs and the company name does not.** A bank prints
-    `ACH Pmt`, `Payroll`, `Direct Dep`, `Assn Dues`, `Sale` across many
-    originators; each originator's name appears on its own lines and nowhere
-    else. So a trailing word shared with another originator is the description,
-    and everything before it is the name.
+    The corpus gives it, from the same property `skeletons` uses: the entry
+    description recurs across originators and the company name does not. So the
+    longest trailing phrase of up to four words that at least one other
+    originator also prints is the description, and what precedes it is the name.
 
-    Parameter-free and needs no vocabulary of known descriptions — which matters,
-    because a list of known entry descriptions is precisely the kind of table
-    this codebase keeps deleting. It is also honest about its limits: an
-    originator that appears once, with a description no other originator uses,
-    cannot be split and is returned name-only.
+    Parameter-free; no vocabulary of known descriptions is consulted. An
+    originator appearing once, with a description no other originator uses,
+    cannot be split and comes back name-only with an empty description.
 
     Returns ``{descriptor: (company_name, entry_description)}`` for ACH lines.
     """
@@ -365,8 +308,8 @@ def split_ach_heads(descriptors) -> dict:
         if p.ach and p.residue:
             heads[d] = p.residue.split()
 
-    # How many DISTINCT originators end with each trailing word. A word ending
-    # two originators' heads is the bank's, not a company's.
+    # How many distinct originators end with each trailing phrase. A phrase
+    # ending two originators' heads is the bank's, not a company's.
     tail_owners: dict[str, set] = {}
     for d, words in heads.items():
         for i in range(1, min(len(words), 4) + 1):     # a description is 1-4 words
@@ -379,7 +322,7 @@ def split_ach_heads(descriptors) -> dict:
         # Longest trailing phrase that more than one originator also prints.
         for i in range(min(len(words), 4), 0, -1):
             if len(words) == i:
-                continue                      # a head that is ALL description names nobody
+                continue                      # a head that is all description names nobody
             phrase = " ".join(w.lower() for w in words[-i:])
             if len(tail_owners.get(phrase, ())) > 1:
                 best = " ".join(words[-i:])
@@ -392,14 +335,12 @@ def split_ach_heads(descriptors) -> dict:
 def brand_candidate(parse: DescriptorParse) -> str:
     """The part of a descriptor most likely to name the merchant.
 
-    Normally what remains once every provable span is removed. But a residue of
-    only digits or a stub too short to be a name is not a brand — a marketplace
-    that prints an order id where the retailer belongs leaves nothing usable, and
-    the aggregator is then the most specific true thing available.
+    The residue, once every provable span is removed — unless the residue holds
+    no alphabetic run of three characters or more, in which case the
+    `aggregator` slot is returned instead (a marketplace printing an order id
+    where the retailer belongs leaves nothing usable).
 
-    A candidate offered to identification, never an identity by itself: the
-    string that names a brand and the string a bank happened to print are
-    different things, and only a knowledge base can say so."""
+    A candidate for identification, not an identity."""
     residue = parse.residue
     usable = any(len(tok) >= 3 and tok.isalpha() for tok in re.split(r"[^A-Za-z]+", residue))
     return residue if usable else parse.get("aggregator")

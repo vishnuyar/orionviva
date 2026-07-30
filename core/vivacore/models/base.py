@@ -1,4 +1,4 @@
-"""Adapter contract. Product embryo — keep boring, typed, and honest."""
+"""The adapter contract, the shared continuation driver, and their types."""
 
 from __future__ import annotations
 
@@ -12,13 +12,10 @@ class AdapterError(Exception):
 
 # --------------------------------------------------------- continuation driver
 
-# A long answer (a statement with hundreds of transactions, a big merchant batch)
-# can exceed the model's output budget, so the provider truncates mid-text and
-# reports finish_reason "length". Re-asking from scratch just truncates again, so
-# we ask the model to *continue* from the partial and stitch the pieces — bounded
-# so a runaway can't loop forever. It lives here rather than in an adapter so
-# that there is one place to reason about truncation safety, not per-provider
-# copies that drift.
+# An answer that exceeds the model's output budget comes back truncated
+# mid-text with finish_reason "length". The driver below asks the model to
+# continue from the partial and stitches the pieces, bounded by
+# MAX_CONTINUATIONS so a runaway cannot loop forever. Every adapter shares it.
 MAX_CONTINUATIONS = 6
 CONTINUE_INSTRUCTION = (
     "Continue the output from exactly where it stopped. Output ONLY the remaining "
@@ -27,9 +24,10 @@ CONTINUE_INSTRUCTION = (
 
 @dataclass
 class Turn:
-    """One model round-trip: the text it returned plus this call's accounting.
-    Adapters produce these; :func:`run_to_completion` stitches a sequence into a
-    single :class:`ModelResult`."""
+    """One model round-trip: the text returned plus that call's accounting.
+
+    Adapters produce these; :func:`run_to_completion` stitches a sequence of
+    them into a single :class:`ModelResult`."""
 
     text: str
     finish_reason: str = ""          # normalized: "length" means truncated
@@ -38,7 +36,7 @@ class Turn:
     cost_usd: float = 0.0
     latency_s: float = 0.0
     resolved_model: str = ""
-    request: dict[str, Any] | None = None   # elided; captured from the FIRST turn
+    request: dict[str, Any] | None = None   # elided; set on the first turn only
     response: dict[str, Any] = field(default_factory=dict)
 
 
@@ -46,12 +44,16 @@ def run_to_completion(call_once: Callable[[str, int], Turn],
                       max_continuations: int = MAX_CONTINUATIONS) -> ModelResult:
     """Drive a completion to a natural stop, continuing across truncation.
 
-    ``call_once(accumulated, attempt)`` performs exactly one round-trip and returns
-    a :class:`Turn`: attempt 0 is the full first request (images + prompt); each
-    later attempt continues from ``accumulated`` (no images) when the previous turn
-    came back ``finish_reason == "length"``. The adapter owns request-shaping (its
-    message format, json_mode, provider quirks); this owns the loop, the bound, and
-    the accounting — so every adapter gets identical truncation safety for free."""
+    ``call_once(accumulated, attempt)`` performs exactly one round-trip and
+    returns a :class:`Turn`: attempt 0 is the full first request (images +
+    prompt); each later attempt continues from ``accumulated`` (no images) and
+    is made only when the previous turn came back ``finish_reason == "length"``.
+    At most ``max_continuations`` continuations are made, after which the
+    stitched text is returned with ``finish_reason`` still "length".
+
+    The adapter owns request-shaping; this owns the loop, the bound, and the
+    accounting. Tokens, cost and latency are summed across turns; ``request`` is
+    the first turn's and ``response`` the last turn's."""
     accumulated = ""
     in_tok = out_tok = 0
     cost = latency = 0.0
@@ -90,14 +92,14 @@ class PageImage:
 
 @dataclass(frozen=True)
 class ModelResult:
-    """Everything the runner needs, with nothing thrown away.
+    """The result of one extraction call, stitched across any continuations.
 
     ``request`` and ``response`` are the verbatim JSON payloads sent and
     received — raw capture happens on these, not on any parsed view.
     """
 
     text: str                     # the model's text output (unparsed)
-    resolved_model: str           # model identity AS REPORTED by the endpoint
+    resolved_model: str           # model identity as reported by the endpoint
     input_tokens: int
     output_tokens: int
     cost_usd: float               # computed from candidate cost config
@@ -108,7 +110,7 @@ class ModelResult:
 
 
 class ModelAdapter(Protocol):
-    """One extraction call: pages + prompt in, ModelResult out. Nothing else.
+    """One extraction call: pages + prompt in, ModelResult out.
 
     Adapters have no tools, no write access, and no retries-with-mutation.
     """
@@ -118,14 +120,15 @@ class ModelAdapter(Protocol):
 
 def elide_images(body: dict[str, Any], hashes: list[str]) -> dict[str, Any]:
     """Return a copy of a request body with image payloads replaced by their
-    hashes. Raw page bytes are already stored once, content-addressed, in the
-    page cache — duplicating megabytes of base64 into every run record would
-    bloat the log without adding evidence. The hash preserves the audit chain:
-    record -> page hash -> exact bytes."""
+    page hashes.
+
+    ``hashes`` is consumed in order, one per image node found, in either the
+    Anthropic or the OpenAI image shape. The original body is not modified. The
+    recorded hash is what keeps the audit chain intact: run record -> page hash
+    -> the exact bytes in the content-addressed page cache."""
     import copy
     import json
 
-    # Cheap deep copy via JSON round-trip is fine: bodies are JSON by construction.
     out = copy.deepcopy(body)
     replaced = iter(hashes)
 
@@ -146,6 +149,6 @@ def elide_images(body: dict[str, Any], hashes: list[str]) -> dict[str, Any]:
                 _walk(v)
 
     _walk(out)
-    # Guard: the elided body must remain valid JSON (it is, by construction).
+    # Raises if the elided body is no longer JSON-serialisable.
     json.dumps(out)
     return out

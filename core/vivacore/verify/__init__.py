@@ -1,12 +1,11 @@
-"""verify/ — product embryo. The first draft of OrionViva's verification layer.
+"""verify/ — the verification layer.
 
-Everything in this package is deterministic, locale-aware, versioned, and
-tested to a stricter standard than the rest of viva-bench: this is the code that
-one day decides whether Viva says "I'm sure".
+Everything in this package is deterministic, locale-aware and versioned: no
+model call, no network, no clock.
 
 Modules:
-- normalize   — raw printed strings -> typed values, honestly (ambiguity is a
-                first-class outcome, never a guess).
+- normalize   — raw printed strings -> typed values; ambiguity is a first-class
+                outcome, never a guess.
 - arithmetic  — the identities financial documents impose on themselves
                 (balances reconcile, line items sum). Exact Decimal math.
 - match       — comparing an extracted claim against ground truth.

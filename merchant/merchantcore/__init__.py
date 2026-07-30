@@ -1,9 +1,9 @@
 """merchantcore — the merchant knowledge base (a peer to vivacore).
 
 Impersonal, reusable merchant knowledge: deterministic normalization, the
-multi-attribute MerchantRecord, a batched model enrichment engine, and the
-merchant->category commons. It holds and shares ONLY impersonal data — the
-personal ledger never crosses this boundary.
+multi-attribute MerchantRecord, a batched model enrichment engine, descriptor
+parsing and grammar induction, and the merchant->category commons. Holds only
+impersonal data; the personal ledger does not cross this boundary.
 """
 
 from . import home

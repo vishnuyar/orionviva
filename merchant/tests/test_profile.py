@@ -1,9 +1,8 @@
 """The descriptor grammar: a closed vocabulary, a lossless match, a frozen pack.
 
-The point of these tests is not that templates match strings. It is that the
-three properties the design leans on are enforced by the code rather than by
-whoever writes the next prompt: the vocabulary is closed, a match explains the
-whole line, and a released grammar cannot be edited.
+Asserts the three properties in code rather than in the prompt: the vocabulary
+is closed, a match explains the whole line, and a released grammar cannot be
+edited.
 """
 
 import json
@@ -32,8 +31,8 @@ def test_only_names_from_the_vocabulary_compile():
 
 
 def test_the_model_cannot_smuggle_in_a_regex():
-    # A shape is a NAME, and an unknown one is refused rather than passed
-    # through — otherwise a template could carry arbitrary pattern text.
+    # A shape is a name, and an unknown one is refused rather than passed
+    # through, so a template cannot carry arbitrary pattern text.
     with pytest.raises(ProfileError):
         Template("{brand:[A-Z]+}").compile()
     with pytest.raises(ProfileError):
@@ -41,8 +40,8 @@ def test_the_model_cannot_smuggle_in_a_regex():
 
 
 def test_a_template_with_no_holes_is_an_example_not_a_grammar():
-    """Still refused — but by the check that has the evidence to say so, and
-    only when the line it matches occurred once."""
+    """A slotless template whose only line occurred once is refused, by the
+    check that holds the evidence to say so."""
     from merchantcore.profile import validate_evidence
     with pytest.raises(ProfileError):
         validate_evidence(_profile("COSTCO WHSE PLANO TX"),
@@ -50,9 +49,9 @@ def test_a_template_with_no_holes_is_an_example_not_a_grammar():
 
 
 def test_format_validation_admits_a_frozen_fixed_phrase():
-    """`validate` runs at LOAD time, where there is no evidence. If it still
-    refused slotless templates, a grammar containing a legitimate fixed phrase
-    could be written and then never read back."""
+    """`validate` runs at load time, where there is no evidence, so it admits a
+    slotless template — a grammar holding a legitimate fixed phrase must read
+    back after it is written."""
     validate(_profile("PAYMENT THANK YOU - WEB"))
 
 
@@ -73,17 +72,15 @@ def test_a_profile_with_no_templates_explains_nothing():
 
 
 def test_the_prompt_is_rendered_from_the_same_dict_the_validator_enforces():
-    # If these drifted apart, a call could be spent on a grammar that cannot be
-    # accepted, or a slot the code allows could be invisible to the model.
+    # Every name the validator accepts appears in the prompt, and no other.
     block = vocabulary_block()
     for name in SLOTS:
         assert "{" + name + "}" in block
     prompt, version = build_induction_prompt(["ANY LINE"])
     assert "{counterparty}" in prompt and "regular expressions" in prompt
     assert version.startswith("induce-profile-")
-    # Every name the validator accepts must be offered, or the model has nowhere
-    # to put a field it can plainly see — which is exactly how a person
-    # addressed by phone number ended up in a merchant's contact slot.
+    # Every name the validator accepts is offered, so the model always has a
+    # place to put a field it can see.
     assert "{counterparty_handle}" in prompt
 
 
@@ -97,18 +94,16 @@ def test_a_match_explains_the_whole_line():
 
 
 def test_date_slot_means_a_date():
-    # The spelling a model would obviously reach for must mean what it looks
-    # like; a vocabulary whose obvious form is the wrong one is a trap.
+    # The spelling a model reaches for means what it looks like: {date} matches
+    # a date and not an arbitrary word.
     p = _profile("PAID {date} {brand}")
     assert p.apply("PAID 03/14 SAFEHARBOR") is not None
     assert p.apply("PAID SOMEDAY SAFEHARBOR") is None
 
 
 def test_adjacent_word_slots_give_the_brand_the_most_words():
-    # `{brand} {city} {region}` is the commonest card shape there is, and the
-    # split between three adjacent word slots is decided by greediness rather
-    # than by anything the model said. The bias has to be the right one: a brand
-    # runs to several words far more often than a city does.
+    # The split between three adjacent word slots is decided by greediness, so
+    # the leftmost slot takes the extra words.
     m = _profile("{brand} {city} {region}").apply("SAFEHARBOR MARKET PLANO TX")
     assert m.slots["brand"] == "SAFEHARBOR MARKET"
     assert m.slots["city"] == "PLANO" and m.slots["region"] == "TX"
@@ -130,8 +125,8 @@ def test_personal_and_shareable_are_decided_by_slot_not_by_text():
     m = p.apply("ZELLE TO JOHN SMITH 22334455")
     assert m.personal() == {"counterparty": "JOHN SMITH"}
     assert m.shareable() == {"reference": "22334455"}
-    # The same words in a brand slot are shareable — the slot decides, not the
-    # string, which is exactly what the substring gate could not do.
+    # The same words in a brand slot are shareable: the slot decides, not the
+    # string.
     m2 = _profile("PAID {brand}").apply("PAID JOHN SMITH")
     assert m2.shareable() == {"brand": "JOHN SMITH"} and m2.personal() == {}
 
@@ -160,14 +155,9 @@ def test_coverage_reports_the_lines_it_cannot_explain():
 
 
 def test_a_person_is_a_person_however_they_were_addressed():
-    """The first real induction found the gap. Rule 7 said `{counterparty}` is
-    for a person "you would recognise by name"; a phone number is not a name, so
-    the model reached for `{contact}` — a merchant's public phone, declared
-    shareable. The template it wrote could never fire (a bare number does not
-    match the contact shape), so nothing leaked and nothing parsed either.
-
-    A peer payment addresses the other party by name, phone, email or username.
-    All four are the same thing, and all four are personal."""
+    """A party addressed by name, phone or email reaches `party()`, none of the
+    three reaches `shareable()`, and a handle lands in `personal()` under
+    `counterparty_handle`."""
     named = _profile("ZELLE TO {counterparty} {reference}").apply(
         "ZELLE TO MARIA GARCIA ABC123")
     by_phone = _profile("ZELLE TO {counterparty_handle} {reference}").apply(
@@ -181,18 +171,14 @@ def test_a_person_is_a_person_however_they_were_addressed():
 
 
 def test_a_contact_where_the_party_belongs_is_personal_by_STRUCTURE():
-    """A released profile is never edited, so grammars already frozen keep their
-    `{contact}` templates. This closes those without reading a character of the
-    extracted value.
-
-    A template describes a payment, and a payment has a party. A template naming
-    no party at all — no brand, no institution, no counterparty — is a template
-    whose remaining slot IS the party."""
+    """`{contact}` in a template naming no other party is personal, and the
+    same slot beside a brand is the merchant's public number. Decided from the
+    template's slot composition, without reading the extracted value."""
     party = _profile("ZELLE TO {contact} {reference}").apply(
         "ZELLE TO 508-496-2249 ABC123")
     assert party.personal() == {"contact": "508-496-2249"}     # promoted
     assert party.shareable() == {"reference": "ABC123"}
-    # ...and the same slot beside a brand is the MERCHANT's public number.
+    # ...and the same slot beside a brand is the merchant's public number.
     merchant = _profile("CARD PURCHASE {date} {brand} {contact} {region}").apply(
         "CARD PURCHASE 01/18 STRONG HOME MTG 571-443-2000 VA")
     assert merchant.shareable()["contact"] == "571-443-2000"
@@ -231,15 +217,8 @@ def test_a_stored_profile_round_trips_and_is_validated_on_load(tmp_path):
 
 
 def test_a_kind_whose_lines_name_no_party_gets_no_grammar(tmp_path):
-    """An investment activity line describes a trade against a security, not a
-    payment to anybody. There is no party in it for a slot to hold.
-
-    Every name in this vocabulary asserts something about a party or a place, so
-    a model shown trade activity must either miss the gate or force a realized
-    gain into `{purpose}` and a security into `{brand}` — confidently, on every
-    line that institution ever prints. Refused at the store, not at each call
-    site, so the profile that should never have existed cannot be applied by
-    whoever forgets."""
+    """A grammar for a kind whose lines name no party is refused at the store
+    rather than at each call site."""
     store = ProfileStore(tmp_path)
     with pytest.raises(ProfileError):
         store.write(_profile("YOU SOLD {brand} {purpose}", kind="investment"))
@@ -257,12 +236,9 @@ def test_a_grammar_is_never_served_for_an_ineligible_kind(tmp_path):
 
 
 def test_the_holdout_is_stable_so_two_runs_measure_the_same_thing():
-    """Split by hash of the line, not at random and not by position.
-
-    A random split makes today's number and next month's incomparable. A
-    positional split moves when a dict is built differently. And a descriptor
-    must keep its side as the vault grows, or the holdout stops being a holdout
-    the moment it contains a line an earlier grammar was induced on."""
+    """Split by hash of the line: roughly the requested share is held out, the
+    sides do not move when the input order changes, and a descriptor keeps its
+    side as the corpus grows."""
     counts = {f"LINE {chr(65 + i)}{chr(65 + j)} SOMETHING": i + j + 1
               for i in range(14) for j in range(14)}
     train, held = holdout_split(counts)
@@ -273,11 +249,8 @@ def test_the_holdout_is_stable_so_two_runs_measure_the_same_thing():
 
 
 def test_a_grammar_is_gated_on_lines_that_never_helped_choose_it():
-    """`--best-of N` selects the best of N candidates. Selecting on the same set
-    you then report turns an estimate into a maximum, and the bias grows with N.
-
-    So the gate reads the holdout: lines the model never saw AND that took no
-    part in choosing this grammar over another."""
+    """`scored` is the holdout figure, not the training one, and the verdict
+    names the withheld lines."""
     good = "ZELLE TO {counterparty} {reference}"
     lines = {f"ZELLE TO PERSON{chr(65+i)}{chr(65+j)} REF{i}{j}9": 2
              for i in range(12) for j in range(12)}
@@ -289,8 +262,8 @@ def test_a_grammar_is_gated_on_lines_that_never_helped_choose_it():
 
 
 def test_a_grammar_that_memorised_its_own_lines_is_caught_by_the_holdout():
-    # Templates that reproduce the training lines exactly and generalise to
-    # nothing: perfect where it was induced, useless where it was not.
+    # Templates reproducing the training lines exactly and generalising to
+    # nothing score 1.0 on train and 0.0 on the holdout.
     lines = {f"PAID SHOP{chr(65 + i)} PLANO TX": 1 for i in range(26)}
     train, held = holdout_split(lines)
     memorised = _profile(*[f"PAID {d.split()[1]} {{city}} {{region}}"
@@ -300,13 +273,8 @@ def test_a_grammar_that_memorised_its_own_lines_is_caught_by_the_holdout():
 
 
 def test_drift_shows_up_in_the_recent_number_long_before_the_lifetime_one():
-    """The check the design claimed and the code never ran.
-
-    Coverage was computed once and frozen into the profile, so a grammar could
-    fall to half its measured number and still carry the number it had on the
-    day it was written. And the lifetime figure is the slow one: old lines
-    outnumber new, so a bank that changed its composition shows barely a dent
-    there while the recent slice collapses."""
+    """`drift` re-measures a frozen profile: when a bank adds a shape the recent
+    figure collapses while the lifetime figure barely moves."""
     p = _profile("ZELLE TO {counterparty} {reference}")
     p.measured = 1.0
     old = {f"ZELLE TO PERSON{chr(65+i)} REF{i}9": 5 for i in range(20)}
@@ -318,15 +286,9 @@ def test_drift_shows_up_in_the_recent_number_long_before_the_lifetime_one():
 
 
 def test_a_grammar_is_verified_by_behaviour_not_by_provenance(tmp_path):
-    """Why a grammar does not have to be induced once per user.
-
-    A profile is slots and literals with no values in it — the bank's
-    composition, identical for every customer of that bank. So a grammar
-    somebody else induced is safe to try: apply it to your own lines and read
-    the number. It either explains them or it does not.
-
-    That check is what a merchant catalog cannot offer, and it is the reason
-    only the FIRST customer of an institution has to pay for a model call."""
+    """A grammar somebody else induced can be scored against your own lines with
+    no model call: the right bank's explains them and the wrong bank's scores
+    zero."""
     store = ProfileStore(tmp_path)
     theirs = _profile("ZELLE PAYMENT TO {counterparty} {reference}",
                       "CARD PURCHASE {date} {brand} {city} {region}")
@@ -345,9 +307,8 @@ def test_a_grammar_is_verified_by_behaviour_not_by_provenance(tmp_path):
 # --- induction ---------------------------------------------------------------
 
 def test_lines_differing_only_in_a_date_are_one_shape_not_twenty_one():
-    # The defect the first dry run exposed. Grouping on the raw line makes every
-    # posting date its own group, so one template claims half the sample and the
-    # rest of the statement is never shown.
+    # Masking runs before grouping, so six lines differing only in a posting
+    # date form one group rather than six.
     counts = {f"{m:02d}/{d:02d} PAYMENT TO CARD ENDING IN 0000": 1
               for m, d in [(1, 10), (1, 14), (2, 4), (2, 22), (3, 9), (12, 8)]}
     counts["ZELLE TO JOHN SMITH ABC123"] = 4
@@ -355,8 +316,8 @@ def test_lines_differing_only_in_a_date_are_one_shape_not_twenty_one():
 
 
 def test_a_word_printed_once_is_a_filler_and_a_word_repeated_is_a_literal():
-    # Parameter-free, and it needs no list of known words — which is the whole
-    # point, because a list of known words is the thing this design deleted.
+    # Parameter-free: no list of known words is consulted to decide which
+    # tokens mask.
     counts = {"LONGCREEK-SERVIC ACH PMT PPD ID: 1000000004": 3,
               "MEALPLANCO ACH PMT PPD ID: 1000000005": 2}
     (spine,) = skeletons(counts)
@@ -374,24 +335,18 @@ def test_the_sample_shows_every_shape_before_it_shows_any_shape_twice():
 
 
 def test_within_a_shape_the_picks_are_unlike_each_other_not_the_commonest():
-    # LogBatcher measured similarity-based selection at 7.7% worse than
-    # diversity; a model learns where the hole is by seeing different fillers.
+    # Within one shape the picks maximise difference, so a rare but unlike line
+    # is chosen over a second near-copy of the commonest one.
     counts = {"PAID ALPHA BETA GAMMA DELTA": 99, "PAID ALPHA BETA GAMMA EPSILON": 98,
               "PAID ZETA": 1}
     assert "PAID ZETA" in sample_descriptors(counts, limit=2)
 
 
 def test_a_template_is_judged_by_what_it_MATCHES_not_by_its_words():
-    """Replaces a check that flagged literal words appearing in one descriptor.
-
-    On a real vault that fired nine times and was mostly wrong: it flagged
-    `Payroll` in `{brand} Payroll PPD ID: {company_id}`, which is a genuine NACHA
-    Company Entry Description and exactly the field the template was right to
-    make literal — it only looked baked-in because one originator used it.
-
-    Counting matches is the honest form of the same worry. Rule 4's "an example,
-    not a grammar" is measurable; a name baked into literal text lands here too,
-    because it can only ever match its own line."""
+    """`narrow_templates` counts what a template matches, not which of its
+    literal words are rare. A name baked into the literal text matches one line
+    and is flagged, the generalised template matches three and is not, and a
+    template matching nothing is flagged with a count of zero."""
     corpus = ["ZELLE PAYMENT FROM ARJUN VARMA ABC1",
               "ZELLE PAYMENT FROM MARIA GARCIA XY22",
               "ZELLE PAYMENT FROM LI WEI QQ31"]
@@ -400,19 +355,14 @@ def test_a_template_is_judged_by_what_it_MATCHES_not_by_its_words():
     assert narrow == {"ZELLE PAYMENT FROM ARJUN {counterparty} {reference}": 1}
     assert not narrow_templates(
         _profile("ZELLE PAYMENT FROM {counterparty} {reference}"), corpus)
-    # A template matching NOTHING is the clearest case of all.
+    # A template matching nothing is the clearest case of all.
     assert narrow_templates(_profile("NEVER SEEN {brand}"), corpus) == {
         "NEVER SEEN {brand}": 0}
 
 
 def test_a_worse_rerun_cannot_silently_become_the_grammar(tmp_path):
-    """Induction is stochastic. The same prompt over the same forty lines gave
-    27 templates at 84% one run and 33 at 82% the next, and the second was
-    written because the gate is absolute — while `latest` wins by version number,
-    so the weaker grammar went into use.
-
-    A version must beat the one it succeeds, on the same measurement over the
-    same lines."""
+    """A version explaining fewer of the same movements than the one it
+    succeeds is refused; `force=True` writes it anyway."""
     counts = {"ZELLE TO JOHN SMITH 22334455": 40, "MYSTERY LINE 4": 60}
     store = ProfileStore(tmp_path)
     good = _profile("ZELLE TO {counterparty} {reference}", "MYSTERY LINE {reference}")
@@ -427,9 +377,8 @@ def test_a_worse_rerun_cannot_silently_become_the_grammar(tmp_path):
 
 
 def test_coverage_has_one_meaning(tmp_path):
-    # Two numbers were printed under the same word — one weighted by movements
-    # at induction time, one weighting every distinct line equally when
-    # reporting an existing profile. 84% and 88% for the same grammar.
+    # `coverage` and `weighted_coverage` answer different questions and can
+    # differ widely for one grammar.
     counts = {"ZELLE TO JOHN SMITH 22334455": 99, "MYSTERY LINE 4": 1}
     p = _profile("MYSTERY LINE {reference}")
     unweighted, _ = p.coverage(list(counts))
@@ -451,14 +400,13 @@ def test_nothing_usable_returns_none_rather_than_an_empty_grammar():
 
 
 def test_a_wire_is_refused_a_grammar_however_good_the_template_looks():
-    # An operator free-text field cannot honour any slot name, so the shape is
-    # refused before templates are consulted — not after, or the refusal would
-    # only be as strong as the templates that happen to exist today.
+    # The shape is refused before templates are consulted, so the refusal does
+    # not depend on which templates happen to exist.
     wire = ("02/14 ONLINE DOMESTIC WIRE TRANSFER VIA: SOMEBANK NA/111014325 "
             "A/C: SOME TITLE LLC REF: 8000362/9021 SOME DRIVE IMAD: 0214X")
     assert _profile("{purpose} {noise}").apply(wire) is None
     # One marker is not a wire: an ordinary line may print "Ref" and still be
-    # an ordinary line, and sweeping it up would refuse grammars for no reason.
+    # an ordinary line.
     assert _profile("{purpose} {noise}").apply("PAYMENT REF 4429") is not None
 
 
@@ -467,8 +415,8 @@ def test_a_refused_line_is_excluded_from_coverage_not_counted_against_it():
     lines = {"ZELLE TO JOHN SMITH 22334455": 10, wire: 90}
     ind = Inducer(lambda _p: json.dumps(
         {"templates": ["ZELLE TO {counterparty} {trace}"]})).induce("n", "d", lines)
-    # 90 of 100 movements are wires. Counted against the grammar it would score
-    # 10%; excluded, the grammar explains everything it was ever allowed to.
+    # 90 of 100 movements are wires: excluded from the denominator, so the
+    # grammar explains everything it was allowed to.
     assert ind.accepted and ind.coverage == 1.0 and ind.refused == [wire]
 
 
@@ -484,7 +432,7 @@ def test_an_account_ref_the_bank_masked_itself_still_matches():
     m = _profile("TRANSFER TO {institution} {account_ref}").apply(
         "TRANSFER TO NORTHBANK #####4321")
     assert m.personal() == {"account_ref": "#####4321"}
-    # ...but the shape still needs a digit, so it cannot swallow a bare word.
+    # ...and the shape still needs a digit, so it cannot swallow a bare word.
     assert _profile("TRANSFER TO {account_ref}").apply("TRANSFER TO SAVINGS") is None
 
 
@@ -515,17 +463,14 @@ def test_the_loop_stops_when_a_round_adds_nothing_new():
         return json.dumps({"templates": ["ZELLE TO {counterparty} {reference}"]})
 
     ind = Inducer(fake, rounds=3, min_coverage=0.4).induce("n", "d", lines)
-    assert len(calls) == 2 and ind.rounds == 2       # not 3 — it stopped early
+    assert len(calls) == 2 and ind.rounds == 2       # stopped before round 3
     assert ind.accepted and ind.unmatched == ["MYSTERY 4"]
 
 
 def test_a_grammar_that_explains_the_rare_lines_and_misses_the_mass_fails():
-    """Coverage is weighted by movements, on both sides of the split.
-
-    A template that explains twenty rare lines and misses the daily one is not
-    most-of-the-way right; it is wrong about nearly all the money. The corpus
-    below gives the heavy shape many variants so the holdout cannot land it all
-    on one side — the guard has to hold however the split falls."""
+    """Coverage is weighted by movements on both sides of the split, so a
+    grammar explaining twenty rare lines and missing the heavy shape fails the
+    gate however the holdout falls."""
     lines = {f"CARD PURCHASE 03/{i + 1:02d} SHOP{chr(65 + i)} PLANO TX": 1
              for i in range(20)}
     lines.update({f"ATM WITHDRAWAL {chr(65 + i)} PLANO TX": 40 for i in range(20)})
@@ -558,11 +503,8 @@ def _reply(*templates):
 
 
 def test_a_fee_line_is_a_grammar_when_the_bank_prints_it_repeatedly():
-    """A fee has no variable part. `Payment Thank You - Web` is the identical
-    string every month, and that constancy is what the line IS. Rule 4 refused
-    every slotless template; on the first live agent run those were proposed
-    correctly and dropped twenty-odd times, burning a round of calls per attempt
-    and leaving the commonest line on a card statement unexplained."""
+    """A fee has no variable part, so a slotless template matching a line the
+    bank prints repeatedly is kept as a grammar."""
     from merchantcore.induce import parse_induction
     counts = {"Payment Thank You - Web": 14,
               "Card Purchase 03/04 Shop A Plano TX": 9}
@@ -573,9 +515,8 @@ def test_a_fee_line_is_a_grammar_when_the_bank_prints_it_repeatedly():
 
 
 def test_a_line_seen_once_is_still_an_example_not_a_grammar():
-    """The half of rule 4 that was always right: a template that reproduces one
-    line memorised the sample, and a name baked into literal text lands here too
-    because it can only ever match its own line."""
+    """A slotless template whose only line occurs once memorised the sample and
+    is dropped, leaving no grammar at all."""
     from merchantcore.induce import parse_induction
     counts = {"Some One Off Line": 1}
     assert parse_induction(_reply("Some One Off Line"), "Chase", "liability",
@@ -583,9 +524,9 @@ def test_a_line_seen_once_is_still_an_example_not_a_grammar():
 
 
 def test_a_truncated_template_explains_nothing_and_is_still_dropped():
-    """`Non-Chase ATM Fee-With` — the model's own truncation of a real line. It
-    is still refused, now for the reason that is actually true of it rather than
-    for having no slots."""
+    """A slotless template truncated short of the line it meant to describe
+    matches nothing, so it is refused — the check runs through the compiled
+    expression rather than by string equality."""
     from merchantcore.induce import parse_induction
     counts = {"Non-Chase ATM Fee-Withdrawal": 22}
     assert parse_induction(_reply("Non-Chase ATM Fee-With"), "Chase",
@@ -593,18 +534,18 @@ def test_a_truncated_template_explains_nothing_and_is_still_dropped():
 
 
 def test_without_counts_the_old_rule_still_holds():
-    """No evidence means no exception. A caller that cannot say how often a line
-    occurs gets the conservative answer, not the permissive one."""
+    """Without `counts` there is no evidence a line recurs, so every slotless
+    template is refused."""
     from merchantcore.induce import parse_induction
     assert parse_induction(_reply("Payment Thank You - Web"), "Chase",
                            "liability", "v") is None
 
 
 def test_the_pack_rules_version_is_not_the_storage_format():
-    """Bumping PROFILE_FORMAT to announce a rule change would make every grammar
-    already on disk unloadable and reshuffle the holdout salt — punishing the
-    work for the improvement. PACK_RULES says what a fresh induction would now
-    do differently; nothing loads by it and nothing is salted by it."""
+    """PACK_RULES and PROFILE_FORMAT are distinct strings and both ride in
+    `machinery_version`. PROFILE_FORMAT gates loading and salts the holdout;
+    PACK_RULES says what a fresh induction would do differently, and nothing
+    loads by it."""
     from merchantcore.induce import machinery_version
     from merchantcore.profile import PACK_RULES, PROFILE_FORMAT
     assert PACK_RULES != PROFILE_FORMAT
@@ -615,32 +556,28 @@ def test_the_pack_rules_version_is_not_the_storage_format():
 
 
 def test_the_prompt_and_the_code_agree_about_fixed_phrases():
-    """The pack rules exist in two forms — STATED in the prompt and ENFORCED in
-    code — and only the enforcement carries `PACK_RULES`. They diverged once:
-    the code was taught that a bank's fixed phrase is a template while rule 4 of
-    the prompt went on calling it useless, so the single largest unexplained
-    line in a real vault was being discouraged and then accepted when the model
-    disobeyed. This is the cheapest guard against that happening silently
-    again."""
+    """The pack rules exist in two forms — stated in the prompt, enforced in
+    code. Asserts the prompt states the fixed-phrase exception and the two
+    failure modes the parser also enforces, so the two cannot drift apart."""
     import re
     from merchantcore.induce import INDUCTION_VERSION, build_induction_prompt
     prompt, version = build_induction_prompt(["ANY LINE"])
     assert version.startswith(INDUCTION_VERSION)
-    # Whitespace-normalised: the prompt is hard-wrapped for a human to read, and
-    # a test that broke when a line was rewrapped would be a test about wrapping.
+    # Whitespace-normalised: the prompt is hard-wrapped for a human to read, so
+    # a test sensitive to wrapping would be a test about wrapping.
     low = re.sub(r"\s+", " ", prompt.lower())
-    # The exception must be stated, not merely tolerated by the parser.
+    # The exception is stated, not merely tolerated by the parser.
     assert "no holes at all" in low
     assert "fee" in low and "identical string every time" in low
-    # And the two failures the first live run produced.
+    # And the two failure modes the parser also refuses.
     assert "at most once" in low, "a repeated hole name discards the template"
     assert "truncated" in low, "a shortened fixed phrase matches nothing"
 
 
 def test_every_recorded_prompt_version_still_resolves():
-    """T8: a recorded version must always resolve. A superseded prompt is kept,
-    never edited over — a grammar induced under v1 names v1, and that name has
-    to keep meaning the text it meant."""
+    """T8: a recorded version always resolves. Every released induction prompt
+    is still on disk and no two of them hold the same text, so a grammar naming
+    v1 keeps meaning the text v1 meant."""
     from vivacore import promptstore
     from merchantcore.induce import PROMPTS
     have = set(promptstore.ids(PROMPTS))
@@ -657,10 +594,9 @@ def _brand_city_region():
 
 
 def test_a_card_merchant_name_fits_in_the_brand_slot():
-    """The finding that explained a whole account. On a real credit card
-    statement the merchant IS the line, so a merchant the vocabulary cannot
-    express is a completely unexplained line — which is why one account sat at
-    79% against an 80% gate through six independent inductions."""
+    """The `merchant` shape accepts a leading digit, an ampersand as a word and
+    a processor asterisk, and slots them as the brand rather than spilling into
+    the city."""
     rx = _brand_city_region().compile()
     for line, brand in (
             ("278 BRAUMS STORE ALLEN TX", "278 BRAUMS STORE"),
@@ -675,10 +611,9 @@ def test_a_card_merchant_name_fits_in_the_brand_slot():
 
 
 def test_a_hash_is_left_out_because_it_slots_wrongly():
-    """`CIRCLE K # 03453 WEST MONROE LA` matches once `#` is admitted, and files
-    the brand as `CIRCLE K # 03453 WEST` with the city as `MONROE`. A confident
-    wrong answer where a miss was honest. The right fix is a template writing
-    `#` as literal text with {store_number} after it."""
+    """`#` is not in the `merchant` shape, so `{brand} {city} {region}` misses a
+    line carrying one rather than slotting it wrongly. A template writing `#`
+    as literal text with {store_number} after it parses that line correctly."""
     assert _brand_city_region().compile().match("CIRCLE K # 03453 WEST MONROE LA") is None
     ok = Template("{brand} # {store_number} {city} {region}").compile()
     m = ok.match("CIRCLE K # 03453 WEST MONROE LA")
@@ -687,12 +622,10 @@ def test_a_hash_is_left_out_because_it_slots_wrongly():
 
 
 def test_a_name_may_not_start_with_a_digit_and_a_merchant_string_may():
-    """The distinction the two shapes exist to draw.
-
-    A counterparty is a person's NAME and a city is a place's; letting either
-    begin with a digit would let them swallow a store id or a date fragment. A
-    merchant string genuinely does — `278 BRAUMS STORE` — and so does filler:
-    a UK card line ends `ON 12 MAR`."""
+    """`brand` and `noise` take `merchant`, which may begin with a digit; every
+    other slot takes `words`, which may not, so a name slot cannot swallow a
+    store id or a date fragment. A bank code that is letters followed by digits
+    is still a name."""
     from merchantcore.profile import DEFAULT_SHAPE, SLOT_SHAPE, shape_for
     assert shape_for("brand", None) == shape_for("noise", None) == "merchant"
     assert shape_for("counterparty", None) == DEFAULT_SHAPE == "words"
@@ -708,9 +641,8 @@ def test_a_name_may_not_start_with_a_digit_and_a_merchant_string_may():
 
 
 def test_a_wider_shape_only_ever_matches_more():
-    """Why PROFILE_FORMAT stays prof-v1. Every grammar already on disk still
-    loads and still means what it meant, and the holdout salt does not move —
-    which is what makes a before/after measurement comparable at all."""
+    """Everything the narrow shape matches, the wide one matches too — which is
+    what lets a shape widen without moving PROFILE_FORMAT."""
     import re
     from merchantcore.profile import PROFILE_FORMAT, SHAPES
     assert PROFILE_FORMAT == "prof-v1"
@@ -753,14 +685,9 @@ CROSS_COUNTRY = [
 
 
 def test_the_vocabulary_can_express_a_statement_line_from_five_countries():
-    """The regression test for a US-shaped assumption.
-
-    Every shape here was `[A-Za-z]`, and on this list eight of fifteen could not
-    be expressed AT ALL — accented Latin, Devanagari, Japanese, and every Indian
-    rail whose bank code is letters followed by digits. Induction is
-    country-agnostic in principle because the templates come from a model; the
-    vocabulary was the only thing stopping it, and this is that claim measured
-    rather than asserted."""
+    """Every line in CROSS_COUNTRY is expressible in the vocabulary: accented
+    Latin, Devanagari and Japanese scripts, and the Indian, UK, German and
+    French rails whose bank codes are letters followed by digits."""
     cannot = [(tag, line) for tag, line, tmpl in CROSS_COUNTRY
               if not Template(tmpl).compile().match(line)]
     assert not cannot, f"inexpressible: {cannot}"

@@ -1,4 +1,4 @@
-"""OpenAI-compatible chat-completions adapter — the universal socket.
+"""OpenAI-compatible chat-completions adapter.
 
 One adapter, many providers, differing only in base_url:
 
@@ -9,7 +9,8 @@ One adapter, many providers, differing only in base_url:
     LM Studio         http://localhost:1234/v1
     vLLM              http://<host>:8000/v1
 
-Plain HTTP via httpx; same rationale as the Anthropic adapter.
+Plain HTTP via httpx. OpenRouter is detected from the base_url and gets its
+attribution headers and per-call reported cost.
 """
 
 from __future__ import annotations
@@ -48,10 +49,10 @@ class OpenAICompatAdapter:
             headers["X-Title"] = "viva-bench"
 
         def call_once(accumulated: str, attempt: int) -> Turn:
-            # First turn: images + the prompt (which already carries the
-            # statement's embedded text). Continuation turns drop the heavy images
-            # — the embedded text is re-sent in the prompt, so the model still sees
-            # every line without the multi-megabyte image payload.
+            # First turn: images plus the prompt, which already carries the
+            # page's embedded text. Continuation turns re-send the prompt but
+            # not the images, so the model still sees every line without the
+            # image payload.
             if attempt == 0:
                 messages = [{"role": "user",
                              "content": images + [{"type": "text", "text": prompt}]}]
@@ -64,8 +65,8 @@ class OpenAICompatAdapter:
             body = {"model": c.model, "max_tokens": c.max_tokens,
                     "temperature": c.temperature, "messages": messages}
             if c.json_mode and attempt == 0:
-                # Guaranteed-valid JSON on the first turn; continuation turns emit
-                # a raw fragment, so json_mode is off for those.
+                # First turn only: a continuation turn emits a raw fragment
+                # rather than a whole object, so json_mode is off for those.
                 body["response_format"] = {"type": "json_object"}
             if is_openrouter:
                 body["usage"] = {"include": True}
@@ -74,9 +75,8 @@ class OpenAICompatAdapter:
             try:
                 resp = httpx.post(self.url, json=body, headers=headers, timeout=c.timeout_s)
             except httpx.HTTPError as e:
-                # Say how long we actually waited and what the limit was — a bare
-                # "the read operation timed out" is undiagnosable, and tuning a
-                # timeout you can't measure is guessing.
+                # The message carries the elapsed time, the configured timeout,
+                # and which attempt failed.
                 raise AdapterError(
                     f"[{c.name}] HTTP failure calling {self.url} after "
                     f"{time.monotonic() - started:.1f}s (timeout {c.timeout_s}s, "
@@ -117,7 +117,7 @@ class OpenAICompatAdapter:
                          if attempt == 0 else None),
                 response=data)
 
-        # A spec may say "one shot, no stitching" — see ModelSpec.max_continuations.
+        # None means the driver's own default; see ModelSpec.max_continuations.
         if c.max_continuations is None:
             return run_to_completion(call_once)
         return run_to_completion(call_once, max_continuations=c.max_continuations)

@@ -1,4 +1,4 @@
-"""Tests for verify.arithmetic — the checks that turn extraction into proof."""
+"""Tests for verify.arithmetic — the document self-checks."""
 
 from decimal import Decimal
 
@@ -38,7 +38,7 @@ def test_balance_identity_passes():
 
 
 def test_balance_identity_catches_one_cent():
-    # The whole point: a single cent off is a FAIL, not a rounding shrug.
+    # A single cent off fails; there is no implicit tolerance.
     r = check_balance_identity(
         opening="1000.00",
         transactions=["-45.67", "-12.00", "2500.00", "-899.99"],
@@ -54,7 +54,7 @@ def test_float_poison_rejected():
 
 
 def test_no_float_drift():
-    # 0.1 added ten times must equal exactly 1.0 — floats fail this.
+    # 0.1 added ten times equals exactly 1.0 under Decimal.
     r = check_sum(items=["0.1"] * 10, total="1.0")
     assert r.passed, r.explain()
 
