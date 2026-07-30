@@ -355,6 +355,7 @@ class LedgerProjection:
         # and lets it return the moment new evidence moves it. "Not now" is an
         # answer, and it is remembered.
         self._declined: dict[str, dict] = {}
+        self._agent_log: list[dict] = []
         # Own-account token index, built lazily and invalidated when a
         # new account is opened — used to recognize an internal movement even when
         # no transfer link was formed.
@@ -415,8 +416,14 @@ class LedgerProjection:
 
         elif et == "TransferLinked":
             pair = frozenset({event.body["a"], event.body["b"]})
+            # `decided_by` and not the whole evidence dict. The evidence carries
+            # both descriptions verbatim and this projection is read by every
+            # report; the rule's NAME is what makes a link reviewable and is the
+            # only part of the evidence that carries nothing personal.
             self._links[pair] = {"status": "linked", "grade": event.body.get("grade", ""),
-                                 "by": event.body.get("by", "")}
+                                 "by": event.body.get("by", ""),
+                                 "decided_by": (event.body.get("evidence")
+                                                or {}).get("decided_by", "")}
             # A confirmed/auto link resolves any pending suggestion on either leg.
             self._transfer_suggestions.pop(event.body["a"], None)
             self._transfer_suggestions.pop(event.body["b"], None)
@@ -461,6 +468,13 @@ class LedgerProjection:
             # Last decline wins; a question re-declined after returning simply
             # updates its snapshot to the new stake.
             self._declined[event.body["question_id"]] = event.body
+
+        elif et == "AgentActed":
+            # Kept in arrival order and never collapsed. A projection that stored
+            # only the latest attempt per target would answer the cooldown
+            # question and lose the one an interface wants — what has this thing
+            # been doing? — and the second is the reason the event exists.
+            self._agent_log.append({**event.body, "occurred_at": event.occurred_at})
 
         elif et in ("MerchantCategorized", "MerchantEnriched"):
             merchant = event.body["merchant"]
@@ -728,12 +742,31 @@ class LedgerProjection:
         m.nature, m.nature_reason, m.provisional = SPENDING, BY_DEFAULT, False
 
     def transfer_suggestions(self) -> list[dict]:
-        """Pending transfer suggestions awaiting a human ruling — with the source
-        not yet linked (a suggestion whose money was since confirmed elsewhere is
-        no longer a question)."""
+        """Pending transfer suggestions awaiting a human ruling.
+
+        A suggestion is dropped when EITHER leg's money has since been settled
+        elsewhere, and the second half of that used to be missing. The source
+        being linked was always checked; the candidates being linked was not, so
+        a scan that resolved twenty-three questions by linking their candidates
+        to better-evidenced sources left five in the queue that could not be
+        answered — `confirm_transfer` refuses a movement that is already in a
+        transfer, so the only available answer was "no".
+
+        Filtered on the read side, never withdrawn by an event: unlink the pair
+        that took the candidate and the question comes back, which is what makes
+        this a projection of the log rather than a second opinion about it."""
         linked = self.linked_keys()
-        return [s for s in self._transfer_suggestions.values()
-                if s["a"] not in linked]
+        out = []
+        for s in self._transfer_suggestions.values():
+            if s["a"] in linked:
+                continue
+            cands = s.get("candidates") or []
+            # An empty candidate list is kept: it is a malformed suggestion, and
+            # dropping it would hide it rather than surface it.
+            if cands and all(c in linked for c in cands):
+                continue
+            out.append(s)
+        return out
 
     def transfer_links(self) -> list[dict]:
         """Live transfer links (the recognized internal transfers), with grade."""
@@ -1057,6 +1090,35 @@ class LedgerProjection:
         stays silent only while they match. Kept as data, not policy: THIS
         projection remembers; the queue decides."""
         return dict(self._declined)
+
+    def agent_log(self) -> list[dict]:
+        """Everything the agent did unattended, oldest first.
+
+        The journal: rule, target, outcome, model calls actually spent, and the
+        artifact produced. This is the only account of work done while nobody was
+        watching, and an agent whose work cannot be reviewed afterwards is not
+        trustworthy however good its rules are."""
+        return list(self._agent_log)
+
+    def agent_attempts(self) -> dict[tuple[str, str], dict]:
+        """The most recent attempt per (rule, target), whatever its outcome.
+
+        Data, not policy — THIS remembers, the runner decides, exactly as
+        `declined_questions` remembers and the queue decides. The runner's rule
+        is: an attempt that did not succeed, against a stake that has not moved,
+        would spend the same calls to reach the same refusal."""
+        out: dict[tuple[str, str], dict] = {}
+        for a in self._agent_log:
+            out[(a.get("rule", ""), a.get("target", ""))] = a
+        return out
+
+    def agent_calls_spent(self, since: str = "") -> int:
+        """Model calls the agent has spent on its own initiative.
+
+        Actuals, not estimates. `since` is an ISO date; omit it for the lifetime
+        figure. A ceiling enforced on estimates is a ceiling that leaks."""
+        return sum(int(a.get("calls", 0)) for a in self._agent_log
+                   if not since or str(a.get("occurred_at", ""))[:10] >= since)
 
     def category_aliases(self) -> dict[str, str]:
         """{duplicate label -> the label it is really the same as}."""

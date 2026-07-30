@@ -41,6 +41,14 @@ from dataclasses import dataclass, field
 # Deliberately an estimate in CALLS, not currency: the price of a call is the
 # adapter's business and changes without warning, while the count is a property
 # of the plan and is what a runaway loop inflates.
+#
+# For induction this is calls PER ATTEMPT — merchantcore's MAX_ROUNDS, each round
+# shown only what the last one missed. The number of attempts is `best_of` below,
+# and the two MULTIPLY. Stating that here because they did not multiply until
+# 2026-07-29: the first dry run against a real vault planned three inductions at
+# three calls each against a ceiling of twelve, and would have spent up to
+# twenty-seven. A ceiling computed from an estimate that omits a multiplier is
+# not a ceiling; it is a number printed next to the spending.
 CALLS = {"induce": 3, "reinduce": 3, "enrich": 1}   # enrich: per batch of ~40
 
 # --- the rules, as data ------------------------------------------------------
@@ -50,11 +58,13 @@ CALLS = {"induce": 3, "reinduce": 3, "enrich": 1}   # enrich: per batch of ~40
 RULES = {
     "induce_missing": {
         "min_lines": 30,          # below this, a grammar memorises rather than learns
+        "best_of": 3,             # independent attempts; the best HELD-OUT score wins
         "why": "this bank has enough lines to be characteristic and no grammar yet",
     },
     "reinduce_drifted": {
         "recent_drop": 0.15,      # points of RECENT coverage lost since it was measured
         "min_recent_lines": 20,   # ...over enough recent lines to mean anything
+        "best_of": 3,
         "why": "the bank changed what it prints and the grammar stopped keeping up",
     },
     "enrich_unknown": {
@@ -69,6 +79,17 @@ AUTONOMOUS = frozenset({"induce_missing", "reinduce_drifted", "enrich_unknown"})
 
 # Actions that change what other people see. A human ratifies these, always.
 NEEDS_RATIFICATION = frozenset({"publish_grammar", "publish_merchant"})
+
+
+def best_of(rule: dict) -> int:
+    """How many independent attempts a rule buys.
+
+    Induction is stochastic — the same prompt over the same forty lines has
+    returned 27 templates at 84% and 33 at 82% — so one attempt is a coin toss
+    reported as a measurement. Living in RULES rather than in the executing code
+    means the estimate and the execution read the same number, which is exactly
+    what they did not do the first time."""
+    return max(1, int(rule.get("best_of", 1)))
 
 
 @dataclass
@@ -119,7 +140,8 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
             if len(counts) >= rule["min_lines"]:
                 out.append(Action(
                     rule="induce_missing", kind="induce", target=target,
-                    why=rule["why"], estimated_calls=CALLS["induce"],
+                    why=rule["why"],
+                    estimated_calls=CALLS["induce"] * best_of(rule),
                     evidence={"distinct_lines": len(counts),
                               "movements": sum(counts.values())}))
             else:
@@ -139,7 +161,8 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
                 and d.get("recent_drop", 0.0) >= rule["recent_drop"]):
             out.append(Action(
                 rule="reinduce_drifted", kind="reinduce", target=target,
-                why=rule["why"], estimated_calls=CALLS["reinduce"],
+                why=rule["why"],
+                estimated_calls=CALLS["reinduce"] * best_of(rule),
                 evidence={"profile": current.id, "measured": current.measured,
                           "recent": d["recent"], "drop": d["recent_drop"]}))
 

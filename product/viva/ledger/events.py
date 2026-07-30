@@ -648,3 +648,91 @@ def question_declined(question_id: str, kind: str, occurred_at: str,
               "pack_version": pack_version, "by": by},
         provenance=provenance or Provenance(),
     )
+
+
+# --------------------------------------------------------------------------
+# The agent acted on its own.
+#
+# WHY THIS EARNS A TWENTIETH EVENT TYPE, when five places in this codebase say
+# "no new event type" and each was right to.
+#
+# Every other event here is anchored to something outside the system: a document
+# arrived, or a person spoke. This one is written when neither happened. The
+# agent woke, read the vault, decided a bank had enough lines to be worth a
+# grammar, and spent money finding out. Nothing else in the log can say that.
+#
+# `ReadRecorded` is the near miss and the precedent. It is the one existing event
+# that records what a model call did, including its cost — but it is scoped to a
+# `doc_id`, because a read is always a read OF something. An induction is not
+# about a document; it is about an institution's habits across hundreds of them.
+# There is no doc_id to hang it on, and inventing one would be a lie in a field
+# whose whole purpose is provenance.
+#
+# But the load-bearing reason is the one MovementTagged used: this makes a rule
+# EVENT-LEVEL that is otherwise a promise. The grammar write-guard REFUSES a
+# version that is measurably worse, raises, and writes nothing — correctly. And
+# `assess()` is deterministic, which is what makes re-assessing on every wake
+# safe. Together, with no record of the refusal, those two good properties
+# compose into an unbounded loop: the same three-call induction, proposed and
+# refused and proposed again, forever, silently, on someone else's invoice. The
+# cooldown has to be derivable from the log itself, or it is a second set of
+# books that can disagree with the first.
+#
+# WHY A STAKE SNAPSHOT AND NOT A TIMER — the same argument QuestionDeclined
+# makes, for the same reason. "Wait six hours" is arbitrary; why six and not
+# sixty? The honest trigger is new evidence. A refused induction stays quiet
+# while the vault would hand the model exactly the lines it handed it last time,
+# and becomes proposable the moment that changes. A SUCCESSFUL action needs no
+# cooldown at all: it changed the world, so `assess` stops proposing it on its
+# own.
+#
+# WHAT THIS EVENT MAY NOT CARRY. No descriptor, no amount, no account. An
+# induction reads bank lines and this event records only that it happened, to
+# which institution, and what came back — because a journal of the agent's work
+# is not a place for the work's inputs to accumulate. The stake is counts, never
+# content.
+
+AGENT_ACTED = "AgentActed"
+
+ACT_DONE = "done"           # it ran, and the result was written
+ACT_REFUSED = "refused"     # it ran, and a guard rejected what came back
+ACT_FAILED = "failed"       # it could not run to completion
+ACT_OUTCOMES = (ACT_DONE, ACT_REFUSED, ACT_FAILED)
+
+
+def agent_acted(rule: str, kind: str, target: str, outcome: str,
+                occurred_at: str, calls: int = 0, stake: dict | None = None,
+                produced: str = "", replaced: str = "", detail: str = "",
+                by: str = "agent",
+                provenance: Provenance | None = None) -> Event:
+    """One thing the agent did without being asked, and how it went.
+
+    ``rule`` is the RULES entry that fired and ``target`` what it fired on
+    ("Chase/depository", "brands") — together they are the identity a cooldown is
+    keyed on. ``calls`` is model calls ACTUALLY spent, not the estimate that got
+    it past the budget; the two differ whenever induction converges early, and
+    the estimate is the only figure a plan can carry while the actual is the only
+    one an invoice will agree with.
+
+    ``stake`` fingerprints the evidence that justified the action — distinct
+    lines and movements for an induction, brand count for an enrichment. A
+    refused action is re-proposed only when its stake moves.
+
+    ``produced`` and ``replaced`` name the artifact: the grammar written and the
+    one it succeeded. Both are ids, never contents — a template's literal text
+    comes from a model and belongs in the profile file, which a person can read
+    before publishing, not smuggled into an append-only log nobody re-reads."""
+    if outcome not in ACT_OUTCOMES:
+        raise ValueError(f"outcome must be one of {ACT_OUTCOMES}, got {outcome!r}")
+    if not rule or not target:
+        raise ValueError("an agent action must name its rule and its target")
+    if int(calls) < 0:
+        raise ValueError("calls spent cannot be negative")
+    return Event(
+        AGENT_ACTED, occurred_at,
+        body={"rule": rule, "kind": kind, "target": target, "outcome": outcome,
+              "calls": int(calls), "stake": dict(stake or {}),
+              "produced": produced, "replaced": replaced,
+              "detail": detail, "by": by},
+        provenance=provenance or Provenance(),
+    )
