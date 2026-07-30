@@ -282,6 +282,23 @@ Multi-party or household implications. Using implications to *predict* future ob
 
 **The audit was worse than the diagnosis.** Counting properly found **nine** raw-text classifiers, not five, and **four predate Viva listens**: `_TRANSFER_WORDS` / `_CARD_WORDS` / `_DEPOSITORY_WORDS` (transfer links), `_CASH_MARKERS` (positions and investments), `_PEER_MARKERS` (the merchant catalog). So this was never one slice drifting — it is a **reflex**: every time the code met ambiguity in raw text, it reached for a word list. Naming that is more useful than blaming a slice, because the reflex will recur unless the alternative is easier than the list, which is the point of putting implications where enrichment already runs.
 
+> **Amended 2026-07-30 — the last three are gone.** `_TRANSFER_WORDS`,
+> `_CARD_WORDS` and `_DEPOSITORY_WORDS` were deleted from the transfer matcher,
+> along with two stopword lists the audit had not counted. `_CARD_WORDS` turned
+> out to be the load-bearing one and it was **always true** — a card statement
+> prints "card" on nearly every line — so it was approving links rather than
+> checking them, and it had linked a cash withdrawal to an unrelated card payment
+> of the same amount. The replacement is a property of the accounts rather than of
+> the language, and the tie between equally-named candidates is broken by the date
+> the bank printed on the line. Full account in
+> [transfer-links-and-cross-document-corroboration.md](transfer-links-and-cross-document-corroboration.md#the-evidence-a-link-stands-on).
+>
+> The reflex this section names is real and the deletion confirms the diagnosis:
+> the list was reached for because it was one line and the alternative looked like
+> five. It is worth adding one test the audit did not have — **measure how often a
+> classifier says no.** A rule that never refuses is not classifying, and cheapness
+> plus always-true is exactly the profile of a rule nobody audits.
+
 *(Not everything that looks like a table is drift. `PRIMARY_CATEGORIES`, `DEDUCTION_ACCOUNTS`, `BROKERAGE_CASH_IN/OUT` are **schema we deliberately own**, mapping our own structured field values. The drift is specifically **classifying raw descriptors by substring**.)*
 
 **Deleted:** `_TRANSFER_HINT_CATEGORIES`, `_TRANSFER_HINT_SUBCATEGORIES`, `_CONDUIT_MARKERS` + `is_conduit`, `CORROBORATION`, `_DEFAULT_GROUP`, `_group_for`, and `suggest_answers`'s substring matching. Each is now a property of the counterparty's implication — `major`, `account_group`, `documents`, `counterparty_kind` — learned once, cached, versioned, shareable.
