@@ -1,42 +1,30 @@
 """What crosses to enrichment, built from streams rather than from descriptors.
 
-Enrichment used to walk raw movements: key each on `normalize_merchant(raw)`,
-gate on a substring list, hand over a linted string. Three things were wrong with
-that and all three are fixed by asking the stream engine instead, because a
-stream already knows who the counterparty is, whether they are a person, and
-whether there is a counterparty at all.
+A stream already knows who the counterparty is, whether they are a person, and
+whether there is a counterparty at all, so this module asks the stream engine
+rather than walking raw movements.
 
-**The gate stops being a word list — where a grammar exists.** A stream is
-withheld because a *slot said a person is in it*: the grammar's
-`{counterparty}` or `{counterparty_handle}`.
+**The gate is a slot, where a grammar exists.** A stream is withheld because a
+slot said a person is in it: the grammar's `{counterparty}` or
+`{counterparty_handle}`.
 
-**Where no grammar exists, the word list stays, as a fallback.** This is not a
-retreat. Without a grammar there is no slot, so there is nothing to say a line
-holds a person, and a peer payment is indistinguishable from a shop. The old
-`is_shareable` was wrong as a *primary mechanism* — it decided a question
-enrichment exists to answer, using substrings, in one language. It is defensible
-as a conservative answer to *"we cannot tell"*, because its errors then cost
-enrichment coverage rather than somebody's name. It over-blocks on purpose, and
-inducing a grammar for that institution retires it there.
+**Where no grammar exists, `is_shareable` is the fallback.** Without a grammar
+there is no slot to say a line holds a person, so the substring list stands in.
+It over-blocks by design: its errors cost enrichment coverage rather than
+somebody's name, and inducing a grammar for that institution retires it there.
 
-The distinction is the whole point: a rule that guesses in place of knowledge is
-a bug; the same rule declining to send when nothing is known is a safeguard.
+**The key is the brand, not the descriptor.** Two locations of one retailer are
+one key and one record.
 
-**The key stops being the descriptor.** Two locations of one retailer are one
-brand and one record, not two of each. That is the brand-level identity the
-whole field converged on and the catalog never had.
+**The payload is named slots, not a string.** Enrichment receives only slots
+that are impersonal by declaration, and only those values the brand agreed on
+across every occurrence — what varies belongs to the visit, what does not
+belongs to the counterparty. The NACHA entry description (`Payroll`,
+`Assn Dues`) is the originator's own word for what it is, and it travels.
 
-**The payload stops being a string.** Enrichment receives named slots, every one
-of them impersonal by declaration rather than by lint, and only those the brand
-AGREED on across every occurrence — what varies belongs to the visit, what does
-not belongs to the counterparty. The NACHA entry description is the quiet win:
-`Payroll`, `Assn Dues`, `Moneyline` is the originator's own word for what they
-are, and it costs nothing to pass on.
-
-And three kinds of stream never cross at all: a **person**, a **wire** (refused
-every layer), and anything **internal or activity** — there is no merchant to
-learn about when the movement is you paying your own card, or a line describing
-a capital gain.
+Three kinds of stream never cross: a **person**, a **wire** (refused at every
+layer), and anything **internal or activity** — there is no merchant to learn
+about in a payment to your own card or a line describing a capital gain.
 """
 
 from __future__ import annotations
@@ -47,18 +35,10 @@ from merchantcore.normalize import is_shareable, normalize_merchant
 
 from .streams import ACTIVITY, COUNTERPARTY, INTERNAL, MIXED
 
-# Slots worth sending, and the rule for keeping one: **a value travels only if
-# every occurrence of the brand agrees on it.**
-#
-# This is not a privacy filter — the vocabulary already settled what is
-# impersonal. It is about what belongs to a BRAND rather than to a visit. A
-# restaurant seen only in one city keeps its city, and that genuinely helps
-# identify it; a chain seen in five drops it, because no single city is a fact
-# about the chain. The same rule handles store numbers, which are never
-# brand-level, without needing to say so.
-#
-# It is the same idea the rest of this package runs on: what does not vary is
-# what the thing IS.
+# Slots worth sending. The rule for keeping one: a value travels only if every
+# occurrence of the brand agrees on it, so what belongs to the brand crosses and
+# what belongs to a visit does not. A restaurant seen in one city keeps its
+# city; a chain seen in five has none.
 CONTEXT_SLOTS = ("entry_description", "sec_code", "purpose", "contact",
                  "city", "region")
 
@@ -76,8 +56,9 @@ class Hint:
     _values: dict = field(default_factory=dict, repr=False)   # slot -> values seen
 
     def example(self) -> str:
-        """What a model is shown. The brand, plus context in a fixed order so two
-        vaults that saw the same merchant compose the same string."""
+        """What a model is shown: the brand, then context in a fixed order, then
+        the rails — so two vaults that saw the same merchant compose the same
+        string."""
         parts = [self.brand]
         parts += [f"{k}={self.context[k]}" for k in CONTEXT_SLOTS if self.context.get(k)]
         if self.channels:
@@ -102,17 +83,17 @@ def enrichment_hints(streams) -> dict:
       activity       an investment line, which names no party
 
     A `mixed` stream still crosses: it is one counterparty with some links
-    missing, and the merchant behind it is as real as any other."""
+    missing, and the merchant behind it is as real as any other.
+
+    Each hint's `context` holds only slot values every occurrence agreed on."""
     out: dict = {}
     for s in streams:
         if s.is_person or s.refused:
             continue
         if s.role not in (COUNTERPARTY, MIXED):
             continue
-        # No grammar named this counterparty, so no slot vouched for it. Fall
-        # back to the conservative list, which over-blocks by design: the cost
-        # of a false positive here is a merchant left unidentified, and the cost
-        # of a false negative is a person's name in a shared catalog.
+        # No grammar named this counterparty, so no slot vouched for it: fall
+        # back to the conservative list, which over-blocks by design.
         if s.layer != "grammar" and not all(
                 is_shareable(o.description) for o in s.occurrences):
             continue
@@ -125,8 +106,7 @@ def enrichment_hints(streams) -> dict:
             hint = Hint(key=key, brand=brand, layer=s.layer)
             out[key] = hint
         # A grammar's reading of a brand beats a published rule's, which beats
-        # the normalizer's. Recorded so the catalog can say how well it knows
-        # what it was told, rather than treating every key as equally sure.
+        # the normalizer's. The winning layer is recorded on the hint.
         if _rank(s.layer) > _rank(hint.layer):
             hint.layer, hint.brand = s.layer, brand
         hint.movements += s.n

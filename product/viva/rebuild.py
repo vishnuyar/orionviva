@@ -1,29 +1,22 @@
-"""Rebuild a vault from its stored CLAIMS — no model calls, no money, no re-read.
+"""Rebuild a vault from its stored claims — no model calls, no re-read.
 
     python -m viva.rebuild  [dest_dir]
 
-`reingest` re-*reads* every document with the model: it tests the reader, and it
-costs one call per document. This does the other half, and it is free: every
-model reply is already stored verbatim (`ReadRecorded`), so a vault
-can be reconstructed by running **today's parsers** over **yesterday's replies**.
+Every model reply is stored verbatim as a `ReadRecorded` event, so a vault can
+be reconstructed by running **today's parsers** over **yesterday's replies**.
+`reingest` does the other half, re-*reading* every document with the model at
+one call per document.
 
-What that buys, all at once:
+**It writes a NEW vault and never touches the source.**
 
-  * **The largest regression test available.** Every parser meets every document
-    you have ever ingested, in one run, for nothing.
-  * **A clean slate for measurement.** A queue with pre-answered questions
-    measures nothing. Rebuilding drops the derived overlays, so tier counts and
-    question counts are honest.
-  * **Proof the claims layer was worth building.** The claims layer rests on the
-    argument that a stored reply makes re-derivation free; this is that argument
-    being cashed.
+**Run `python -m viva.export_rulings` first.** A rebuild replays documents, not
+people: rulings, categories and identity confirmations are dropped, and only
+that export brings them back.
 
-**It writes a NEW vault and never touches the source.** Your real money, one
-shot: the old vault stays until you have looked at the new one.
-
-**Run `python -m viva.export_rulings` FIRST.** A rebuild replays documents; it
-cannot replay you. Everything a person told the vault — rulings, categories,
-identity confirmations — is dropped, and only that export can bring it back.
+Replays oldest first; `--hash-order` replays in raw-store order instead. Prints
+what the stored claims contain before starting, then each document's outcome
+with the reason where it did not post, the end-of-run sweep, and the final state
+of the rebuilt vault.
 """
 
 from __future__ import annotations
@@ -43,8 +36,8 @@ def claims_by_doc(events) -> dict[str, dict]:
 
     Two-phase reads store `classify` and `extract` separately; the extract reply
     is what a parser needs, and the classify reply is what names the type. Later
-    claims win — a document re-read after a prompt improvement should rebuild
-    from the better reply, not the first one."""
+    claims win, so a document re-read after a prompt change rebuilds from the
+    later reply."""
     out: dict[str, dict] = {}
     for e in events:
         if e.event_type != "ReadRecorded":
@@ -59,8 +52,9 @@ def claims_by_doc(events) -> dict[str, dict]:
 
 
 def _parse(doc_type: str, text: str, doc_id: str, locale: str, currency: str):
-    """Run TODAY's parser over a stored reply. The same dispatch the reader uses
-    — one place, so a rebuild can never quietly diverge from an ingest."""
+    """Run today's parser over a stored reply, through the same dispatch the
+    reader uses. Returns `(facts, error)`, or `(None, None)` when the doc type
+    has no profile and the document parks."""
     from .ingest.brokerage import from_brokerage_json
     from .ingest.paystub import from_paystub_json
     from .ingest.registry import (BROKERAGE_IDENTITY, PAYSTUB_IDENTITY,
@@ -90,15 +84,13 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     doc_ids = [d for d in src_raw.doc_ids() if d in claims]
     missing = [d for d in src_raw.doc_ids() if d not in claims]
 
-    # WHAT THE CLAIMS ACTUALLY CONTAIN, said before anything is attempted.
+    # What the stored claims contain, counted before anything is attempted.
     #
-    # A rebuild reads the doc TYPE from the classify-phase claim and the figures
-    # from the extract-phase one. If the classify claims are missing, every
-    # balance-family document comes back `unknown` — because that family's
-    # extract JSON does not name its own type — and every one of them parks with
-    # an identical, uninformative message. An instrument that cannot say which
-    # of its inputs is missing makes the person guess, so both phases are
-    # counted and printed up front, before a single parse.
+    # The doc type comes from the classify-phase claim and the figures from the
+    # extract-phase one. Without a classify claim every balance-family document
+    # comes back `unknown` — that family's extract JSON does not name its own
+    # type — and parks with an identical message, so both phases are counted and
+    # printed up front.
     with_classify = sum(1 for d in doc_ids if (claims[d].get("classify") or {}).get("response_text"))
     with_extract = sum(1 for d in doc_ids if (claims[d].get("extract") or {}).get("response_text"))
 
@@ -115,18 +107,14 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
     log(f"  from: {source}")
     log(f"  into: {dest}\n")
 
-    # WHICH ORDER, and why it is a question at all.
+    # Which order the documents are replayed in.
     #
     # `src_raw.doc_ids()` yields content hashes, so a replay arrives in
-    # effectively random order. Ordering is not supposed to matter: every
-    # ordering of a run should yield the identical posted chain with zero gaps.
-    #
-    # `by_date` replays oldest-first and IS THE DEFAULT, because the two orders
-    # do not in fact agree. The MONEY is order-independent — the same movement
-    # total either way — but the GRADE is not: the same statements come back
-    # `conflicted` in one order and `corroborated` in the other. For a product
-    # whose output is trust, the grade IS the product, so that is a real defect
-    # and not cosmetic. Use --hash-order to reproduce it.
+    # effectively arbitrary order. `by_date` replays oldest first and is the
+    # default: the two orders agree on the money — the same movement total
+    # either way — but not always on the grade, with the same statements coming
+    # back `conflicted` under one and `corroborated` under the other.
+    # `--hash-order` replays as stored.
     if by_date:
         def _period(doc):
             e = claims[doc].get("extract") or {}
@@ -155,14 +143,12 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
         doc_type, confidence = _peek_classification(
             classify.get("response_text") or text)
         if doc_type == "unknown":
-            # No classify claim (or an unreadable one). The EXTRACT claim still
-            # names its own type: the version is a self-describing
+            # No classify claim, or an unreadable one. The extract claim still
+            # names its type: the version is a self-describing
             # `extract:<base>+<fragment>` composite, and a fragment belongs to
-            # exactly one profile — a read recorded under `card-v1` WAS a
-            # credit-card statement. This reads a fact we wrote down; it does
-            # not infer one. Without it, a document whose claims carry an
-            # extract phase and no classify phase replays as `unknown`, finds no
-            # projector, and parks, with the answer one field away.
+            # exactly one profile, so a read recorded under `card-v1` was a
+            # credit-card statement. Without this the document replays as
+            # `unknown`, finds no projector, and parks.
             recovered = doc_type_for_prompt_version(extract.get("prompt_version", ""))
             if recovered:
                 doc_type, confidence = recovered, 1.0
@@ -173,20 +159,17 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
                    _m=extract.get("model", "")):
             """The reader's shape, fed from storage instead of a model.
 
-            The parser runs FRESH — that is the entire point — while the model's
-            words do not change. `parse_ok` is deliberately not consulted: a
-            claim that failed to parse a month ago may parse today, and finding
-            that out is half the reason to do this.
+            The parser runs fresh over unchanged text. The stored `parse_ok` is
+            not consulted, so a claim that failed to parse before may parse now.
 
             The original `prompt_version` and `model` ride along, so the rebuilt
-            vault's claims still name the instructions that actually produced
-            the text. A rebuild must not relabel history as its own."""
+            vault's claims still name the instructions that produced the text."""
             facts, err = _parse(_t, _text, new_doc_id, locale, currency)
             if facts is not None:
-                # The balance family's extract JSON carries no doc_type — that
-                # comes from the CLASSIFY phase, and the reader stamps it onto
-                # the facts after parsing. Omit it and every statement comes
-                # back as `unknown`, which has no projector, so nothing posts.
+                # The balance family's extract JSON carries no doc_type: it
+                # comes from the classify phase, and the reader stamps it onto
+                # the facts after parsing. Without it every statement is
+                # `unknown`, which has no projector, so nothing posts.
                 facts.doc_type = _t
                 facts.doc_type_confidence = _c
             return ReadResult(doc_type=(facts.doc_type if facts else _t),
@@ -201,37 +184,34 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
         counts[res.action] = counts.get(res.action, 0) + 1
         why = ""
         if res.action not in ("posted", "prepended"):
-            # Say WHY on the line itself. A rebuild that quietly parks every
-            # document still prints 35 tidy lines and looks like it worked.
+            # Name the reason on the line itself, so a run that parks everything
+            # says why on every line rather than only in the totals.
             reason = res.message or (res.finding.explain()
                                      if res.finding else "") or "no facts parsed"
             why = f"   [{reason[:70]}]"
         log(f"  [{i}/{len(doc_ids)}] {doc_id[:10]}… {doc_type:24} -> {res.action}"
             + (f" ({res.grade})" if res.grade else "") + why)
 
-    # A rebuild ingests in whatever order the raw store yields, and gap-healing
-    # is a CASCADE: a statement that cannot connect yet is held until its
-    # neighbour arrives. During normal use that neighbour comes later and the
-    # heal fires; in a single batch run, the last arrivals have nobody left to
-    # trigger them. So the sweep runs once at the end — the same sweep `rescan`
-    # exists for, so order-independence is kept rather than assumed.
+    # Gap healing is a cascade: a statement that cannot connect yet is held
+    # until its neighbour arrives and triggers the heal. In a single batch run
+    # the last arrivals have nothing left to trigger them, so the same sweep
+    # `rescan` runs is run once at the end.
     from .ingest import sweep
 
     swept = sweep(vault.ledger)
     proj = vault.ledger.projection()
-    # ALWAYS report the sweep, including when it healed nothing: a silent zero
-    # leaves no way to tell whether the sweep happened at all.
+    # Reported even when it healed nothing, so a zero is distinguishable from a
+    # sweep that never ran.
     log(f"\nsweep: healed {swept.get('gaps', 0)} gap(s), corroborated "
         f"{swept.get('corroborated', 0)} conflict(s), linked "
         f"{swept.get('auto', 0)} transfer(s)")
 
-    # THE FINAL STATE, not the arrival actions.
+    # The final state, not the arrival actions.
     #
-    # The per-document lines record what happened the MOMENT each document
-    # landed. A statement that arrives before its neighbour is a gap at that
-    # instant and posts minutes later when the neighbour heals it — but the
-    # arrival line still says "gap" forever. A transient state counted as a
-    # result is a reporting failure, so the outcome is read from the vault.
+    # A per-document line records what happened the moment that document landed.
+    # A statement arriving before its neighbour is a gap at that instant and
+    # posts when the neighbour heals it, while its arrival line still says
+    # "gap", so the outcome below is read from the vault instead.
     if recovered_types:
         log(f"\n  {recovered_types} document(s) had no classify claim; their type\n"
             "  was recovered from the extract prompt version.")
@@ -241,8 +221,8 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
         log(f"  ({counts['gap']} statement(s) were a gap ON ARRIVAL and healed "
             "when their neighbours landed — that is the cascade working.)")
 
-    # A tool must check its own outcome: per-document lines are not a result, so
-    # say plainly whether anything was rebuilt at all.
+    # Whether anything was rebuilt at all, read from the vault rather than from
+    # the per-document lines.
     movements = len(proj.movements())
     log(f"\nrebuilt vault: {len(proj.accounts())} account(s), {movements} movement(s)")
     if movements == 0:

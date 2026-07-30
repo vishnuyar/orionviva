@@ -1,24 +1,19 @@
-"""Why is this statement still held? — the gap diagnosis.
+"""Why each held statement has not posted — the gap diagnosis.
 
     VIVA_VAULT_DIR=<vault> python -m viva.debug_gaps
 
-A statement posts when it **connects to its account's chain**, and there are
-exactly two places it can connect:
+A statement posts when it connects to its account's chain, and the chain grows
+at exactly two ends:
 
-    forward   its opening  == the account's CURRENT balance   (extend the head)
-    backward  its closing  == the account's EARLIEST opening   (extend the tail)
+    forward   its opening  == the account's current balance   (extend the head)
+    backward  its closing  == the account's earliest opening  (extend the tail)
 
-Everything else is a gap. That rule is deliberate and correct — a statement whose
-opening matches nothing might belong to a period we have never seen, and posting
-it would invent a balance history that no document attests.
+Anything else is a gap. `heal_gaps` retries until nothing more connects, so a
+statement belonging to the middle of a run posts once both neighbours are held.
 
-**But the chain can only grow at its two ends.** A statement that belongs in the
-MIDDLE of a run has nothing to attach to until both its neighbours are present,
-and `heal_gaps` retries until nothing more connects, so the cascade fills the
-middle in as neighbours arrive.
-
-This prints, for every held statement, exactly what it wanted and what the chain
-was offering — so the difference is a number you can read rather than a theory.
+For every gap-held balance statement this prints the period, what it opened and
+closed at, where the chain stood, and the difference at each end. Read-only, no
+model call.
 """
 
 from __future__ import annotations
@@ -90,7 +85,7 @@ def report(proj) -> str:
                        f"   (off by {r['backward_gap']})")
         out.append("")
 
-    # The diagnosis the numbers imply, stated rather than left to inference.
+    # The diagnosis the numbers imply.
     exact = [r for r in rows
              if r["forward_gap"] == 0 or r["backward_gap"] == 0]
     if exact:

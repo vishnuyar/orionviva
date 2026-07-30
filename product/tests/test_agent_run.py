@@ -12,6 +12,7 @@ actuals will agree with the plan and disagree with the invoice.
 """
 
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from merchantcore.profile import Profile, ProfileStore, Template
@@ -418,3 +419,158 @@ def test_the_stake_names_the_machinery_that_would_act(tmp_path):
     enrich = Action(rule="enrich_unknown", kind="enrich", target="brands",
                     why="…", evidence={"unknown_brands": 40})
     assert stake_of(enrich)["machinery"] == ENRICHMENT_VERSION
+
+
+# --------------------------------------- nothing raises out of the doing half
+
+
+def _lines(n=40):
+    return {f"CARD PURCHASE 03/{(i % 27) + 1:02d} SHOP{chr(65 + i % 26)}{i} "
+            f"PLANO TX CARD 1234": 3 for i in range(n)}
+
+
+def _obs(tmp_path, counts=None):
+    from viva.agent.observe import Observation
+    store = ProfileStore(tmp_path / "profiles")
+    return Observation(pairs={("Northgate", "depository"): counts or _lines()},
+                       store=store)
+
+
+def test_an_extractor_that_raises_becomes_an_outcome_not_an_exception(tmp_path,
+                                                                      monkeypatch):
+    """`perform` returns every failure as an Outcome. An action that let an
+    exception out would abandon the wake with the calls already spent and no
+    record that they were."""
+    from viva.agent.act import perform
+
+    def _boom(_prompt):
+        raise RuntimeError("the provider said 503")
+
+    monkeypatch.setattr("viva.agent.act._extractor", lambda name: _boom)
+    action = Action(rule="induce_missing", kind="induce",
+                    target="Northgate/depository", why="…")
+    out = perform(object(), action, _obs(tmp_path), best_of=2)
+    assert out.outcome == "failed"
+    assert "RuntimeError" in out.detail
+
+
+def test_an_enrichment_that_raises_becomes_an_outcome_not_an_exception(tmp_path,
+                                                                       monkeypatch):
+    from viva.agent.act import perform
+
+    def _boom(*_a, **_kw):
+        raise RuntimeError("the catalog was locked")
+
+    monkeypatch.setattr("viva.agent.act._extractor", lambda name: (lambda p: "{}"))
+    monkeypatch.setattr("viva.ingest.enrich_merchants", _boom)
+    action = Action(rule="enrich_unknown", kind="enrich", target="brands", why="…")
+    out = perform(SimpleNamespace(ledger=None), action, _obs(tmp_path))
+    assert out.outcome == "failed"
+    assert "RuntimeError" in out.detail
+
+
+def test_an_action_kind_with_no_handler_is_reported_not_skipped(tmp_path):
+    from viva.agent.act import perform
+    action = Action(rule="publish_grammar", kind="publish", target="x", why="…")
+    out = perform(object(), action, _obs(tmp_path))
+    assert out.outcome == "failed" and "publish" in out.detail
+
+
+# ------------------------------------------- best-of: independent, held-out
+
+
+class _FakeInduction:
+    def __init__(self, scored, templates=1, profile=True):
+        from merchantcore.profile import Profile, Template
+        self.scored = scored
+        self.coverage = 1.0 - scored          # deliberately the opposite ranking
+        self.accepted = True
+        self.verdict = f"covers {scored:.0%}"
+        self.profile = (Profile("Northgate", "depository", "v1",
+                                [Template("CARD PURCHASE {date} {brand} {city} "
+                                          "{region} CARD {account_ref}")]
+                                * templates)
+                        if profile else None)
+
+
+def _fake_inducer(results):
+    """An Inducer whose successive `induce` calls yield `results`; an element
+    that is an exception is raised instead of returned."""
+    seq = iter(results)
+
+    class _Fake:
+        def __init__(self, _extract_fn):
+            pass
+
+        def induce(self, _inst, _kind, _counts):
+            nxt = next(seq)
+            if isinstance(nxt, Exception):
+                raise nxt
+            return nxt
+
+    return _Fake
+
+
+def test_one_failed_attempt_does_not_lose_the_others(tmp_path, monkeypatch):
+    """Independent attempts fail independently. One exception must not discard
+    the attempts that succeeded, or the calls they cost."""
+    from viva.agent.act import do_induce
+    monkeypatch.setattr("merchantcore.induce.Inducer",
+                        _fake_inducer([RuntimeError("boom"),
+                                       _FakeInduction(0.80),
+                                       _FakeInduction(0.90)]))
+    monkeypatch.setattr("viva.agent.act._extractor", lambda name: (lambda p: "{}"))
+    action = Action(rule="induce_missing", kind="induce",
+                    target="Northgate/depository", why="…")
+    out = do_induce(action, _obs(tmp_path), best_of=3)
+    assert out.outcome == "done"
+    assert out.result["attempts"] == [0.8, 0.9], \
+        "the two surviving attempts are kept and reported"
+
+
+def test_every_attempt_failing_is_a_failure_not_a_silence(tmp_path, monkeypatch):
+    from viva.agent.act import do_induce
+    monkeypatch.setattr("merchantcore.induce.Inducer",
+                        _fake_inducer([RuntimeError("boom")] * 3))
+    monkeypatch.setattr("viva.agent.act._extractor", lambda name: (lambda p: "{}"))
+    action = Action(rule="induce_missing", kind="induce",
+                    target="Northgate/depository", why="…")
+    out = do_induce(action, _obs(tmp_path), best_of=3)
+    assert out.outcome == "failed" and "boom" in out.detail
+
+
+def test_best_of_selects_on_the_held_out_score_not_training_coverage(tmp_path,
+                                                                     monkeypatch):
+    """Selecting on training coverage picks the luckiest overfit of N, which is
+    what withholding a share of the lines exists to prevent."""
+    from viva.agent.act import do_induce
+    monkeypatch.setattr("merchantcore.induce.Inducer",
+                        _fake_inducer([_FakeInduction(0.60),    # coverage 0.40
+                                       _FakeInduction(0.95)]))  # coverage 0.05
+    monkeypatch.setattr("viva.agent.act._extractor", lambda name: (lambda p: "{}"))
+    action = Action(rule="induce_missing", kind="induce",
+                    target="Northgate/depository", why="…")
+    out = do_induce(action, _obs(tmp_path), best_of=2)
+    assert out.outcome == "done"
+    assert out.result["scored"] == 0.95
+
+
+# ------------------------------------------------- the loop always terminates
+
+
+def test_each_target_is_attempted_at_most_once_per_wake(homed, tmp_path,
+                                                        monkeypatch):
+    """`assess` is deterministic and a successful action is never cooled, so an
+    action that reports success without changing the vault would be proposed
+    again by the very next plan. The per-wake guard is what ends the loop."""
+    from viva.agent.act import Outcome
+    monkeypatch.setenv("VIVA_MODEL", "test-model")
+    monkeypatch.setenv("VIVA_MODEL_ADAPTER", "openai-compatible")
+    monkeypatch.setattr("viva.agent.run.perform",
+                        lambda *a, **kw: Outcome("done", calls=0))
+    vault = _vault_with(tmp_path / "v", _many_lines())
+
+    run = wake(vault)
+    attempted = [(a.rule, a.target) for a, _ in run.performed]
+    assert attempted, "there was work to do"
+    assert len(attempted) == len(set(attempted))

@@ -1,9 +1,9 @@
-"""Logging setup — verbose by design while we debug the real pipeline.
+"""Logging setup for the entry points.
 
 Library modules only ``logging.getLogger(__name__)`` and emit; they never
-configure handlers. The entrypoints (the surface, the debug tools) call
-``configure()`` — so tests stay silent (no handler installed) and real runs are
-chatty. Turn detail all the way up with ``VIVA_LOG_LEVEL=DEBUG``.
+configure handlers. The entry points (the surface, the debug tools) call
+``configure()``, so tests stay silent — no handler is installed — and real runs
+are chatty. ``VIVA_LOG_LEVEL`` sets the level; ``DEBUG`` is the most detailed.
 """
 
 from __future__ import annotations

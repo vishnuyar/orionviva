@@ -1,31 +1,25 @@
 """The ingest pipeline: capture → classify → verify → post.
 
-The shape the whole product turns on, and the place the model finally meets the
-trust core. Every file that arrives is:
+Every file that arrives is:
 
-  1. **Captured raw and encrypted, first, unconditionally.** Nothing
-     is judged before it is safely held. Content-addressed, so a re-upload is a
-     no-op, not a duplicate.
-  2. **Read by a model** — the one place a model is in this path. The read is a
-     *proposal*, never trusted on its own.
-  3. **Routed by type — via the registry (data, not code).** The doc-type
-     registry maps a classified type to a profile; the balance family (checking,
-     savings, credit card) shares one profile and goes to the reconciliation
-     gate. Anything with no profile yet is *parked*: held and acknowledged ("I
-     have this; I can't read it yet"), never discarded. Adding a type is a
-     registry row; as more types are registered, parked documents light up
-     retroactively — no re-upload.
-  4. **Gated by deterministic reconciliation.** A statement posts to the ledger
-     only if opening + its transactions reconcile to the printed closing, to the
-     cent. Fail, and it is surfaced as a conflict, not posted. The model reads;
-     arithmetic certifies.
+  1. **Captured raw and encrypted, first.** Content-addressed, so a re-upload is
+     a no-op rather than a duplicate.
+  2. **Read by a model.** The read is a proposal; nothing downstream trusts it
+     on its own.
+  3. **Routed by type through the registry.** A classified type resolves to a
+     profile; the balance family (checking, savings, credit card) shares one and
+     goes to the reconciliation gate. A type with no profile is *parked* — held
+     and acknowledged, never discarded — and posts retroactively once one is
+     registered, with no re-upload.
+  4. **Gated by deterministic reconciliation.** A statement posts only if
+     opening + its transactions equal the printed closing to the cent. Otherwise
+     it is surfaced as a conflict and not posted.
 
 Across months of the same account the pipeline *stitches*: a later statement's
-opening must equal the balance we already hold, or the gap is surfaced (a likely
-missing statement) rather than papered over.
+opening must equal the balance already held, or the document is held as a gap.
 
-The model read is injected (``read_fn``), so everything here is testable offline
-with fixtures. Only the real reader touches the network.
+The model read is injected (``read_fn``), so everything here runs offline
+against fixtures; only ``reader`` touches the network.
 """
 
 from __future__ import annotations
@@ -59,12 +53,12 @@ from .statement import StatementFacts, TxnFact
 
 log = logging.getLogger(__name__)
 
-# Ingest actions, each an honest outcome the caller can report verbatim.
+# Ingest actions — the outcome of one ingest, reportable verbatim.
 POSTED = "posted"        # reconciled and written to the ledger
 PARKED = "parked"        # captured and acknowledged; no projector for it yet
 DUPLICATE = "duplicate"  # already ingested (same content hash)
 CONFLICT = "conflict"    # recognized, but did not reconcile — not posted
-GAP = "gap"              # opening does not continue from the balance we hold
+GAP = "gap"              # opening does not continue from the balance held
 IDENTITY = "identity"    # reconciles, but whose account is ambiguous — ask
 AWAITING = "awaiting"    # a pay stub read + verified, waiting for its net-pay deposit
 
@@ -72,8 +66,8 @@ AWAITING = "awaiting"    # a pay stub read + verified, waiting for its net-pay d
 @dataclass
 class ModelPhase:
     """One model interaction in a read — the classify pass or the extract pass —
-    captured verbatim for the claims layer. A two-phase real read produces
-    two of these; each is persisted as its own ReadRecorded."""
+    captured verbatim for the claims layer. Each is persisted as its own
+    ReadRecorded, so a two-phase read yields two."""
     phase: str                       # "classify" | "extract"
     model: str
     prompt_version: str
@@ -94,8 +88,8 @@ class ReadResult:
 
     ``phases`` carries the per-call model records (classify, extract) that the
     pipeline persists to the claims layer. The flat ``raw_*``/``model`` fields are
-    the legacy single-call view, kept so offline stubs stay terse; a real
-    two-phase read populates ``phases`` instead."""
+    the single-call view, used by offline stubs; a two-phase read populates
+    ``phases`` instead."""
     doc_type: str
     doc_type_confidence: float
     facts: StatementFacts | None = None
@@ -127,16 +121,16 @@ ReadFn = Callable[[bytes, str], ReadResult]
 
 
 def account_id_for(facts: StatementFacts) -> str:
-    """A stable account id anchored to the account number (institution + last-4),
-    falling back to the label only when no number was extracted — so every month
-    of the same account maps to the same ledger account regardless of how the
-    statement labels it."""
+    """A stable account id anchored to the account number (institution + last-4).
+
+    Falls back to the label only when no number was extracted, so every month of
+    one account maps to one ledger account however the statement labels it."""
     return account_key(facts.institution, facts.account_number, facts.account_ref)
 
 
 def _resolve(proj, facts: StatementFacts):
-    # Resolve identity within the same account kind: a card and a checking
-    # account with the same holder are different accounts, not an ambiguity.
+    # Identity resolves within one account kind: a card and a checking account
+    # with the same holder are different accounts, not an ambiguity.
     return proj.resolve(facts.institution, facts.account_number,
                         facts.account_ref, facts.account_names,
                         kind=account_kind_for(facts.doc_type))
@@ -156,12 +150,11 @@ def _connects(facts: StatementFacts, proj, account: str) -> str:
 def heal_gaps(ledger: Ledger) -> int:
     """Re-post gap-held statements that now stitch onto their account's chain.
 
-    Ingestion is order-independent *both ways*: a statement parked as a gap posts
-    as soon as it connects — **forward** (its opening = the current balance) or
-    **backward** (its closing = the earliest opening, a backfill). One post can
-    unblock a neighbour, so this cascades until nothing more connects. Only gap
-    holds are retried (they reconcile internally); conflict holds wait for a
-    human."""
+    Order-independent both ways: a gap-held statement posts as soon as it
+    connects forward (its opening = the current balance) or backward (its
+    closing = the earliest opening). One post can unblock a neighbour, so this
+    cascades until nothing more connects. Only gap holds are retried; conflict
+    holds wait for a person. Returns how many posted."""
     posted_total = 0
     attempted: set[str] = set()
     while True:
@@ -169,7 +162,7 @@ def heal_gaps(ledger: Ledger) -> int:
         candidate = None
         for body in proj.gap_holds():
             doc_id = body["doc_id"]
-            # Holds are polymorphic — only the balance family stitches this way.
+            # Holds are polymorphic; only the balance family stitches this way.
             if (doc_id in attempted
                     or identity_of_facts(body.get("facts")) != BALANCE_IDENTITY):
                 continue
@@ -198,12 +191,13 @@ def _gap_delta(facts: StatementFacts) -> Decimal:
 
 
 def heal_corroboration(ledger: Ledger) -> int:
-    """Re-attempt conflict-held statements that a newly-arrived counterparty can
-    now corroborate. The mirror of ``heal_gaps`` for the cross-document rung: a
-    card held because its read dropped a payment posts as soon as the checking
-    statement that attests the payment lands (order-independent).
-    Only conflict holds with an available decisive partner are retried, so a
-    genuine misread with no counterpart keeps waiting for a human."""
+    """Re-attempt conflict-held statements a newly-arrived counterparty can now
+    corroborate — the cross-document rung's mirror of ``heal_gaps``.
+
+    A card held because its read dropped a payment posts as soon as the checking
+    statement attesting that payment lands, in either arrival order. Only
+    conflict holds with a decisive partner are retried; a misread with no
+    counterpart keeps waiting for a person. Returns how many posted."""
     from .transfers import account_tokens_from, find_corroborating_legs
     posted_total = 0
     attempted: set[str] = set()
@@ -212,8 +206,8 @@ def heal_corroboration(ledger: Ledger) -> int:
         candidate = None
         for body in proj.open_holds():
             doc_id = body["doc_id"]
-            # A pay stub or a brokerage statement can also be held as a conflict,
-            # and their facts are a different shape entirely — route, never assume.
+            # A pay stub or brokerage statement can also be held as a conflict,
+            # and its facts are a different shape; route on the identity.
             if (body.get("reason") != "conflict" or doc_id in attempted
                     or identity_of_facts(body.get("facts")) != BALANCE_IDENTITY):
                 continue
@@ -236,16 +230,17 @@ def heal_corroboration(ledger: Ledger) -> int:
 
 
 def sweep(ledger: Ledger) -> dict:
-    """Run the full order-independent reconciliation + transfer sweep over an
-    existing vault: stitch gaps, close conflict-holds a counterparty now
-    corroborates, and detect internal transfers among ALL posted movements. Safe
-    to run on startup or on demand — it only appends links/heals and is
-    idempotent (already-linked movements and resolved holds are skipped). It
-    also links statements ingested before any transfer scan ran."""
+    """Run the whole reconciliation + transfer sweep over an existing vault.
+
+    Stitches gaps, closes conflict-holds a counterparty now corroborates, posts
+    pay stubs whose deposit has arrived, and links internal transfers among all
+    posted movements. Makes no model calls. Idempotent — already-linked
+    movements and resolved holds are skipped — so it is safe on startup or on
+    demand. Returns counts of `gaps`, `corroborated`, `auto`, `suggested`,
+    `resolved`, `open_before` and `links`."""
     from .transfers import link_transfers
-    # Measure net change across the whole sweep: corroboration re-posts run their
-    # own transfer scan, so the final link_transfers alone undercounts. Diff the
-    # projection instead, for an honest summary.
+    # Corroboration re-posts run their own transfer scan, so the trailing
+    # link_transfers alone undercounts; diff the projection instead.
     p0 = ledger.projection()
     links0, sugg0 = len(p0.transfer_links()), len(p0.transfer_suggestions())
     gaps = heal_gaps(ledger)
@@ -254,11 +249,9 @@ def sweep(ledger: Ledger) -> dict:
     link_transfers(ledger)
     p1 = ledger.projection()
     auto = len(p1.transfer_links()) - links0
-    # Open questions are a LEVEL, not a delta, and reporting the delta printed
-    # "transfers to confirm: -23" on a sweep that answered twenty-three of them.
-    # A link resolves the suggestions on both its legs, so the difference is a
-    # net of two unrelated movements and means nothing on its own. Report what
-    # is actually true: how many are open now, and how that changed.
+    # `suggested` is the number of questions open NOW, not a delta: a link
+    # resolves the suggestions on both its legs, so a difference nets two
+    # unrelated movements and means nothing on its own.
     open_now = len(p1.transfer_suggestions())
     if gaps or corroborated or auto or open_now != sugg0:
         log.info("sweep: %d gaps healed, %d corroborated, %d transfers auto-linked, "
@@ -271,8 +264,10 @@ def sweep(ledger: Ledger) -> dict:
 
 def _apply_forced(facts: StatementFacts,
                   finding: ReconciliationFinding) -> StatementFacts:
-    """Return a copy of the facts with a forced correction applied. Only ever
-    called on a FORCED finding — a correction an independent identity implies."""
+    """Return a copy of the facts with a forced correction applied.
+
+    Only valid for a finding at status FORCED; any other kind is returned
+    unchanged."""
     if finding.kind == "amount_misread" and finding.target_index is not None:
         txns = list(facts.transactions)
         i = finding.target_index
@@ -285,15 +280,22 @@ def _apply_forced(facts: StatementFacts,
 
 def post_statement(ledger: Ledger, facts: StatementFacts,
                    confirmed_by: str = "") -> IngestResult:
-    """Reconcile a checking statement and, only if it holds, post it. The gate.
+    """Reconcile a balance-family statement and, only if it holds, post it.
 
-    On failure, diagnose deterministically (no model call). A *forced* correction
-    — one an independent identity implies and which closes the reconciliation —
-    is auto-applied and posted at `corroborated`, and reported. Anything merely
-    *suggested* or unlocalized is *held for review* (persisted, never posted).
+    The reconciliation ladder, in order, stopping at the first rung that closes
+    the gap:
 
-    ``confirmed_by='human'`` (used when a person has ruled on a held statement)
-    posts the closing at `verified`."""
+      0. the statement reconciles as read → post at `corroborated`;
+      1. ``diagnose`` (arithmetic only, no model call) returns a FORCED
+         correction that closes it → apply it and post at `corroborated`,
+         reporting the correction on the result;
+      2. a decisive counterparty movement on another own account supplies the
+         missing leg → post at `corroborated` (see ``_try_corroboration``);
+      3. otherwise hold for review, persisted and not posted.
+
+    A SUGGESTED or unlocalized finding never auto-applies. ``confirmed_by=
+    'human'`` posts the closing at `verified` instead. Returns an
+    ``IngestResult`` whose ``action`` is POSTED, CONFLICT, GAP or IDENTITY."""
     log.info("post_statement: account=%s opening=%s closing=%s txns=%d",
              account_id_for(facts), facts.opening_amount, facts.closing_amount,
              len(facts.transactions))
@@ -317,9 +319,8 @@ def post_statement(ledger: Ledger, facts: StatementFacts,
                 res.message = f"{finding.message} {res.message}"
             return res
 
-    # Cross-document corroboration rung: before asking a human, see if a
-    # decisive counterparty movement on another own account attests the missing
-    # line. Cheaper than a re-read (no model call), stronger (two issuers agree).
+    # Rung 2: before asking a person, see whether a decisive counterparty
+    # movement on another own account attests the missing line.
     corroborated = _try_corroboration(ledger, facts)
     if corroborated is not None:
         return corroborated
@@ -336,21 +337,24 @@ def post_statement(ledger: Ledger, facts: StatementFacts,
 
 
 def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | None:
-    """The cross-document corroboration rung. If the statement's reconciliation
-    gap is exactly a decisive unmatched counterparty movement on another of the
-    user's own accounts, supply that missing leg — provenance pointing at the
-    counterparty document, graded `corroborated`, and marked as an incomplete
-    primary read (so the crutch never hides a model-recall problem) — then post.
-    The subsequent transfer scan nets the pair. Returns None (→ hold for a human)
-    unless the match is decisive; a gap is never closed on a guess."""
+    """Rung 2 of the ladder: close the gap from a counterparty document.
+
+    When the reconciliation gap is exactly explained by decisive unmatched
+    movements on other own accounts, each is supplied as a transaction whose
+    provenance is the counterparty document, graded `corroborated` and noted as
+    not read from this document; the statement is then posted and a transfer
+    scan nets the pair.
+
+    Returns None — meaning "carry on to the hold" — unless the match is
+    decisive and the supplied legs make the statement reconcile exactly."""
     from .transfers import account_tokens_from, find_corroborating_legs, link_transfers
 
     proj = ledger.projection()
     account = account_id_for(facts)
     kind = account_kind_for(facts.doc_type)
     delta = _gap_delta(facts)
-    # Tokens come from the FACTS (this account may not be opened yet — it's the
-    # one failing to reconcile), so a counterparty line naming it can be found.
+    # Tokens come from the facts, not the projection: this account may not be
+    # open yet, and a counterparty line naming it still has to be findable.
     own_tokens = account_tokens_from(facts.institution, facts.account_number,
                                      facts.account_ref)
     legs = find_corroborating_legs(proj, account, kind, delta, facts.currency,
@@ -365,9 +369,9 @@ def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | 
         except Exception:
             return acct
 
-    # One supplied leg per counterparty movement — each cites its OWN counterparty
-    # document (a missing section may be attested across several statements). The
-    # sign is the missing leg's effect on this account (sign of delta).
+    # One supplied leg per counterparty movement, each citing its own
+    # counterparty document — a missing section may be attested across several.
+    # The sign is the missing leg's effect on this account (the sign of delta).
     sign = Decimal(-1) if delta < 0 else Decimal(1)
     supplied = [TxnFact(
         date=cp.date, description=f"Payment (corroborated by {_name(cp.account)})",
@@ -376,7 +380,7 @@ def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | 
         note=("supplied by cross-document corroboration; attested by the "
               "counterparty statement, not read from this document")) for cp in legs]
     corrected = replace(facts, transactions=list(facts.transactions) + supplied)
-    if not _reconciles(corrected).passed:         # defensive: only post if it closes
+    if not _reconciles(corrected).passed:         # only post if it closes
         return None
     who = ", ".join(sorted({_name(cp.account) for cp in legs}))
     finding = ReconciliationFinding(
@@ -400,9 +404,11 @@ def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | 
 def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                      finding: ReconciliationFinding | None,
                      auto_corrected: bool, confirmed_by: str = "") -> IngestResult:
-    """Write a statement that reconciles: resolve whose account it is (holding
-    for confirmation if that's ambiguous), then seed a new account, stitch onto
-    the end (forward), backfill in front (backward), or hold it as a gap."""
+    """Write a statement that reconciles.
+
+    Resolves whose account it is — holding for confirmation when that is
+    ambiguous — then seeds a new account, stitches onto the end (forward),
+    backfills in front (backward), or holds it as a gap."""
     proj = ledger.projection()
     res = _resolve(proj, facts)
     if res.verdict == "ambiguous":
@@ -466,8 +472,8 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
     kind = account_kind_for(facts.doc_type)   # picks the kind-aware counter-leg
     for t in facts.transactions:
         # A corroboration-supplied leg carries its own provenance (the
-        # counterparty document) and grade (`corroborated`); an ordinary line
-        # defaults to this statement and `verified`.
+        # counterparty document) and grade; an ordinary line defaults to this
+        # statement and `verified`.
         ledger.append(simple_transaction(
             account, t.amount, t.description, t.date,
             provenance=t.provenance(facts.doc_id),
@@ -489,8 +495,10 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
 
 
 def _paystub_diagnose(facts: PayStubFacts) -> ReconciliationFinding:
-    """Localize a pay-stub identity failure with arithmetic alone — the same
-    finding contract as a statement, a different formula."""
+    """Localize a pay-stub identity failure with arithmetic alone.
+
+    Same ``ReconciliationFinding`` contract as a statement, over
+    `gross − Σ deductions = net`."""
     recon = check_paystub_identity(
         facts.gross, [d.amount for d in facts.deductions], facts.net)
     if recon.passed:
@@ -530,12 +538,12 @@ def _net_pay_deposit(proj, net: Decimal, currency: str, pay_date: str):
 def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
     """Verify a pay stub and, only if it holds, decompose the matching deposit.
 
-    The divergent gate: `gross − deductions = net`. On failure the pay
-    stub is held with a localized finding (never guessed). On
-    success, it *decomposes* the checking deposit its net explains — gross booked
-    as income, deductions into universal buckets, the net counted once — reusing
-    the deposit already on the ledger. If the deposit hasn't been ingested yet,
-    the income is read and held until it arrives (order-independent, healed)."""
+    The gate is `gross − Σ deductions = net`. On failure the stub is held with a
+    localized finding. On success it decomposes the checking deposit its net
+    explains — gross booked as income, deductions into universal buckets, the
+    net counted once — reusing the deposit already on the ledger. With no such
+    deposit yet, the stub is held as AWAITING and ``heal_paystubs`` posts it
+    when the deposit arrives."""
     finding = _paystub_diagnose(facts)
     when = facts.pay_date or facts.period_end or facts.period_start
     if not finding.reconciles:
@@ -580,8 +588,8 @@ def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
 
 
 def heal_paystubs(ledger: Ledger) -> int:
-    """Post pay stubs that were held awaiting a deposit which has now arrived —
-    the pay-stub mirror of the gap/corroboration heals (order-independent)."""
+    """Post pay stubs held awaiting a deposit that has now arrived — the
+    pay-stub mirror of ``heal_gaps``. Returns how many posted."""
     posted = 0
     attempted: set[str] = set()
     while True:
@@ -606,24 +614,24 @@ def heal_paystubs(ledger: Ledger) -> int:
 
 
 def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
-    """Verify a brokerage statement's internal tally and, only if it holds, record
-    its holdings as measurements.
+    """Verify a brokerage statement's internal tally and, only if it holds,
+    record its holdings as measurements.
 
-    The divergent gate: `Σ position market_value + cash = total`, a snapshot
-    consistency check (not a flow). On failure the statement is held (never
-    guessed). On success the account is opened as `investment`, the cash is
-    observed as an attested snapshot balance, and each holding is emitted as a
-    `PositionObserved` MEASUREMENT — not posted; cash flow over accrual, only
-    realized cash flows post. Unrealized gain is never recorded here — it is a
-    derived, as-of-date presentation view over these measurements."""
-    # The sweep is cash — but a statement may print the cash line as INCLUDING it
-    # (one month) or EXCLUDING it (the next), for the very same account. Rather than
-    # guess, try both readings and take the one that reconciles **exactly**; if
-    # neither closes (or the sweep is absent and they're identical), fall through
-    # to the ordinary gate. Decisive-or-hold, the same contract as every other
-    # forced correction. Internally we then normalize to "cash includes the sweep",
-    # so the cash figure means the same thing across statements — which is what
-    # lets the cash flow stitch month to month.
+    The gate is the snapshot identity `Σ position market_value + cash = total`.
+    On failure the statement is held. On success the account is opened as
+    `investment`, the cash is observed as an attested balance, and each holding
+    is emitted as a `PositionObserved` measurement rather than a posting — only
+    realized cash flows post, and unrealized gain is a derived view over these
+    measurements, never a ledger fact.
+
+    When the period's activity is present and an opening cash figure is known
+    (printed, or carried forward from the ledger), the cash is additionally
+    reconciled as a flow and each activity line posts."""
+    # A statement may print the cash line as including the money-market sweep or
+    # excluding it, and the same account can do either month to month.
+    # `resolve_sweep_cash` picks whichever reading reconciles exactly and
+    # normalizes to "cash includes the sweep", so the figure means one thing
+    # across statements and the cash flow can stitch month to month.
     from .brokerage import is_cash_row, resolve_sweep_cash
     when = facts.as_of
     sweep_total = sum((p.market_value for p in facts.positions
@@ -652,17 +660,11 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             grade="conflicted", reconciliation=recon, finding=finding,
             message=f"Not posted; held for your review. {finding.message}")
 
-    # The cross-account cash flow. When we know the opening cash AND the period's
-    # activity, reconcile the cash as a FLOW (opening + Σ activity = closing) and
-    # post each realized event so contributions tie to the funding account,
-    # income/fees/gains are recognized, and the cash sub-ledger reconciles.
-    # Unrealized change never posts.
-    #
-    # If the statement doesn't print an opening cash figure, the LEDGER already
-    # knows it: it is the cash we hold for this account from the previous
-    # statement. That is the forward-stitching rule ("its opening is the balance
-    # we hold") applied to brokerage cash, so a statement with no opening line
-    # can still post its whole activity.
+    # The cash flow. With an opening cash figure and the period's activity, the
+    # cash reconciles as a flow (opening + Σ activity = closing) and each
+    # realized event posts. When the statement prints no opening figure, the
+    # cash held for this account from the previous statement is carried forward
+    # — the forward-stitching rule applied to brokerage cash.
     proj0 = ledger.projection()
     account0 = account_id_for(facts)
     opening_cash, opening_from = facts.opening_cash, "the statement"
@@ -707,10 +709,10 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             account_names=facts.account_names))
 
     if flow:
-        # Cash as a reconciled flow: opening seed (once) + each activity posting +
-        # the attested closing. The activity legs carry contributions to Transfers
-        # (tied to the funding account), income to Income:*, fees to Expenses,
-        # buys/sells to Assets:Investments, and a sell's realized gain to
+        # Cash as a reconciled flow: the opening seed (once), each activity
+        # posting, then the attested closing. The activity legs carry
+        # contributions to Transfers, income to Income:*, fees to Expenses,
+        # buys and sells to Assets:Investments, and a sell's realized gain to
         # Income:CapitalGains.
         if seeding:
             ledger.append(opening_balance_observed(
@@ -721,11 +723,11 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
                 account, a.kind, a.amount, a.description, a.date or when,
                 instrument=a.instrument, realized_gain=a.realized_gain,
                 provenance=facts.provenance(f"{a.kind} {a.instrument}".strip())))
-    # Cash: the attested balance at the statement date (closing of the flow, or a
-    # lone snapshot on a holdings-only statement).
+    # Cash: the attested balance at the statement date — the closing of the
+    # flow, or a lone snapshot on a holdings-only statement.
     ledger.append(closing_balance_observed(
         account, facts.cash, when, facts.provenance("cash balance")))
-    # Holdings: dated measurements, NOT postings.
+    # Holdings: dated measurements, not postings.
     for p in facts.positions:
         ledger.append(position_observed(
             account, p.instrument, p.units, p.market_value, facts.currency, when,
@@ -742,8 +744,8 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     if flow:
         message += f" {len(facts.activity)} activity item(s) posted."
     elif facts.activity:
-        # Never drop what we read in silence: say the activity is held back and
-        # why, so an incomplete picture is visibly incomplete.
+        # Activity that was read but cannot be reconciled is reported as held
+        # back rather than dropped silently.
         log.info("post_brokerage: %d activity item(s) read but NOT posted — no "
                  "opening cash to reconcile the flow against", len(facts.activity))
         message += (f" I also read {len(facts.activity)} activity item(s), but "
@@ -759,7 +761,11 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
 def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                        read_fn: ReadFn, filename: str = "",
                        captured_at: str = "") -> IngestResult:
-    """Raw-capture a file, read it, and either post it or park it — never lose it."""
+    """Raw-capture a file, read it, and either post it or park it.
+
+    Returns an ``IngestResult``; a file whose content has already been ingested
+    comes back as DUPLICATE without being read again, and a read that raises is
+    recorded as a failed read and parked rather than lost."""
     doc_id = raw.put(data)                       # (1) capture first, always
     log.info("ingest start: %s (%d bytes) doc_id=%s",
              filename or "<upload>", len(data), doc_id[:12])
@@ -778,7 +784,7 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
              doc_id[:12], rr.doc_type, rr.doc_type_confidence,
              rr.facts is not None, rr.error)
 
-    ledger.append(document_captured(             # record that we hold it
+    ledger.append(document_captured(             # record that it is held
         doc_id, filename, len(data), rr.doc_type, rr.doc_type_confidence,
         captured_at, Provenance(doc_id=doc_id)))
 
@@ -803,11 +809,10 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
                  "resp_chars=%d)", rr.model, rr.cost_usd, rr.facts is not None,
                  len(rr.raw_text))
 
-    # (3) route by type — the registry decides what has a projector (data, not
-    # code): the balance family (checking / savings / card) posts; the rest parks.
+    # (3) route by type: the registry says which types have a projector.
     if rr.facts is not None and can_project(rr.doc_type):
-        # (4) route by the profile's identity to the right gate + post-projector
-        # (the divergent-profile dispatch): a pay stub is not a balance.
+        # (4) route by the profile's identity to that identity's gate and
+        # post-projector.
         profile = profile_for(rr.doc_type)
         identity = profile.identity if profile is not None else ""
         if identity == PAYSTUB_IDENTITY:
@@ -817,16 +822,15 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         else:
             res = post_statement(ledger, rr.facts)
         if res.action == POSTED:
-            healed = heal_gaps(ledger)           # a new post may unblock waiting statements
-            # a newly-arrived counterparty may corroborate a conflict-held statement
+            healed = heal_gaps(ledger)           # this post may unblock a gap hold
+            # ...may corroborate a conflict-held statement
             healed += heal_corroboration(ledger)
-            # a newly-arrived deposit may let a waiting pay stub decompose it
+            # ...may be the deposit a held pay stub was waiting for
             healed += heal_paystubs(ledger)
             if healed:
                 log.info("ingest: healed %d previously-held statement(s)", healed)
-            # (5) a new account's movements may complete an internal transfer with
-            # movements already held — detect and net. Deferred import
-            # avoids an ingest→ingest cycle at module load.
+            # (5) new movements may complete an internal transfer with movements
+            # already held. The import is deferred to break an ingest cycle.
             from .transfers import link_transfers
             link_transfers(ledger)
         log.info("ingest done: doc_id=%s -> %s (%s)", doc_id[:12], res.action, res.grade)

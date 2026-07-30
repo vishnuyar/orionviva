@@ -1,10 +1,11 @@
-"""The surface's service layer — pure functions from a vault to JSON payloads.
+"""The surface's service layer — functions from a vault to JSON payloads.
 
-Deliberately separate from the HTTP plumbing so it is all testable offline. Each
-function reads (or acts on) the vault and returns plain dicts the page renders.
-The number, its grade, and its coverage come straight from the answer path; the
-*provenance is present in every payload but kept quiet* — the page shows the
-picture and the interactions, and only surfaces a source on request.
+Separate from the HTTP plumbing in `server`, so every endpoint's behaviour is
+testable without a socket. Each function reads or acts on the vault and returns
+plain dicts of JSON-safe values; money is carried as strings, never floats.
+
+Figures, grades and coverage come from the answer path. Provenance is present in
+every payload but the page renders it only where it is asked for.
 """
 
 from __future__ import annotations
@@ -27,8 +28,8 @@ log = logging.getLogger("viva.web.service")
 
 
 def overview(vault: Vault) -> dict:
-    """The dashboard payload: total, each account with a quiet grade, coverage,
-    and the count of items awaiting the person's review."""
+    """The dashboard payload: total, accounts with their grades, coverage,
+    spending and income, holdings, and the counts of items awaiting review."""
     proj = vault.ledger.projection()             # the cached live projection
     total = answer_total(proj)
     accounts = []
@@ -38,15 +39,15 @@ def overview(vault: Vault) -> dict:
         ba = proj.balance(info.account)
         liability = info.kind == "liability"
         investment = info.kind == "investment"
-        # An investment account's headline is its TOTAL value — cash + the
-        # latest measured holdings — not the bare cash balance.
+        # An investment account's headline is its total value — cash plus the
+        # latest measured holdings — rather than the cash balance alone.
         amount = proj.account_value(info.account) if investment else (
             abs(ba.amount) if liability else ba.amount)
         row = {
             "account": info.account, "name": info.name or info.account,
             "currency": info.currency,
-            # A liability's balance is money owed; show a positive owed figure and
-            # let the page label it, so the sign convention never confuses a person.
+            # A liability's balance is money owed, sent as a positive magnitude
+            # for the page to label; `liability` below says which it is.
             "amount": str(amount),
             "kind": info.kind, "liability": liability, "investment": investment,
             "grade": ba.grade, "as_of": ba.dated,
@@ -58,7 +59,8 @@ def overview(vault: Vault) -> dict:
             row["holdings"] = str(proj.holdings_value(info.account))
             row["cash"] = str(proj.cash_value(info.account))
             row["unrealized_gain"] = str(ug) if ug is not None else None
-            # The composed total is only good as of its OLDEST part; say so.
+            # A composed total is as of its oldest part; `mixed_as_of` says
+            # whether the parts carry different dates.
             row["as_of"] = as_of or row["as_of"]
             row["mixed_as_of"] = mixed
         accounts.append(row)
@@ -72,16 +74,15 @@ def overview(vault: Vault) -> dict:
         "spending": answer_spending(proj).to_dict(),
         "spending_by_category": {c: str(a) for c, a
                                  in proj.spending_by_category().items()},
-        # How much of the spending figure rests on weak evidence, and what was
-        # kept out of it and why — the number states its own doubt.
+        # How much of the spending figure rests on weak evidence, alongside
+        # what was left out of it and why.
         "provisional_spending": str(proj.provisional_spending()),
-        # Money whose components are known but whose PROPORTIONS are not.
-        # Its own line, deliberately: folding it into spending
-        # would overstate and dropping it would understate, so the headline
-        # says "X spent, plus Y I can't split yet" and names the document.
+        # Money whose components are known but whose proportions are not. Its own
+        # line rather than part of spending, which would overstate, or dropped,
+        # which would understate.
         "undecomposed": {k: (str(v) if not isinstance(v, list) else v)
                          for k, v in proj.undecomposed().items()},
-        # The chart of accounts your own rulings built — asserted, not issued.
+        # The accounts a person's own rulings brought into being.
         "ruled_accounts": [
             {**row, "paid": str(row["paid"])}
             for row in sorted(proj.ruled_accounts().values(),
@@ -97,8 +98,8 @@ def overview(vault: Vault) -> dict:
         "income_breakdown": _income_breakdown(proj),
         "positions": [p.to_dict() for p in proj.positions()],
         "review_count": len(held_items(proj)),
-        # Held documents with no fix-it affordance yet (pay stub, brokerage) —
-        # listed so nothing the system is sitting on is invisible.
+        # Held documents with no correction affordance yet (pay stub, brokerage),
+        # listed so nothing being held is invisible.
         "other_holds": other_holds(proj),
         "transfer_review_count": len(proj.transfer_suggestions()),
         "paystub_review_count": len(pending_paystubs),
@@ -108,8 +109,10 @@ def overview(vault: Vault) -> dict:
 
 
 def _income_breakdown(proj) -> list[dict]:
-    """Where recognized pay went — the universal deduction buckets that carry a
-    balance, so the dashboard can show gross → net decomposition."""
+    """The deduction buckets carrying a balance, as `[{label, amount}]`.
+
+    Empty buckets and accounts that do not exist are omitted, so the list may be
+    empty."""
     from ..ledger.postings import DEDUCTION_ACCOUNTS
     rows = []
     for label, account in [("Retirement", DEDUCTION_ACCOUNTS["retirement"]),
@@ -126,23 +129,23 @@ def _income_breakdown(proj) -> list[dict]:
 
 
 def questions(vault: Vault, limit: int = 10) -> dict:
-    """The one ranked list of what Viva needs — highest stake first, with the
-    tail summarized rather than hidden. The existing review cards still answer
-    these; this is the front door that says which to do first."""
+    """The ranked list of open questions, highest stake first.
+
+    Returns at most `limit` questions plus a summary of the tail."""
     from ..questions import open_questions
     return open_questions(vault.ledger, limit=limit)
 
 
-# `rule_major` below is the only answer path. Vaults holding old
-# `MerchantNatureRuled` events still replay — the projection reads them — but
-# nothing new can be written in that vocabulary.
+# `rule_major` below is the only answer path. The projection still replays
+# `MerchantNatureRuled` events in existing vaults, but nothing here writes them.
 
 
 def net_worth(vault: Vault, as_of: str = "", curve: bool = False) -> dict:
-    """Net worth as a CURVE — pure projection, no model, no writes.
+    """Net worth from the projection. Reads only — no model, no writes.
 
-    `as_of` empty means the latest date we have evidence for. `curve` returns
-    every point instead of one, which is what a trend line reads."""
+    An empty `as_of` means the latest date there is evidence for. With `curve`
+    true, returns `{"points": [...]}` — every point in the series — instead of a
+    single point."""
     from ..ledger.networth import net_worth as _net_worth
     from ..ledger.networth import series
     proj = vault.ledger.projection()
@@ -155,21 +158,18 @@ def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
                kind: str = "", movement_key: str = "", group: str = "") -> dict:
     """Answer with one of the four majors — the button path.
 
-    Deterministic end to end: no model is involved when a person taps an answer,
-    so this works with nothing configured. It goes through the same `propose` /
-    `apply_proposal` pair the sentence path uses, so a tapped answer and a typed
-    one produce byte-identical events — free text is an alternative channel,
-    never a second mechanism."""
+    Deterministic: no model is involved, so this works with nothing configured.
+    It goes through the same `propose` / `apply_proposal` pair as `listen_to`, so
+    a tapped answer and a typed one produce identical events."""
     from ..listen import Interpretation, apply_proposal, propose
     proj = vault.ledger.projection()
     interp = Interpretation(
         legs=[{"major": major, "account_hint": group or descriptor or merchant,
                "share": ""}],
         kind=kind, said="")
-    # A `movement_key` scopes the answer to ONE transaction. The unknown tier —
-    # a cheque, an ATM withdrawal, a peer — asks one at a time precisely because
-    # the descriptor says nothing about what the money was for, so generalizing
-    # would settle a whole bucket on a single answer.
+    # A `movement_key` scopes the answer to one transaction rather than to every
+    # movement sharing the descriptor. The unknown tier — a cheque, an ATM
+    # withdrawal, a peer — is asked one at a time for that reason.
     proposal = propose(proj, interp, descriptor or merchant,
                        movement_key=movement_key)
     applied = apply_proposal(vault.ledger, proposal, _today())
@@ -179,16 +179,17 @@ def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
 def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
               category: str = "", subcategory: str = "",
               amount: str = "", currency: str = "") -> dict:
-    """Read a sentence and return a **Proposal** — nothing is written.
+    """Read a sentence and return a Proposal. Writes nothing.
 
-    The person sees what would change and how much money it moves before any of
-    it happens. With no model configured this returns `understood: False` and
-    the surface falls back to the buttons, which is the honest failure: we could
-    not read it, so we do not guess."""
+    Returns `{"understood": True, "proposal": {...}}`, or
+    `{"understood": False, "why": ..., "message": ...}` when the sentence could
+    not be read — including when no model is configured. `why` is one of
+    `unreachable`, `unparseable`, `too_long`, `empty`. Applying a proposal is a
+    separate call to `apply_ruling`."""
     from ..listen import interpret, propose
     proj = vault.ledger.projection()
-    # Name the instrument the movement actually sat in — a card, a brokerage, a
-    # loan account — instead of letting the prompt assume a bank.
+    # Name the instrument the movement sat in — a card, a brokerage, a loan
+    # account — so the prompt does not assume a bank account.
     source = ""
     for m in proj.movements():
         if movement_key and m.key == movement_key:
@@ -200,10 +201,8 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
     interp = interpret(said, descriptor, category, subcategory, _interpreter(),
                        source=source)
     if not interp.legs:
-        # Each failure gets its own sentence. A model that is DOWN, one that is
-        # rambling, and one that genuinely didn't understand are different
-        # things, and saying which is the difference between a product that
-        # admits a limit and one that just seems broken.
+        # One message per failure kind: an unreachable model, a rambling one and
+        # one that did not understand have different causes and different fixes.
         message = {
             "unreachable": "I can't reach my reader right now — the buttons "
                            "still work, and nothing was lost.",
@@ -223,9 +222,10 @@ def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
 
 
 def _describe_source(proj, account: str) -> str:
-    """A plain-language name for the instrument a movement sat in. Never a bank
-    by assumption: the vault holds cards, brokerages and (soon) loan accounts,
-    and a prompt that says "your bank account" mis-frames all of them."""
+    """A plain-language name for the instrument a movement sat in.
+
+    Derived from the account's kind, so a card, a brokerage and a bank account
+    each describe themselves. Returns "" for an account that cannot be read."""
     try:
         info = proj.account_info(account)
     except Exception:                              # noqa: BLE001
@@ -236,7 +236,8 @@ def _describe_source(proj, account: str) -> str:
 
 
 def apply_ruling(vault: Vault, proposal: dict) -> dict:
-    """Confirm a proposal. The only path from a sentence to the ledger."""
+    """Apply a proposal returned by `listen_to`. The only path from a sentence
+    to the ledger. `summary` is dropped; it is display text, not a field."""
     from ..listen import Proposal, apply_proposal
     fields = {k: v for k, v in proposal.items() if k != "summary"}
     return {"ok": True, **apply_proposal(vault.ledger, Proposal(**fields), _today())}
@@ -248,21 +249,16 @@ def _today() -> str:
 
 
 def _interpreter():
-    """The live model edge for step 3, or None when nothing is configured.
-    Absent a model the whole queue keeps working — free text is an addition.
+    """The one-shot extractor that reads a typed sentence, or None.
 
-    **Configured separately from the document reader, on purpose.** Reading a
-    statement is a hard vision task that wants the strongest model available;
-    reading *"this is my mortgage"* is a ~390-token text task a 4B model does
-    well. Forcing one setting for both would either overpay on every sentence or
-    under-read every statement. So `VIVA_INTERPRET_*` overrides `VIVA_MODEL_*`
-    per-field, and falls back to it when unset.
+    Configured per field: `VIVA_INTERPRET_<FIELD>` if set, else the matching
+    `VIVA_MODEL_<FIELD>`, so the sentence reader and the document reader can be
+    different models. Returns None when neither VIVA_INTERPRET_MODEL nor
+    VIVA_MODEL is set; the question queue works without it, because free text is
+    an addition to the buttons rather than the only way to answer.
 
-    This is also the seam the local model goes through: point
-    `VIVA_INTERPRET_BASE_URL` at Ollama or LM Studio and set
-    `VIVA_INTERPRET_KEY_ENV=none`, and no sentence a person types ever leaves
-    the machine — which is the whole promise, applied to the warmest surface in
-    the product."""
+    Pointing `VIVA_INTERPRET_BASE_URL` at a local server (Ollama, LM Studio) with
+    `VIVA_INTERPRET_KEY_ENV=none` keeps typed sentences on the machine."""
     import os
 
     def cfg(field, default=None):
@@ -276,22 +272,20 @@ def _interpreter():
     from vivacore.models import ModelSpec
 
     from ..listen import one_shot_extractor
-    # A local server is keyless. `none` says so explicitly rather than leaving a
-    # missing key to fail three layers down with a confusing message.
+    # "none" or empty declares a keyless endpoint, so no API key is looked up.
     key_env = cfg("KEY_ENV", "OPENROUTER_API_KEY")
     return one_shot_extractor(ModelSpec(
         name="viva-listen", adapter=cfg("ADAPTER", "openai-compatible"),
         model=model, base_url=cfg("BASE_URL"),
         api_key_env=None if (key_env or "").lower() in ("", "none") else key_env,
-        # The answer is ~60 tokens. The headroom is for models that think out
-        # loud before answering — `_first_json_object` finds the object inside
-        # the prose, so reasoning costs tokens but never costs the reading.
+        # The answer itself is ~60 tokens; the headroom is for models that
+        # reason before answering, which the reply parser reads past.
         max_tokens=1024, json_mode=True))
 
 
 def categorize_review(vault: Vault, limit: int = 50) -> dict:
-    """The categorization queue: uncategorized expense movements, with the seed
-    categories to choose from. Provenance rides along quietly."""
+    """The categorization queue: up to `limit` uncategorized expense movements,
+    with the seed categories to choose from."""
     proj = vault.ledger.projection()
     items = []
     for m in proj.uncategorized_expenses()[:limit]:
@@ -304,28 +298,25 @@ def categorize_review(vault: Vault, limit: int = 50) -> dict:
 def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict:
     """Every movement with one merchant — the context behind a question.
 
-    Keyed on the NORMALIZED merchant, the same unit a ruling generalizes over, so
-    what you're shown is exactly what your answer will settle. It reads every
-    movement, not the categorization queue: that queue holds only
-    *uncategorized* movements, while a nature question is asked about a merchant
-    that already has a category.
+    Matched on the normalized merchant, the same unit a ruling generalizes over,
+    and drawn from every movement rather than from the categorization queue,
+    which holds only uncategorized ones.
 
-    Direction is kept, and named. Wrapping every amount in abs() and summing the
-    magnitudes is invisible for a one-way merchant and wrong twice for a
-    counterparty money flows BOTH ways with: every row reads positive, and the
-    "total" adds the two directions together — abs() erases the one bit that
-    matters. So: amounts stay SIGNED as the account recorded them, each row
-    carries a kind-aware `direction`, and the summary is three figures — out,
-    in, net — never one."""
+    Amounts stay signed as the account recorded them, and each row carries a
+    kind-aware `direction` ("out" or "in"). The summary is three figures —
+    `money_out`, `money_in`, `net` — because a single total over a counterparty
+    money flows both ways with adds the two directions together.
+    See docs/net-worth.md on what abs() discards.
+
+    Returns at most `limit` items; `count` is the full number matched."""
     from ..ledger.merchants import normalize_merchant
     proj = vault.ledger.projection()
     key = normalize_merchant(merchant)
 
     def _direction(m) -> str:
-        # Money toward this counterparty ("out") or from it ("in). Kind-aware:
-        # an asset-side account records outflows negative, while a liability
-        # records a charge — money out to the merchant — POSITIVE. Reading the
-        # raw sign alone would call every card purchase "in".
+        # Money toward this counterparty ("out") or from it ("in"). An asset-side
+        # account records an outflow negative; a liability records a charge —
+        # money out to the merchant — positive, so the sign alone is not enough.
         if m.kind == "liability":
             return "out" if m.amount > 0 else "in"
         return "out" if m.amount < 0 else "in"
@@ -351,17 +342,14 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
     money_in = sum((abs(Decimal(i["amount"])) for i in items
                     if i["direction"] == "in"), zero)
     return {"merchant": key, "items": items[:limit], "count": len(items),
-            # Three figures, deliberately not one: a single "total" over a
-            # mixed-direction counterparty is a bluff. `net` is out minus in —
-            # positive means money net LEFT you toward this counterparty.
+            # `net` is out minus in: positive means money went, on balance,
+            # toward this counterparty.
             "money_out": str(money_out), "money_in": str(money_in),
             "net": str(money_out - money_in),
             "currency": items[0]["currency"] if items else "",
             "categories": list(SEED_CATEGORIES),
-            # The tag vocabulary rides along so the surface can offer what
-            # exists before anything new is minted — the same prevention that
-            # keeps categories from sprawling, applied where it matters more:
-            # nothing outside this device can ever help clean up tags.
+            # The tags already in use, so the surface can offer them before a
+            # new one is minted.
             "known_tags": proj.known_tags(),
             "merchant_tags": proj._merchant_tags.get(key, [])}
 
@@ -369,8 +357,9 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
 def tag(vault: Vault, subject: str, tags: list, scope: str = "movement") -> dict:
     """Tag one movement, or every movement from a merchant.
 
-    ``tags`` is the COMPLETE set for that subject — removing one is sending the
-    set without it, so the log stays append-only and replay stays trivial."""
+    ``tags`` is the complete set for that subject, not an addition: removing a
+    tag means sending the set without it. Returns the normalized set that was
+    stored (stripped, lower-cased, sorted, blanks dropped)."""
     from ..ingest import tag_merchant, tag_movement
     if scope == "merchant":
         tag_merchant(vault.ledger, subject, tags, by="human")
@@ -380,14 +369,14 @@ def tag(vault: Vault, subject: str, tags: list, scope: str = "movement") -> dict
 
 
 def assign_category_to(vault: Vault, movement_key: str, category: str) -> dict:
-    """A person assigns a category to a movement (`verified` — the moat)."""
+    """A person assigns a category to one movement, at grade `verified`."""
     ok = assign_category(vault.ledger, movement_key, category, by="human")
     return {"ok": ok}
 
 
 def merchant_review(vault: Vault, limit: int = 50) -> dict:
-    """The categorization queue, by MERCHANT: deduped unknown
-    merchants with how many transactions each covers, so one ruling clears many."""
+    """The categorization queue by merchant: uncategorized merchants with the
+    number of transactions each covers, most first, capped at `limit`."""
     proj = vault.ledger.projection()
     rows = sorted(proj.uncategorized_merchants().items(),
                   key=lambda kv: kv[1]["count"], reverse=True)
@@ -397,14 +386,15 @@ def merchant_review(vault: Vault, limit: int = 50) -> dict:
 
 
 def assign_merchant(vault: Vault, merchant: str, category: str) -> dict:
-    """Categorize a whole merchant (`verified`) — fills all its transactions."""
+    """Categorize a whole merchant at grade `verified`, covering every movement
+    that normalizes to it."""
     assign_merchant_category(vault.ledger, merchant, category, by="human")
     return {"ok": True}
 
 
 def paystub_review(vault: Vault) -> dict:
-    """Pay stubs read but not fully posted — awaiting their deposit, or held
-    because gross − deductions did not equal net."""
+    """Pay stubs read but not fully posted: waiting for their deposit, or held
+    because gross minus deductions did not equal net."""
     from ..ingest import PayStubFacts
     proj = vault.ledger.projection()
     items = []
@@ -424,10 +414,10 @@ def paystub_review(vault: Vault) -> dict:
 
 
 def transfer_review(vault: Vault) -> dict:
-    """Suggested internal transfers awaiting a ruling, in human-readable form.
-    Candidates already linked (confirmed under another suggestion) are dropped, so
-    a movement never appears as an option twice, and a suggestion with no
-    remaining candidates disappears."""
+    """Suggested internal transfers awaiting a ruling, in readable form.
+
+    Candidates already linked under another suggestion are dropped, so a movement
+    is never offered twice; a suggestion left with no candidates is omitted."""
     proj = vault.ledger.projection()
     by_key = {m.key: m for m in proj.movements()}
     linked = proj.linked_keys()
@@ -443,7 +433,7 @@ def transfer_review(vault: Vault) -> dict:
     for s in proj.transfer_suggestions():
         cands = [k for k in s.get("candidates", []) if k not in linked]
         if not cands:
-            continue                     # nothing left to match → not a question
+            continue                     # nothing left to match against
         items.append({
             "source": _describe(s["a"]),
             "candidates": [_describe(k) for k in cands],
@@ -452,21 +442,25 @@ def transfer_review(vault: Vault) -> dict:
 
 
 def confirm_transfer_link(vault: Vault, movement_a: str, movement_b: str) -> dict:
-    """A person confirms two movements are one transfer (netted, `verified`).
-    A no-op if either was already linked — a movement joins at most one transfer."""
+    """A person confirms two movements are one transfer, at grade `verified`.
+
+    A no-op returning `{"ok": False}` if either movement is already linked: a
+    movement belongs to at most one transfer."""
     made = confirm_transfer(vault.ledger, movement_a, movement_b)
     return {"ok": made}
 
 
 def reject_transfer_link(vault: Vault, movement_a: str, movement_b: str = "") -> dict:
-    """A person dismisses a suggested transfer (not the same money)."""
+    """A person dismisses a suggested transfer, revoking the link if one was
+    made. Append-only; nothing is deleted."""
     reject_transfer(vault.ledger, movement_a, movement_b)
     return {"ok": True}
 
 
 def account_view(vault: Vault, account: str) -> dict:
-    """One account: its balance and its transactions (provenance rides along,
-    for the quiet 'source' affordance)."""
+    """One account: its identity, balance and transactions, each carrying its
+    provenance. Returns `{"error": "unknown_account", ...}` for an account the
+    projection does not hold."""
     proj = vault.ledger.projection()
     try:
         info = proj.account_info(account)
@@ -509,11 +503,11 @@ def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
 def greeting(vault: Vault) -> dict:
     """Viva's opening line — a moment from the persona pack.
 
-    The name is derived deterministically from the vault's own account holders
-    (the most common first token, title-cased) — read from documents the person
-    provided, never asked of a model. An empty vault gets the welcome; anything
-    else gets the return. `all_settled` rides along so the queue card can speak
-    it when there is nothing to ask."""
+    The name is derived from the vault's own account holders: the most common
+    first token, title-cased, or "" when there are no holders. No model is
+    called. An empty vault gets `welcome_empty`, any other `welcome_back`.
+    `all_settled` is returned alongside, for the queue card to use when there is
+    nothing to ask."""
     from collections import Counter
 
     from ..persona import ACTIVE_PACK, moment
@@ -534,12 +528,12 @@ def greeting(vault: Vault) -> dict:
 
 def decline_question(vault: Vault, question_id: str,
                      reason: str = "not_now") -> dict:
-    """"Not now" is an answer: record it, and answer in Viva's voice.
+    """Record that a question was set aside, and reply in Viva's voice.
 
-    The stake snapshot (amount, count) is taken SERVER-SIDE from the live queue
-    — the surface only names the question, so a stale page cannot pin the wrong
-    fingerprint. Declining a question that is no longer open is not an error;
-    it is a no-op, said honestly."""
+    The stake snapshot (amount, count) is read from the live queue rather than
+    taken from the caller, so a stale page cannot record the wrong figures.
+    Declining a question that is no longer open is a no-op returning
+    `{"ok": False}` with a message, not an error."""
     from ..ledger.events import question_declined
     from ..persona import ACTIVE_PACK, moment
     from ..questions import open_questions
@@ -556,7 +550,10 @@ def decline_question(vault: Vault, question_id: str,
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:
-    """Ingest an uploaded file (capture → read → post/park/hold)."""
+    """Ingest an uploaded file: capture, read, then post, park or hold.
+
+    Returns the outcome — `action`, `grade`, `doc_type`, `account`,
+    `auto_corrected`, `message`, and the `finding` when one was raised."""
     res = capture_and_ingest(vault.raw, vault.ledger, data, read_fn,
                              filename=filename, captured_at=_today())
     return {

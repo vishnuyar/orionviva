@@ -1,29 +1,28 @@
-"""One-time cleanup: rewind a vault to *before* categorization, keeping all else.
+"""Rewind a vault to *before* categorization, keeping everything else.
 
-Categorization is a graded OVERLAY — three event types that never touched a posted transaction, balance, transfer, or income figure:
+Categorization is a graded OVERLAY — event types that never touched a posted
+transaction, balance, transfer or income figure:
 
     CategoryAssigned      — a category on one movement
     MerchantCategorized   — a category on a normalized merchant
     MerchantEnriched      — a merchant's category/subcategory/attributes
+    RulingRecorded        — a major, at movement or merchant scope
 
-This tool rebuilds the event log with exactly those events dropped and *every
-other event kept byte-for-byte* (documents, reads, postings, transfers, identity
-rulings, your confirmations). The result is a clean categorization slate you can
-re-fill from the current taxonomy with ``python -m viva.enrich`` — at no model
-cost, because nothing is re-read.
+This rebuilds the event log with exactly those events dropped and *every other
+event kept byte-for-byte* (documents, reads, postings, transfers, identity
+rulings, confirmations). The result is a clean categorization slate to re-fill
+with ``python -m viva.enrich``, at no model cost, since nothing is re-read. A
+ruling a person made survives unless ``--discard-my-rulings`` is passed.
 
-Why a rewrite and not just new events: the log is the source of truth, and a
-genuinely clean start means the old categorization is *gone*, not merely
-superseded in the projection. This is a deliberate offline maintenance migration,
-not a runtime mutation of a live ledger — so it is:
+The rewrite is:
 
   - **Non-destructive.** The source vault is never touched; a fresh vault is
-    written beside it. If anything looks wrong, your original is exactly as it was.
+    written beside it.
   - **Faithful.** Surviving events keep their original ingestion time
     (``recorded_at``) and body; only the chain is recomputed (seq/prev shift once
     events are removed), re-sealed under the *same* key, so the new log verifies.
   - **Verifiable.** It prints a per-type before/after count and re-verifies the
-    new hash chain, so you can see that only the three categorization types left.
+    new hash chain.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
@@ -54,10 +53,9 @@ from .logs import configure as configure_logging
 CATEGORIZATION_EVENTS = ("CategoryAssigned", "MerchantCategorized",
                          "MerchantEnriched", "RulingRecorded")
 
-# A ruling a PERSON made is not derived data — it is the moat. A model call can
-# regenerate a merchant category; it cannot regenerate the fact that *you* said
-# this Zelle was a gift. So a reset preserves `by="human"` rulings by default;
-# discarding them takes an explicit, loudly-named flag.
+# A ruling a person made is not derived data: a model call can regenerate a
+# merchant category, but nothing regenerates what a person said. `by="human"`
+# events survive a reset by default; discarding them takes an explicit flag.
 HUMAN = "human"
 
 
@@ -72,8 +70,7 @@ def rebuild_log(src_events: pathlib.Path, dst_events: pathlib.Path,
     refuses to migrate) and never writes over the source.
 
     ``keep_human=True`` (the default) **preserves rulings a person made**
-    (``by="human"``) even when their event type is being dropped — they are the
-    irreplaceable asset, not derived data."""
+    (``by="human"``) even when their event type is being dropped."""
     src_events = pathlib.Path(src_events)
     dst_events = pathlib.Path(dst_events)
     if dst_events.resolve() == src_events.resolve():

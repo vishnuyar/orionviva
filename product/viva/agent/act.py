@@ -1,24 +1,13 @@
-"""Doing one proposed thing, and reporting honestly how it went.
+"""Performing one action `policy.assess` proposed, and reporting what it cost.
 
-`policy.assess` decides *what*; this does it. The split matters because the
-deciding half is pure and testable and the doing half spends money, and keeping
-a boundary between them is what lets the whole plan be rehearsed with
-`--dry-run` against the same code that would run for real.
+Two contracts a caller relies on:
 
-Two rules hold here.
+- Nothing raises out of this module. Every failure comes back as an `Outcome`
+  whose `outcome` is "failed" or "refused" and whose `detail` says why.
+- `Outcome.calls` is measured, not estimated: it is how many times the extractor
+  was actually invoked, which is usually fewer than `Action.estimated_calls`.
 
-**Nothing raises into the loop.** Every failure becomes an `Outcome` with a
-reason. An agent whose third action kills the run leaves the first two
-unrecorded, and unrecorded work is work that will be done again — which for this
-agent means paid for again.
-
-**Calls are counted, not estimated.** `Action.estimated_calls` is what got the
-action past the budget; it is a property of the plan. What the invoice will
-agree with is how many times the extractor was actually called, which differs
-whenever induction converges early — its loop stops as soon as a round explains
-nothing new, so a three-round budget routinely spends one or two. The estimate
-is the only number available before the fact and the actual is the only one
-worth recording after it, so both exist and neither is asked to be the other.
+Design rationale: docs/the-maintenance-agent.md
 """
 
 from __future__ import annotations
@@ -29,12 +18,9 @@ from dataclasses import dataclass, field
 
 log = logging.getLogger(__name__)
 
-# How many independent inductions to run before keeping the best lives in
-# `policy.RULES["induce_missing"]["best_of"]`, NOT here. It multiplies the call
-# estimate, so the number the budget reasons about and the number the code obeys
-# have to be one number — they were two until 2026-07-29, and the plan said three
-# calls where the run would have spent nine.
-BEST_OF = 3          # fallback only, for a direct call that names no rule
+# Independent inductions per grammar when a caller names no rule. The operative
+# value is `policy.RULES[<rule>]["best_of"]`, which the call estimate reads too.
+BEST_OF = 3
 
 
 @dataclass
@@ -52,13 +38,9 @@ class Outcome:
 class Meter:
     """Counts model calls by sitting between the caller and the extractor.
 
-    `merchantcore.enrich.model_extractor` returns the reply text and throws the
-    `ModelResult` away, so tokens, latency and cost do not reach this layer at
-    all. Counting invocations is therefore the only actual figure available —
-    which is also why `within_budget` is denominated in calls. Worth being
-    plain about the limit: this is a call count, not a bill. No product
-    `ModelSpec` sets `cost_per_mtok_*`, so every `cost_usd` in this codebase is
-    0.00 and would be a false comfort if reported as money."""
+    `wrap(extract_fn)` returns a callable with the same signature that
+    increments `calls` on each invocation. A call count, not a bill: tokens,
+    latency and cost do not reach this layer."""
 
     def __init__(self) -> None:
         self.calls = 0
@@ -89,10 +71,10 @@ def _extractor(name: str):
 
 
 def do_induce(action, obs, best_of: int = BEST_OF) -> Outcome:
-    """Learn one bank's grammar and write it, or say why not.
+    """Induce one (institution × kind) grammar and write it, or say why not.
 
-    Everything the `--best-of` CLI does, minus the printing, plus the one thing
-    a person doing it by hand supplies for free: a record that it was tried."""
+    Runs `best_of` independent attempts and keeps the one with the highest
+    held-out score. Returns an `Outcome`; never raises."""
     from merchantcore.induce import MIN_LINES_TO_INDUCE, Inducer
     from merchantcore.descriptor import is_never_templatable
     from merchantcore.profile import ProfileError
@@ -102,10 +84,8 @@ def do_induce(action, obs, best_of: int = BEST_OF) -> Outcome:
     if not counts:
         return Outcome("failed", detail=f"no movements for {action.target} any more")
 
-    # `assess` counts distinct lines including wires; induction never sees them.
-    # Checking here rather than there keeps the policy free of merchantcore's
-    # eligibility rules, and a refusal recorded against a stake is self-
-    # correcting: it stays quiet until the line count moves.
+    # `assess` counts every distinct line; induction only ever sees the
+    # templatable ones, so the threshold is re-checked against those.
     eligible = {d: n for d, n in counts.items() if not is_never_templatable(d)}
     if len(eligible) < MIN_LINES_TO_INDUCE:
         return Outcome("refused",
@@ -119,10 +99,8 @@ def do_induce(action, obs, best_of: int = BEST_OF) -> Outcome:
     except Exception as e:                                  # noqa: BLE001
         return Outcome("failed", detail=f"{type(e).__name__}: {e}"[:200])
 
-    # Each attempt is guarded on its own. The first live run lost all three to
-    # one exception on the first — three model calls spent, nothing kept, and
-    # two perfectly good attempts never made. Independent attempts should fail
-    # independently or they are not independent.
+    # Each attempt is guarded on its own: one that raises is logged and the
+    # rest still run.
     attempts, errors = [], []
     for n in range(max(1, best_of)):
         try:
@@ -135,16 +113,11 @@ def do_induce(action, obs, best_of: int = BEST_OF) -> Outcome:
         return Outcome("failed", calls=meter.calls,
                        detail="; ".join(dict.fromkeys(errors))[:300])
 
-    # The held-out score, ties to the smaller grammar. Selecting on training
-    # coverage picks the luckiest overfit of N, which is what withholding a fifth
-    # of the lines existed to prevent.
+    # Selection is on the held-out score, ties going to the smaller grammar.
     result = max(attempts, key=lambda r: (r.scored,
                                           -len(r.profile.templates) if r.profile else 0))
     spread = [round(r.scored, 4) for r in attempts]
     if errors:
-        # Reported, never swallowed: an agent that keeps the best of three and
-        # says nothing about the two that died looks identical to one that made
-        # three good attempts.
         log.info("agent: %d of %d attempt(s) for %s failed and were skipped",
                  len(errors), best_of, action.target)
     if result.profile is None or not result.accepted:
@@ -159,10 +132,8 @@ def do_induce(action, obs, best_of: int = BEST_OF) -> Outcome:
     try:
         obs.store.write(profile, against=counts)
     except ProfileError as e:
-        # The write-guard doing its job: a version that covers less than the one
-        # it succeeds. Recording it is the whole reason this event exists — the
-        # calls are spent either way and without a record the next wake proposes
-        # exactly this again.
+        # The store's write-guard rejected the new version; the calls are spent
+        # either way, so the refusal is returned rather than raised.
         return Outcome("refused", calls=meter.calls, detail=str(e)[:300],
                        replaced=prior.id if prior else "",
                        result={"attempts": spread})
@@ -180,7 +151,7 @@ def do_induce(action, obs, best_of: int = BEST_OF) -> Outcome:
 
 
 def do_enrich(vault, action, obs) -> Outcome:
-    """Buy records for brands nobody here has identified yet."""
+    """Enrich the brands the catalog has no record for. Never raises."""
     from ..ingest import enrich_merchants
 
     meter = Meter()
@@ -204,7 +175,10 @@ def do_enrich(vault, action, obs) -> Outcome:
 
 
 def perform(vault, action, obs, best_of: int = BEST_OF) -> Outcome:
-    """Dispatch one action. Unknown kinds are reported, never silently skipped."""
+    """Dispatch one action to its handler.
+
+    Returns an `Outcome` for every action, including a "failed" one for a kind
+    this module has no handler for. Never raises."""
     if action.kind in ("induce", "reinduce"):
         return do_induce(action, obs, best_of=best_of)
     if action.kind == "enrich":

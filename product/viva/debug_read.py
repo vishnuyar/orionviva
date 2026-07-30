@@ -1,15 +1,16 @@
-"""Debug a single real document read, end to end — prints the RAW model output.
+"""Read one document end to end with the live model, printing every step.
 
-This is the tool for exactly the "I uploaded it but see no data" moment: it shows
-what the model classified the document as, its raw output, whether the structured
-parse succeeded (and if not, why), and whether it reconciles — i.e. whether the
-statement would POST, HOLD for review, or PARK.
+Prints what the model classified the document as, its raw output verbatim,
+whether the structured parse succeeded (and if not, why), and whether the
+figures reconcile — that is, whether the document would POST, HOLD for review,
+or PARK.
 
 Usage (from product/, with your model env set — it auto-loads ./.env):
 
     PYTHONPATH=../core:. python3 -m viva.debug_read /path/to/statement.pdf [locale] [currency]
 
-Nothing is written to a vault; this only reads and reports.
+`locale` and `currency` default to VIVA_LOCALE / VIVA_CURRENCY. Costs one
+classify call and one extract call. Nothing is written to a vault.
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ def main() -> None:
 
     adapter = adapter_for(spec)
 
-    # Phase 1: classify (cheap — first page + embedded text).
+    # Phase 1: classify, from the first page plus any embedded text.
     doc_type, conf, cphase = classify(adapter, pages, text)
     print(f"[classify] {doc_type!r} (conf={conf:.2f}, {cphase.model}, cost=${cphase.cost_usd:.4f})")
     composed = extraction_prompt_for(doc_type)
@@ -100,7 +101,7 @@ def main() -> None:
               "shows what the model returned; the fix is usually a prompt/schema nudge.")
         return
 
-    facts.doc_type = doc_type            # classification is authoritative (extract prompt doesn't re-ask)
+    facts.doc_type = doc_type            # the extract prompt does not name the type
     print(f"[parse] ok — doc_type={facts.doc_type!r}  account={facts.account_ref!r}  {facts.currency}")
     print(f"        opening {facts.opening_amount} ({facts.opening_date}) -> "
           f"closing {facts.closing_amount} ({facts.closing_date}); {len(facts.transactions)} transactions")

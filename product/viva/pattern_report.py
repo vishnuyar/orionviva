@@ -1,33 +1,31 @@
-"""How much of this vault do the patterns we already have explain? No model calls.
+"""How much of a vault the grammars already known explain. No model calls.
 
     PYTHONPATH=../core:../merchant:. python3 -m viva.pattern_report
     PYTHONPATH=../core:../merchant:. python3 -m viva.pattern_report --private
 
-This is the free half of the match-before-ask design, and it exists to answer
-one question before anything is paid for: **does one bank's sentence shape
-explain another bank's lines?**
-
-If it does, an account too small to teach a grammar — twenty distinct lines, a
-minimum of thirty, forever — is explicable anyway, and the model's job further
-down the pipeline is only to spot near-misses. If it does not, borrowing is a
-weaker idea than it looks, and we have learned that for nothing.
-
-Four buckets per account, and the fourth is the interesting one:
+Every distinct descriptor is resolved against its own bank's grammar and —
+unless `--no-borrow` — against every other bank's, and lands in one bucket:
 
     own          this bank's own grammar explained the line
     borrowed     another bank's grammar did, and it says whose
     published    a card or ACH specification proved some structure, but no
                  template claimed the whole line
-    pile         nothing explained it — the population induction should see
+    pile         nothing explained it — what a population induction would see
 
-Wires sit outside all four. They are not unexplained: the Fedwire tags identify
-them exactly, which is a published specification and not a guess. What cannot be
-done is decide which part of the operator's free text is the counterparty, and
-that is a question for a person rather than a hole in a pile.
+Wires sit outside all four: the Fedwire tags identify them, so they are
+recognised rather than unexplained; which part of the operator's free text is
+the counterparty is a question for a person. Investment activity lines sit
+outside too, since a trade names no party for a slot to hold.
 
-WHAT IS SAFE TO SHARE. By default: counts, percentages, institution names and
-profile ids. `--private` adds the masked shapes in the pile — and a masked spine
-keeps every word printed twice, which includes a name, so that output is yours.
+Printed per (institution × kind) and then for the whole vault, followed by the
+pile's size, how many distinct masked shapes it holds, where it came from, and
+whether it has reached `--pile-threshold` distinct lines.
+
+`--gate INSTITUTION/KIND` reports instead how the holdout split falls for one
+pair. `--private` adds the pile's masked shapes; a masked spine keeps every word
+printed twice, which includes a name, so that output is for the vault's owner.
+Everything else — counts, percentages, institution names, profile ids — is safe
+to share.
 """
 
 from __future__ import annotations
@@ -43,17 +41,16 @@ def _pct(part: int, whole: int) -> str:
 
 
 def _gate(pairs, target: str, private: bool) -> int:
-    """Why a pair keeps missing the gate, computed without a single model call.
+    """How the holdout split falls for one (institution, kind) pair. No model call.
 
-    THE SUSPICION THIS TESTS. The holdout is split by DISTINCT LINE - one line
-    in five is withheld, chosen by a hash of its own text - and then scored by
-    MOVEMENT. Those two choices fight each other. If one line carries a tenth of
-    the account's movements, whether the grammar clears 80% is decided by which
-    side of a hash that single line lands on, and not by the grammar at all.
+    The holdout is split by distinct line — one in five, chosen by a hash of its
+    own text — and then scored by movement, so a single heavy line can decide
+    whether a grammar clears the gate. Prints the line and movement counts on
+    each side of the split, the share of the scored number each of the heaviest
+    withheld lines carries, and what missing one would cost if the score were by
+    line instead. `--private` adds the withheld lines themselves.
 
-    Six independent inductions of one account returned exactly 79% - across two
-    different prompts. A number that stable is not a measurement of a stochastic
-    process; it is a fixed obstacle being hit the same way every time."""
+    Returns 0, or 1 when `target` names no pair this vault holds."""
     from merchantcore.descriptor import is_never_templatable
     from merchantcore.induce import HOLDOUT_SHARE, holdout_split
 
@@ -172,11 +169,9 @@ def main() -> int:
                 b = "wire"
             elif not is_inducible(kind):
                 # An investment activity line names no counterparty — a trade is
-                # against a security, not a party — so no grammar may ever be
-                # induced for one. Counting it as "nothing explained it" makes
-                # the pile permanently look ready to induce from while a third
-                # of it is ineligible, which is the same mistake wires would
-                # have made. Its own bucket; instrumentcore's job.
+                # against a security, not a party — so no grammar can be induced
+                # for one. It gets its own bucket rather than joining the pile,
+                # which counts only lines a grammar could have explained.
                 b = "instrument"
             elif res.layer == "grammar" and res.borrowed_from:
                 b = "borrowed"

@@ -1,14 +1,13 @@
 """The Ledger — an event store plus one live, incrementally-updated projection.
 
-A reusable facade used across the product (ingest, answers, the surface): it owns
-the ``EventStore`` and keeps a single ``LedgerProjection`` in sync, updating it
-with each appended event rather than replaying and decrypting the whole log on
-every read. Reads call :meth:`projection`; appends go through :meth:`append` so
-the cache stays current.
+The facade used across the product (ingest, answers, the surface): it owns the
+``EventStore`` and keeps a single ``LedgerProjection`` in sync, folding in each
+appended event rather than replaying and decrypting the whole log on every read.
+Reads call :meth:`projection`; appends go through :meth:`append` so the cache
+stays current.
 
-This is the performance spine: an append is O(1) over the cache and a read is
-free. Historical (`as_of`) queries are rarer and build a filtered projection
-on demand.
+An append is O(1) over the cache and a read is free. An `as_of` query builds a
+filtered projection on demand.
 """
 
 from __future__ import annotations
@@ -44,8 +43,8 @@ class Ledger:
         return self._proj
 
     def projection_as_of(self, as_of: str | None) -> LedgerProjection:
-        """A projection as of a past date. None returns the live one; otherwise a
-        filtered projection is built on demand (the rarer path)."""
+        """A projection as of a past date. None returns the live one; otherwise
+        a filtered projection is built on demand."""
         if as_of is None:
             return self._proj
         return LedgerProjection(self.store.events(), as_of=as_of)

@@ -1,10 +1,9 @@
-"""Re-read every already-captured document into a FRESH vault.
+"""Re-read every already-captured document with the model, into a FRESH vault.
 
-The raw-capture payoff: because every uploaded file is stored raw and encrypted,
-a prompt/extraction improvement can be propagated to all held documents by
-re-reading them — no re-uploading, no hunting for the originals. Reads cost money
-(one model call each), so this reads the stored blobs and writes a *new* vault,
-leaving the source untouched.
+Every uploaded file is stored raw and encrypted, so a prompt or extraction change
+can be carried to all held documents by re-reading the stored blobs, with no
+re-uploading. Each read is one model call. The result is written to a *new*
+vault, leaving the source untouched.
 
 Usage (from product/, auto-loads ./.env for the passphrase + model config):
 
@@ -12,24 +11,16 @@ Usage (from product/, auto-loads ./.env for the passphrase + model config):
     python3 -m viva.reingest  --only brokerage      # just one family
     python3 -m viva.reingest  --only brokerage --dry-run   # what WOULD be read
 
-**`--only` is what makes this affordable to use on a prompt change.** Re-reading
-everything costs one model call per document; re-reading the family whose prompt
-you actually changed costs a handful. The filter matches a doc_type or any
-substring of it, and the type comes from the stored claim — recovered from the
-extract PROMPT VERSION when a document has no classify claim.
+`--only` matches a doc_type or any substring of it. The type comes from the
+stored claim, recovered from the extract prompt version where a document has no
+classify claim. `--dry-run` spends nothing and prints exactly which documents
+would be read.
 
-**`--dry-run` spends nothing** and prints exactly which documents would be read.
-Use it first, every time: this is the one command here that costs real money.
+Each document's outcome in the SOURCE vault is read before anything is re-read,
+and the run prints only the differences:
 
-WHAT CHANGED, PER DOCUMENT. The run compares each document's outcome in the
-SOURCE vault against its outcome now, and prints only the differences —
-
-    parked -> posted     the improvement you were aiming for
-    posted -> parked     a REGRESSION; the new prompt is worse for this document
-
-That second line is the whole point. Without it, a prompt change is an act of
-faith: you see forty green lines and no way to tell whether you fixed three
-documents or broke thirty.
+    parked -> posted     the improvement
+    posted -> parked     a regression
 
 Env: VIVA_PASSPHRASE, VIVA_VAULT_DIR (source; default ~/.viva-vault),
      VIVA_MODEL_ADAPTER / VIVA_MODEL / VIVA_MODEL_KEY_ENV (+ key), VIVA_LOCALE,
@@ -52,12 +43,10 @@ from .web.__main__ import build_reader
 
 
 def _source_state(source, passphrase, doc_ids):
-    """Each document's TYPE and whether it POSTED, in the source vault.
+    """Each document's type and whether it posted, in the source vault.
 
-    Read before a single re-read happens, so the run can report what changed
-    rather than only what happened. The type falls back to the extract prompt
-    version for documents captured without a classify claim — which is most
-    of a real vault's older documents."""
+    Returns `(types, posted)`. The type falls back to the extract prompt version
+    for documents captured without a classify claim."""
     from .ingest.reader import _peek_classification
     from .ingest.registry import doc_type_for_prompt_version
     from .rebuild import claims_by_doc
@@ -112,8 +101,8 @@ def main() -> None:
     src_raw = RawStore.open(source / "raw", passphrase)
     doc_ids = src_raw.doc_ids()
 
-    # What each document IS, and what it DID, in the source vault — read before
-    # anything is re-read, so "what changed" is a comparison rather than a guess.
+    # Each document's type and outcome in the source vault, read before anything
+    # is re-read, so the change can be reported as a comparison.
     src_types, src_posted = _source_state(source, passphrase, doc_ids)
 
     if only:
@@ -156,7 +145,7 @@ def main() -> None:
 
     print("done: " + ", ".join(f"{n} {a}" for a, n in sorted(counts.items())))
 
-    # The only lines that matter for deciding whether a prompt ships.
+    # What changed, split into documents gained and documents lost.
     gained = [c for c in changed if c[1] != "posted"]
     lost = [c for c in changed if c[1] == "posted"]
     print("")

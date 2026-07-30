@@ -1,21 +1,17 @@
-"""Export everything a PERSON told this vault — before anything is rebuilt.
+"""Export everything a person told this vault, as plain JSON.
 
     python -m viva.export_rulings  [out.json]
 
-A rebuild replays documents. It cannot replay *you*: the rulings, categories,
-identity confirmations and corrections you gave are the one thing in the vault
-that no amount of re-reading can reconstruct. They are also the moat: memory of
-the user is what is defensible, not the model.
+A rebuild replays documents; it cannot replay the rulings, categories, identity
+confirmations and corrections a person gave, and no amount of re-reading
+reconstructs them. This writes them out — defaulting to
+`<vault>/rulings-export.json` — and prints a count per event type plus the first
+ten sentences somebody typed. Run it before `viva.rebuild`.
 
-So this runs first, always, and it writes plain JSON.
+The same file is the answer key `viva.diff_rulings` scores a rebuilt vault
+against.
 
-**And it is more than a backup. It is an answer key.** Every ruling here is a
-thing you had to say by hand. After a rebuild, the honest test of whether the
-counterparty-implication work succeeded is not a tier
-percentage — it is: *does Viva now PROPOSE what you previously had to TELL it?*
-`viva.diff_rulings` scores exactly that, against this file.
-
-Contains personal data by construction — merchant names, your own words, account
+Contains personal data by construction: merchant names, your own words, account
 ids. Write it somewhere private; it is not for the repo.
 """
 
@@ -26,8 +22,8 @@ import os
 import pathlib
 import sys
 
-# Everything a person authored. Not derived, not re-derivable: if a rebuild
-# drops these, the knowledge is gone unless it was written down first.
+# Everything a person authored, and nothing a rebuild can re-derive from the
+# documents.
 HUMAN_EVENTS = (
     "RulingRecorded",          # the four majors, in your words
     "CategoryAssigned",        # per-transaction categories

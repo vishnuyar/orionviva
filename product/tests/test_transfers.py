@@ -621,3 +621,53 @@ def test_layer_zero_alone_reaches_the_same_verdicts(tmp_path):
     # Every pair the real scan made is still reachable without any grammar.
     for skey, cands in graph.items():
         assert max((without[(skey, c.key)] for c in cands), default=0) >= 2
+
+
+def test_narrowing_the_window_does_not_unlink_anything(tmp_path):
+    """DATE_WINDOW_DAYS governs the next scan, never the last one."""
+    raw, ledger = _stores(tmp_path)
+    chk, card = _one_checking_paying_one_card(
+        [("2026-09-04", "09/02 Payment To Acme Card Ending IN 2222", "-120.00")],
+        [("2026-09-02", "Payment Thank You-Mobile", "-120.00")])
+    _up(raw, ledger, b"chk", chk)
+    _up(raw, ledger, b"card", card)
+    assert len([m for m in ledger.projection().movements() if m.linked]) == 2
+
+    import viva.ingest.transfers as T
+    original = T.DATE_WINDOW_DAYS
+    try:
+        T.DATE_WINDOW_DAYS = 0
+        link_transfers(ledger)
+        assert len([m for m in ledger.projection().movements() if m.linked]) == 2
+    finally:
+        T.DATE_WINDOW_DAYS = original
+
+
+def test_a_wider_window_can_produce_fewer_auto_links(tmp_path):
+    """Auto-linking needs one candidate, so extra reach turns links into questions."""
+    import viva.ingest.transfers as T
+
+    raw, ledger = _stores(tmp_path)
+    chk, card = _one_checking_paying_one_card(
+        [("2026-10-05", "Payment To Acme Card Ending IN 2222", "-60.00")],
+        [("2026-10-05", "Payment Thank You-Mobile", "-60.00"),
+         ("2026-10-08", "Payment Thank You-Mobile", "-60.00")])
+    original = T.DATE_WINDOW_DAYS
+    try:
+        T.DATE_WINDOW_DAYS = 0
+        _up(raw, ledger, b"chk", chk)
+        _up(raw, ledger, b"card", card)
+        narrow = len([m for m in ledger.projection().movements() if m.linked])
+    finally:
+        T.DATE_WINDOW_DAYS = original
+    assert narrow == 2, "at window 0 the same-day credit is the only candidate"
+
+    raw2, ledger2 = _stores(tmp_path / "wide")
+    chk2, card2 = _one_checking_paying_one_card(
+        [("2026-10-05", "Payment To Acme Card Ending IN 2222", "-60.00")],
+        [("2026-10-05", "Payment Thank You-Mobile", "-60.00"),
+         ("2026-10-08", "Payment Thank You-Mobile", "-60.00")])
+    _up(raw2, ledger2, b"chk", chk2)
+    _up(raw2, ledger2, b"card", card2)
+    wide = len([m for m in ledger2.projection().movements() if m.linked])
+    assert wide == 0, "at window 5 both credits qualify, the evidence ties, and it asks"

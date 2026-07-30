@@ -1,19 +1,18 @@
-"""Where are your totals being split? — the category vocabulary.
+"""Print a vault's category vocabulary — labels, subcategories, tags, aliases.
 
     VIVA_VAULT_DIR=<vault> python -m viva.debug_categories
 
-A category is a name a person totals by, so two names for one thing is not
-untidiness — it is a figure quietly halved, with no error raised anywhere.
-
-This prints every label the vault uses, what it is worth, and where it came
-from, so the near-duplicates are visible rather than inferred. It does NOT guess
-which pairs are the same: that judgement is recorded as a ruling, once, and
-applied on the read side forever after —
+Prints every category label with what it is worth, the subcategory vocabulary
+enrichment has written, spending by tag against total spending and the untagged
+remainder, and the aliases already folded together. It does not guess which
+labels mean the same thing; that is recorded once as a ruling and applied on the
+read side:
 
     from viva.ingest import rule_category_same_as
     rule_category_same_as(vault.ledger, "playing poker", "poker")
 
-Nothing is rewritten; the merge is retroactive and reversed by appending.
+Read-only, no model call. A recorded merge is retroactive and is reversed by
+appending.
 """
 
 from __future__ import annotations

@@ -1,41 +1,29 @@
-"""Did Viva learn to say it first? — the answer key, scored.
+"""Score a rulings export against what a rebuilt vault concludes on its own.
 
     VIVA_VAULT_DIR=<rebuilt> python -m viva.diff_rulings <rulings-export.json>
 
-Every ruling in the export is something a person had to **say by hand**. So the
-honest test of the counterparty-implication work is not a tier percentage — it
-is:
+Each ruling in the export is compared with the implication the vault reaches
+unprompted. Six outcomes; four are grades and two mark pairs that are not
+comparisons:
 
-> **Does the product now PROPOSE what you previously had to TELL it?**
+  ANTICIPATED   the rebuilt vault reaches the same conclusion unprompted
+  PROPOSED      it raises the counterparty as a question or proposal without
+                reaching that conclusion
+  MISSED        silence — it still needs to be told
+  CONTRADICTED  it reaches a different conclusion than the one given; the report
+                lists these first
 
-Six outcomes per ruling. Only four of them are a grade; the other two mark
-comparisons that were never comparisons:
+  incomparable  the ruling gave a spending CATEGORY, the vault offers a
+                structural RELATIONSHIP — different axes
+  unknowable    a peer or an instrument, about which nothing can be implied
 
-  ANTICIPATED   the rebuilt vault reaches the same conclusion unprompted.
-                Exactly what the work was for.
-  PROPOSED      it raises the counterparty as a question or proposal, but does
-                not yet reach your conclusion. Half credit: it noticed.
-  MISSED        silence. It still needs to be told. Not a bug — a gap, and the
-                list of them is the honest to-do.
-  CONTRADICTED  it reaches a DIFFERENT conclusion than you gave. **The only
-                dangerous outcome**, and the one to read first: a product that
-                confidently disagrees with its user is worse than one that asks.
+The last two are excluded from the score's denominator.
 
-  incomparable  you gave a spending CATEGORY, it offers a RELATIONSHIP.
-  unknowable    a peer or an instrument. Silence is correct, not a miss.
+Known limitation: a counterparty that is now `settled` — an ordinary business
+the queue never asks about — still scores as `missed`, because this inspects
+implications only.
 
-Both are excluded from the score, because a denominator that includes things no
-implementation could ever get right measures the design, not the build.
-
-**Known limitation, stated rather than fixed.** A counterparty that is now
-`settled` — an ordinary business the queue will never ask about — still scores
-as `missed`, because this only inspects IMPLICATIONS. A ruling the new design
-makes UNNECESSARY is arguably the best outcome there is, and it is counted as a
-failure here. It is left visible rather than patched: every correction to a
-scorer that moves the number in its author's favour needs a colder eye than the
-one that wrote it.
-
-This is a comparison, not a restore. Nothing is written to either vault.
+A comparison, not a restore. Nothing is written to either vault.
 """
 
 from __future__ import annotations
@@ -48,16 +36,13 @@ from collections import Counter
 
 ANTICIPATED, PROPOSED, MISSED, CONTRADICTED = (
     "anticipated", "proposed", "missed", "CONTRADICTED")
-# INCOMPARABLE — the person gave a spending CATEGORY ("transport", "transfers",
-# "down payment") and the vault offers a structural RELATIONSHIP ("auto loan",
-# "brokerage account", "property purchase"). Those are different axes, not
-# disagreements: a Northwind payment is transport spending AND an auto loan; a
-# brokerage MoneyLine is a transfer AND implies a brokerage account. Scoring
-# them as CONTRADICTED is a false accusation.
+# INCOMPARABLE — the person gave a spending category ("transport", "down
+# payment") and the vault offers a structural relationship ("auto loan",
+# "property purchase"). Both can be true of one payment, so the pair is on two
+# axes rather than in disagreement.
 #
 # UNKNOWABLE — the subject is a peer or an instrument. A cheque or an ATM
-# withdrawal tells us nothing about itself, BY CONSTRUCTION, so counting it as
-# "missed" measures the design rather than the implementation.
+# withdrawal carries nothing about itself, so nothing can be implied about it.
 INCOMPARABLE, UNKNOWABLE = "incomparable", "unknowable"
 
 
@@ -109,9 +94,8 @@ def score(proj, rulings: list[dict]) -> list[dict]:
             saw = implied.get("relationship") or implied["major"]
             got = implied["major"]
             if mine.startswith("category:"):
-                # Different axes. A spending label and a structural relationship
-                # can both be true of the same payment, so there is nothing here
-                # to agree or disagree with.
+                # A spending label and a structural relationship can both be
+                # true of one payment; there is nothing here to agree with.
                 verdict = INCOMPARABLE
             elif mine.startswith("nature:"):
                 # An old three-nature answer compares through the majors map.
@@ -124,14 +108,12 @@ def score(proj, rulings: list[dict]) -> list[dict]:
             verdict, saw = PROPOSED, asked[key]["text"][:70]
         elif proj.kind_of_merchant(key) in ("instrument", "peer") or (
                 not is_shareable(subject)):
-            # A peer or an instrument: nothing will ever imply anything about
-            # it, so silence is correct rather than a miss.
+            # A peer or an instrument: nothing implies anything about it, so
+            # silence is not a miss.
             #
-            # The LEARNED kind is asked first and `is_shareable` is only the
-            # fallback, because `is_shareable` is a substring list — it catches
-            # "zelle" and " to " but not "ATM WITHDRAWAL 03 15 MAIN ST". The
-            # kind comes back from enrichment, which reads the descriptor like
-            # a person would.
+            # The learned kind is consulted first and `is_shareable` is only the
+            # fallback: `is_shareable` matches on substrings, so it catches
+            # "zelle" and " to " but not "ATM WITHDRAWAL 03 15 MAIN ST".
             verdict, saw = UNKNOWABLE, "a peer or instrument — never inferable"
         rows.append({"verdict": verdict, "subject": subject, "yours": mine,
                      "viva": saw, "type": ruling["event_type"]})
@@ -177,8 +159,8 @@ def _verdict(counts: Counter, n: int) -> str:
         return (f"VERDICT: {counts[CONTRADICTED]} contradiction(s). Fix those before "
                 "reading anything else — confidently disagreeing with the person "
                 "is the one failure mode worse than asking.")
-    # Score only what COULD have been anticipated. Peers, instruments and
-    # cross-axis answers are not failures of the implication work.
+    # Score only what could have been anticipated: peers, instruments and
+    # cross-axis answers leave the denominator.
     learned = counts.get(ANTICIPATED, 0)
     scorable = n - counts.get(UNKNOWABLE, 0) - counts.get(INCOMPARABLE, 0) or 1
     if learned / scorable > 0.5:

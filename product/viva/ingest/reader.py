@@ -1,20 +1,16 @@
-"""The live model edge — the ONE place a model reads a document (the network edge).
+"""The live model edge — the one place in ingest that reads a document.
 
-Everything else in ingest is deterministic and unit-tested offline. This module
-is deliberately thin and quarantined: render the pages, fold in the issuer's own
-embedded text (the measured product default is text+image), call a shared
-adapter, and hand the raw output
-to the deterministic ``from_model_json`` parser. It proposes; it never certifies.
+Renders the pages, folds in the issuer's own embedded text (the product default
+is text+image), calls a shared adapter, and hands the raw output to a
+deterministic parser. It proposes; it never certifies.
 
-The read is **two-phase**: a cheap **classify** pass names
-the document (first page + its embedded text — no full extraction), then, if a
-profile exists for that type, an **extract** pass runs the prompt that type's
-profile owns (a shared base + a per-type fragment). A type with no projector yet
-is parked after the cheap classify — we don't pay for a full extraction we can't
-use. Each pass is recorded verbatim in the claims layer.
+The read is two-phase: a cheap **classify** pass names the document from the
+first page and its embedded text, then, if a profile exists for that type, an
+**extract** pass runs the prompt that profile owns. A type with no projector
+parks after the classify pass, with no extraction paid for. Each pass is
+recorded verbatim in the claims layer.
 
-Heavy dependencies (pypdfium2 for rendering) are imported lazily so the tested
-core never needs them.
+pypdfium2 is imported lazily, so the rest of ingest never needs it.
 """
 
 from __future__ import annotations
@@ -65,9 +61,11 @@ def _with_embedded(prompt: str, embedded_text: str) -> str:
 
 def classify(adapter, pages: list[PageImage], embedded_text: str
              ) -> tuple[str, float, ModelPhase]:
-    """Phase 1: name the document cheaply. Sends only the first page image plus
-    the embedded text (classification is easy and does not need every page), and
-    asks for a type, not figures. Returns (doc_type, confidence, phase-record)."""
+    """Phase 1: name the document.
+
+    Sends only the first page image plus the embedded text, and asks for a type
+    rather than figures. Returns (doc_type, confidence, phase-record); the type
+    is "unknown" at confidence 0.0 when the reply does not parse."""
     prompt, version = classify_prompt()
     first_page = pages[:1]                    # cheap: one image, not the whole doc
     log.info("reader: classify (first page + %d chars text, prompt=%s) ...",
@@ -88,9 +86,10 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
                    locale: str, currency: str) -> ReadResult:
     """Read one document two-phase (classify → extract) into a ReadResult.
 
-    The live edge: these are the calls that cost money and leave the machine. The
-    output is only a proposal — ``capture_and_ingest`` runs it through the
-    reconciliation gate before a single number is trusted."""
+    These are the calls that leave the machine. The result is a proposal:
+    ``capture_and_ingest`` puts it through the reconciliation gate before any
+    number is trusted. The classification is authoritative for the document
+    type, and is stamped onto the returned facts."""
     pages, embedded_text = _render_and_read_text(pdf_bytes)
     log.info("reader: rendered %d pages, %d chars of embedded text (%s/%s)",
              len(pages), len(embedded_text), locale, currency)
@@ -100,16 +99,16 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
 
     composed = extraction_prompt_for(doc_type)
     if composed is None:
-        # No projector for this type yet — park after the cheap classify, without
-        # paying for a full extraction we couldn't use.
+        # No projector for this type: park after the classify pass rather than
+        # paying for an extraction nothing can use.
         log.info("reader: no projector for %r — parking after classify", doc_type)
         return ReadResult(doc_type=doc_type, doc_type_confidence=conf, facts=None,
                           error=f"no projector yet for '{doc_type}'",
                           phases=[classify_phase])
 
     prompt_text, prompt_version = composed
-    # The profile's identity selects the facts parser — a pay stub is not a
-    # balance statement. Same two-phase read, different shape.
+    # The profile's identity selects the facts parser: same two-phase read,
+    # different shape.
     profile = profile_for(doc_type)
     identity = profile.identity if profile else ""
     parse_fn = {PAYSTUB_IDENTITY: from_paystub_json,
@@ -120,8 +119,8 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
                          _with_embedded(prompt_text, embedded_text),
                          doc_id, locale, currency, prompt_version=prompt_version,
                          parse_fn=parse_fn)
-    # Classification is authoritative for the type (the extract prompt does not
-    # ask the model to re-decide it); stamp it onto the facts and the result.
+    # The extract prompt does not ask the model to re-decide the type, so the
+    # classification is stamped onto the facts and the result.
     rr.doc_type = doc_type
     rr.doc_type_confidence = conf
     if rr.facts is not None:
@@ -134,11 +133,14 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
 def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
                     currency: str, prompt_version: str = "",
                     max_retries: int = 1, parse_fn=from_model_json) -> ReadResult:
-    """The extract phase: call the model and parse; if the JSON doesn't parse,
-    re-ask once with the error (belt-and-suspenders alongside JSON mode).
-    ``extract(prompt) -> ModelResult`` is injected so this is testable without the
-    network. ``parse_fn`` is the type's facts parser (statement or pay stub).
-    Populates ``phases`` with the single extract record."""
+    """The extract phase: call the model and parse, re-asking on a parse failure.
+
+    ``extract(prompt) -> ModelResult`` is injected, so this runs without the
+    network; ``parse_fn`` is the type's facts parser. Retries up to
+    ``max_retries`` times, and the retry names the offending field for a value
+    error and asks for valid JSON for a syntax error. ``cost_usd`` on the result
+    is the total across every attempt. Returns a ReadResult carrying one extract
+    phase, with ``facts=None`` and ``error`` set when it never parsed."""
     result = extract(prompt)
     facts, err = parse_fn(result.text, doc_id, locale, currency)
     total_cost = result.cost_usd
@@ -147,12 +149,9 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
         tries += 1
         log.warning("reader: parse FAILED (%s); re-asking the model (retry %d)",
                     err, tries)
-        # Two different failures need two different asks. A JSON *syntax* error
-        # means "reply again, valid this time". A *value* that wouldn't normalize
-        # (a cost basis of 'not applicable') means the JSON was fine and only one
-        # field is wrong — saying "your reply was not valid JSON" there is untrue,
-        # wastes a call, and doesn't tell the model what to fix. Name the
-        # offending field instead: be specific about the evidence.
+        # Two failures, two asks. A syntax error asks for valid JSON; a value
+        # that would not normalize means the JSON was fine and one field is
+        # wrong, so the retry names that field.
         if _is_syntax_error(err):
             retry_prompt = (prompt + "\n\nYour previous reply was NOT valid JSON "
                             f"({err}). Return ONLY one valid JSON object: escape "
@@ -195,8 +194,8 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
 
 
 def _is_syntax_error(err: str) -> bool:
-    """True when the reply wasn't parseable JSON at all (as opposed to a single
-    value inside good JSON failing to normalize)."""
+    """True when the reply was not parseable JSON at all, as opposed to one
+    value inside good JSON failing to normalize."""
     low = (err or "").lower()
     return ("json did not parse" in low or "no json object" in low
             or "top-level json" in low)

@@ -1,18 +1,10 @@
-"""Diagnose a read we ALREADY PAID FOR — from the claims layer, offline and free.
+"""Re-parse a stored model read with today's code — offline, and free.
 
-Every model read is stored verbatim (`ReadRecorded`). So when a
-document parks or holds, the evidence is already in the vault: we never need to
-re-ask the model to find out what it said. This tool prints that stored response
-and re-runs today's parser and identity check over it.
-
-Two things that makes possible, both otherwise expensive:
-
-  - **Diagnose the past for nothing.** "Why did this statement hold?" is answered
-    from the log, not from a new call.
-  - **Test a parser fix against real data.** Re-parsing an OLD stored read with
-    NEW code shows immediately whether a fix would have rescued it — the closest
-    thing to a regression test on real documents, at zero cost and with no
-    real financial data ever leaving the machine.
+Every model read is stored verbatim as a `ReadRecorded` event, so a document's
+response text is already in the vault. With no argument this lists the stored
+reads; given a doc_id prefix it prints that read's metadata and re-runs today's
+parser and identity check over the stored text, reporting what would happen now:
+POST, HOLD or PARK.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
@@ -20,7 +12,8 @@ Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
     PYTHONPATH=../core:../merchant:. python3 -m viva.debug_claim fbdcae06   # diagnose one
     PYTHONPATH=../core:../merchant:. python3 -m viva.debug_claim fbdcae06 --raw
 
-Read-only: nothing is written, no model is called.
+`--raw` also prints the stored response verbatim. Read-only: nothing is written,
+and no model is called.
 """
 
 from __future__ import annotations
@@ -35,8 +28,8 @@ from .logs import configure as configure_logging
 
 def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
                      currency: str) -> None:
-    """Re-parse a stored response with TODAY's code and run its profile's identity,
-    reporting what would happen now: POST, HOLD, or PARK."""
+    """Re-parse a stored response with today's code and run its profile's
+    identity check, printing what would happen now: POST, HOLD or PARK."""
     from vivacore.verify.arithmetic import (check_balance_identity,
                                             check_brokerage_identity,
                                             check_paystub_identity)
@@ -70,8 +63,8 @@ def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
         return
 
     if identity == BROKERAGE_IDENTITY:
-        # Apply the SAME sweep decision the projector makes, so this tool can never
-        # disagree with what an ingest would actually do.
+        # The same sweep decision the projector makes, so this report matches
+        # what an ingest would do.
         from .ingest.brokerage import resolve_sweep_cash
         facts, sweep_note = resolve_sweep_cash(facts)
         if sweep_note:
@@ -84,8 +77,8 @@ def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
                                      facts.total)
         print(f"[tally]  {'PASS' if r.passed else 'FAIL -> HOLD'}. {r.explain()}")
         if not r.passed:
-            # The most useful thing we can print: every number the identity used,
-            # so the discrepancy can be read off against the paper statement.
+            # Every number the identity used, so the discrepancy can be read off
+            # against the paper statement.
             print("        the figures it stood on:")
             for p in holdings:
                 print(f"          {p.instrument:<46}{p.units:>12} units {p.market_value:>14}")
@@ -154,11 +147,10 @@ def main() -> None:
         cap = captured.get(did, {})
         doc_type = cap.get("doc_type", "unknown")
         if doc_type in ("", "unknown"):
-            # The capture never recorded a type (no classify claim), but the
-            # EXTRACT prompt version names it: a self-describing
-            # `extract:<base>+<fragment>`. Printing "unknown" while the very
-            # next line of this report shows `prompt=extract:base-v1+card-v1`
-            # is the tool withholding an answer it already has.
+            # The capture recorded no type (no classify claim). The extract
+            # prompt version names one: it is a self-describing
+            # `extract:<base>+<fragment>` composite, and a fragment belongs to
+            # exactly one profile.
             from .ingest.registry import doc_type_for_prompt_version
             for candidate in [b] + [m.body for m in matches]:
                 recovered = doc_type_for_prompt_version(

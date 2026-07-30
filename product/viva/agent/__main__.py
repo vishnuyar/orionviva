@@ -3,19 +3,17 @@
     PYTHONPATH=../core:../merchant:. python3 -m viva.agent --dry-run
     PYTHONPATH=../core:../merchant:. python3 -m viva.agent
 
-A peer of `viva.rescan`, deliberately: `sweep()` makes no model calls and no
-network requests, several tests depend on that, and an agent that spends money
-has no business hiding inside it.
+A peer of `viva.rescan` rather than a step inside it: `sweep()` makes no model
+calls, this does.
 
-`--dry-run` runs everything except the spending — the same observation, the same
-rules, the same budget arithmetic — and prints the plan. It is the honest
-rehearsal because it is not a different code path; it stops at exactly the line
-where money starts.
+`--dry-run` takes the same path — the same observation, rules and budget
+arithmetic — and stops before the first model call.
 
-WHAT IS SAFE TO SHARE. Everything printed by default is counts, institution
-names, grammar ids and outcomes. No descriptors, no amounts, no account numbers,
-no merchant names. `--private` adds the brand names an enrichment would ask
-about — impersonal by construction, and still yours until you decide otherwise.
+Everything printed by default is counts, institution names, grammar ids and
+outcomes: no descriptors, no amounts, no account numbers, no merchant names.
+`--private` adds the brand names an enrichment would ask about.
+
+Design rationale: docs/the-maintenance-agent.md
 """
 
 from __future__ import annotations

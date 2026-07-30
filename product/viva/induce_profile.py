@@ -1,59 +1,39 @@
-"""Induce one bank's descriptor grammar, from your own statements, one call.
+"""Induce one bank's descriptor grammar from a vault's own statements.
 
     PYTHONPATH=../core:../merchant:. python3 -m viva.induce_profile --list
     PYTHONPATH=../core:../merchant:. python3 -m viva.induce_profile \
         --institution "…" --kind depository
 
 A grammar is per (institution × kind): a checking line and a card line from one
-bank are unrelated languages, and the peer-payment templates are a third. `--list`
-shows which pairs this vault contains and how many movements sit behind each.
+bank are unrelated languages, and the peer-payment templates are a third.
+`--list` shows the pairs this vault holds, the movements behind each, which
+already has a grammar, and for those that do, its measured, lifetime and recent
+coverage — flagging one whose recent coverage has dropped. `viva.agent` runs the
+same induction unattended.
 
-**This is the hand tool; `python3 -m viva.agent` is the one that runs itself.**
-That sentence used to end "…so the largest is induced first and read by a person
-before the rest are automated", which described bootstrapping and read like a
-rule — and contradicted the rule that actually holds. A person reads a grammar
-before PUBLISHING it, because a wrong one in the commons is wrong for everybody
-and no automated check catches the failure that matters. A grammar used on one
-vault needs no such gate: it is wrong for one person, reversibly, and the drift
-check surfaces it. Requiring a reading before use would make the agent a chore
-with a wrapper around it.
+What crosses the boundary: this is the one call that sees a descriptor whole,
+counterparty name included, because the name is what locates the `counterparty`
+slot. Every later call — merchant enrichment — sees only the slots the vocabulary
+declares impersonal, and never the descriptor.
 
-**What crosses the boundary here, and why it is allowed.** This is the one call
-that sees a descriptor whole, including a counterparty's name — because the name
-is exactly what teaches the model where the `counterparty` slot is, and because
-ingest already sent this model every page of the statement that line came from.
-Withholding the line now would protect nothing and would cost the slot. Every
-*later* call — merchant enrichment — sees only the slots the vocabulary declares
-impersonal, and never the descriptor.
+The templates are printed before anything is written. They are meant to be the
+bank's own composition — literal text plus named holes, identical for every
+customer — but the literal text comes from the model, so a template can carry a
+name baked into it. A deterministic check flags every template matching one
+distinct line or none, which is both rule 4's "an example, not a grammar" and
+the shape a baked-in name takes. Counts, coverage and shape totals are safe to
+share; `--private` adds the sample, the unexplained lines and the masked shapes,
+and that output is for the person who owns the vault.
 
-**The templates are printed, and they are not automatically safe to paste.**
-They are meant to be the bank's grammar — literal text plus named holes,
-identical for every customer of that bank. But the literal text comes from the
-model, so a template that ignored the rules could carry a person's name baked
-into it, and that is exactly the thing you have to see in order to reject. A
-deterministic check flags every template matching one distinct line or none —
-rule 4's "an example, not a grammar", and the shape a baked-in name takes, since
-it can only ever match its own line. Read what it flags before the grammar goes
-anywhere. Counts, coverage and shape totals are safe. `--private` adds the
-sample, the unexplained lines and the masked shapes — that output is for the
-person who owns the vault and nobody else.
+A profile carries slots and literals and no values, so `--verify PROFILE_ID`
+measures another vault's grammar against these lines with no model call at all.
+A pair with no grammar still resolves through Layer 0 and the normalizer, so
+induction never blocks an account.
 
-**One grammar per (institution × kind) — but not one model call per person.**
-A profile carries slots and literals and no values, so it is the bank's
-composition rather than yours, and `--verify` measures somebody else's grammar
-against your own lines with no model call at all. The first customer of an
-institution pays; everyone after them checks the number and reuses it. That
-check is what a merchant catalog cannot offer. A pair with no grammar still
-works — Layer 0 and the normalizer resolve it, worse but honestly worse — so
-induction is an improvement, never a step that blocks an account.
-
-**Induction is stochastic, and the pack rules did not know it.** The same prompt
-over the same forty lines returned 27 templates at 84% one run and 33 at 82% the
-next. Because the gate is absolute and `latest` wins by version number, the
-weaker grammar silently became the one in use. Two guards now: `--best-of N`
-induces N times and keeps the best (ties to the smaller grammar, which has
-generalised rather than enumerated), and a version that covers less than the one
-it succeeds is refused unless `--force` says the lower number is wanted.
+`--best-of N` induces N times and keeps the best by held-out coverage, ties
+going to the grammar with fewer templates. A pair with fewer than
+`MIN_LINES_TO_INDUCE` distinct lines is refused, as is a version covering less
+than the one it succeeds; `--force` overrides both.
 """
 
 from __future__ import annotations
@@ -71,11 +51,10 @@ from .logs import configure as configure_logging
 def profiles_dir() -> pathlib.Path:
     """Where grammars this installation induced are kept.
 
-    Not in the vault and not under the product's home: a bank's line grammar is
-    the bank's, identical for every customer, and it outlives any ledger. It
-    lives in merchantcore's learned directory — outside the working tree, so it
-    cannot be committed by accident — with the package's shipped seed read
-    behind it. `MERCHANTCORE_HOME` (or the older `VIVA_PROFILES`) overrides."""
+    merchantcore's learned directory: outside the working tree, outside the
+    vault, and outside the product's own home, with the package's shipped seed
+    read behind it. `VIVA_PROFILES` overrides it outright; otherwise
+    `MERCHANTCORE_HOME` decides where that directory sits."""
     from merchantcore import home
     explicit = os.environ.get("VIVA_PROFILES")
     return pathlib.Path(explicit).expanduser() if explicit else home.profiles_dir()
@@ -91,10 +70,9 @@ def profile_store():
 def _pairs(proj, recent_days: int = 120) -> tuple[dict, dict]:
     """(institution, kind) -> {descriptor: movement count}, all-time and recent.
 
-    The recent slice is what a drift check needs. Lifetime coverage falls slowly
-    because old lines outnumber new ones; a bank that changed its composition
-    changed it only for what it printed since, so the recent number moves first
-    and by a lot."""
+    `recent` holds only the movements within `recent_days` of the newest date in
+    the vault, and is what a drift check reads. Movements with no descriptor, or
+    on an account the projection cannot resolve, are skipped by both."""
     out: dict = collections.defaultdict(collections.Counter)
     recent: dict = collections.defaultdict(collections.Counter)
     dates = sorted(str(m.date)[:10] for m in proj.movements() if m.date)
@@ -219,10 +197,8 @@ def main() -> int:
         return 0
 
     if args.verify:
-        # No model call. This is how a grammar induced by somebody else — or by
-        # you, months ago — is trusted: apply it to your own lines and read the
-        # number. A profile carries no values, so there is nothing to trust
-        # about its provenance; only its behaviour on your statement matters.
+        # No model call: the named grammar is applied to this vault's own lines
+        # and its weighted coverage printed for every inducible pair.
         try:
             candidate = store.load(args.verify)
         except Exception as e:                              # noqa: BLE001
@@ -260,13 +236,9 @@ def main() -> int:
 
     existing = store.latest_for(*key)
     if existing:
-        # A released grammar is never edited, so an existing one is not an
-        # obstacle to inducing the next version — but it IS the thing to measure
-        # the next version against, and quietly inducing over it would lose that.
-        # The same measurement the induction reports — weighted by movements.
-        # These were two different numbers under one word, 88% here and 84%
-        # there for one grammar, and a metric with two meanings is a metric
-        # nobody can act on.
+        # A released grammar is never edited: the next induction becomes a new
+        # version. Report what the existing one explains first, weighted by
+        # movements — the same measurement the induction itself reports.
         share = existing.weighted_coverage(counts)
         print(f"note: {existing.id} already exists and explains {share:.1%} of "
               f"these movements. A new induction becomes "
@@ -341,15 +313,9 @@ def main() -> int:
         if args.best_of > 1:
             print(f"\n  attempt {attempt} of {args.best_of} …")
         attempts.append(inducer.induce(*key, counts))
-    # Best by the HELD-OUT score, ties to the SMALLER grammar: two grammars
-    # explaining the same lines are not equal, and the one with fewer templates
-    # has generalised rather than enumerated.
-    #
-    # Held-out and not training coverage, which is what this selected on until
-    # 2026-07-29. Choosing the best of N on the number the model was fitted to
-    # picks the luckiest overfit — and a fifth of the lines were withheld
-    # precisely so that a grammar could be judged on lines it had never seen.
-    # Selecting on the other number gave that back.
+    # Best by the held-out score (`Induction.scored`), which is the coverage of
+    # lines no attempt was fitted to; ties go to the grammar with fewer
+    # templates.
     result = max(attempts, key=lambda r: (r.scored,
                                           -len(r.profile.templates) if r.profile else 0))
     if len(attempts) > 1:
@@ -404,10 +370,9 @@ def main() -> int:
     if result.unmatched:
         left = skeletons(result.unmatched)
         big = max((len(g) for g in left.values()), default=0)
-        # The shapes themselves are NOT printed here. A masked spine keeps every
-        # token that occurs in more than one line, and a person paid twice is a
-        # person whose name occurs in more than one line. The counts are safe;
-        # the spines are yours, under --private.
+        # The spines themselves are not printed here. A masked spine keeps every
+        # token occurring in more than one line, which includes the name of
+        # anyone paid twice; the counts are safe, the spines are under --private.
         print(f"\n    {len(left)} distinct shape(s) left, largest covering "
               f"{big} line(s)")
         print("    (the shapes themselves are under --private — a masked spine "

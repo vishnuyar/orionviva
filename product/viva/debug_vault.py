@@ -1,12 +1,16 @@
-"""Inspect what is actually in a vault — the answer to 'I uploaded it, where is it?'
+"""Print everything a vault holds.
 
-Opens the vault with your passphrase and prints a summary: how many events and
-of what kind, the raw blobs held, the accounts and their balances, anything held
-for review, and the coverage line. Read-only.
+Opens the vault with your passphrase and summarizes it: the event count by type,
+the raw blobs held, each account with its balance and grade, anything held for
+review, transfer links and suggestions, spending by currency, category and
+subcategory, holdings, recognized income, the coverage line, the captured
+documents, and the model reads recorded. Read-only.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
     PYTHONPATH=../core:. python3 -m viva.debug_vault
+
+The passphrase may be given as the first argument instead of in the environment.
 """
 
 from __future__ import annotations
@@ -89,7 +93,8 @@ def main() -> None:
         ranked = sorted(by_cat.items(), key=lambda x: x[1], reverse=True)
         print("spending by category (non-spending natures excluded): "
               + ", ".join(f"{c} {v}" for c, v in ranked))
-        # What was kept OUT and why, and how much is weakly evidenced.
+        # What was excluded from spending and why, and what rests on weak
+        # evidence and could still move.
         excluded = proj.excluded_from_spending()
         if excluded:
             by_reason: dict[str, Decimal] = {}

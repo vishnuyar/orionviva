@@ -1,16 +1,11 @@
-"""StatementFacts — the structured read of one statement, on the honesty contract.
+"""StatementFacts — the structured read of one balance-family statement.
 
-A model reads the document and returns free-ish JSON. This module turns that into
-a typed, canonical StatementFacts, and it does the turning through the shared
-deterministic normalizers (``parse_amount`` / ``parse_date``), so:
+Turns a model's loosely-shaped JSON into typed, canonical facts through the
+shared deterministic normalizers (``parse_amount`` / ``parse_date``), so:
 
   - amounts and dates are exact (Decimal, ISO), never floats;
-  - a genuinely ambiguous figure (the "1.234" trap, "03/04/2025") comes back as
-    a refusal to build the facts, not a silent guess — the statement goes to
-    review instead of poisoning the ledger.
-
-This is the product's claims-layer, statement-shaped. The model proposes; the
-normalizer and (downstream) the reconciliation gate dispose.
+  - a genuinely ambiguous figure ("1.234", "03/04/2025") comes back as a refusal
+    to build the facts rather than a guess, and the statement goes to review.
 """
 
 from __future__ import annotations
@@ -32,10 +27,9 @@ class TxnFact:
     amount: Decimal      # signed by effect on printed balance: + raises it, - lowers it
     page: int | None = None
     running_balance: Decimal | None = None   # the printed balance after this line
-    # A leg SUPPLIED by cross-document corroboration sets these: its
-    # source is the counterparty document (not this statement), and its grade is
-    # `corroborated` (a second issuer attested it), never `verified`. Empty means
-    # an ordinary line read from this statement.
+    # A leg supplied by cross-document corroboration sets these: its source is
+    # the counterparty document rather than this statement, and its grade is
+    # `corroborated`. Empty means an ordinary line read from this statement.
     source_doc_id: str = ""
     grade: str = ""
     note: str = ""
@@ -76,9 +70,9 @@ class StatementFacts:
     transactions: list[TxnFact]
     opening_page: int | None = None
     closing_page: int | None = None
-    # Identity signals: extracted separately so account identity is
-    # anchored to the stable number, not a free-text label. Names is a list —
-    # joint accounts have two.
+    # Identity signals, extracted separately so account identity anchors to the
+    # stable number rather than a free-text label. `account_names` is a list
+    # because a joint account has two.
     account_number: str = ""
     institution: str = ""
     account_names: list[str] = field(default_factory=list)
@@ -152,15 +146,13 @@ def _date(raw, locale: str) -> tuple[str | None, str | None]:
 
 def period_date(raw, locale: str, period_end: str,
                 ) -> tuple[str | None, str | None]:
-    """Resolve a printed date that may omit its year, given only the statement's
-    period END (the close/valuation date).
+    """Resolve a printed date that may omit its year, given only the period END.
 
-    Statements print activity lines as "11/04" — the year lives in the header.
-    The close-only variant of ``_txn_date``, for documents that state a single
-    as-of date rather than a period (a brokerage statement). Deterministic: use
-    the period-end year; if that lands *after* the period end, the line must
-    belong to the previous year (a December→January statement). We never invent a
-    year without a period to anchor it."""
+    The close-only variant of ``_txn_date``, for a document that states a single
+    as-of date rather than a period. Uses the period-end year, and the year
+    before it when that would land after the period end. Returns
+    ``(iso, None)``, or ``(None, error)`` when the date is unreadable or has no
+    year and there is no period to infer one from."""
     n = parse_date(str(raw), locale)              # the model may have included one
     if n.ok:
         return n.value, None
@@ -180,9 +172,11 @@ def period_date(raw, locale: str, period_end: str,
 def _signed_amount(rt: dict, mag: Decimal, i: int
                    ) -> tuple[Decimal | None, str | None]:
     """Sign a transaction's positive magnitude by its effect on the printed
-    balance. Prefers the stmt-v3 ``balance_effect`` (increase/decrease); falls
-    back to the legacy stmt-v2 ``direction`` (credit=increase, debit=decrease)
-    so stored reads reparse unchanged. Returns (signed, error)."""
+    balance.
+
+    Prefers ``balance_effect`` (increase/decrease) and falls back to
+    ``direction`` (credit=increase, debit=decrease), so a read stored under the
+    older shape reparses unchanged. Returns (signed, error)."""
     effect = str(rt.get("balance_effect", "")).strip().lower()
     if effect in ("increase", "decrease"):
         return (mag if effect == "increase" else -mag), None
@@ -195,9 +189,10 @@ def _signed_amount(rt: dict, mag: Decimal, i: int
 
 def _txn_date(raw, locale: str, open_iso: str, close_iso: str
               ) -> tuple[str | None, str | None]:
-    """A transaction date, whose year may be absent (statements print "04/17").
-    The year is taken from the statement period, handling a year boundary
-    (a December→January statement)."""
+    """A transaction date whose year may be absent (statements print "04/17").
+
+    The year is taken from the statement period, and from the closing year for a
+    month before the opening month when the period crosses a year boundary."""
     n = parse_date(str(raw), locale)          # the model may have included a year
     if n.ok:
         return n.value, None
@@ -217,8 +212,9 @@ def from_model_json(text: str, doc_id: str, locale: str,
                     currency: str) -> tuple[StatementFacts | None, str | None]:
     """Parse a model's statement read into canonical StatementFacts.
 
-    Returns (facts, error). Any ambiguous/invalid figure fails the whole parse:
-    a statement we cannot read to the cent is sent to review, never guessed."""
+    Returns (facts, error). Any ambiguous or invalid figure fails the whole
+    parse, sending the statement to review. An unreadable running balance is the
+    exception: it degrades to None, since it only aids diagnosis."""
     blob = _find_json(text)
     if blob is None:
         return None, "no JSON object found in model output"
@@ -258,17 +254,15 @@ def from_model_json(text: str, doc_id: str, locale: str,
         d, err = _txn_date(rt.get("date_raw"), locale, open_date, close_date)
         if err:
             return None, f"transaction {i} {err}"
-        # amount_raw is a positive magnitude; the sign is the movement's EFFECT ON
-        # THE PRINTED BALANCE: "increase" raises it, "decrease" lowers it —
-        # account-kind-agnostic, so one identity reconciles checking, savings, and
-        # cards. Legacy reads (stmt-v2) carried "direction" (credit=money in), so
-        # credit maps to increase and those stored reads reparse unchanged.
+        # amount_raw is a positive magnitude; the sign is the movement's effect
+        # on the printed balance. Account-kind-agnostic, so one identity
+        # reconciles checking, savings and cards alike.
         signed, err = _signed_amount(rt, abs(mag), i)
         if err:
             return None, err
-        # Running balance is an *aid* (a second identity for diagnosis), not core:
-        # if it's present but unreadable, degrade it to None rather than failing
-        # the whole statement over a column we only use to localize errors.
+        # The running balance is a diagnosis aid, not part of the identity: if
+        # it is present but unreadable it degrades to None rather than failing
+        # the parse.
         running = None
         if rt.get("running_balance_raw") not in (None, ""):
             rb, rberr = _amount(rt["running_balance_raw"], locale, currency)

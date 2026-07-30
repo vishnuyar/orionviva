@@ -1,13 +1,12 @@
 """Raw capture: every uploaded file, encrypted, before any judgment.
 
-The doctrine is absolute — capture the raw bytes of everything, always, even a
-document we cannot yet model. You can re-project a held document later; you can
-never re-derive one you discarded. This store is where the raw bytes live.
+Every uploaded file lands here before it is judged, including one no projector
+can yet read, so a held document can be re-projected later.
 
-Content-addressed by SHA-256: the address *is* the
-fingerprint, so re-uploading the same file is a free no-op rather than a
-duplicate. Each blob is sealed with the same versioned AES-256-GCM envelope as
-the event log, with the content hash bound into the aad.
+Content-addressed by SHA-256: the address is the fingerprint, so re-uploading
+the same file is a no-op rather than a duplicate. Each blob is sealed with the
+same versioned AES-256-GCM envelope as the event log, with the content hash
+bound into the aad.
 """
 
 from __future__ import annotations

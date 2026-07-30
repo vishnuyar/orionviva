@@ -1,11 +1,7 @@
 """Encryption-at-rest envelope for OrionViva's ledger.
 
-Encryption from commit one, not a later optimization: the ledger holds the
-user's real financial life, and what cannot be decrypted cannot be leaked or
-subpoenaed (a breach must be a bad day, not a ruin). This module
-is the versioned crypto envelope that promise stands on.
+The versioned envelope every sealed record in a vault is written under:
 
-Design — deliberately boring, because trust wants boring crypto:
   - **AES-256-GCM** for authenticated encryption. Every sealed record carries
     its own authentication tag, so tampering with a ciphertext is detected on
     open, never silently accepted.
@@ -15,9 +11,8 @@ Design — deliberately boring, because trust wants boring crypto:
     so a future scheme can be introduced without stranding data written under
     this one. Changing a parameter is a new version, never a silent edit.
 
-Nothing here reads the passphrase from disk or config — it comes from the caller
-(who reads it from an env var or an interactive prompt). A passphrase sitting in
-a file would defeat the entire point.
+Nothing here reads the passphrase from disk or config: it comes from the caller,
+which reads it from an env var or an interactive prompt.
 """
 
 from __future__ import annotations
@@ -31,8 +26,8 @@ from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 VERSION = "viva-vault-aesgcm-scrypt-v1"
 
-# scrypt cost parameters — interactive-login grade. Recorded here (not hidden)
-# because they are part of the versioned envelope and travel in the file header.
+# scrypt cost parameters — interactive-login grade. They are part of the
+# versioned envelope and travel in the vault header.
 SCRYPT_N = 2 ** 15
 SCRYPT_R = 8
 SCRYPT_P = 1
@@ -43,8 +38,8 @@ NONCE_LEN = 12   # 96-bit nonce, the GCM standard
 
 
 class CryptoError(Exception):
-    """Encryption or decryption failed. On open this most often means a wrong
-    passphrase or tampered data — both must be loud, never swallowed."""
+    """Encryption or decryption failed — on open, a wrong passphrase or tampered
+    data. Every failure in this module raises it; none is swallowed."""
 
 
 def _b64e(b: bytes) -> str:
@@ -114,10 +109,11 @@ def open_sealed(key: bytes, sealed: dict, aad: bytes = b"") -> bytes:
 
 # ------------------------------------------------------------------ vault header
 
-# One passphrase protects a whole vault (the event log and the raw-blob store
-# alike). These two helpers are the shared discipline: mint a header that records
-# the KDF and a check token, and re-derive + verify the key on open. Fail fast on
-# a wrong passphrase, even before a single record is read.
+# One passphrase protects a whole vault — the event log and the raw-blob store
+# alike. These two helpers mint a header recording the KDF parameters and a
+# sealed check token, and re-derive and verify the key on open, so a wrong
+# passphrase fails before any record is read. The header holds the salt and the
+# check token; it never holds the passphrase or the key.
 
 CHECK_TOKEN = b"viva-vault-ok"
 CHECK_AAD = b"header"

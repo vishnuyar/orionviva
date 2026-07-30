@@ -2,23 +2,13 @@
 
     observe → assess → cool → budget → perform → record
 
-Five of those six are pure or read-only; only `perform` spends. The loop is
-written so that it can be stopped after any step and the vault is consistent,
-because it will be stopped after any step — a laptop closes, a key expires, a
-provider returns 503.
+Only `perform` spends; the rest is pure or read-only, and the loop leaves the
+vault consistent if it stops after any step. `cool()` holds back an action whose
+last attempt failed against an unchanged stake, so a repeated wake over an
+unchanged vault buys nothing twice. Nothing here answers a question about what a
+movement means; those go to the question queue.
 
-**Why re-running is safe.** `assess` is deterministic, so two wakes over an
-unchanged vault propose the same list. That is a feature for correctness and a
-hazard for cost: a proposal that fails will be re-proposed forever unless the
-failure is remembered. `cool()` is where it is remembered, over the agent's own
-events, using the stake-snapshot rule the question queue already uses for a
-decline — quiet while nothing has changed, awake the moment it has.
-
-**What this loop may not do.** It never answers a question about what money
-means. Those go to a person, ranked by consequence, through the queue that
-already exists. The division is not squeamishness: only the person knows whether
-five hundred to a friend was rent or a loan, so an agent answering it would be
-confidently wrong rather than usefully autonomous.
+Design rationale: docs/the-maintenance-agent.md
 """
 
 from __future__ import annotations
@@ -34,26 +24,10 @@ from .policy import RULES, assess, best_of, within_budget
 
 log = logging.getLogger(__name__)
 
-# Model calls one wake may spend.
-#
-# THE NUMBER IS SIZED TO FINISH THE JOB, and that is a correction rather than a
-# preference. A ceiling exists to stop a runaway, and the runaway this agent can
-# actually have is REPETITION — the same refused action bought again on every
-# wake — which `cool()` stops directly and a ceiling only ever slowed down. What
-# a low ceiling stops instead is the ordinary work of an ordinary vault, half
-# way through, waiting for somebody to run the command again. That is not
-# safety; it is the chore this layer exists to remove. An agent whose default
-# settings require a person to say "continue" is a script with better prose.
-#
-# Sized for the shape of a real vault: six (institution x kind) pairs at
-# CALLS["induce"] x best_of, plus enrichment for a few hundred brands. Bigger
-# than the author's own vault needs (~33), so a first run completes, and small
-# enough that a misconfigured rule set cannot quietly spend a hundred.
-#
-# What it does NOT protect against is a vault with forty institutions. That is
-# the case the ceiling is for, and when it binds the deferred work is picked up
-# by the next wake at no extra cost — a deferral is not a failure and is never
-# cooled.
+# Model calls one wake may spend, unless `--budget` or VIVA_AGENT_BUDGET_CALLS
+# overrides it. Sized to cover six (institution x kind) pairs at
+# CALLS["induce"] x best_of plus enrichment for a few hundred brands. Work that
+# does not fit is deferred to the next wake, not refused.
 DEFAULT_BUDGET_CALLS = 60
 
 
@@ -66,17 +40,10 @@ def budget_calls() -> int:
 
 
 def machinery_for(kind: str) -> str:
-    """The version of the code that would do this work.
+    """The version string of the code that would do this kind of work.
 
-    In the stake because a cooldown that fingerprints only the DATA holds back
-    work that NEW CODE would now succeed at. A refusal says "this evidence, run
-    through this machinery, produced nothing" — and a changed prompt or a changed
-    pack rule makes that a different sentence, so the refusal should expire on
-    its own rather than waiting for a person to remember.
-
-    The string is already pinned and already composed by the induction itself
-    (`induce-profile-v1+prof-v1+pack-v2` in its logs). Reusing it beats inventing
-    a parallel notion of "has the code changed", which would immediately drift."""
+    `merchantcore.induce.machinery_version()` for an induction, `ENRICHMENT_
+    VERSION` for an enrichment, "" for a kind with no versioned machinery."""
     if kind in ("induce", "reinduce"):
         from merchantcore.induce import machinery_version
         return machinery_version()
@@ -89,11 +56,9 @@ def machinery_for(kind: str) -> str:
 def stake_of(action) -> dict:
     """The fingerprint a cooldown compares.
 
-    The evidence that justified the action, plus the version of the machinery
-    that would act on it. Floats are rounded so that a figure recomputed to the
-    last bit does not read as new evidence. Counts and versions, never content —
-    this ends up in an event, and an agent's journal is not a place for bank
-    lines to accumulate."""
+    `action.evidence` sorted by key, floats rounded to three places, plus a
+    `machinery` entry when `machinery_for` names one. Counts and versions only:
+    it carries no descriptor, amount or account."""
     stake = {k: (round(v, 3) if isinstance(v, float) else v)
              for k, v in sorted(action.evidence.items())}
     machinery = machinery_for(action.kind)
@@ -103,14 +68,12 @@ def stake_of(action) -> dict:
 
 
 def cool(actions, attempts) -> tuple[list, list]:
-    """Split into what is worth trying and what would repeat a known refusal.
+    """Split `actions` into `(live, cooled)`.
 
     `attempts` is `projection.agent_attempts()` — the last attempt per (rule,
-    target). An action is held back when that attempt did not succeed AND the
-    stake has not moved since, because the same inputs will reach the same
-    refusal at the same price. A successful attempt is never a reason to hold
-    back: success changes the world, so `assess` stops proposing it on its own,
-    and if it is proposing it again something genuinely is different."""
+    target). An action is cooled when that attempt did not succeed and its stake
+    equals the action's current stake; `cooled` entries are `(action, attempt)`.
+    A "done" attempt never cools anything."""
     live, cooled = [], []
     for a in actions:
         last = attempts.get((a.rule, a.target))
@@ -124,7 +87,7 @@ def cool(actions, attempts) -> tuple[list, list]:
 
 @dataclass
 class Run:
-    """One wake, in full. Everything a report or an interface needs."""
+    """One wake, in full — what was seen, held back, deferred and done."""
 
     observation: dict = field(default_factory=dict)
     considered: list = field(default_factory=list)   # every Action assess proposed
@@ -156,12 +119,13 @@ class Run:
 
 
 def _plan(obs, rules: dict | None, ceiling_left: int):
-    """One pass of the decision half. Pure with respect to the vault."""
+    """One pass of the decision half — `(considered, cooled, fits, deferred)`.
+
+    Pure with respect to the vault: it reads, and writes nothing."""
     actions = assess(obs.pairs, obs.recent, obs.store,
                      unknown_brands=obs.unknown_brands, rules=rules)
     live, cooled = cool(actions, obs.proj.agent_attempts())
-    # `wait` and `ask` are proposals about the future, not work — reported so
-    # that "nothing to do" is distinguishable from "broken", and never budgeted.
+    # `wait` and `ask` are reported but never performed and never budgeted.
     doable = [a for a in live if a.kind not in ("wait", "ask")]
     fits, deferred = within_budget(doable, ceiling_left)
     return actions, cooled, fits, deferred
@@ -170,15 +134,13 @@ def _plan(obs, rules: dict | None, ceiling_left: int):
 def wake(vault, remaining_calls: int | None = None, dry_run: bool = False,
          best_of_override: int | None = None, rules: dict | None = None,
          recent_days: int = 120) -> Run:
-    """One pass. Returns what it saw and did; writes only agent events.
+    """One wake. Returns a `Run`; the only events it writes are `AgentActed`.
 
-    **The plan is remade after every action, not computed once.** A grammar
-    written halfway through changes what a brand IS, so an enrichment estimate
-    made before it is an estimate of different work — and a ceiling checked once,
-    against numbers that no longer describe the job, is not a ceiling. Re-planning
-    costs one projection walk per action and buys a budget that means what it
-    says. Termination is not left to the arithmetic: each (rule, target) is
-    attempted at most once per wake, whatever the rules say."""
+    The observation and the plan are remade after every action, so the budget is
+    applied to current estimates. Each (rule, target) is attempted at most once
+    per wake, which is what terminates the loop. `dry_run` stops before the first
+    model call and writes nothing; `remaining_calls` overrides `budget_calls()`;
+    `best_of_override` overrides every rule's `best_of`."""
     from ..ledger.events import agent_acted
 
     cfg = {**RULES, **(rules or {})}
@@ -191,10 +153,8 @@ def wake(vault, remaining_calls: int | None = None, dry_run: bool = False,
               calls_lifetime=obs.proj.agent_calls_spent())
 
     if dry_run:
-        # "planned" is a report word, not an event word — a dry run writes
-        # nothing, so it never has to be one of the three outcomes the log
-        # understands, and calling it "done" would read as a lie in the one
-        # place this product cannot afford one.
+        # "planned" is a report word: it is not one of the outcomes the event
+        # log accepts, and a dry run writes no event.
         run.performed = [(a, Outcome("planned",
                                      detail="not run — --dry-run stops at the "
                                             "line where money starts"))

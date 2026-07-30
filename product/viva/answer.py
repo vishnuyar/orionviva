@@ -1,19 +1,18 @@
-"""The v0 answer path — deterministic, and honest about what it doesn't know.
+"""The v0 answer path — deterministic, with an honesty envelope on every figure.
 
-No model sits here. A "question" is a fixed function call over
-the projection, and the whole job of this layer is the *honesty envelope* around
-the number: a cited source, a confidence grade, a coverage statement, and — the
-part that is the actual product — a clean refusal when the honest answer is "I
-can't tell you that reliably" rather than a bluffed figure.
+No model sits here. A question is a fixed function call over the projection, and
+each `Answer` carries a cited source, a confidence grade, a coverage statement,
+and a refusal (with a machine tag in `reason`) where no figure can be asserted.
 
-Three questions, and their refusals:
-  - ``answer_balance``  — one account's balance, or a refusal (unknown account,
-                          no data as of a date, or a conflicted figure we won't
-                          assert). An unverified figure is given but flagged.
-  - ``answer_total``    — the coverage-aware sum across checking accounts, per
-                          currency (no FX — cross-currency totals are not faked).
-  - ``coverage_summary``— what is answerable vs. what is held awaiting review
-                          ("5 posted, 2 not yet readable"), from the ledger alone.
+  - ``answer_balance``   — one account's balance, or a refusal (unknown account,
+                           no data as of a date, or a conflicted figure). An
+                           unverified figure is returned with a caveat.
+  - ``answer_total``     — the coverage-aware sum across checking accounts, per
+                           currency. No FX: cross-currency totals stay split.
+  - ``answer_spending``  — expenses grouped by assigned category, with internal
+                           transfers excluded.
+  - ``coverage_summary`` — what is answerable vs. what is held awaiting review,
+                           from the ledger alone.
 """
 
 from __future__ import annotations
@@ -110,8 +109,8 @@ def answer_balance(source, account: str, as_of: str | None = None) -> Answer:
         caveats.append("Computed from transactions; no closing statement has "
                        "confirmed this figure yet.")
 
-    # A liability's balance is money owed, not held — say so, and report the owed
-    # magnitude as a positive figure a person recognizes from their bill.
+    # A liability's balance is money owed, not held, and is reported as a
+    # positive magnitude.
     as_of = f" as of {ba.dated}" if ba.dated else ""
     if info.kind == LIABILITY:
         text = (f"You owe {_money(abs(ba.amount), ba.currency)} on {name}"
@@ -173,7 +172,7 @@ def answer_total(source, as_of: str | None = None) -> Answer:
                   f"{'s' if n != 1 else ''} is {_money(total, cur)}, as of each "
                   "account's latest statement."))
 
-    # Multiple currencies: report subtotals, never a faked converted sum.
+    # Multiple currencies: report subtotals; nothing is converted.
     parts = "; ".join(f"{cur} {tot}" for cur, tot in subtotals.items())
     return Answer(
         question=q, answered=True, amount=None, currency=None,
@@ -184,10 +183,9 @@ def answer_total(source, as_of: str | None = None) -> Answer:
 
 
 def answer_spending(source, as_of: str | None = None) -> Answer:
-    """Real spending, by category: every expense — card purchases included —
-    grouped by its assigned category, with internal transfers excluded. Honest
-    about how much is still uncategorized (the figure firms up as you confirm
-    categories)."""
+    """Every expense — card purchases included — grouped by its assigned
+    category, with internal transfers excluded. Whatever is still uncategorized
+    is reported as a caveat rather than folded in silently."""
     proj = _projection(source, as_of)
     q = "spending by category" + (f" as of {as_of}" if as_of else "")
     by_cat = proj.spending_by_category()
@@ -197,7 +195,7 @@ def answer_spending(source, as_of: str | None = None) -> Answer:
     total = sum(by_cat.values(), Decimal("0"))
     uncat = by_cat.get("Uncategorized", Decimal("0"))
     cur = _single_currency(proj)
-    # Largest categories first, uncategorized shown honestly at the end.
+    # Largest categories first; uncategorized is reported as a caveat instead.
     ranked = sorted(((c, a) for c, a in by_cat.items() if c != "Uncategorized"),
                     key=lambda x: x[1], reverse=True)
     top = "; ".join(f"{c} {_money(a, cur)}" for c, a in ranked[:5])

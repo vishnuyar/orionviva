@@ -1,26 +1,17 @@
-"""Net worth — a CURVE, not a number with a date attached.
+"""Net worth — a curve, not a number with a date attached.
 
-    net_worth(proj)            what you are worth at the latest date we know
-    net_worth(proj, "2026-03-31")   ... and at any other date
-    series(proj)               the whole curve
+    net_worth(proj)                 the latest date there is evidence for
+    net_worth(proj, "2026-03-31")   ... and any other date
+    series(proj)                    the whole curve
 
-Net worth is a FUNCTION of date, not a NUMBER that needs one, and asking "what
-am I worth?" is asking for a point on it. That dissolves the question of which
-date a single figure should carry: one coherent date lets a stale statement
-drag the headline months backwards, and latest-known-per-account yields a
-number that was never true at any instant. There is no *the* net worth to be
-wrong about.
+Net worth is a function of date: `net_worth(D)` is every account's last-known
+measurement at or before D. It needs no event type of its own — the ledger is
+already an append-only log of dated observations, so this is a projection.
 
-It needs no event type of its own. The ledger is already an append-only log of
-dated observations, so `net_worth(D)` is "every account's last-known
-measurement at or before D" — which is why this is a projection.
-
-WHY OBSERVATIONS AND NOT OUR OWN ARITHMETIC. A depository balance here is the
-**observed closing balance** the issuer attested, not the sum of postings we
-hold. Summing postings would be *our* arithmetic over a run that may be missing
-a month, and it would produce a confident figure from incomplete data — the
-exact failure this product exists to refuse. A statement's closing balance is a
-measurement, not a generation.
+A depository balance here is the **observed closing balance** the issuer
+attested, not the sum of postings the ledger holds: a statement's closing
+balance is a measurement, while a sum of postings over a run that may be missing
+a month is a derivation from incomplete data.
 """
 
 from __future__ import annotations
@@ -40,16 +31,12 @@ class NetWorthLine:
     """One account's contribution to one point on the curve.
 
     `amount` is signed FOR NET WORTH: positive is something you own, negative
-    something you owe. That is **not** how the ledger stores a card — the
-    registry is explicit that a `liability` account's balance is *money owed*,
-    held as a positive magnitude, because that is the figure on the bill.
+    something you owe. That is not how the ledger stores a card, whose balance
+    is money owed held as a positive magnitude, so the side is decided by the
+    account's KIND rather than by the sign of the number (see `_side`).
 
-    So the side is decided by the account's KIND, never by the sign of the
-    number (see `_side`). Guessing the convention from the sign books a card's
-    owed balance as an asset and reports liabilities of zero.
-
-    `as_of` is the date this figure was measured, usually EARLIER than the point
-    it belongs to; that gap is the honesty this module exists to report."""
+    `as_of` is the date this figure was measured, usually earlier than the point
+    it belongs to."""
     account: str
     amount: Decimal
     currency: str
@@ -61,10 +48,9 @@ class NetWorthLine:
 
     @property
     def provable(self) -> bool:
-        """`corroborated` means we hold the attesting document AND the
-        arithmetic checks. That is exactly what "provable" means, which is why
-        net worth reads the existing grade instead of inventing a second
-        issued/asserted vocabulary for the same idea."""
+        """True at grade `corroborated` — the attesting document is held and the
+        arithmetic checks. Net worth reads the existing grade rather than a
+        second issued/asserted vocabulary."""
         return self.grade == CORROBORATED
 
 
@@ -73,35 +59,29 @@ class NetWorthPoint:
     as_of: str
     lines: list = field(default_factory=list)
     missing: list = field(default_factory=list)
-    # Real accounts that contributed NOTHING to this point, and why. Silently
-    # dropping an account from a net-worth total is the same lie of omission
-    # the `missing` list exists to prevent.
+    # Real accounts that contributed nothing to this point, and why.
     skipped: list = field(default_factory=list)
     # Documents read but not posted. They may name an account that does not
-    # exist yet, so they cannot appear in `skipped` — which is exactly why a
-    # point that ignored them could call itself complete while two statements
-    # sat in review.
+    # exist yet, so they cannot appear in `skipped`.
     held: list = field(default_factory=list)
 
     @property
     def complete(self) -> bool:
-        """False when something we KNOW you owe has no usable figure, or when a
-        document is read and not posted. Either way the total is knowingly
-        partial, and says so rather than absorbing it."""
+        """False when something known to be owed has no usable figure, or when a
+        document is read and not posted — the total is then partial."""
         return not self.missing and not self.held
 
     @property
     def oldest_input(self) -> str:
-        """The stalest measurement in this point. A total resting on a
-        four-month-old brokerage statement should say so out loud."""
+        """The stalest measurement this point rests on, or '' with no lines."""
         return min((ln.as_of for ln in self.lines), default="")
 
     def by_currency(self) -> dict:
-        """Per-currency subtotals, and deliberately **no grand total**.
+        """Per-currency subtotals — ``{currency: {assets, liabilities, net,
+        provable}}`` — and no grand total.
 
-        One financial life can hold several currencies, and we have no FX source
-        with a date, a provenance and a grade of its own. A converted total would
-        be a figure no document attests — a bluff by construction."""
+        There is no FX source with a date, a provenance and a grade of its own,
+        so a converted total would be a figure no document attests."""
         out: dict[str, dict] = {}
         for ln in self.lines:
             row = out.setdefault(ln.currency, {
@@ -134,23 +114,20 @@ class NetWorthPoint:
 def _side(kind: str, balance: Decimal) -> Decimal:
     """The contribution of a balance to net worth, decided by account KIND.
 
-    A `liability` balance is money OWED (registry: "a card whose balance is
-    money owed"), so it is negated rather than absolute-valued — negating keeps
-    the rare-but-real case honest, where an overpaid card owes *you* and its
-    owed figure is negative, making it genuinely an asset. `abs()` would book
-    that credit as a debt."""
+    A `liability` balance is money owed, so it is negated rather than
+    absolute-valued: an overpaid card carries a negative owed figure and is
+    genuinely an asset, which `abs()` would book as a debt."""
     return -balance if kind == "liability" else balance
 
 
 # --- the pieces of one point -------------------------------------------------
 
 def _closing_at(state, as_of: str):
-    """The latest closing balance observed at or before `as_of`.
+    """The latest `(date, amount, grade, doc_id)` closing observed at or before
+    `as_of`, or None when the account had no measurement by then.
 
-    None when the account had no measurement by then — and the caller must then
-    contribute NOTHING rather than zero. An account we had not yet seen is not
-    an account worth nothing; treating absence as zero is a claim we cannot
-    make, and it would make the early curve confidently wrong."""
+    A None caller contributes NOTHING to the point, not zero: an account not yet
+    seen is not an account worth nothing."""
     best = None
     for date, amount, grade, doc in state.closings:
         if date <= as_of and (best is None or date >= best[0]):
@@ -159,14 +136,13 @@ def _closing_at(state, as_of: str):
 
 
 def _holdings_at(state, as_of: str) -> dict:
-    """Each instrument's latest measurement at or before `as_of`, summed per
-    currency. A later revaluation must never move an earlier point on the curve,
-    which is why the projection keeps the whole observation history and not just
-    the newest one."""
+    """Holdings at `as_of`, summed per currency: ``{currency: {value, as_of,
+    grade}}``. A later revaluation never moves an earlier point on the curve,
+    which is why the projection keeps the whole observation history."""
     out: dict[str, dict] = {}
-    # One snapshot, not a composition. The holdings that count at this date are
-    # the ones on the latest statement AT OR BEFORE it — so an earlier point
-    # still uses the statement that was current then, and a holding the newest
+    # One snapshot, not a composition: the holdings that count at this date are
+    # the ones on the latest statement at or before it, so an earlier point
+    # still uses the statement that was current then and a holding the newest
     # statement no longer lists is no longer held.
     observed = [ob for history in state.position_history.values() for ob in history
                 if ob.get("as_of") and ob["as_of"] <= as_of]
@@ -179,28 +155,26 @@ def _holdings_at(state, as_of: str) -> dict:
                                    "grade": CORROBORATED})
         row["value"] += best["market_value"]
         row["as_of"] = max(row["as_of"], best["as_of"])
-        # A mixed-grade holding drags the line's grade down to its weakest part.
+        # A line's grade is the weakest grade among the holdings it sums.
         if best["grade"] and best["grade"] != CORROBORATED:
             row["grade"] = best["grade"]
     return out
 
 
 def _asserted_lines(proj, as_of: str):
-    """Accounts a person's own rulings brought into being, and the ones we must
-    refuse to value.
+    """Accounts a person's rulings brought into being. Returns
+    ``(lines, missing)``.
 
     Three cases:
 
-    * ``Assets:`` with every contributing movement decided — include at **cost**,
-      what you paid, never what it is now worth. Badged `asserted`: your
-      word, trusted, and honestly marked.
-    * ``Assets:`` where any movement was ``MIXED`` — the cash is a fact but how
-      much of it bought equity is not. Refuse, and say what is missing.
-    * ``Liabilities:`` — **always refused from cash flow alone.** Money reaching
-      a lender tells us nothing about the balance owed: part of it was interest,
-      and no amount of trusting the person fixes that, because they do not know
-      either. Only the statement does. So it goes to `missing`, and the queue
-      asks for a rough figure that a 1098 later upgrades.
+    * ``Assets:`` with every contributing movement decided — a line at **cost**,
+      what was paid, never a present-day value. Badged `asserted`.
+    * ``Assets:`` where any movement was ``MIXED`` — the cash is a fact, but how
+      much of it bought equity is not. Goes to `missing`, naming what would fix
+      it.
+    * ``Liabilities:`` — always refused from cash flow alone, because money
+      reaching a lender says nothing about the balance owed. Goes to `missing`
+      with the ask and the document that would answer it.
     """
     groups: dict[tuple, dict] = {}
     for m in proj.movements():
@@ -230,11 +204,9 @@ def _asserted_lines(proj, as_of: str):
             continue
         lines.append(NetWorthLine(
             account=account, amount=g["paid"], currency=currency,
-            # VERIFIED, deliberately not CORROBORATED: a human attested this
-            # figure, and no document has checked it. That difference is what
-            # keeps it out of the provable subtotal until an invoice or a 1098
-            # arrives — the grade ladder doing the work a separate
-            # issued/asserted badge would have duplicated.
+            # VERIFIED, not CORROBORATED: a person attested this figure and no
+            # document has checked it, which keeps it out of the provable
+            # subtotal until one does.
             as_of=g["as_of"], grade=VERIFIED,
             origin=ASSERTED, kind="asserted"))
     return lines, missing
@@ -243,9 +215,9 @@ def _asserted_lines(proj, as_of: str):
 # --- the curve ---------------------------------------------------------------
 
 def change_dates(proj) -> list[str]:
-    """Every date on which net worth can move: a statement closed, a holding was
-    measured, or a ruling was made. Evaluating between them would only repeat a
-    point, so the curve is exactly as long as it has evidence to be."""
+    """Every date on which net worth can move, sorted: a statement closed, a
+    holding was measured, or a ruling was made. Evaluating between them repeats
+    a point, so the curve is exactly as long as its evidence."""
     dates: set[str] = set()
     for account in proj.accounts():
         st = proj._state(account)
@@ -273,9 +245,8 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
 
         closing = _closing_at(st, as_of)
         if closing is None and not _holdings_at(st, as_of):
-            # An account we hold but cannot value at this date. Naming it is the
-            # difference between "your net worth is X" and "your net worth is X,
-            # and here is what X does not include."
+            # An account held but not valuable at this date: named in `skipped`
+            # so the point says what it does not include.
             later = min((d for d, *_ in st.closings if d > as_of), default="")
             point.skipped.append({
                 "account": account, "kind": info.kind,
@@ -311,9 +282,7 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
 def series(proj) -> list[NetWorthPoint]:
     """The whole curve, earliest evidence to latest.
 
-    The property that makes it trustworthy: **an earlier point never changes
-    when a later document arrives.** Each point reads only measurements dated at
-    or before itself, so history is stable and the curve grows forward — which
-    is what lets a person compare this month against last month and believe the
-    comparison."""
+    An earlier point never changes when a later document arrives: each point
+    reads only measurements dated at or before itself, so the curve grows
+    forward and history is stable."""
     return [net_worth(proj, d) for d in change_dates(proj)]

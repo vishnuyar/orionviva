@@ -1,26 +1,24 @@
-"""What recurs in your money — measured, with no model and no inference.
+"""What recurs in a vault's money — measured, with no model and no inference.
 
     VIVA_VAULT_DIR=~/.viva-vault python3 -m viva.streams_report
     ... --words          # word recurrence across counterparties, a diagnostic
     ... --private        # amounts and descriptors, for you alone
 
-A **stream** is every movement sharing a counterparty and a rail. This report says
-how often each one arrives, how much, how steady, and through which channel. It
-contains no hypotheses: nothing here guesses that a stream is a subscription or a
-rent payment. Everything it prints can be checked against a statement by hand,
-which is the point — the inferential layer that comes next has to be measured
-against this, so this has to be trustworthy first.
+A **stream** is every movement sharing a counterparty and a rail. This reports
+each stream's role, the layer that named its counterparty, its channel, how
+often it arrives, how steady the amount is, and which streams a grammar named as
+a person. It contains no hypotheses: nothing here guesses that a stream is a
+subscription or a rent payment.
 
-**Nothing below guesses at what belongs to the bank and what belongs to a
-merchant.** A rule that did was removed on 2026-07-28 after this report's own
-`--words` section falsified it: on a real vault the bank's sentence words, city
-names and merchant names interleave by frequency, so no cut separates them, and
-a cut low enough to catch the ACH markers deletes merchant names. Separating the
-bank's sentence from the merchant's name is Layer 1's job — an induced grammar
-does it from evidence with a lossless check, and until one exists a card stream
-carries the bank's prefix in its key. Inelegant, and honest: an unstripped key
-is still unique per counterparty, while an over-stripped one is silently merged
-with everything the bank prefixed the same way.
+**Nothing here separates what belongs to the bank from what belongs to a
+merchant.** That is Layer 1's job — an induced grammar does it from evidence
+with a lossless check — so until a grammar exists, a card stream carries the
+bank's prefix in its key. An unstripped key is still unique per counterparty,
+while an over-stripped one merges silently with everything the bank prefixed the
+same way.
+
+`--words` prints how many distinct normalized keys print each word. It is a
+diagnostic and decides nothing.
 
 The default report is **safe to share**: counts, cadences, channels and rule
 statistics. `--private` adds amounts, descriptors and counterparty names — that
@@ -70,8 +68,8 @@ def main() -> int:
         print("This vault holds no movements.")
         return 1
 
-    # An induced grammar for a movement's (institution x kind), when one exists.
-    # None everywhere is the ordinary case today and stays a working one.
+    # The induced grammar for a movement's (institution x kind), or None where
+    # the pair has none. A vault with no grammar at all is a working case.
     store = profile_store()
     cache: dict = {}
 
@@ -96,9 +94,8 @@ def main() -> int:
         return kinds[m.account]
 
     every = build_streams(movements, profile_for, kind_for)
-    # `mixed` counts as a counterparty stream: it IS one, with some of its
-    # movements linked. Excluding it would hide a real party behind a gap in
-    # the transfer matcher.
+    # `mixed` counts as a counterparty stream: it is one counterparty whose
+    # movements are only partly transfer-linked.
     streams = [s for s in every if s.role in (COUNTERPARTY, MIXED)]
     grammars = sum(1 for v in cache.values() if v)
     span = sorted(m.date for m in movements if m.date)

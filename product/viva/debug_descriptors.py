@@ -1,29 +1,18 @@
-"""Measure the shape of a vault's counterparty descriptors.
-
-Two questions decide how merchant knowledge should be stored and what may be
-shared, and both are answerable from a vault with no model calls:
-
-  1. How many distinct descriptors resolve to one merchant? If the answer is
-     near one, caching decompositions buys nothing. If it is large, the
-     subtraction step is doing real work and a merchant-keyed commons is much
-     smaller than a descriptor-keyed one.
-
-  2. How much of a descriptor is left over once the merchant is removed, and how
-     often is that remainder a person rather than a store number? That decides
-     how narrow the personal path is.
-
-Run it against your own vault:
+"""Measure the shape of a vault's counterparty descriptors. No model calls.
 
     VIVA_VAULT_DIR=~/.viva-vault python -m viva.debug_descriptors
 
-The default report is **safe to share**: counts, distributions and head tokens
-that are shared by three or more distinct counterparties. A token that heads
-three unrelated descriptors is not a person's name, which is the same property
-the design leans on for publication.
+Prints, in order: how many raw descriptors collapse into one normalized key; how
+many normalized keys share a head token; the heads shared by `SAFE_FANOUT` or
+more distinct counterparties; what `is_shareable` refuses; the (institution,
+kind) pairs the descriptors come from; how many raw descriptors still carry a
+posting date; Layer 0 parse coverage; and how far enrichment reaches.
 
-`--private` adds amounts and the descriptors themselves. That output is for the
-person who owns the vault and nobody else; nothing in it should be pasted
-anywhere.
+The default report is counts, distributions and head tokens shared by three or
+more distinct counterparties. `--private` adds amounts and the descriptors
+themselves — that output is for the person who owns the vault.
+
+Read-only; nothing is written.
 """
 
 from __future__ import annotations

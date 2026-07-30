@@ -1,39 +1,31 @@
-"""The question queue — everything Viva needs from you, in the order that matters.
-
-The learning loop's front door.
+"""The question queue — everything Viva needs from the person, ranked.
 
 Four ask-and-learn loops — *whose account is this?*, *are these the same
-money?*, *what is this merchant?*, *is this spending or moving?* — are four
-queues, four cards, one primitive. This gathers them into one ranked list.
+money?*, *what is this merchant?*, *is this spending or moving?* — gathered into
+one ranked list, alongside corroboration asks and the knowledge registry's unmet
+expectations.
 
-It is a **read-side projection**: no new event type, no ingest change. Answering
-routes to the writers that already exist, so a ruling is recorded exactly as it
-was before and the question simply stops being raised (idempotent by
-construction — state changed, so the next projection doesn't ask again).
+A **read-side projection**: no new event type, no ingest change. Answering routes
+to the writers that already exist, so a ruling is recorded exactly as before and
+the question stops being raised on the next projection.
 
-Three rules keep it a butler rather than a chore list:
+Three rules shape the list:
 
-  1. **Leverage ranking.** Ask what moves the most money first. One ruling on a
-     large merchant can settle more than a hundred small ones.
+  1. **Leverage ranking.** Highest stake first. One ruling on a large merchant
+     can settle more than a hundred small ones.
   2. **Scope: one ruling clears many.** A question is raised at the most general
-     unit that is still honest — commercial merchants generalize (past and
-     future), a peer descriptor or an ambiguous pair does not.
-  3. **Silence by ranking, not hiding.** The top N surface; the tail is
-     *summarized* with its count and total, never dropped. An unanswered question
-     leaves its figure provisional and labelled, so silence costs precision,
-     never honesty.
+     unit that is still honest — commercial merchants generalize, past and
+     future; a peer descriptor or an ambiguous pair does not.
+  3. **The tail is summarized, not dropped.** The top N surface; the rest is
+     reported with its count and total.
 
-Question text is a deterministic template, never a model call: the queue must be
-reproducible, free and offline-testable, and a model that phrased a question
-could smuggle a claim into it. The templates live in the persona pack
-(`viva/persona/`) — the queue supplies the intent (figures, evidence, options),
-the pack supplies the words, and a lint test guarantees a phrasing can only
-place fields the intent supplied. The content stays deterministic; only the
-voice is data.
+Question text is a deterministic template, never a model call. The templates live
+in the persona pack (`viva/persona/`): the queue supplies the intent — figures,
+evidence, options — and the pack supplies the words, with a lint test
+guaranteeing a phrasing can only place fields the intent supplied.
 
-"Not now" is an answer: a declined question is suppressed while its stake
-(amount, count) is unchanged, and returns the moment new evidence moves it —
-settled → silence, applied to the questions themselves.
+"Not now" is an answer: a declined question stays suppressed while its stake
+(amount, count) is unchanged, and returns the moment new evidence moves it.
 """
 
 from __future__ import annotations
@@ -50,9 +42,8 @@ from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
 from .listen import suggest_answers
 from .persona import say
 
-# How many questions to surface before summarizing the rest. Not a materiality
-# threshold in money — that would be a currency- and jurisdiction-shaped guess.
-# Rank, show the top, and say honestly what is left.
+# How many questions to surface before summarizing the rest. A count, never a
+# money threshold.
 DEFAULT_LIMIT = 10
 
 # Question kinds.
@@ -101,8 +92,8 @@ def _money(amount: Decimal, currency: str) -> str:
 
 
 def _held_questions(proj) -> list[Question]:
-    """Documents we're sitting on. Usually the largest stake: a whole statement
-    is not on your books until this is resolved."""
+    """Documents held for review — a gap, an identity doubt, or a flagged
+    reconciliation. The stake is the statement's closing amount."""
     out: list[Question] = []
     for h in held_items(proj):
         f = h.facts
@@ -130,8 +121,8 @@ def _held_questions(proj) -> list[Question]:
                      [{"label": "Review it", "action": "review",
                        "args": {"doc_id": h.doc_id}}]),
             refs={"doc_id": h.doc_id}))
-    # Held documents with no fix-it flow yet (pay stub, brokerage) — still asked
-    # about, because a document we're sitting on must never be invisible.
+    # Held documents with no fix-it flow yet (pay stub, brokerage) are still
+    # asked about, with no option beyond showing the document.
     for b in other_holds(proj):
         out.append(Question(
             id=f"{RECONCILIATION}:{b['doc_id'][:12]}", kind=RECONCILIATION,
@@ -149,8 +140,9 @@ def _held_questions(proj) -> list[Question]:
 
 
 def _transfer_questions(proj) -> list[Question]:
-    """Two movements that might be the same money. Genuinely one-off: an
-    ambiguous pair generalizes to nothing, so it is scoped to itself."""
+    """Two movements that might be the same money. Scoped to the one movement:
+    an ambiguous pair generalizes to nothing. Candidates already linked by
+    another ruling are dropped, and a suggestion with none left is skipped."""
     by_key = {m.key: m for m in proj.movements()}
     linked = proj.linked_keys()
     out: list[Question] = []
@@ -192,9 +184,9 @@ def _merchant_questions(proj) -> list[Question]:
             totals[key] = totals.get(key, Decimal("0")) + abs(m.amount)
             currency.setdefault(key, m.currency)
             movements.setdefault(key, []).append(m.key)
-    # The picker's options: the shared suggestions PLUS every category this person
-    # has actually used. Categories are implicit — one exists by being used — so
-    # the vocabulary grows without an event or a migration.
+    # The picker's options: the seed categories plus every category already used
+    # in this vault. A category exists by being used, so the vocabulary grows
+    # with no event and no migration.
     used = sorted({(r.get("category") or "").strip()
                    for r in proj.merchant_categories().values()} - {""})
     categories = list(SEED_CATEGORIES) + [c for c in used if c not in SEED_CATEGORIES]
@@ -222,16 +214,16 @@ def _merchant_questions(proj) -> list[Question]:
 
 
 def _nature_questions(proj) -> list[Question]:
-    """What is this money, really? — asked ONLY where the counterparty cannot say.
+    """What this money is — asked only where the counterparty cannot say.
 
-    The tiers make the rule explicit:
+    The tier decides:
 
-      settled     an ordinary counterparty implying nothing  → SILENCE
-      structural  the counterparty implies a relationship    → an informed proposal
-      unknown     an instrument or a peer                    → a real question, one at a time
-
-    The queue's job is to be *short*. Every question it does not ask is one the
-    product answered for you."""
+      settled     an ordinary counterparty implying nothing  → no question
+      structural  the counterparty implies a relationship    → one grouped
+                                                               proposal per key
+      unknown     an instrument or a peer                    → one question per
+                                                               movement
+      unenriched  → nothing here; it is a merchant question instead"""
     out: list[Question] = []
     singles: list = []
     groups: dict[str, dict] = {}
@@ -241,7 +233,7 @@ def _nature_questions(proj) -> list[Question]:
             continue
         tier = proj.tier_of(m)
         if tier == TIER_SETTLED:
-            continue                      # we know. asking would be noise.
+            continue                      # already known; nothing to ask
         if tier == TIER_UNENRICHED:
             continue                      # that is a MERCHANT question, not this
         if tier == TIER_UNKNOWN:
@@ -278,7 +270,7 @@ def _nature_questions(proj) -> list[Question]:
                   "category": ruling.get("category", ""),
                   "subcategory": ruling.get("subcategory", "")}))
 
-    # Tier 2 — we have a hypothesis. Say it, name the doubt, offer the choice.
+    # Tier 2 — an implication exists: state it, then offer the choice.
     for key, g in groups.items():
         implied = g["implied"]
         what = implied.get("relationship") or g["subcategory"] or g["category"]
@@ -314,17 +306,15 @@ def _nature_questions(proj) -> list[Question]:
 
 
 def _corroboration_questions(proj) -> list[Question]:
-    """Documents that would PROVE what you told us.
+    """Documents that would corroborate a ruling.
 
-    Every account a ruling created is `asserted` — only you say it exists. That
-    is honest and it is enough to run your finances on, but it is not evidence a
-    counterparty could ever rely on. The invoice, the 1098, the closing
-    disclosure is the ladder from `asserted` to `issued`.
+    An account a ruling created is `asserted`: only the person says it exists.
+    The invoice, the 1098 or the closing disclosure is what carries it from
+    `asserted` to `issued`. Raised only for an asserted account whose ruling
+    names a corroborating document.
 
-    Two rules keep this from nagging, both deliberate: the ask is **never a
-    gate** — the account is already created and the money already recorded — and
-    it is **ranked with everything else**, so a large purchase surfaces and a
-    small one does not."""
+    The ask is never a gate — the account exists and the money is recorded
+    already — and it is ranked with every other question by what it settles."""
     out: list[Question] = []
     for account, row in proj.ruled_accounts().items():
         if row.get("origin") != ASSERTED:
@@ -356,11 +346,12 @@ def _corroboration_questions(proj) -> list[Question]:
 
 
 def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question]:
-    """Documents that should exist somewhere — the knowledge registry's unmet
-    expectations, asked as questions and ranked with everything else by the
-    money the document would attest. The ask is never a gate, and a "Not right
-    now" is a decline like any other: quiet until the stake changes. The cadence asks carry amount 0 deliberately — they settle no
-    money, they improve currency, so they rank below every money question."""
+    """The knowledge registry's unmet expectations, asked as questions and ranked
+    with everything else by the money the document would attest.
+
+    The ask is never a gate, and "Not right now" declines it like any other
+    question. A cadence expectation carries amount 0, so it ranks below every
+    question that settles money."""
     from .knowledge import evaluate
     out: list[Question] = []
     for e in evaluate(proj, as_of, jurisdiction):
@@ -412,9 +403,8 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
     qs += _nature_questions(proj)
     qs += _corroboration_questions(proj)
     qs += _expectation_questions(proj, as_of, jurisdiction)
-    # A declined question stays declined while it would say exactly what it said
-    # before, and returns the moment new evidence changes its stake. The
-    # comparison is the whole policy — no timers, no jurisdiction-of-the-mind.
+    # A declined question stays declined while its amount and count are what
+    # they were when it was declined, and returns when either moves. No timers.
     declined = proj.declined_questions()
     qs = [q for q in qs
           if (d := declined.get(q.id)) is None

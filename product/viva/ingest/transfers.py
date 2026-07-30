@@ -1,14 +1,16 @@
-"""Transfer detection — recognizing that two movements are one internal transfer.
+"""Transfer detection: recognising that two movements are one internal transfer.
 
-Deterministic, no model calls. A transfer is an *overlay* over two existing
-postings (never a re-post), so each statement still reconciles on its own.
+Deterministic; no model calls. A transfer is an overlay over two existing
+postings rather than a re-post, so each statement still reconciles on its own.
 
-The trust discipline mirrors the reconciliation ladder's forced/suggested split:
-a **decisive** match auto-links (grade ``corroborated``); anything softer is
-**surfaced** as a suggestion for a human ruling and nothing is netted until
-confirmed — never bluff a number. Links are only formed between movements on
-accounts we already hold (all ingested accounts are the user's own); a
-named-but-unseen destination is left to the own-account question.
+A decisive match is linked automatically at grade ``corroborated``. Anything
+softer is recorded as a suggestion for a person to rule on, and nothing is
+netted out of spending until it is confirmed. Links are formed only between
+movements on accounts already held; a named but un-ingested destination is left
+to the own-account question.
+
+Design rationale, including the evidence rules and what they replaced:
+docs/transfer-links-and-cross-document-corroboration.md
 """
 
 from __future__ import annotations
@@ -27,60 +29,18 @@ from ..ledger.projection import LedgerProjection, MovementInfo
 
 log = logging.getLogger(__name__)
 
-# A transfer's legs post within a few days of each other (a card payment usually
-# clears a day or two after the bank debit). Kept tight to limit coincidental
-# amount matches; a match still only *auto*-links when the description names one
-# of the two accounts distinctively (`_strong_hint`), and is otherwise suggested.
-#
-# THIS CONSTANT IS NOT THE DIAL FOR "too much is being caught", and it is worth
-# saying so where someone will reach for it. Auto-linking needs exactly one
-# candidate, so a WIDER window finds more candidates and pushes pairs out of
-# decisive and into questions; narrowing it can therefore produce MORE auto-links,
-# not fewer. And narrowing unlinks nothing already linked — `_candidates` only
-# looks at movements where `linked` is false. The dial is `_strong_hint`.
+# Maximum days between the two legs of one transfer. A card payment usually
+# clears a day or two after the bank debit.
 DATE_WINDOW_DAYS = 5
 
-# FOUR ENGLISH KEYWORD TABLES USED TO LIVE HERE, and they are gone (2026-07-29).
-#
-#   _STOPWORDS         "chase", "bank", "the", "and" — words a token may not be
-#   _TRANSFER_WORDS    "transfer", "payment", "thank you", "autopay"
-#   _CARD_WORDS        "card", "credit", "visa", "mastercard", "amex"
-#   _DEPOSITORY_WORDS  "saving", "checking", "chequing", "current"
-#
-# _CARD_WORDS was the load-bearing one and the reason too much was being caught.
-# `_strong_hint` returned true if any of those words appeared ANYWHERE in either
-# description — and a credit card statement prints "card" on nearly every line,
-# so for a card destination the hint was close to always-true and the only real
-# constraints left were equal amount and uniqueness. A word list that is always
-# true is not evidence; it is a rubber stamp.
-#
-# What replaces them is what the project has used every other time it deleted
-# one of these: a property of the DATA rather than of the language.
-#
-#   naming an account   the description carries a token that belongs to one of
-#                       these two accounts AND to no other account you hold.
-#                       `distinctive_tokens` computes that from the accounts
-#                       themselves, so a stopword list has nothing to guess at.
-#
-#   worth asking about  the match itself. Same amount, same currency, opposite
-#                       direction, both accounts yours, within the window. That
-#                       IS the evidence; whether the bank chose the word
-#                       "payment" is evidence about English. Volume is the
-#                       question queue's problem and it was built for exactly
-#                       that — rank by money moved, summarise the tail.
-
-
 def _flow(m: MovementInfo) -> str:
-    """Classify a movement's role in a possible transfer — a *matching* read of
-    direction only (net worth uses the full economic sign):
-      - an asset (depository) going down is a **source** (money out);
-      - an asset going up, or a liability going down (a paydown), is a
-        **destination** (money arriving);
-      - a liability going up is a charge — **neither**.
+    """Return "source", "destination", or "neither" for a movement.
+
+    Direction only, for matching; net worth uses the full economic sign.
+    Depository and investment accounts: down is a source, up a destination.
+    A liability going down (a paydown) is a destination; going up it is a charge
+    and matches nothing.
     """
-    # An investment account's cash behaves like a depository for matching: money
-    # in (a contribution) is a destination, money out (a withdrawal) a source
-    # (a checking→brokerage contribution is an internal transfer).
     if m.kind in ("depository", "investment"):
         return "source" if m.amount < 0 else "destination"
     if m.kind == "liability":
@@ -104,17 +64,15 @@ def _last4(proj: LedgerProjection, account: str) -> str:
 
 
 def account_tokens_from(institution: str, number: str, ref: str) -> set[str]:
-    """Distinctive tokens that identify one account in a transaction description.
+    """Tokens that identify one account in a description.
 
-    The single implementation lives in the ledger's identity layer (the
-    projection's nature derivation needs the same tokens); this stays as the
-    ingest-side name so callers here are unchanged. Works even for an account
-    not yet opened (a statement mid-post that is failing to reconcile)."""
+    Delegates to the ledger identity layer, which owns the single implementation.
+    Works for an account that has not been opened yet."""
     return account_tokens(institution, number, ref)
 
 
 def _account_tokens(proj: LedgerProjection, account: str) -> set[str]:
-    """Distinctive tokens for an *opened* account (used by the both-legs matcher)."""
+    """Tokens for an account that is already open; empty set if it is not."""
     try:
         info = proj.account_info(account)
     except Exception:
@@ -123,15 +81,15 @@ def _account_tokens(proj: LedgerProjection, account: str) -> set[str]:
 
 
 def _names_account(text: str, tokens: set[str]) -> bool:
-    """True when a description distinctively names an account (institution,
-    last-4, or product token) — the strong own-account evidence."""
+    """True when any of `tokens` appears in `text`, case-insensitively."""
     low = text.lower()
     return any(tok in low for tok in tokens)
 
 
 def _distinctive(proj: LedgerProjection) -> dict:
-    """Per account, the tokens no OTHER account of yours carries. Computed once
-    per scan; the vault is the authority on what is distinctive about it."""
+    """Map each account to the tokens no other held account carries.
+
+    Computed once per scan from the accounts in the projection."""
     from ..ledger.identity import distinctive_tokens
     per, inst = {}, {}
     for acct in proj.accounts():
@@ -146,34 +104,21 @@ def _distinctive(proj: LedgerProjection) -> dict:
 
 def _strong_hint(proj: LedgerProjection, src: MovementInfo, dst: MovementInfo,
                  distinctive: dict | None = None) -> bool:
-    """True when the descriptions NAME one of these two accounts distinctively.
+    """True when either description carries a token distinctive to either account.
 
-    The evidence that separates 'payment to my card' (a transfer) from 'payment
-    to my mortgage' (a real external outflow) is that the line carries something
-    identifying the account it paid: its last four, its institution, a product
-    word — and that nothing else you own carries the same thing.
-
-    It used to also accept the bare word "card", which on a card statement is
-    every line. That is why this is now the only path."""
+    `distinctive` is the map from `_distinctive`; it is recomputed if omitted."""
     text = f"{src.description} {dst.description}".lower()
     dist = distinctive if distinctive is not None else _distinctive(proj)
     return (_names_account(text, dist.get(src.account, set()))
             or _names_account(text, dist.get(dst.account, set())))
 
 
-# --------------------------------------------------------------- what the line
-# --------------------------------------------------------------- says about itself
+# ------------------------------------------------------------ printed evidence
 #
-# A bank that prints "02/17 Payment To Acme Card Ending IN 2222" has told you
-# two facts the matcher spent a year not reading: WHEN the money moved and WHICH
-# account it went to. Both are already named slots — `{date}` and `{account_ref}`
-# under an induced grammar, `posting_date` under the published rules when no
-# grammar exists — so nothing new has to be parsed, learned, or bought.
-#
-# This is what replaced the deleted word lists as the tiebreaker. It is the same
-# bet the grammar work rests on: read what the bank PRINTED, not what an English
-# word is presumed to mean. It needs no induction to start working and no list to
-# be maintained per country.
+# A source line such as "02/17 Payment To Acme Card Ending IN 2222" carries the
+# transaction date and the account it paid. Both are already named slots:
+# `{date}` and `{account_ref}` under an induced grammar, `posting_date` under the
+# published rules when no grammar exists.
 
 
 @dataclass
@@ -249,26 +194,15 @@ def _prints_date(printed: str, iso: str) -> bool:
 def _account_evidence(proj: LedgerProjection, src: MovementInfo,
                       dst: MovementInfo, distinctive: dict,
                       parts: _Parts) -> str:
-    """WHICH evidence says the counterpart is your own account, or "".
+    """Name the rule that says the counterpart is an own account, or "".
 
-    Returns the name of the rule rather than a boolean, because that name is what
-    the link records and what `transfer_report` shows you. A link whose reasoning
-    cannot be recovered is a link you can only accept or delete wholesale.
+    "account_ref_slot" when the parsed account reference exactly equals a token
+    distinctive to the destination; "named_account" when `_strong_hint` matches
+    the whole line; "" when neither does. The name is what the link records.
 
-    BE CLEAR ABOUT WHAT THE SLOT PATH DOES AND DOES NOT ADD. A slot's text is part
-    of the line, so anything `account_ref_slot` matches, `named_account` would
-    have matched too by substring — it cannot widen coverage and no link exists
-    because of it. What it does is say WHICH, and say it from a slot a grammar
-    proved holds an account reference rather than from a substring that happened
-    to appear. That distinction is worth recording and worth nothing else, and
-    writing it down here is cheaper than someone later measuring its contribution
-    and finding zero.
-
-    The obvious next move, deliberately not taken: a slot naming a DIFFERENT
-    account of yours is evidence AGAINST the pair, not merely absent evidence
-    for it. On this vault the one case that would catch ("...Ending IN 2222"
-    against another card's credit) is already refused for want of account evidence, so
-    the rule would be untested the day it shipped."""
+    The slot path cannot widen coverage — a slot's text is part of the line, so
+    `named_account` matches wherever it does. It only names the evidence more
+    precisely."""
     ref = (parts.account_ref or "").strip().lower()
     if ref and ref in distinctive.get(dst.account, set()):
         return "account_ref_slot"
@@ -321,18 +255,12 @@ def _candidates(proj: LedgerProjection) -> dict:
 
 
 def default_profile_for(proj: LedgerProjection):
-    """The induced grammar for a movement's (institution × kind), memoised.
+    """Return a memoised `profile_for(movement)` reading the real profile store.
 
-    Built here rather than threaded through `capture_and_ingest`, `sweep` and
-    `_try_corroboration` because those three signatures are load-bearing and this
-    is a lookup, not a policy. Any caller may still pass its own — tests do, to
-    stay off the real store.
-
-    Every failure degrades to None, which means the published rules, which name
-    the printed date anyway. Worth stating plainly so nobody later reads the
-    fallback as broken: on the vault this was built against, Layer 0 alone
-    resolved every one of the twenty-four. The grammar is the better source and
-    it has not yet been the deciding one."""
+    Any failure yields None, which falls back to the published rules; those name
+    the printed date too, so the matcher still works with no grammar induced.
+    Callers may pass their own resolver instead; tests do, to stay off the real
+    store."""
     cache: dict = {}
 
     def _for(m):
@@ -354,12 +282,11 @@ def default_profile_for(proj: LedgerProjection):
 
 def weigh(proj: LedgerProjection, graph: dict, sources: dict,
           distinctive: dict, profile_for=None) -> tuple[dict, dict]:
-    """Score every (source, destination) pair, and say what scored it.
+    """Score every (source, destination) pair.
 
-    Split out of `link_transfers` because it is the whole decision and it is
-    pure: no ledger, no appends. `transfer_report` calls this to show you what a
-    scan WOULD do, and it is the same function, so the rehearsal cannot drift
-    from the performance."""
+    Returns `(strength, why)`: the score per pair, and the names of the rules that
+    produced it. Pure — no ledger and no appends — so `transfer_report` can call
+    it to rehearse a scan."""
     parts = {k: _parts_of(s, profile_for) for k, s in sources.items()}
     strength: dict[tuple[str, str], int] = {}
     why: dict[tuple[str, str], str] = {}
@@ -376,23 +303,13 @@ def weigh(proj: LedgerProjection, graph: dict, sources: dict,
 
 
 def decide(graph: dict, strength: dict, consumed: set | None = None) -> dict:
-    """Source key -> the destination key it is decisive for, for every source
-    that is decisive at all.
+    """Map each decisive source key to the destination key it pairs with.
 
-    Decisive means BOTH directions are unambiguous, which is the correction this
-    whole pass is. The old rule asked only whether a source had one candidate and
-    that candidate had one suitor; it never asked which of several equally-named
-    candidates the line itself pointed at, so a checking account paying its card
-    four times in one week produced four unanswerable questions instead of four
-    obvious links.
-
-        forward   among the source's candidates, one scores strictly highest
-        backward  among that destination's suitors, this source scores strictly
-                  highest
-
-    Both use `_sole_max`, so both refuse to break a tie. Neither depends on dict
-    order: the scores are computed for the whole graph before anything is
-    chosen."""
+    A source is decisive when both directions are unambiguous: one of its
+    candidates scores strictly highest, and among that destination's claimants
+    this source scores strictly highest. Ties are refused, and the scores are
+    computed for the whole graph first, so the result does not depend on
+    iteration order. Sources in `consumed` are skipped."""
     consumed = consumed or set()
     claimants: dict[str, list[str]] = {}
     for (skey, dkey) in strength:
@@ -413,15 +330,17 @@ def decide(graph: dict, strength: dict, consumed: set | None = None) -> dict:
 
 
 def link_transfers(ledger: Ledger, profile_for=None) -> dict:
-    """Scan for internal transfers and act: decisive pairs auto-link
-    (``corroborated``); ambiguous or weak ones are surfaced as suggestions for a
-    human. Idempotent — already-linked movements and already-open suggestions are
-    skipped, so it is safe to run after every post and heal.
+    """Scan for internal transfers, linking the decisive ones and asking about the rest.
+
+    Decisive pairs are appended as `TransferLinked` at grade ``corroborated``;
+    anything else becomes a `TransferSuggested` for a person to rule on. Returns
+    counts of `linked`, `auto`, and `suggested`.
+
+    Idempotent: already-linked movements and already-open suggestions are skipped,
+    so it is safe to run after every post and heal.
 
     `profile_for(movement)` supplies the induced grammar for the movement's
-    (institution × kind), or None. Omitted, it defaults to the real profile
-    store; a bank with no grammar falls to the published rules, which name the
-    printed date anyway, so no caller has to know whether induction has run."""
+    (institution × kind); omitted, it defaults to the real profile store."""
     proj = ledger.projection()
     distinctive = _distinctive(proj)
     graph, sources = _candidates(proj)
@@ -456,12 +375,9 @@ def link_transfers(ledger: Ledger, profile_for=None) -> dict:
             auto += 1
             linked += 1
             continue
-        # ASK about every ambiguous match. The gate here used to be a
-        # transfer-word list, on the reasoning that a pure amount coincidence
-        # with no such word is ordinary spending — but the coincidence IS the
-        # evidence, and whether the bank wrote "payment" is a fact about
-        # English. Flooding is the queue's problem: it ranks by money moved and
-        # summarises the tail, which is what it was built to do.
+        # Every match that is not decisive becomes a question. Volume is the
+        # question queue's problem; it ranks by money moved and summarises the
+        # tail.
         if skey not in open_suggestions:
             log.info("transfer: ambiguous for %s (%d candidate(s)) — suggesting",
                      src.account, len(cands))
@@ -563,14 +479,10 @@ def reject_transfer(ledger: Ledger, movement_a: str, movement_b: str = "") -> No
 
 def _evidence(src: MovementInfo, dst: MovementInfo, verdict: str,
               decided_by: str = "") -> dict:
-    """What justified this ruling, in a form a person can audit later.
+    """Build the evidence dict recorded on a link or suggestion.
 
-    `decided_by` names the RULE that fired ("named_account+printed_date"), never
-    the value it matched. The account reference that resolved a link is personal
-    data; the fact that an account reference resolved it is not, and it is the
-    fact that makes a link reviewable. Whole descriptions are already here — this
-    record has always lived inside the personal boundary — but a name that cannot
-    leak is still better than a value that must not."""
+    `decided_by` holds the NAME of the rule that fired
+    ("named_account+printed_date"), never the value it matched."""
     return {"verdict": verdict, "amount": str(abs(src.amount)),
             "currency": src.currency, "days_apart": _days_apart(src.date, dst.date),
             "source": src.account, "destination": dst.account,

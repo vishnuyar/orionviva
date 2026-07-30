@@ -209,3 +209,54 @@ def test_excluded_movements_explain_themselves(tmp_path):
     excluded = ledger.projection().excluded_from_spending()
     assert [m.nature_reason for m in excluded] == [BY_OWN_ACCOUNT]
     assert abs(excluded[0].amount) == Decimal("500.00")
+
+
+def test_a_ruling_outranks_a_description_that_names_one_of_your_accounts(tmp_path):
+    """The own-account rung is a heuristic over description text; a ruling is a
+    person's answer. When they disagree the person decides."""
+    from viva.ledger.events import (MAJOR_EXPENSE, SCOPE_MOVEMENT,
+                                    ruling_recorded)
+    from viva.ledger.projection import BY_RULING
+
+    raw, ledger = _vault(tmp_path)
+    card = StatementFacts(
+        doc_id="", doc_type="credit_card_statement", doc_type_confidence=0.98,
+        account_ref="Northbank Rise Card", currency="USD",
+        opening_amount=Decimal("0"), opening_date="2026-01-01",
+        closing_amount=Decimal("500.00"), closing_date="2026-01-31",
+        transactions=[TxnFact("2026-01-05", "A SHOP", Decimal("500.00"))],
+        account_number="000000007799", institution="Northbank")
+    capture_and_ingest(raw, ledger, b"card",
+                       lambda data, did: _stamp(card, did), captured_at="2026-02-01")
+    _checking(raw, ledger,
+              [("2026-03-10", "Payment To Northbank Card Ending IN 7799", "-400.00")])
+
+    m0 = next(m for m in ledger.projection().movements()
+              if "Payment To Northbank" in m.description)
+    assert m0.nature_reason == BY_OWN_ACCOUNT          # the token match, unruled
+    ledger.append(ruling_recorded(
+        SCOPE_MOVEMENT, m0.key, "2026-07-25",
+        legs=[{"major": MAJOR_EXPENSE, "account": "Expenses:Gifts"}],
+        said="i paid a friend's card, not mine"))
+
+    m = next(m for m in ledger.projection().movements()
+             if "Payment To Northbank" in m.description)
+    assert (m.nature, m.nature_reason) == (SPENDING, BY_RULING)
+
+
+def test_an_asserted_account_does_not_make_its_own_payments_internal(tmp_path):
+    """The own-account token index holds issued accounts only. An `asserted`
+    account is named after the counterparty whose payments created it, so
+    including it would read every one of those payments as a transfer to
+    itself."""
+    from viva.ledger.events import ASSERTED, account_opened
+    from viva.ledger.projection import BY_DEFAULT
+
+    raw, ledger = _vault(tmp_path)
+    ledger.append(account_opened(
+        "Liabilities:Mortgage:Newco", "liability", "Newco Mortgage Servicing",
+        "USD", "2026-03-01", institution="Newco Mortgage", origin=ASSERTED))
+    _checking(raw, ledger, [("2026-03-05", "NEWCO MORTGAGE SERVICING", "-2200.00")])
+
+    m = next(m for m in ledger.projection().movements() if "NEWCO" in m.description)
+    assert (m.nature, m.nature_reason) == (SPENDING, BY_DEFAULT)

@@ -1,16 +1,15 @@
-"""PayStubFacts — the structured read of one pay stub, on the honesty contract.
+"""PayStubFacts — the structured read of one pay stub.
 
-The divergent sibling of StatementFacts. A pay stub's shape is not a
-balance — it is `gross - deductions = net` — so it has its own facts type, its
-own parser, and its own verification identity, all selected by its registry
-profile. Same discipline as statements: amounts and dates go through the shared
-deterministic normalizers, and an ambiguous figure is a refusal to build the
-facts (the pay stub goes to review), never a silent guess.
+A divergent sibling of StatementFacts: its identity is
+`gross − Σ deductions = net`, so it has its own facts type, parser and
+verification identity, selected by its registry profile. Amounts and dates go
+through the shared deterministic normalizers, and an ambiguous figure is a
+refusal to build the facts rather than a guess.
 
-Deductions carry a **category** — the universal bucket (tax / retirement /
-insurance / other) the deduction belongs to, kept jurisdiction-free so a US 401k,
-an Indian EPF, and a UK ISA all land in `retirement`. The category is the
-model's *proposal*, graded downstream, never a US-shaped table.
+Each deduction carries a **category** — the universal bucket (tax / retirement /
+insurance / other) it belongs to, jurisdiction-free so equivalent schemes in
+any country land in the same bucket. The category is the model's proposal,
+graded downstream, and an unrecognized one falls back to `other`.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ from vivacore.verify.normalize import parse_amount, parse_date
 
 from ..ledger.events import Provenance
 
-# The universal deduction buckets. Jurisdiction is an attribute, never a table.
+# The universal deduction buckets. Jurisdiction is an attribute, not a bucket.
 TAX = "tax"
 RETIREMENT = "retirement"
 INSURANCE = "insurance"
@@ -34,7 +33,7 @@ CATEGORIES = (TAX, RETIREMENT, INSURANCE, OTHER)
 
 @dataclass(frozen=True)
 class Deduction:
-    label: str                 # as printed on the stub (e.g. "Fed Income Tax")
+    label: str                 # as printed on the stub
     amount: Decimal            # positive magnitude withheld
     category: str = OTHER      # universal bucket; the model's graded proposal
 
@@ -128,8 +127,9 @@ def from_paystub_json(text: str, doc_id: str, locale: str,
                       currency: str) -> tuple[PayStubFacts | None, str | None]:
     """Parse a model's pay-stub read into canonical PayStubFacts.
 
-    Returns (facts, error). Any ambiguous/invalid figure fails the whole parse: a
-    pay stub we cannot read to the cent goes to review, never guessed."""
+    Returns (facts, error). Any ambiguous or invalid figure fails the whole
+    parse, sending the pay stub to review. An absent date is "", not an error;
+    an unrecognized deduction category falls back to `other`."""
     blob = _find_json(text)
     if blob is None:
         return None, "no JSON object found in model output"

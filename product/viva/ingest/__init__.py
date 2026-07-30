@@ -1,9 +1,9 @@
 """Ingest: capture every file raw, read it, verify it, post or park it.
 
-The deterministic core (raw capture, statement parsing, the reconciliation gate,
-posting) is fully testable offline. The live model read lives in ``reader`` and
-is imported lazily by callers that need it, so the tested core carries no heavy
-or network dependencies.
+The deterministic core — raw capture, statement parsing, the reconciliation
+gate, posting — runs offline. The live model read lives in ``reader`` and is
+imported lazily by the callers that need it, so the core carries no heavy or
+network dependencies.
 """
 
 from .diagnose import (DIAGNOSIS_VERSION, FORCED, SUGGESTED, UNLOCALIZED,
