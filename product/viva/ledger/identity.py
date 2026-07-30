@@ -50,9 +50,19 @@ def account_key(institution: str, account_number: str, account_ref: str) -> str:
 
 # Words that are not distinctive account tokens — shared across institutions or
 # products, so they can't identify WHICH account a description names.
-STOPWORDS = frozenset({
-    "chase", "bank", "card", "credit", "account", "checking", "savings",
-    "total", "statement", "rise", "the", "and", "for", "payment", "rewards"})
+# A token is generic when SOMEBODY ELSE'S ACCOUNT ALSO HAS IT — not when it
+# appears on a list somebody wrote in English.
+#
+# There used to be a stopword list here: "chase", "bank", "card", "checking",
+# "the", "and", "for". It was guessing at what `distinctive_tokens` can simply
+# look up. "chase" is generic in a vault where every account is Chase and
+# perfectly distinctive in one holding a single Chase account beside a Citi
+# card — a fixed list cannot know which vault it is in, and the vault can.
+#
+# What remains here is the shape rule only: a token must be long enough to be a
+# word rather than an initial, and the holder's own name is excluded because it
+# is shared by every account they own and so distinguishes none of them.
+MIN_TOKEN = 4
 
 
 def account_tokens(institution: str, number: str, ref: str) -> set[str]:
@@ -72,9 +82,45 @@ def account_tokens(institution: str, number: str, ref: str) -> set[str]:
     if len(digits) >= 4:
         toks.add(digits[-4:])
     for w in re.split(r"[^a-z0-9]+", (ref or "").lower()):
-        if len(w) >= 4 and w not in STOPWORDS:
+        if len(w) >= MIN_TOKEN:
             toks.add(w)
-    return {t for t in toks if t and t not in STOPWORDS}
+    return {t for t in toks if t}
+
+
+def distinctive_tokens(per_account: dict, institution_of: dict | None = None) -> dict:
+    """Per account, the tokens that actually NAME it. Two rules, both structural.
+
+    **Unique among your accounts.** A token two of your accounts both carry
+    names neither of them. This is the job a stopword list was doing, done from
+    the accounts in front of us: "chase" is generic in a vault where every
+    account is Chase and distinctive in one holding a single Chase account, and
+    a fixed list cannot know which vault it is in.
+
+    **Identifier-shaped, or the institution.** Uniqueness alone is not enough,
+    and a real test caught why: an account LABELLED "Card 2222" contributes the
+    token "card", which is unique among two accounts and is still the most
+    generic word on a card statement. So a label word must carry a digit to
+    count — `2222`, `401k`, `plus2` — because a digit is what makes a token an
+    identifier rather than a description. The institution is exempt: it is a
+    name, not a description, and uniqueness is the whole test for it.
+
+    What this deliberately gives up: "TRANSFER TO SAVINGS" between two accounts
+    at one bank no longer links itself, because "savings" describes a kind and
+    names no account. It becomes a question, which is the honest answer — that
+    is exactly the guess the old `_DEPOSITORY_WORDS` list was making."""
+    inst = {a: (i or "").strip().lower() for a, i in (institution_of or {}).items()}
+    seen: dict = {}
+    for toks in per_account.values():
+        for tok in toks:
+            seen[tok] = seen.get(tok, 0) + 1
+
+    def keeps(acct: str, tok: str) -> bool:
+        if seen.get(tok, 0) != 1:
+            return False
+        return any(c.isdigit() for c in tok) or tok == inst.get(acct)
+
+    return {acct: {t for t in toks if keeps(acct, t)}
+            for acct, toks in per_account.items()}
 
 
 def normalize_name(name: str) -> str:

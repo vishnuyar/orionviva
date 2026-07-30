@@ -254,12 +254,19 @@ def sweep(ledger: Ledger) -> dict:
     link_transfers(ledger)
     p1 = ledger.projection()
     auto = len(p1.transfer_links()) - links0
-    suggested = len(p1.transfer_suggestions()) - sugg0
-    if gaps or corroborated or auto or suggested:
+    # Open questions are a LEVEL, not a delta, and reporting the delta printed
+    # "transfers to confirm: -23" on a sweep that answered twenty-three of them.
+    # A link resolves the suggestions on both its legs, so the difference is a
+    # net of two unrelated movements and means nothing on its own. Report what
+    # is actually true: how many are open now, and how that changed.
+    open_now = len(p1.transfer_suggestions())
+    if gaps or corroborated or auto or open_now != sugg0:
         log.info("sweep: %d gaps healed, %d corroborated, %d transfers auto-linked, "
-                 "%d suggested", gaps, corroborated, auto, suggested)
+                 "%d question(s) open (was %d)",
+                 gaps, corroborated, auto, open_now, sugg0)
     return {"gaps": gaps, "corroborated": corroborated, "auto": auto,
-            "suggested": suggested, "links": len(p1.transfer_links())}
+            "suggested": open_now, "resolved": max(0, sugg0 - open_now),
+            "open_before": sugg0, "links": len(p1.transfer_links())}
 
 
 def _apply_forced(facts: StatementFacts,

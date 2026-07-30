@@ -47,7 +47,9 @@ def main() -> None:
     print(f"    gaps healed:            {result['gaps']}")
     print(f"    conflicts corroborated: {result['corroborated']}")
     print(f"    transfers auto-linked:  {result.get('auto', 0)}")
-    print(f"    transfers to confirm:   {result.get('suggested', 0)}")
+    print(f"    transfers to confirm:   {result.get('suggested', 0)} open"
+          f" (was {result.get('open_before', 0)};"
+          f" {result.get('resolved', 0)} answered by a link this sweep)")
     print(f"  total transfer links now: {len(proj.transfer_links())} "
           f"(was {before})")
     spend = proj.spending_by_currency()
