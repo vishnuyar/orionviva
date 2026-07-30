@@ -150,3 +150,43 @@ def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monke
     legacy = vault / "merchant-catalog.json"
     legacy.write_text("{}")
     assert catalog_path(vault) == legacy
+
+
+# ------------------------------- only bank and card accounts reach a model
+
+
+def test_only_accounts_whose_lines_name_a_party_are_enriched(tmp_path):
+    """An allowlist, not a denylist of one.
+
+    Enrichment used to exclude investment BY NAME, which meant any kind nobody
+    had thought of — crypto, property, a pension — had its lines shipped to a
+    model as merchants by default. A list of what is permitted cannot be wrong
+    about a thing that did not exist when it was written."""
+    ledger = _card([("2026-01-05", "COSTCO WHSE PLANO TX", "84.10"),
+                    ("2026-01-06", "SUNDIAL BREW PLANO TX", "6.25")], tmp_path)
+    asked: list = []
+
+    def extract(prompt):
+        asked.append(prompt)
+        return '{"costco whse": {"category": "shopping"}}'
+
+    # every account an investment: nothing may be offered at all
+    enrich_merchants(ledger, Catalog(), extract, kind_for=lambda m: "investment")
+    assert asked == [], "an investment line names a security, not a merchant"
+
+    # a kind nobody has modelled: same answer, without anyone having listed it
+    enrich_merchants(ledger, Catalog(), extract, kind_for=lambda m: "crypto")
+    assert asked == [], "an unknown kind is silent until somebody decides otherwise"
+
+    # a bank account: this is what enrichment is for
+    enrich_merchants(ledger, Catalog(), extract, kind_for=lambda m: "depository")
+    assert asked, "a depository line has a merchant in it"
+
+
+def test_a_card_account_is_enriched_like_a_bank_account(tmp_path):
+    ledger = _card([("2026-01-05", "COSTCO WHSE PLANO TX", "84.10")], tmp_path)
+    seen: list = []
+    enrich_merchants(ledger, Catalog(),
+                     lambda p: (seen.append(p) or '{"costco whse": {"category": "shopping"}}'),
+                     kind_for=lambda m: "liability")
+    assert seen

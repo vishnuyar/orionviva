@@ -16,6 +16,7 @@ docs/phases.md
 # and the first run of one caught exactly that. Local tools, like the vault.
 commit-*.sh
 scrub-*.sh
+catalog-review.py
 
 # The names those scripts hunt for, in one place instead of copied into
 # every guard. Never tracked, for the same reason.
