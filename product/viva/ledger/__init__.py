@@ -6,8 +6,9 @@ grade and provenance.
 """
 
 from ..crypto import CryptoError
-from .events import (CONFLICTED, CORROBORATED, GRADES, UNVERIFIED, VERIFIED,
-                     Event, Posting, Provenance, account_opened,
+from .events import (ACT_OUTCOMES, AGENT_ACTED, CONFLICTED, CORROBORATED,
+                     GRADES, UNVERIFIED, VERIFIED,
+                     Event, Posting, Provenance, account_opened, agent_acted,
                      category_assigned, closing_balance_observed,
                      correction_applied, document_captured, merchant_categorized,
                      opening_balance_observed, postings_of, read_recorded,
@@ -33,6 +34,7 @@ __all__ = [
     "statement_held", "correction_applied", "read_recorded",
     "transfer_linked", "transfer_unlinked", "transfer_suggested",
     "category_assigned", "merchant_categorized",
+    "agent_acted", "AGENT_ACTED", "ACT_OUTCOMES",
     "normalize_merchant", "is_shareable", "NORMALIZER_VERSION",
     "simple_transaction", "split_transaction", "transaction_balances",
     "counter_account",

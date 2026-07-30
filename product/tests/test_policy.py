@@ -139,3 +139,21 @@ def test_the_rules_are_data_a_person_can_edit(tmp_path):
     acts = assess({("Chase", "depository"): _lines(60)}, {}, _store(tmp_path),
                   rules=strict)
     assert acts[0].kind == "wait" and acts[0].evidence["needed"] == 500
+
+
+def test_the_estimate_counts_attempts_times_rounds(tmp_path):
+    """The bug the first real dry run caught, pinned so it cannot come back.
+
+    `CALLS["induce"]` is calls per ATTEMPT — merchantcore's rounds — and
+    `best_of` is how many attempts. They multiply. Budgeting three inductions at
+    three calls each against a ceiling of twelve, and then running three attempts
+    apiece, would have spent twenty-seven. A ceiling computed from an estimate
+    that omits a multiplier is not a ceiling."""
+    from viva.agent.policy import CALLS, RULES
+    acts = assess({("Chase", "depository"): _lines(60)}, {}, _store(tmp_path))
+    assert acts[0].estimated_calls == CALLS["induce"] * RULES["induce_missing"]["best_of"]
+
+    once = {"induce_missing": {**RULES["induce_missing"], "best_of": 1}}
+    cheaper = assess({("Chase", "depository"): _lines(60)}, {}, _store(tmp_path),
+                     rules=once)
+    assert cheaper[0].estimated_calls == CALLS["induce"]
