@@ -1,0 +1,38 @@
+#!/bin/sh
+# Blocks a commit whose staged content matches a .denylist entry or an
+# account-number-like digit run. Enable with: git config core.hooksPath .githooks
+# Bypass (deliberately, after judging a hit synthetic): git commit --no-verify
+
+fail=0
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# Denylist entries: case-insensitive substring match against staged content.
+if [ -f .denylist ]; then
+    patterns=$(grep -v '^\s*#' .denylist | grep -v '^\s*$')
+    for p in $patterns; do
+        hits=$(git diff --cached -U0 | grep '^+' | grep -in -- "$p" | head -5)
+        if [ -n "$hits" ]; then
+            echo "BLOCKED: staged content matches denylist entry '$p':"
+            echo "$hits" | sed 's/^/    /'
+            fail=1
+        fi
+    done
+fi
+
+# Account-number-like runs: 9+ consecutive digits in added lines.
+# (Content hashes are hex and rarely purely numeric; judge any hit yourself.)
+num_hits=$(git diff --cached -U0 | grep '^+' | grep -En '[0-9]{9,}' | head -5)
+if [ -n "$num_hits" ]; then
+    echo "BLOCKED: staged lines contain 9+ consecutive digits (account number?):"
+    echo "$num_hits" | sed 's/^/    /'
+    fail=1
+fi
+
+if [ "$fail" -eq 1 ]; then
+    echo ""
+    echo "Nothing was committed. If every hit above is synthetic, re-run with"
+    echo "git commit --no-verify. If any is real, it must not enter history."
+    exit 1
+fi
+exit 0
