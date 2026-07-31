@@ -72,6 +72,15 @@ Note the split those three carry: `PROFILE_FORMAT` is a *compatibility* version
 version (nothing loads by it). They move for different reasons and only the
 stake needs both.
 
+And a corollary the code carries that neither version's name states: **widening a
+shape moves neither version.** A wider shape only ever matches more, so a stored
+grammar still loads and still means what it meant; and because `holdout_split`
+salts its hash with `PROFILE_FORMAT`, the holdout does not reshuffle, which is
+what keeps a before/after coverage measurement comparable. Bumping
+`PROFILE_FORMAT` for a widening would silently invalidate every grammar on disk
+*and* move the split underneath a measurement in progress. Enforced by
+`test_a_wider_shape_only_ever_matches_more`.
+
 ## Money
 
 The budget is denominated in **calls**, not dollars, and that is a limitation

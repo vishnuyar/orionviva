@@ -13,6 +13,17 @@ A permanent, repeatable exam that any model must pass before it touches real fin
 
 **Alternatives considered:** *Common types only* — cheaper to ground-truth, but the exam would flatter every candidate; the product's promise ("no unsupported institution") lives in the tail. *Synthetic documents* — infinitely available, privacy-clean, but synthetic statements lack the true messiness (kerning artifacts, scan noise, inconsistent layouts) that causes real errors; synthetic is the right tool for *regional packs* later (I6), not for v1 ground truth. *Massive corpus (50+)* — better statistics, but ground-truthing cost scales linearly with the author's hours, and 12–18 documents already yield several hundred figures, enough to separate candidates decisively.
 
+**A second, compatible use for synthetic documents.** The rejection above is of
+synthetic documents as *ground truth*, and it stands. But the synthetic corpus is
+generated as a single coherent three-month life — a card payment that leaves
+checking and lands on the card, a pay stub whose net equals the payroll deposit,
+a brokerage contribution with two witnesses — because those cross-document facts
+are the only arithmetic an end-to-end run can be graded on that is known true by
+construction. A unit test with a stubbed reader cannot produce them: the stub
+supplies the very facts the matcher is supposed to derive. So synthetic is wrong
+for v1 ground truth, right for regional packs, and also the only source of
+cross-document identities the pipeline can be measured against.
+
 ## 3 · The questions (what counts as an answer unit)
 
 Each document decomposes into **claims** — the atomic facts the verification layer would need: every monetary amount (transactions, balances, totals, fees, rates), every date, every counterparty/description, account identifiers (masked forms), and document-level facts (institution, account type, statement period, currency). Expected volume: roughly 30–80 claims per statement.
@@ -27,6 +38,17 @@ Every claim in the key stores: raw text **as printed** (e.g., "1.234,56"), norma
 
 **Alternative:** *fully manual keying* — the purist option; rejected because transcription by hand introduces its own errors at hundreds of claims, and the arithmetic identities catch machine errors more reliably than tired human eyes catch their own.
 
+**Truncation during key building fails silently, so it is warned about loudly.**
+If one drafting model is cut off mid-document, the claims it did emit still agree
+with the other drafter's, so every entry that survives is stamped
+`verified_by="cross-model"` — while everything past the cut never becomes a key
+entry at all. A short key and a complete key are indistinguishable in the key's
+own terms; only the run log tells them apart. Hence `pages_truncated` and
+`pages_unparsed` raise explicit warnings rather than merely being recorded.
+[document-preprocessing.md](document-preprocessing.md) B4 covers truncation being
+recorded honestly during *scoring*; this is the separate consequence for key
+*building*, where the damage is a quietly incomplete answer key.
+
 ## 5 · The grading rubric (metrics)
 
 Two levels are graded separately, because they answer different questions:
@@ -36,6 +58,24 @@ Two levels are graded separately, because they answer different questions:
 - **Economics** — cost and latency per document, per candidate, at each redundancy level (this prices the trust policy's autonomy ladder).
 
 **Alternative rejected:** a single leaderboard score (F1). One number invites choosing the model that's "best on average" while hiding that it's occasionally, confidently, catastrophically wrong — the exact confusion this project exists to end. The output is a **scorecard per (model, document type, locale)**, no composite.
+
+**Two latency figures, kept under distinct names on purpose.** `latency_s` is the
+sum of the per-page model calls and does not move when page concurrency changes;
+it is the figure that compares candidates. `wall_clock_s` is what the harness
+machine actually waited, and is therefore a property of the harness
+configuration, not of the model. The economics bullet above says "cost and
+latency per document" without distinguishing them, and a reader of the doc alone
+could take the wrong column: a concurrency setting must never be reported as a
+speed result.
+
+**The system level is currently agreement-only.** The definition above is "N
+samples + cross-model agreement + arithmetic verification". `_system_metrics`
+implements the agreement half: a label is accepted when a majority of runs
+produced it, and no balance reconciliation or line-item sum is consulted. So
+`system_verified_coverage` and `system_confidently_wrong` approximate the
+designed metric and understate what the real pipeline would verify. Either the
+code closes the gap or this stays stated — it must not be read as the metric §5
+specifies.
 
 ## 6 · The candidates (v1 roster)
 
