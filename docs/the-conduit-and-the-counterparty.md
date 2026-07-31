@@ -622,6 +622,78 @@ check. Reading it is the only thing that catches that. So a grammar may be
 induced and used unattended, and publishing one to the commons waits for a
 person.
 
+## The parts the code decided, and this document did not
+
+Seven rulings that live in `merchantcore` and were argued nowhere else. Each one
+looks like an arbitrary constant or a missing feature until the reason is stated.
+
+**Why an investment line is refused a grammar, in full.** The refusal is recorded
+above; the reason is that every name in the closed vocabulary asserts something
+about a party or a place, and an activity line — `You Sold … Short-term gain: …` —
+describes a trade against a security and holds no party at all. A
+grammar induced over such lines would file a realized gain as `{purpose}` and a
+security as `{brand}`, consistently, on every line that institution prints. That
+is a confident wrong answer manufactured at scale. Instrument events need their
+own vocabulary — security, action, quantity, price, realized gain — which belongs
+to the deferred `instrumentcore`. Until that exists the honest answer is that no
+grammar applies, which matches the `activity` marking the stream engine already
+gives those movements. `INDUCIBLE_KINDS` is narrower in name than in function: it
+now gates both whether a grammar may be induced *and* whether the kind's
+merchants may be enriched, and was left un-renamed deliberately.
+
+**Why `#` is kept out of the `merchant` shape.** Admit it, and `{brand} {city}
+{region}` matches `SPICE RACK # 03453 WEST MONROE LA` with brand `SPICE RACK #
+03453 WEST` and city `MONROE` — a greedy brand eating a word of the city. A
+template that writes `#` as literal text with `{store_number}` after it parses the
+same line correctly and costs no vocabulary. The general form: **every shape added
+to `SHAPES` is a shape a model can misuse**, so the set is kept small by policy
+rather than by accident. Related, from `SLOT_SHAPE`: `counterparty` is left on the
+narrow `words` shape on purpose — widening the slot the privacy guarantee rests on
+would let it swallow punctuation.
+
+**Why `_MARKS` is a hand-enumerated list of codepoint ranges.** Python's `re` has
+no `\p{M}`, and `\w` excludes combining marks, so a Devanagari virama or vowel
+sign fails any shape built from `\w` alone. The alternative to enumerating
+general-category-M ranges by hand is a third-party regex engine, and this package
+takes no dependencies. The constant looks like an accident and is not.
+
+**Why induction waits for thirty lines and settles for 80% coverage.** Below
+thirty distinct lines, the sample *is* the population: training coverage means
+nothing and a 20% holdout is three or four lines. The cost of waiting is quality
+rather than function — a pair with no grammar still resolves through Layer 0 and
+the normalizer. And the coverage gate is not 1.0 because a bank's long tail
+contains genuine one-off lines; a grammar that honestly covers most of a statement
+is worth more than one that claims all of it by being vague.
+
+**Layer 1′ — a grammar borrowed from another bank.** This document describes four
+layers and no borrowing; the code borrows, and it matters most for exactly the
+population `MIN_LINES_TO_INDUCE` creates — an account too small to induce from.
+Four rules govern it. A borrowed match is recorded as layer `grammar`, not as a
+weaker layer name: it is structurally the same claim — the same closed vocabulary,
+the same compiled expression, the same rule that a person is whatever landed in a
+slot named for one — and every downstream privacy check keys on that word. The
+bank's own grammar always wins, because it was measured against its own lines and
+a borrowed one was not; where the borrowed one came from rides in `borrowed_from`.
+And borrowed grammars are tried in profile-id order, so the answer never depends
+on how a collection happened to iterate.
+
+**A better layer must not return less than a worse one.** A grammar usually
+absorbs the NACHA Company Entry Description into its literal text (`{brand}
+PAYROLL PPD ID: {company_id}`), so the field leaves the slots — where Layer 0 had
+it. `_slot_from` re-adds it from the statement-level `ach_split`. The principle
+generalizes past this case: a higher layer displacing a lower one must not drop a
+field the lower one proved.
+
+**`word_owners` survives as a diagnostic that decides nothing.** The
+strip-the-bank's-own-words rule was falsified and deleted, as recorded above. The
+counting function remains, for the streams report only, under an explicit
+prohibition: no rule may key on these counts. The reasons are the ones that
+falsified the rule — bank sentence words, place names and merchant names
+interleave by frequency, and the count is over normalized keys, which fragment one
+merchant into several, so a merchant with fifteen spellings looks like fifteen
+counterparties agreeing. It is kept because looking at the interleaving is useful;
+it is fenced because acting on it is not.
+
 ## Deliberately out of scope
 
 Merchant-as-Party unification. Attributes of a party beyond a name. Any attempt

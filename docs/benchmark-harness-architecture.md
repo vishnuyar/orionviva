@@ -22,15 +22,24 @@ orionviva/
 │   ├── README.md                  ← how a stranger runs it
 │   ├── pyproject.toml
 │   ├── vivabench/
-│   │   ├── models/                ★ product embryo: model access layer
-│   │   ├── verify/                ★ product embryo: normalization + arithmetic + matching
 │   │   ├── corpus.py  keybuild/  runner/  score/  report/
+│   │   │        ↑ imports vivacore.models, vivacore.verify, vivacore.claims
+│   │   ├── models/                ⛔ GONE — extracted upward into core/vivacore
+│   │   ├── verify/                ⛔ GONE — extracted upward into core/vivacore
 │   ├── packs/                     ← pack format spec + one synthetic example pack (I6)
 │   └── tests/                     ← ★ verify/ gets the ferocious ones
 └── bench-data/                    ← gitignored: corpus, keys, raw runs
 ```
 
 ★ = written to product-grade standard (typed, specified, ferociously tested — ADR-010's future crown jewel starts here). Everything else is honest utility-grade.
+
+**The extraction upward has happened.** The two starred modules were the reason
+this section chose one repo, and neither lives under `vivabench/` any more:
+imports throughout the package read `vivacore.models`, `vivacore.verify.match`
+and `vivacore.claims`. §4 below still describes `verify/` as the verification
+layer's first draft — read that as a description of `core/vivacore/verify/`,
+which is now product code held to product standards rather than bench code
+aspiring to them.
 
 ## 3 · The model access layer (configurable backends)
 
@@ -59,8 +68,17 @@ Every run records the *resolved* model identity reported by the endpoint, not ju
 - **Corpus manifest** (`corpus.yaml`): per document — file path, document type, locale, currency, quality tag (clean/scan/weird), notes. The pack format (I6) is exactly this manifest + a key, zipped; a synthetic example pack ships in-repo so strangers can smoke-test without real data.
 - **Key builder** (`viva-bench draft-key`, `audit`): two-candidate independent drafting → deterministic arithmetic refereeing → an audit queue (terminal UI, one claim at a time with the document page alongside) for the author's rulings → `freeze` (canonicalize, hash, record the hash).
 - **Runner** (`viva-bench run`): N runs × candidates × documents; every request/response captured raw to content-addressed JSONL before any parsing touches it (T3); resumable (re-running skips completed cells); **budget guard** — projected spend computed up front from per-candidate cost config, hard stop + report at the ceiling ($100, per approved design).
-- **Scorer** (`viva-bench score`): pure function from (raw runs + frozen key) → grades; strict/normalized matching, recall of missed claims, self-consistency, source-region validity, calibration curves, system-level grades including the confidently-wrong rate. Normalization rules live in `verify/`, locale-aware and versioned (I2) — **this module is the verification layer's first draft, and its test suite is a permanent project asset regardless of the product's eventual language.**
+- **Scorer** (`viva-bench score`): pure function from (raw runs + frozen key) → grades; strict/normalized matching, recall of missed claims, self-consistency, source-region validity, calibration curves, system-level grades including the confidently-wrong rate. Normalization rules live in `verify/`, locale-aware and versioned (I2) — **this module is the verification layer's first draft, and its test suite is a permanent project asset regardless of the product's eventual language.** *(It has since moved: it is `core/vivacore/verify/`, per §2.)*
 - **Reporter** (`viva-bench report`): scorecards as markdown + JSON per (model, doc type, locale); no composite leaderboard, per the design doc.
+
+**Choosing per-document page concurrency.** The cap is deliberately modest, and
+the reason is a scoring hazard rather than politeness. `extract_by_page` lets an
+`AdapterError` from any single page fail the whole cell, and `run_exam` writes
+that as a `status: "error"` record indistinguishable from a genuine model
+failure — so a provider's rate limiter, tripped by a high fan-out, is recorded
+*against the candidate*. An aggressive concurrency setting can therefore be read
+as a model failing the exam. The argument is structural rather than measured; no
+number here has been tuned against a provider's actual limits.
 
 ## 5 · Storage of results
 

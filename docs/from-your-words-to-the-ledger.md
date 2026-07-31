@@ -133,6 +133,24 @@ Open-world free text with no question attached (Stage A's harder sibling). Propo
 
 ---
 
+## How the sentence reader is configured, and where a local model plugs in
+
+The interpreter has its own model configuration. `VIVA_INTERPRET_*` overrides
+`VIVA_MODEL_*` field by field and falls back to it wherever a field is unset, so
+one setting can serve both and a second setting can split them.
+
+The split earns its place because these are not the same task. Reading a
+statement is a vision problem over dense tables that wants the strongest model
+available; reading *"this is my mortgage"* is a text problem of roughly 390
+tokens that a 4B model handles well. A single setting for both either overpays on
+every typed sentence or under-reads every statement.
+
+The same seam is how a local model gets wired in: point `VIVA_INTERPRET_BASE_URL`
+at Ollama or LM Studio and set `VIVA_INTERPRET_KEY_ENV=none`, and no sentence a
+person types leaves the machine — while document reading keeps whatever
+capability it needs. That is the cheapest available step toward the local
+endgame, and it exists today.
+
 ## What changed in the building (2026-07-25)
 
 Reading the code before writing it corrected two claims, and the tests found two bugs the design had not anticipated. Both are recorded here rather than quietly fixed, because a build log that only reports its wins would refute this project's own thesis.

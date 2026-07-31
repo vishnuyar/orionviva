@@ -22,6 +22,17 @@ From the first ingestion, keep forever, encrypted and immutable: (1) every origi
 
 Extraction interfaces must be built capture-first: the raw exchange is written before any parsing touches it. Storage layout needs an immutable blob store beside the database (the storage doc). This doctrine is what demotes most other decisions from one-way to revisable — schemas, grades, and models can all be re-derived from retained truth.
 
+**Amendment (2026-07-31) — one carve-out, and it is in the code.** Recorded
+after the fact, because the decision above did not anticipate it. The recorded
+request elides image payloads, replacing each with its page hash. The page bytes
+are already stored once, content-addressed, in the page cache, so copying
+megabytes of base64 into every run record would bloat the log without adding
+evidence — the hash keeps the audit chain whole (run record → page hash → the
+exact bytes) at a fraction of the size. This is the only exception to "the
+request is stored verbatim", and it is conditional: what it drops is recoverable
+**only while the page cache is retained**, which puts the page cache on this
+ADR's never-pruned list rather than beside it.
+
 ## Would reverse this
 
 Nothing foreseeable. Volume would have to grow ~six orders of magnitude before cost is a conversation.

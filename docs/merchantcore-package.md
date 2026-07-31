@@ -172,3 +172,30 @@ seed committed inside the package, and learned data at `~/.merchantcore`
 (`MERCHANTCORE_HOME`), deliberately outside any working tree so a record that
 should not be published cannot be committed by accident. Learned wins on lookup;
 promotion into the shipped seed is a person's decision.
+
+## Two rules about not paying twice for the same silence
+
+Both live in the code and in neither doc, and both exist because an empty result
+has more than one cause.
+
+**The unanswered set is keyed by the example, not by the merchant key.** A
+merchant that was sent to a model and came back unnamed should not be paid for
+again on the same evidence, so `mark_unanswered` records the *example that was
+asked about*. When the example changes — a better linted string arriving with a
+new occurrence — the non-answer retires by itself and the merchant returns to
+`pending`. `submit` does the same on the way in. A key-based non-answer would be
+permanent; an example-based one expires exactly when the evidence improves.
+
+Relatedly, `queued()` and `pending()` are two readers of the same store for a
+stated reason. `queued()` is everything that persists to plain unencrypted JSON,
+so it is what a privacy audit walks. `pending()` is what a caller about to spend
+a model call reads. They answer different questions and are deliberately not one
+function.
+
+**"Asked and got nothing" is not "the reply did not parse."** Both produce an
+empty `records`, and conflating them is a one-way loss: a truncated or unreadable
+reply says nothing about any merchant in the chunk and should be retried, while a
+well-formed reply that omits a merchant means the same example will buy the same
+silence. `parse_enrichment_chunk` returns `(records, parsed)` and
+`Enricher.unparsed` collects the second case, so a caller recording a non-answer
+cannot record a transport failure that way.

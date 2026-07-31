@@ -47,7 +47,25 @@ OrionViva ingests untrusted documents into a capable model *by design* — the e
 - **Spotlighting delimiters** become part of the extraction prompt spec (and the format-commons pointed-questions).
 - **The tamper-evident log is the malware backstop** — its value rises given residual hard-problem 1.
 - **Contribution governance is a security control, not just community hygiene** — the ADR-009 adversarial-review policy is load-bearing and should gate the format-commons/knowledge registries too.
+- **No SDK on the wire** (below) — a supply-chain stance rather than an injection control, but it lives on the same path and is stated here for want of a better home.
 - **Provenance doubles as an injection tripwire:** an extracted claim whose stated source region doesn't contain the value (source-region validity, already a benchmark metric) is a signal something is off.
+
+### Why the model adapters are hand-written HTTP
+
+Both provider adapters call their provider over plain `httpx`, not through a
+provider SDK and not through a multi-provider wrapper. An SDK on this path is
+third-party code sitting between a bank statement and the wire, and the point of
+the adapter layer is that every byte sent is visible in the file you are reading.
+The cost of writing it by hand is small: the Messages API and the
+chat-completions API are both stable, documented and narrow enough that roughly
+a hundred lines of inspectable code cover them, and a provider's breaking change
+fails the admission exam loudly and is repaired in exactly one file.
+
+This is the narrow argument about the **model call adapters**. The separate and
+larger argument for a hand-rolled tool loop over an agent SDK — about the
+**agent harness** — is in
+[agent-and-model-landscape.md](agent-and-model-landscape.md). The two are
+related and are not the same claim.
 
 ## Open questions (register)
 
