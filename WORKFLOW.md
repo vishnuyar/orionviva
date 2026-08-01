@@ -34,6 +34,13 @@ grep, and a drafted commit message with no tool footers. Then it stops.
 The role to reach for whenever the code has outrun understanding — which is a
 normal state here, not a failure.
 
+**Reporter** — turns an observed problem into a GitHub issue: a short
+intake, read-only diagnosis of the likely area, a severity in this project's
+terms, a duplicate check, and a draft scrubbed of every real value and name
+before it exists. The issue is filed only on the product owner's explicit
+word — public speech gets the commit gate's treatment — and the fix begins
+later as its own full-lane cycle ("design phase: issue #N").
+
 ## The loop (full lane)
 
 1. **Idea or bug** → Design Partner produces a brief.
@@ -48,9 +55,12 @@ normal state here, not a failure.
 7. **Checkpoint 3 — the commit gate.** Only the product owner says commit.
    No commit happens without those words, ever.
 
-Every bug found in use goes through this full lane, starting with diagnosis
-in the Design Partner step — a bug whose cause is understood is a design
-decision about what should be true, and gets the same treatment.
+Every bug found in use goes through this full lane. Its intake is the
+Reporter: the bug becomes a scrubbed public issue first, so known problems
+are record rather than memory, and the Design Partner step then starts from
+the issue — a bug whose cause is understood is a design decision about what
+should be true, and gets the same treatment. Verifier findings accepted but
+not fixed immediately are offered to the Reporter too.
 
 ## The fast lane
 
