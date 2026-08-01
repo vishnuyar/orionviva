@@ -45,7 +45,7 @@ Today: total → four conditional review cards → accounts → upload. Proposed
 
 - **The honesty line.** The spending figure carries a quiet "…and X I'm not certain about", expanding to `excluded_from_spending` grouped by the rung that excluded it (linked / own account / your ruling / a category hint). Uncertainty visible, not alarming (X2).
 - **Holdings.** An investment account shows its positions — units, value, **as-of date**, and the mixed-vintage warning when a composed total rests on measurements from different dates. Unrealized gain is shown as a derived as-of view, never as a ledger figure (M1).
-- **The queue** replaces the four cards, ranked, with the tail summarized ("plus N smaller items worth X") rather than hidden.
+- **The queue** replaces the four cards, ranked, with the tail summarized ("plus N smaller items worth X") rather than hidden. **Amended 2026-08-01:** the payload also carries a `pending` count, and `/api/pending` returns the questions behind it — a set-aside question is opened, never pushed. An answer that would open an account now returns a proposal to confirm rather than applying in the same request. How pending *looks* is deliberately still this document's conversation to have.
 - **Held documents that have no fix-it flow yet** (pay stub, brokerage) appear as questions saying what they are and why they're waiting — currently `other_holds` renders nowhere.
 - **Subcategory** as an expansion of the spending breakdown.
 

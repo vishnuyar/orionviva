@@ -68,6 +68,7 @@ The vault knows three issued account kinds — `depository`, `liability`, `inves
 | show | why |
 |---|---|
 | **cost, and the word "cost"** | what you paid, never what it is worth now |
+| **when nobody has said what it cost: the question, not a figure** | added 2026-08-01. An unpriced asserted asset has no cost line at all — it is a disclosed gap in net worth carrying the question that closes it. A stated cost then **replaces** the cash-derived line rather than sitting beside it |
 | `asserted` badge — your word | honest, and it is what the disclosure view will later filter on |
 | **the document that would corroborate it** | provenance-based: the invoice, the 1098, the closing disclosure |
 

@@ -22,7 +22,7 @@
 
 - **Events (encrypted, the source of truth + the moat):** `MerchantCategorized(normalized_merchant, category, grade, by)` — a model batch writes these `unverified`/`corroborated`; a human "categorize this merchant everywhere" writes `verified`. The category overlay's `CategoryAssigned(movement_key, …)` stays as the per-transaction override.
 - **The catalog (a projection):** `{normalized_merchant → {category, grade, source, locale}}`, built by replaying `MerchantCategorized` + human merchant confirmations, then merging imported commons priors (lowest precedence). Regenerated from events — no model call is ever repeated.
-- **Derivation:** `category(transaction) = override(movement_key) ?? catalog[normalize(descriptor)] ?? "Uncategorized"`. `spending_by_category` consults this. Retrospective by construction (a projection).
+- **Derivation:** `category(transaction) = override(movement_key) ?? catalog[merchant_key(line)] ?? "Uncategorized"`. `spending_by_category` consults this. Retrospective by construction (a projection). **Amended 2026-08-01:** the key is the normalized *brand* a resolution layer named, not the normalized raw descriptor. Enrichment had always filed under the brand while every read looked under the descriptor, so a vault could hold a full catalog and read as though it held none. A lookup now considers both candidates and the higher-graded record answers, so knowledge recorded before grammars existed is not stranded.
 - **The batched categorizer:** an injected model edge (like the reader) — `categorize_merchants(list) -> {merchant: category}` — offline-testable, pinned model, run on the pending set at a threshold.
 - **The unencrypted export:** a linted snapshot of the catalog for the commons; contribution opt-in (T6), popular-biased, PII-filtered.
 
@@ -43,7 +43,9 @@ The raw descriptor never leaves the encrypted ledger. The unencrypted catalog ho
   it; re-exported from ingest.
 - ✅ **Catalog projection + derivation.** `MerchantCategorized` event;
   `projection._merchant_categories` (highest-grade ruling wins);
-  `derived_category(m) = override ?? catalog[normalize(descriptor)] ?? None`.
+  `derived_category(m) = override ?? catalog[merchant_key(m)] ?? None`, where
+  the key is the brand where a layer could name one and the normalized
+  descriptor where none could.
   `spending_by_category` and `uncategorized_expenses` derive through it, so a
   merchant ruling fills every transaction **retrospectively** — proven by test.
   Survives a replay (content-keyed).

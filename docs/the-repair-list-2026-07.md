@@ -346,6 +346,16 @@ still have it, in another form"* about an unidentified cheque creates
 **Recommendation: A and C together.** They are the same guard from two sides,
 and X3 says this is enforced in code rather than remembered.
 
+**Ruled and built 2026-08-01 — A and C together, as recommended.** `rule_major`
+returns a proposal whenever an answer would open an account or bind an
+ambiguous one, and applies in the request only when it would change nothing
+structural. `resolve_account` answers an empty hint on an asset or liability
+with an `unnamed` verdict — a question, not a path — and `apply_proposal`
+refuses a proposal carrying one, as well as any path that is not a named
+account under the chart of accounts. The related finding below is closed too:
+`summary()` now says which existing account it took the answer to mean, so a
+merge is confirmed rather than assumed.
+
 Related, same area: when `resolve_account` returns `ambiguous`, the leg is
 **already bound** to the fuzzy match, `confirm_accounts` is populated and never
 read, and `summary()` — the one sentence a person confirms — does not mention

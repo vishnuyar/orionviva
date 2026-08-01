@@ -35,9 +35,9 @@ import logging
 from dataclasses import dataclass, field, replace
 
 from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
-                            MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_MERCHANT,
-                            SCOPE_MOVEMENT, UNVERIFIED, VERIFIED,
-                            account_opened, ruling_recorded)
+                            MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_ATTRIBUTE,
+                            SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
+                            VERIFIED, account_opened, ruling_recorded)
 from .ingest.prompt_library import interpret_prompt
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
@@ -280,6 +280,12 @@ def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatc
     if major in (MAJOR_EXPENSE, MAJOR_INCOME) and not hint.strip():
         return AccountMatch(MAJOR_UNCATEGORIZED[major], "existing",
                             reason="ordinary spending needs no account of its own")
+    # An answer that says "I still have it" without saying what it is cannot
+    # open an account: a path built from a placeholder is a thing nobody named
+    # reaching net worth. The verdict is a QUESTION, not a path.
+    if not hint.strip():
+        return AccountMatch("", "unnamed",
+                            reason="you now own or owe something, and it has no name yet")
     want = _norm(hint)
     known = set(proj.ruled_accounts()) | {
         a for a in proj.accounts() if a.split(":")[0] == MAJOR_ROOTS.get(major)}
@@ -292,8 +298,7 @@ def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatc
         if want and tail and (want in tail or tail in want):
             return AccountMatch(account, "ambiguous", candidate=account,
                                 reason=f"looks like your existing {account}")
-    proposed = account_path(major, group or _FALLBACK_GROUP,
-                            hint.strip() or "Unnamed")
+    proposed = account_path(major, group or _FALLBACK_GROUP, hint.strip())
     return AccountMatch(proposed, "new", reason="nothing like this exists yet")
 
 
@@ -316,6 +321,14 @@ class Proposal:
     legs: list[dict] = field(default_factory=list)
     new_accounts: list[str] = field(default_factory=list)
     confirm_accounts: list[str] = field(default_factory=list)
+    # Legs whose thing has no name yet. A proposal carrying one cannot be
+    # applied: there is a question to ask first.
+    needs_name: list[str] = field(default_factory=list)
+    # What the person said one attribute of an account IS, at attribute scope.
+    value: str = ""
+    # Further attributes the same confirmation settles — the link a loan makes
+    # to the property it secures, stated in the breath that opened it.
+    attributes: list[dict] = field(default_factory=list)
     corroborates: str = ""
     category: str = ""             # what the person called it, if they said
     said: str = ""
@@ -325,10 +338,30 @@ class Proposal:
     currency: str = ""
     prompt_version: str = ""       # which instructions read the sentence
 
+    @property
+    def applicable(self) -> bool:
+        """False while something in it has no name. Applying then would open an
+        account nobody named."""
+        return not self.needs_name
+
     def summary(self) -> str:
         """One sentence back before anything is written: the money moved and
         what it becomes, any account this would create, an unknown split, the
         category, and the document that would corroborate it."""
+        if self.needs_name:
+            return ("You still have it, so it belongs somewhere of its own — "
+                    "but I don't know what to call it yet, and I won't invent "
+                    "a name. What is it?")
+        if self.scope == SCOPE_ATTRIBUTE:
+            parts = []
+            if self.new_accounts:
+                parts.append("This creates " + ", ".join(self.new_accounts)
+                             + " — new, and only you say it exists.")
+            parts.append(f"I'll record it as “{self.value}”.")
+            if self.corroborates:
+                parts.append(f"Your {self.corroborates} would let me prove this "
+                             "— it isn't needed to save it.")
+            return " ".join(parts)
         what = ", ".join(PLAIN[leg["major"]].lower() for leg in self.legs)
         head = (f"{self.currency} {self.amount}".strip()
                 + (f" across {self.settles} payments" if self.settles > 1 else ""))
@@ -336,6 +369,13 @@ class Proposal:
         if self.new_accounts:
             parts.append("This creates " + ", ".join(self.new_accounts)
                          + " — new, and only you say it exists.")
+        # An account picked because it LOOKED like one you have is a guess, and
+        # a guess the person confirms without being told about is a guess they
+        # did not make.
+        if self.confirm_accounts:
+            parts.append("I've taken this to be your existing "
+                         + ", ".join(self.confirm_accounts)
+                         + " — say so if it is something else.")
         if self.unknown_split:
             parts.append("I can't tell how it splits between those, so I won't "
                          "guess: the money is recorded, the split stays open.")
@@ -350,6 +390,8 @@ class Proposal:
         return {"scope": self.scope, "subject": self.subject, "legs": self.legs,
                 "new_accounts": self.new_accounts,
                 "confirm_accounts": self.confirm_accounts,
+                "needs_name": self.needs_name, "value": self.value,
+                "attributes": self.attributes,
                 "corroborates": self.corroborates, "category": self.category,
                 "said": self.said,
                 "unknown_split": self.unknown_split, "settles": self.settles,
@@ -378,14 +420,14 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
     if scope == SCOPE_MOVEMENT and not subject:
         # Refuse rather than quietly settle a whole conduit bucket on one answer.
         matches = [m for m in proj.movements()
-                   if normalize_merchant(m.description) == merchant]
+                   if merchant in proj.merchant_keys_of(m)]
         if len(matches) != 1:
             raise ValueError(
                 f"{descriptor!r} needs a specific transaction: it covers "
                 f"{len(matches)} movements that may each mean something different")
         subject = matches[0].key
 
-    legs, new_accounts, confirm = [], [], []
+    legs, new_accounts, confirm, unnamed = [], [], [], []
     implied = proj.implication_for(merchant)
     for leg in interp.legs:
         match = resolve_account(proj, leg["major"], leg.get("account_hint", ""),
@@ -396,14 +438,16 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
             new_accounts.append(match.account)
         elif match.verdict == "ambiguous":
             confirm.append(match.candidate)
+        elif match.verdict == "unnamed":
+            unnamed.append(leg["major"])
 
     settles = 1
     if scope == SCOPE_MERCHANT:
         settles = sum(1 for m in proj.movements()
-                      if normalize_merchant(m.description) == merchant)
+                      if merchant in proj.merchant_keys_of(m))
     return Proposal(
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
-        confirm_accounts=confirm,
+        confirm_accounts=confirm, needs_name=unnamed,
         # The document comes from the counterparty's implication, learned at
         # enrichment, and never from the interpreter's free text.
         corroborates=(implied or {}).get("documents", ""),
@@ -449,10 +493,26 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
     An account the person brought into being is opened with `origin=asserted`,
     which is how the ledger keeps what an issuer attests separate from what a
     person told it. Returns the scope, subject, accounts opened, how many
-    movements it settles, and the category, if any."""
+    movements it settles, and the category, if any.
+
+    Refuses a proposal with an unnamed leg: there is a question to ask first,
+    and an account nobody named is the thing this path exists to prevent."""
+    if not proposal.applicable:
+        raise ValueError("this proposal has something with no name yet — ask "
+                         "what it is before writing anything")
     grade = VERIFIED if by == "human" else UNVERIFIED
     opened = []
     for account in proposal.new_accounts:
+        # An account path is root, group and the person's name for the thing;
+        # anything shorter or emptier names a group.
+        parts = account.split(":")
+        if (len(parts) < 3 or not all(p.strip() for p in parts)
+                or not any(ch.isalnum() for ch in parts[-1])):
+            raise ValueError(f"{account!r} names nothing — an account needs a "
+                             "name the person gave it")
+        if parts[0] not in MAJOR_ROOTS.values():
+            raise ValueError(f"{account!r} is outside the chart of accounts; "
+                             f"a root is one of {sorted(set(MAJOR_ROOTS.values()))}")
         major_root = account.split(":")[0]
         kind = "liability" if major_root == "Liabilities" else "asset"
         ledger.append(account_opened(
@@ -463,7 +523,20 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
         proposal.scope, proposal.subject, occurred_at, legs=proposal.legs,
         by=by, grade=grade, said=proposal.said,
         corroborates=proposal.corroborates,
+        # The account's currency is what it is OPENED in; the naming answer a
+        # proposal carries is a word, not an amount, and stamping a currency on
+        # it would declare text to be money.
+        value=proposal.value, currency="",
         prompt_version=proposal.prompt_version))
+    # One confirmation can settle several facts about the same account — the
+    # loan's name and what it secures, said in one breath.
+    if proposal.attributes:
+        account = proposal.subject.rpartition(":")[0]
+        for attr in proposal.attributes:
+            ledger.append(ruling_recorded(
+                SCOPE_ATTRIBUTE, f"{account}:{attr['key']}", occurred_at,
+                by=by, grade=grade, said=attr.get("said", ""),
+                value=attr.get("value", ""), currency=attr.get("currency", "")))
     # One sentence can carry two rulings — a major and a label. Both are
     # written, through the existing writers, at the scope the ruling used.
     if proposal.category:

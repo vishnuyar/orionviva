@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .ingest import held_items, other_holds
-from .ledger.merchants import is_shareable, normalize_merchant
+from .ledger.merchants import is_shareable
 from .ledger.events import ASSERTED
 from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_SETTLED, TIER_STRUCTURAL,
@@ -54,6 +54,7 @@ MERCHANT = "merchant"              # what is this merchant?
 NATURE = "nature"                  # is this money spent, or moved?
 CORROBORATION = "corroboration"    # do you have the document that proves this?
 EXPECTATION = "expectation"        # a document that should exist, somewhere
+INTERVIEW = "interview"            # the next thing this account needs known
 
 
 @dataclass
@@ -179,7 +180,7 @@ def _merchant_questions(proj) -> list[Question]:
     currency: dict[str, str] = {}
     movements: dict[str, list] = {}
     for m in proj.uncategorized_expenses():
-        key = normalize_merchant(m.description)
+        key = proj.merchant_key_of(m)
         if key:
             totals[key] = totals.get(key, Decimal("0")) + abs(m.amount)
             currency.setdefault(key, m.currency)
@@ -241,7 +242,7 @@ def _nature_questions(proj) -> list[Question]:
             continue
         if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT):
             continue                      # a link, an own account or a ruling settled it
-        key = normalize_merchant(m.description)
+        key = proj.merchant_key_of(m)
         g = groups.setdefault(key, {
             "amount": Decimal("0"), "count": 0, "currency": m.currency,
             "example": m.description, "keys": [],
@@ -345,6 +346,96 @@ def _corroboration_questions(proj) -> list[Question]:
     return out
 
 
+def _interview_questions(proj, jurisdiction: str) -> list[Question]:
+    """The next thing each account still needs known.
+
+    One question per interview, never the whole form: the schema knows what may
+    be asked, and the interview knows what is still owed, so the queue asks for
+    exactly one thing and the next follows from the answer. Ranked with
+    everything else by the cash a ruling has put against the account — the
+    money an answer would make sense of — so an interview never outranks a
+    larger finding just for being new. An account whose money a statement
+    already explains settles nothing by being described, and says so with a
+    stake of zero rather than borrowing its balance."""
+    from . import schemas
+    from .interview import interviews, opens_pending, question_id
+    out: list[Question] = []
+    ivs = interviews(proj, jurisdiction)
+    for iv in ivs:
+        if iv.schema is None:
+            continue
+        # The next thing owed, plus anything set aside and still unanswered.
+        # A set-aside question is still BUILT — the decline filter is what
+        # keeps it out of the ranked list — so it can be found in the pending
+        # list and can return the moment its stake moves.
+        asking = [q for q in (iv.next_question,) if q is not None]
+        asking += [q for q in iv.schema.questions
+                   if q.key in iv.declined and q.key not in iv.answered]
+        for q in asking:
+            out.append(_interview_question(iv, q, ivs))
+
+    for iv, opened in opens_pending(proj, jurisdiction, known=ivs):
+        schema = schemas.schema_for(opened, jurisdiction)
+        if schema is None:
+            continue
+        out.append(Question(
+            id=question_id(iv.account, f"opens:{opened}"), kind=INTERVIEW,
+            text=say("interview_opens", name=iv.name,
+                     kind_label=schema.label or opened),
+            why=say("interview_why"), amount=iv.stake, currency=iv.currency,
+            count=iv.settles, scope="one",
+            options=[{"label": "Yes, let's", "action": "open_kind",
+                      "args": {"kind": opened, "secures": iv.account}}],
+            free_text=say("free_text_invite"),
+            # No `key`: this question is not about an attribute of an account
+            # that exists. `opens` is what tells the surface that typing here
+            # names the thing rather than answering about it.
+            refs={"account": iv.account, "opens": opened, "key": "",
+                  "kind_label": schema.label or opened}))
+    return out
+
+
+def _interview_question(iv, q, ivs) -> Question:
+    """One schema question, worded and given its options.
+
+    The options come from the answer's own vocabulary — the two words of a
+    yes/no, the alternatives a choice enumerates, the accounts a link may point
+    at — so nothing the surface offers is outside what the schema permits."""
+    from . import schemas
+    from .interview import question_id
+    options: list = []
+    if q.answer == schemas.ANSWER_YES_NO:
+        options = [{"label": word.title(), "action": "answer_attribute",
+                    "args": {"account": iv.account, "key": q.key,
+                             "value": word}}
+                   for word in ("yes", "no")]
+    elif q.answer == schemas.ANSWER_CHOICE:
+        options = [{"label": choice, "action": "answer_attribute",
+                    "args": {"account": iv.account, "key": q.key,
+                             "value": choice}}
+                   for choice in q.choices]
+    elif q.answer == schemas.ANSWER_LINK:
+        options = [{"label": other.name, "action": "answer_attribute",
+                    "args": {"account": iv.account, "key": q.key,
+                             "value": other.account}}
+                   for other in ivs if other.kind == q.links_to
+                   and other.account != iv.account]
+    text = say("interview", name=iv.name, asks=q.asks)
+    if q.unlocks:
+        text += " " + say("interview_unlocks", unlocks=q.unlocks)
+    return Question(
+            id=question_id(iv.account, q.key), kind=INTERVIEW, text=text,
+            why=say("interview_why"), amount=iv.stake, currency=iv.currency,
+            count=iv.settles, scope="one", options=options,
+            # Every interview answer can be typed: a choice the person doesn't
+            # recognize is still answerable in their own words.
+            free_text=say("free_text_invite"),
+            refs={"account": iv.account, "kind": iv.kind, "key": q.key,
+                  "answer": q.answer, "choices": list(q.choices),
+                  "unlocks": q.unlocks,
+                  "corroborated_by": list(q.corroborated_by)})
+
+
 def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question]:
     """The knowledge registry's unmet expectations, asked as questions and ranked
     with everything else by the money the document would attest.
@@ -392,9 +483,8 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
     if not jurisdiction:
         # The one locale accessor. A locale with no region part filters to
         # universal registry entries only.
-        from .env import locale_from_env
-        parts = locale_from_env().split("-")
-        jurisdiction = parts[1].upper() if len(parts) > 1 else ""
+        from .env import jurisdiction_from_env
+        jurisdiction = jurisdiction_from_env().upper()
     proj = getattr(source, "projection", lambda: source)()
     qs: list[Question] = []
     qs += _held_questions(proj)
@@ -403,19 +493,55 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
     qs += _nature_questions(proj)
     qs += _corroboration_questions(proj)
     qs += _expectation_questions(proj, as_of, jurisdiction)
-    # A declined question stays declined while its amount and count are what
-    # they were when it was declined, and returns when either moves. No timers.
-    declined = proj.declined_questions()
-    qs = [q for q in qs
-          if (d := declined.get(q.id)) is None
-          or d.get("amount") != str(q.amount)
-          or int(d.get("count", 0)) != q.count]
+    qs += _interview_questions(proj, jurisdiction)
+    open_qs, pending = _split_declined(proj, qs)
     # Highest stake first; ties broken by id so the order is stable between reads.
-    qs.sort(key=lambda q: (-q.amount, q.id))
-    shown, rest = qs[:limit], qs[limit:]
+    open_qs.sort(key=lambda q: (-q.amount, q.id))
+    shown, rest = open_qs[:limit], open_qs[limit:]
     return {
         "questions": [q.to_dict() for q in shown],
-        "total": len(qs),
+        "total": len(open_qs),
         "tail": {"count": len(rest),
                  "amount": str(sum((q.amount for q in rest), start=Decimal("0")))},
+        # Questions set aside and still open. Deferring into a place the person
+        # can look is how "it always comes back" and "never a nag" are both true.
+        "pending": {"count": len(pending)},
     }
+
+
+def _split_declined(proj, qs: list) -> tuple:
+    """``(open, pending)``.
+
+    A declined question stays declined while its amount and count are what they
+    were when it was declined, and returns when either moves. No timers. For an
+    interview the stake is the cash on the account and the count is how many
+    movements touch it, so "new evidence touching its subject" is the same
+    mechanism, not a second one."""
+    declined = proj.declined_questions()
+
+    def still_declined(q) -> bool:
+        d = declined.get(q.id)
+        return (d is not None and d.get("amount") == str(q.amount)
+                and int(d.get("count", 0)) == q.count)
+
+    return ([q for q in qs if not still_declined(q)],
+            [q for q in qs if still_declined(q)])
+
+
+def pending_questions(source, as_of: str = "", jurisdiction: str = "") -> dict:
+    """Everything set aside and still open — the list the person opens
+    themselves. Same builders, same ranking; only the decline filter is
+    inverted, so a pending question cannot drift from its open twin."""
+    proj = getattr(source, "projection", lambda: source)()
+    qs: list[Question] = []
+    qs += _held_questions(proj)
+    qs += _transfer_questions(proj)
+    qs += _merchant_questions(proj)
+    qs += _nature_questions(proj)
+    qs += _corroboration_questions(proj)
+    qs += _interview_questions(proj, jurisdiction)
+    if as_of:
+        qs += _expectation_questions(proj, as_of, jurisdiction)
+    _, pending = _split_declined(proj, qs)
+    pending.sort(key=lambda q: (-q.amount, q.id))
+    return {"questions": [q.to_dict() for q in pending], "total": len(pending)}

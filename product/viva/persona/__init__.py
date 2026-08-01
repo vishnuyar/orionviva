@@ -36,7 +36,7 @@ _DIR = pathlib.Path(__file__).resolve().parent
 # The voice currently speaking. Bump by ADDING a pack directory, never by
 # editing a released one — a decline records the pack that asked, and that
 # pack_version must keep resolving to the exact words it recorded.
-ACTIVE_PACK = "pack-v2"
+ACTIVE_PACK = "pack-v3"
 
 # ------------------------------------------------------------- the contract
 #
@@ -78,6 +78,13 @@ INTENT_FIELDS: dict[str, frozenset] = {
     "expectation_investment_account_why":  frozenset({"money"}),
     "expectation_account_cadence":         frozenset({"account_name", "last_date"}),
     "expectation_account_cadence_why":     frozenset(),
+    # The interview. The schema pack supplies the plain question (`asks`) and
+    # the benefit (`unlocks`) as reviewed data; the persona supplies the manner
+    # around them, so a generated schema arrives already speakable.
+    "interview":                           frozenset({"name", "asks"}),
+    "interview_unlocks":                   frozenset({"unlocks"}),
+    "interview_why":                       frozenset(),
+    "interview_opens":                     frozenset({"name", "kind_label"}),
 }
 
 # Moment key -> its slots. Moments are the relationship lines: welcome, return,

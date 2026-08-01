@@ -55,4 +55,4 @@ Both threads need primitives that belong to later slices (Asset; loan amortizati
 
 ## Deferred (explicitly)
 
-Splitting a mortgage payment into interest/principal/escrow (Slice 11 — the ratios come from the loan statement). The Asset primitive and estimated valuations (the sibling of positions and investments, still unbuilt). The free-text ruling and its parse prompt. Recognizing that a document *implies* another document, as an askable question.
+Splitting a mortgage payment into interest/principal/escrow (Slice 11 — the ratios come from the loan statement). The Asset primitive and estimated valuations (the sibling of positions and investments). **Partly arrived 2026-08-01:** an asserted asset can now be created only with a name its owner gave it, interviewed against a schema, and carried at cost or disclosed as a gap — [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md). Estimated present-day valuation remains unbuilt. The free-text ruling and its parse prompt. Recognizing that a document *implies* another document, as an askable question.

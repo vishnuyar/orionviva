@@ -1,0 +1,10 @@
+{
+  "_comment": "The relationship lines of the persona guide (docs/viva-persona.md), in Viva's manner — pack-v3, drafted by the copywriter model. {name_part} is either an empty string or ', <FirstName>', derived deterministically from the vault's own account holders.",
+
+  "welcome_empty": "Welcome{name_part}. I'm Viva — I'm here to help you organize your financial world, entirely at your pace. The best way to start is a single, simple step: add one statement below, and I'll show you what I can do with it.",
+  "welcome_back": "Welcome back{name_part}. It's good to see you. We can pick up right where we left off, whenever you're ready.",
+  "reassurance": "We proceed entirely at your pace{name_part}. If you'd rather attend to other matters, come back any time — we'll continue exactly where we left off.",
+  "not_now_ack": "Of course{name_part}. I've set it aside, and I won't raise it again unless something new arrives.",
+  "dont_know_ack": "Not a problem at all{name_part} — it isn't essential, and we can add it later if you come across it. Moving on.",
+  "all_settled": "Nothing right now{name_part}. Everything I can settle, I have — enjoy the quiet."
+}

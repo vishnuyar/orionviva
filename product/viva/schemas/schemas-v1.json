@@ -1,0 +1,723 @@
+{
+  "_comment": "The schema pack: shape as data. A kind states what exists and what it needs known — never how to read a document, never a word that classifies raw text. Every entry is jurisdiction-tagged from the first line, because a pack written for one country and internationalised afterwards has invisible omissions. Impersonal by construction: no vault data, no personal value, shareable and reviewable in one sitting.",
+  "version": "schemas-v1",
+  "answer_types": {
+    "money": "an amount the person states, in a currency",
+    "date": "a calendar date the person states",
+    "rate": "a percentage the person states",
+    "yes_no": "yes or no",
+    "choice": "one of an enumerated set this question names",
+    "label": "the person's own word for something — a nickname, never an issued identifier",
+    "institution": "the public name of a company that issued or holds the thing",
+    "link": "another account, chosen among those that exist or opened by its own interview"
+  },
+  "kinds": [
+    {
+      "kind": "property",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Assets:Property",
+      "questions": [
+        {
+          "key": "nickname",
+          "essential": true,
+          "answer": "label",
+          "names_the_account": true,
+          "unlocks": "I can call it by your name for it instead of a path",
+          "asks": "What shall I call it?"
+        },
+        {
+          "key": "purchase_price",
+          "essential": true,
+          "answer": "money",
+          "unlocks": "net worth can carry this asset at cost",
+          "corroborated_by": {
+            "us": [
+              "closing disclosure",
+              "settlement statement"
+            ],
+            "in": [
+              "sale deed",
+              "registration and stamp-duty receipt"
+            ]
+          },
+          "asks": "What did you pay for it?",
+          "gates_net_worth": true
+        },
+        {
+          "key": "purchase_date",
+          "essential": true,
+          "answer": "date",
+          "unlocks": "the curve knows when this joined it",
+          "asks": "When did you buy it?",
+          "dates_net_worth": true
+        },
+        {
+          "key": "use",
+          "essential": true,
+          "answer": "choice",
+          "choices": [
+            "occupied",
+            "rented",
+            "land"
+          ],
+          "unlocks": "I know whether to expect rent alongside it",
+          "asks": "Do you live in it, rent it out, or is it land?"
+        },
+        {
+          "key": "financed",
+          "essential": true,
+          "answer": "yes_no",
+          "opens": "home_loan",
+          "unlocks": "the loan and the property can be read together",
+          "asks": "Is there a loan against it?"
+        },
+        {
+          "key": "ownership_share",
+          "essential": false,
+          "answer": "rate",
+          "unlocks": "your share of it rather than all of it",
+          "asks": "What share of it is yours?"
+        },
+        {
+          "key": "improvements_since_purchase",
+          "essential": false,
+          "answer": "money",
+          "unlocks": "cost basis that includes what you put into it",
+          "asks": "Have you spent anything on improving it?"
+        }
+      ],
+      "label": "property"
+    },
+    {
+      "kind": "vehicle",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Assets:Vehicles",
+      "questions": [
+        {
+          "key": "nickname",
+          "essential": true,
+          "answer": "label",
+          "names_the_account": true,
+          "unlocks": "I can call it by your name for it instead of a path",
+          "asks": "What shall I call it?"
+        },
+        {
+          "key": "purchase_price",
+          "essential": true,
+          "answer": "money",
+          "unlocks": "net worth can carry this asset at cost",
+          "corroborated_by": {
+            "us": [
+              "bill of sale",
+              "title"
+            ],
+            "in": [
+              "dealer invoice",
+              "registration certificate"
+            ]
+          },
+          "asks": "What did you pay for it?",
+          "gates_net_worth": true
+        },
+        {
+          "key": "purchase_date",
+          "essential": true,
+          "answer": "date",
+          "unlocks": "the curve knows when this joined it",
+          "asks": "When did you buy it?",
+          "dates_net_worth": true
+        },
+        {
+          "key": "financed",
+          "essential": true,
+          "answer": "yes_no",
+          "opens": "vehicle_loan",
+          "unlocks": "the loan and the vehicle can be read together",
+          "asks": "Is there a loan against it?"
+        },
+        {
+          "key": "description",
+          "essential": false,
+          "answer": "label",
+          "unlocks": "I can tell two of them apart",
+          "asks": "How would you describe it?"
+        }
+      ],
+      "label": "vehicle"
+    },
+    {
+      "kind": "home_loan",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Liabilities:HomeLoan",
+      "questions": [
+        {
+          "key": "lender",
+          "essential": true,
+          "answer": "institution",
+          "names_the_account": true,
+          "unlocks": "payments to them stop being unexplained spending",
+          "asks": "Who is the lender?"
+        },
+        {
+          "key": "original_amount",
+          "essential": true,
+          "answer": "money",
+          "unlocks": "how far through it you are",
+          "corroborated_by": {
+            "us": [
+              "mortgage statement",
+              "Form 1098"
+            ],
+            "in": [
+              "sanction letter",
+              "provisional interest certificate",
+              "amortisation schedule"
+            ]
+          },
+          "asks": "How much did you borrow to begin with?"
+        },
+        {
+          "key": "start_date",
+          "essential": true,
+          "answer": "date",
+          "unlocks": "the term you have left",
+          "asks": "When did the loan start?"
+        },
+        {
+          "key": "secures",
+          "essential": true,
+          "answer": "link",
+          "links_to": "property",
+          "unlocks": "the property and the debt against it read as one thing",
+          "asks": "Which property is this loan against?"
+        },
+        {
+          "key": "rate",
+          "essential": false,
+          "answer": "rate",
+          "unlocks": "your true borrowing cost",
+          "asks": "What rate are you paying?"
+        },
+        {
+          "key": "term",
+          "essential": false,
+          "answer": "label",
+          "unlocks": "when this is due to end",
+          "asks": "How long is the loan for?"
+        },
+        {
+          "key": "instalment_amount",
+          "essential": false,
+          "answer": "money",
+          "unlocks": "I can tell a normal payment from an extra one",
+          "asks": "What is the regular payment?"
+        },
+        {
+          "key": "prepayments_made",
+          "essential": false,
+          "answer": "money",
+          "unlocks": "what you have taken off the principal early",
+          "asks": "Have you paid anything extra off it?"
+        }
+      ],
+      "label": "home loan",
+      "account_kinds": [
+        "liability"
+      ]
+    },
+    {
+      "kind": "vehicle_loan",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Liabilities:VehicleLoan",
+      "questions": [
+        {
+          "key": "lender",
+          "essential": true,
+          "answer": "institution",
+          "names_the_account": true,
+          "unlocks": "payments to them stop being unexplained spending",
+          "asks": "Who is the lender?"
+        },
+        {
+          "key": "original_amount",
+          "essential": true,
+          "answer": "money",
+          "unlocks": "how far through it you are",
+          "corroborated_by": {
+            "us": [
+              "retail instalment contract",
+              "servicer statement"
+            ],
+            "in": [
+              "sanction letter",
+              "hypothecation endorsement"
+            ]
+          },
+          "asks": "How much did you borrow to begin with?"
+        },
+        {
+          "key": "start_date",
+          "essential": true,
+          "answer": "date",
+          "unlocks": "the term you have left",
+          "asks": "When did the loan start?"
+        },
+        {
+          "key": "secures",
+          "essential": true,
+          "answer": "link",
+          "links_to": "vehicle",
+          "unlocks": "the vehicle and the debt against it read as one thing",
+          "asks": "Which vehicle is this loan against?"
+        },
+        {
+          "key": "rate",
+          "essential": false,
+          "answer": "rate",
+          "unlocks": "your true borrowing cost",
+          "asks": "What rate are you paying?"
+        },
+        {
+          "key": "term",
+          "essential": false,
+          "answer": "label",
+          "unlocks": "when this is due to end",
+          "asks": "How long is the loan for?"
+        },
+        {
+          "key": "instalment_amount",
+          "essential": false,
+          "answer": "money",
+          "unlocks": "I can tell a normal payment from an extra one",
+          "asks": "What is the regular payment?"
+        }
+      ],
+      "label": "vehicle loan",
+      "account_kinds": [
+        "liability"
+      ]
+    },
+    {
+      "kind": "card_account",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Liabilities:Cards",
+      "_note": "Essentials are thin on purpose — the balance comes from statements, so nothing here gates net worth.",
+      "questions": [
+        {
+          "key": "issuer",
+          "essential": true,
+          "answer": "institution",
+          "names_the_account": true,
+          "unlocks": "charges on it stop looking like a stranger",
+          "known_from": "institution",
+          "asks": "Who issued it?"
+        },
+        {
+          "key": "nickname",
+          "essential": true,
+          "answer": "label",
+          "unlocks": "I can tell two of yours apart without reading numbers",
+          "known_from": "name",
+          "asks": "What shall I call it?"
+        },
+        {
+          "key": "apr",
+          "essential": false,
+          "answer": "rate",
+          "unlocks": "what carrying a balance actually costs you",
+          "asks": "What rate does it charge on a balance?"
+        },
+        {
+          "key": "annual_fee",
+          "essential": false,
+          "answer": "money",
+          "unlocks": "whether it earns its keep",
+          "asks": "Does it have an annual fee?"
+        },
+        {
+          "key": "credit_limit",
+          "essential": false,
+          "answer": "money",
+          "unlocks": "how much of your line you are using",
+          "asks": "What is the limit on it?"
+        },
+        {
+          "key": "rewards_programme",
+          "essential": false,
+          "answer": "label",
+          "unlocks": "I can tell you what you are earning on it",
+          "asks": "Does it earn anything?"
+        }
+      ],
+      "label": "card",
+      "account_kinds": [
+        "liability"
+      ],
+      "document_types": [
+        "credit_card_statement"
+      ]
+    },
+    {
+      "kind": "deposit_account",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Assets:Bank",
+      "_note": "A US certificate of deposit and an Indian fixed deposit are the same instrument under two names — one kind, one sub-kind vocabulary, no second code path.",
+      "questions": [
+        {
+          "key": "institution",
+          "essential": true,
+          "answer": "institution",
+          "names_the_account": true,
+          "unlocks": "statements from them land in the right place",
+          "known_from": "institution",
+          "asks": "Who holds it?"
+        },
+        {
+          "key": "sub_kind",
+          "essential": true,
+          "answer": "choice",
+          "choices": {
+            "us": [
+              "checking",
+              "savings",
+              "certificate of deposit"
+            ],
+            "in": [
+              "savings",
+              "current",
+              "fixed deposit",
+              "recurring deposit"
+            ]
+          },
+          "unlocks": "I know how often to expect a statement",
+          "asks": "What kind of account is it?",
+          "answered_by_document": {
+            "checking_statement": "checking",
+            "savings_statement": "savings"
+          }
+        },
+        {
+          "key": "principal",
+          "essential": true,
+          "answer": "money",
+          "required_when": {
+            "key": "sub_kind",
+            "is_one_of": [
+              "certificate of deposit",
+              "fixed deposit",
+              "recurring deposit"
+            ]
+          },
+          "unlocks": "net worth can carry the deposit",
+          "corroborated_by": {
+            "us": [
+              "deposit advice",
+              "account statement"
+            ],
+            "in": [
+              "deposit receipt",
+              "account statement"
+            ]
+          },
+          "asks": "How much did you put in?",
+          "gates_net_worth": true
+        },
+        {
+          "key": "maturity_date",
+          "essential": true,
+          "answer": "date",
+          "required_when": {
+            "key": "sub_kind",
+            "is_one_of": [
+              "certificate of deposit",
+              "fixed deposit",
+              "recurring deposit"
+            ]
+          },
+          "unlocks": "I can tell you when this money comes back to you",
+          "asks": "When does it mature?"
+        },
+        {
+          "key": "rate",
+          "essential": true,
+          "answer": "rate",
+          "required_when": {
+            "key": "sub_kind",
+            "is_one_of": [
+              "certificate of deposit",
+              "fixed deposit",
+              "recurring deposit"
+            ]
+          },
+          "unlocks": "what it will be worth at maturity",
+          "asks": "What rate does it pay?"
+        }
+      ],
+      "label": "bank account",
+      "account_kinds": [
+        "depository"
+      ],
+      "document_types": [
+        "checking_statement",
+        "savings_statement"
+      ]
+    },
+    {
+      "kind": "brokerage_account",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Assets:Brokerage",
+      "questions": [
+        {
+          "key": "institution",
+          "essential": true,
+          "answer": "institution",
+          "names_the_account": true,
+          "unlocks": "statements from them land in the right place",
+          "known_from": "institution",
+          "asks": "Who holds it?"
+        },
+        {
+          "key": "tax_treatment",
+          "essential": true,
+          "answer": "choice",
+          "choices": [
+            "taxable",
+            "tax-advantaged"
+          ],
+          "unlocks": "I know whether a gain here is a taxable event",
+          "corroborated_by": {
+            "us": [
+              "brokerage statement",
+              "1099-B",
+              "1099-DIV"
+            ],
+            "in": [
+              "demat holding statement",
+              "capital-gains statement",
+              "annual information statement"
+            ]
+          },
+          "asks": "Is it a taxable account, or a tax-advantaged one?"
+        },
+        {
+          "key": "purpose",
+          "essential": false,
+          "answer": "label",
+          "personal": true,
+          "unlocks": "I can talk about it as what it is for, not just what it holds",
+          "asks": "What are you keeping it for?"
+        }
+      ],
+      "label": "brokerage account",
+      "account_kinds": [
+        "investment"
+      ],
+      "document_types": [
+        "brokerage_statement"
+      ]
+    },
+    {
+      "kind": "retirement_account",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Assets:Retirement",
+      "_note": "The entry that most tests the jurisdiction rule. A single US-shaped kind would have been the natural mistake.",
+      "questions": [
+        {
+          "key": "scheme",
+          "essential": true,
+          "answer": "choice",
+          "choices": {
+            "us": [
+              "401(k)",
+              "403(b)",
+              "Traditional IRA",
+              "Roth IRA",
+              "HSA"
+            ],
+            "in": [
+              "EPF",
+              "PPF",
+              "NPS",
+              "gratuity",
+              "superannuation"
+            ]
+          },
+          "unlocks": "I know the rules this money lives under",
+          "asks": "Which scheme is it?"
+        },
+        {
+          "key": "institution",
+          "essential": true,
+          "answer": "institution",
+          "names_the_account": true,
+          "unlocks": "statements from them land in the right place",
+          "corroborated_by": {
+            "us": [
+              "plan statement",
+              "Form 5498",
+              "1099-R"
+            ],
+            "in": [
+              "EPF passbook",
+              "PPF passbook",
+              "NPS CRA statement"
+            ]
+          },
+          "known_from": "institution",
+          "asks": "Who holds it?"
+        },
+        {
+          "key": "contribution_source",
+          "essential": true,
+          "answer": "institution",
+          "unlocks": "deductions on your pay stub can be tied to where they land",
+          "asks": "Which employer's pay does it come out of?"
+        },
+        {
+          "key": "employer_match",
+          "essential": false,
+          "answer": "rate",
+          "unlocks": "the part of your contribution that is not yours",
+          "asks": "Does your employer match, and by how much?"
+        },
+        {
+          "key": "vesting",
+          "essential": false,
+          "answer": "label",
+          "unlocks": "how much of the match you would keep if you left",
+          "asks": "How does vesting work on it?"
+        },
+        {
+          "key": "lock_in",
+          "essential": false,
+          "answer": "label",
+          "jurisdictions": [
+            "in"
+          ],
+          "unlocks": "I stop assuming you could withdraw this at will",
+          "asks": "What is the lock-in on it?"
+        }
+      ],
+      "label": "retirement account"
+    },
+    {
+      "kind": "precious_metals",
+      "jurisdictions": [
+        "us",
+        "in"
+      ],
+      "version": 1,
+      "reviewed": true,
+      "account_shape": "Assets:Valuables",
+      "_note": "Here deliberately as the pack's own proof that it is not US-shaped. A sovereign gold bond pays interest and matures, so it is not physical gold under another label.",
+      "questions": [
+        {
+          "key": "nickname",
+          "essential": true,
+          "answer": "label",
+          "names_the_account": true,
+          "unlocks": "I can call it by your name for it instead of a path",
+          "asks": "What shall I call it?"
+        },
+        {
+          "key": "acquisition_cost",
+          "essential": true,
+          "answer": "money",
+          "unlocks": "net worth can carry this at cost",
+          "corroborated_by": {
+            "us": [
+              "dealer invoice"
+            ],
+            "in": [
+              "purchase invoice",
+              "sovereign gold bond allotment certificate"
+            ]
+          },
+          "asks": "What did you pay for it?",
+          "gates_net_worth": true
+        },
+        {
+          "key": "acquisition_date",
+          "essential": true,
+          "answer": "date",
+          "unlocks": "the curve knows when this joined it",
+          "asks": "When did you get it?",
+          "dates_net_worth": true
+        },
+        {
+          "key": "form",
+          "essential": true,
+          "answer": "choice",
+          "choices": [
+            "jewellery",
+            "coin",
+            "bar",
+            "sovereign gold bond"
+          ],
+          "unlocks": "I know whether this one pays interest and matures",
+          "asks": "What form is it in?"
+        },
+        {
+          "key": "weight",
+          "essential": false,
+          "answer": "label",
+          "unlocks": "I can talk about it in the units you bought it in",
+          "asks": "How much of it is there?"
+        },
+        {
+          "key": "custody",
+          "essential": false,
+          "answer": "choice",
+          "choices": [
+            "home",
+            "locker",
+            "dematerialised"
+          ],
+          "unlocks": "I know where it is without you having to remember",
+          "asks": "Where is it kept?"
+        }
+      ],
+      "label": "gold or silver"
+    }
+  ]
+}

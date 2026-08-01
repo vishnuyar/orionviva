@@ -117,7 +117,7 @@ document → classify → extract → verify → post                    [unchan
                                             ↓
                                        movements
                                             ↓
-                    normalize descriptor → merchant key           [deterministic]
+                 resolve descriptor → merchant key (brand)        [deterministic]
                                             ↓
   ┌────────────────────────────────────────────────────────────────────┐
   │  merchantcore ENRICH   — batched · impersonal · cached · versioned │
@@ -329,3 +329,29 @@ On the first real run, **185 counterparties sat in `unenriched`** — the tier m
 ### Still to do
 
 **The real-vault run.** Everything above is measured on synthetic data. `python -m viva.debug_tiers` gives the honest before; `python -m viva.enrich` under `enrich-v3` fills in the implications; running `debug_tiers` again gives the after. The human rulings already made survive — `reset_categorization` keeps them by default, and they were true regardless of how naively they were asked for.
+
+---
+
+## Amended 2026-08-01 — the key, and what follows tier 2
+
+**The merchant key is the brand.** The flow above said *normalize descriptor →
+merchant key*. Enrichment had always filed what it learned under the brand a
+resolution layer named, so the two keyspaces never met and a vault could hold a
+full catalog while reading as though it held none. The key is now one property:
+the normalized brand where a layer could name one, the normalized descriptor
+where none could. It is resolved for the whole vault at once, because the ACH
+company-name boundary is a property of the corpus rather than of any single
+line, and every lookup considers both candidates so that a person's own answer,
+recorded before grammars existed, is not stranded under the older name.
+
+**Tier 2 now has a successor.** An informed proposal names what the product
+already believes about a *movement*. What it cannot do is ask what the *thing*
+is — a property, a loan, a term deposit each have a shape, and a movement does
+not carry it. That is the interview
+([the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md)):
+the implication says an instrument exists, the schema pack says what may be
+asked about it, and the answer is a scoped ruling like any other. A tier-2 or
+tier-3 answer that would bring an account into being is also no longer applied
+in the request that raised it — it comes back as a proposal for an explicit
+yes, and an answer that names nothing at all is met with a question rather than
+a placeholder path.

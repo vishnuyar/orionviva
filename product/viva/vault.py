@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .ingest.raw_store import RawStore
 from .ledger.ledger import Ledger
+from .ledger.merchant_keys import installed_resolver
 
 log = logging.getLogger(__name__)
 
@@ -29,8 +30,13 @@ class Vault:
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
         log.info("opening vault at %s", directory)
+        # Wired here rather than at each entry point: a vault opened without a
+        # merchant-key resolver reads its catalog under descriptors while
+        # enrichment files it under brands, and the knowledge becomes
+        # unreadable.
         return cls(
-            ledger=Ledger.open(directory / "events.jsonl", passphrase),
+            ledger=Ledger.open(directory / "events.jsonl", passphrase,
+                               resolve_keys=installed_resolver()),
             raw=RawStore.open(directory / "raw", passphrase),
             directory=directory)
 

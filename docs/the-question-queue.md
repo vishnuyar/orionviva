@@ -46,7 +46,7 @@ Question(
 
 **1 — Leverage ranking.** Ask the question that moves the most money first. This is the merchant-catalog lesson turned on the questions themselves: on the real vault, two questions (a vehicle purchase and a property closing) resolve roughly half the outstanding uncertainty. A hundred small ones can wait forever without harming the picture.
 
-**2 — Scope: one ruling should clear many.** A question is raised at the **most general unit that is still honest**. Nature questions group by *normalized merchant* — the unit that already generalizes retroactively and forward (the merchant catalog) — so answering once settles every transaction from that counterparty, past and future. A genuine one-off (an ambiguous transfer pair) is scoped to itself.
+**2 — Scope: one ruling should clear many.** A question is raised at the **most general unit that is still honest**. Nature questions group by *merchant key* — the brand a resolution layer named, and the normalized descriptor only where none could (amended 2026-08-01) — the unit that already generalizes retroactively and forward (the merchant catalog) — so answering once settles every transaction from that counterparty, past and future. A genuine one-off (an ambiguous transfer pair) is scoped to itself.
 
 **3 — Silence by ranking, not by hiding.** Rather than a hard materiality threshold (which would be a currency- and jurisdiction-shaped guess — I1/I5), the queue **surfaces the top N and summarizes the tail**: "plus 34 smaller items worth X in total — ask me if you want them." Nothing is hidden, nothing is pushed. An unanswered question leaves its figure provisional and *labelled* (movement nature already does this), so silence degrades the picture's precision, never its honesty.
 
@@ -62,7 +62,7 @@ Slice 9 (Viva) will re-voice these through the persona; the *content* — figure
 ## Scope — the build
 
 - `Question` + `open_questions()` in the projection (ranked, grouped, with consequence).
-- Nature questions grouped by normalized merchant; transfer/identity/merchant questions from the existing sources.
+- Nature questions grouped by merchant key; transfer/identity/merchant questions from the existing sources.
 - A `python -m viva.questions` CLI — the ranked list against a real vault, the way `debug_vault` works today.
 - The surface: one **"what Viva needs from you"** panel, ranked, replacing the four disconnected review cards (the existing endpoints answer them unchanged).
 - Answering is idempotent by construction: a ruling changes state, so the question disappears from the next projection.
@@ -98,3 +98,9 @@ A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("
 ## Deferred
 
 The generic `Ruling` event and category-scoped rules — **since arrived** as the generic scoped ruling (`RulingRecorded` with `scope` + `same_as`). Model-phrased questions (Slice 9). Proactive *timing* — deciding when to interrupt rather than wait to be opened (Slice 8's trigger). Learned auto-apply for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)).
+
+## A source with a next step (2026-08-01)
+
+The queue gained a seventh source: the **interview**, one question per account whose kind the schema pack can resolve — see [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md). It is the first source where answering produces *another question*, and it changes nothing about the queue itself: an interview question is ranked with everything else by the cash a ruling has put against the account, so it never outranks a larger finding for being new, and an account whose money its statements already explain carries a stake of zero rather than borrowing its balance.
+
+Two consequences worth knowing. **A declined interview question is still built** — the decline filter is what keeps it out of the ranked list — so it can be found in the pending list and returns when the movements touching its account change. And `open_questions` now returns a `pending` count alongside the tail; `pending_questions` returns the same questions the decline filter removed, built by the same builders so the two lists cannot drift.

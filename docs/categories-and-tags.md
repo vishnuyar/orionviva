@@ -60,6 +60,8 @@ That is why tags get **their own event type**. It makes *"tags never leave this 
 | **D6** | **The complete set is re-asserted, last write wins** | Removing a tag is appending the set without it. No `untag` event to reconcile against an `add` that arrived out of order; replay stays trivial and the log stays append-only. |
 | **D7** | **Tags alias in their own vocabulary** | A tag `poker` and a category `poker` are different things; merging one must not silently merge the other. `RulingRecorded(scope="tag", same_as=…)` mirrors the category alias exactly. |
 
+_D4 unchanged, with a third scope coming: an account-scope tag — the interview's way of saying "this account belongs to the house" — is designed and unbuilt ([the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md), cycle 3). Movement and merchant remain the only scopes today._
+
 ## Two build notes the table does not carry
 
 **Alias maps are maintained as the events replay, not derived per lookup.** Both vocabularies fold on the read side — but the fold reads a map built during replay; it does not walk the ruling set on every call. The naive version is a line shorter and is O(movements × rulings): it took the test suite from 32s to over 44s, on a fixture set far smaller than a real vault. The read-side fold is the design; recomputing it per call is not part of it.

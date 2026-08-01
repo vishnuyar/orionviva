@@ -454,7 +454,8 @@ remember. A person's name has a stronger claim to that than a tag.
 It is an identity resolved from signals, so it inherits the existing machinery —
 signals, graded match, ask only when genuinely ambiguous, record the ruling,
 apply on the read side. Two requirements from day one: the same person across
-conduits (`RulingRecorded(scope="party", same_as=…)`, the sixth scope), and
+conduits (`RulingRecorded(scope="party", same_as=…)`, which would be the
+seventh scope — attribute became the sixth on 2026-08-01), and
 meaning that generalizes (*"John is my landlord"* makes every payment rent).
 
 **This is the one place the field has no answer.** Plaid types the platform

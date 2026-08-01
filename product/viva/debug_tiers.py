@@ -40,7 +40,7 @@ def _money(amount: Decimal) -> str:
 
 def report(proj) -> str:
     """The tier picture, plus the queue length it implies."""
-    from .questions import open_questions
+    from .questions import INTERVIEW, open_questions
 
     summary = proj.tier_summary()
     total = sum(r["count"] for r in summary.values()) or 1
@@ -62,12 +62,20 @@ def report(proj) -> str:
              for b in [proj.balance(i.account)] if b.dated]
     asked = open_questions(proj, limit=10_000,
                            as_of=max(dates) if dates else "1970-01-01")
-    per_hundred = asked["total"] / total * 100
+    # This report is about MOVEMENTS, so its ratio counts the questions that
+    # are about movements. An interview asks about an ACCOUNT — it does not
+    # belong in a per-hundred-movements figure, and folding it in would make
+    # enrichment look worse every time a new account arrived.
+    about_accounts = sum(1 for q in asked["questions"] if q["kind"] == INTERVIEW)
+    about_movements = asked["total"] - about_accounts
+    per_hundred = about_movements / total * 100
     lines += [
         "",
-        f"  questions the queue would ask: {asked['total']}"
+        f"  questions the queue would ask: {about_movements}"
         f"   ({per_hundred:.1f} per 100 movements)",
     ]
+    if about_accounts:
+        lines.append(f"  and about the accounts themselves: {about_accounts}")
     settled = summary.get("settled", {}).get("count", 0)
     if settled:
         lines.append(f"  handled without asking:        {settled}"

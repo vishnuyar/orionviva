@@ -155,25 +155,258 @@ def net_worth(vault: Vault, as_of: str = "", curve: bool = False) -> dict:
 
 
 def rule_major(vault: Vault, merchant: str, major: str, descriptor: str = "",
-               kind: str = "", movement_key: str = "", group: str = "") -> dict:
+               kind: str = "", movement_key: str = "", group: str = "",
+               name: str = "") -> dict:
     """Answer with one of the four majors — the button path.
 
     Deterministic: no model is involved, so this works with nothing configured.
     It goes through the same `propose` / `apply_proposal` pair as `listen_to`, so
-    a tapped answer and a typed one produce identical events."""
+    a tapped answer and a typed one produce identical events.
+
+    **A tap never opens an account.** Where the answer would bring one into
+    being, the proposal comes back for confirmation with the name the person
+    would see, and existing accounts are offered first. Where the answer names
+    nothing at all, the reply is the question rather than a placeholder path.
+    Only an answer that changes nothing structural applies in this request."""
     from ..listen import Interpretation, apply_proposal, propose
     proj = vault.ledger.projection()
     interp = Interpretation(
-        legs=[{"major": major, "account_hint": group or descriptor or merchant,
+        legs=[{"major": major,
+               "account_hint": name or group or descriptor or merchant,
                "share": ""}],
-        kind=kind, said="")
+        kind=kind, said=name)
     # A `movement_key` scopes the answer to one transaction rather than to every
     # movement sharing the descriptor. The unknown tier — a cheque, an ATM
     # withdrawal, a peer — is asked one at a time for that reason.
     proposal = propose(proj, interp, descriptor or merchant,
                        movement_key=movement_key)
+    if proposal.needs_name:
+        return {"ok": False, "why": "needs_name",
+                "message": proposal.summary(),
+                "proposal": proposal.to_dict()}
+    if proposal.new_accounts or proposal.confirm_accounts:
+        return {"ok": True, "confirm": True, "proposal": proposal.to_dict()}
     applied = apply_proposal(vault.ledger, proposal, _today())
-    return {"ok": True, **applied}
+    return {"ok": True, "confirm": False, **applied}
+
+
+def _jurisdiction() -> str:
+    """The region the vault's locale names, or '' — the one locale accessor,
+    reused so the queue and the interview never disagree about where we are."""
+    from ..env import jurisdiction_from_env
+    return jurisdiction_from_env()
+
+
+def _vault_currency(proj) -> str:
+    """The currency this vault keeps its money in, read from the accounts it
+    already holds — the most common one, ties broken by name so two reads
+    agree. Derived from evidence, never from a country-to-currency table."""
+    from collections import Counter
+    counts: Counter = Counter(i.currency for i in proj.account_infos()
+                              if i.currency)
+    if not counts:
+        return ""
+    best = max(counts.values())
+    return sorted(c for c, n in counts.items() if n == best)[0]
+
+
+def answer_attribute(vault: Vault, account: str, key: str, value: str = "",
+                     said: str = "") -> dict:
+    """Record one thing the person told us about an account they hold.
+
+    The answer is read from their own words by the same deterministic parsers
+    the document path uses, so a figure that is not in the sentence cannot
+    reach the ledger. An answer outside a closed vocabulary — a yes/no that is
+    neither, a choice that is none of the offered ones — is refused with the
+    alternatives rather than guessed at."""
+    from ..interview import interviews
+    from ..ledger.events import SCOPE_ATTRIBUTE, VERIFIED, ruling_recorded
+    juris = _jurisdiction()
+    proj = vault.ledger.projection()
+    iv = next((i for i in interviews(proj, juris) if i.account == account), None)
+    if iv is None or iv.schema is None:
+        return {"ok": False, "why": "no_schema",
+                "message": "I don't have a shape for that account yet, so I "
+                           "wouldn't know what to do with the answer."}
+    question = iv.schema.question(key)
+    if question is None:
+        return {"ok": False, "why": "unknown_key",
+                "message": "That isn't something I ask about this one."}
+    spoken = (said or value or "").strip()
+    if not spoken:
+        return {"ok": False, "why": "empty",
+                "message": "Nothing came through — nothing was recorded."}
+    parsed = _read_answer(question, spoken, value, iv, proj)
+    if not parsed["ok"]:
+        return parsed
+    vault.ledger.append(ruling_recorded(
+        SCOPE_ATTRIBUTE, f"{account}:{key}", _today(), by="human",
+        grade=VERIFIED, said=spoken, value=parsed["value"],
+        currency=parsed["currency"],
+        corroborates=(question.corroborated_by[0]
+                      if question.corroborated_by else "")))
+    return {"ok": True, "account": account, "key": key,
+            "value": parsed["value"], "currency": parsed["currency"]}
+
+
+def _read_answer(question, spoken: str, tapped: str, iv, proj) -> dict:
+    """One answer, read by its type. Returns ``{ok, value, currency}`` or a
+    refusal carrying what would have been accepted."""
+    from .. import schemas
+    from ..env import locale_from_env
+    from vivacore.verify.normalize import parse_amount, parse_date
+    locale = locale_from_env()
+    answer = question.answer
+
+    if answer == schemas.ANSWER_MONEY:
+        got = parse_amount(spoken, locale=locale, currency=iv.currency or None)
+        if not got.ok:
+            return {"ok": False, "why": "unreadable_money",
+                    "message": f"I couldn't read that as an amount ({got.reason}). "
+                               "Could you write it the way it appears on paper?"}
+        return {"ok": True, "value": str(got.decimal()),
+                "currency": got.currency or iv.currency or ""}
+
+    if answer == schemas.ANSWER_DATE:
+        got = parse_date(spoken, locale=locale)
+        if not got.ok:
+            return {"ok": False, "why": "unreadable_date",
+                    "message": f"I couldn't read that as a date ({got.reason})."}
+        return {"ok": True, "value": got.value, "currency": ""}
+
+    if answer == schemas.ANSWER_RATE:
+        got = parse_amount(spoken.replace("%", " ").strip(), locale=locale)
+        if not got.ok:
+            return {"ok": False, "why": "unreadable_rate",
+                    "message": "I couldn't read that as a rate."}
+        return {"ok": True, "value": str(got.decimal()), "currency": ""}
+
+    if answer in (schemas.ANSWER_YES_NO, schemas.ANSWER_CHOICE):
+        allowed = (("yes", "no") if answer == schemas.ANSWER_YES_NO
+                   else tuple(question.choices))
+        for candidate in (tapped, spoken):
+            for option in allowed:
+                if str(candidate).strip().lower() == option.lower():
+                    return {"ok": True, "value": option, "currency": ""}
+        if not allowed:
+            return {"ok": False, "why": "no_vocabulary", "choices": [],
+                    "message": "I don't know which alternatives apply to you "
+                               "here, so I won't pretend to offer any."}
+        return {"ok": False, "why": "not_in_vocabulary", "choices": list(allowed),
+                "message": "I couldn't tell which of those you meant, and I'd "
+                           "rather ask again than guess: "
+                           + ", ".join(allowed) + "."}
+
+    if answer == schemas.ANSWER_LINK:
+        target = (tapped or spoken).strip()
+        if not proj.seen_account(target):
+            return {"ok": False, "why": "unknown_account",
+                    "message": "I don't have that account on file, so I can't "
+                               "link this to it."}
+        # And of the kind the schema says this points at.
+        target_kind = schemas.kind_of_account(
+            target, proj.account_info(target).jurisdiction or _jurisdiction(),
+            ledger_kind=proj.account_info(target).kind,
+            doc_types=proj.document_types_of(target))
+        if question.links_to and target_kind != question.links_to:
+            return {"ok": False, "why": "wrong_kind",
+                    "message": "That isn't the kind of thing this one can be "
+                               "tied to."}
+        return {"ok": True, "value": target, "currency": ""}
+
+    # The two free-form types: the person's own word, and a company's name.
+    if len(spoken) > schemas.MAX_FREE_FORM:
+        return {"ok": False, "why": "too_long",
+                "message": "That is longer than a name — a few words is plenty."}
+    return {"ok": True, "value": spoken, "currency": ""}
+
+
+def open_kind(vault: Vault, kind: str, name: str = "", secures: str = "",
+              said: str = "") -> dict:
+    """Propose the account a yes has opened. Writes nothing.
+
+    A yes to "is there a loan against it?" says the loan exists; it does not
+    say what it is called, and this product does not name a person's accounts
+    for them. So the reply is either the naming question, or a Proposal that
+    creates the account and records what it secures in the same confirmation."""
+    from .. import schemas
+    from ..listen import Proposal
+    from ..ledger.events import SCOPE_ATTRIBUTE
+    juris = _jurisdiction()
+    schema = schemas.schema_for(kind, juris)
+    if schema is None:
+        return {"ok": False, "why": "no_schema",
+                "message": "I don't have a shape for that kind yet."}
+    naming = schema.naming_question()
+    if naming is None:
+        return {"ok": False, "why": "unnameable",
+                "message": "I wouldn't know what to call it."}
+    label = (name or said or "").strip()
+    if not label:
+        return {"ok": False, "why": "needs_name", "asks": naming.asks,
+                "key": naming.key, "kind": kind, "kind_label": schema.label}
+    if len(label) > schemas.MAX_FREE_FORM:
+        return {"ok": False, "why": "too_long",
+                "message": "That is longer than a name — a few words is plenty."}
+    if not any(ch.isalnum() for ch in label):
+        # Punctuation and invisible characters are not a name a person could
+        # read back, and an account they cannot read is one they cannot check.
+        return {"ok": False, "why": "needs_name", "asks": naming.asks,
+                "key": naming.key, "kind": kind, "kind_label": schema.label}
+    proj = vault.ledger.projection()
+    # Through the same builder the rest of the ledger uses, so a name carrying
+    # a colon cannot inject a level into the hierarchy.
+    from ..ledger.postings import account_path
+    root, _, group = schema.account_shape.partition(":")
+    major = {"Assets": "asset", "Liabilities": "liability"}.get(root, "asset")
+    account = account_path(major, group, label)
+    if len(account.split(":")) < 3:
+        # The cleaner dropped every character of the name — punctuation alone
+        # is not a name, and what is left is the group.
+        return {"ok": False, "why": "needs_name", "asks": naming.asks,
+                "key": naming.key, "kind": kind, "kind_label": schema.label}
+    if secures and not proj.seen_account(secures):
+        return {"ok": False, "why": "unknown_account",
+                "message": "I don't have that account on file, so I can't tie "
+                           "this to it."}
+    existing = [a for a in proj.accounts()
+                if a.lower() == account.lower()]
+    account = existing[0] if existing else account
+    currency = (proj.account_info(secures).currency if secures else "") \
+        or _vault_currency(proj)
+    if not currency:
+        # No account exists to take a currency from, and no country-to-money
+        # table exists to invent one.
+        return {"ok": False, "why": "no_currency",
+                "message": "I don't know what currency to record this in yet — "
+                           "add a statement first, and I'll follow it."}
+    attributes = []
+    # The link whose `links_to` matches the secured account's kind, if any.
+    secured_kind = (schemas.kind_of_account(
+        secures, proj.account_info(secures).jurisdiction or juris,
+        ledger_kind=proj.account_info(secures).kind,
+        doc_types=proj.document_types_of(secures)) if secures else "")
+    link = next((q for q in schema.questions
+                 if q.answer == schemas.ANSWER_LINK
+                 and q.links_to == secured_kind), None)
+    if link is not None:
+        attributes.append({"key": link.key, "value": secures, "currency": "",
+                           "said": secures})
+    proposal = Proposal(
+        scope=SCOPE_ATTRIBUTE, subject=f"{account}:{naming.key}",
+        new_accounts=[] if existing else [account],
+        corroborates=(naming.corroborated_by[0]
+                      if naming.corroborated_by else ""),
+        said=label, value=label, currency=currency, attributes=attributes)
+    return {"ok": True, "confirm": True, "proposal": proposal.to_dict()}
+
+
+def pending(vault: Vault) -> dict:
+    """Everything set aside and still open — the list the person opens
+    themselves, rather than a question that chases them."""
+    from ..questions import pending_questions
+    return pending_questions(vault.ledger, as_of=_today()[:10],
+                             jurisdiction=_jurisdiction())
 
 
 def listen_to(vault: Vault, said: str, descriptor: str, movement_key: str = "",
@@ -323,7 +556,11 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
 
     items = []
     for m in proj.movements():
-        if normalize_merchant(m.description) != key:
+        # Any key this counterparty is filed under matches: a merchant named by
+        # a grammar's brand slot and the same merchant named by its raw
+        # descriptor are one counterparty, and a person asking about it by
+        # either name means the same thing.
+        if key not in proj.merchant_keys_of(m):
             continue
         ruling = proj.derived_category(m) or {}
         items.append({

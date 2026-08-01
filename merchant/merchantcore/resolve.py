@@ -87,6 +87,21 @@ class Resolution:
         that cannot be decomposed still recurs."""
         return self.local_key or normalize_merchant(self.raw) or (self.raw or "").strip().lower()
 
+    @property
+    def merchant_key(self) -> str:
+        """The key everything known about this counterparty is filed under: the
+        normalized brand a layer named, else `key`.
+
+        Identity is brand-level, so two locations of one retailer are one key.
+        Where no layer could name a brand the fallback is the whole descriptor
+        normalized, which is what `key` already is — so a line nothing could
+        decompose is still filed under something stable.
+
+        One property rather than an expression each caller writes: a merchant
+        filed under one key and looked up under another is knowledge that
+        cannot be read."""
+        return normalize_merchant(self.brand) or self.key
+
     def shareable(self) -> dict:
         """The non-empty impersonal fields, plus `brand` when there is one.
 

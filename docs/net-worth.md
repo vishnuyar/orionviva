@@ -61,6 +61,8 @@ This is the decision that makes the honesty machinery *cost nothing today*. We r
 
 **Kind A — asserted.** You told us the car cost X. Nobody issued a document. **Trust it, include it, badge it `asserted`.**
 
+**And when you have not told us yet — the disclosed gap (2026-08-01).** An asserted asset whose cost nobody has stated is neither counted nor hidden. It is reported in `missing` with the question that closes it, so the point reads **incomplete** rather than quietly complete: a zero would be a number nobody stated, and silence would let a total claim to include something it does not. The same applies when the schema pack cannot yet ask about the kind at all — *I have no way to ask what this cost* is an answer; omitting it is not. Which essential closes the gap is `gates_net_worth` in the schema pack, and the date the figure belongs to is `dates_net_worth`, so a flat bought years ago is not a step on the day it was mentioned. A stated cost **replaces** the cash-derived line for that account rather than adding to it: the sum of the instalments paid so far is not what the thing cost.
+
 **Kind B — undecomposable.** Cash reached the mortgage servicer; how much of it reduced the debt rather than paying interest is unknown. **Trusting you produces no number here, because you do not know either** — only the statement does. This is `reliable_balance = False`, already tracked by `ruled_accounts`.
 
 **The ruling:** *ask, record it, and correct it when the document arrives.* The queue asks what you roughly owe; your answer is recorded as `asserted` with its own as-of date, exactly like the car; the 1098 or the mortgage statement later **upgrades** it to `corroborated` rather than unlocking it. Until you answer, the liability appears in the list with its amount unknown and the total is marked **incomplete** — knowingly too favourable, and saying so.
@@ -91,7 +93,8 @@ NetWorthPoint
   net            assets − liabilities, per currency
   oldest_input   the as_of of the stalest measurement in this point
   complete       False when any known obligation has no usable amount
-  missing        what is excluded, and the document that would fix it
+  missing        what is excluded, and what would fix it — a document, or
+                 the question nobody has answered yet
   lines[]        account · amount · as_of · grade · origin · what proves it
 ```
 
@@ -103,7 +106,7 @@ NetWorthPoint
 
 1. **Every line carries its own as-of date and grade.** No figure is ever dressed as "current" (the valuation-class invariant, inherited from positions and investments).
 2. **Every point names its stalest input.** A total resting on a four-month-old brokerage statement says so.
-3. **Incompleteness is stated, never absorbed.** An obligation we cannot value keeps the total marked incomplete and names the document that would fix it.
+3. **Incompleteness is stated, never absorbed.** An obligation we cannot value keeps the total marked incomplete and names the document that would fix it. An asset nobody has priced does the same, and what it names is the **question** that closes it rather than a document — including the case where the schema pack cannot yet ask about the kind at all.
 4. **Cost is never presented as value.** A car holds its purchase price. Any present-day worth is an `estimated` layer on top, and is not built in this slice.
 5. **`reliable_balance = False` never enters a sum.** Cash reaching a mortgage account is a fact; treating all of it as debt reduction is not.
 6. **No model is involved.** This is arithmetic over recorded measurements, end to end.
