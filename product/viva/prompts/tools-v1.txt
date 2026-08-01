@@ -1,0 +1,14 @@
+# tool: query_ledger
+Read the ledger. entity says what to read: "balances" (each real account's balance, with grade and source), "transactions" (posted movements with nature, category and tags), "holdings" (measured positions from each account's latest statement), or "aggregate" (metric "spending" grouped by group_by, metric "income" per currency, or metric "net_worth" as of a date). filters narrow by account, category, tag, merchant, nature, currency, or a from/to date window; every filter value must be one the vault actually holds, and an unknown value is refused with the known values named. Every figure returned carries its verification grade and the documents it rests on. Amounts are exact decimal strings; nothing is converted between currencies.
+
+# tool: check_completeness
+How complete and how current the picture is: documents held versus posted, statements awaiting review and why, each account's latest evidenced date, and how many counterparties are still unidentified. Ask before trusting a total for anything that needs every statement present, and use the answer to say what a figure does not yet include.
+
+# tool: get_provenance
+Where a figure comes from. Give record_id as a movement key, an account id, or a document id; the answer names the source document, page and region, the verification grade, and — for a movement — the rung that decided its nature. Use it to answer "why do you say that?" about any figure another tool returned.
+
+# tool: get_transparency
+What the agent has done on its own and what questions were set aside. topic "agent_activity" lists every unattended action with its outcome; "calls_spent" counts the model calls the agent spent, optionally since a date; "declined_questions" lists the questions the person set aside and the stake each showed when declined.
+
+# tool: compute
+Exact decimal arithmetic over figures other tools returned. expression uses +, -, *, /, parentheses and names; inputs binds each name to a decimal string, and record_ids may carry the source documents of those inputs forward so the result stays cited. The result inherits the weakest grade among the grades given for the inputs. Never do arithmetic yourself; pass it here.

@@ -1,0 +1,45 @@
+"""The agent's read tools: a typed registry over the ledger projection.
+
+Five verbs, all deterministic, all local: ``query_ledger`` (the workhorse),
+``check_completeness``, ``get_provenance``, ``get_transparency`` and
+``compute``. Verbs whose machinery does not exist yet are not registered at
+all — a tool that could only refuse would teach a planner to ignore tools.
+
+``default_registry(proj)`` builds the registry over one live projection;
+``runner.run`` drives any planner over it, native or text, and gates every
+answer on citation.
+"""
+
+from __future__ import annotations
+
+from . import ledger_tools
+from .compute import COMPUTE_PARAMS, compute
+from .envelope import ToolResult, refusal, weakest
+from .registry import Registry, ToolSpec
+from .runner import RunResult, run
+
+__all__ = ["Registry", "ToolSpec", "ToolResult", "RunResult",
+           "default_registry", "refusal", "run", "weakest"]
+
+_NO_PARAMS = {"type": "object", "properties": {}}
+
+
+def default_registry(proj) -> Registry:
+    """The five read tools, bound to one projection."""
+    registry = Registry()
+    registry.register(ToolSpec(
+        name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
+        fn=lambda args: ledger_tools.query_ledger(proj, args)))
+    registry.register(ToolSpec(
+        name="check_completeness", params=_NO_PARAMS,
+        fn=lambda args: ledger_tools.check_completeness(proj, args)))
+    registry.register(ToolSpec(
+        name="get_provenance", params=ledger_tools.PROVENANCE_PARAMS,
+        fn=lambda args: ledger_tools.get_provenance(proj, args)))
+    registry.register(ToolSpec(
+        name="get_transparency", params=ledger_tools.TRANSPARENCY_PARAMS,
+        fn=lambda args: ledger_tools.get_transparency(proj, args)))
+    registry.register(ToolSpec(
+        name="compute", params=COMPUTE_PARAMS,
+        fn=compute))
+    return registry

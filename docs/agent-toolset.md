@@ -1,6 +1,6 @@
 # Agent Toolset — the twelve verbs Viva may ever use
 
-**Status:** Design — unbuilt; the read direction (Slice 9 — Viva speaks) is where it lands · **Last updated:** 2026-07-20 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
+**Status:** Design; **the read verbs are built** — registry v1 (2026-08-01) implements `query_ledger`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md). The remaining verbs await their machinery. · **Last updated:** 2026-08-01 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2 (compute/project are deterministic; no arithmetic in the model), T4 (all writes are events), T6 (no tool touches the network), X3 (irreversibility structurally impossible — no tool can do anything irreversible)
 
 ## The scaling law
@@ -76,6 +76,15 @@
 
 ## Open questions
 
-- The `query_ledger` query language shape (structured filters vs constrained DSL) — architecture phase, with the data model.
-- Whether `find_patterns` and `list_obligations` are true tools or named projections exposed through `query_ledger` (implementation detail; the verb count is the interface either way).
+- ~~The `query_ledger` query language shape (structured filters vs constrained DSL)~~ — **settled 2026-08-01: a structured filter object**, every value validated against the vault's own learned vocabulary and refused with the known values named. See [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), D3.
+- ~~Whether `find_patterns` and `list_obligations` are true tools or named projections exposed through `query_ledger`~~ — **settled 2026-08-01: neither is in registry v1**; when their machinery exists they begin as named projections through `query_ledger` and are promoted to verbs only if their argument shapes refuse to fit (D2, same doc).
 - Phase 3 preview: the draft-and-approve mechanism for actions lives *outside* this toolset by design — its shape is a B6 (capability model) question, not a toolset question.
+
+> _Amended 2026-08-01: the invocation modality — how a model's intention becomes
+> a tool call — is settled as a **modality-neutral contract**: the registry
+> defines schemas, envelope and refusal semantics; the model adapter chooses the
+> wire format (native tool-calling first, text protocol as degradation), so the
+> choice is reversible per model rather than a global bet. The composer's T1
+> gate — refuse any figure without a record id — runs in code, outside the
+> modality, in `viva/tools/runner.py`. Tool descriptions are a versioned,
+> digest-pinned prompt file (`tools-v1`), never Python literals._
