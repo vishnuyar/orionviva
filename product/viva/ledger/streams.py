@@ -326,12 +326,11 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
         res = resolve_descriptor(m.description,
                                  profile_for(m) if profile_for else None,
                                  ach_split)
-        # The brand when a layer could name one, the resolver's deterministic
-        # key when not — so a refused line is still keyed and still counted, it
-        # simply gets no decomposition. `normalize_merchant` runs over the brand
-        # too, so the key is canonical rather than whatever casing the bank used.
-        counterparty = (res.counterparty if res.is_person
-                        else (normalize_merchant(res.brand) or res.key))
+        # A person is keyed by the party a slot named; everyone else by
+        # `merchant_key`, the same property the read side resolves through, so a
+        # merchant is filed and looked up under one name. A refused line is
+        # still keyed and still counted, it simply gets no decomposition.
+        counterparty = res.counterparty if res.is_person else res.merchant_key
         if not counterparty:
             continue
         role = movement_role(m, kind_for(m) if kind_for else None)

@@ -1,6 +1,6 @@
 # The Interview & the Schema Pack — a question that continues
 
-**Status:** Design spec — **approved 2026-08-01, unbuilt.** Cycle 1 is the next build. · **Created:** 2026-08-01 · **Origin:** Vishnu: *"the current question framing in this product is already stale: it just feels like a list of buttons for the user, with no intelligence on the site… we should probably create a schema for all types of assets and liabilities which might be there in a person's financial journey… some are probably a must, some are good to have."* · **Governed by:** [ADR-012](decisions/ADR-012-the-interview-model-boundary.md) · **Blocks seeded:** the **interview primitive** (a question with a next step) · the **schema pack** (the fourth pack) · the **closed-vocabulary selector** · **account-scope tags** · the **disclosed gap** in net worth.
+**Status:** Design spec — **approved 2026-08-01. Cycle 1 built 2026-08-01** (as-built note below); cycles 2 and 3 unbuilt. · **Created:** 2026-08-01 · **Origin:** Vishnu: *"the current question framing in this product is already stale: it just feels like a list of buttons for the user, with no intelligence on the site… we should probably create a schema for all types of assets and liabilities which might be there in a person's financial journey… some are probably a must, some are good to have."* · **Governed by:** [ADR-012](decisions/ADR-012-the-interview-model-boundary.md) · **Blocks seeded:** the **interview primitive** (a question with a next step) · the **schema pack** (the fourth pack) · the **closed-vocabulary selector** · **account-scope tags** · the **disclosed gap** in net worth.
 
 **Invariants touched:** **T1** (every attribute carries a source and a grade) · **T2** (the model selects a key and writes a sentence; it never supplies a value, picks an account, or posts) · **T3** (envelope and reply captured verbatim) · **T4** (every answer and decline is an event — and this spec adds *no new event type*) · **T6** (two enumerated outbound flows, whitelisted — ADR-012) · **T8** (prompt version and model stamped on every interview call) · **T9** (a schema is impersonal world knowledge and shareable; every answer and every tag is personal and vault-only) · **M1** (a created asset records what was *paid*, never what it is *worth*) · **I5/I6** (schemas are jurisdiction-tagged pack entries, never US-shaped code) · **X2** (an asset whose essentials are unfilled is a disclosed gap, never a zero) · **X3** (no account exists without an explicit yes) · principles **5** (serve, don't overwhelm), **6** (you direct the pace).
 
@@ -145,7 +145,7 @@ Amendments owed as cycles build: **viva-persona-and-interview.md** — P3 is now
 
 ## Open questions
 
-- ~~The seeded pack's exact membership.~~ **Answered** — the appendix below, nine kinds in the seed and five named for arrival. It still wants Vishnu's strike-and-add pass before the Builder writes the pack data.
+- ~~The seeded pack's exact membership.~~ **Answered** — the appendix below, nine kinds in the seed and five named for arrival. Written as drafted; a strike-and-add pass is a data edit to `schemas-v1.json`, and a released pack is frozen by digest, so a change is a new pack version.
 - **Pending, on the surface.** Vishnu's sketch is a small marker — a star or a question mark — saying something else is waiting. Deliberately parked: it belongs to the presentation layer's own design conversation, and D5 only requires that pending state *exists* and is reachable.
 - **Does `opens` create the second account immediately, or ask first?** A mortgage opened from a property answer is still an account coming into being, so X3 says it is confirmed — but confirming twice in one breath may read as friction. Worth deciding on the first real run rather than now.
 - **Attribute decline for essentials.** An optional decline is settled (D5). An *essential* declined leaves the interview terminated but the asset gapped forever — correct, and it should be visible in coverage rather than merely true.
@@ -228,3 +228,61 @@ Every kind below states its **essentials** (which rank, terminate the interview,
 ## What the appendix does not settle
 
 The **first-encounter generation path (D3) is what makes this list adequate rather than complete.** Nine kinds do not describe a financial life; they describe the part of one the author can check against real documents this month. Everything else arrives by being met, drafted, flagged unreviewed, and promoted on a read — which is the same bargain the merchant catalog and the expectations registry already run on.
+
+---
+
+# As built — cycle 1
+
+**How a schema finds an account.** The spec assumed an account's path names its
+kind. It does not: an ingested account is `acct:<institution>:<last4>`, and an
+account a tier-2 ruling opens is `<Root>:<group>:<name>` where the group is a
+word a model wrote at enrichment. Ruled by Vishnu, 2026-08-01: resolve by the
+**ledger's account kind**, with three sources of evidence, strongest first.
+
+| | Evidence | Applies to |
+|---|---|---|
+| 1 | the path's `account_shape` | accounts the interview created |
+| 2 | the **document types** an issuer produced for it (`document_types`) | anything ingested |
+| 3 | the **ledger's account kind** (`account_kinds`), *only when one kind claims it* | the rest |
+
+Step 2 names types from the ingestion pipeline's own registry rather than a
+second vocabulary, and the lint refuses an alias — a document resolves to its
+canonical type, so an alias would match nothing. Step 3 refuses an ambiguous
+answer: a loan and a card are both `liability`, so that word alone resolves
+nothing and the interview records the gap instead of asking a question built on
+a guess.
+
+**A classified document answers the question its own type settles.** A checking
+statement has already said the account is a checking account, so
+`answered_by_document` (pack data: document type → answer) marks the question
+answered and the queue stays quiet. Without it the first thing the queue asked
+about a bank account was the thing its own statement had just said.
+
+**Two amendments to the decisions.**
+
+- **D6 gains a pack field.** Which essential gates net worth is
+  `gates_net_worth` in the pack, and which one dates the carried figure is
+  `dates_net_worth`; the curve does not infer either from an answer type. An
+  asserted asset with a stated cost is a line *at cost*, graded `verified` and
+  origin `asserted`, and it **replaces** any cash-derived line for that account
+  rather than adding to it.
+- **The attribute value is a new field on `RulingRecorded`, and the only
+  write-side addition.** `value` and `currency`, at attribute scope alone. A
+  figure it carries must appear among the numbers the person wrote, a
+  non-finite value is refused, and a negative one is refused. Attribute rulings
+  are kept as a **history**, so a correction does not reach backwards into an
+  earlier point on the curve.
+
+**Also built, beyond the cycle-1 list:** a pending list the person can open
+(D5 required only that pending state exist and be reachable), and the confirmed
+sentence now names an existing account it guessed at rather than choosing one
+silently.
+
+**Not built, and owed.** An attribute ruling does not stamp the schema pack
+version the way the persona and prompt packs stamp theirs. D9's jurisdiction as
+a graded attribute with the country tag derived is not implemented — the field
+is stored on the account and defaults to empty, meaning nobody has said. A
+retirement account is unreachable from a document, because `401k_statement` and
+`ira_statement` alias to `brokerage_statement`. And **cycle 1 has not run on a
+real document and a real answer**, which the standing gate requires before it
+is called done.

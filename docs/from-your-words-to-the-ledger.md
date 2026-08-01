@@ -35,7 +35,7 @@ Every movement's counter-leg is one of **four majors**, closed and universal:
 1  frame_question      deterministic   (exists — the question queue)
 2  suggest_answers     deterministic   from merchant category/subcategory: the common case is a button
 3  interpret           ← THE MODEL     your sentence → a structured proposal
-4  resolve_account     deterministic   exact match / candidate to confirm / new
+4  resolve_account     deterministic   exact match / candidate to confirm / new / unnamed
 5  propose_posting     deterministic   the legs, the accounts, what changes, how much moves
 6  confirm → apply     deterministic   simple_transaction | split_transaction + the ruling event
 ```

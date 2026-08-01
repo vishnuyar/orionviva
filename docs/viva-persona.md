@@ -45,7 +45,7 @@ Viva's questions are not free compositions — each kind is machinery this produ
 | What a payment *was*, when only the person can say | the four majors (rulings in your own words), the three tiers |
 | The document that would prove an assertion | corroboration asks |
 | The document that must exist somewhere | the expectations engine |
-| An entity's missing attributes (rate, term, nickname) | attribute schemas (P3, planned) |
+| An entity's missing attributes (rate, term, nickname) | the schema pack + the derived interview — built 2026-08-01, [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
 
 ## Handling "I don't know"
 

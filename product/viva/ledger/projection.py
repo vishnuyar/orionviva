@@ -28,7 +28,8 @@ from vivacore.verify.arithmetic import CheckResult, check_balance_identity
 
 from .events import (SCOPE_CATEGORY, SCOPE_MERCHANT, SCOPE_TAG, ASSERTED, CONFLICTED, CORROBORATED, ISSUED, MAJOR_ASSET,
                      MAJOR_EXPENSE, MAJOR_INCOME, MAJOR_LIABILITY,
-                     SCOPE_ACCOUNT, SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
+                     SCOPE_ACCOUNT, SCOPE_ATTRIBUTE, SCOPE_MERCHANT,
+                     SCOPE_MOVEMENT, UNVERIFIED,
                      VERIFIED, Event, Provenance, postings_of)
 from .identity import (account_key, account_tokens, names_overlap,
                        number_key, slug)
@@ -79,6 +80,11 @@ class AccountInfo:
     number: str = ""                       # as extracted (mask for display)
     names: list[str] = field(default_factory=list)   # account holder name(s)
     origin: str = ISSUED     # who says this account exists
+    # Where the INSTRUMENT lives — not where the person lives, and not its
+    # currency: a person may hold an instrument of one country from another.
+    # It decides which schema applies and which documents would attest it.
+    jurisdiction: str = ""
+    opened_at: str = ""      # when this account entered the ledger
 
 
 @dataclass
@@ -276,6 +282,12 @@ class _AccountState:
     number: str = ""
     names: list = field(default_factory=list)
     origin: str = ISSUED          # who says this account exists
+    jurisdiction: str = ""        # where the instrument lives
+    opened_at: str = ""           # when it entered the ledger
+    # Every document that has said anything about this account. What KIND of
+    # thing an account is is best answered by the documents an issuer produced
+    # for it, so this is the evidence a schema is chosen on.
+    doc_ids: set = field(default_factory=set)
     closing_confirmed: bool = False            # a human attested the closing
     # Every dated closing, not just the latest: net worth is a curve, so "the
     # balance at D" must be answerable for any D. The latest-wins fields above
@@ -308,8 +320,15 @@ class LedgerProjection:
     with no double-count and no event to reverse.
     """
 
-    def __init__(self, events: Iterable[Event], as_of: str | None = None) -> None:
+    def __init__(self, events: Iterable[Event], as_of: str | None = None,
+                 resolve_keys=None) -> None:
         self.as_of = as_of
+        # How a descriptor becomes the key its merchant knowledge is filed
+        # under. None means "normalize the descriptor", which is right wherever
+        # no grammar has named a brand. See `merchant_keys`.
+        self._resolve_keys = resolve_keys
+        self._mkeys: dict | None = None
+        self._mkeys_of: dict = {}
         self._acct: dict[str, _AccountState] = {}
         # Ingest read-model, maintained incrementally alongside balances.
         self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
@@ -338,6 +357,11 @@ class LedgerProjection:
         # Rulings: (scope, subject) -> body. One dict for every scope, so a
         # movement ruling and a merchant ruling are looked up the same way.
         self._rulings: dict[tuple[str, str], dict] = {}
+        # Every attribute ruling ever recorded, in arrival order, not just the
+        # latest. A correction must not reach backwards: an earlier point on
+        # the net-worth curve has to keep reading the answer that was true when
+        # it was drawn, the same reason closings and holdings keep histories.
+        self._attribute_history: list[dict] = []
         # Declined questions: question id -> the decline body, which snapshots
         # the stake (amount, count) the question showed when it was set aside.
         # The queue compares against the live stake; this only remembers.
@@ -375,13 +399,22 @@ class LedgerProjection:
             # An absent `origin` reads as `issued`: an event written before the
             # field existed came from a document.
             st.origin = event.body.get("origin", ISSUED)
+            st.jurisdiction = event.body.get("jurisdiction", "")
+            st.opened_at = st.opened_at or event.occurred_at
+            if did:
+                st.doc_ids.add(did)
             self._own_tokens_cache = None      # a new account changes the index
+            # Which grammar reads an account's descriptors follows from its
+            # institution and kind, so learning either re-keys its merchants.
+            self._mkeys, self._mkeys_of = None, {}
 
         elif et == "OpeningBalanceObserved":
             acct = event.body["account_id"]
             amount = Decimal(event.body["amount"])
             st = self._state(acct)
             st.seen = True
+            if did:
+                st.doc_ids.add(did)
             if did:
                 self._posted.add(did)
             # Keep the EARLIEST opening; it is injected once at query time, so a
@@ -432,6 +465,10 @@ class LedgerProjection:
 
         elif et == "RulingRecorded":
             key = (event.body["scope"], event.body["subject"])
+            # The date travels with the ruling: an attribute stated in
+            # September must not change what an earlier point on the net-worth
+            # curve says about itself.
+            event.body.setdefault("occurred_at", event.occurred_at)
             prior = self._rulings.get(key)
             # Same precedence as every other overlay: a verified ruling wins and
             # is never overwritten by a model's later guess.
@@ -439,6 +476,8 @@ class LedgerProjection:
                 self._rulings[key] = event.body
             if event.body["scope"] == SCOPE_ACCOUNT:
                 self._own_tokens_cache = None
+            if event.body["scope"] == SCOPE_ATTRIBUTE:
+                self._attribute_history.append(dict(event.body))
             # Label aliases are maintained here rather than derived per lookup:
             # `derived_category` is the funnel every aggregate reads through, so
             # a per-lookup derivation would rebuild the map on every call.
@@ -472,6 +511,8 @@ class LedgerProjection:
             acct = event.body["account_id"]
             st = self._state(acct)
             st.seen = True
+            if did:
+                st.doc_ids.add(did)
             if did:
                 self._posted.add(did)
             # Across stitched months the latest-dated closing is the current
@@ -534,6 +575,9 @@ class LedgerProjection:
         elif et == "TransactionRecorded":
             if did:
                 self._posted.add(did)
+            # A new descriptor may resolve differently once the ACH corpus
+            # grows, so the key map is dropped rather than extended.
+            self._mkeys, self._mkeys_of = None, {}
             for p in postings_of(event):
                 st = self._state(p.account)
                 st.seen = True
@@ -664,6 +708,85 @@ class LedgerProjection:
                 and s.origin == ISSUED}
         return self._own_tokens_cache
 
+    # --- merchant identity ---------------------------------------------------
+    #
+    # A merchant is filed under its BRAND: two locations of one retailer are one
+    # key and one record. Naming the brand takes the resolution layers, and the
+    # best of them is a grammar living outside the event log — so the key map is
+    # built by an injected resolver rather than derived from events. Without one
+    # a descriptor normalizes to itself, which is what every read did before
+    # grammars existed.
+    #
+    # Every lookup therefore considers TWO keys. Knowledge recorded before a
+    # grammar could name the brand sits under the descriptor, and a person's
+    # answer is the most trustworthy record in the vault; a lookup that found
+    # only the brand key would lose it. The candidates are ranked by grade, the
+    # brand winning a tie, so the strongest record answers regardless of which
+    # name it happens to be filed under.
+
+    def _merchant_key_map(self) -> dict:
+        """`{(account, descriptor): brand key}` for every line held.
+
+        Built once and dropped whenever a transaction or an account arrives,
+        because both can change how a descriptor resolves."""
+        if self._mkeys is None:
+            if self._resolve_keys is None:
+                self._mkeys = {}
+            else:
+                # Only the accounts `movements` reads: the other side of a
+                # posting is a category, and a category has no counterparty.
+                self._mkeys = self._resolve_keys(
+                    [(account, st.institution, st.kind, ln.description)
+                     for account, st in self._acct.items()
+                     if st.kind in ("depository", "liability", "investment")
+                     for ln in st.lines])
+        return self._mkeys
+
+    def merchant_keys_of(self, m: "MovementInfo") -> tuple:
+        """Every key this movement's merchant could be filed under, strongest
+        identity first: the brand, then the descriptor where they differ.
+
+        Memoized per descriptor: this is read several times for every movement
+        in the vault on every aggregate, and normalization is a run of regular
+        expressions."""
+        cached = self._mkeys_of.get((m.account, m.description))
+        if cached is not None:
+            return cached
+        descriptor_key = normalize_merchant(m.description)
+        brand_key = self._merchant_key_map().get((m.account, m.description),
+                                                 descriptor_key)
+        keys = ((descriptor_key,) if brand_key in ("", descriptor_key)
+                else (brand_key, descriptor_key))
+        self._mkeys_of[(m.account, m.description)] = keys
+        return keys
+
+    def merchant_key_of(self, m: "MovementInfo") -> str:
+        """The single key this movement's merchant is known by now — what a
+        surface groups on and what a new ruling about it is written under."""
+        return self.merchant_keys_of(m)[0]
+
+    def _merchant_graded(self, get, m: "MovementInfo") -> dict | None:
+        """The highest-graded record `get(key)` finds among the candidates, or
+        None. Ties go to the first candidate, which is the brand."""
+        best = None
+        for key in self.merchant_keys_of(m):
+            found = get(key)
+            if found is None:
+                continue
+            if best is None or _grade_rank(found.get("grade")) > _grade_rank(best.get("grade")):
+                best = found
+        return best
+
+    def _merchant_record(self, m: "MovementInfo") -> dict | None:
+        """This movement's catalog record — what enrichment learned about the
+        counterparty, or what a person ruled about it."""
+        return self._merchant_graded(self._merchant_categories.get, m)
+
+    def _merchant_ruling(self, m: "MovementInfo") -> dict | None:
+        """The merchant-scoped ruling covering this movement, if one was made."""
+        return self._merchant_graded(
+            lambda key: self._rulings.get((SCOPE_MERCHANT, key)), m)
+
     def _decide_nature(self, m: "MovementInfo") -> None:
         """Set `nature`, `nature_reason`, `provisional` and `ruling_account` on
         one movement, from the strongest evidence available.
@@ -690,7 +813,7 @@ class LedgerProjection:
         # future), then the `nature` field carried on the category overlay or
         # the merchant's attributes.
         ruling = (self._rulings.get((SCOPE_MOVEMENT, m.key))
-                  or self._rulings.get((SCOPE_MERCHANT, normalize_merchant(m.description))))
+                  or self._merchant_ruling(m))
         if ruling and ruling.get("legs"):
             m.nature, m.nature_reason = nature_of_legs(ruling["legs"]), BY_RULING
             m.ruling_account = _leading_account(ruling["legs"])
@@ -699,7 +822,7 @@ class LedgerProjection:
             return
         nature = (self._categories.get(m.key) or {}).get("nature")
         if nature not in (TRANSFER, SETTLEMENT, SPENDING):
-            merchant = self._merchant_categories.get(normalize_merchant(m.description)) or {}
+            merchant = self._merchant_record(m) or {}
             nature = (merchant.get("attributes") or {}).get("nature")
         if nature in (TRANSFER, SETTLEMENT, SPENDING):
             m.nature, m.nature_reason = nature, BY_RULING
@@ -848,7 +971,7 @@ class LedgerProjection:
             if m.ruling_account:
                 accounts.add(m.ruling_account)
             ruling = (self._rulings.get((SCOPE_MOVEMENT, m.key))
-                      or self._rulings.get((SCOPE_MERCHANT, normalize_merchant(m.description))))
+                      or self._merchant_ruling(m))
             if ruling and ruling.get("corroborates"):
                 docs.add(ruling["corroborates"])
         return {"total": total, "count": count,
@@ -894,7 +1017,13 @@ class LedgerProjection:
         """The first implication a MERCHANT KEY carries in the given direction,
         or None. Keyed on the catalog rather than on a movement, so a caller can
         ask about a counterparty it has not seen yet."""
-        record = self._merchant_categories.get(merchant)
+        return self._implication_in(self._merchant_categories.get(merchant),
+                                    inflow=inflow)
+
+    @staticmethod
+    def _implication_in(record: dict | None, inflow: bool = False) -> dict | None:
+        """The first implication a catalog record carries in the given
+        direction, or None."""
         implies = ((record or {}).get("attributes") or {}).get("implies") or []
         want = "inflow" if inflow else "outflow"
         for item in implies:
@@ -908,12 +1037,13 @@ class LedgerProjection:
         Money out to a lender repays borrowing; money in from one is the
         borrowing. Same counterparty, opposite sign, opposite meaning — so `on`
         is data on the implication rather than a branch in the caller."""
-        return self.implication_for(normalize_merchant(m.description),
+        return self._implication_in(self._merchant_record(m),
                                     inflow=m.amount > 0)
 
     def counterparty_kind(self, m: "MovementInfo") -> str:
         """business | instrument | peer | "" — learned, not pattern-matched."""
-        return self.kind_of_merchant(normalize_merchant(m.description))
+        return ((self._merchant_record(m) or {}).get("attributes")
+                or {}).get("counterparty_kind", "")
 
     def kind_of_merchant(self, merchant: str) -> str:
         record = self._merchant_categories.get(merchant)
@@ -948,7 +1078,7 @@ class LedgerProjection:
                                                    "merchants": set()})
             row["count"] += 1
             row["amount"] += abs(m.amount)
-            row["merchants"].add(normalize_merchant(m.description) or m.description)
+            row["merchants"].add(self.merchant_key_of(m) or m.description)
         return {k: {"count": v["count"], "amount": v["amount"],
                     "merchants": len(v["merchants"])} for k, v in out.items()}
 
@@ -975,7 +1105,8 @@ class LedgerProjection:
         arts" and "this visit was a birthday present" are both true, and the
         movement is found under either."""
         own = self._movement_tags.get(m.key, [])
-        shared = self._merchant_tags.get(normalize_merchant(m.description), [])
+        shared = next((self._merchant_tags[k] for k in self.merchant_keys_of(m)
+                       if self._merchant_tags.get(k)), [])
         return sorted({self.canonical_tag(t) for t in list(own) + list(shared)})
 
     def tag_aliases(self) -> dict[str, str]:
@@ -1095,13 +1226,11 @@ class LedgerProjection:
 
     def derived_category(self, m: "MovementInfo") -> dict | None:
         """A movement's effective category: a per-transaction override wins,
-        else the merchant catalog by normalized descriptor, else None. Returns
-        the ruling dict ({category, grade, ...}) with its labels
+        else the strongest catalog record its merchant is filed under, else
+        None. Returns the ruling dict ({category, grade, ...}) with its labels
         canonicalized."""
         override = self._categories.get(m.key)
-        found = (override if override is not None
-                 else self._merchant_categories.get(
-                     normalize_merchant(m.description)))
+        found = override if override is not None else self._merchant_record(m)
         if found is None:
             return None
         # Canonicalized here, at the one funnel every aggregate reads through,
@@ -1186,7 +1315,7 @@ class LedgerProjection:
                   else [m for m in self.movements()
                         if self.derived_category(m) is None])
         for m in source:
-            key = normalize_merchant(m.description)
+            key = self.merchant_key_of(m)
             if not key:
                 continue
             # The LINTED example, never the raw line: a raw descriptor carries
@@ -1255,7 +1384,25 @@ class LedgerProjection:
         return AccountInfo(account=account, kind=st.kind, origin=st.origin,
                            currency=st.currency, name=st.name,
                            institution=st.institution, number=st.number,
-                           names=list(st.names))
+                           names=list(st.names), jurisdiction=st.jurisdiction,
+                           opened_at=st.opened_at)
+
+    def document_types_of(self, account: str) -> set:
+        """The canonical doc types of every document that has spoken about this
+        account. The strongest evidence there is for what KIND of thing it is:
+        an issuer produced a card statement for it, so it is a card."""
+        st = self._acct.get(account)
+        if st is None or not st.doc_ids:
+            return set()
+        from ..ingest.registry import profile_for
+        # The store itself, not a copy: this is called once per account.
+        seen = self._captured
+        out = set()
+        for did in st.doc_ids:
+            profile = profile_for(seen.get(did, ""))
+            if profile is not None:
+                out.add(profile.doc_type)
+        return out
 
     def account_infos(self) -> list[AccountInfo]:
         return [self.account_info(a) for a in self.accounts()]

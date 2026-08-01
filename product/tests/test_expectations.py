@@ -131,7 +131,10 @@ def test_cadence_expectation_ranks_below_money_and_names_the_edge(tmp_path):
                if x["refs"].get("registry_entry") == "statement-currency"]
     assert len(cadence) == 1
     assert "2026-03-31" in cadence[0]["text"], "the edge date is named"
-    assert qs["questions"][-1]["id"] == cadence[0]["id"], "stake 0 ranks last"
+    money = [x for x in qs["questions"] if Decimal(x["amount"]) > 0]
+    positions = [i for i, x in enumerate(qs["questions"]) if x["id"] == cadence[0]["id"]]
+    assert all(qs["questions"].index(m) < positions[0] for m in money), (
+        "every question that settles money outranks it")
     # …and within the cadence window, silence.
     fresh = open_questions(vault.ledger, limit=100, as_of=AS_OF,
                            jurisdiction="US")

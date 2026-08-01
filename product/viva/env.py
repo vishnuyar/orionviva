@@ -25,6 +25,16 @@ def load_dotenv(path: str = ".env") -> bool:
     return True
 
 
+def jurisdiction_from_env() -> str:
+    """The region the vault's locale names, or '' when it names none.
+
+    The ONE place this is derived. Two readers of the same schema pack that
+    resolved it differently would ask for a fact through one door and refuse it
+    at the other."""
+    parts = locale_from_env().split("-")
+    return parts[1] if len(parts) > 1 else ""
+
+
 def locale_from_env() -> str:
     """The configured locale, canonicalized — the one accessor every entry point
     uses. ``VIVA_LOCALE`` defaults to ``en-US``.

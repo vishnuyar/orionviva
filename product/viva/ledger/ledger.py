@@ -22,15 +22,19 @@ from .store import EventStore
 class Ledger:
     """An EventStore wrapped with a cached, incrementally-updated projection."""
 
-    def __init__(self, store: EventStore) -> None:
+    def __init__(self, store: EventStore, resolve_keys=None) -> None:
         self.store = store
-        self._proj = LedgerProjection([])
+        # How a descriptor becomes the key its merchant knowledge is filed
+        # under. Held so an `as_of` projection resolves merchants the same way
+        # the live one does.
+        self._resolve_keys = resolve_keys
+        self._proj = LedgerProjection([], resolve_keys=resolve_keys)
         for event in store.events():
             self._proj.apply(event)
 
     @classmethod
-    def open(cls, path, passphrase: str) -> "Ledger":
-        return cls(EventStore.open(path, passphrase))
+    def open(cls, path, passphrase: str, resolve_keys=None) -> "Ledger":
+        return cls(EventStore.open(path, passphrase), resolve_keys=resolve_keys)
 
     def append(self, event: Event) -> dict:
         """Persist an event and fold it into the live projection."""
@@ -47,7 +51,8 @@ class Ledger:
         a filtered projection is built on demand."""
         if as_of is None:
             return self._proj
-        return LedgerProjection(self.store.events(), as_of=as_of)
+        return LedgerProjection(self.store.events(), as_of=as_of,
+                                resolve_keys=self._resolve_keys)
 
     def events(self) -> Iterator[Event]:
         return self.store.events()

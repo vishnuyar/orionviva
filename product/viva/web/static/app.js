@@ -64,6 +64,9 @@ const api = {
   // Takes a question option's `args` wholesale, so the surface never re-decides
   // the scope the queue already chose.
   ruleMajor:  (args)          => post('/api/rule-major', JSON.stringify(args)),
+  pending:    ()              => get('/api/pending'),
+  answerAttribute: (d)        => post('/api/answer-attribute', JSON.stringify(d)),
+  openKind:   (d)             => post('/api/open-kind', JSON.stringify(d)),
   listen:     (body)          => post('/api/listen', JSON.stringify(body)),
   applyRuling:(proposal)      => post('/api/apply-ruling', JSON.stringify({proposal})),
   upload:     (file)          => post('/api/upload', file, {'X-Filename': file.name}),
@@ -155,14 +158,62 @@ function netWorthCard(nw) {
  * many wait behind it. "Show me another" browses without recording anything;
  * "Not now" and "I don't know" are ANSWERS — recorded as decline events, so
  * the question stays quiet until new evidence changes its stake. */
+/* Nothing structural is written without the person seeing it first.
+ *
+ * A proposal that would open an account comes back here — the summary in plain
+ * language, an explicit yes, and only then the deterministic writers. The same
+ * shape serves a typed sentence and a tapped answer, so there is exactly one
+ * place where an account can come into being. */
+function confirmProposal(proposal) {
+  const box = document.getElementById('proposal')
+  if (!box) return
+  state.proposal = proposal
+  /* A proposal with something unnamed has no yes to give: the ledger refuses
+   * it, so offering the button would be a promise the writers break. The
+   * summary IS the question, and answering it is typing a name. */
+  if ((proposal.needs_name || []).length) {
+    box.innerHTML = `<div class="why">${esc(proposal.summary)}</div>`
+    state.proposal = null
+    return
+  }
+  box.innerHTML = `
+    <div class="why">${esc(proposal.summary || 'Here is what I understood.')}</div>
+    <div class="row">
+      <button id="apply-proposal">Yes — do that</button>
+      <button class="ghost" id="cancel-proposal">No, hold on</button>
+    </div>`
+  document.getElementById('apply-proposal').addEventListener('click', async () => {
+    await api.applyRuling(state.proposal)
+    state.proposal = null
+    state.qIndex = 0
+    await load()
+  })
+  document.getElementById('cancel-proposal').addEventListener('click', () => {
+    state.proposal = null
+    box.innerHTML = ''
+  })
+}
+
+function pendingCard() {
+  const list = state.pendingList
+  if (!list) return ''
+  if (!list.length) return `<div class="quiet">Nothing set aside.</div>`
+  return `<div class="quiet">${list.map(p =>
+    `<div class="q-aside">${esc(p.text)}</div>`).join('')}</div>`
+}
+
 function questionsCard(q) {
   const items = (q && q.questions) || []
   const ack = state.ack ? `<div class="quiet">${esc(state.ack)}</div>` : ''
+  const asideCount = (q && q.pending && q.pending.count) || 0
+  const aside = asideCount
+    ? `<div class="row"><button class="link" id="see-aside">${asideCount} set aside</button></div>${pendingCard()}`
+    : ''
   if (!items.length) {
     const settled = (state.greeting && state.greeting.all_settled)
       || 'Nothing right now. Everything I can settle, I have.'
     return `<section class="card"><h3>What Viva needs</h3>
-      ${ack}<div class="muted">${esc(settled)}</div></section>`
+      ${ack}<div class="muted">${esc(settled)}</div>${aside}</section>`
   }
   const i = Math.min(state.qIndex || 0, items.length - 1)
   const item = items[i]
@@ -195,7 +246,7 @@ function questionsCard(q) {
     <span class="quiet">${waiting > 0
       ? `${waiting} more waiting — most consequential first`
       : 'the last one'}</span></h3>
-    ${ack}${one}</section>`
+    ${ack}${one}${aside}</section>`
 }
 
 /* One card per kind. The lines come from net worth, which already carries every
@@ -367,8 +418,40 @@ function wire() {
       el.disabled = true
       try {
         if (opt.action === 'rule_major') {
-          await api.ruleMajor({descriptor: (q.refs && (q.refs.descriptor || q.refs.example)) || '',
-                               ...opt.args})
+          /* A tap may no longer open an account. Where the answer would bring
+           * one into being, or names nothing at all, the server sends back the
+           * proposal or the question instead of writing. */
+          const r = await api.ruleMajor({descriptor: (q.refs && (q.refs.descriptor || q.refs.example)) || '',
+                                         ...opt.args})
+          el.disabled = false
+          if (!r.ok && r.why === 'needs_name') {
+            const named = prompt(r.message)
+            if (!named) return
+            const again = await api.ruleMajor({descriptor: (q.refs && (q.refs.descriptor || q.refs.example)) || '',
+                                               ...opt.args, name: named})
+            if (again.confirm) return confirmProposal(again.proposal)
+            if (!again.ok) return alert(again.message || 'Nothing was recorded.')
+            return load()
+          }
+          if (r.confirm) return confirmProposal(r.proposal)
+        } else if (opt.action === 'answer_attribute') {
+          /* An attribute answer changes nothing structural — it records what
+           * the person said about an account that already exists — so it
+           * applies in this request. Opening an account never does. */
+          const r = await api.answerAttribute(opt.args)
+          if (!r.ok) { el.disabled = false; return alert(r.message) }
+        } else if (opt.action === 'open_kind') {
+          el.disabled = false
+          const r = await api.openKind(opt.args)
+          if (!r.ok && r.why === 'needs_name') {
+            const named = prompt(r.asks)
+            if (!named) return
+            const p = await api.openKind({...opt.args, name: named})
+            if (!p.ok) return alert(p.message || 'Nothing was recorded.')
+            return confirmProposal(p.proposal)
+          }
+          if (!r.ok) return alert(r.message || 'Nothing was recorded.')
+          return confirmProposal(r.proposal)
         } else if (opt.action === 'confirm_transfer') {
           await api.confirmTransfer(opt.args.movement_a, opt.args.movement_b)
         } else if (opt.action === 'reject_transfer') {
@@ -437,6 +520,14 @@ function wire() {
   // "Tell me in your own words" (9a, finally on the surface): sentence →
   // proposal shown back in plain language → explicit yes → deterministic
   // writers. Nothing is written until the person confirms (X3).
+  const seeAside = document.getElementById('see-aside')
+  if (seeAside) seeAside.addEventListener('click', async () => {
+    /* The pending list is opened, never pushed: a question set aside comes
+     * back on new evidence or because the person came looking for it. */
+    const r = await api.pending()
+    state.pendingList = state.pendingList ? null : (r.questions || [])
+    render()
+  })
   const said = document.getElementById('said')
   if (said) said.addEventListener('keydown', async (e) => {
     if (e.key !== 'Enter' || !e.target.value.trim()) return
@@ -444,6 +535,24 @@ function wire() {
     const item = items[Math.min(state.qIndex || 0, items.length - 1)]
     const refs = item.refs || {}
     const box = document.getElementById('proposal')
+    if (item.kind === 'interview') {
+      /* An interview answer is read by the deterministic parsers, not by a
+       * model: the figure has to be in what they typed. Typing under a
+       * "shall we set that up too?" question NAMES the new thing instead —
+       * there is no attribute to answer until the account exists. */
+      box.innerHTML = ''
+      if (refs.opens) {
+        const p = await api.openKind({kind: refs.opens, secures: refs.account,
+                                      name: e.target.value.trim()})
+        if (!p.ok) { box.innerHTML = `<div class="why">${esc(p.message || '')}</div>`; return }
+        return confirmProposal(p.proposal)
+      }
+      const r = await api.answerAttribute({
+        account: refs.account, key: refs.key, said: e.target.value.trim()})
+      if (!r.ok) { box.innerHTML = `<div class="why">${esc(r.message)}</div>`; return }
+      state.qIndex = 0
+      return load()
+    }
     box.innerHTML = `<div class="quiet">reading…</div>`
     try {
       const r = await api.listen({
@@ -456,23 +565,7 @@ function wire() {
         box.innerHTML = `<div class="why">${esc(r.message || "I couldn't read that one — the buttons still work.")}</div>`
         return
       }
-      state.proposal = r.proposal
-      box.innerHTML = `
-        <div class="why">${esc(r.proposal.summary || 'Here is what I understood.')}</div>
-        <div class="row">
-          <button id="apply-proposal">Yes — do that</button>
-          <button class="ghost" id="cancel-proposal">No, hold on</button>
-        </div>`
-      document.getElementById('apply-proposal').addEventListener('click', async () => {
-        await api.applyRuling(state.proposal)
-        state.proposal = null
-        state.qIndex = 0
-        await load()
-      })
-      document.getElementById('cancel-proposal').addEventListener('click', () => {
-        state.proposal = null
-        box.innerHTML = ''
-      })
+      confirmProposal(r.proposal)
     } catch (err) { box.innerHTML = `<div class="why">${esc(err.message)}</div>` }
   })
   root.querySelectorAll('[data-account]').forEach(el => {

@@ -61,6 +61,8 @@ Worse, the honesty signal inverts: `unknown_split = interp.compound and not inte
 
 #### A4 · Tapping an answer on an unknown transaction can mint `Assets:Other:Unnamed` — and put it in your net worth · CONFIRMED
 
+> **Closed 2026-08-01.** The unnamed path is refused before any event is written, and an answer that would open an account returns a proposal for an explicit yes. `confirm_accounts` is now named in `summary()`, so the fuzzy match is confirmed rather than silently bound.
+
 Trace, all confirmed by reading each hop:
 
 1. A tier-3 (genuinely unknown) NATURE question emits options whose args are **only** `{movement_key, major}` — no `merchant`, no `descriptor` (`questions.py:276–278`).

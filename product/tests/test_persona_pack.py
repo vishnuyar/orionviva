@@ -87,10 +87,12 @@ def test_question_text_no_longer_lives_in_code():
 # digests are each pack's fingerprint; if one changes, the fix is a new version
 # id, never an edit (same rule, same reason as the prompt library's FROZEN
 # table). pack-v1 is the original wording verbatim; pack-v2 is the Viva-manner
-# pass plus the expectation phrasings.
+# pass plus the expectation phrasings; pack-v3 adds the interview's wording,
+# which wraps the schema pack's own question and benefit in Viva's manner.
 FROZEN_PACKS = {
     "pack-v1": "16c9bf533d3d4e31",
     "pack-v2": "7e8f38e3db15c2f9",
+    "pack-v3": "d747faa1484a9dd0",
 }
 
 

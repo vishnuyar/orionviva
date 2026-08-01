@@ -212,6 +212,147 @@ def _asserted_lines(proj, as_of: str):
     return lines, missing
 
 
+def _asserted_asset_lines(proj, as_of: str, valued: set):
+    """Assets the person asserted, as ``(lines, gaps, superseded)``.
+
+    An asserted asset with a stated gating figure becomes a line at cost,
+    graded ``verified`` and origin ``asserted``; one without becomes a
+    disclosed gap naming the question that closes it. ``superseded`` are
+    accounts whose cash-derived line the stated figure replaces.
+
+    Reads only what was known at ``as_of``, so a later answer does not change
+    an earlier point."""
+    from .. import schemas
+    from ..env import jurisdiction_from_env
+    from ..interview import attributes
+    from .events import ASSERTED as _ASSERTED
+    answers = attributes(proj, as_of=as_of)
+    # The SAME fallback the interview uses. Two readers of one pack that
+    # resolved it differently would demand a figure through one door and refuse
+    # to record it at the other.
+    here = jurisdiction_from_env()
+    lines, gaps, superseded = [], [], set()
+    for info in proj.account_infos():
+        account = info.account
+        # Only what the PERSON says they hold. An issued account is valued from
+        # its statements, and announcing a gap on one would be a second, louder
+        # answer to a question its documents already settle.
+        if not account.startswith(ASSET_ROOT) or info.origin != _ASSERTED:
+            continue
+        answered = answers.get(account, {})
+        stated = _stated_cost(proj, info, answered, here)
+        if account in valued:
+            # A stated cost replaces the cash-derived line for this account
+            # rather than adding to it.
+            if stated is not None:
+                lines.append(stated)
+                superseded.add(account)
+            continue
+        # The curve grows forward: a thing disclosed before it existed would be
+        # a claim about a date it does not apply to.
+        opened = (info.opened_at or "")[:10]
+        if opened and opened > as_of:
+            continue
+        if stated is not None:
+            lines.append(stated)
+            continue
+        gaps.append(_gap_for(proj, info, answered, here))
+    return lines, gaps, superseded
+
+
+def _schema_for_account(proj, info, here):
+    """The schema for an account, resolved where its instrument lives — or
+    where the vault is, when nobody has said."""
+    from .. import schemas
+    where = info.jurisdiction or here
+    return schemas.schema_for(
+        schemas.kind_of_account(info.account, where, ledger_kind=info.kind,
+                                doc_types=proj.document_types_of(info.account)),
+        where)
+
+
+def _gating(schema, answered):
+    """The questions whose answers let net worth carry the thing, and that
+    apply given what is already known. A conditional essential — a term
+    deposit's principal — is not owed on an account it was never about."""
+    if schema is None:
+        return []
+    return [q for q in schema.questions
+            if q.gates_net_worth and q.required(answered)]
+
+
+def _stated_cost(proj, info, answered, here):
+    """The line an asserted asset earns from what the person stated, or None.
+
+    None is never silence — the caller turns it into a disclosed gap."""
+    schema = _schema_for_account(proj, info, here)
+    gating = _gating(schema, answered)
+    if not gating:
+        return None
+    answer = answered.get(gating[0].key)
+    if answer is None or any(q.key not in answered for q in gating):
+        return None
+    amount = _stated_amount(answer.get("value"))
+    if amount is None:
+        return None
+    return NetWorthLine(
+        # One line per account, never one per question: a point holds one
+        # contribution per account, and two would read as two things.
+        account=info.account, amount=amount,
+        currency=answer.get("currency") or info.currency,
+        as_of=(_dated_at(schema, answered) or answer.get("at")
+               or (info.opened_at or "")[:10]),
+        # Their word, which no document has checked — so it stays outside the
+        # provable subtotal until one does.
+        grade=VERIFIED, origin=ASSERTED, kind="asserted")
+
+
+def _gap_for(proj, info, answered, here) -> dict:
+    """What is missing, said plainly — including when the missing thing is the
+    QUESTION. An asset the pack cannot yet ask about is still disclosed rather
+    than omitted, because "I have no way to ask about this one" is an honest
+    answer where inventing a zero is not."""
+    schema = _schema_for_account(proj, info, here)
+    want = next((q for q in _gating(schema, answered) if q.key not in answered),
+                None)
+    if want is None:
+        return {
+            "account": info.account,
+            "why": "you've told me this exists; I have no way to ask what it "
+                   "cost yet, so I am not carrying it",
+            "ask": "",
+            "would_fix": "a schema for this kind of thing"}
+    return {
+        "account": info.account,
+        # The gap is about what the thing cost, never about what it is worth
+        # today — that is a different claim, and not one this product makes.
+        "why": "you've told me this exists; nobody has told me what it cost",
+        "ask": want.asks,
+        "would_fix": (want.corroborated_by[0] if want.corroborated_by
+                      else "the paperwork for it")}
+
+
+def _stated_amount(value):
+    """A figure the ledger can stand behind, or None.
+
+    None is never silence: the caller turns it back into a disclosed gap, so a
+    value that cannot be read is reported rather than dropped."""
+    try:
+        amount = Decimal(str(value))
+    except Exception:                                  # noqa: BLE001 - not a figure
+        return None
+    return amount if amount.is_finite() else None
+
+
+def _dated_at(schema, answered) -> str:
+    """When the thing was acquired, if the schema collects it — the value time
+    the figure belongs to, rather than the day it was typed."""
+    for q in schema.questions:
+        if q.dates_net_worth and q.key in answered:
+            return str((answered.get(q.key) or {}).get("value", ""))[:10]
+    return ""
+
+
 # --- the curve ---------------------------------------------------------------
 
 def change_dates(proj) -> list[str]:
@@ -225,6 +366,20 @@ def change_dates(proj) -> list[str]:
         for observations in st.position_history.values():
             dates.update(ob["as_of"] for ob in observations)
     dates.update(m.date for m in proj.movements() if m.ruling_account)
+    # An asset a person told us about is a change even before any money moves
+    # through it: from that date the curve is either carrying it or saying it
+    # cannot, and both are answers. Without this the point does not exist and
+    # the gap could not be disclosed at all.
+    for account in proj.accounts():
+        info = proj.account_info(account)
+        if info.origin == ASSERTED and info.opened_at:
+            dates.add(info.opened_at[:10])
+    # And on the day the person states what one of them cost.
+    from .events import SCOPE_ATTRIBUTE
+    for ruling in proj.rulings(SCOPE_ATTRIBUTE):
+        at = str(ruling.get("occurred_at", ""))[:10]
+        if at:
+            dates.add(at)
     return sorted(d for d in dates if d)
 
 
@@ -272,6 +427,12 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
     asserted, missing = _asserted_lines(proj, as_of)
     point.lines.extend(asserted)
     point.missing.extend(missing)
+    valued = ({ln.account for ln in point.lines}
+              | {row["account"] for row in point.missing})
+    stated, gaps, superseded = _asserted_asset_lines(proj, as_of, valued)
+    point.lines = [ln for ln in point.lines if ln.account not in superseded]
+    point.lines.extend(stated)
+    point.missing.extend(gaps)
     for hold in proj.open_holds():
         point.held.append({"doc_id": hold.get("doc_id", ""),
                            "reason": hold.get("reason", ""),

@@ -23,6 +23,8 @@ Four event types carry the core story:
 
 from __future__ import annotations
 
+import re
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -154,7 +156,7 @@ ORIGINS = (ISSUED, ASSERTED)
 
 
 def account_opened(account_id: str, kind: str, name: str, currency: str,
-                   occurred_at: str, jurisdiction: str = "US",
+                   occurred_at: str, jurisdiction: str = "",
                    institution: str = "", account_number: str = "",
                    account_names: list[str] | None = None,
                    origin: str = ISSUED,
@@ -162,7 +164,13 @@ def account_opened(account_id: str, kind: str, name: str, currency: str,
     """Register a value-holding relationship.
 
     ``origin`` records who says this account exists, one of ``ORIGINS``; it
-    defaults to ``issued``. Raises ValueError on any other value."""
+    defaults to ``issued``. Raises ValueError on any other value.
+
+    ``jurisdiction`` is where the INSTRUMENT lives — not where the person
+    lives, and not its currency. It defaults to empty, meaning *nobody has
+    said*: a default naming one country would put a fact in the ledger that no
+    document and no person ever stated, and every reader would then treat a
+    guess as attested."""
     if origin not in ORIGINS:
         raise ValueError(f"origin must be one of {ORIGINS}, got {origin!r}")
     return Event(
@@ -376,15 +384,84 @@ SCOPE_ACCOUNT = "account"        # subject = an account id
 SCOPE_CATEGORY = "category"
 SCOPE_TAG = "tag"                # the same, in the TAG vocabulary, which
                                  # aliases separately from categories
+# Subject = "<account>:<key>" — one thing the person told us about an account
+# they hold. The value is what they said it is; a document arriving later
+# raises its grade without rewriting it.
+SCOPE_ATTRIBUTE = "attribute"
 SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT, SCOPE_CATEGORY,
-          SCOPE_TAG)
+          SCOPE_TAG, SCOPE_ATTRIBUTE)
+
+
+def _canonical_number(text: str) -> str:
+    """A number as a comparable string: Unicode digits folded to ASCII,
+    grouping separators dropped, a purely-zero fractional part dropped.
+
+    ``250,000``, ``2,50,000``, ``٢٥٠٠٠٠`` and ``250000.00`` all canonicalize to
+    ``250000``. Returns '' for anything that is not a single number."""
+    raw = str(text).strip().lstrip("+-")
+    folded = []
+    for ch in raw:
+        if ch.isdigit():
+            folded.append(str(unicodedata.digit(ch)))
+        elif ch in ",. '  ’":
+            folded.append(ch if ch == "." else "")
+        else:
+            return ""
+    text = "".join(folded)
+    if not text or not text.replace(".", "", 1).isdigit():
+        return ""
+    if "." in text:
+        whole, _, frac = text.partition(".")
+        frac = frac.rstrip("0")
+        text = f"{whole}.{frac}" if frac else whole
+    return text.lstrip("0") or "0"
+
+
+def _numbers_said(said: str) -> set:
+    """Every number that appears in a sentence, canonicalized.
+
+    Whole tokens, not a run of digits: a value has to be a number the person
+    actually wrote, so ``250000`` cannot be assembled out of ``250`` and
+    ``3,000``, and ``1,250,000`` is not a place where ``250000`` was said."""
+    out = set()
+    # Split on anything that is not a digit in ANY script or a grouping
+    # separator: the pack ships more than one country, so the numerals a
+    # person types are not only the ASCII ones.
+    for token in re.split(r"[^\d.,'\xa0\u202f\u2019]+", str(said or ""),
+                          flags=re.UNICODE):
+        number = _canonical_number(token.strip(".,"))
+        if number:
+            out.add(number)
+    return out
+
+
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _numbers_in(value: str) -> set:
+    """Every number a VALUE carries. A value is checked number by number, not
+    by whether the whole of it looks like one — otherwise a currency symbol, a
+    unit or an exponent would be enough to skip the check entirely."""
+    return _numbers_said(value)
+
+
+def _is_finite(value: str) -> bool:
+    """False for a value that reads as a number but is not one — ``NaN``,
+    ``Infinity``. These are the values that cannot be refused later: an
+    append-only log has no delete, so one of them in a ledger breaks every
+    reading of it, for ever."""
+    try:
+        number = Decimal(str(value).strip())
+    except Exception:                                  # noqa: BLE001 - not a number
+        return True
+    return number.is_finite()
 
 
 def ruling_recorded(scope: str, subject: str, occurred_at: str,
                     legs: list[dict] | None = None, by: str = "human",
                     grade: str = VERIFIED, said: str = "",
                     corroborates: str = "", prompt_version: str = "",
-                    same_as: str = "",
+                    same_as: str = "", value: str = "", currency: str = "",
                     provenance: Provenance | None = None) -> Event:
     """A ruling about what something *is* — one generic, scoped event.
 
@@ -402,13 +479,54 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
     without asking again. ``corroborates`` names a document that would prove the
     ruling; it is a suggestion, never a gate.
 
-    No amount appears here — amounts come from the movement the ruling is about.
+    A leg carries no amount — the money comes from the movement the ruling is
+    about. ``value`` is the exception and belongs to attribute scope alone:
+    what the person said one thing about an account *is*. A figure there must
+    appear in their own words, so a reading cannot supply a number the sentence
+    did not contain.
+
     Raises ValueError on an unknown scope, an empty subject, a leg whose major
-    is outside ``MAJORS``, or a leg carrying an ``amount``."""
+    is outside ``MAJORS``, a leg carrying an ``amount``, a value outside
+    attribute scope, a value with nothing said, or a figure the words do not
+    carry."""
     if scope not in SCOPES:
         raise ValueError(f"scope must be one of {SCOPES}, got {scope!r}")
     if not subject:
         raise ValueError("a ruling must name its subject")
+    if value and scope != SCOPE_ATTRIBUTE:
+        raise ValueError("only an attribute ruling carries a value")
+    if scope == SCOPE_ATTRIBUTE:
+        if ":" not in subject:
+            raise ValueError("an attribute subject is '<account>:<key>', "
+                             f"got {subject!r}")
+        if value and not said.strip():
+            raise ValueError("an attribute value must come from what the "
+                             "person said; nothing was said")
+        # A value carrying a currency is money, and money is a plain number:
+        # digits and at most one decimal point.
+        if value and currency and not _canonical_number(value):
+            raise ValueError(
+                f"{value!r} is not a plain amount — an amount is digits, a "
+                "decimal point and nothing else, so what is stored is what was "
+                "read")
+        if value and not _is_finite(value):
+            raise ValueError(
+                f"{value!r} is not a number anything can be done with, and an "
+                "append-only log cannot take it back")
+        if value and _canonical_number(value) and str(value).strip()[0] in "-−":
+            raise ValueError(
+                f"{value!r} is negative — nothing a person states about a "
+                "thing they hold is, and a sign nobody wrote is a number "
+                "nobody said")
+        # An ISO date is exempt from the number check alone — its canonical
+        # form renumbers what was written. It still requires `said`.
+        unsaid = set() if _ISO_DATE.fullmatch(str(value).strip()) else (
+            _numbers_in(value) - _numbers_said(said))
+        if unsaid:
+            raise ValueError(
+                f"the figure(s) {sorted(unsaid)} are not in what they said "
+                f"({said!r}) — a reading may not supply a number the sentence "
+                "did not carry")
     clean: list[dict] = []
     for leg in (legs or []):
         major = leg.get("major", "")
@@ -422,6 +540,7 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
         "RulingRecorded", occurred_at,
         body={"scope": scope, "subject": subject, "legs": clean, "by": by,
               "grade": grade, "said": said, "corroborates": corroborates, "same_as": same_as,
+              "value": value, "currency": currency,
               "prompt_version": prompt_version},
         provenance=provenance or Provenance(),
     )

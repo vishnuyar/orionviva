@@ -100,6 +100,8 @@ def make_handler(vault, read_fn):
                 n = parse_qs(u.query).get("limit", ["10"])[0]
                 return self._send(service.questions(
                     vault, int(n) if n.isdigit() else 10))
+            if u.path == "/api/pending":
+                return self._send(service.pending(vault))
             if u.path == "/api/merchant-transactions":
                 m = parse_qs(u.query).get("merchant", [""])[0]
                 return self._send(service.merchant_transactions(vault, m))
@@ -153,7 +155,18 @@ def make_handler(vault, read_fn):
                     return self._send(service.rule_major(
                         vault, d.get("merchant", ""), d["major"],
                         d.get("descriptor", ""), d.get("kind", ""),
-                        d.get("movement_key", ""), d.get("group", "")))
+                        d.get("movement_key", ""), d.get("group", ""),
+                        d.get("name", "")))
+                if u.path == "/api/answer-attribute":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.answer_attribute(
+                        vault, d["account"], d["key"], d.get("value", ""),
+                        d.get("said", "")))
+                if u.path == "/api/open-kind":
+                    d = json.loads(raw or b"{}")
+                    return self._send(service.open_kind(
+                        vault, d["kind"], d.get("name", ""),
+                        d.get("secures", ""), d.get("said", "")))
                 if u.path == "/api/listen":
                     d = json.loads(raw or b"{}")
                     return self._send(service.listen_to(
