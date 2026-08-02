@@ -6,7 +6,7 @@
 >
 > **The one-way / sticky / two-way *doors framework*, plus an inventory of decisions classified by which kind each was. Written to sequence *when* things got decided. They are decided.**
 >
-> Kept because the doors framework is the reasoning behind ADR-001→011, and reading it explains why those eleven were settled before any product code existed. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [decisions/](decisions/README.md) — the eleven ADRs are this document's output.
+> Kept because the doors framework is the reasoning behind ADR-001→011, and reading it explains why those eleven were settled before any product code existed. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [decisions/](../decisions/README.md) — the eleven ADRs are this document's output.
 
 
 ## The framing: doors, not decisions
@@ -45,7 +45,7 @@ These are the decisions that cannot be reinstated later. Each is small to implem
 
 **Found while mapping:** the site homepage footer said AGPL-3.0; the repo LICENSE and the project principles said MIT. Resolved: **MIT confirmed** (ADR-002). Site footers corrected across all pages (`orionviva-web` commit `079dd4c`); repo README's License section restored to MIT. No AGPL reference remains in either repo.
 
-> **Update 2026-07-19:** All eight doors are now closed — see [decisions/](decisions/) ADR-002 through ADR-010. Decisions taken: DCO for contributions, hybrid record identity, day-one anchoring to both OpenTimestamps and RFC 3161, diagnostics by manual export only.
+> **Update 2026-07-19:** All eight doors are now closed — see [decisions/](../decisions/) ADR-002 through ADR-010. Decisions taken: DCO for contributions, hybrid record identity, day-one anchoring to both OpenTimestamps and RFC 3161, diagnostics by manual export only.
 
 ---
 

@@ -87,7 +87,7 @@ Read these together; they are one argument in four parts:
 
 **5 · The audit trail**
 
-- [stocktake-2026-07.md](stocktake-2026-07.md) — the July 2026 holistic audit: what was stale, what was absent, and the run that tested six slices of unproven work against real money. Also the honest record of **six occasions when a measuring instrument reported something untrue** — including one that manufactured a defect in correct code, and three false accusations of the product contradicting its user. The rules that came out of it: *graceful degradation belongs in the product, never in the instrument that measures it*; *report the final state, never the sum of moments*; *never grade one axis against another*.
+- [cold-read-audit-2026-07.md](cold-read-audit-2026-07.md) — the line-level correctness read of all four packages by a reader arriving with no priors, holding each doc claim against the code that implements it. The repo-hygiene items in TODO trace to it.
 
 **5b · What's been decided**
 
@@ -96,16 +96,18 @@ Read these together; they are one argument in four parts:
 
 **6 · Historical record — read for reasoning, never for what is true now**
 
-These seven describe a phase that has closed or a decision that has since been made. Each carries a ⛔ banner at the top saying so. They are kept because the *reasoning* in them is still worth reading and is the honest record of how the project decided things in the open — but **nothing in them describes how OrionViva works today.**
+Documents from a closed phase live in [archived/](archived/README.md). Each carries a ⛔ banner at the top saying so. They are kept because the *reasoning* in them is still worth reading and is the honest record of how the project decided things in the open — but **nothing in them describes how OrionViva works today, and nothing in them is used for development.**
 
-- [discovery-plan.md](discovery-plan.md) — the research phase's own plan and its open-questions register. Every question in it closed.
-- [discovery-map-and-reversibility.md](discovery-map-and-reversibility.md) — the **doors framework** — one-way / sticky / two-way — and the decision inventory it sequenced. Its output is the eleven ADRs.
-- [agent-and-model-landscape.md](agent-and-model-landscape.md) — agent frameworks and model capabilities **as of 19 July 2026**. Expired by design; the conclusion that survived is *models are commodities, memory of the user is the moat*.
-- [competitive-landscape.md](competitive-landscape.md) — competing and adjacent products **as of July 2026**, from public material, never audited. Do not cite any characterization in it as current.
-- [form-factor-and-stack.md](form-factor-and-stack.md) — CLI vs local web vs desktop, Python vs TypeScript — with the choice deferred. It is no longer deferred: see [the-presentation-layer.md](the-presentation-layer.md).
-- [domain-model-vs-orchestration.md](domain-model-vs-orchestration.md) — should the *checking* live in model weights? Settled permanently by [ADR-010](decisions/ADR-010-verification-never-in-weights.md).
-- [v0-scope.md](v0-scope.md) — the thinnest first slice — one statement, one verified balance, no model in the answer path. Built, and long since surpassed.
+- [archived/discovery-plan.md](archived/discovery-plan.md) — the research phase's own plan and its open-questions register. Every question in it closed.
+- [archived/discovery-map-and-reversibility.md](archived/discovery-map-and-reversibility.md) — the **doors framework** — one-way / sticky / two-way — and the decision inventory it sequenced. Its output is the eleven ADRs.
+- [archived/agent-and-model-landscape.md](archived/agent-and-model-landscape.md) — agent frameworks and model capabilities **as of 19 July 2026**. Expired by design; the conclusion that survived is *models are commodities, memory of the user is the moat*.
+- [archived/competitive-landscape.md](archived/competitive-landscape.md) — competing and adjacent products **as of July 2026**, from public material, never audited. Do not cite any characterization in it as current.
+- [archived/form-factor-and-stack.md](archived/form-factor-and-stack.md) — CLI vs local web vs desktop, Python vs TypeScript — with the choice deferred. It is no longer deferred: see [the-presentation-layer.md](the-presentation-layer.md).
+- [archived/domain-model-vs-orchestration.md](archived/domain-model-vs-orchestration.md) — should the *checking* live in model weights? Settled permanently by [ADR-010](decisions/ADR-010-verification-never-in-weights.md).
+- [archived/v0-scope.md](archived/v0-scope.md) — the thinnest first slice — one statement, one verified balance, no model in the answer path. Built, and long since surpassed.
+- [archived/stocktake-2026-07.md](archived/stocktake-2026-07.md) — the July 2026 holistic audit, complete and acted on. Also the honest record of **six occasions when a measuring instrument reported something untrue**; the rules that came out of it live on in the standing practices: *graceful degradation belongs in the product, never in the instrument that measures it*; *report the final state, never the sum of moments*; *never grade one axis against another*.
+- [archived/the-repair-list-2026-07.md](archived/the-repair-list-2026-07.md) — the decision list drafted from that audit and the first real-money run; ruled, built, or superseded item by item.
 
 ## Placement rules
 
-New documents are slotted here at writing time, wherever they belong conceptually — that's the point of unnumbered names. Documents whose *content* was replaced stay in the folder, marked **Superseded** in their status line with a pointer forward. Documents that were true of a *closed phase* — a plan for work now done, a snapshot of a market on a date — get the ⛔ **HISTORICAL RECORD** banner and move to section 7. The distinction matters: superseded means *we changed our minds*, historical means *this was true then*. Neither is ever deleted; a project arguing that trust must be provable does not quietly erase its own reasoning. If this guide and a doc's own cross-references ever disagree about structure, this guide wins.
+New documents are slotted here at writing time, wherever they belong conceptually — that's the point of unnumbered names. Documents whose *content* was replaced stay in the folder, marked **Superseded** in their status line with a pointer forward. Documents that were true of a *closed phase* — a plan for work now done, a snapshot of a market on a date — get the ⛔ **HISTORICAL RECORD** banner and move into [archived/](archived/README.md), with their entry recorded in section 6 above. The distinction matters: superseded means *we changed our minds*, historical means *this was true then*. Neither is ever deleted; a project arguing that trust must be provable does not quietly erase its own reasoning — it fences it off where no reader can mistake it for the present. If this guide and a doc's own cross-references ever disagree about structure, this guide wins.

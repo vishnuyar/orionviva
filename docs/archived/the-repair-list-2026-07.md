@@ -1,11 +1,15 @@
 # The Repair List — decisions for everything the audit and the first run found
 
-**Status:** Proposed — awaiting rulings · **Date:** 2026-07-27 · **Invariants touched:** T1, T2, T4, T5, T7, T9, I2, M1, X2, X3
+**Status:** ⛔ Historical — the repairs it proposed were ruled or superseded item by item (A4's recommendation was superseded by the interview and schema-pack design) · **Date:** 2026-07-27 · **Invariants touched:** T1, T2, T4, T5, T7, T9, I2, M1, X2, X3
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **The decision list drafted from the July 2026 audit and the first real-money run. Its items were ruled, built, or superseded by later design cycles; the open questions it carried have answers elsewhere now.** Kept because it records how the findings were argued at the time. Nothing in it describes how OrionViva works today.
 
 ## How to read this
 
 Two investigations produced findings: a cold read of all four packages, and the
-first end-to-end run on real model output ([cold-read-audit-2026-07.md](cold-read-audit-2026-07.md),
+first end-to-end run on real model output ([cold-read-audit-2026-07.md](../cold-read-audit-2026-07.md),
 `bench/synthetic`). This document turns both into decisions.
 
 **Options appear only where there is a genuine fork** — where two defensible
