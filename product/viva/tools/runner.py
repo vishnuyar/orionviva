@@ -26,7 +26,10 @@ from .registry import Registry
 # never an endless loop.
 DEFAULT_MAX_CALLS = 8
 
-_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+# An ISO date travels as ONE token. Split into fragments, a window filter's
+# year would taint every dated row that call returns, and a date-shaped
+# invention could shed its hyphens into free-standing citable digits.
+_NUMBER = re.compile(r"\d{4}-\d{2}-\d{2}|\d[\d,]*(?:\.\d+)?")
 
 
 @dataclass
@@ -90,6 +93,7 @@ def run(question: str, planner, registry: Registry,
     transcript: list[ToolResult] = []
     seen_ids: set = set()
     seen_strings: set = set()
+    grounded_tokens: set = set()
     while True:
         step = planner({"question": question,
                         "tools": registry.schemas(),
@@ -99,6 +103,12 @@ def run(question: str, planner, registry: Registry,
             return _refused("bad_plan", "The planner returned something other "
                             "than a tool call or an answer.",
                             [t.to_dict() for t in transcript], len(transcript))
+        if "refusal" in step:
+            # A planner may refuse the whole run with its own machine tag — a
+            # model that never produced a usable step, or one that could not
+            # be reached at all. Refusal, never an exception, is the worst case.
+            return _refused(str(step["refusal"]), str(step.get("text", "")),
+                            [t.to_dict() for t in transcript], len(transcript))
         if "tool" in step:
             if len(transcript) >= max_calls:
                 return _refused(
@@ -106,23 +116,39 @@ def run(question: str, planner, registry: Registry,
                     f"No answer after {max_calls} tool calls; refusing rather "
                     "than answering without grounds.",
                     [t.to_dict() for t in transcript], len(transcript))
-            result = registry.call(step["tool"], step.get("args"))
+            args = step.get("args")
+            result = registry.call(step["tool"], args)
             transcript.append(result)
-            seen_ids |= set(result.record_ids)
-            seen_strings |= _strings_in(result.to_dict())
+            # Only a result that asserts something can ground a figure, and
+            # even then, never by echoing the caller's own words back. A
+            # refusal restating an unknown account id, an ok result restating
+            # a caller-chosen date, and a computation citing caller-supplied
+            # record ids are all echoes: numbers and ids that entered through
+            # the call's arguments ground nothing until some result carries
+            # them independently of the arguments that planted them.
+            if result.ok:
+                arg_tokens = _tokens_in(_strings_in(args))
+                if not registry.caller_supplies_record_ids(step["tool"]):
+                    seen_ids |= set(result.record_ids)
+                result_strings = _strings_in(result.to_dict())
+                seen_strings |= result_strings
+                grounded_tokens |= (_tokens_in(result_strings) - arg_tokens)
             continue
         if "answer" not in step:
             return _refused("bad_plan", "The planner's step names neither a "
                             "tool nor an answer.",
                             [t.to_dict() for t in transcript], len(transcript))
-        return _gate(step, transcript, seen_ids, seen_strings)
+        return _gate(step, transcript, seen_ids, seen_strings,
+                     grounded_tokens)
 
 
-def _gate(step: dict, transcript: list, seen_ids: set,
-          seen_strings: set) -> RunResult:
+def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
+          grounded_tokens: set) -> RunResult:
     """The composition check. Every declared figure must carry record ids the
-    run saw and a value the run saw; every number in the answer text must be
-    covered by a figure or present in some tool result."""
+    run saw and a value some result asserted; every number in the answer text
+    must be covered by a figure or grounded by a result — where grounded
+    excludes anything that entered the run through the planner's own
+    arguments."""
     text = str(step.get("answer", ""))
     figures = step.get("figures", []) or []
     dicts = [t.to_dict() for t in transcript]
@@ -149,13 +175,20 @@ def _gate(step: dict, transcript: list, seen_ids: set,
                 "unfounded_figure",
                 f"The figure {figure['value']!r} appears in no tool result "
                 "from this run.", dicts, len(transcript))
+        tainted = [t for t in _NUMBER.findall(str(figure["value"]))
+                   if t.replace(",", "") not in grounded_tokens]
+        if tainted:
+            return _refused(
+                "unfounded_figure",
+                f"The figure {figure['value']!r} rests on numbers this run's "
+                "results only echo from the planner's own arguments.",
+                dicts, len(transcript))
         if figure.get("grade"):
             grades.append(figure["grade"])
     covered = {str(f["value"]).replace(",", "") for f in figures}
-    seen_tokens = _tokens_in(seen_strings)
     for token in _NUMBER.findall(text):
         plain = token.replace(",", "")
-        if plain in covered or plain in seen_tokens:
+        if plain in covered or plain in grounded_tokens:
             continue
         return _refused(
             "unfounded_figure",

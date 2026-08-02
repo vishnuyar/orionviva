@@ -62,6 +62,12 @@ class ToolSpec:
     # Whether the tool reads only local state. Every registered tool must; the
     # flag exists so the guard is a checked property rather than a comment.
     local_only: bool = True
+    # Whether the record ids in this tool's results come from its caller
+    # rather than from the vault. A tool that validates its arguments against
+    # the vault vouches for the ids it echoes; one that passes them through
+    # unchecked cannot, and the runner treats such ids as citations only when
+    # some vault-derived result already produced them.
+    record_ids_from_caller: bool = False
 
 
 _TYPES = {"string": str, "boolean": bool, "integer": int, "object": dict,
@@ -121,6 +127,10 @@ class Registry:
 
     def names(self) -> list[str]:
         return sorted(self._specs)
+
+    def caller_supplies_record_ids(self, name: str) -> bool:
+        spec = self._specs.get(name)
+        return bool(spec and spec.record_ids_from_caller)
 
     def schemas(self) -> list[dict]:
         """Every tool as data — name, description (from the versioned file),

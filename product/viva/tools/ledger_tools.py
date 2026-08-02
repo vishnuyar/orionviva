@@ -564,6 +564,9 @@ def get_transparency(proj, args: dict) -> ToolResult:
         return ToolResult(
             tool="get_transparency", ok=True,
             data={"topic": topic, "calls": calls, "since": since},
+            caveats=["Counts only the maintenance agent's unattended calls; "
+                     "a conversation's own model calls are recorded "
+                     "separately."],
             text=(f"{calls} model call(s) spent by the agent"
                   + (f" since {since}." if since else " in total.")))
     declined = proj.declined_questions()

@@ -1,0 +1,4 @@
+Your last reply could not be used: {problem}
+
+Reply again, correctly formed: either exactly one tool call, or exactly one
+deliver_answer with the answer and its figures, as instructed.

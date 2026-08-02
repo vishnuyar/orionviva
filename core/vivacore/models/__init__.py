@@ -17,7 +17,7 @@ Contract every adapter honors:
 ``adapter_for`` raises AdapterError for an unknown adapter name.
 """
 
-from .base import AdapterError, ModelAdapter, ModelResult, PageImage
+from .base import AdapterError, ChatTurn, ModelAdapter, ModelResult, PageImage
 from .anthropic_adapter import AnthropicAdapter
 from .openai_compat import OpenAICompatAdapter
 
@@ -34,6 +34,7 @@ def adapter_for(candidate: ModelSpec) -> ModelAdapter:
 
 __all__ = [
     "AdapterError",
+    "ChatTurn",
     "ModelAdapter",
     "ModelResult",
     "PageImage",
