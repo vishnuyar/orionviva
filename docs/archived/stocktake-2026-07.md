@@ -1,6 +1,10 @@
 # Stocktake — July 2026
 
-**Status:** Audit · **Created:** 2026-07-25 · **Origin:** Vishnu: *"look at this project holistically — stale documents, stale code, mismatch between code and documents. Take stock, then discuss next steps."*
+**Status:** ⛔ Historical — the July 2026 audit, complete; its surviving rules live in the standing practices and WORKFLOW.md · **Created:** 2026-07-25 · **Origin:** Vishnu: *"look at this project holistically — stale documents, stale code, mismatch between code and documents. Take stock, then discuss next steps."*
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **A point-in-time audit of the project as it stood in July 2026. Everything stale it found has since been fixed or superseded; the rules it produced live on in the standing practices.** Kept because it is the honest record of six occasions when a measuring instrument reported something untrue, and of how the project audits itself. Nothing in it describes how OrionViva works today.
 
 A full pass over code, docs and the vision. Method: mechanical audits (orphan docs, deleted-symbol references, unreferenced modules, roadmap-vs-reality, size and test balance), then judgement about what the numbers mean.
 

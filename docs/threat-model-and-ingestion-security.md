@@ -64,7 +64,7 @@ fails the admission exam loudly and is repaired in exactly one file.
 This is the narrow argument about the **model call adapters**. The separate and
 larger argument for a hand-rolled tool loop over an agent SDK — about the
 **agent harness** — is in
-[agent-and-model-landscape.md](agent-and-model-landscape.md). The two are
+[agent-and-model-landscape.md](archived/agent-and-model-landscape.md). The two are
 related and are not the same claim.
 
 ## Open questions (register)

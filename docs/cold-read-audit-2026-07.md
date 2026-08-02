@@ -4,7 +4,7 @@
 
 ## Why this doc, and what it is not
 
-[stocktake-2026-07.md](stocktake-2026-07.md) was a *holistic* audit — what was stale, what was absent, what a real run proved. This is a narrower and duller thing: a **line-level correctness read** of all four packages by a reader arriving with no priors, holding each claim in the docs against the code that is supposed to implement it.
+[stocktake-2026-07.md](archived/stocktake-2026-07.md) was a *holistic* audit — what was stale, what was absent, what a real run proved. This is a narrower and duller thing: a **line-level correctness read** of all four packages by a reader arriving with no priors, holding each claim in the docs against the code that is supposed to implement it.
 
 The method's value and its limit are the same fact: **no priors.** A cold reader has no memory of why a line is the way it is, so it notices a gap a builder's eye slides over — and equally, it can mistake a deliberate trade for an oversight. Every finding below therefore carries how it was established, and is marked **CONFIRMED** (the exact code path was read, and where possible executed) or **HAZARD** (structurally reachable, not observed on real data). Nothing here is reported as a defect on the strength of a plausible-sounding argument. That distinction is the whole discipline the stocktake's own rule demands, after six occasions when an instrument reported something untrue — including one that manufactured a defect in correct code.
 
@@ -235,7 +235,7 @@ Related sizing bug in the same path: `Proposal.settles` counts *all* movements m
 - **[prompts-as-files.md](prompts-as-files.md)** — records the discipline and the enrich-v2 recovery. D1 is a second live instance, in `bench`, which the two tests that made recurrence a build failure do not cover (they guard the product's prompt library, not the bench's `PROMPT_VERSIONS` table). Worth an amendment: the rule held where it was tested and drifted where it was not, which is the doc's own thesis.
 - **[the-question-queue.md](the-question-queue.md)** — B1–B5 are all in the queue's contract rather than its concept. The concept holds: I found no model call where a template was promised, and the deterministic-text rule is clean throughout `questions.py`. The leaks are *values*, not phrasing.
 - **[from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)** — A3 and A4 are both gaps between what the doc settles (D2, the share rule) and what the code enforces. The `amount` boundary it describes *is* structural and works.
-- **[stocktake-2026-07.md](stocktake-2026-07.md)** — A5 refines rather than reopens the retracted unit-quantity defect: the retraction was correct, and it established that the reading was right, not that a wrong one would be caught.
+- **[stocktake-2026-07.md](archived/stocktake-2026-07.md)** — A5 refines rather than reopens the retracted unit-quantity defect: the retraction was correct, and it established that the reading was right, not that a wrong one would be caught.
 - **[honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md)** — B3 is the same class of error the doc names: two systems describing one fact, and the aggregate listening to only one. Here it is currency.
 - **`docs/TODO.md`** — the test count (432 / 373) is stale; the tree holds **453** test functions.
 

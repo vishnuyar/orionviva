@@ -7,7 +7,7 @@
 >
 > **The thinnest possible first slice: one checking statement, verified, answering *“what's my balance?”* with no model anywhere in the answer path. Written as *the next thing to build*. It was built.**
 >
-> Kept because the discipline of subtraction it describes — assemble the trust loop once, end to end, with proven parts — is the reason the foundation held. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [implementation-roadmap.md](implementation-roadmap.md) for where the build actually is.
+> Kept because the discipline of subtraction it describes — assemble the trust loop once, end to end, with proven parts — is the reason the foundation held. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [implementation-roadmap.md](../implementation-roadmap.md) for where the build actually is.
 
 
 ## The one sentence

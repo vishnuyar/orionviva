@@ -6,7 +6,7 @@
 >
 > **This plans a research phase that ran 19–22 July 2026 and is finished. Its opening sentence — *“we are deliberately in a discovery phase before writing product code”* — has been false since the first commit of `vivacore`.**
 >
-> Kept because it records the open-questions register that drove the phase, and every question in it was closed rather than abandoned. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [discovery-synthesis.md](discovery-synthesis.md) for the result and [decisions/](decisions/README.md) for the decisions it produced.
+> Kept because it records the open-questions register that drove the phase, and every question in it was closed rather than abandoned. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [discovery-synthesis.md](../discovery-synthesis.md) for the result and [decisions/](../decisions/README.md) for the decisions it produced.
 
 
 ## Purpose
@@ -28,7 +28,7 @@ We are deliberately in a discovery/research phase before writing product code. T
 ## Decisions made so far
 
 - **ADR-001 — Hybrid model strategy** (amended with the domain-model doc specialization flywheel).
-- **ADR-002–010 — the one-way doors** (the discovery map): MIT license, raw capture doctrine, append-only anchored event log, encryption from commit one, zero exfiltration, hybrid record identity, promise inventory, DCO, verification-never-in-weights. Full index: [decisions/](decisions/README.md).
+- **ADR-002–010 — the one-way doors** (the discovery map): MIT license, raw capture doctrine, append-only anchored event log, encryption from commit one, zero exfiltration, hybrid record identity, promise inventory, DCO, verification-never-in-weights. Full index: [decisions/](../decisions/README.md).
 
 ## Open questions register
 

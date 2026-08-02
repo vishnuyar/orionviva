@@ -6,7 +6,7 @@
 >
 > **Separates three tangled ideas: a model that knows what documents *are*, a model that does the *checking*, and a model that continually learns this user. The middle one is now closed by decision.**
 >
-> Kept because it is the analysis ADR-010 was written from, and the temptation it examines recurs with every model generation. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [decisions/ADR-010-verification-never-in-weights.md](decisions/ADR-010-verification-never-in-weights.md) — verification is deterministic, inspectable code, permanently.
+> Kept because it is the analysis ADR-010 was written from, and the temptation it examines recurs with every model generation. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [decisions/ADR-010-verification-never-in-weights.md](../decisions/ADR-010-verification-never-in-weights.md) — verification is deterministic, inspectable code, permanently.
 
 
 ## Untangling the question

@@ -6,7 +6,7 @@
 >
 > **Options for form factor (CLI / local web / desktop) and language (Python / TypeScript), ending with the decision explicitly deferred. *It is no longer deferred.***
 >
-> Kept because it holds the trade-offs each option was judged on. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [the-presentation-layer.md](the-presentation-layer.md) — the actual choice, with reasoning: Python, a local web surface, React + Vite, no runtime CDN.
+> Kept because it holds the trade-offs each option was judged on. It is **not** a description of how OrionViva works today, and nothing in it should be acted on. For what is true now, see [the-presentation-layer.md](../the-presentation-layer.md) — the actual choice, with reasoning: Python, a local web surface, React + Vite, no runtime CDN.
 
 
 ## Why this is decided last
