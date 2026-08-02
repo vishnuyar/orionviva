@@ -41,5 +41,8 @@ def default_registry(proj) -> Registry:
         fn=lambda args: ledger_tools.get_transparency(proj, args)))
     registry.register(ToolSpec(
         name="compute", params=COMPUTE_PARAMS,
-        fn=compute))
+        fn=compute,
+        # compute cannot check that the source documents its caller names
+        # exist; its record ids are pass-through, never vault-vouched.
+        record_ids_from_caller=True))
     return registry

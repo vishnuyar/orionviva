@@ -1,0 +1,7 @@
+Deliver the final answer for this turn. Call this exactly once, and only when
+the tool results from this turn already contain every figure the answer needs.
+`answer` is what Viva says to the person. `figures` lists every number the
+answer states: each entry carries `value` exactly as a tool result returned it,
+the `record_ids` from that same tool result, and its `grade`. An answer whose
+numbers are not all covered by its figures and this turn's tool results is
+refused rather than delivered.

@@ -21,8 +21,8 @@ import time
 import httpx
 
 from .spec import ModelSpec
-from .base import (AdapterError, CONTINUE_INSTRUCTION, PageImage, Turn,
-                   elide_images, run_to_completion)
+from .base import (AdapterError, CONTINUE_INSTRUCTION, ChatTurn, PageImage,
+                   Turn, elide_images, run_to_completion)
 
 
 class OpenAICompatAdapter:
@@ -121,3 +121,89 @@ class OpenAICompatAdapter:
         if c.max_continuations is None:
             return run_to_completion(call_once)
         return run_to_completion(call_once, max_continuations=c.max_continuations)
+
+    def converse(self, messages: list[dict], tools: list[dict]) -> ChatTurn:
+        """One conversational round-trip with native tool-calling.
+
+        ``messages`` is sent verbatim. ``tools`` arrive in the registry's
+        neutral shape — name, description, parameters — and are wrapped into
+        this protocol's function format here, which is the adapter's half of
+        the modality-neutral contract. One round-trip, no continuation, no
+        retries; a failure is an AdapterError for the caller to turn into a
+        refusal."""
+        c = self.candidate
+        body: dict = {"model": c.model, "max_tokens": c.max_tokens,
+                      "temperature": c.temperature, "messages": messages}
+        if tools:
+            body["tools"] = [{"type": "function",
+                              "function": {"name": t["name"],
+                                           "description": t["description"],
+                                           "parameters": t["parameters"]}}
+                             for t in tools]
+
+        is_openrouter = "openrouter.ai" in (c.base_url or "")
+        headers = {}
+        key = c.api_key()
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        if is_openrouter:
+            headers["HTTP-Referer"] = "https://orionviva.com"
+            headers["X-Title"] = "viva-speak"
+            body["usage"] = {"include": True}
+
+        started = time.monotonic()
+        try:
+            resp = httpx.post(self.url, json=body, headers=headers,
+                              timeout=c.timeout_s)
+        except httpx.HTTPError as e:
+            raise AdapterError(
+                f"[{c.name}] HTTP failure calling {self.url} after "
+                f"{time.monotonic() - started:.1f}s (timeout {c.timeout_s}s): "
+                f"{e}") from e
+        latency = time.monotonic() - started
+        if resp.status_code != 200:
+            raise AdapterError(
+                f"[{c.name}] {self.url} returned {resp.status_code}: "
+                f"{resp.text[:2000]}")
+        try:
+            data = resp.json()
+        except ValueError as e:
+            # A misbehaving server can say 200 and hand back an HTML error
+            # page; that is an unreachable model, never an exception upward.
+            raise AdapterError(
+                f"[{c.name}] {self.url} returned 200 with a non-JSON body: "
+                f"{resp.text[:500]}") from e
+
+        try:
+            choice = data["choices"][0]
+            message = choice["message"]
+        except (KeyError, IndexError, TypeError) as e:
+            raise AdapterError(
+                f"[{c.name}] response shape unexpected (not chat-completions?): "
+                f"{str(data)[:500]}") from e
+
+        usage = data.get("usage") or {}
+        step_in = int(usage.get("prompt_tokens", 0))
+        step_out = int(usage.get("completion_tokens", 0))
+        reported_cost = usage.get("cost")
+        if reported_cost is not None:
+            try:
+                step_cost = float(reported_cost)
+            except (TypeError, ValueError):
+                step_cost = (step_in * c.cost_per_mtok_in
+                             + step_out * c.cost_per_mtok_out) / 1_000_000.0
+        else:
+            step_cost = (step_in * c.cost_per_mtok_in
+                         + step_out * c.cost_per_mtok_out) / 1_000_000.0
+
+        import copy
+
+        return ChatTurn(
+            message=message, tool_calls=list(message.get("tool_calls") or []),
+            text=message.get("content") or "",
+            finish_reason=choice.get("finish_reason") or "",
+            input_tokens=step_in, output_tokens=step_out, cost_usd=step_cost,
+            latency_s=latency, resolved_model=str(data.get("model", c.model)),
+            # A deep copy, because the caller goes on appending to its message
+            # list — the recorded request must stay what was actually sent.
+            request=copy.deepcopy(body), response=data)

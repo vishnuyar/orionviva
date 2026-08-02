@@ -118,6 +118,33 @@ class ModelAdapter(Protocol):
     def extract(self, pages: list[PageImage], prompt: str) -> ModelResult: ...
 
 
+@dataclass(frozen=True)
+class ChatTurn:
+    """One conversational round-trip: the assistant message verbatim, the
+    tool calls it carries (empty when the model answered in text), and the
+    call's accounting.
+
+    ``request`` and ``response`` are the verbatim JSON payloads sent and
+    received — raw capture happens on these, exactly as it does for
+    :class:`ModelResult`. Adapters that support conversation return one of
+    these per round-trip; no continuation is attempted, because a tool call
+    truncated mid-JSON is a malformed step for the caller to handle, not a
+    fragment to stitch.
+    """
+
+    message: dict[str, Any]       # the assistant message, verbatim
+    tool_calls: list              # the message's tool calls, [] when none
+    text: str                     # the message's text content, "" when none
+    finish_reason: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    latency_s: float
+    resolved_model: str
+    request: dict[str, Any]      # verbatim request body
+    response: dict[str, Any]     # verbatim response body
+
+
 def elide_images(body: dict[str, Any], hashes: list[str]) -> dict[str, Any]:
     """Return a copy of a request body with image payloads replaced by their
     page hashes.

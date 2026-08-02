@@ -1,6 +1,6 @@
 # Breaking up the projection — and the tool registry it becomes
 
-**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. Outstanding: provider adapters and the real-vault run. · **Created:** 2026-08-01
+**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2/ADR-010 (deterministic math; no arithmetic in the model), T4 (untouched — this brief writes no events), T6 (no tool touches the network), X3 (no tool can do anything irreversible), I5 (code universal, specifics are data), and the standing principle *read side early, write side late*.
 
 ---
@@ -203,8 +203,19 @@ discipline has to cover *filters a read would ignore*, not only values a vault
 does not hold — accepted-and-dropped is the quiet way a true row answers the
 wrong question.
 
-**Still to do.** The provider adapters themselves (native tool-calling first,
-text protocol as degradation, per D4 — they need live model access to prove),
-and the standing real-vault run: the stress-test questions from
+**Still to do.** The standing real-vault run: the stress-test questions from
 [agent-toolset.md](agent-toolset.md) asked against the real vault, every figure
 carrying its citation.
+
+**What followed (built 2026-08-01, the conversation loop).** The D4 reframe
+paid out as designed: `converse` on the OpenAI-compatible adapter presents the
+registry's schemas natively (covering the hosted route and local servers with
+one wire format), a text-protocol planner covers every other model through the
+unchanged `extract` contract, and both drive the same runner and the same gate.
+The gate itself was hardened when a live-model planner became real: refusals
+and argument echoes no longer ground figures, and pass-through record ids never
+join the citation pool — the residual (a deliberate derivation through
+`compute`) is recorded under the gate-tightening item this doc's build notes
+already owed. Every conversation exchange is captured in the vault
+(`ReadRecorded`, `phase="speak"`) with its prompt digests, model, tokens and
+cost. The entrypoint is `viva.speak`; no model has yet met the real vault.
