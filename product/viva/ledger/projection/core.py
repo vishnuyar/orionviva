@@ -112,6 +112,10 @@ class ProjectionCore:
         # Ingest read-model, maintained incrementally alongside balances.
         self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
         self._replies: dict[str, str] = {}      # doc_id -> latest extract reply
+        # What the ledger posted for a document's closing, which is the
+        # corrected figure when a person ruled on one. The reply is what the
+        # model read; this is what was accepted.
+        self._doc_closing: dict[str, tuple] = {}
         # The per-account statement register, derived from those replies on
         # first ask and dropped whenever a new reading arrives.
         self._statements: dict | None = None
@@ -158,6 +162,11 @@ class ProjectionCore:
             self.apply(event)
 
     def apply(self, event: Event) -> None:
+        # The statement register is derived from this fold. Any event may change
+        # it, so it is dropped on every one rather than on a chosen few — the
+        # chosen few is what let a corrected statement leave a stale register
+        # behind while a fresh replay of the same log disagreed.
+        self._statements = None
         """Fold one event into the projection (respecting an as_of horizon)."""
         if self.as_of is not None and event.occurred_at > self.as_of:
             return          # ISO dates sort lexically; skip the future
@@ -221,7 +230,6 @@ class ProjectionCore:
                 doc = event.body.get("doc_id", "")
                 if doc:
                     self._replies[doc] = event.body.get("response_text", "")
-                    self._statements = None
 
         elif et == "StatementHeld":
             self._held[event.body["doc_id"]] = event.body
@@ -309,8 +317,11 @@ class ProjectionCore:
             st.seen = True
             if did:
                 st.doc_ids.add(did)
-            if did:
                 self._posted.add(did)
+                # What was accepted for this document, which is the corrected
+                # figure when a person ruled on one.
+                self._doc_closing[did] = (event.body["amount"],
+                                          event.occurred_at)
             # Across stitched months the latest-dated closing is the current
             # balance to answer with; earlier closings were true when written.
             if st.closing is None or event.occurred_at >= st.closing_date:
