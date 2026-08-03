@@ -111,6 +111,14 @@ class ProjectionCore:
         self._acct: dict[str, _AccountState] = {}
         # Ingest read-model, maintained incrementally alongside balances.
         self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
+        self._replies: dict[str, str] = {}      # doc_id -> latest extract reply
+        # What the ledger posted for a document's closing, which is the
+        # corrected figure when a person ruled on one. The reply is what the
+        # model read; this is what was accepted.
+        self._doc_closing: dict[str, tuple] = {}
+        # The per-account statement register, derived from those replies on
+        # first ask and dropped whenever a new reading arrives.
+        self._statements: dict | None = None
         self._posted: set[str] = set()           # doc_ids with posting events
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
         self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
@@ -155,6 +163,9 @@ class ProjectionCore:
 
     def apply(self, event: Event) -> None:
         """Fold one event into the projection (respecting an as_of horizon)."""
+        # The statement register is derived from this fold, so any event may
+        # change it and every event drops it.
+        self._statements = None
         if self.as_of is not None and event.occurred_at > self.as_of:
             return          # ISO dates sort lexically; skip the future
         self._apply(event)
@@ -205,6 +216,18 @@ class ProjectionCore:
 
         elif et == "DocumentCaptured":
             self._captured[event.body["doc_id"]] = event.body.get("doc_type", "")
+
+        elif et == "ReadRecorded":
+            # The reply a model gave for a document, kept verbatim so a reader
+            # above this layer can recover what the document declared about
+            # itself. Later replies win, so a document re-read after a prompt
+            # change is described by the newer reading. Text only: this layer
+            # parses nothing and knows no document format.
+            if (event.body.get("phase", "extract") == "extract"
+                    and event.body.get("parse_ok")):
+                doc = event.body.get("doc_id", "")
+                if doc:
+                    self._replies[doc] = event.body.get("response_text", "")
 
         elif et == "StatementHeld":
             self._held[event.body["doc_id"]] = event.body
@@ -292,8 +315,11 @@ class ProjectionCore:
             st.seen = True
             if did:
                 st.doc_ids.add(did)
-            if did:
                 self._posted.add(did)
+                # What was accepted for this document, which is the corrected
+                # figure when a person ruled on one.
+                self._doc_closing[did] = (event.body["amount"],
+                                          event.occurred_at)
             # Across stitched months the latest-dated closing is the current
             # balance to answer with; earlier closings were true when written.
             if st.closing is None or event.occurred_at >= st.closing_date:

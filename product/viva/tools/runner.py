@@ -12,12 +12,14 @@ The gate: an answer's every figure must cite record ids the run actually saw,
 and every number appearing in the answer's text must be traceable to a tool
 result from this run. Dates are declared alongside the figures, as the ISO
 dates the results carried, because prose writes a date in forms no ISO token
-matches; a declared date licenses its own parts and nothing else. An answer
-that fails is refused — not softened, not partially delivered.
+matches; a declared date licenses its own parts and nothing else, and must
+fall inside a period the run is attested for. An answer that fails is refused —
+not softened, not partially delivered.
 """
 
 from __future__ import annotations
 
+import datetime
 import re
 from dataclasses import dataclass, field
 
@@ -36,10 +38,21 @@ _NUMBER = re.compile(r"\d{4}-\d{2}-\d{2}|\d[\d,]*(?:\.\d+)?")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def _is_real_date(iso: str) -> bool:
+    """Whether a `YYYY-MM-DD` string names a day that exists."""
+    try:
+        datetime.date.fromisoformat(iso)
+        return True
+    except ValueError:
+        return False
+
+
 def _date_parts(iso: str) -> set:
     """The tokens a person writing this date out loud can produce — the whole
     date, its year, and its month and day with and without a leading zero. A
-    declared date licenses exactly these and nothing else."""
+    declared date licenses exactly these and nothing else. Nothing is removed
+    from the answer's text to make room for them: text that is deleted before
+    the numbers are counted takes whatever else it overlaps with it."""
     year, month, day = iso.split("-")
     return {iso, year, month, day, month.lstrip("0"), day.lstrip("0")}
 
@@ -106,6 +119,11 @@ def run(question: str, planner, registry: Registry,
     seen_ids: set = set()
     seen_strings: set = set()
     grounded_tokens: set = set()
+    # What the reads are attested for, kept apart from what they asserted. A
+    # period is a read reporting its own behavior, so it needs no protection
+    # from the caller's arguments — and it holds dates only, so no amount can
+    # enter it.
+    periods: list = []
     while True:
         step = planner({"question": question,
                         "tools": registry.schemas(),
@@ -142,7 +160,11 @@ def run(question: str, planner, registry: Registry,
                 arg_tokens = _tokens_in(_strings_in(args))
                 if not registry.caller_supplies_record_ids(step["tool"]):
                     seen_ids |= set(result.record_ids)
-                result_strings = _strings_in(result.to_dict())
+                asserted = result.to_dict()
+                for span in asserted.pop("covers", None) or []:
+                    if span.get("from") and span.get("to"):
+                        periods.append((span["from"], span["to"]))
+                result_strings = _strings_in(asserted)
                 seen_strings |= result_strings
                 grounded_tokens |= (_tokens_in(result_strings) - arg_tokens)
             continue
@@ -151,11 +173,11 @@ def run(question: str, planner, registry: Registry,
                             "tool nor an answer.",
                             [t.to_dict() for t in transcript], len(transcript))
         return _gate(step, transcript, seen_ids, seen_strings,
-                     grounded_tokens)
+                     grounded_tokens, periods)
 
 
 def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
-          grounded_tokens: set) -> RunResult:
+          grounded_tokens: set, periods: list) -> RunResult:
     """The composition check. Every declared figure must carry record ids the
     run saw and a value some result asserted; every number in the answer text
     must be covered by a figure or grounded by a result — where grounded
@@ -197,26 +219,27 @@ def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
                 dicts, len(transcript))
         if figure.get("grade"):
             grades.append(figure["grade"])
-    # A date is a claim about when, not about how much, and prose writes it in
-    # forms no ISO token matches. So it is declared like a figure and checked
-    # like one: the ISO date must be something this run's results asserted, and
-    # only then may the answer say its parts.
+    asserted_dates = {tok for tok in grounded_tokens if _ISO_DATE.match(tok)}
     sayable: set = set()
     for entry in step.get("dates", []) or []:
         iso = str(entry.get("iso", "")) if isinstance(entry, dict) else ""
-        if not _ISO_DATE.match(iso):
+        # Shape first, then reality. The library accepts forms this gate cannot
+        # take apart — a compact YYYYMMDD, an ISO week date — and a value that
+        # parses but has no parts would raise on the way to being licensed.
+        if not _ISO_DATE.match(iso) or not _is_real_date(iso):
+            return _refused(
+                "unfounded_date", f"A declared date {iso!r} is not a date.",
+                dicts, len(transcript))
+        if not (any(start <= iso <= end for start, end in periods)
+                or iso in asserted_dates):
             return _refused(
                 "unfounded_date",
-                f"A declared date {iso!r} is not a date this run could have "
-                "read.", dicts, len(transcript))
-        if iso not in grounded_tokens:
-            return _refused(
-                "unfounded_date",
-                f"The date {iso!r} appears in no tool result from this run.",
+                f"The date {iso!r} falls outside every period this run is "
+                "attested for and matches nothing this run's results assert.",
                 dicts, len(transcript))
         sayable |= _date_parts(iso)
 
-    seen_dates = sorted(d for d in grounded_tokens if _ISO_DATE.match(d))
+    seen_dates = sorted(asserted_dates)
     covered = {str(f["value"]).replace(",", "") for f in figures}
     for token in _NUMBER.findall(text):
         plain = token.replace(",", "")

@@ -14,9 +14,10 @@ from viva.ledger.events import (CORROBORATED, UNVERIFIED, VERIFIED,
                                 agent_acted, document_captured,
                                 merchant_enriched, movement_tagged,
                                 position_observed, question_declined,
-                                statement_held)
+                                read_recorded, statement_held)
 from viva.ledger.projection import movement_key
 from viva.tools import default_registry, run, weakest
+from viva.tools.envelope import ToolResult
 from viva.tools.registry import PROMPTS, Registry, ToolSpec, descriptions
 from vivacore import promptstore
 
@@ -27,6 +28,16 @@ FROZEN_DESCRIPTIONS = {"tools-v1": "484999eebb3697a4"}
 
 def _p(doc, page=1):
     return Provenance(doc, page, "r")
+
+
+def _statement_reply(opening, opening_date, closing, closing_date):
+    """What a model returned for a statement, in the shape the parser reads.
+    Coverage is derived from this, so a fixture without it holds no period —
+    which is the honest outcome, not a gap in the fixture."""
+    import json
+    return json.dumps({"opening": {"amount_raw": opening, "date_raw": opening_date},
+                       "closing": {"amount_raw": closing, "date_raw": closing_date},
+                       "transactions": []})
 
 
 def _events():
@@ -47,6 +58,10 @@ def _events():
         statement_held("doc-held", {}, None, "gap", "2026-02-01"),
         document_captured("doc-limbo", "limbo.pdf", 80, "bank_statement", 0.4,
                           "2026-02-01"),
+        read_recorded("doc-jan", "model", "extract-v1", "text",
+                      _statement_reply("1000.00", "2026-01-01",
+                                       "600.00", "2026-01-31"),
+                      0.0, 1, 1, True, None, "2026-02-01"),
         opening_balance_observed("chk", "1000.00", "2026-01-01", _p("doc-jan")),
         simple_transaction("chk", "-40.00", "GREENFIELD MARKET",
                            "2026-01-05", provenance=_p("doc-jan")),
@@ -410,64 +425,183 @@ def test_a_fabricated_number_cannot_ride_inside_a_seen_one(registry):
     # proves tokens are matched whole, not by containment.
 
 
-def test_a_declared_date_lets_the_answer_write_it_in_words(registry):
-    """A date is declared as the ISO date a result carried; the answer may then
-    write it however reads best."""
+def test_a_ranging_read_reports_what_it_is_attested_for(registry):
+    """A read that ranges over time says which account it is attested for and
+    over what period; one that measures a moment carries its value-time
+    instead."""
+    ranging = registry.call("query_ledger", {"entity": "transactions"})
+    assert ranging.ok and ranging.covers
+    for entry in ranging.covers:
+        assert entry["account"] and entry["from"] <= entry["to"]
+    moment = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "net_worth"})
+    assert moment.ok and moment.covers == [] and moment.dated
+
+def test_coverage_is_the_period_a_statement_attested_not_the_movement_dates(registry):
+    """A statement posts only by reconciling, so its whole period is covered
+    even where no movement falls. Reading the span off the movements instead
+    would report a quiet fortnight as a hole in the evidence."""
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk",
+                    "window": {"from": "2026-01-01", "to": "2026-01-31"}}})
+    assert result.ok
+    assert result.covers == [{"account": "chk", "from": "2026-01-01",
+                              "to": "2026-01-31"}]
+    assert not any("past the evidence" in c for c in result.caveats)
+
+
+def test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so(registry):
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk",
+                    "window": {"from": "2020-01-01", "to": "2030-12-31"}}})
+    assert result.ok
+    assert result.covers == [{"account": "chk", "from": "2026-01-01",
+                              "to": "2026-01-31"}]
+    assert any("reaches past what its statements attest" in c
+               for c in result.caveats)
+
+def test_a_window_outside_what_is_attested_covers_nothing_and_says_which(registry):
+    """Nothing spent and nothing attested must not read alike."""
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk",
+                    "window": {"from": "2019-01-01", "to": "2019-12-31"}}})
+    assert result.ok and result.covers == []
+    assert any("none of which falls inside the window asked for" in c
+               for c in result.caveats)
+
+
+def test_a_filter_that_matches_nothing_still_reports_its_coverage(registry):
+    """A category, tag, merchant or nature filter selects rows; it does not
+    decide what the vault holds. A zero inside an attested period is money not
+    spent, never evidence not held, and the two sentences are not
+    interchangeable."""
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk", "nature": "transfer",
+                    "window": {"from": "2026-01-01", "to": "2026-01-31"}}})
+    assert result.ok
+    assert result.covers == [{"account": "chk", "from": "2026-01-01",
+                              "to": "2026-01-31"}]
+    assert not any("no evidence" in c.lower() for c in result.caveats)
+
+
+def test_an_account_with_no_statement_says_so_rather_than_guessing(registry):
+    """An account whose period nothing attests borrows nothing from its
+    movements: it reports no coverage and names itself."""
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending"})
+    assert result.ok
+    assert {c["account"] for c in result.covers} == {"chk"}
+    assert any("No statement has posted for card" in c for c in result.caveats)
+
+def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
+    """A boundary date the planner supplied is scope the tool reports back, not
+    a number the planner invented, so the answer may say which period it read."""
+    window = {"from": "2026-01-05", "to": "2026-01-20"}
+
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        row = context["results"][0]["data"]["balances"][0]
-        return {"answer": "As of January 31, 2026 your checking balance is "
-                          f"USD {row['amount']}.",
-                "figures": [{"value": row["amount"],
-                             "record_ids": [row["record_id"], "doc-jan"],
-                             "grade": row["grade"]}],
-                "dates": [{"iso": "2026-01-31"}]}
-    result = run("what is my checking balance?", planner, registry)
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending",
+                             "filters": {"window": window}}}
+        total = context["results"][0]["data"]["total"]
+        return {"answer": f"Between January 5, 2026 and January 20, 2026 you "
+                          f"spent {total}.",
+                "figures": [{"value": total, "record_ids": ["doc-jan"],
+                             "grade": CORROBORATED}],
+                "dates": [{"iso": "2026-01-05"}, {"iso": "2026-01-20"}]}
+    result = run("what did I spend then?", planner, registry)
     assert result.answered, result.text
-    assert "January 31, 2026" in result.text
 
 
-def test_a_date_written_but_not_declared_says_which_date_it_was(registry):
-    """The refusal names the date, because forgetting to declare one and
-    inventing a number outright are very different news."""
+def test_a_month_written_for_a_day_it_covers_is_accepted(registry):
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        return {"answer": "As of January 31, 2026 you are fine.",
-                "figures": [], "dates": []}
-    result = run("balance?", planner, registry)
-    assert not result.answered and result.refusal == "undeclared_date"
-    assert "2026-01-31" in result.text
+            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
+        return {"answer": "Everything I hold was recorded in January 2026.",
+                "figures": [], "dates": [{"iso": "2026-01-05"}]}
+    result = run("when?", planner, registry)
+    assert result.answered, result.text
 
 
-def test_a_date_no_result_carried_is_refused(registry):
+def test_a_period_a_read_is_attested_for_can_never_ground_a_figure(registry):
+    """A period is scope, kept in its own pool, and that pool holds dates only.
+    A spending aggregate names no row dates, so its period is the only place
+    its boundaries appear — and a figure may not stand on one."""
+    covers = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending"}).covers
+    edge = covers[0]["to"]
+
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
+            return {"tool": "query_ledger", "args": {"entity": "aggregate",
+                                                     "metric": "spending"}}
+        return {"answer": f"The figure is {edge}.",
+                "figures": [{"value": edge, "record_ids": ["doc-jan"],
+                             "grade": CORROBORATED}],
+                "dates": []}
+    result = run("?", planner, registry)
+    assert not result.answered and result.refusal == "unfounded_figure"
+
+def test_a_date_outside_everything_read_is_refused(registry):
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
         return {"answer": "Nothing to report.", "figures": [],
                 "dates": [{"iso": "2019-12-31"}]}
-    result = run("balance?", planner, registry)
+    result = run("when?", planner, registry)
     assert not result.answered and result.refusal == "unfounded_date"
 
 
-def test_a_declared_date_licenses_its_parts_and_no_other_number(registry):
-    """The ruled cost of declaring dates by ISO alone: the parts of a real date
-    become sayable, so a four-digit amount matching its year passes, while any
-    number that is not one of its parts is refused exactly as before."""
+def test_a_date_component_written_but_not_declared_says_which_date_it_was(registry):
+    """A date left undeclared and a number invented outright are the same
+    refusal to the gate and very different news to the person."""
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        return {"answer": "You spent 2026 dollars and 4711 dollars.",
-                "figures": [], "dates": [{"iso": "2026-01-31"}]}
-    result = run("balance?", planner, registry)
-    # '2026' rides through as the declared date's year; '4711' is nobody's part.
-    assert not result.answered and result.refusal == "unfounded_figure"
-    assert "4711" in result.text and "2026 dollars" not in result.text
+            return {"tool": "query_ledger",
+                    "args": {"entity": "balances",
+                             "filters": {"account": "chk"}}}
+        return {"answer": "You were fine on the 31st.",
+                "figures": [], "dates": []}
+    result = run("when?", planner, registry)
+    assert not result.answered and result.refusal == "undeclared_date"
+    assert "2026-01-31" in result.text
+
+def test_a_declared_date_licenses_its_own_parts_and_nothing_else(registry):
+    """The accepted cost of licensing a date by its parts, stated so it is not
+    rediscovered as a bug: a number equal to a component of a declared date
+    passes. It is bounded by exact equality — an amount that merely begins with
+    the year does not pass, and neither does one unrelated to any date. Nothing
+    is removed from the text to achieve this; text deleted before the numbers
+    are counted takes whatever else it overlaps with it."""
+    def answer(sentence):
+        def planner(context):
+            if not context["results"]:
+                return {"tool": "query_ledger",
+                        "args": {"entity": "transactions"}}
+            return {"answer": sentence, "figures": [],
+                    "dates": [{"iso": "2026-01-05"}]}
+        return run("how much?", planner, registry)
+
+    assert answer("In January 2026 you spent 2026 dollars.").answered
+    for invented in ("In January 2026 you spent 20261 dollars.",
+                     "In January 2026 there were 120 charges.",
+                     "In January 2026 you spent 4711 dollars."):
+        result = answer(invented)
+        assert not result.answered and result.refusal == "unfounded_figure"
+
+def test_a_declared_date_that_is_not_a_date_refuses_rather_than_raising(registry):
+    for bad in ("600.00", "2026-13-45", "", "2026-01-31 "):
+        def planner(context, bad=bad):
+            if not context["results"]:
+                return {"tool": "query_ledger", "args": {"entity": "transactions"}}
+            return {"answer": "Nothing to report.", "figures": [],
+                    "dates": [{"iso": bad}]}
+        result = run("when?", planner, registry)
+        assert not result.answered and result.refusal == "unfounded_date", bad
 
 
 def test_a_figure_citing_records_the_run_never_saw_is_refused(registry):
@@ -509,3 +643,292 @@ def test_a_refusal_result_flows_back_to_the_planner(registry):
     result = run("balance of mystery?", planner, registry)
     assert seen["refusal"] == "unknown_account"
     assert result.answered and result.calls == 2
+
+
+# ------------------------------------------------- what the statements attest
+
+def _statement_doc(doc_id, account, opening, opening_date, closing,
+                   closing_date, posted=None, read_at=None):
+    """A document that declares its own period, the way ingestion records one.
+
+    `posted` differs from `closing` when a person corrected a figure the model
+    misread: the reply keeps what was read, the ledger carries what was
+    accepted."""
+    accepted = posted or closing
+    return [document_captured(doc_id, f"{doc_id}.pdf", 2, "bank_statement", 0.9,
+                              read_at or closing_date),
+            read_recorded(doc_id, "model", "extract-v1", "text",
+                          _statement_reply(opening, opening_date,
+                                           closing, closing_date),
+                          0.0, 1, 1, True, None, read_at or closing_date),
+            closing_balance_observed(account, accepted, closing_date,
+                                     _p(doc_id, 6))]
+
+
+def _gapped_projection():
+    """January and March held, February never ingested — and February's real
+    net change is zero, so the balances continue across the hole."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-jan"))]
+    evs += _statement_doc("d-jan", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += _statement_doc("d-mar", "chk", "900.00", "2026-03-01",
+                          "800.00", "2026-03-31")
+    return LedgerProjection(evs)
+
+
+def test_statements_join_only_when_the_dates_meet_as_well_as_the_balances():
+    """The ingest stitch joins on balances alone, so a missing month whose net
+    change is zero passes it. Requiring the dates to meet is what keeps the
+    missing statement visible."""
+    proj = _gapped_projection()
+    assert proj.attested_runs("chk") == [("2026-01-01", "2026-01-31"),
+                                         ("2026-03-01", "2026-03-31")]
+
+
+def test_a_window_inside_a_gap_between_statements_is_not_covered():
+    """The failure this register exists to prevent: claiming a period whose
+    statement was never ingested, and reporting its zero as a fact."""
+    registry = default_registry(_gapped_projection())
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk",
+                    "window": {"from": "2026-02-01", "to": "2026-02-28"}}})
+    assert result.ok and result.covers == []
+    assert any("none of which falls inside the window" in c
+               for c in result.caveats)
+
+
+def test_a_window_spanning_a_gap_reports_both_periods_and_names_the_hole():
+    registry = default_registry(_gapped_projection())
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk",
+                    "window": {"from": "2026-01-01", "to": "2026-03-31"}}})
+    assert result.covers == [
+        {"account": "chk", "from": "2026-01-01", "to": "2026-01-31"},
+        {"account": "chk", "from": "2026-03-01", "to": "2026-03-31"}]
+    assert any("a statement between them is missing" in c
+               for c in result.caveats)
+
+
+def test_a_ledger_account_is_never_offered_as_one_with_no_statement(registry):
+    """Only accounts a document opened are in scope. `Expenses:Uncategorized`
+    is bookkeeping, and naming it in a caveat would be nonsense to a person."""
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending"})
+    assert not any("Uncategorized" in c and "No statement" in c
+                   for c in result.caveats)
+
+
+def test_a_moment_read_licenses_its_own_date_without_a_period(registry):
+    """A balance carries a value-time and no period. Without the asserted-date
+    path it could not say the date printed on its own statement."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger",
+                    "args": {"entity": "balances", "filters": {"account": "chk"}}}
+        return {"answer": "As of 2026-01-31 you were fine.", "figures": [],
+                "dates": [{"iso": "2026-01-31"}]}
+    assert run("?", planner, registry).answered
+
+
+def test_a_period_missing_an_end_licenses_nothing():
+    """`covers` is data a tool sets, not a shape the gate can assume. A
+    half-filled entry must not become a period that admits every date up to its
+    other end."""
+    registry = Registry()
+    registry.register(ToolSpec(
+        name="query_ledger", params={"type": "object", "properties": {}},
+        fn=lambda args: ToolResult(
+            tool="query_ledger", ok=True, data={"note": "no start"},
+            covers=[{"account": "chk", "from": "", "to": "2026-12-31"}])))
+
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {}}
+        return {"answer": "Fine.", "figures": [], "dates": [{"iso": "1999-01-01"}]}
+    result = run("?", planner, registry)
+    assert not result.answered and result.refusal == "unfounded_date"
+
+
+def _two_year_projection():
+    """A vault attested across a year boundary. A one-month fixture cannot tell
+    a shape check from containment: every malformed date sorts outside one
+    month, so both refuse and the test cannot say which mechanism fired."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-a"))]
+    evs += _statement_doc("d-a", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-12-31")
+    evs += _statement_doc("d-b", "chk", "900.00", "2027-01-01",
+                          "800.00", "2027-12-31")
+    return LedgerProjection(evs)
+
+
+def test_a_declared_date_the_gate_cannot_take_apart_refuses(registry):
+    """The date library accepts forms this gate cannot split. Shape is checked
+    first, so a value that would raise on the way to being licensed is refused.
+    Driven against a vault wide enough that containment would admit them."""
+    wide = default_registry(_two_year_projection())
+    def planner_for(iso):
+        def planner(context):
+            if not context["results"]:
+                return {"tool": "query_ledger",
+                        "args": {"entity": "transactions"}}
+            return {"answer": "Fine.", "figures": [], "dates": [{"iso": iso}]}
+        return planner
+    for iso in ("20260105", "2026-W01-1", "2026-02-30", "2026-1-5"):
+        result = run("?", planner_for(iso), wide)
+        assert not result.answered and result.refusal == "unfounded_date", iso
+    # and the well-formed date inside the same period is admitted, so the
+    # refusals above are the shape check and not the window
+    assert run("?", planner_for("2026-06-15"), wide).answered
+
+
+def _brokerage_reply():
+    import json
+    return json.dumps({"as_of_raw": "2026-01-31", "cash_raw": "100.00",
+                       "total_raw": "1600.00",
+                       "positions": [{"instrument": "ALPHA FUND",
+                                      "units_raw": "10",
+                                      "market_value_raw": "1500.00"}]})
+
+
+def _corrected_projection():
+    """Three consecutive months. February's closing was misread and a person
+    corrected it, so what posted differs from what the reply still says."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += _statement_doc("d-2", "chk", "900.00", "2026-02-01",
+                          "850.00", "2026-02-28", posted="800.00")
+    evs += _statement_doc("d-3", "chk", "800.00", "2026-03-01",
+                          "700.00", "2026-03-31")
+    return LedgerProjection(evs)
+
+
+def test_a_corrected_closing_does_not_invent_a_missing_statement():
+    """The reply says what the model read; the ledger says what was accepted.
+    Reading the reply's figure would break the join to the next month and
+    announce a missing statement between two months that abut."""
+    assert _corrected_projection().attested_runs("chk") == [
+        ("2026-01-01", "2026-03-31")]
+
+
+def test_the_register_is_the_same_live_as_replayed():
+    """A projection built event by event and one replayed from the same log
+    must describe the same vault. Dropping the cache on chosen events is what
+    let the two disagree for the life of a process."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    live = LedgerProjection(evs)
+    assert live.attested_runs("chk")            # build the register, then move on
+    # February's reply arrives while the register is cold, and only the posting
+    # follows. A policy that watches for a new reading would miss this, which is
+    # the shape a corrected or healed statement actually takes.
+    early = _statement_doc("d-2", "chk", "900.00", "2026-02-01",
+                           "800.00", "2026-02-28")
+    read, posting = early[:2], early[2:]
+    for event in read:
+        live.apply(event)
+    live.attested_runs("chk")                   # warm the register again
+    for event in posting:
+        live.apply(event)
+    assert live.attested_runs("chk") == LedgerProjection(
+        evs + early).attested_runs("chk") == [("2026-01-01", "2026-02-28")]
+
+
+def test_an_as_of_read_never_attests_past_its_own_horizon():
+    """A read as of a past date holds only the movements up to it. Attesting a
+    period that runs past it would claim completeness for days it is
+    deliberately not showing."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-q"))]
+    # read on 10 February, declaring a period that runs to the end of March —
+    # so the reading is inside the horizon and the period it claims is not
+    evs += _statement_doc("d-q", "chk", "1000.00", "2026-01-01",
+                          "800.00", "2026-03-31", read_at="2026-02-10")
+    assert LedgerProjection(evs).attested_runs("chk") == [("2026-01-01",
+                                                          "2026-03-31")]
+    assert LedgerProjection(evs, as_of="2026-02-15").attested_runs("chk") == []
+
+
+def test_statements_are_ordered_by_period_not_by_document_id():
+    """Document ids arrive in no meaningful order. Without an explicit sort the
+    runs fragment and the answer announces missing statements that are held."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("zzz"))]
+    evs += _statement_doc("zzz", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += _statement_doc("aaa", "chk", "900.00", "2026-02-01",
+                          "800.00", "2026-02-28")
+    evs += _statement_doc("mmm", "chk", "800.00", "2026-03-01",
+                          "700.00", "2026-03-31")
+    assert LedgerProjection(evs).attested_runs("chk") == [("2026-01-01",
+                                                          "2026-03-31")]
+
+
+def test_a_document_that_is_not_a_statement_attests_nothing_even_if_it_parses():
+    """The register asks what kind of document declared a period, not whether
+    something statement-shaped can be read out of it. A holdings document whose
+    reply happens to parse must still attest nothing, because a snapshot says
+    nothing about the days around it."""
+    evs = [account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"),
+           document_captured("d-x", "x.pdf", 2, "brokerage_statement", 0.9,
+                             "2026-01-31"),
+           read_recorded("d-x", "model", "extract-v1", "text",
+                         _statement_reply("1000.00", "2026-01-01",
+                                          "1600.00", "2026-01-31"),
+                         0.0, 1, 1, True, None, "2026-01-31"),
+           closing_balance_observed("brk", "1600.00", "2026-01-31", _p("d-x", 3))]
+    assert LedgerProjection(evs).attested_runs("brk") == []
+
+
+def test_statements_whose_balances_do_not_continue_are_two_periods():
+    """Dates that meet are not enough. A February opening at a figure January
+    did not close at means something between them is unaccounted for, and the
+    two months are not one attested stretch."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += _statement_doc("d-2", "chk", "850.00", "2026-02-01",
+                          "800.00", "2026-02-28")
+    assert LedgerProjection(evs).attested_runs("chk") == [
+        ("2026-01-01", "2026-01-31"), ("2026-02-01", "2026-02-28")]
+
+
+def test_a_defect_among_the_transactions_does_not_remove_the_period():
+    """The register reads the two boxes that bound a statement. A statement is
+    in the ledger because it reconciled, so announcing it missing on account of
+    an unreadable transaction would deny a month the vault fully holds."""
+    import json
+    broken = json.dumps({
+        "opening": {"amount_raw": "900.00", "date_raw": "2026-02-01"},
+        "closing": {"amount_raw": "800.00", "date_raw": "2026-02-28"},
+        "transactions": [{"date_raw": "not a date", "amount_raw": "??",
+                          "description": "unreadable"}]})
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += [document_captured("d-2", "d-2.pdf", 2, "bank_statement", 0.9,
+                              "2026-02-28"),
+            read_recorded("d-2", "model", "extract-v1", "text", broken,
+                          0.0, 1, 1, True, None, "2026-02-28"),
+            closing_balance_observed("chk", "800.00", "2026-02-28", _p("d-2", 6))]
+    evs += _statement_doc("d-3", "chk", "800.00", "2026-03-01",
+                          "700.00", "2026-03-31")
+    assert LedgerProjection(evs).attested_runs("chk") == [("2026-01-01",
+                                                          "2026-03-31")]

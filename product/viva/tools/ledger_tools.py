@@ -151,6 +151,62 @@ def _movement_passes(proj, m, filters: dict) -> bool:
     return True
 
 
+def _attested_coverage(proj, filters: dict) -> tuple[list, list]:
+    """What this read is attested for, per account, and what to say about the
+    accounts that fall short of the window asked for.
+
+    Coverage is what a document proved, never what the movements happen to
+    show. A statement enters the ledger only by reconciling — the issuer's own
+    opening plus the period's transactions equal its closing — so inside a
+    posted period every movement is present and a zero is a zero. Deriving the
+    span from movement dates instead would report a quiet fortnight as a hole
+    in the evidence, which is a different sentence and a false one.
+
+    An account may attest more than one period: statements join only where the
+    balances continue AND the dates meet, so a missing statement leaves two
+    runs rather than one span across the gap it cannot support.
+
+    Returns `(covers, caveats)`: one entry per account holding an attested
+    period that meets the window, and a caveat for every account in scope that
+    does not."""
+    want = filters.get("window") or {}
+    asked_from, asked_to = (want.get("from") or "")[:10], (want.get("to") or "")[:10]
+    named = filters.get("account")
+    scope = [named] if named else sorted(
+        i.account for i in proj.account_infos() if i.kind)
+
+    covers, caveats = [], []
+    for account in scope:
+        runs = proj.attested_runs(account)
+        if not runs:
+            caveats.append(f"No statement has posted for {account}, so nothing "
+                           "here is attested for it.")
+            continue
+        first, last = runs[0][0], runs[-1][1]
+        held = ", ".join(f"{a} to {b}" for a, b in runs)
+        met = []
+        for start, end in runs:
+            lo = max(asked_from, start) if asked_from else start
+            hi = min(asked_to, end) if asked_to else end
+            if lo <= hi:
+                met.append({"account": account, "from": lo, "to": hi})
+        if not met:
+            caveats.append(f"{account} is attested for {held}, none of which "
+                           "falls inside the window asked for.")
+            continue
+        covers.extend(met)
+        if len(met) > 1:
+            caveats.append(f"{account} is attested for {len(met)} separate "
+                           "periods inside the window asked for; a statement "
+                           "between them is missing, and the days between are "
+                           "not answered for.")
+        if (asked_from and asked_from < first) or (asked_to and asked_to > last):
+            caveats.append(f"For {account} the window asked for reaches past "
+                           f"what its statements attest; this answers for "
+                           f"{met[0]['from']} to {met[-1]['to']}.")
+    return covers, caveats
+
+
 def _movement_row(proj, m, grades: dict) -> dict:
     ruling = proj.derived_category(m) or {}
     return {"record_id": m.key, "account": m.account, "date": m.date,
@@ -208,11 +264,12 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     record_ids = sorted({r["provenance"]["doc_id"] for r in rows
                          if r["provenance"].get("doc_id")}
                         | {r["record_id"] for r in rows})
+    covers, caveats = _attested_coverage(proj, filters)
     return ToolResult(
         tool=TOOL, ok=True,
         data={"transactions": rows, "count": len(rows)},
         grade=weakest(r["grade"] for r in rows),
-        record_ids=record_ids,
+        record_ids=record_ids, covers=covers, caveats=caveats,
         coverage=f"{len(rows)} movement(s) matched the filters.",
         text=f"{len(rows)} movement(s), each with nature, category and source.")
 
@@ -285,12 +342,13 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
 
 def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
     grouped, extras = _spending_rows(proj, filters, group_by)
+    covers, span_caveats = _attested_coverage(proj, filters)
     currency = filters.get("currency")
     data = {"metric": "spending", "group_by": group_by,
             "by_group": {k: str(v) for k, v in sorted(grouped.items())},
             "total": str(extras["total"]), "count": extras["count"]}
     caveats = ["Own-account transfers and settlements are excluded by nature; "
-               "card purchases are included."]
+               "card purchases are included."] + span_caveats
     if group_by == "tag":
         data["untagged"] = str(extras["untagged"])
         data["overlaps"] = True
@@ -310,7 +368,7 @@ def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
                        "proportions, and is reported apart, not counted here.")
     return ToolResult(
         tool=TOOL, ok=True, data=data,
-        grade=weakest(extras["grades"]),
+        grade=weakest(extras["grades"]), covers=covers,
         record_ids=extras["record_ids"], caveats=caveats,
         coverage=f"{extras['count']} spending movement(s) counted.",
         text=f"Spending by {group_by}: total {extras['total']}.")

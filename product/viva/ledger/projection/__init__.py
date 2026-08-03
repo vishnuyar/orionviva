@@ -149,6 +149,18 @@ class LedgerProjection:
     def open_holds(self) -> list[dict]:
         return _coverage.open_holds(self._core)
 
+    def statements(self, account: str):
+        """What this account's statements declare, and where they join. None
+        when no statement is held for it."""
+        from ..statements import register
+        return register(self._core).get(account)
+
+    def attested_runs(self, account: str) -> list:
+        """The periods this account's statements attest, in order. Empty when
+        nothing is held: a period is never inferred from movements."""
+        held = self.statements(account)
+        return list(held.runs) if held else []
+
     def gap_holds(self) -> list[dict]:
         return _coverage.gap_holds(self._core)
 
