@@ -538,8 +538,8 @@ def merchant_transactions(vault: Vault, merchant: str, limit: int = 200) -> dict
     Amounts stay signed as the account recorded them, and each row carries a
     kind-aware `direction` ("out" or "in"). The summary is three figures —
     `money_out`, `money_in`, `net` — because a single total over a counterparty
-    money flows both ways with adds the two directions together.
-    See docs/net-worth.md on what abs() discards.
+    money flows both ways with adds the two directions together. Taking the
+    absolute value instead would discard the direction the row was recorded in.
 
     Returns at most `limit` items; `count` is the full number matched."""
     from ..ledger.merchants import normalize_merchant

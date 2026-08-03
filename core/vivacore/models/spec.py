@@ -31,7 +31,7 @@ class ModelSpec:
     # suits document extraction, where a long transaction list genuinely gets
     # cut off and stitching the tail back on is the repair. A call whose output
     # is short and bounded sets this to 0, so truncation is reported rather than
-    # repaired. docs/from-your-words-to-the-ledger.md
+    # repaired.
     max_continuations: int | None = None   # None = the shared default
     notes: str = ""
 
