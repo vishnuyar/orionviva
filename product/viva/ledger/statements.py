@@ -6,8 +6,9 @@ coverage was inferred from the dates of the movements a read happened to see.
 Those are different facts: a quiet fortnight inside a reconciled month is not a
 hole in the evidence.
 
-This module recovers the declaration by running today's parser over the stored
-reply, through the same dispatch the reader uses, and joins consecutive
+This module recovers the declaration by reading the two boxes that bound the
+period out of the stored reply — never the whole document, so a defect among the
+transactions cannot take the period down with it — through the same dispatch the reader uses, and joins consecutive
 statements into runs. Two statements join when the later one opens at the
 balance the earlier one closed at AND opens on or immediately after the day it
 closed. The balance test alone is what the ingest stitch uses, and a month whose
@@ -94,7 +95,7 @@ def _locale() -> str:
 
 def _build(core, locale: str) -> dict:
     from ..ingest.registry import BALANCE_IDENTITY, profile_for
-    from ..ingest.statement import from_model_json
+    from ..ingest.statement import period_from_model_json
 
     by_account: dict = {}
     for account, state in core._acct.items():
@@ -109,11 +110,11 @@ def _build(core, locale: str) -> dict:
             # attests nothing about the days around it.
             if profile is None or profile.identity != BALANCE_IDENTITY:
                 continue
-            facts, error = from_model_json(reply, doc_id, locale,
-                                           state.currency or "USD")
-            if error or facts is None:
+            period = period_from_model_json(reply, locale,
+                                            state.currency or "USD")
+            if period is None:
                 continue
-            record = _record(doc_id, account, facts,
+            record = _record(doc_id, account, period,
                              core._doc_closing.get(doc_id))
             if record is not None:
                 records.append(record)
@@ -134,7 +135,7 @@ def _within(record: StatementRecord, as_of: str | None) -> bool:
     return not as_of or record.closing_date <= as_of[:10]
 
 
-def _record(doc_id: str, account: str, facts,
+def _record(doc_id: str, account: str, period: tuple,
             accepted: tuple | None) -> StatementRecord | None:
     """A record only when the document declared both ends of its period as real
     dates and both balances as numbers. A statement that did not say where it
@@ -143,8 +144,8 @@ def _record(doc_id: str, account: str, facts,
     `accepted` is what the ledger posted for this document's closing. It is
     authoritative over the reply, because a correction changes what posts and
     leaves the reply as it was read."""
-    opening, closing = facts.opening_date[:10], facts.closing_date[:10]
-    closing_amount = facts.closing_amount
+    (opening_amount, opening_raw), (closing_amount, closing_raw) = period
+    opening, closing = (opening_raw or "")[:10], (closing_raw or "")[:10]
     if accepted is not None:
         closing_amount, accepted_date = accepted
         if _is_date(accepted_date[:10]):
@@ -154,7 +155,7 @@ def _record(doc_id: str, account: str, facts,
     try:
         return StatementRecord(
             doc_id=doc_id, account=account,
-            opening_date=opening, opening_amount=Decimal(facts.opening_amount),
+            opening_date=opening, opening_amount=Decimal(opening_amount),
             closing_date=closing, closing_amount=Decimal(closing_amount))
     except (InvalidOperation, TypeError, ValueError):
         return None

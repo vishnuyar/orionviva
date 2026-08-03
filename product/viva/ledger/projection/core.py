@@ -162,12 +162,10 @@ class ProjectionCore:
             self.apply(event)
 
     def apply(self, event: Event) -> None:
-        # The statement register is derived from this fold. Any event may change
-        # it, so it is dropped on every one rather than on a chosen few — the
-        # chosen few is what let a corrected statement leave a stale register
-        # behind while a fresh replay of the same log disagreed.
-        self._statements = None
         """Fold one event into the projection (respecting an as_of horizon)."""
+        # The statement register is derived from this fold, so any event may
+        # change it and every event drops it.
+        self._statements = None
         if self.as_of is not None and event.occurred_at > self.as_of:
             return          # ISO dates sort lexically; skip the future
         self._apply(event)

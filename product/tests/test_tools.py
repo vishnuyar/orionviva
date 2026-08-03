@@ -796,20 +796,6 @@ def _brokerage_reply():
                                       "market_value_raw": "1500.00"}]})
 
 
-def test_a_captured_holdings_document_attests_no_period():
-    """A brokerage statement measures a moment. Its reply is stored like any
-    other, and the register must still decline to derive a period from it."""
-    evs = [account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"),
-           document_captured("d-brk", "brk.pdf", 2, "brokerage_statement", 0.9,
-                             "2026-01-31"),
-           read_recorded("d-brk", "model", "extract-v1", "text",
-                         _brokerage_reply(), 0.0, 1, 1, True, None, "2026-01-31"),
-           closing_balance_observed("brk", "1600.00", "2026-01-31", _p("d-brk", 3))]
-    proj = LedgerProjection(evs)
-    assert proj.statements("brk") is None
-    assert proj.attested_runs("brk") == []
-
-
 def _corrected_projection():
     """Three consecutive months. February's closing was misread and a person
     corrected it, so what posted differs from what the reply still says."""
@@ -844,12 +830,19 @@ def test_the_register_is_the_same_live_as_replayed():
                           "900.00", "2026-01-31")
     live = LedgerProjection(evs)
     assert live.attested_runs("chk")            # build the register, then move on
-    later = _statement_doc("d-2", "chk", "900.00", "2026-02-01",
+    # February's reply arrives while the register is cold, and only the posting
+    # follows. A policy that watches for a new reading would miss this, which is
+    # the shape a corrected or healed statement actually takes.
+    early = _statement_doc("d-2", "chk", "900.00", "2026-02-01",
                            "800.00", "2026-02-28")
-    for event in later:
+    read, posting = early[:2], early[2:]
+    for event in read:
+        live.apply(event)
+    live.attested_runs("chk")                   # warm the register again
+    for event in posting:
         live.apply(event)
     assert live.attested_runs("chk") == LedgerProjection(
-        evs + later).attested_runs("chk") == [("2026-01-01", "2026-02-28")]
+        evs + early).attested_runs("chk") == [("2026-01-01", "2026-02-28")]
 
 
 def test_an_as_of_read_never_attests_past_its_own_horizon():
@@ -913,3 +906,29 @@ def test_statements_whose_balances_do_not_continue_are_two_periods():
                           "800.00", "2026-02-28")
     assert LedgerProjection(evs).attested_runs("chk") == [
         ("2026-01-01", "2026-01-31"), ("2026-02-01", "2026-02-28")]
+
+
+def test_a_defect_among_the_transactions_does_not_remove_the_period():
+    """The register reads the two boxes that bound a statement. A statement is
+    in the ledger because it reconciled, so announcing it missing on account of
+    an unreadable transaction would deny a month the vault fully holds."""
+    import json
+    broken = json.dumps({
+        "opening": {"amount_raw": "900.00", "date_raw": "2026-02-01"},
+        "closing": {"amount_raw": "800.00", "date_raw": "2026-02-28"},
+        "transactions": [{"date_raw": "not a date", "amount_raw": "??",
+                          "description": "unreadable"}]})
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += [document_captured("d-2", "d-2.pdf", 2, "bank_statement", 0.9,
+                              "2026-02-28"),
+            read_recorded("d-2", "model", "extract-v1", "text", broken,
+                          0.0, 1, 1, True, None, "2026-02-28"),
+            closing_balance_observed("chk", "800.00", "2026-02-28", _p("d-2", 6))]
+    evs += _statement_doc("d-3", "chk", "800.00", "2026-03-01",
+                          "700.00", "2026-03-31")
+    assert LedgerProjection(evs).attested_runs("chk") == [("2026-01-01",
+                                                          "2026-03-31")]
