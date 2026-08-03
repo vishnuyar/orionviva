@@ -208,6 +208,38 @@ def _txn_date(raw, locale: str, open_iso: str, close_iso: str
     return n.value, None
 
 
+def period_from_model_json(text: str, locale: str, currency: str):
+    """The two figures that bound a statement, and nothing else.
+
+    Returns `((opening_amount, opening_date), (closing_amount, closing_date))`,
+    or None when either box is unreadable. A caller that needs only the period
+    a statement declares reads it this way rather than through the full parse:
+    the transactions are irrelevant to it, and a defect among them would
+    otherwise take the period down with it."""
+    blob = _find_json(text)
+    if blob is None:
+        return None
+    try:
+        data = json.loads(blob)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    ends = []
+    for section in ("opening", "closing"):
+        box = data.get(section)
+        if not isinstance(box, dict):
+            return None
+        amount, err = _amount(box.get("amount_raw"), locale, currency)
+        if err:
+            return None
+        when, err = _date(box.get("date_raw"), locale)
+        if err:
+            return None
+        ends.append((amount, when))
+    return tuple(ends)
+
+
 def from_model_json(text: str, doc_id: str, locale: str,
                     currency: str) -> tuple[StatementFacts | None, str | None]:
     """Parse a model's statement read into canonical StatementFacts.
