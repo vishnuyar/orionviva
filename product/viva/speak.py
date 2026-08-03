@@ -44,9 +44,9 @@ from vivacore import promptstore
 from .tools.registry import PROMPTS
 from .tools.runner import DEFAULT_MAX_CALLS, RunResult, run
 
-SPEAK_VERSION = "speak-v2"
-FINAL_VERSION = "speak-final-v2"
-PROTOCOL_VERSION = "speak-protocol-v2"
+SPEAK_VERSION = "speak-v3"
+FINAL_VERSION = "speak-final-v3"
+PROTOCOL_VERSION = "speak-protocol-v3"
 RETRY_VERSION = "speak-retry-v1"
 
 FINAL_TOOL = "deliver_answer"

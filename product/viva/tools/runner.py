@@ -18,11 +18,14 @@ that fails is refused — not softened, not partially delivered.
 
 from __future__ import annotations
 
+import datetime
 import re
 from dataclasses import dataclass, field
 
+from . import timeframe
 from .envelope import ToolResult, weakest
 from .registry import Registry
+from ..env import locale_from_env
 
 # One tool call per planner step, bounded: a runaway planner meets a refusal,
 # never an endless loop.
@@ -34,14 +37,6 @@ DEFAULT_MAX_CALLS = 8
 _NUMBER = re.compile(r"\d{4}-\d{2}-\d{2}|\d[\d,]*(?:\.\d+)?")
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
-def _date_parts(iso: str) -> set:
-    """The tokens a person writing this date out loud can produce — the whole
-    date, its year, and its month and day with and without a leading zero. A
-    declared date licenses exactly these and nothing else."""
-    year, month, day = iso.split("-")
-    return {iso, year, month, day, month.lstrip("0"), day.lstrip("0")}
 
 
 @dataclass
@@ -106,6 +101,11 @@ def run(question: str, planner, registry: Registry,
     seen_ids: set = set()
     seen_strings: set = set()
     grounded_tokens: set = set()
+    # What the reads ranged over, kept apart from what they asserted. A period
+    # is a read reporting its own behavior, so it needs no protection from the
+    # caller's arguments — and it holds dates only, so no amount can enter it.
+    periods: list = []
+    locale = locale_from_env()
     while True:
         step = planner({"question": question,
                         "tools": registry.schemas(),
@@ -142,7 +142,11 @@ def run(question: str, planner, registry: Registry,
                 arg_tokens = _tokens_in(_strings_in(args))
                 if not registry.caller_supplies_record_ids(step["tool"]):
                     seen_ids |= set(result.record_ids)
-                result_strings = _strings_in(result.to_dict())
+                asserted = result.to_dict()
+                span = asserted.pop("covers", None) or {}
+                if span.get("from") and span.get("to"):
+                    periods.append((span["from"], span["to"]))
+                result_strings = _strings_in(asserted)
                 seen_strings |= result_strings
                 grounded_tokens |= (_tokens_in(result_strings) - arg_tokens)
             continue
@@ -151,11 +155,11 @@ def run(question: str, planner, registry: Registry,
                             "tool nor an answer.",
                             [t.to_dict() for t in transcript], len(transcript))
         return _gate(step, transcript, seen_ids, seen_strings,
-                     grounded_tokens)
+                     grounded_tokens, periods, locale)
 
 
 def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
-          grounded_tokens: set) -> RunResult:
+          grounded_tokens: set, periods: list, locale: str) -> RunResult:
     """The composition check. Every declared figure must carry record ids the
     run saw and a value some result asserted; every number in the answer text
     must be covered by a figure or grounded by a result — where grounded
@@ -197,41 +201,45 @@ def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
                 dicts, len(transcript))
         if figure.get("grade"):
             grades.append(figure["grade"])
-    # A date is a claim about when, not about how much, and prose writes it in
-    # forms no ISO token matches. So it is declared like a figure and checked
-    # like one: the ISO date must be something this run's results asserted, and
-    # only then may the answer say its parts.
-    sayable: set = set()
+    asserted_dates = {tok for tok in grounded_tokens if _ISO_DATE.match(tok)}
+    declared: list = []
     for entry in step.get("dates", []) or []:
         iso = str(entry.get("iso", "")) if isinstance(entry, dict) else ""
-        if not _ISO_DATE.match(iso):
+        try:
+            datetime.date.fromisoformat(iso)
+        except ValueError:
             return _refused(
-                "unfounded_date",
-                f"A declared date {iso!r} is not a date this run could have "
-                "read.", dicts, len(transcript))
-        if iso not in grounded_tokens:
-            return _refused(
-                "unfounded_date",
-                f"The date {iso!r} appears in no tool result from this run.",
+                "unfounded_date", f"A declared date {iso!r} is not a date.",
                 dicts, len(transcript))
-        sayable |= _date_parts(iso)
+        if not (any(timeframe.covered_by(p, iso) for p in periods)
+                or iso in asserted_dates):
+            return _refused(
+                "unfounded_date",
+                f"The date {iso!r} falls outside every period this run read "
+                "and matches nothing this run's results assert.",
+                dicts, len(transcript))
+        declared.append(iso)
 
-    seen_dates = sorted(d for d in grounded_tokens if _ISO_DATE.match(d))
-    covered = {str(f["value"]).replace(",", "") for f in figures}
-    for token in _NUMBER.findall(text):
-        plain = token.replace(",", "")
-        if plain in covered or plain in grounded_tokens or plain in sayable:
+    # Dates leave the text before the numbers are counted, so a date's digits
+    # never stand in for an amount. What is left over and still date-shaped is
+    # a date the answer forgot to declare, which is different news from an
+    # invented number and says so.
+    scanned = text
+    for written, meaning in timeframe.mentions(text, locale):
+        if timeframe.stated_by(meaning, declared):
+            scanned = scanned.replace(written, " ")
             continue
-        # Saying which failure this is matters: a date left undeclared and a
-        # number invented outright are the same refusal to the gate and very
-        # different news to the person reading it.
-        owner = next((d for d in seen_dates if plain in _date_parts(d)), "")
-        if owner:
-            return _refused(
-                "undeclared_date",
-                f"The answer writes '{token}', part of the date {owner!r} this "
-                "run read — a date must be declared before it can be said.",
-                dicts, len(transcript))
+        return _refused(
+            "undeclared_date",
+            f"The answer writes '{written}', a date it never declared — every "
+            "date it states must be declared and covered by this run.",
+            dicts, len(transcript))
+
+    covered = {str(f["value"]).replace(",", "") for f in figures}
+    for token in _NUMBER.findall(scanned):
+        plain = token.replace(",", "")
+        if plain in covered or plain in grounded_tokens:
+            continue
         return _refused(
             "unfounded_figure",
             f"The answer contains '{token}', which no tool result from this "

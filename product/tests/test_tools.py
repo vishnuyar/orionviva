@@ -410,64 +410,130 @@ def test_a_fabricated_number_cannot_ride_inside_a_seen_one(registry):
     # proves tokens are matched whole, not by containment.
 
 
-def test_a_declared_date_lets_the_answer_write_it_in_words(registry):
-    """A date is declared as the ISO date a result carried; the answer may then
-    write it however reads best."""
+def test_a_ranging_read_reports_the_span_it_covered(registry):
+    """A read that ranges over time says what time it ranged over; one that
+    measures a moment carries its value-time instead."""
+    ranging = registry.call("query_ledger", {"entity": "transactions"})
+    assert ranging.ok and ranging.covers["from"] <= ranging.covers["to"]
+    assert "covers" in ranging.to_dict()
+    moment = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "net_worth"})
+    assert moment.ok and moment.covers == {} and moment.dated
+
+
+def test_a_window_reaching_past_the_evidence_is_clipped_and_says_so(registry):
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"window": {"from": "2020-01-01", "to": "2030-12-31"}}})
+    assert result.ok
+    assert result.covers["from"] > "2020-01-01"
+    assert result.covers["to"] < "2030-12-31"
+    assert any("past the evidence held" in c for c in result.caveats)
+
+
+def test_a_window_with_no_evidence_covers_nothing_and_says_which(registry):
+    """Nothing spent and nothing held must not read alike."""
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"window": {"from": "2019-01-01", "to": "2019-12-31"}}})
+    assert result.ok and result.covers == {}
+    assert any("No evidence falls inside the window" in c for c in result.caveats)
+
+
+def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
+    """A boundary date the planner supplied is scope the tool reports back, not
+    a number the planner invented, so the answer may say which period it read."""
+    window = {"from": "2026-01-05", "to": "2026-01-20"}
+
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        row = context["results"][0]["data"]["balances"][0]
-        return {"answer": "As of January 31, 2026 your checking balance is "
-                          f"USD {row['amount']}.",
-                "figures": [{"value": row["amount"],
-                             "record_ids": [row["record_id"], "doc-jan"],
-                             "grade": row["grade"]}],
-                "dates": [{"iso": "2026-01-31"}]}
-    result = run("what is my checking balance?", planner, registry)
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending",
+                             "filters": {"window": window}}}
+        total = context["results"][0]["data"]["total"]
+        return {"answer": f"Between January 5, 2026 and January 20, 2026 you "
+                          f"spent {total}.",
+                "figures": [{"value": total, "record_ids": ["doc-jan"],
+                             "grade": CORROBORATED}],
+                "dates": [{"iso": "2026-01-05"}, {"iso": "2026-01-20"}]}
+    result = run("what did I spend then?", planner, registry)
     assert result.answered, result.text
-    assert "January 31, 2026" in result.text
 
 
-def test_a_date_written_but_not_declared_says_which_date_it_was(registry):
-    """The refusal names the date, because forgetting to declare one and
-    inventing a number outright are very different news."""
+def test_a_month_written_for_a_day_it_covers_is_accepted(registry):
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        return {"answer": "As of January 31, 2026 you are fine.",
-                "figures": [], "dates": []}
-    result = run("balance?", planner, registry)
-    assert not result.answered and result.refusal == "undeclared_date"
-    assert "2026-01-31" in result.text
+            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
+        return {"answer": "Everything I hold was recorded in January 2026.",
+                "figures": [], "dates": [{"iso": "2026-01-05"}]}
+    result = run("when?", planner, registry)
+    assert result.answered, result.text
 
 
-def test_a_date_no_result_carried_is_refused(registry):
+def test_a_span_a_read_covered_can_never_ground_a_figure(registry):
+    """The span is scope, kept in its own pool, and that pool holds dates only.
+    A spending aggregate names no row dates, so its span is the only place its
+    boundaries appear — and a figure may not stand on one."""
+    span = registry.call("query_ledger", {"entity": "aggregate",
+                                          "metric": "spending"}).covers
+    assert span and span["to"] not in str(registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "spending"}).data)
+
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
+            return {"tool": "query_ledger", "args": {"entity": "aggregate",
+                                                     "metric": "spending"}}
+        return {"answer": f"The figure is {span['to']}.",
+                "figures": [{"value": span["to"], "record_ids": ["doc-jan"],
+                             "grade": CORROBORATED}],
+                "dates": []}
+    result = run("?", planner, registry)
+    assert not result.answered and result.refusal == "unfounded_figure"
+
+
+def test_a_date_outside_everything_read_is_refused(registry):
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
         return {"answer": "Nothing to report.", "figures": [],
                 "dates": [{"iso": "2019-12-31"}]}
-    result = run("balance?", planner, registry)
+    result = run("when?", planner, registry)
     assert not result.answered and result.refusal == "unfounded_date"
 
 
-def test_a_declared_date_licenses_its_parts_and_no_other_number(registry):
-    """The ruled cost of declaring dates by ISO alone: the parts of a real date
-    become sayable, so a four-digit amount matching its year passes, while any
-    number that is not one of its parts is refused exactly as before."""
+def test_a_date_written_but_not_declared_says_which_date_it_was(registry):
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        return {"answer": "You spent 2026 dollars and 4711 dollars.",
-                "figures": [], "dates": [{"iso": "2026-01-31"}]}
-    result = run("balance?", planner, registry)
-    # '2026' rides through as the declared date's year; '4711' is nobody's part.
+            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
+        return {"answer": "As of January 31, 2026 you are fine.",
+                "figures": [], "dates": []}
+    result = run("when?", planner, registry)
+    assert not result.answered and result.refusal == "undeclared_date"
+    assert "January 31, 2026" in result.text
+
+
+def test_an_amount_cannot_ride_on_a_declared_dates_year(registry):
+    """A date leaves the text before the numbers are counted, so its year
+    grounds nothing that is not a date."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
+        return {"answer": "In January 2026 you spent 2026 dollars.",
+                "figures": [], "dates": [{"iso": "2026-01-05"}]}
+    result = run("how much?", planner, registry)
     assert not result.answered and result.refusal == "unfounded_figure"
-    assert "4711" in result.text and "2026 dollars" not in result.text
+    assert "2026" in result.text
+
+
+def test_a_declared_date_that_is_not_a_date_refuses_rather_than_raising(registry):
+    for bad in ("600.00", "2026-13-45", "", "2026-01-31 "):
+        def planner(context, bad=bad):
+            if not context["results"]:
+                return {"tool": "query_ledger", "args": {"entity": "transactions"}}
+            return {"answer": "Nothing to report.", "figures": [],
+                    "dates": [{"iso": bad}]}
+        result = run("when?", planner, registry)
+        assert not result.answered and result.refusal == "unfounded_date", bad
 
 
 def test_a_figure_citing_records_the_run_never_saw_is_refused(registry):
