@@ -151,34 +151,45 @@ def _movement_passes(proj, m, filters: dict) -> bool:
     return True
 
 
-def _span_covered(proj, filters: dict, counts=None) -> tuple[dict, list]:
-    """The span a movement read actually ranged over, and what to say when it
-    is not the span asked for.
+def _attested_coverage(proj, filters: dict) -> tuple[list, list]:
+    """What this read is attested for, per account, and what to say about the
+    accounts that fall short of the window asked for.
 
-    Evidence first: the earliest and latest movement passing every filter but
-    the window. The window asked for is then clipped to that, so a read never
-    claims to cover time it holds nothing for — which is what keeps "you spent
-    nothing then" apart from "I hold nothing from then"."""
-    unwindowed = {k: v for k, v in filters.items() if k != "window"}
-    dates = sorted(m.date[:10] for m in proj.movements()
-                   if (counts is None or counts(m))
-                   and _movement_passes(proj, m, unwindowed))
-    if not dates:
-        return {}, ["No evidence is held for this question at all, in any "
-                    "window."]
-    first, last = dates[0], dates[-1]
+    Coverage is what a document proved, never what the movements happen to
+    show. A statement enters the ledger only by reconciling — the issuer's own
+    opening plus the period's transactions equal its closing — so inside a
+    posted period every movement is present and a zero is a zero. Deriving the
+    span from movement dates instead would report a quiet fortnight as a hole
+    in the evidence, which is a different sentence and a false one.
+
+    Returns `(covers, caveats)`: one entry per account holding an attested
+    period that meets the window, and a caveat for every account in scope that
+    does not."""
     want = filters.get("window") or {}
     asked_from, asked_to = (want.get("from") or "")[:10], (want.get("to") or "")[:10]
-    start = max(asked_from, first) if asked_from else first
-    end = min(asked_to, last) if asked_to else last
-    if start > end:
-        return {}, [f"No evidence falls inside the window asked for; what is "
-                    f"held for this question runs {first} to {last}."]
-    if (asked_from and asked_from < first) or (asked_to and asked_to > last):
-        return {"from": start, "to": end}, [
-            f"The window asked for reaches past the evidence held; this "
-            f"answers for {start} to {end}."]
-    return {"from": start, "to": end}, []
+    named = filters.get("account")
+    scope = [named] if named else sorted(
+        i.account for i in proj.account_infos() if i.kind)
+
+    covers, caveats = [], []
+    for account in scope:
+        first, last = proj.attested_period(account)
+        if not first:
+            caveats.append(f"No statement has posted for {account}, so nothing "
+                           "here is attested for it.")
+            continue
+        start = max(asked_from, first) if asked_from else first
+        end = min(asked_to, last) if asked_to else last
+        if start > end:
+            caveats.append(f"{account} is attested for {first} to {last}, which "
+                           "falls outside the window asked for.")
+            continue
+        covers.append({"account": account, "from": start, "to": end})
+        if (asked_from and asked_from < first) or (asked_to and asked_to > last):
+            caveats.append(f"For {account} the window asked for reaches past "
+                           f"what its statements attest; this answers for "
+                           f"{start} to {end}.")
+    return covers, caveats
 
 
 def _movement_row(proj, m, grades: dict) -> dict:
@@ -238,7 +249,7 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     record_ids = sorted({r["provenance"]["doc_id"] for r in rows
                          if r["provenance"].get("doc_id")}
                         | {r["record_id"] for r in rows})
-    covers, caveats = _span_covered(proj, filters)
+    covers, caveats = _attested_coverage(proj, filters)
     return ToolResult(
         tool=TOOL, ok=True,
         data={"transactions": rows, "count": len(rows)},
@@ -316,7 +327,7 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
 
 def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
     grouped, extras = _spending_rows(proj, filters, group_by)
-    covers, span_caveats = _span_covered(proj, filters, proj._counts_as_spending)
+    covers, span_caveats = _attested_coverage(proj, filters)
     currency = filters.get("currency")
     data = {"metric": "spending", "group_by": group_by,
             "by_group": {k: str(v) for k, v in sorted(grouped.items())},

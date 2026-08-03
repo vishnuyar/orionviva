@@ -37,11 +37,13 @@ class ToolResult:
     data: object = None                         # JSON-safe payload
     grade: str = ""                             # weakest grade the data rests on
     dated: str = ""                             # the value-time the data is good as of
-    # The span this read ranged over, as {"from": iso, "to": iso}: what was
-    # asked for, clipped to where evidence exists. A read that measures a
-    # moment carries `dated` and no span; one that ranges over time carries a
-    # span and no `dated`. Empty when the read covered nothing.
-    covers: dict = field(default_factory=dict)
+    # What this read is attested for, one entry per account it ranged over, as
+    # {"account": id, "from": iso, "to": iso}. Coverage is a per-account fact
+    # because a statement is: an answer may be complete for one account and
+    # hold nothing for another, and one merged span cannot say so. A read that
+    # measures a moment carries `dated` and no entries; one that ranges over
+    # time carries entries and no `dated`. Empty when nothing is attested.
+    covers: list = field(default_factory=list)
     record_ids: list = field(default_factory=list)   # the documents behind it
     provenance: list = field(default_factory=list)   # provenance dicts, when few
     coverage: str = ""                          # what is included and what is not
@@ -52,7 +54,7 @@ class ToolResult:
     def to_dict(self) -> dict:
         return {"tool": self.tool, "ok": self.ok, "data": self.data,
                 "grade": self.grade, "dated": self.dated,
-                "covers": dict(self.covers),
+                "covers": [dict(c) for c in self.covers],
                 "record_ids": list(self.record_ids),
                 "provenance": list(self.provenance),
                 "coverage": self.coverage, "caveats": list(self.caveats),
