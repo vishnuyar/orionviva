@@ -113,9 +113,11 @@ def _build(core, locale: str) -> dict:
                                            state.currency or "USD")
             if error or facts is None:
                 continue
-            record = _record(doc_id, account, facts)
+            record = _record(doc_id, account, facts,
+                             core._doc_closing.get(doc_id))
             if record is not None:
                 records.append(record)
+        records = [r for r in records if _within(r, core.as_of)]
         if records:
             records.sort(key=lambda r: (r.opening_date, r.closing_date))
             by_account[account] = AccountStatements(
@@ -123,18 +125,37 @@ def _build(core, locale: str) -> dict:
     return by_account
 
 
-def _record(doc_id: str, account: str, facts) -> StatementRecord | None:
-    """A record only when the document declared both ends of its period as
-    real dates and both balances as numbers. A statement that did not say
-    where it starts cannot say what it covers."""
+def _within(record: StatementRecord, as_of: str | None) -> bool:
+    """Whether a statement's period is one an as-of read may speak for.
+
+    A read as of a past date holds only the movements up to it, so attesting a
+    period that runs past it would claim completeness for days it is
+    deliberately not showing."""
+    return not as_of or record.closing_date <= as_of[:10]
+
+
+def _record(doc_id: str, account: str, facts,
+            accepted: tuple | None) -> StatementRecord | None:
+    """A record only when the document declared both ends of its period as real
+    dates and both balances as numbers. A statement that did not say where it
+    starts cannot say what it covers.
+
+    `accepted` is what the ledger posted for this document's closing. It is
+    authoritative over the reply, because a correction changes what posts and
+    leaves the reply as it was read."""
     opening, closing = facts.opening_date[:10], facts.closing_date[:10]
+    closing_amount = facts.closing_amount
+    if accepted is not None:
+        closing_amount, accepted_date = accepted
+        if _is_date(accepted_date[:10]):
+            closing = accepted_date[:10]
     if not (_is_date(opening) and _is_date(closing)) or opening > closing:
         return None
     try:
         return StatementRecord(
             doc_id=doc_id, account=account,
             opening_date=opening, opening_amount=Decimal(facts.opening_amount),
-            closing_date=closing, closing_amount=Decimal(facts.closing_amount))
+            closing_date=closing, closing_amount=Decimal(closing_amount))
     except (InvalidOperation, TypeError, ValueError):
         return None
 

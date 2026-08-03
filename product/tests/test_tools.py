@@ -647,15 +647,21 @@ def test_a_refusal_result_flows_back_to_the_planner(registry):
 
 # ------------------------------------------------- what the statements attest
 
-def _statement_doc(doc_id, account, opening, opening_date, closing, closing_date):
-    """A document that declares its own period, the way ingestion records one."""
+def _statement_doc(doc_id, account, opening, opening_date, closing,
+                   closing_date, posted=None, read_at=None):
+    """A document that declares its own period, the way ingestion records one.
+
+    `posted` differs from `closing` when a person corrected a figure the model
+    misread: the reply keeps what was read, the ledger carries what was
+    accepted."""
+    accepted = posted or closing
     return [document_captured(doc_id, f"{doc_id}.pdf", 2, "bank_statement", 0.9,
-                              closing_date),
+                              read_at or closing_date),
             read_recorded(doc_id, "model", "extract-v1", "text",
                           _statement_reply(opening, opening_date,
                                            closing, closing_date),
-                          0.0, 1, 1, True, None, closing_date),
-            closing_balance_observed(account, closing, closing_date,
+                          0.0, 1, 1, True, None, read_at or closing_date),
+            closing_balance_observed(account, accepted, closing_date,
                                      _p(doc_id, 6))]
 
 
@@ -707,14 +713,6 @@ def test_a_window_spanning_a_gap_reports_both_periods_and_names_the_hole():
                for c in result.caveats)
 
 
-def test_a_holdings_document_attests_no_period(registry):
-    """A position observation measures a moment. It says nothing about the days
-    around it, so it never becomes coverage."""
-    assert registry.call("query_ledger", {"entity": "holdings"}).covers == []
-    assert not any(c["account"] == "brk" for c in registry.call(
-        "query_ledger", {"entity": "transactions"}).covers)
-
-
 def test_a_ledger_account_is_never_offered_as_one_with_no_statement(registry):
     """Only accounts a document opened are in scope. `Expenses:Uncategorized`
     is bookkeeping, and naming it in a caveat would be nonsense to a person."""
@@ -722,22 +720,6 @@ def test_a_ledger_account_is_never_offered_as_one_with_no_statement(registry):
                                             "metric": "spending"})
     assert not any("Uncategorized" in c and "No statement" in c
                    for c in result.caveats)
-
-
-def test_a_declared_date_that_parses_but_has_no_parts_refuses(registry):
-    """The date library accepts forms this gate cannot take apart. Shape is
-    checked first, so a value that would raise on the way to being licensed is
-    refused instead."""
-    def planner_for(iso):
-        def planner(context):
-            if not context["results"]:
-                return {"tool": "query_ledger",
-                        "args": {"entity": "transactions"}}
-            return {"answer": "Fine.", "figures": [], "dates": [{"iso": iso}]}
-        return planner
-    for iso in ("20260105", "2026-W01-1", "2026-02-30", "2026-1-5"):
-        result = run("?", planner_for(iso), registry)
-        assert not result.answered and result.refusal == "unfounded_date", iso
 
 
 def test_a_moment_read_licenses_its_own_date_without_a_period(registry):
@@ -769,3 +751,165 @@ def test_a_period_missing_an_end_licenses_nothing():
         return {"answer": "Fine.", "figures": [], "dates": [{"iso": "1999-01-01"}]}
     result = run("?", planner, registry)
     assert not result.answered and result.refusal == "unfounded_date"
+
+
+def _two_year_projection():
+    """A vault attested across a year boundary. A one-month fixture cannot tell
+    a shape check from containment: every malformed date sorts outside one
+    month, so both refuse and the test cannot say which mechanism fired."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-a"))]
+    evs += _statement_doc("d-a", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-12-31")
+    evs += _statement_doc("d-b", "chk", "900.00", "2027-01-01",
+                          "800.00", "2027-12-31")
+    return LedgerProjection(evs)
+
+
+def test_a_declared_date_the_gate_cannot_take_apart_refuses(registry):
+    """The date library accepts forms this gate cannot split. Shape is checked
+    first, so a value that would raise on the way to being licensed is refused.
+    Driven against a vault wide enough that containment would admit them."""
+    wide = default_registry(_two_year_projection())
+    def planner_for(iso):
+        def planner(context):
+            if not context["results"]:
+                return {"tool": "query_ledger",
+                        "args": {"entity": "transactions"}}
+            return {"answer": "Fine.", "figures": [], "dates": [{"iso": iso}]}
+        return planner
+    for iso in ("20260105", "2026-W01-1", "2026-02-30", "2026-1-5"):
+        result = run("?", planner_for(iso), wide)
+        assert not result.answered and result.refusal == "unfounded_date", iso
+    # and the well-formed date inside the same period is admitted, so the
+    # refusals above are the shape check and not the window
+    assert run("?", planner_for("2026-06-15"), wide).answered
+
+
+def _brokerage_reply():
+    import json
+    return json.dumps({"as_of_raw": "2026-01-31", "cash_raw": "100.00",
+                       "total_raw": "1600.00",
+                       "positions": [{"instrument": "ALPHA FUND",
+                                      "units_raw": "10",
+                                      "market_value_raw": "1500.00"}]})
+
+
+def test_a_captured_holdings_document_attests_no_period():
+    """A brokerage statement measures a moment. Its reply is stored like any
+    other, and the register must still decline to derive a period from it."""
+    evs = [account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"),
+           document_captured("d-brk", "brk.pdf", 2, "brokerage_statement", 0.9,
+                             "2026-01-31"),
+           read_recorded("d-brk", "model", "extract-v1", "text",
+                         _brokerage_reply(), 0.0, 1, 1, True, None, "2026-01-31"),
+           closing_balance_observed("brk", "1600.00", "2026-01-31", _p("d-brk", 3))]
+    proj = LedgerProjection(evs)
+    assert proj.statements("brk") is None
+    assert proj.attested_runs("brk") == []
+
+
+def _corrected_projection():
+    """Three consecutive months. February's closing was misread and a person
+    corrected it, so what posted differs from what the reply still says."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += _statement_doc("d-2", "chk", "900.00", "2026-02-01",
+                          "850.00", "2026-02-28", posted="800.00")
+    evs += _statement_doc("d-3", "chk", "800.00", "2026-03-01",
+                          "700.00", "2026-03-31")
+    return LedgerProjection(evs)
+
+
+def test_a_corrected_closing_does_not_invent_a_missing_statement():
+    """The reply says what the model read; the ledger says what was accepted.
+    Reading the reply's figure would break the join to the next month and
+    announce a missing statement between two months that abut."""
+    assert _corrected_projection().attested_runs("chk") == [
+        ("2026-01-01", "2026-03-31")]
+
+
+def test_the_register_is_the_same_live_as_replayed():
+    """A projection built event by event and one replayed from the same log
+    must describe the same vault. Dropping the cache on chosen events is what
+    let the two disagree for the life of a process."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    live = LedgerProjection(evs)
+    assert live.attested_runs("chk")            # build the register, then move on
+    later = _statement_doc("d-2", "chk", "900.00", "2026-02-01",
+                           "800.00", "2026-02-28")
+    for event in later:
+        live.apply(event)
+    assert live.attested_runs("chk") == LedgerProjection(
+        evs + later).attested_runs("chk") == [("2026-01-01", "2026-02-28")]
+
+
+def test_an_as_of_read_never_attests_past_its_own_horizon():
+    """A read as of a past date holds only the movements up to it. Attesting a
+    period that runs past it would claim completeness for days it is
+    deliberately not showing."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-q"))]
+    # read on 10 February, declaring a period that runs to the end of March —
+    # so the reading is inside the horizon and the period it claims is not
+    evs += _statement_doc("d-q", "chk", "1000.00", "2026-01-01",
+                          "800.00", "2026-03-31", read_at="2026-02-10")
+    assert LedgerProjection(evs).attested_runs("chk") == [("2026-01-01",
+                                                          "2026-03-31")]
+    assert LedgerProjection(evs, as_of="2026-02-15").attested_runs("chk") == []
+
+
+def test_statements_are_ordered_by_period_not_by_document_id():
+    """Document ids arrive in no meaningful order. Without an explicit sort the
+    runs fragment and the answer announces missing statements that are held."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("zzz"))]
+    evs += _statement_doc("zzz", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += _statement_doc("aaa", "chk", "900.00", "2026-02-01",
+                          "800.00", "2026-02-28")
+    evs += _statement_doc("mmm", "chk", "800.00", "2026-03-01",
+                          "700.00", "2026-03-31")
+    assert LedgerProjection(evs).attested_runs("chk") == [("2026-01-01",
+                                                          "2026-03-31")]
+
+
+def test_a_document_that_is_not_a_statement_attests_nothing_even_if_it_parses():
+    """The register asks what kind of document declared a period, not whether
+    something statement-shaped can be read out of it. A holdings document whose
+    reply happens to parse must still attest nothing, because a snapshot says
+    nothing about the days around it."""
+    evs = [account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"),
+           document_captured("d-x", "x.pdf", 2, "brokerage_statement", 0.9,
+                             "2026-01-31"),
+           read_recorded("d-x", "model", "extract-v1", "text",
+                         _statement_reply("1000.00", "2026-01-01",
+                                          "1600.00", "2026-01-31"),
+                         0.0, 1, 1, True, None, "2026-01-31"),
+           closing_balance_observed("brk", "1600.00", "2026-01-31", _p("d-x", 3))]
+    assert LedgerProjection(evs).attested_runs("brk") == []
+
+
+def test_statements_whose_balances_do_not_continue_are_two_periods():
+    """Dates that meet are not enough. A February opening at a figure January
+    did not close at means something between them is unaccounted for, and the
+    two months are not one attested stretch."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-1"))]
+    evs += _statement_doc("d-1", "chk", "1000.00", "2026-01-01",
+                          "900.00", "2026-01-31")
+    evs += _statement_doc("d-2", "chk", "850.00", "2026-02-01",
+                          "800.00", "2026-02-28")
+    assert LedgerProjection(evs).attested_runs("chk") == [
+        ("2026-01-01", "2026-01-31"), ("2026-02-01", "2026-02-28")]
