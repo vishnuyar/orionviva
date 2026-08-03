@@ -1,4 +1,4 @@
-/* OrionViva — the surface (Slice 6.9). Plain JavaScript, no build step.
+/* OrionViva — the surface. Plain JavaScript, no build step.
  *
  * WHY NO BUILD. The previous surface was React compiled by Vite into this same
  * file. A compiled bundle can serve last hour's product with no error and no
@@ -17,8 +17,7 @@
  *   3. what it does NOT include — a card that silently omits is a lie of
  *      omission, which is the failure this product exists to refuse
  *
- * Money is FORMATTED here, never computed (T2). The ledger decided the figure.
- * See docs/the-surface-cards.md.
+ * Money is FORMATTED here, never computed. The ledger decided the figure.
  */
 'use strict'
 
@@ -153,7 +152,7 @@ function netWorthCard(nw) {
   </section>`
 }
 
-/* ONE question at a time (Slice 6.10, D3) — the persona's rule made structural:
+/* ONE question at a time — the persona's rule made structural:
  * the queue ranks by consequence, the card shows rank #1 and says honestly how
  * many wait behind it. "Show me another" browses without recording anything;
  * "Not now" and "I don't know" are ANSWERS — recorded as decline events, so
@@ -286,7 +285,7 @@ function kindCard(kind, title, blurb, lines, nw) {
  * counted whose nature rests only on a hint, and `excluded_from_spending` is
  * money deliberately not counted (transfers between your own accounts). Both
  * are shown, because a spending figure that hides its own uncertainty is the
- * bug that started Slice 6.5. */
+ * failure this card exists to refuse. */
 function spendingCard(ov) {
   if (!ov) return ''
   const cats = Object.entries(ov.spending_by_category || {})

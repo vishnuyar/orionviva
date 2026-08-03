@@ -9,7 +9,7 @@ This doc has two halves, and the split is the point.
 
 **What is not built** is described by **slice**, in order, in the fact-statement form the plan has used throughout: **open state** (with a proof the capability is absent) → **implementation** → **final state** → **done criteria / tests** → **why now + future use**. Nothing is built ahead of its slice, and each is designed in detail with the author before code.
 
-**About the labels.** Slice numbers appear in commit messages and in the public build log. Those are the frozen record and are not renumbered; they refer to the historical planning sequence, which no longer maps onto this document's built half. Work committed before 2026-07-26 under the label "Slice 9b" is the counterparty-implications work described below under *Deciding who to ask*, not the unbuilt "Viva speaks" slice.
+**About the labels.** Slice numbers appear in commit messages and in the public build log. Those are the frozen record and are not renumbered; they refer to the historical planning sequence, which no longer maps onto this document's built half. Work committed before 2026-07-26 under the label "Slice 9b" is the counterparty-implications work described below under *Deciding who to ask*, not the "Viva speaks" slice.
 
 **Where this sits against the product phases.** `ROADMAP.md`'s Phase 0 (foundations) is complete. Phase 1 (organize & consolidate) is in progress: transfer-linking and always-current net worth are built; account aggregation is not.
 
@@ -91,6 +91,16 @@ The same primitive appears five times: gather signals, grade the match, ask only
 
 **Expectations — documents that pursue documents.** A jurisdiction-tagged registry of read-side mechanisms: a retirement flow implies a retirement statement, an investment account implies a tax document, and an account whose newest statement has gone stale implies a fresher one. Satisfaction is deterministic — the document arrived or it did not.
 
+## Being asked, and answering
+
+**A question in plain language, answered from tool results only.** A registry of read tools sits on the projection — querying the ledger, checking completeness, reading provenance and transparency, and doing arithmetic — and each returns a graded, cited envelope rather than a bare number. A planner puts a model in front of them: native tool-calling for every OpenAI-compatible endpoint, hosted route and local server in one wire format, with a text protocol covering any model that has no native mode. The model chooses the calls and writes the sentence; it never computes a figure. A session carries prior turns as context but **re-fetches every figure per turn**, so an answer is never composed from what an earlier answer said.
+
+**The citation gate is code, not instruction.** A modality-neutral runner refuses to deliver a figure with no record id behind it, and the ways a number could ground itself falsely have been closed one at a time as each was found: a refusal grounds nothing, a call's own arguments cannot ground the answer that quotes them, a record id passed in by the caller never joins the citation pool, and a date is declared alongside the figures and checked component by component against the dates the run actually returned — the whole date, its year, and its month and day with and without a leading zero — rather than admitted because its digits happened to appear somewhere. When the gate refuses, the turn ends in a correction rather than in a delivered sentence.
+
+**Every exchange is kept.** The full request and reply are captured verbatim in the vault with the prompt version and model that produced them, on the same footing as a document reading — which is what makes a later eval possible at all.
+
+**What is not yet true, and is not claimed to be.** None of this has been run against the author's real vault; the acceptance bar is a real-money conversation on both a hosted and a local target, and it has not happened. The confidently-wrong rate is unmeasured on this surface. Two done criteria have no test: that a document prompt-injection cannot make Viva act, and that swapping the model changes phrasing rather than answers. And the wiring between the model and the gate is unpinned — the gate is tested hard, its supply line is not.
+
 ## The surface
 
 **A local web surface built from cards, in plain HTML with no build step.** One card per instrument kind: a depository leads with its balance and its as-of date; a liability speaks *owed* and calls out a credit balance; an investment shows the statement's own `cash + Σ holdings = total` cross-check and names activity it could not post; an asserted asset says *cost*, badged as your word, with the document that would corroborate it. Every card carries the same three things — the figure, its as-of date and grade, and what it does not include. A card that throws cannot take the page down or blame the ledger. A compiled-bundle surface was built and removed: a stale artifact can serve last hour's product with no error and no way to tell by looking.
@@ -132,20 +142,16 @@ Slice numbers below continue the historical sequence and are not reused.
 
 ---
 
-## Slice 9 — Viva speaks
-**Block seeded:** a tool registry (data, not code — the doc-type registry pattern again) + a planner that composes answers from tool results only.
+## Slice 9 — Viva speaks: what remains
+The tool registry and the planner are built and are described under *Being asked, and answering*. What is listed here is the part of this slice that is genuinely not done.
 
-The write direction is built: a person says what something is, and deterministic code applies it. This is the read direction — a person asks what is true. The two carry different risk, which is why they were separated: a mis-parsed ruling persists and generalizes, while a wrong answer misleads once.
+**Open state:** the conversation has never met the author's real vault, and nothing about its honesty is measured. *Proof:* no scored run on real money; no injection test; no model-swap test.
 
-**Open state:** interaction is fixed function calls and buttons; no free-form questions; no voice. *Proof:* no natural-language entrypoint (red test).
+**Implementation:** a real-money conversation on both a hosted and a local target, scored against the debug surface as oracle; the confidently-wrong rate measured on this surface the way it is measured on sentence interpretation; a test that a document's own text cannot make Viva act; a test that swapping the model changes phrasing and not answers; and volunteering through the Slice 8 triggers, which do not exist yet.
 
-**Implementation:** a question in plain language plans tool calls over the deterministic tools already built, and the model composes the answer from tool *results only*, surfacing grade and provenance and **never computing a figure**. The persona pack supplies the voice; user operational memory supplies the context; the model is pluggable and pinned. The document reader stays quarantined and powerless.
+**Final state:** you talk to Viva; she answers anything the tools cover — honestly, with sources, in her voice — and volunteers when something matters.
 
-**Final state:** you talk to Viva; she answers anything the tools cover — honestly, with sources, in her voice — and volunteers through the Slice 8 triggers.
-
-**Done criteria / tests:** questions map to the right tools and return grade and source; Viva hedges or refuses honestly on missing or conflicted data, measured by the confidently-wrong rate; the model never emits an unverified number (a tool-boundary test); a document prompt-injection cannot make her act; swapping the model changes phrasing, not answers.
-
-**Why now + future use:** the soul, and the payoff of building data-first — she wires to a rich toolset with no new truth logic, and every later slice extends her for free. Waits for a toolset worth asking.
+**Done criteria / tests:** as above, each one currently unmet.
 
 **Decision recorded:** no agent-memory framework. Rulings are institutional knowledge, not preferences; the append-only, graded, deterministically-applied event log already avoids the staleness and trustworthy-retrieval problems those frameworks are benchmarking.
 
