@@ -111,6 +111,33 @@ def test_every_registered_tool_is_described(registry):
     assert all(s["description"] for s in registry.schemas())
 
 
+def test_every_declared_array_says_what_it_holds(registry):
+    """A provider validates the tool payload before it reads the question, and
+    an array that does not declare its items is rejected there — the whole
+    conversation dies on a schema, not on anything the model did. An object
+    with no properties is deliberate (an open map of caller-named keys); an
+    array with no items never is."""
+    from viva.speak import _final_schema
+
+    offenders: list[str] = []
+
+    def walk(tool: str, node, path: str) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "array" and "items" not in node:
+            offenders.append(f"{tool}.{path}" if path else tool)
+        for name, child in (node.get("properties") or {}).items():
+            walk(tool, child, f"{path}.{name}" if path else name)
+        walk(tool, node.get("items"), f"{path}[]")
+
+    for schema in registry.schemas() + [_final_schema()]:
+        walk(schema["name"], schema["parameters"], "")
+
+    assert not offenders, (
+        f"{offenders} declare an array without items; a strict provider "
+        "refuses the entire tool payload over it")
+
+
 def test_a_tool_without_a_description_cannot_register():
     registry = Registry()
     with pytest.raises(ValueError):
@@ -381,6 +408,66 @@ def test_a_fabricated_number_cannot_ride_inside_a_seen_one(registry):
     assert not result.answered and result.refusal == "unfounded_figure"
     # '26' rides inside the dated '2026-01-31' as a substring; the refusal
     # proves tokens are matched whole, not by containment.
+
+
+def test_a_declared_date_lets_the_answer_write_it_in_words(registry):
+    """A date is declared as the ISO date a result carried; the answer may then
+    write it however reads best."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances",
+                                                     "filters": {"account": "chk"}}}
+        row = context["results"][0]["data"]["balances"][0]
+        return {"answer": "As of January 31, 2026 your checking balance is "
+                          f"USD {row['amount']}.",
+                "figures": [{"value": row["amount"],
+                             "record_ids": [row["record_id"], "doc-jan"],
+                             "grade": row["grade"]}],
+                "dates": [{"iso": "2026-01-31"}]}
+    result = run("what is my checking balance?", planner, registry)
+    assert result.answered, result.text
+    assert "January 31, 2026" in result.text
+
+
+def test_a_date_written_but_not_declared_says_which_date_it_was(registry):
+    """The refusal names the date, because forgetting to declare one and
+    inventing a number outright are very different news."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances",
+                                                     "filters": {"account": "chk"}}}
+        return {"answer": "As of January 31, 2026 you are fine.",
+                "figures": [], "dates": []}
+    result = run("balance?", planner, registry)
+    assert not result.answered and result.refusal == "undeclared_date"
+    assert "2026-01-31" in result.text
+
+
+def test_a_date_no_result_carried_is_refused(registry):
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances",
+                                                     "filters": {"account": "chk"}}}
+        return {"answer": "Nothing to report.", "figures": [],
+                "dates": [{"iso": "2019-12-31"}]}
+    result = run("balance?", planner, registry)
+    assert not result.answered and result.refusal == "unfounded_date"
+
+
+def test_a_declared_date_licenses_its_parts_and_no_other_number(registry):
+    """The ruled cost of declaring dates by ISO alone: the parts of a real date
+    become sayable, so a four-digit amount matching its year passes, while any
+    number that is not one of its parts is refused exactly as before."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances",
+                                                     "filters": {"account": "chk"}}}
+        return {"answer": "You spent 2026 dollars and 4711 dollars.",
+                "figures": [], "dates": [{"iso": "2026-01-31"}]}
+    result = run("balance?", planner, registry)
+    # '2026' rides through as the declared date's year; '4711' is nobody's part.
+    assert not result.answered and result.refusal == "unfounded_figure"
+    assert "4711" in result.text and "2026 dollars" not in result.text
 
 
 def test_a_figure_citing_records_the_run_never_saw_is_refused(registry):

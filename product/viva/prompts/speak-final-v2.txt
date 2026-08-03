@@ -1,0 +1,10 @@
+Deliver the final answer for this turn. Call this exactly once, and only when
+the tool results from this turn already contain every figure the answer needs.
+`answer` is what Viva says to the person. `figures` lists every number the
+answer states: each entry carries `value` exactly as a tool result returned it,
+the `record_ids` from that same tool result, and its `grade`. `dates` lists
+every date the answer refers to, each as `{"iso": "YYYY-MM-DD"}` exactly as a
+tool result carried it; having declared a date there, write it in the answer in
+whatever form reads best. An answer is refused rather than delivered if any
+number in it is not covered by its figures and this turn's tool results, or if
+it refers to a date it did not declare.

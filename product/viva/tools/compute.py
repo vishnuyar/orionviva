@@ -21,7 +21,7 @@ COMPUTE_PARAMS = {
         "expression": {"type": "string"},
         "inputs": {"type": "object"},
         "grades": {"type": "object"},
-        "record_ids": {"type": "array"},
+        "record_ids": {"type": "array", "items": {"type": "string"}},
     },
     "required": ["expression"],
 }

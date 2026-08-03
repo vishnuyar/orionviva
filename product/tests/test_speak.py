@@ -23,6 +23,9 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-final-v1": "8e14a31d4ccd20e8",
     "speak-protocol-v1": "93a797d0f010909a",
     "speak-retry-v1": "9224620b7b861c8c",
+    "speak-v2": "f2154bf11552432d",
+    "speak-final-v2": "d746425703084d91",
+    "speak-protocol-v2": "3b7576ececfae486",
 }
 
 
@@ -307,7 +310,7 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
         assert event.body["parse_ok"] is True
         payload = json.loads(event.body["response_text"])
         assert payload["request"] and payload["response"]
-        assert payload["prompt_versions"]["speak"].startswith("speak-v1@")
+        assert payload["prompt_versions"]["speak"].startswith("speak-v2@")
         assert payload["prompt_versions"]["tools"].startswith("tools-v1@")
         assert payload["verdict"]["answered"] is True
     assert log.events[0].body["doc_id"] == "speak:s-test:1:1"

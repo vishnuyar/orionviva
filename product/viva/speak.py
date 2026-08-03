@@ -16,7 +16,8 @@ Two planners, one contract:
   reach.
 
 Both present one extra schema beside the registry's verbs: ``deliver_answer``,
-the terminator. It is never registered — it executes nothing; it is how a turn
+the terminator, through which the answer declares its figures and the dates it
+refers to. It is never registered — it executes nothing; it is how a turn
 ends. A malformed reply gets exactly one correction naming the problem, then
 the turn refuses with a machine tag. A transport failure refuses as
 ``model_unreachable``. Nothing raises to the person.
@@ -43,9 +44,9 @@ from vivacore import promptstore
 from .tools.registry import PROMPTS
 from .tools.runner import DEFAULT_MAX_CALLS, RunResult, run
 
-SPEAK_VERSION = "speak-v1"
-FINAL_VERSION = "speak-final-v1"
-PROTOCOL_VERSION = "speak-protocol-v1"
+SPEAK_VERSION = "speak-v2"
+FINAL_VERSION = "speak-final-v2"
+PROTOCOL_VERSION = "speak-protocol-v2"
 RETRY_VERSION = "speak-retry-v1"
 
 FINAL_TOOL = "deliver_answer"
@@ -54,7 +55,11 @@ FINAL_PARAMS = {
     "type": "object",
     "properties": {
         "answer": {"type": "string"},
-        "figures": {"type": "array"},
+        "figures": {"type": "array", "items": {"type": "object"}},
+        "dates": {"type": "array",
+                  "items": {"type": "object",
+                            "properties": {"iso": {"type": "string"}},
+                            "required": ["iso"]}},
     },
     "required": ["answer"],
 }
@@ -88,7 +93,12 @@ def _final_step(args: dict) -> tuple[dict | None, str]:
     if not isinstance(figures, list) or any(
             not isinstance(f, dict) for f in figures):
         return None, "'figures' must be a list of objects"
-    return {"answer": args["answer"], "figures": figures}, ""
+    dates = args.get("dates") or []
+    if not isinstance(dates, list) or any(
+            not isinstance(d, dict) for d in dates):
+        return None, "'dates' must be a list of objects"
+    return {"answer": args["answer"], "figures": figures,
+            "dates": dates}, ""
 
 
 @dataclass

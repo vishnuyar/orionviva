@@ -10,8 +10,10 @@ data out, and the T1 gate runs identically for all of them.
 
 The gate: an answer's every figure must cite record ids the run actually saw,
 and every number appearing in the answer's text must be traceable to a tool
-result from this run. An answer that fails is refused — not softened, not
-partially delivered.
+result from this run. Dates are declared alongside the figures, as the ISO
+dates the results carried, because prose writes a date in forms no ISO token
+matches; a declared date licenses its own parts and nothing else. An answer
+that fails is refused — not softened, not partially delivered.
 """
 
 from __future__ import annotations
@@ -30,6 +32,16 @@ DEFAULT_MAX_CALLS = 8
 # year would taint every dated row that call returns, and a date-shaped
 # invention could shed its hyphens into free-standing citable digits.
 _NUMBER = re.compile(r"\d{4}-\d{2}-\d{2}|\d[\d,]*(?:\.\d+)?")
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _date_parts(iso: str) -> set:
+    """The tokens a person writing this date out loud can produce — the whole
+    date, its year, and its month and day with and without a leading zero. A
+    declared date licenses exactly these and nothing else."""
+    year, month, day = iso.split("-")
+    return {iso, year, month, day, month.lstrip("0"), day.lstrip("0")}
 
 
 @dataclass
@@ -185,11 +197,41 @@ def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
                 dicts, len(transcript))
         if figure.get("grade"):
             grades.append(figure["grade"])
+    # A date is a claim about when, not about how much, and prose writes it in
+    # forms no ISO token matches. So it is declared like a figure and checked
+    # like one: the ISO date must be something this run's results asserted, and
+    # only then may the answer say its parts.
+    sayable: set = set()
+    for entry in step.get("dates", []) or []:
+        iso = str(entry.get("iso", "")) if isinstance(entry, dict) else ""
+        if not _ISO_DATE.match(iso):
+            return _refused(
+                "unfounded_date",
+                f"A declared date {iso!r} is not a date this run could have "
+                "read.", dicts, len(transcript))
+        if iso not in grounded_tokens:
+            return _refused(
+                "unfounded_date",
+                f"The date {iso!r} appears in no tool result from this run.",
+                dicts, len(transcript))
+        sayable |= _date_parts(iso)
+
+    seen_dates = sorted(d for d in grounded_tokens if _ISO_DATE.match(d))
     covered = {str(f["value"]).replace(",", "") for f in figures}
     for token in _NUMBER.findall(text):
         plain = token.replace(",", "")
-        if plain in covered or plain in grounded_tokens:
+        if plain in covered or plain in grounded_tokens or plain in sayable:
             continue
+        # Saying which failure this is matters: a date left undeclared and a
+        # number invented outright are the same refusal to the gate and very
+        # different news to the person reading it.
+        owner = next((d for d in seen_dates if plain in _date_parts(d)), "")
+        if owner:
+            return _refused(
+                "undeclared_date",
+                f"The answer writes '{token}', part of the date {owner!r} this "
+                "run read — a date must be declared before it can be said.",
+                dicts, len(transcript))
         return _refused(
             "unfounded_figure",
             f"The answer contains '{token}', which no tool result from this "
