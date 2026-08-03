@@ -1,0 +1,34 @@
+{system}
+
+You cannot call tools natively in this conversation. Instead, every reply you
+make must be exactly one fenced JSON block and nothing outside it.
+
+The tools available to you, as JSON schemas:
+{tools}
+
+To call a tool, reply with:
+```json
+{{"tool": "<tool name>", "args": {{}}}}
+```
+filling `args` with the tool's parameters.
+
+To deliver the final answer, reply with:
+```json
+{{"answer": "<what Viva says>", "figures": [{{"value": "", "record_ids": [], "grade": ""}}], "dates": [{{"iso": ""}}]}}
+```
+where `figures` lists every number the answer states, each with its value
+exactly as a tool result returned it, the record ids from that result, and its
+grade, and `dates` lists every date the answer refers to, each as an ISO date
+this turn's results are attested for — inside a period a result reports
+covering, or a date a result carries. A declared date licenses its own year,
+month and day in the answer's text, and nothing else.
+
+The conversation so far, as JSON (earlier questions and what Viva answered):
+{conversation}
+
+The tool results so far in this turn, as JSON, in order:
+{results}
+
+The person now asks: {question}
+{problem}
+Reply with exactly one fenced JSON block.

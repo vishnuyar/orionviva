@@ -26,6 +26,12 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-v2": "f2154bf11552432d",
     "speak-final-v2": "d746425703084d91",
     "speak-protocol-v2": "3b7576ececfae486",
+    "speak-v3": "c898f122b4069899",
+    "speak-final-v3": "19506ea8954a63c5",
+    "speak-protocol-v3": "d6c9a16621b13270",
+    "speak-v4": "aed70cdb9970d43b",
+    "speak-final-v4": "2cac1de408a24750",
+    "speak-protocol-v4": "ec83cfb6be5d52eb",
 }
 
 
@@ -148,6 +154,52 @@ def test_native_planner_produces_a_cited_answer(registry):
     offered = {t["name"] for t in script.seen[0]["tools"]}
     assert FINAL_TOOL in offered and "query_ledger" in offered
     assert FINAL_TOOL not in registry.names()
+
+
+def test_both_modalities_carry_a_date_declaration_to_the_gate(registry):
+    """The wiring, not the gate: a date declared through each real planner must
+    reach the gate and let the answer say the date in words. Neither planner may
+    quietly drop the field."""
+    answer = "The last movement I hold is from January 5, 2026."
+    native = ChatScript([
+        _turn([_call("query_ledger", {"entity": "transactions"})]),
+        _turn([_call(FINAL_TOOL, {"answer": answer, "figures": [],
+                                  "dates": [{"iso": "2026-01-05"}]},
+                     call_id="c2")]),
+    ])
+    from_native = run("when?", NativePlanner(native), registry)
+    assert from_native.answered, from_native.text
+
+    text = TextScript([
+        '```json\n{"tool": "query_ledger", "args": {"entity": "transactions"}}\n```',
+        '```json\n{"answer": "' + answer + '", "figures": [], '
+        '"dates": [{"iso": "2026-01-05"}]}\n```',
+    ])
+    from_text = run("when?", TextPlanner(text), registry)
+    assert from_text.answered, from_text.text
+
+    # And the field is offered to a model in both modalities, not just honored
+    # when one happens to send it.
+    terminator = next(s for s in native.seen[0]["tools"] if s["name"] == FINAL_TOOL)
+    assert "dates" in terminator["parameters"]["properties"]
+    assert "dates" in text.prompts[0]
+
+
+def test_a_malformed_dates_field_is_corrected_rather_than_refused(registry):
+    """A shape a model can fix costs it a correction, never the whole turn."""
+    script = ChatScript([
+        _turn([_call("query_ledger", {"entity": "transactions"})]),
+        _turn([_call(FINAL_TOOL, {"answer": "Nothing to report.",
+                                  "figures": [], "dates": "January"},
+                     call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"answer": "Nothing to report.",
+                                  "figures": [], "dates": []},
+                     call_id="c3")]),
+    ])
+    result = run("when?", NativePlanner(script), registry)
+    assert result.answered, result.text
+    correction = script.seen[-1]["messages"][-1]
+    assert "dates" in correction["content"]
 
 
 def test_native_planner_threads_the_result_back_as_a_tool_message(registry):
@@ -310,7 +362,7 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
         assert event.body["parse_ok"] is True
         payload = json.loads(event.body["response_text"])
         assert payload["request"] and payload["response"]
-        assert payload["prompt_versions"]["speak"].startswith("speak-v2@")
+        assert payload["prompt_versions"]["speak"].startswith("speak-v4@")
         assert payload["prompt_versions"]["tools"].startswith("tools-v1@")
         assert payload["verdict"]["answered"] is True
     assert log.events[0].body["doc_id"] == "speak:s-test:1:1"
@@ -446,9 +498,9 @@ def test_compute_over_fetched_figures_still_grounds(registry):
 
 
 def test_an_answer_may_quote_a_row_date_from_a_windowed_query(registry):
-    """The model's window filter shares its year with every row it returns;
-    dates travel as whole tokens so the filter taints only its own edges,
-    never the vault's dates."""
+    """A row's own date is declarable and sayable even though the window filter
+    that found it shares its year — the filter is scope the read reports, and
+    the row date is something the read asserts."""
     def planner(context):
         if not context["results"]:
             return {"tool": "query_ledger",
@@ -462,7 +514,8 @@ def test_an_answer_may_quote_a_row_date_from_a_windowed_query(registry):
                           "market.",
                 "figures": [{"value": row["amount"],
                              "record_ids": [row["provenance"]["doc_id"]],
-                             "grade": row["grade"]}]}
+                             "grade": row["grade"]}],
+                "dates": [{"iso": row["date"]}]}
 
     result = run("what did I spend in January?", planner, registry)
     assert result.answered
