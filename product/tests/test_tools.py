@@ -410,35 +410,77 @@ def test_a_fabricated_number_cannot_ride_inside_a_seen_one(registry):
     # proves tokens are matched whole, not by containment.
 
 
-def test_a_ranging_read_reports_the_span_it_covered(registry):
-    """A read that ranges over time says what time it ranged over; one that
-    measures a moment carries its value-time instead."""
+def test_a_ranging_read_reports_what_it_is_attested_for(registry):
+    """A read that ranges over time says which account it is attested for and
+    over what period; one that measures a moment carries its value-time
+    instead."""
     ranging = registry.call("query_ledger", {"entity": "transactions"})
-    assert ranging.ok and ranging.covers["from"] <= ranging.covers["to"]
-    assert "covers" in ranging.to_dict()
+    assert ranging.ok and ranging.covers
+    for entry in ranging.covers:
+        assert entry["account"] and entry["from"] <= entry["to"]
     moment = registry.call("query_ledger", {"entity": "aggregate",
                                             "metric": "net_worth"})
-    assert moment.ok and moment.covers == {} and moment.dated
+    assert moment.ok and moment.covers == [] and moment.dated
 
-
-def test_a_window_reaching_past_the_evidence_is_clipped_and_says_so(registry):
+def test_coverage_is_the_period_a_statement_attested_not_the_movement_dates(registry):
+    """A statement posts only by reconciling, so its whole period is covered
+    even where no movement falls. Reading the span off the movements instead
+    would report a quiet fortnight as a hole in the evidence."""
     result = registry.call("query_ledger", {
         "entity": "aggregate", "metric": "spending",
-        "filters": {"window": {"from": "2020-01-01", "to": "2030-12-31"}}})
+        "filters": {"account": "chk",
+                    "window": {"from": "2026-01-01", "to": "2026-01-31"}}})
     assert result.ok
-    assert result.covers["from"] > "2020-01-01"
-    assert result.covers["to"] < "2030-12-31"
-    assert any("past the evidence held" in c for c in result.caveats)
+    assert result.covers == [{"account": "chk", "from": "2026-01-01",
+                              "to": "2026-01-31"}]
+    assert not any("past the evidence" in c for c in result.caveats)
 
 
-def test_a_window_with_no_evidence_covers_nothing_and_says_which(registry):
-    """Nothing spent and nothing held must not read alike."""
+def test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so(registry):
     result = registry.call("query_ledger", {
         "entity": "aggregate", "metric": "spending",
-        "filters": {"window": {"from": "2019-01-01", "to": "2019-12-31"}}})
-    assert result.ok and result.covers == {}
-    assert any("No evidence falls inside the window" in c for c in result.caveats)
+        "filters": {"account": "chk",
+                    "window": {"from": "2020-01-01", "to": "2030-12-31"}}})
+    assert result.ok
+    assert result.covers == [{"account": "chk", "from": "2026-01-01",
+                              "to": "2026-01-31"}]
+    assert any("reaches past what its statements attest" in c
+               for c in result.caveats)
 
+def test_a_window_outside_what_is_attested_covers_nothing_and_says_which(registry):
+    """Nothing spent and nothing attested must not read alike."""
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk",
+                    "window": {"from": "2019-01-01", "to": "2019-12-31"}}})
+    assert result.ok and result.covers == []
+    assert any("falls outside the window asked for" in c
+               for c in result.caveats)
+
+
+def test_a_filter_that_matches_nothing_still_reports_its_coverage(registry):
+    """A category, tag, merchant or nature filter selects rows; it does not
+    decide what the vault holds. A zero inside an attested period is money not
+    spent, never evidence not held, and the two sentences are not
+    interchangeable."""
+    result = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending",
+        "filters": {"account": "chk", "nature": "transfer",
+                    "window": {"from": "2026-01-01", "to": "2026-01-31"}}})
+    assert result.ok
+    assert result.covers == [{"account": "chk", "from": "2026-01-01",
+                              "to": "2026-01-31"}]
+    assert not any("no evidence" in c.lower() for c in result.caveats)
+
+
+def test_an_account_with_no_statement_says_so_rather_than_guessing(registry):
+    """An account whose period nothing attests borrows nothing from its
+    movements: it reports no coverage and names itself."""
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending"})
+    assert result.ok
+    assert {c["account"] for c in result.covers} == {"chk"}
+    assert any("No statement has posted for card" in c for c in result.caveats)
 
 def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
     """A boundary date the planner supplied is scope the tool reports back, not
@@ -470,26 +512,24 @@ def test_a_month_written_for_a_day_it_covers_is_accepted(registry):
     assert result.answered, result.text
 
 
-def test_a_span_a_read_covered_can_never_ground_a_figure(registry):
-    """The span is scope, kept in its own pool, and that pool holds dates only.
-    A spending aggregate names no row dates, so its span is the only place its
-    boundaries appear — and a figure may not stand on one."""
-    span = registry.call("query_ledger", {"entity": "aggregate",
-                                          "metric": "spending"}).covers
-    assert span and span["to"] not in str(registry.call(
-        "query_ledger", {"entity": "aggregate", "metric": "spending"}).data)
+def test_a_period_a_read_is_attested_for_can_never_ground_a_figure(registry):
+    """A period is scope, kept in its own pool, and that pool holds dates only.
+    A spending aggregate names no row dates, so its period is the only place
+    its boundaries appear — and a figure may not stand on one."""
+    covers = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending"}).covers
+    edge = covers[0]["to"]
 
     def planner(context):
         if not context["results"]:
             return {"tool": "query_ledger", "args": {"entity": "aggregate",
                                                      "metric": "spending"}}
-        return {"answer": f"The figure is {span['to']}.",
-                "figures": [{"value": span["to"], "record_ids": ["doc-jan"],
+        return {"answer": f"The figure is {edge}.",
+                "figures": [{"value": edge, "record_ids": ["doc-jan"],
                              "grade": CORROBORATED}],
                 "dates": []}
     result = run("?", planner, registry)
     assert not result.answered and result.refusal == "unfounded_figure"
-
 
 def test_a_date_outside_everything_read_is_refused(registry):
     def planner(context):
@@ -501,29 +541,42 @@ def test_a_date_outside_everything_read_is_refused(registry):
     assert not result.answered and result.refusal == "unfounded_date"
 
 
-def test_a_date_written_but_not_declared_says_which_date_it_was(registry):
+def test_a_date_component_written_but_not_declared_says_which_date_it_was(registry):
+    """A date left undeclared and a number invented outright are the same
+    refusal to the gate and very different news to the person."""
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
-        return {"answer": "As of January 31, 2026 you are fine.",
+            return {"tool": "query_ledger",
+                    "args": {"entity": "balances",
+                             "filters": {"account": "chk"}}}
+        return {"answer": "You were fine on the 31st.",
                 "figures": [], "dates": []}
     result = run("when?", planner, registry)
     assert not result.answered and result.refusal == "undeclared_date"
-    assert "January 31, 2026" in result.text
+    assert "2026-01-31" in result.text
 
+def test_a_declared_date_licenses_its_own_parts_and_nothing_else(registry):
+    """The accepted cost of licensing a date by its parts, stated so it is not
+    rediscovered as a bug: a number equal to a component of a declared date
+    passes. It is bounded by exact equality — an amount that merely begins with
+    the year does not pass, and neither does one unrelated to any date. Nothing
+    is removed from the text to achieve this; text deleted before the numbers
+    are counted takes whatever else it overlaps with it."""
+    def answer(sentence):
+        def planner(context):
+            if not context["results"]:
+                return {"tool": "query_ledger",
+                        "args": {"entity": "transactions"}}
+            return {"answer": sentence, "figures": [],
+                    "dates": [{"iso": "2026-01-05"}]}
+        return run("how much?", planner, registry)
 
-def test_an_amount_cannot_ride_on_a_declared_dates_year(registry):
-    """A date leaves the text before the numbers are counted, so its year
-    grounds nothing that is not a date."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
-        return {"answer": "In January 2026 you spent 2026 dollars.",
-                "figures": [], "dates": [{"iso": "2026-01-05"}]}
-    result = run("how much?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-    assert "2026" in result.text
-
+    assert answer("In January 2026 you spent 2026 dollars.").answered
+    for invented in ("In January 2026 you spent 20261 dollars.",
+                     "In January 2026 there were 120 charges.",
+                     "In January 2026 you spent 4711 dollars."):
+        result = answer(invented)
+        assert not result.answered and result.refusal == "unfounded_figure"
 
 def test_a_declared_date_that_is_not_a_date_refuses_rather_than_raising(registry):
     for bad in ("600.00", "2026-13-45", "", "2026-01-31 "):

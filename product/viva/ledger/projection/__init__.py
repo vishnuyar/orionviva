@@ -149,6 +149,12 @@ class LedgerProjection:
     def open_holds(self) -> list[dict]:
         return _coverage.open_holds(self._core)
 
+    def attested_period(self, account: str) -> tuple[str, str]:
+        return _coverage.attested_period(self._core, account)
+
+    def attested_periods(self) -> dict[str, tuple[str, str]]:
+        return _coverage.attested_periods(self._core)
+
     def gap_holds(self) -> list[dict]:
         return _coverage.gap_holds(self._core)
 
