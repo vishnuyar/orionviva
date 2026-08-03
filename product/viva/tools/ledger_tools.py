@@ -151,6 +151,36 @@ def _movement_passes(proj, m, filters: dict) -> bool:
     return True
 
 
+def _span_covered(proj, filters: dict, counts=None) -> tuple[dict, list]:
+    """The span a movement read actually ranged over, and what to say when it
+    is not the span asked for.
+
+    Evidence first: the earliest and latest movement passing every filter but
+    the window. The window asked for is then clipped to that, so a read never
+    claims to cover time it holds nothing for — which is what keeps "you spent
+    nothing then" apart from "I hold nothing from then"."""
+    unwindowed = {k: v for k, v in filters.items() if k != "window"}
+    dates = sorted(m.date[:10] for m in proj.movements()
+                   if (counts is None or counts(m))
+                   and _movement_passes(proj, m, unwindowed))
+    if not dates:
+        return {}, ["No evidence is held for this question at all, in any "
+                    "window."]
+    first, last = dates[0], dates[-1]
+    want = filters.get("window") or {}
+    asked_from, asked_to = (want.get("from") or "")[:10], (want.get("to") or "")[:10]
+    start = max(asked_from, first) if asked_from else first
+    end = min(asked_to, last) if asked_to else last
+    if start > end:
+        return {}, [f"No evidence falls inside the window asked for; what is "
+                    f"held for this question runs {first} to {last}."]
+    if (asked_from and asked_from < first) or (asked_to and asked_to > last):
+        return {"from": start, "to": end}, [
+            f"The window asked for reaches past the evidence held; this "
+            f"answers for {start} to {end}."]
+    return {"from": start, "to": end}, []
+
+
 def _movement_row(proj, m, grades: dict) -> dict:
     ruling = proj.derived_category(m) or {}
     return {"record_id": m.key, "account": m.account, "date": m.date,
@@ -208,11 +238,12 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     record_ids = sorted({r["provenance"]["doc_id"] for r in rows
                          if r["provenance"].get("doc_id")}
                         | {r["record_id"] for r in rows})
+    covers, caveats = _span_covered(proj, filters)
     return ToolResult(
         tool=TOOL, ok=True,
         data={"transactions": rows, "count": len(rows)},
         grade=weakest(r["grade"] for r in rows),
-        record_ids=record_ids,
+        record_ids=record_ids, covers=covers, caveats=caveats,
         coverage=f"{len(rows)} movement(s) matched the filters.",
         text=f"{len(rows)} movement(s), each with nature, category and source.")
 
@@ -285,12 +316,13 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
 
 def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
     grouped, extras = _spending_rows(proj, filters, group_by)
+    covers, span_caveats = _span_covered(proj, filters, proj._counts_as_spending)
     currency = filters.get("currency")
     data = {"metric": "spending", "group_by": group_by,
             "by_group": {k: str(v) for k, v in sorted(grouped.items())},
             "total": str(extras["total"]), "count": extras["count"]}
     caveats = ["Own-account transfers and settlements are excluded by nature; "
-               "card purchases are included."]
+               "card purchases are included."] + span_caveats
     if group_by == "tag":
         data["untagged"] = str(extras["untagged"])
         data["overlaps"] = True
@@ -310,7 +342,7 @@ def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
                        "proportions, and is reported apart, not counted here.")
     return ToolResult(
         tool=TOOL, ok=True, data=data,
-        grade=weakest(extras["grades"]),
+        grade=weakest(extras["grades"]), covers=covers,
         record_ids=extras["record_ids"], caveats=caveats,
         coverage=f"{extras['count']} spending movement(s) counted.",
         text=f"Spending by {group_by}: total {extras['total']}.")
