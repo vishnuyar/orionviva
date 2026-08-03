@@ -111,6 +111,10 @@ class ProjectionCore:
         self._acct: dict[str, _AccountState] = {}
         # Ingest read-model, maintained incrementally alongside balances.
         self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
+        self._replies: dict[str, str] = {}      # doc_id -> latest extract reply
+        # The per-account statement register, derived from those replies on
+        # first ask and dropped whenever a new reading arrives.
+        self._statements: dict | None = None
         self._posted: set[str] = set()           # doc_ids with posting events
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
         self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
@@ -205,6 +209,19 @@ class ProjectionCore:
 
         elif et == "DocumentCaptured":
             self._captured[event.body["doc_id"]] = event.body.get("doc_type", "")
+
+        elif et == "ReadRecorded":
+            # The reply a model gave for a document, kept verbatim so a reader
+            # above this layer can recover what the document declared about
+            # itself. Later replies win, so a document re-read after a prompt
+            # change is described by the newer reading. Text only: this layer
+            # parses nothing and knows no document format.
+            if (event.body.get("phase", "extract") == "extract"
+                    and event.body.get("parse_ok")):
+                doc = event.body.get("doc_id", "")
+                if doc:
+                    self._replies[doc] = event.body.get("response_text", "")
+                    self._statements = None
 
         elif et == "StatementHeld":
             self._held[event.body["doc_id"]] = event.body

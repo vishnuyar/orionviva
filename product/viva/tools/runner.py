@@ -38,6 +38,15 @@ _NUMBER = re.compile(r"\d{4}-\d{2}-\d{2}|\d[\d,]*(?:\.\d+)?")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def _is_real_date(iso: str) -> bool:
+    """Whether a `YYYY-MM-DD` string names a day that exists."""
+    try:
+        datetime.date.fromisoformat(iso)
+        return True
+    except ValueError:
+        return False
+
+
 def _date_parts(iso: str) -> set:
     """The tokens a person writing this date out loud can produce — the whole
     date, its year, and its month and day with and without a leading zero. A
@@ -214,9 +223,10 @@ def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
     sayable: set = set()
     for entry in step.get("dates", []) or []:
         iso = str(entry.get("iso", "")) if isinstance(entry, dict) else ""
-        try:
-            datetime.date.fromisoformat(iso)
-        except ValueError:
+        # Shape first, then reality. The library accepts forms this gate cannot
+        # take apart — a compact YYYYMMDD, an ISO week date — and a value that
+        # parses but has no parts would raise on the way to being licensed.
+        if not _ISO_DATE.match(iso) or not _is_real_date(iso):
             return _refused(
                 "unfounded_date", f"A declared date {iso!r} is not a date.",
                 dicts, len(transcript))

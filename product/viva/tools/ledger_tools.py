@@ -162,6 +162,10 @@ def _attested_coverage(proj, filters: dict) -> tuple[list, list]:
     span from movement dates instead would report a quiet fortnight as a hole
     in the evidence, which is a different sentence and a false one.
 
+    An account may attest more than one period: statements join only where the
+    balances continue AND the dates meet, so a missing statement leaves two
+    runs rather than one span across the gap it cannot support.
+
     Returns `(covers, caveats)`: one entry per account holding an attested
     period that meets the window, and a caveat for every account in scope that
     does not."""
@@ -173,22 +177,33 @@ def _attested_coverage(proj, filters: dict) -> tuple[list, list]:
 
     covers, caveats = [], []
     for account in scope:
-        first, last = proj.attested_period(account)
-        if not first:
+        runs = proj.attested_runs(account)
+        if not runs:
             caveats.append(f"No statement has posted for {account}, so nothing "
                            "here is attested for it.")
             continue
-        start = max(asked_from, first) if asked_from else first
-        end = min(asked_to, last) if asked_to else last
-        if start > end:
-            caveats.append(f"{account} is attested for {first} to {last}, which "
-                           "falls outside the window asked for.")
+        first, last = runs[0][0], runs[-1][1]
+        held = ", ".join(f"{a} to {b}" for a, b in runs)
+        met = []
+        for start, end in runs:
+            lo = max(asked_from, start) if asked_from else start
+            hi = min(asked_to, end) if asked_to else end
+            if lo <= hi:
+                met.append({"account": account, "from": lo, "to": hi})
+        if not met:
+            caveats.append(f"{account} is attested for {held}, none of which "
+                           "falls inside the window asked for.")
             continue
-        covers.append({"account": account, "from": start, "to": end})
+        covers.extend(met)
+        if len(met) > 1:
+            caveats.append(f"{account} is attested for {len(met)} separate "
+                           "periods inside the window asked for; a statement "
+                           "between them is missing, and the days between are "
+                           "not answered for.")
         if (asked_from and asked_from < first) or (asked_to and asked_to > last):
             caveats.append(f"For {account} the window asked for reaches past "
                            f"what its statements attest; this answers for "
-                           f"{start} to {end}.")
+                           f"{met[0]['from']} to {met[-1]['to']}.")
     return covers, caveats
 
 
