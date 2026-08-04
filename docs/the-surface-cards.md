@@ -1,6 +1,6 @@
 # The Surface, Rebuilt as Cards
 
-**Status:** Spec — decided 2026-07-26, unbuilt · **Origin:** Vishnu: *"I feel that moving away from index.html created some bugs. Let us do away with React and come back to index.html, create a card for each type of instrument and decide what needs to be shown on that card."*
+**Status:** BUILT — decided 2026-07-26, shipped as `product/viva/web/static/{index.html,app.js}`; four cards, no build step · **Origin:** Vishnu: *"I feel that moving away from index.html created some bugs. Let us do away with React and come back to index.html, create a card for each type of instrument and decide what needs to be shown on that card."*
 
 **Invariants touched:** **X1** (the machinery is invisible; the person sees money) · **X2** (every figure carries its as-of date and grade) · **T1** (a figure names the document behind it) · principle 5 (serve, don't overwhelm).
 

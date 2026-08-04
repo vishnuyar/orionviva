@@ -1,10 +1,14 @@
 # What a Cold Read Found — the 2026-07-27 correctness audit
 
-**Status:** Living · **Date:** 2026-07-27 · **Invariants touched:** T1, T2, T4, T5, T8, T9, I2, M1, X2, X3
+**Status:** ⛔ Historical — the 2026-07-27 correctness audit, complete · **Date:** 2026-07-27 · **Archived:** 2026-08-04 · **Invariants touched:** T1, T2, T4, T5, T8, T9, I2, M1, X2, X3
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **A point-in-time line-level read of the four packages as they stood on 2026-07-27.** Findings A1 (the constant grade on every net-worth line), A2 (the locale comparison against a raw string) and C2 (the raw descriptor persisted unlinted) have all been fixed in code. Its test count is stale by roughly half, and every one of its code citations names `ledger/projection.py`, which became the package `ledger/projection/` in the 2026-08-01 decomposition — so no line reference in it resolves. Kept as the record of how the project audits itself, and of the one finding that survived it (`_today()` defined twice in `web/service.py`). Nothing in it describes how OrionViva works today.
 
 ## Why this doc, and what it is not
 
-[stocktake-2026-07.md](archived/stocktake-2026-07.md) was a *holistic* audit — what was stale, what was absent, what a real run proved. This is a narrower and duller thing: a **line-level correctness read** of all four packages by a reader arriving with no priors, holding each claim in the docs against the code that is supposed to implement it.
+[stocktake-2026-07.md](stocktake-2026-07.md) was a *holistic* audit — what was stale, what was absent, what a real run proved. This is a narrower and duller thing: a **line-level correctness read** of all four packages by a reader arriving with no priors, holding each claim in the docs against the code that is supposed to implement it.
 
 The method's value and its limit are the same fact: **no priors.** A cold reader has no memory of why a line is the way it is, so it notices a gap a builder's eye slides over — and equally, it can mistake a deliberate trade for an oversight. Every finding below therefore carries how it was established, and is marked **CONFIRMED** (the exact code path was read, and where possible executed) or **HAZARD** (structurally reachable, not observed on real data). Nothing here is reported as a defect on the strength of a plausible-sounding argument. That distinction is the whole discipline the stocktake's own rule demands, after six occasions when an instrument reported something untrue — including one that manufactured a defect in correct code.
 
@@ -57,7 +61,7 @@ The amount boundary next to it *is* structural — `ruling_recorded` raises on a
 
 Worse, the honesty signal inverts: `unknown_split = interp.compound and not interp.shares_known` (`listen.py:457`). When the model *supplies* a fabricated ratio, `shares_known` becomes true and `unknown_split` goes **False** — so the summary stops saying "I can't tell how it splits, so I won't guess" precisely in the case where it should say it loudest.
 
-`eval_listen` scores this as RUIN (`eval_listen.py:77–79`) and that is the right alarm. But an alarm is a measurement, not a guard, and the mortgage case in [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) is exactly the one where a wrong ratio is both plausible and generalizing.
+`eval_listen` scores this as RUIN (`eval_listen.py:77–79`) and that is the right alarm. But an alarm is a measurement, not a guard, and the mortgage case in [from-your-words-to-the-ledger.md](../from-your-words-to-the-ledger.md) is exactly the one where a wrong ratio is both plausible and generalizing.
 
 #### A4 · Tapping an answer on an unknown transaction can mint `Assets:Other:Unnamed` — and put it in your net worth · CONFIRMED
 
@@ -170,7 +174,7 @@ p2  FAILS: PromptNotFound
 
 The files are `header-text-t1.txt`, `header-textimage-ti1.txt`, `extract-image-p2.txt` — the ids never match the filenames. Worse, the text-mode prompt is *composed* at call time from three files, splicing the task body out of `extract-image-p2.txt` by searching for a literal marker (`prompts.py:75–76`), so **no single id could ever resolve to it.** And `bench/bench-data/runs/runs.jsonl` on disk records 12 × `t1`, 12 × `ti1`, 12 × `p2`, and 4 × `p1` — a version whose id is no longer even in the table.
 
-This is the enrich-v2 failure from [prompts-as-files.md](prompts-as-files.md), one package over. The product already solved it properly: `prompt_library` records the self-describing composite `extract:<base>+<frag>` and `resolve()` reverses it, deliberately never falling back to current text (`ingest/prompt_library.py:59–68`). The bench simply never received that fix. Given that the bench's whole output is comparisons that are only meaningful *within* a prompt version (`prompts.py:3–4`), the recorded findings currently cannot be tied back to the text that produced them.
+This is the enrich-v2 failure from [prompts-as-files.md](../prompts-as-files.md), one package over. The product already solved it properly: `prompt_library` records the self-describing composite `extract:<base>+<frag>` and `resolve()` reverses it, deliberately never falling back to current text (`ingest/prompt_library.py:59–68`). The bench simply never received that fix. Given that the bench's whole output is comparisons that are only meaningful *within* a prompt version (`prompts.py:3–4`), the recorded findings currently cannot be tied back to the text that produced them.
 
 #### D2 · `_system_metrics` does not compare values across runs · CONFIRMED
 
@@ -230,13 +234,13 @@ Related sizing bug in the same path: `Proposal.settles` counts *all* movements m
 
 ## Impact pass — what this changes in the existing record
 
-- **[net-worth.md](net-worth.md)** — D3 ("two kinds of unknown") and D4 ("reuse the grade ladder") are both stated correctly and **A1 shows D4 is not implemented**. The doc should carry a note that the grade is currently constant, pending the fix.
-- **[design-invariants.md](design-invariants.md)** — no new invariant is proposed. But T9's wording *"a normalized merchant key + a privacy-linted example"* is currently aspirational (C2); either the code gains a linter or the invariant should say what actually crosses.
-- **[prompts-as-files.md](prompts-as-files.md)** — records the discipline and the enrich-v2 recovery. D1 is a second live instance, in `bench`, which the two tests that made recurrence a build failure do not cover (they guard the product's prompt library, not the bench's `PROMPT_VERSIONS` table). Worth an amendment: the rule held where it was tested and drifted where it was not, which is the doc's own thesis.
-- **[the-question-queue.md](the-question-queue.md)** — B1–B5 are all in the queue's contract rather than its concept. The concept holds: I found no model call where a template was promised, and the deterministic-text rule is clean throughout `questions.py`. The leaks are *values*, not phrasing.
-- **[from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)** — A3 and A4 are both gaps between what the doc settles (D2, the share rule) and what the code enforces. The `amount` boundary it describes *is* structural and works.
-- **[stocktake-2026-07.md](archived/stocktake-2026-07.md)** — A5 refines rather than reopens the retracted unit-quantity defect: the retraction was correct, and it established that the reading was right, not that a wrong one would be caught.
-- **[honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md)** — B3 is the same class of error the doc names: two systems describing one fact, and the aggregate listening to only one. Here it is currency.
+- **[net-worth.md](../net-worth.md)** — D3 ("two kinds of unknown") and D4 ("reuse the grade ladder") are both stated correctly and **A1 shows D4 is not implemented**. The doc should carry a note that the grade is currently constant, pending the fix.
+- **[design-invariants.md](../design-invariants.md)** — no new invariant is proposed. But T9's wording *"a normalized merchant key + a privacy-linted example"* is currently aspirational (C2); either the code gains a linter or the invariant should say what actually crosses.
+- **[prompts-as-files.md](../prompts-as-files.md)** — records the discipline and the enrich-v2 recovery. D1 is a second live instance, in `bench`, which the two tests that made recurrence a build failure do not cover (they guard the product's prompt library, not the bench's `PROMPT_VERSIONS` table). Worth an amendment: the rule held where it was tested and drifted where it was not, which is the doc's own thesis.
+- **[the-question-queue.md](../the-question-queue.md)** — B1–B5 are all in the queue's contract rather than its concept. The concept holds: I found no model call where a template was promised, and the deterministic-text rule is clean throughout `questions.py`. The leaks are *values*, not phrasing.
+- **[from-your-words-to-the-ledger.md](../from-your-words-to-the-ledger.md)** — A3 and A4 are both gaps between what the doc settles (D2, the share rule) and what the code enforces. The `amount` boundary it describes *is* structural and works.
+- **[stocktake-2026-07.md](stocktake-2026-07.md)** — A5 refines rather than reopens the retracted unit-quantity defect: the retraction was correct, and it established that the reading was right, not that a wrong one would be caught.
+- **[honest-aggregates-and-the-learning-loop.md](../honest-aggregates-and-the-learning-loop.md)** — B3 is the same class of error the doc names: two systems describing one fact, and the aggregate listening to only one. Here it is currency.
 - **`docs/TODO.md`** — the test count (432 / 373) is stale; the tree holds **453** test functions.
 
 ## What held
@@ -249,4 +253,4 @@ Worth recording, because an audit that only lists failures misrepresents the thi
 - **Arithmetic refuses floats.** `_as_decimal` raises a `TypeError` naming T2 by name.
 - **Ambiguity is refused, not guessed.** The empty-locale case in A2's own transcript; `parse_date` never inventing a year; `find_corroborating_legs` returning `[]` unless the subset is unique; `unrealized_gain` returning `None` rather than 0 when no cost basis exists; `confidently_wrong` being `None` rather than 0 when nothing was measured.
 - **`eval_listen` refusing to average away a broken run** (`BROKEN` never scored) is the harness declining to commit the error it exists to catch — the single best piece of instrument discipline in the tree.
-- **The reversal in [the-surface-cards.md](the-surface-cards.md)** — dropping a compiled bundle because a stale artifact can serve last hour's product with no error — is the process working, and it is the reasoning that should be pointed at D1.
+- **The reversal in [the-surface-cards.md](../the-surface-cards.md)** — dropping a compiled bundle because a stale artifact can serve last hour's product with no error — is the process working, and it is the reasoning that should be pointed at D1.

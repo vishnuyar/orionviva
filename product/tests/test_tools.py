@@ -22,8 +22,12 @@ from viva.tools.registry import PROMPTS, Registry, ToolSpec, descriptions
 from vivacore import promptstore
 
 # The registry's description file is a released prompt: its text may never
-# change. To edit a description, add tools-v2.txt and point the registry at it.
-FROZEN_DESCRIPTIONS = {"tools-v1": "484999eebb3697a4"}
+# change. To edit a description, add a new version file and point the registry
+# at it.
+FROZEN_DESCRIPTIONS = {
+    "tools-v1": "484999eebb3697a4",
+    "tools-v2": "1cc22b5f642bf5df",
+}
 
 
 def _p(doc, page=1):
@@ -133,6 +137,15 @@ def test_descriptions_are_a_frozen_prompt_file():
     assert version == "tools-v1"
     assert set(named) >= {"query_ledger", "check_completeness",
                           "get_provenance", "get_transparency", "compute"}
+
+
+def test_the_description_version_in_force_is_pinned():
+    """A version bump that forgets its pin leaves the new text editable in
+    place, and nothing else would notice."""
+    from viva.tools.registry import DESCRIPTIONS_VERSION
+    assert DESCRIPTIONS_VERSION in FROZEN_DESCRIPTIONS, (
+        f"{DESCRIPTIONS_VERSION} is in force and unpinned — add its digest to "
+        "FROZEN_DESCRIPTIONS in the same commit that releases the text")
 
 
 def test_every_registered_tool_is_described(registry):

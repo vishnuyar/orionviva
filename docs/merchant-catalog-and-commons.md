@@ -65,9 +65,7 @@ The raw descriptor never leaves the encrypted ledger. The unencrypted catalog ho
   categorize", "categorize everywhere"), `/api/merchants` + `/api/assign-merchant`;
   private (peer) merchants are marked. `debug.vault` shows catalog size + unknowns.
 
-Honest edges (deferred): the live model edge behind `categorize_fn` (injected,
-not yet wired to a real batched call — a thin follow-on, like the reader was);
-the actual commons *registry* (git repo, corroborated-by-count, import/merge,
+Honest edges (deferred): the actual commons *registry* (git repo, corroborated-by-count, import/merge,
 self-healing) — `export_catalog` is its input; merchant-as-Party + per-location
 analytics. Tests: `test_merchants.py` (7); full suite 234 green.
 

@@ -18,20 +18,25 @@ from viva.tools.registry import PROMPTS
 
 # The voice and the step protocol are released prompts: their text may never
 # change. To edit one, add a new version file and point the module at it.
+#
+# A version earns a pin by being named somewhere that must still resolve — the
+# module points at it, or a stored reading was recorded under it. A version no
+# artifact names is not pinned: freezing it protects nothing and reads as a
+# guarantee about text nobody can reach.
 FROZEN_SPEAK_PROMPTS = {
     "speak-v1": "8f65a0d62c9f73cb",
     "speak-final-v1": "8e14a31d4ccd20e8",
     "speak-protocol-v1": "93a797d0f010909a",
     "speak-retry-v1": "9224620b7b861c8c",
-    "speak-v2": "f2154bf11552432d",
-    "speak-final-v2": "d746425703084d91",
-    "speak-protocol-v2": "3b7576ececfae486",
-    "speak-v3": "c898f122b4069899",
-    "speak-final-v3": "19506ea8954a63c5",
-    "speak-protocol-v3": "d6c9a16621b13270",
     "speak-v4": "aed70cdb9970d43b",
     "speak-final-v4": "2cac1de408a24750",
     "speak-protocol-v4": "ec83cfb6be5d52eb",
+    "speak-v5": "4afee4d00b859020",
+    "speak-final-v5": "2e4f9493f790ea3f",
+    "speak-protocol-v5": "d3b32dd56e5eb658",
+    "speak-closing-v1": "cb35be62c4daf926",
+    "speak-refusal-v1": "126880ba51c64e1f",
+    "speak-refusal-schema-v1": "8bf922a9911e3a45",
 }
 
 
@@ -138,6 +143,18 @@ def test_speak_prompts_are_frozen_files():
         assert digest == pinned, (
             f"{version_id}.txt changed — a released prompt file is immutable; "
             "add a new version file instead")
+
+
+def test_every_version_the_module_speaks_under_is_pinned():
+    """A version bump that forgets its pin leaves the new text editable in
+    place, and nothing else would notice."""
+    import viva.speak as speak_module
+    live = {getattr(speak_module, name)
+            for name in dir(speak_module) if name.endswith("_VERSION")}
+    unpinned = sorted(live - set(FROZEN_SPEAK_PROMPTS))
+    assert not unpinned, (
+        f"{unpinned} are in force and unpinned — add each digest to "
+        "FROZEN_SPEAK_PROMPTS in the same commit that releases the text")
 
 
 # ------------------------------------------------------------ native planner

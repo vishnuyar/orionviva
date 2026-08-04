@@ -53,8 +53,11 @@ rather than only here.
    Everything from §3 onward keys on a decomposition layer that has never returned
    a result; one call costs pennies and can invalidate a section. This is gate
    zero because it is the cheapest de-risking step available and it was missing.
-1. **Fix C2.** Stop persisting raw descriptors in the pending queue's plain-JSON
-   file. Lint before persisting. This is a live leak; nothing else lands before it.
+1. **Fix C2 — DONE.** Stop persisting raw descriptors in the pending queue's
+   plain-JSON file; lint before persisting. Landed with
+   [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md):
+   the catalog applies the lint before the example is stored, deliberately a
+   second time, so it is a property of the store rather than of the caller.
 2. **NACHA rule into Layer 0.** The
    `<company name(16)> <entry desc(10)> <SEC(3)> ID: <company id(10)>` shape is
    specification, not a bank convention. Parse it deterministically in

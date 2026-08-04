@@ -66,9 +66,9 @@ These are the questions **Viva asks** — the learnings are the product (CLAUDE.
 
 Each is asked once, ruled once, and applied forever and retroactively. Until answered, the affected total is reported as **provisional**, never silently resolved either way.
 
-## Protecting the asset (do first)
+## Protecting the asset — done
 
-`viva.reset_categorization` currently drops **all** `CategoryAssigned` events, including `by="human"`. Under the original framing categories were cheap derived data; under the learning-loop framing those human rulings *are* the moat — the one thing a model call cannot regenerate. **Fix: preserve `by="human"` rulings by default; discarding them requires an explicit, loudly-named flag.**
+`viva.reset_categorization` once dropped **all** `CategoryAssigned` events, including `by="human"`. Under the original framing categories were cheap derived data; under the learning-loop framing those human rulings *are* the moat — the one thing a model call cannot regenerate. It now preserves a person's rulings by default; discarding them requires `--discard-my-rulings`.
 
 ## Done criteria / tests
 
