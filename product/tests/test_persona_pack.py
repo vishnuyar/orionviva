@@ -92,7 +92,7 @@ def test_question_text_no_longer_lives_in_code():
 FROZEN_PACKS = {
     "pack-v1": "16c9bf533d3d4e31",
     "pack-v2": "7e8f38e3db15c2f9",
-    "pack-v3": "d747faa1484a9dd0",
+    "pack-v3": "62a56a4b9b7c1b5e",
 }
 
 

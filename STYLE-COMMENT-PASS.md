@@ -1,7 +1,8 @@
 # Comment/docstring conversion — the spec
 
-You are rewriting the prose in Python files. **Do not change a single line of
-executable code.** Only comments, docstrings, and blank lines between them.
+You are rewriting the prose in source files — Python, and the surface's
+JavaScript. **Do not change a single line of executable code.** Only comments,
+docstrings, and blank lines between them.
 
 ## The rule
 
@@ -89,8 +90,9 @@ property being protected.
 
 ## Non-negotiable
 
-- Executable code is byte-identical. Verify with `ast.dump` before and after if
-  you are unsure.
+- Executable code is byte-identical. Verify with `ast.dump` before and after in
+  Python; in JavaScript, compare the file with every whole-comment line removed,
+  and confirm the result still parses.
 - The full suite passes when you are done. Run it and report the count.
 - Never introduce a real institution name, account number, merchant name, or
   street address. If you find one in a comment or test fixture, replace it with a

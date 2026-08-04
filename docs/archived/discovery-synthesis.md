@@ -1,6 +1,10 @@
 # Discovery Synthesis — the whole forest, on one page
 
-**Status:** Stable · **Last updated:** 2026-07-21 · **Purpose:** the map of the forest after ~26 design docs and 10 ADRs, and the honest bridge into the Architecture phase. Read this to see the whole before committing to build.
+**Status:** ⛔ Historical — the discovery phase's closing map, superseded by the build · **Last updated:** 2026-07-21 · **Archived:** 2026-08-04 · **Purpose:** the map of the forest after ~26 design docs and 10 ADRs, and the bridge into the Architecture phase.
+
+> ## ⛔ HISTORICAL RECORD — do not read this as current
+>
+> **Written at the end of discovery, when nothing had been built.** Its "accepted risks" describe a product that did not exist yet: the extract→verify→ledger→answer chain now runs end to end behind a citation gate, and the persona it calls absent shipped 2026-07-27. Its layer diagram names twelve tools against the six the registry holds. Kept as the honest record of what the thesis looked like before the build tested it. For the current shape, read [implementation-roadmap.md](../implementation-roadmap.md) and [reading-guide.md](../reading-guide.md).
 
 ## The thesis, in three sentences
 

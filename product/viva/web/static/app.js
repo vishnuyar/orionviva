@@ -1,23 +1,15 @@
-/* OrionViva — the surface. Plain JavaScript, no build step.
+/* OrionViva — the surface. Plain JavaScript, served as written, no build step.
  *
- * WHY NO BUILD. The previous surface was React compiled by Vite into this same
- * file. A compiled bundle can serve last hour's product with no error and no
- * way to tell by looking; verifying it meant grepping the output for feature
- * strings. That is the stale-artifact failure this project spent a week finding
- * everywhere else, sitting inside a repo whose discipline is that the artifact
- * must not lie. So: what you read here is what runs.
+ * One card per instrument kind — depository, liability, investment, asserted.
+ * The kind decides which figures exist and which questions make sense. Every
+ * card carries the same three things:
  *
- * THE ORGANISING IDEA. One card per instrument KIND — depository, liability,
- * investment, asserted — because the kind decides which figures exist and which
- * questions make sense. Every card carries the same three things:
+ *   1. the figure, with its own as-of date, never relabelled "current"
+ *   2. its grade — `corroborated` means a document attests it and the
+ *      arithmetic checks; anything less names what is missing
+ *   3. what the figure does not include
  *
- *   1. the figure, with ITS OWN as-of date (never dressed as "current")
- *   2. its grade — `corroborated` means a document attests it AND the
- *      arithmetic checks; anything less says what is missing
- *   3. what it does NOT include — a card that silently omits is a lie of
- *      omission, which is the failure this product exists to refuse
- *
- * Money is FORMATTED here, never computed. The ledger decided the figure.
+ * Money is formatted here, never computed. The ledger decided the figure.
  */
 'use strict'
 
@@ -250,9 +242,8 @@ function questionsCard(q) {
 
 /* One card per kind. The lines come from net worth, which already carries every
  * honesty property a card needs — amount, its own as-of date, grade, origin and
- * the document behind it — so the cards are a GROUPING rather than a second
- * source of truth. Two systems describing one fact is the bug this project met
- * three times this month; the same lesson, applied to the surface. */
+ * the document behind it — so a card groups those lines and derives no figure
+ * of its own. */
 function kindCard(kind, title, blurb, lines, nw) {
   const mine = lines.filter(l => (l.kind || '').startsWith(kind))
   if (!mine.length) return ''
@@ -680,9 +671,8 @@ async function load() {
     render()
     state.ack = ''                       // an ack shows once, then retires
   } catch (e) {
-    // Only reached when a FETCH failed. A rendering fault is caught per card
-    // above, because blaming the ledger for a display bug sends you looking in
-    // the wrong place — which is exactly what happened the first time.
+    // Only reached when a fetch failed. A rendering fault is caught per card
+    // above, so a display fault is never reported as an unreachable ledger.
     root.innerHTML = `<div class="card"><h3>I can't reach the ledger</h3>
       <div class="muted">${esc(e.message)}</div>
       <div class="quiet">This is a connection problem, not your data.</div></div>`

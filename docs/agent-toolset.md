@@ -9,13 +9,14 @@
 
 ## The twelve
 
-### Reading the ledger (4)
+### Reading the ledger (5)
 
 | Tool | What it answers |
 |---|---|
 | `query_ledger(filter, group_by, window)` | The workhorse (~70% of questions): balances, transactions, holdings, aggregations by account/category/tag/time. Net worth, "where did money go," "spending on our son this year," "mortgage interest paid in 2025," card balances, 401(k) allocation. Every returned figure carries its verification grade and record ID. |
 | `list_obligations(horizon)` | Forward-looking: bills due, minimum payments, premiums, renewal dates. "What's due in the next two weeks?" |
 | `find_patterns(kind)` | Recurring charges, subscription creep, fee drift, anomalies — deterministic pattern detection over the ledger, not model musing. |
+| `list_movements(filter, window)` | The rows behind a total, behind a mandatory narrowing filter — the workhorse's other half, split out so a total never drags its transactions along. |
 | `check_completeness()` | Coverage map: which statements are missing, how current each account is. "Is my picture up to date?" — and the honesty input for every other answer ("...but May brokerage is missing"). |
 
 ### Reading the documents (1)

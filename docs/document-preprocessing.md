@@ -1,6 +1,6 @@
 # Document Preprocessing — should we parse before we read?
 
-**Status:** **Open question, not yet decided** — the product currently sends pages to the model directly; the text-layer finding below still stands and no benchmark has been run · **Last updated:** 2026-07-21 · **Origin question:** viva-bench currently sends page *images* to the model. What if we first run a document tool (e.g. datalab's Marker/Surya, or others) to convert the PDF? Is it better? Does it digress? Would we miss data?
+**Status:** **Partly settled** — the input-mode recommendation shipped: `text+image` is the product default (the reader folds the issuer's embedded text in beside the rendered page, and every capture records `input_mode`), and the bench implements all three modes. What remains open is the heavy `parsed` mode — running a document tool over the PDF first — which no benchmark has yet been run against · **Last updated:** 2026-07-21 · **Origin question:** viva-bench currently sends page *images* to the model. What if we first run a document tool (e.g. datalab's Marker/Surya, or others) to convert the PDF? Is it better? Does it digress? Would we miss data?
 **Invariants touched:** T1 (provenance — a preprocessor must preserve page/region or we lose click-through), T2 (verification is pipeline-agnostic — it catches preprocessing data loss the same way it catches model error), T3 (raw capture applies to preprocessor output too), I2 (locale normalization runs after whatever produces the text), X1 (all invisible to the user)
 
 ## The short answer

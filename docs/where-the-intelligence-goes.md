@@ -240,7 +240,7 @@ New prompt `enrich-v3` in the versioned library (append-only; `enrich-v2` retain
 
 Cost: unchanged. Same batched call, ~40 merchants at a time, a few more output tokens each.
 
-## Step 2 — The read side derives (`projection.py`)
+## Step 2 — The read side derives (`projection/`)
 
 - **Delete `_TRANSFER_HINT_CATEGORIES` / `_TRANSFER_HINT_SUBCATEGORIES`.** Nature's rung 4 stops being a keyword guess and becomes *"what does this counterparty's implication say, given the direction of this movement?"* — with the implication's own confidence deciding whether the result is provisional.
 - Add `implication_of(movement)` and `tier_of(movement)` as derived reads. Both are projections: **retroactive for free, no re-ingest**, consistent with *abstract the read side early*.

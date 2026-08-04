@@ -9,7 +9,7 @@
 ## How to read this
 
 Two investigations produced findings: a cold read of all four packages, and the
-first end-to-end run on real model output ([cold-read-audit-2026-07.md](../cold-read-audit-2026-07.md),
+first end-to-end run on real model output ([cold-read-audit-2026-07.md](cold-read-audit-2026-07.md),
 `bench/synthetic`). This document turns both into decisions.
 
 **Options appear only where there is a genuine fork** — where two defensible
