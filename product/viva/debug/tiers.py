@@ -1,6 +1,6 @@
 """Print how a vault's movements distribute across the four tiers.
 
-    python -m viva.debug_tiers            # VIVA_PASSPHRASE / VIVA_VAULT_DIR
+    python -m viva.debug.tiers            # VIVA_PASSPHRASE / VIVA_VAULT_DIR
 
 Every movement lands in one of four states, and only two of them are asked about:
 
@@ -40,7 +40,7 @@ def _money(amount: Decimal) -> str:
 
 def report(proj) -> str:
     """The tier picture, plus the queue length it implies."""
-    from .questions import INTERVIEW, open_questions
+    from ..questions import INTERVIEW, open_questions
 
     summary = proj.tier_summary()
     total = sum(r["count"] for r in summary.values()) or 1
@@ -91,8 +91,8 @@ def report(proj) -> str:
 
 
 def main() -> None:
-    from .env import load_dotenv
-    from .vault import Vault
+    from ..env import load_dotenv
+    from ..vault import Vault
 
     # Load `.env` before reading the environment, as every CLI here does, so a
     # variable set only in the file is never reported as missing.

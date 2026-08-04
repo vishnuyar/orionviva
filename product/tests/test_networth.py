@@ -277,7 +277,7 @@ def test_the_debug_report_names_what_it_will_not_count(vault):
     """An instrument that prints a confident total while silently omitting a
     mortgage is the failure the instrument exists to prevent. The report must
     say what is missing, in words, on the page."""
-    from viva.debug_networth import report_point, report_series
+    from viva.debug.networth import report_point, report_series
     from viva.ledger.events import ruling_recorded
 
     ledger = _checking(vault, opening="10000.00", closing="8000.00",
@@ -297,7 +297,7 @@ def test_the_debug_report_names_what_it_will_not_count(vault):
 
 def test_an_empty_vault_reports_absence_not_zero(vault):
     """A vault with nothing in it must not print a confident 0.00 net worth."""
-    from viva.debug_networth import report_point
+    from viva.debug.networth import report_point
     _raw, ledger = vault
     text = report_point(net_worth(ledger.projection()))
     assert "Nothing to value yet" in text
@@ -321,7 +321,7 @@ def test_an_account_it_cannot_value_is_named_not_dropped(vault):
     assert "amex" in skipped, "an account with no statement yet must be named"
     assert "2026-07-31" in march.skipped[0]["why"], "say when its first one is"
 
-    from viva.debug_networth import report_point
+    from viva.debug.networth import report_point
     assert "DOES NOT INCLUDE" in report_point(march)
 
 

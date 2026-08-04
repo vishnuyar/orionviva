@@ -7,7 +7,7 @@ or PARK.
 
 Usage (from product/, with your model env set — it auto-loads ./.env):
 
-    PYTHONPATH=../core:. python3 -m viva.debug_read /path/to/statement.pdf [locale] [currency]
+    PYTHONPATH=../core:. python3 -m viva.debug.read /path/to/statement.pdf [locale] [currency]
 
 `locale` and `currency` default to VIVA_LOCALE / VIVA_CURRENCY. Costs one
 classify call and one extract call. Nothing is written to a vault.
@@ -19,24 +19,24 @@ import os
 import pathlib
 import sys
 
-from .env import currency_from_env, load_dotenv, locale_from_env
-from .logs import configure as configure_logging
+from ..env import currency_from_env, load_dotenv, locale_from_env
+from ..logs import configure as configure_logging
 
 
 def main() -> None:
     if len(sys.argv) < 2:
-        raise SystemExit("usage: python -m viva.debug_read <pdf> [locale] [currency]")
+        raise SystemExit("usage: python -m viva.debug.read <pdf> [locale] [currency]")
     load_dotenv()
     configure_logging()
 
     from vivacore.models import ModelSpec, adapter_for
     from vivacore.verify.arithmetic import (check_balance_identity,
                                             check_paystub_identity)
-    from .ingest import from_model_json, from_paystub_json
-    from .ingest.diagnose import diagnose
-    from .ingest.registry import (PAYSTUB_IDENTITY, extraction_prompt_for,
+    from ..ingest import from_model_json, from_paystub_json
+    from ..ingest.diagnose import diagnose
+    from ..ingest.registry import (PAYSTUB_IDENTITY, extraction_prompt_for,
                                   profile_for)
-    from .ingest.reader import _render_and_read_text, _with_embedded, classify
+    from ..ingest.reader import _render_and_read_text, _with_embedded, classify
 
     pdf_path = sys.argv[1]
     locale = sys.argv[2] if len(sys.argv) > 2 else locale_from_env()

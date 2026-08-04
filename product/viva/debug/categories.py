@@ -1,6 +1,6 @@
 """Print a vault's category vocabulary — labels, subcategories, tags, aliases.
 
-    VIVA_VAULT_DIR=<vault> python -m viva.debug_categories
+    VIVA_VAULT_DIR=<vault> python -m viva.debug.categories
 
 Prints every category label with what it is worth, the subcategory vocabulary
 enrichment has written, spending by tag against total spending and the untagged
@@ -72,8 +72,8 @@ def report(proj) -> str:
 
 
 def main() -> None:
-    from .env import load_dotenv
-    from .vault import Vault
+    from ..env import load_dotenv
+    from ..vault import Vault
 
     load_dotenv()
     passphrase = os.environ.get("VIVA_PASSPHRASE")

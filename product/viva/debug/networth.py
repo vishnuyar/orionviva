@@ -1,8 +1,8 @@
 """Print net worth at one date, or the whole curve.
 
-    VIVA_VAULT_DIR=<vault> python -m viva.debug_networth            # latest point
-    VIVA_VAULT_DIR=<vault> python -m viva.debug_networth 2026-03-31 # any date
-    VIVA_VAULT_DIR=<vault> python -m viva.debug_networth --series   # the curve
+    VIVA_VAULT_DIR=<vault> python -m viva.debug.networth            # latest point
+    VIVA_VAULT_DIR=<vault> python -m viva.debug.networth 2026-03-31 # any date
+    VIVA_VAULT_DIR=<vault> python -m viva.debug.networth --series   # the curve
 
 Net worth is a function of date: `net_worth(D)` is built from every account's
 last-known measurement at or before D.
@@ -93,9 +93,9 @@ def report_series(points) -> str:
 
 
 def main() -> None:
-    from .env import load_dotenv
-    from .ledger.networth import net_worth, series
-    from .vault import Vault
+    from ..env import load_dotenv
+    from ..ledger.networth import net_worth, series
+    from ..vault import Vault
 
     load_dotenv()
     passphrase = os.environ.get("VIVA_PASSPHRASE")

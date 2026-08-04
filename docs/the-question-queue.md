@@ -63,7 +63,7 @@ Slice 9 (Viva) will re-voice these through the persona; the *content* — figure
 
 - `Question` + `open_questions()` in the projection (ranked, grouped, with consequence).
 - Nature questions grouped by merchant key; transfer/identity/merchant questions from the existing sources.
-- A `python -m viva.questions` CLI — the ranked list against a real vault, the way `debug_vault` works today.
+- A `python -m viva.questions` CLI — the ranked list against a real vault, the way `debug.vault` works today.
 - The surface: one **"what Viva needs from you"** panel, ranked, replacing the four disconnected review cards (the existing endpoints answer them unchanged).
 - Answering is idempotent by construction: a ruling changes state, so the question disappears from the next projection.
 

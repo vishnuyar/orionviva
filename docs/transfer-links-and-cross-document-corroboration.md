@@ -109,7 +109,7 @@ Core built and tested (`ingest/transfers.py`, projection transfer overlay,
   `transfer_review` drops candidates/suggestions whose money is already linked,
   so confirming one suggestion removes that movement from all the others. Each
   suggestion is an independent per-source decision.
-- ✅ **Surfaces** — `debug_vault` and the web overview/review show transfers,
+- ✅ **Surfaces** — `debug.vault` and the web overview/review show transfers,
   suggestions, and transfers-excluded spending; confirm/reject endpoints wired.
   `sweep()` reports net links/suggestions by diffing the projection (the nested
   corroboration scan is counted honestly).

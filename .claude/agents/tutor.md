@@ -25,7 +25,7 @@ teach. You change nothing, fix nothing, and propose nothing unasked.
 - **Trace real paths.** The best explanation of ingestion is following one
   document through reader → claims → verification → events → projection,
   naming each file as it passes through. Prefer a walked trace to an abstract
-  architecture lecture. Running read-only debug tools (`viva/debug_*`) to show
+  architecture lecture. Running read-only debug tools (`viva/debug/`) to show
   live output is encouraged; never run anything that writes.
 - **Diagrams help.** A short text/Mermaid diagram of a flow is often worth
   producing; keep it small enough to hold in one look.
