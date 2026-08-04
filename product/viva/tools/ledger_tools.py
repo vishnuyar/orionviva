@@ -3,6 +3,12 @@ envelope. Every filter value is validated against the vault's own learned
 vocabulary — its accounts, categories, tags, merchants and currencies — and an
 unknown value is refused with the known values named, never silently ignored.
 
+Each read emits every number it asserts as a figure, because a number that
+lives only inside a payload is machinery the answer may not speak. The two
+shapes of read are separated: an aggregate answers "how much" without
+returning rows, and ``list_movements`` returns rows only for a question narrow
+enough to name one.
+
 No tool here writes, calls a model, or touches the network; each reads the one
 live projection it was built over.
 """
@@ -15,10 +21,18 @@ from ..ledger import networth
 from ..ledger.projection import (MIXED, SETTLEMENT, SPENDING, TRANSFER,
                                  UnknownAccountError)
 from ..ledger.projection import movements as movements_view
-from .envelope import ToolResult, refusal, weakest
+from .envelope import ACTIVITY, ToolResult, figure, refusal, weakest
 from .registry import Registry, ToolSpec
 
 REAL_KINDS = ("depository", "liability", "investment")
+
+# How many journal entries one read returns: the most recent, and fewer than a
+# movement read returns rows.
+MAX_JOURNAL = 20
+
+# How many rows a detailed read returns. Past it the read says how many it did
+# not show and which filters would narrow it.
+MAX_ROWS = 50
 
 QUERY_LEDGER_PARAMS = {
     "type": "object",
@@ -216,7 +230,7 @@ def _movement_row(proj, m, grades: dict) -> dict:
             "category": ruling.get("category", ""),
             "subcategory": ruling.get("subcategory", ""),
             "tags": proj.tags_of(m), "grade": grades.get(m.key, ""),
-            "provenance": m.provenance.to_dict()}
+            "doc_id": m.provenance.doc_id}
 
 
 def _query_balances(proj, filters: dict) -> ToolResult:
@@ -246,8 +260,24 @@ def _query_balances(proj, filters: dict) -> ToolResult:
     if not rows:
         return refusal(TOOL, "no_accounts",
                        "I don't have any balance-holding accounts on file yet.")
+    figures = [figure(r["value"], f"{r['name'] or r['record_id']} — balance",
+                      grade=r["grade"], dated=r["dated"], currency=r["currency"],
+                      record_ids=[r["record_id"]]
+                      + ([r["provenance"]["doc_id"]]
+                         if r["provenance"].get("doc_id") else []))
+               for r in rows]
+    figures.append(figure(len(rows), "accounts holding a balance",
+                          grade=weakest(r["grade"] for r in rows),
+                          record_ids=sorted({r["record_id"] for r in rows})))
     return ToolResult(
-        tool=TOOL, ok=True, data={"balances": rows},
+        tool=TOOL, ok=True, figures=figures,
+        # The amount, its grade, its currency and its as-of date travel as
+        # figures. What stays here is what a figure cannot carry: which account
+        # this is, and why its grade is what it is.
+        data={"balances": [{k: v for k, v in r.items()
+                            if k not in ("amount", "currency", "grade",
+                                         "dated", "value", "as_of")}
+                           for r in rows]},
         grade=weakest(r["grade"] for r in rows),
         dated=min((r["dated"] for r in rows if r["dated"]), default=""),
         record_ids=sorted(set(record_ids)),
@@ -257,21 +287,139 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         text=f"{len(rows)} account balance(s), each with its grade and source.")
 
 
-def _query_transactions(proj, filters: dict) -> ToolResult:
+def _matching_rows(proj, filters: dict) -> tuple[list, dict]:
     grades = movements_view.movement_grades(proj.core)
-    rows = [_movement_row(proj, m, grades) for m in proj.movements()
-            if _movement_passes(proj, m, filters)]
-    record_ids = sorted({r["provenance"]["doc_id"] for r in rows
-                         if r["provenance"].get("doc_id")}
-                        | {r["record_id"] for r in rows})
+    return ([_movement_row(proj, m, grades) for m in proj.movements()
+             if _movement_passes(proj, m, filters)], grades)
+
+
+def _query_transactions(proj, filters: dict) -> ToolResult:
+    """What the movements add up to, never the movements themselves.
+
+    How much moved, where and when. The rows themselves are `list_movements`,
+    which answers only a narrower ask."""
+    rows, _ = _matching_rows(proj, filters)
+    # A summary stands on the documents that attest the period and on the
+    # accounts it ranged over, not on every movement inside it. Per-movement
+    # keys belong to the read that returns individual rows.
+    record_ids = sorted({r["doc_id"] for r in rows if r["doc_id"]}
+                        | {r["account"] for r in rows})
     covers, caveats = _attested_coverage(proj, filters)
+    money_in = sum((Decimal(r["amount"]) for r in rows
+                    if Decimal(r["amount"]) > 0), Decimal("0"))
+    money_out = sum((-Decimal(r["amount"]) for r in rows
+                     if Decimal(r["amount"]) < 0), Decimal("0"))
+    by_account: dict[str, Decimal] = {}
+    by_month: dict[str, Decimal] = {}
+    month_docs: dict[str, set] = {}
+    for r in rows:
+        amount = Decimal(r["amount"])
+        by_account[r["account"]] = by_account.get(r["account"],
+                                                  Decimal("0")) + amount
+        month = r["date"][:7]
+        by_month[month] = by_month.get(month, Decimal("0")) + amount
+        if r["doc_id"]:
+            month_docs.setdefault(month, set()).add(r["doc_id"])
+    grade = weakest(r["grade"] for r in rows)
+    figures = [
+        figure(len(rows), "movements matching the filters", grade=grade,
+               record_ids=record_ids),
+        figure(money_in, "money in over these movements", grade=grade,
+               record_ids=record_ids),
+        figure(money_out, "money out over these movements", grade=grade,
+               record_ids=record_ids),
+        figure(money_in - money_out, "net movement over this set", grade=grade,
+               record_ids=record_ids),
+    ]
+    figures += [figure(v, f"net movement on {k}", grade=grade, record_ids=[k])
+                for k, v in sorted(by_account.items())]
+    figures += [figure(v, f"net movement in {k}", grade=grade,
+                       record_ids=sorted(month_docs.get(k, ())))
+                for k, v in sorted(by_month.items())]
     return ToolResult(
         tool=TOOL, ok=True,
-        data={"transactions": rows, "count": len(rows)},
-        grade=weakest(r["grade"] for r in rows),
+        # The breakdown itself is the figures; `data` carries only the counts
+        # and the totals, never a second copy of them.
+        data={"count": len(rows), "money_in": str(money_in),
+              "money_out": str(money_out), "net": str(money_in - money_out),
+              "accounts": len(by_account), "months": len(by_month)},
+        figures=figures, grade=grade,
         record_ids=record_ids, covers=covers, caveats=caveats,
         coverage=f"{len(rows)} movement(s) matched the filters.",
-        text=f"{len(rows)} movement(s), each with nature, category and source.")
+        text=("A summary of the matching movements; ask list_movements for the "
+              "individual rows, narrowed to what you want to see."))
+
+
+LIST_MOVEMENTS_PARAMS = {
+    "type": "object",
+    "properties": {
+        "filters": QUERY_LEDGER_PARAMS["properties"]["filters"],
+    },
+}
+
+# What one row says: what identifies the movement and what it was ruled to be.
+# The reasoning behind the ruling is what `get_provenance` answers for.
+ROW_FIELDS = ("record_id", "account", "date", "description", "amount",
+              "currency", "nature", "category", "subcategory", "tags",
+              "grade", "doc_id")
+
+LIST_TOOL = "list_movements"
+
+# The filters that narrow a detailed read; at least one is required. `nature`
+# and `currency` are not among them, because either usually matches most of the
+# ledger.
+NARROWING = ("account", "category", "merchant", "tag", "window")
+
+
+def _as_tool(result: ToolResult, tool: str) -> ToolResult:
+    """The same refusal, attributed to the verb that was actually called. The
+    vocabulary checks are shared between the reads."""
+    result.tool = tool
+    return result
+
+
+def list_movements(proj, args: dict) -> ToolResult:
+    """The individual rows, for a question narrow enough to name what it is
+    about. A call carrying none of `NARROWING` refuses as `too_broad`."""
+    filters = args.get("filters") or {}
+    if not any(f in filters for f in NARROWING):
+        return refusal(
+            LIST_TOOL, "too_broad",
+            "Listing every movement held would answer no question. Narrow it "
+            "by " + ", ".join(NARROWING) + ".",
+            narrowing_filters=list(NARROWING))
+    bad = _check_filters(proj, filters)
+    if bad is not None:
+        return _as_tool(bad, LIST_TOOL)
+    extra = sorted(set(filters) - _SUPPORTED_FILTERS[LIST_TOOL])
+    if extra:
+        return refusal(LIST_TOOL, "filter_unsupported",
+                       f"{LIST_TOOL} does not answer by {', '.join(extra)}.",
+                       supported_filters=sorted(_SUPPORTED_FILTERS[LIST_TOOL]))
+    rows, _ = _matching_rows(proj, filters)
+    total = len(rows)
+    shown = [{k: r[k] for k in ROW_FIELDS} for r in rows[:MAX_ROWS]]
+    record_ids = sorted({r["doc_id"] for r in shown if r["doc_id"]}
+                        | {r["record_id"] for r in shown})
+    covers, caveats = _attested_coverage(proj, filters)
+    figures = [figure(r["amount"], f"{r['description']} on {r['date']}",
+                      grade=r["grade"], dated=r["date"], currency=r["currency"],
+                      record_ids=[r["record_id"]]
+                      + ([r["doc_id"]] if r["doc_id"] else []))
+               for r in shown]
+    # A capped result says so in the sentence the tool itself writes: how many
+    # of how many were shown, and which filters would reach the rest.
+    coverage = f"Showing {len(shown)} of {total} matching movement(s)."
+    if total > len(shown):
+        coverage += (" Narrow by " + ", ".join(NARROWING)
+                     + " to see the rest.")
+    return ToolResult(
+        tool=LIST_TOOL, ok=True, data={"movements": shown, "shown": len(shown),
+                                       "total": total},
+        figures=figures, grade=weakest(r["grade"] for r in shown),
+        record_ids=record_ids, covers=covers, caveats=caveats,
+        coverage=coverage, text=coverage)
+
 
 
 def _query_holdings(proj, filters: dict) -> ToolResult:
@@ -285,9 +433,18 @@ def _query_holdings(proj, filters: dict) -> ToolResult:
                         | {r["record_id"] for r in rows})
     caveats = ["Each holding is a dated measurement from a statement, never "
                "a current price."]
+    figures = [figure(r["market_value"], f"{r['instrument']} — measured value",
+                      grade=r["grade"], dated=r["as_of"], currency=r["currency"],
+                      record_ids=[r["record_id"]]
+                      + ([r["provenance"]["doc_id"]]
+                         if r["provenance"].get("doc_id") else []))
+               for r in rows]
+    figures.append(figure(len(rows), "measured holdings",
+                          grade=weakest(r["grade"] for r in rows),
+                          record_ids=sorted({r["record_id"] for r in rows})))
     return ToolResult(
         tool=TOOL, ok=True, data={"holdings": rows, "count": len(rows)},
-        grade=weakest(r["grade"] for r in rows),
+        figures=figures, grade=weakest(r["grade"] for r in rows),
         dated=min((r["as_of"] for r in rows if r["as_of"]), default=""),
         record_ids=record_ids, caveats=caveats,
         coverage=f"{len(rows)} holding(s) from the latest statement snapshots.",
@@ -366,9 +523,18 @@ def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
         caveats.append(f"{undecided['total']} across {undecided['count']} "
                        "compound payment(s) has known components but unknown "
                        "proportions, and is reported apart, not counted here.")
+    grade = weakest(extras["grades"])
+    figures = [figure(v, f"spending — {group_by} '{k}'", grade=grade,
+                      currency=currency, record_ids=extras["record_ids"])
+               for k, v in sorted(grouped.items())]
+    figures.append(figure(extras["total"], f"total spending by {group_by}",
+                          grade=grade, currency=currency,
+                          record_ids=extras["record_ids"]))
+    figures.append(figure(extras["count"], "spending movements counted",
+                          grade=grade, record_ids=extras["record_ids"]))
     return ToolResult(
-        tool=TOOL, ok=True, data=data,
-        grade=weakest(extras["grades"]), covers=covers,
+        tool=TOOL, ok=True, data=data, figures=figures,
+        grade=grade, covers=covers,
         record_ids=extras["record_ids"], caveats=caveats,
         coverage=f"{extras['count']} spending movement(s) counted.",
         text=f"Spending by {group_by}: total {extras['total']}.")
@@ -382,8 +548,12 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
     sources = sorted(a for a in proj.accounts()
                      if a.startswith("Income:") and a != "Income:Uncategorized")
     line_grades = [ln.grade for a in sources for ln in proj.transactions(a)]
+    figures = [figure(v, f"attributed income in {k}, over everything ingested",
+                      grade=weakest(line_grades), currency=k,
+                      record_ids=sources)
+               for k, v in sorted(by_currency.items())]
     return ToolResult(
-        tool=TOOL, ok=True,
+        tool=TOOL, ok=True, figures=figures,
         data={"metric": "income",
               "by_currency": {k: str(v) for k, v in sorted(by_currency.items())}},
         grade=weakest(line_grades),
@@ -416,8 +586,21 @@ def _aggregate_net_worth(proj, as_of: str | None) -> ToolResult:
     data = point.to_dict()
     record_ids = sorted({line.get("account", "") for line in
                          (data.get("lines") or []) if line.get("account")})
+    as_of = data.get("as_of", "")
+    figures = []
+    for currency, row in sorted(data.get("by_currency", {}).items()):
+        for part in ("net", "assets", "liabilities"):
+            figures.append(figure(row[part], f"{part} in {currency}",
+                                  grade=weakest(_grades_in(data)),
+                                  dated=as_of, currency=currency,
+                                  record_ids=record_ids))
+    figures += [figure(line["amount"], f"{line['account']} — its part of net worth",
+                       grade=line.get("grade", ""), dated=line.get("as_of", ""),
+                       currency=line.get("currency", ""),
+                       record_ids=[line["account"]])
+                for line in (data.get("lines") or []) if line.get("account")]
     return ToolResult(
-        tool=TOOL, ok=True,
+        tool=TOOL, ok=True, figures=figures,
         data={"metric": "net_worth", "point": data},
         grade=weakest(_grades_in(data)),
         dated=data.get("as_of", ""),
@@ -434,6 +617,8 @@ _SUPPORTED_FILTERS = {
     "balances": {"account", "currency"},
     "transactions": {"account", "category", "tag", "merchant", "nature",
                      "currency", "window"},
+    "list_movements": {"account", "category", "tag", "merchant", "nature",
+                       "currency", "window"},
     "holdings": {"account", "currency"},
     "aggregate:spending": {"account", "category", "tag", "merchant", "nature",
                            "currency", "window"},
@@ -523,8 +708,22 @@ def check_completeness(proj, args: dict) -> ToolResult:
     if unidentified:
         caveats.append(f"{unidentified} counterparty(ies) are not yet "
                        "identified, so their categories are unknown.")
+    all_docs = sorted(captured)
+    figures = [
+        figure(len(captured), "documents held", record_ids=all_docs),
+        figure(len(captured) - len(held), "documents posted to the ledger",
+               record_ids=all_docs),
+        figure(len(held), "documents awaiting review", record_ids=all_docs),
+        figure(unidentified, "counterparties not yet identified",
+               record_ids=all_docs),
+    ]
+    figures += [figure(a["dated"], f"{a['name'] or a['account']} — the date "
+                       "its evidence is good as of",
+                       grade=a["grade"], dated=a["dated"],
+                       record_ids=[a["account"]])
+                for a in accounts if a["dated"]]
     return ToolResult(
-        tool="check_completeness", ok=True,
+        tool="check_completeness", ok=True, figures=figures,
         data={"documents_held": len(captured), "posted": len(captured) - len(held),
               "awaiting": len(held), "awaiting_types": awaiting_types,
               "holds": holds, "accounts": accounts, "tiers": tiers,
@@ -558,8 +757,12 @@ def get_provenance(proj, args: dict) -> ToolResult:
             text=f"Document {rid}: a {captured[rid]}, {state}.")
     if proj.seen_account(rid):
         ba = proj.balance(rid)
+        ids = [rid] + ([ba.provenance.doc_id] if ba.provenance.doc_id else [])
         return ToolResult(
             tool="get_provenance", ok=True, grade=ba.grade, dated=ba.dated,
+            figures=[figure(proj.account_value(rid), f"{rid} — balance",
+                            grade=ba.grade, dated=ba.dated,
+                            currency=ba.currency, record_ids=ids)],
             record_ids=[rid] + ([ba.provenance.doc_id]
                                 if ba.provenance.doc_id else []),
             provenance=[ba.provenance.to_dict()],
@@ -571,9 +774,15 @@ def get_provenance(proj, args: dict) -> ToolResult:
     match = next((m for m in proj.movements() if m.key == rid), None)
     if match is not None:
         grades = movements_view.movement_grades(proj.core)
+        ids = [match.key] + ([match.provenance.doc_id]
+                             if match.provenance.doc_id else [])
         return ToolResult(
             tool="get_provenance", ok=True,
             grade=grades.get(match.key, ""), dated=match.date,
+            figures=[figure(match.amount,
+                            f"{match.description} on {match.date}",
+                            grade=grades.get(match.key, ""), dated=match.date,
+                            currency=match.currency, record_ids=ids)],
             record_ids=[match.key] + ([match.provenance.doc_id]
                                       if match.provenance.doc_id else []),
             provenance=[match.provenance.to_dict()],
@@ -600,35 +809,70 @@ TRANSPARENCY_PARAMS = {
     "required": ["topic"]}
 
 
+# What one journal entry says: when, what fired, on what, how it went, what it
+# cost. The evidence behind it and the artifact it produced are not here.
+JOURNAL_FIELDS = ("occurred_at", "rule", "target", "outcome", "calls")
+
+
+def _event_ids(entries) -> list:
+    """The ledger events behind a journal read, in order and deduplicated."""
+    return sorted({e["event_id"] for e in entries if e.get("event_id")})
+
+
 def get_transparency(proj, args: dict) -> ToolResult:
     topic = args["topic"]
     since = args.get("since", "")
     if since and not _is_iso_date(since):
         return refusal("get_transparency", "bad_date",
                        f"since must be an ISO date, got '{since}'.")
+    # Every number here is a claim about the agent rather than about the
+    # person's money, and stands on the ledger events that recorded the
+    # behaviour.
     if topic == "agent_activity":
         log = proj.agent_log()
         if since:
             log = [a for a in log
                    if str(a.get("occurred_at", ""))[:10] >= since]
+        # The journal is append-only, so this is the one read whose size grows
+        # with time. The most recent entries are shown and the count answers for
+        # the rest.
+        shown = [{k: a[k] for k in JOURNAL_FIELDS if k in a}
+                 for a in log[-MAX_JOURNAL:]]
+        events = _event_ids(log)
+        said = f"{len(shown)} of {len(log)} unattended action(s) on record"
+        said += (", the most recent." if len(shown) < len(log)
+                 else "; nothing is collapsed.")
+        if len(shown) < len(log):
+            said += " Narrow with since to see a different period."
         return ToolResult(
             tool="get_transparency", ok=True,
-            data={"topic": topic, "actions": log, "count": len(log)},
-            coverage="The complete unattended-action journal; nothing is "
-                     "collapsed.",
-            text=f"{len(log)} unattended action(s) on record.")
+            data={"topic": topic, "actions": shown, "shown": len(shown),
+                  "count": len(log)},
+            figures=[figure(len(log), "unattended actions on record",
+                            kind=ACTIVITY, record_ids=events)],
+            record_ids=events, coverage=said, text=said)
     if topic == "calls_spent":
+        log = [a for a in proj.agent_log()
+               if not since or str(a.get("occurred_at", ""))[:10] >= since]
         calls = proj.agent_calls_spent(since=since)
+        events = _event_ids(log)
         return ToolResult(
             tool="get_transparency", ok=True,
             data={"topic": topic, "calls": calls, "since": since},
+            figures=[figure(calls, "model calls the agent spent on its own",
+                            kind=ACTIVITY, record_ids=events)],
+            record_ids=events,
             caveats=["Counts only the maintenance agent's unattended calls; "
                      "a conversation's own model calls are recorded "
                      "separately."],
             text=(f"{calls} model call(s) spent by the agent"
                   + (f" since {since}." if since else " in total.")))
     declined = proj.declined_questions()
+    events = _event_ids(declined.values())
     return ToolResult(
         tool="get_transparency", ok=True,
         data={"topic": topic, "declined": declined, "count": len(declined)},
+        figures=[figure(len(declined), "questions set aside",
+                        kind=ACTIVITY, record_ids=events)],
+        record_ids=events,
         text=f"{len(declined)} question(s) set aside.")

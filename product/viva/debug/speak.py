@@ -119,11 +119,12 @@ def _result_lines(content: str, indent: str) -> list[str]:
     tool = result.get("tool", "?")
     if not result.get("ok"):
         return [f"{indent}<- {tool} REFUSED [{size} chars] "
-                f"{result.get('reason', '')}: {cut(result.get('text') or '')}"]
+                f"{result.get('refusal', '')}: {cut(result.get('text') or '')}"]
     head = result.get("text") or cut(json.dumps(result.get("data", {})))
     out = [f"{indent}<- {tool} ok [{size} chars] "
            f"grade={result.get('grade', '')} "
-           f"ids={len(result.get('record_ids') or [])} :: {cut(head)}"]
+           f"figures={len(result.get('figures') or [])} "
+           f"records={result.get('records', 0)} :: {cut(head)}"]
     out += [f"{indent}   caveat: {cut(c, 200)}" for c in result.get("caveats") or []]
     return out
 

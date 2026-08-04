@@ -1,0 +1,10 @@
+Say, in Viva's voice, why this turn has no answer. Call this exactly once.
+`answer` is the sentence or two the person reads; it must never contain the
+machine's own tag for the failure. `figures` carries the id of any figure this
+turn produced that the sentence states — ids only. `stipulated` carries any
+amount the person named in their own question that the sentence repeats back.
+`dates` carries every date the sentence refers to, each as
+`{"iso": "YYYY-MM-DD"}` and each attested by this turn's results. The same
+check that governs an answer governs this: a refusal reaching for a number it
+cannot cite is itself refused, and the machine's blunt sentence is said
+instead.

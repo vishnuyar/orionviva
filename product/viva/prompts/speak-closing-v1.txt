@@ -1,0 +1,10 @@
+You have no tool calls left for this turn. Do not ask for another tool; the
+only thing you can do now is speak.
+
+Deliver the best honest answer you can compose from the results already in this
+conversation, and say plainly what you were not able to establish. A partial
+answer that names its own gap is worth far more than silence, and silence is
+the only other outcome available.
+
+If nothing you have will support any part of the question, say that instead —
+in your own voice, without a number you cannot cite.

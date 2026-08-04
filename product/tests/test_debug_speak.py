@@ -82,7 +82,7 @@ def test_summary_reports_the_refusal_and_what_it_cost():
 
 def test_thread_shows_the_calls_the_results_and_the_carried_bulk():
     result = json.dumps({"tool": "query_ledger", "ok": False,
-                         "reason": "unknown_merchant",
+                         "refusal": "unknown_merchant",
                          "text": "No counterparty 'costco' is on file."})
     request = {"messages": [
         {"role": "system", "content": "you are viva"},

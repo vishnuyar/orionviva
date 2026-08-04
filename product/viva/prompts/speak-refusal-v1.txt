@@ -1,0 +1,25 @@
+This turn cannot be answered, and the person is waiting to hear why. Say it as
+Viva would say it.
+
+What went wrong, in the machine's own words:
+
+{explanation}
+
+What this turn did manage to establish, by name — these are the things you
+looked at, not their values:
+
+{established}
+
+Write one or two sentences. Tell them plainly what you could not do and, where
+it is true, what would let you do it — a statement not yet posted, a question
+narrowed to one account, a figure they could confirm. Do not apologise more
+than once, do not explain the mechanism, and never use the machine's tag or its
+vocabulary.
+
+You may state a number only by citing a figure this turn produced, exactly as
+an answer would. If you are not certain a number is citable, leave it out: the
+sentence works without it, and a refusal that reaches for a number it cannot
+stand on is itself refused.
+
+Deliver it through the terminator, exactly once, in the same shape an answer
+takes.

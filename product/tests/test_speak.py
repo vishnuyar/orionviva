@@ -119,6 +119,16 @@ class BrokenText:
         raise AdapterError("no route to model")
 
 
+# Every refusal now buys one more model call, to say what happened in Viva's
+# voice. A script ending in a refusal has to answer that call; these are the
+# replies that compose nothing, so the deterministic sentence stands.
+def _declines_to_compose():
+    return _turn(text="")
+
+
+NO_COMPOSITION = "not a JSON block"
+
+
 # ------------------------------------------------------------ frozen prompts
 
 def test_speak_prompts_are_frozen_files():
@@ -139,12 +149,13 @@ def test_native_planner_produces_a_cited_answer(registry):
         _turn([_call(FINAL_TOOL, {
             "answer": "Your checking holds 600.00, and that figure is "
                       "verified against the statement.",
-            "figures": [{"value": "600.00", "record_ids": ["doc-jan"],
-                         "grade": "verified"}]}, call_id="c2")]),
+            "figures": [{"id": "f1"}]}, call_id="c2")]),
     ])
     result = run("what is my checking balance?", NativePlanner(script), registry)
     assert result.answered and result.calls == 1
-    assert result.grade == "verified"
+    # The grade is the ledger's, not the model's: the answer cited an id, and
+    # the grade travelled with the figure the tool emitted.
+    assert result.grade == "corroborated"
     # The system prompt opened the conversation and the question followed it.
     first = script.seen[0]["messages"]
     assert first[0]["role"] == "system" and "Viva" in first[0]["content"]
@@ -162,7 +173,7 @@ def test_both_modalities_carry_a_date_declaration_to_the_gate(registry):
     quietly drop the field."""
     answer = "The last movement I hold is from January 5, 2026."
     native = ChatScript([
-        _turn([_call("query_ledger", {"entity": "transactions"})]),
+        _turn([_call("list_movements", {"filters": {"account": "chk"}})]),
         _turn([_call(FINAL_TOOL, {"answer": answer, "figures": [],
                                   "dates": [{"iso": "2026-01-05"}]},
                      call_id="c2")]),
@@ -171,7 +182,8 @@ def test_both_modalities_carry_a_date_declaration_to_the_gate(registry):
     assert from_native.answered, from_native.text
 
     text = TextScript([
-        '```json\n{"tool": "query_ledger", "args": {"entity": "transactions"}}\n```',
+        '```json\n{"tool": "list_movements", '
+        '"args": {"filters": {"account": "chk"}}}\n```',
         '```json\n{"answer": "' + answer + '", "figures": [], '
         '"dates": [{"iso": "2026-01-05"}]}\n```',
     ])
@@ -222,6 +234,7 @@ def test_native_prose_without_a_step_gets_one_correction_then_refuses(registry):
     script = ChatScript([
         _turn(text="Your balance looks fine to me."),
         _turn(text="Really, it is fine."),
+        _declines_to_compose(),
     ])
     planner = NativePlanner(script)
     result = run("balance?", planner, registry)
@@ -231,7 +244,8 @@ def test_native_prose_without_a_step_gets_one_correction_then_refuses(registry):
     second = script.seen[1]["messages"]
     assert second[-1]["role"] == "user"
     assert "could not be used" in second[-1]["content"]
-    assert [e.parse_ok for e in planner.exchanges] == [False, False]
+    # The two bad replies, then the call that composes the refusal.
+    assert [e.parse_ok for e in planner.exchanges][:2] == [False, False]
 
 
 def test_native_malformed_arguments_are_corrected_as_the_calls_result(registry):
@@ -268,7 +282,7 @@ def test_native_final_mixed_with_tool_calls_is_corrected(registry):
 def test_native_transport_failure_refuses_model_unreachable(registry):
     result = run("balance?", NativePlanner(BrokenChat()), registry)
     assert not result.answered and result.refusal == "model_unreachable"
-    assert "no answer" in result.text
+    assert "no answer" in result.detail
 
 
 # -------------------------------------------------------------- text planner
@@ -278,12 +292,11 @@ def test_text_planner_produces_a_cited_answer(registry):
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {"account": "chk"}}}\n```',
         '```json\n{"answer": "Your checking holds 600.00, verified.", '
-        '"figures": [{"value": "600.00", "record_ids": ["doc-jan"], '
-        '"grade": "verified"}]}\n```',
+        '"figures": [{"id": "f1"}]}\n```',
     ]
     script = TextScript(steps)
     result = run("what is my checking balance?", TextPlanner(script), registry)
-    assert result.answered and result.grade == "verified"
+    assert result.answered and result.grade == "corroborated"
     # Each step's prompt carries the voice, the schemas and the results so far.
     assert "Viva" in script.prompts[0]
     assert FINAL_TOOL in script.prompts[0]
@@ -291,12 +304,14 @@ def test_text_planner_produces_a_cited_answer(registry):
 
 
 def test_text_planner_corrects_once_then_refuses(registry):
-    script = TextScript(["no json here at all", "still just prose"])
+    script = TextScript(["no json here at all", "still just prose",
+                         NO_COMPOSITION])
     planner = TextPlanner(script)
     result = run("balance?", planner, registry)
     assert not result.answered and result.refusal == "unparseable"
     assert "could not be used" in script.prompts[1]
-    assert [e.parse_ok for e in planner.exchanges] == [False, False]
+    # The two bad replies, then the call that composes the refusal.
+    assert [e.parse_ok for e in planner.exchanges][:2] == [False, False]
 
 
 def test_text_transport_failure_refuses_model_unreachable(registry):
@@ -312,8 +327,7 @@ def _answer_script():
                                       "filters": {"account": "chk"}})]),
         _turn([_call(FINAL_TOOL, {
             "answer": "Your checking holds 600.00.",
-            "figures": [{"value": "600.00", "record_ids": ["doc-jan"],
-                         "grade": "verified"}]}, call_id="c2")]),
+            "figures": [{"id": "f1"}]}, call_id="c2")]),
     ])
 
 
@@ -362,8 +376,8 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
         assert event.body["parse_ok"] is True
         payload = json.loads(event.body["response_text"])
         assert payload["request"] and payload["response"]
-        assert payload["prompt_versions"]["speak"].startswith("speak-v4@")
-        assert payload["prompt_versions"]["tools"].startswith("tools-v1@")
+        assert payload["prompt_versions"]["speak"].startswith("speak-v5@")
+        assert payload["prompt_versions"]["tools"].startswith("tools-v2@")
         assert payload["verdict"]["answered"] is True
     assert log.events[0].body["doc_id"] == "speak:s-test:1:1"
     assert log.events[1].body["doc_id"] == "speak:s-test:1:2"
@@ -387,8 +401,7 @@ def test_text_planner_grants_its_correction_per_step_not_per_run(registry):
         '"filters": {"account": "chk"}}}\n```',
         "prose again, later in the turn",
         '```json\n{"answer": "Your checking holds 600.00, verified.", '
-        '"figures": [{"value": "600.00", "record_ids": ["doc-jan"], '
-        '"grade": "verified"}]}\n```',
+        '"figures": [{"id": "f1"}]}\n```',
     ]
     result = run("balance?", TextPlanner(TextScript(steps)), registry)
     # The second malformed reply gets its own correction: a good step in
@@ -444,81 +457,66 @@ def test_a_date_echoed_by_an_ok_result_cannot_ground_an_answer(registry):
     assert result.refusal == "unfounded_figure"
 
 
-def test_compute_cannot_mint_a_cited_figure_from_invented_parts(registry):
-    """Caller-supplied inputs, record ids and grades flow through compute's ok
-    result; none of them may ground a figure the vault never asserted."""
+def test_a_number_the_caller_typed_cannot_become_a_computed_figure(registry):
+    """This replaces the check that compute's caller-supplied record ids and
+    grades could not mint a figure. Those fields are gone: an operand is a
+    figure id, so there is nothing left to plant. The refusal now lands on the
+    first call, and it names what could have been used instead."""
+    seen = {}
+
     def planner(context):
         if not context["results"]:
             return {"tool": "compute",
-                    "args": {"expression": "x",
-                             "inputs": {"x": "854203.99"},
-                             "grades": {"x": "verified"},
-                             "record_ids": ["invented-doc"]}}
-        return {"answer": "You hold 854203.99 in savings.",
-                "figures": [{"value": "854203.99",
-                             "record_ids": ["invented-doc"],
-                             "grade": "verified"}]}
+                    "args": {"expression": "x", "inputs": {"x": "854203.99"}}}
+        seen["refusal"] = context["results"][0]["refusal"]
+        return {"answer": "You hold 854203.99 in savings.", "figures": []}
 
     result = run("savings?", planner, registry)
-    assert not result.answered
-    assert result.refusal == "uncited_figure"
+    assert seen["refusal"] == "bad_input"
+    assert not result.answered and result.refusal == "unfounded_figure"
 
 
-def test_an_expression_literal_cannot_ground_an_answer(registry):
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "compute", "args": {"expression": "424242 + 0"}}
-        return {"answer": "That makes 424242.", "figures": []}
-
-    result = run("how much?", planner, registry)
-    assert not result.answered
-
-
-def test_compute_over_fetched_figures_still_grounds(registry):
-    """The legitimate chain — fetch, then compute over what was fetched,
-    citing the fetched record — must keep working under the taint rule."""
+def test_compute_over_a_fetched_figure_still_grounds(registry):
+    """The legitimate chain — fetch, then compute over what was fetched, citing
+    the result — must keep working, and its provenance is inherited rather than
+    asserted by the caller."""
     def planner(context):
         if not context["results"]:
             return {"tool": "query_ledger",
                     "args": {"entity": "balances",
                              "filters": {"account": "chk"}}}
         if len(context["results"]) == 1:
+            balance = context["results"][0]["figures"][0]["id"]
             return {"tool": "compute",
-                    "args": {"expression": "x * 2",
-                             "inputs": {"x": "600.00"},
-                             "grades": {"x": "verified"},
-                             "record_ids": ["doc-jan"]}}
-        return {"answer": "Twice your checking balance of 600.00 would be "
-                          "1200.00.",
-                "figures": [{"value": "1200.00", "record_ids": ["doc-jan"],
-                             "grade": "verified"}]}
+                    "args": {"expression": "x * 2", "inputs": {"x": balance}}}
+        doubled = context["results"][1]["figures"][0]
+        return {"answer": f"Twice your checking balance would be "
+                          f"{doubled['value']}.",
+                "figures": [{"id": doubled["id"]}]}
 
     result = run("what is twice my balance?", planner, registry)
-    assert result.answered and result.grade == "verified"
+    assert result.answered and result.grade == "corroborated"
+    assert result.figures[0]["record_ids"] == ["chk", "doc-jan"]
 
 
-def test_an_answer_may_quote_a_row_date_from_a_windowed_query(registry):
+def test_an_answer_may_quote_a_row_date_from_a_windowed_read(registry):
     """A row's own date is declarable and sayable even though the window filter
     that found it shares its year — the filter is scope the read reports, and
-    the row date is something the read asserts."""
+    the row's date is something the read asserts, carried on the figure for
+    that row's amount."""
     def planner(context):
         if not context["results"]:
-            return {"tool": "query_ledger",
-                    "args": {"entity": "transactions",
-                             "filters": {"account": "chk",
+            return {"tool": "list_movements",
+                    "args": {"filters": {"account": "chk",
                                          "window": {"from": "2026-01-01",
                                                     "to": "2026-01-31"}}}}
-        rows = context["results"][0]["data"]["transactions"]
-        row = rows[0]
-        return {"answer": f"On {row['date']} you spent 400.00 at that "
-                          "market.",
-                "figures": [{"value": row["amount"],
-                             "record_ids": [row["provenance"]["doc_id"]],
-                             "grade": row["grade"]}],
-                "dates": [{"iso": row["date"]}]}
+        fig = context["results"][0]["figures"][0]
+        return {"answer": f"On {fig['dated']} you spent 400.00 at that market.",
+                "figures": [{"id": fig["id"]}],
+                "dates": [{"iso": fig["dated"]}]}
 
     result = run("what did I spend in January?", planner, registry)
-    assert result.answered
+    assert result.answered, result.text
     assert "2026-01-05" in result.text
 
 
@@ -530,6 +528,162 @@ def test_a_refusals_record_ids_do_not_join_the_grounding_pool(registry):
 
     result = run("why?", planner, registry)
     assert not result.answered
+
+
+# ------------------------------------------ the closing call and the refusal
+
+def test_the_closing_call_takes_the_reads_off_the_table(registry):
+    """At exhaustion the model is not asked nicely to stop reading — the reads
+    are gone, and the only thing it can do is speak."""
+    script = ChatScript([
+        _turn([_call("check_completeness", {})]),
+        _turn([_call(FINAL_TOOL, {"answer": "I could not finish that.",
+                                  "figures": []}, call_id="c2")]),
+    ])
+    result = run("balance?", NativePlanner(script), registry, max_calls=1)
+    assert result.answered and result.text == "I could not finish that."
+    offered = {t["name"] for t in script.seen[-1]["tools"]}
+    assert offered == {FINAL_TOOL}
+    # The call it made and could not be given is answered, not left dangling —
+    # and reaching this step cost no extra model call: the budget was spent the
+    # moment the transcript filled, so the terminator-only ask came at once.
+    last = script.seen[-1]["messages"][-1]
+    assert last["role"] == "tool" and last["tool_call_id"] == "c1"
+    assert "no tool calls left" in last["content"]
+    assert len(script.seen) == 2
+
+
+def test_the_model_is_told_how_many_calls_it_has_left(registry):
+    """The runner computing a budget nobody is shown is not a budget. Both
+    modalities must put it where the model actually reads."""
+    script = ChatScript([
+        _turn([_call("check_completeness", {})]),
+        _turn([_call(FINAL_TOOL, {"answer": "All settled.", "figures": []},
+                     call_id="c2")]),
+    ])
+    run("balance?", NativePlanner(script), registry, max_calls=4)
+    threaded = [m for m in script.seen[-1]["messages"] if m["role"] == "tool"]
+    assert json.loads(threaded[-1]["content"])["calls_remaining"] == 3
+
+    text = TextScript([
+        '```json\n{"tool": "check_completeness", "args": {}}\n```',
+        '```json\n{"answer": "All settled.", "figures": []}\n```',
+    ])
+    run("balance?", TextPlanner(text), registry, max_calls=4)
+    assert "Tool calls left in this turn: 4" in text.prompts[0]
+    assert "Tool calls left in this turn: 3" in text.prompts[1]
+
+
+def test_the_text_protocol_teaches_the_shape_the_code_actually_accepts(registry):
+    """A protocol prompt that teaches a superseded terminator costs every text
+    answer its one correction before it can succeed."""
+    text = TextScript(['```json\n{"answer": "All settled.", "figures": []}\n```'])
+    run("balance?", TextPlanner(text), registry)
+    taught = text.prompts[0]
+    assert '"figures": [{"id": "f1"}]' in taught
+    # ...and says so as an example, not as a value to state.
+    assert "examples, not values you may state" in taught
+    assert '"record_ids"' not in taught and '"grade": ""' not in taught
+    assert '"stipulated"' in taught
+
+
+def test_a_refusal_request_answers_every_call_the_model_left_open(registry):
+    """A protocol needs each of its tool calls answered before another message
+    can follow. The turn ends in exactly the state where one is not: the model
+    called the terminator, and a terminator returns no result. An endpoint
+    rejects that shape, so the composed refusal would never arrive at all."""
+    script = ChatScript([
+        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []},
+                     call_id="open-1")]),
+        _declines_to_compose(),
+    ])
+    run("balance?", NativePlanner(script), registry)
+    messages = script.seen[-1]["messages"]
+    called = [str(c["id"]) for m in messages if m["role"] == "assistant"
+              for c in m.get("tool_calls") or []]
+    answered = [str(m["tool_call_id"]) for m in messages if m["role"] == "tool"]
+    assert called and set(called) <= set(answered), (
+        f"{sorted(set(called) - set(answered))} were left unanswered")
+
+
+def test_a_composed_refusal_is_shown_standing_on_what_it_cited(registry):
+    """A refusal that states a figure is a claim like any other, and the
+    surface prints its grade and its records off the result."""
+    script = ChatScript([
+        _turn([_call("query_ledger", {"entity": "balances",
+                                      "filters": {"account": "chk"}})]),
+        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []},
+                     call_id="c2")]),
+        _turn([_call("deliver_refusal",
+                     {"answer": "I can only stand behind the 600.00 I read.",
+                      "figures": [{"id": "f1"}]}, call_id="c3")]),
+    ])
+    result = run("balance?", NativePlanner(script), registry)
+    assert not result.answered and result.refusal == "unfounded_figure"
+    assert result.figures and result.figures[0]["record_ids"]
+    assert result.grade == "corroborated"
+
+
+def test_the_refusal_terminators_description_is_not_a_raw_template(registry):
+    """Its description is sent to the model as the tool's contract. A prompt
+    with unfilled slots in it is model-facing garbage at exactly the moment
+    careful prose is being asked for — so this checks what actually goes on the
+    wire, not what a helper would build if asked nicely."""
+    script = ChatScript([
+        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []})]),
+        _declines_to_compose(),
+    ])
+    run("balance?", NativePlanner(script), registry)
+    offered = script.seen[-1]["tools"]
+    assert [t["name"] for t in offered] == ["deliver_refusal"]
+    described = offered[0]["description"]
+    assert "{explanation}" not in described and "{established}" not in described
+    assert set(offered[0]["parameters"]["properties"]) == {
+        "answer", "figures", "stipulated", "dates"}
+    # And the instruction reaches the model once, as the answer to the open
+    # call — not once there and again as a message after it.
+    sent = [m for m in script.seen[-1]["messages"]
+            if "cannot be answered" in str(m.get("content") or "")]
+    assert len(sent) == 1 and sent[0]["role"] == "tool"
+
+
+def test_a_refusal_is_spoken_in_vivas_voice_with_the_tag_kept_for_the_log(registry):
+    spoken = ("I could not stand that answer on anything I hold, so I would "
+              "rather say nothing than guess.")
+    script = ChatScript([
+        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []})]),
+        _turn([_call("deliver_refusal", {"answer": spoken, "figures": []},
+                     call_id="c2")]),
+    ])
+    result = run("balance?", NativePlanner(script), registry)
+    assert not result.answered
+    assert result.refusal == "unfounded_figure"      # the tag, for the log
+    assert result.text == spoken                     # the prose, for the person
+    assert "unfounded_figure" not in result.text
+
+
+def test_a_composed_refusal_reaching_for_a_number_is_itself_refused(registry):
+    """The guardrail that makes composing safe: the same check runs on what the
+    model wrote, and one failure falls back to the machine's own sentence
+    rather than trying again."""
+    script = ChatScript([
+        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []})]),
+        _turn([_call("deliver_refusal",
+                     {"answer": "I cannot confirm the 12345.67 you asked "
+                                "about.", "figures": []}, call_id="c2")]),
+    ])
+    result = run("balance?", NativePlanner(script), registry)
+    assert not result.answered and result.refusal == "unfounded_figure"
+    assert "12345.67" not in result.text
+    assert "no figure in this run carries" in result.detail
+    assert not script.turns          # exactly one attempt, then the fallback
+
+
+def test_an_unreachable_model_is_never_asked_to_compose_its_own_silence(registry):
+    planner = NativePlanner(BrokenChat())
+    result = run("balance?", planner, registry)
+    assert result.refusal == "model_unreachable"
+    assert len(planner.exchanges) == 1
 
 
 # ----------------------------------------------- the adapter, over the wire
@@ -614,7 +768,7 @@ def test_the_runner_accepts_a_planner_refusal_step(registry):
     result = run("balance?", planner, registry)
     assert not result.answered
     assert result.refusal == "model_unreachable"
-    assert result.text == "no model today"
+    assert result.detail == "no model today"
 
 
 # ------------------------------------------------------------- transparency

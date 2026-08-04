@@ -1,41 +1,63 @@
 """The modality-neutral tool loop, with the composition gate that enforces
-"every figure is a cited tool result" in code.
+"every number the answer says is a number some tool asserted" in code.
 
 The runner takes a *planner* — any callable that, shown the question, the tool
 schemas and the results so far, returns either the next tool call or the final
 answer. A provider adapter doing native tool-calling is a planner; so is a
 text-protocol adapter parsing a model's JSON block; so is a scripted function
 in a test. The runner neither knows nor cares which — the contract is data in,
-data out, and the T1 gate runs identically for all of them.
+data out, and the gate runs identically for all of them.
 
-The gate: an answer's every figure must cite record ids the run actually saw,
-and every number appearing in the answer's text must be traceable to a tool
-result from this run. Dates are declared alongside the figures, as the ISO
-dates the results carried, because prose writes a date in forms no ISO token
-matches; a declared date licenses its own parts and nothing else, and must
-fall inside a period the run is attested for. An answer that fails is refused —
-not softened, not partially delivered.
+The gate rests on one rule: a number the model may say is either a figure some
+tool emitted this run, a date declared from what the run is attested for, or a
+value the person themselves supplied in this turn's question. There is no
+fourth kind. Because tools emit figures with ids and an answer cites ids, an
+invented number has nothing to cite, and a value planted in a call's own
+arguments is not evidence when a result echoes it back.
+
+One thing besides figures stays sayable: a number a tool wrote into its own
+prose. A tool's `text`, `coverage` and `caveats` are sentences the tool chose;
+its `data` is raw material. Sentences are sayable; payloads are not.
+
+Dates are declared alongside the figures. A declared date licenses its own
+parts and nothing else, and must fall inside a period the run is attested for or
+match a date some result carries. An answer that fails any of this is refused
+whole, and the refusal is spoken in Viva's voice when the planner can compose
+one, with the same number check run over what it composed.
 """
 
 from __future__ import annotations
 
 import datetime
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-from .envelope import ToolResult, weakest
+from .envelope import MONEY_KINDS, ToolResult, weakest
 from .registry import Registry
 
-# One tool call per planner step, bounded: a runaway planner meets a refusal,
-# never an endless loop.
+# One tool call per planner step. Past this the run refuses rather than
+# looping.
 DEFAULT_MAX_CALLS = 8
 
-# An ISO date travels as ONE token. Split into fragments, a window filter's
-# year would taint every dated row that call returns, and a date-shaped
-# invention could shed its hyphens into free-standing citable digits.
+# An ISO date matches as one token, so its year, month and day are never
+# free-standing numbers here.
 _NUMBER = re.compile(r"\d{4}-\d{2}-\d{2}|\d[\d,]*(?:\.\d+)?")
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+# A figure id in ordinary prose is a name, not a quantity. Only an id this run
+# stamped matches; the digits of anything else are read as a number.
+_ID_MENTION = re.compile(r"(?<![A-Za-z0-9])(f\d+)(?![A-Za-z0-9])")
+
+
+def _without_ids(text: str, ids) -> str:
+    """The text with mentions of this run's figure ids blanked out, character
+    for character so nothing either side of one moves or joins."""
+    if not ids:
+        return text
+    return _ID_MENTION.sub(
+        lambda m: " " * len(m.group(0)) if m.group(1) in ids else m.group(0),
+        text)
 
 
 def _is_real_date(iso: str) -> bool:
@@ -57,6 +79,14 @@ def _date_parts(iso: str) -> set:
     return {iso, year, month, day, month.lstrip("0"), day.lstrip("0")}
 
 
+def _tokens(text, ids=()) -> set:
+    """Every numeric token in a string, commas stripped — matched whole, never
+    as a substring, so a fabricated '6' cannot ride on a '600.00'. Mentions of
+    this run's own figure ids are names, and are not read as quantities."""
+    return {t.replace(",", "")
+            for t in _NUMBER.findall(_without_ids(str(text or ""), ids))}
+
+
 @dataclass
 class RunResult:
     """How a run ended: an answer that passed the gate, or a refusal."""
@@ -65,201 +95,229 @@ class RunResult:
     figures: list = field(default_factory=list)
     grade: str = ""
     refusal: str = ""
+    # What went wrong, in the machine's own words, naming the token or the id.
+    # It reaches the log, the tests and the model composing the refusal, never
+    # the person.
+    detail: str = ""
     transcript: list = field(default_factory=list)   # ToolResult dicts, in order
     calls: int = 0
 
     def to_dict(self) -> dict:
         return {"answered": self.answered, "text": self.text,
                 "figures": list(self.figures), "grade": self.grade,
-                "refusal": self.refusal, "transcript": list(self.transcript),
-                "calls": self.calls}
+                "refusal": self.refusal, "detail": self.detail,
+                "transcript": list(self.transcript), "calls": self.calls}
 
 
-def _strings_in(value) -> set:
-    """Every string anywhere in a nested payload, plus the string form of
-    every number — the pool a cited figure must be drawn from."""
-    out: set = set()
-    if isinstance(value, str):
-        out.add(value)
-    elif isinstance(value, bool):
-        pass
-    elif isinstance(value, (int, float)):
-        out.add(str(value))
-    elif isinstance(value, dict):
-        for k, v in value.items():
-            out |= _strings_in(k)
-            out |= _strings_in(v)
-    elif isinstance(value, (list, tuple)):
-        for v in value:
-            out |= _strings_in(v)
-    return out
+@dataclass
+class _Ground:
+    """Everything this run established, and therefore everything it may say.
+
+    The figure book is the run's own id space: ids are stamped in emission
+    order across every tool, so two tools can never collide and an id from
+    another turn means nothing here."""
+
+    question: set = field(default_factory=set)    # numeric tokens the person wrote
+    book: dict = field(default_factory=dict)      # {figure id: figure}
+    periods: list = field(default_factory=list)   # (from, to) a read is attested for
+    dates: set = field(default_factory=set)       # ISO dates some result carries
+    prose: set = field(default_factory=set)       # numbers tools wrote into sentences
+
+    def stamp(self, result: ToolResult) -> None:
+        """Absorb one ok result: give its figures ids, and note what it
+        attests, what it dates and what it said in words."""
+        for span in result.covers or []:
+            if span.get("from") and span.get("to"):
+                self.periods.append((span["from"], span["to"]))
+        if _ISO_DATE.match(result.dated or ""):
+            self.dates.add(result.dated)
+        for fig in result.figures:
+            fig["id"] = f"f{len(self.book) + 1}"
+            self.book[fig["id"]] = fig
+            if _ISO_DATE.match(str(fig.get("dated") or "")):
+                self.dates.add(str(fig["dated"]))
+        for sentence in [result.text, result.coverage, *(result.caveats or [])]:
+            self.prose |= {t for t in _tokens(sentence) if not _ISO_DATE.match(t)}
 
 
-def _tokens_in(strings: set) -> set:
-    """Every numeric token appearing in the pool, commas stripped — matched
-    whole, never as a substring, so a fabricated '6' cannot ride on a
-    '600.00' some tool returned."""
-    out: set = set()
-    for s in strings:
-        for token in _NUMBER.findall(s):
-            out.add(token.replace(",", ""))
-    return out
+# What the person hears when nothing better can be composed: one sentence,
+# whatever the machine tag.
+_PLAIN_REFUSAL = ("I could not stand this answer on what I hold, so I would "
+                  "rather say nothing than say something I cannot show you.")
 
 
-def _refused(reason: str, text: str, transcript: list, calls: int) -> RunResult:
-    return RunResult(answered=False, refusal=reason, text=text,
-                     transcript=transcript, calls=calls)
+def _refused(reason: str, detail: str, transcript: list, calls: int) -> RunResult:
+    return RunResult(answered=False, refusal=reason, text=_PLAIN_REFUSAL,
+                     detail=detail, transcript=transcript, calls=calls)
 
 
 def run(question: str, planner, registry: Registry,
         max_calls: int = DEFAULT_MAX_CALLS) -> RunResult:
     """Drive the planner until it answers or runs out of budget, gating the
     answer on citation. Deterministic given a deterministic planner."""
+    ground = _Ground(question=_tokens(question))
     transcript: list[ToolResult] = []
-    seen_ids: set = set()
-    seen_strings: set = set()
-    grounded_tokens: set = set()
-    # What the reads are attested for, kept apart from what they asserted. A
-    # period is a read reporting its own behavior, so it needs no protection
-    # from the caller's arguments — and it holds dates only, so no amount can
-    # enter it.
-    periods: list = []
-    while True:
+    # Exhaustion is not fatal: on the last pass the planner is shown only the
+    # terminator, so a run already holding a grounded figure can deliver it.
+    result = None
+    while result is None:
+        final_call = len(transcript) >= max_calls
         step = planner({"question": question,
                         "tools": registry.schemas(),
                         "descriptions_version": registry.descriptions_version,
-                        "results": [t.to_dict() for t in transcript]})
+                        "results": [t.to_dict() for t in transcript],
+                        "calls_remaining": max(0, max_calls - len(transcript)),
+                        "final_call": final_call})
         if not isinstance(step, dict):
-            return _refused("bad_plan", "The planner returned something other "
-                            "than a tool call or an answer.",
-                            [t.to_dict() for t in transcript], len(transcript))
-        if "refusal" in step:
+            result = _refused("bad_plan", "The planner returned something other "
+                              "than a tool call or an answer.",
+                              [t.to_dict() for t in transcript], len(transcript))
+        elif "refusal" in step:
             # A planner may refuse the whole run with its own machine tag — a
-            # model that never produced a usable step, or one that could not
-            # be reached at all. Refusal, never an exception, is the worst case.
-            return _refused(str(step["refusal"]), str(step.get("text", "")),
-                            [t.to_dict() for t in transcript], len(transcript))
-        if "tool" in step:
-            if len(transcript) >= max_calls:
-                return _refused(
+            # model that never produced a usable step, or one that could not be
+            # reached at all.
+            result = _refused(str(step["refusal"]), str(step.get("text", "")),
+                              [t.to_dict() for t in transcript], len(transcript))
+        elif "tool" in step:
+            if final_call:
+                # The planner was shown only the terminator and asked for a
+                # read anyway; there is nothing left to spend on it.
+                result = _refused(
                     "call_budget_exhausted",
                     f"No answer after {max_calls} tool calls; refusing rather "
                     "than answering without grounds.",
                     [t.to_dict() for t in transcript], len(transcript))
-            args = step.get("args")
-            result = registry.call(step["tool"], args)
-            transcript.append(result)
-            # Only a result that asserts something can ground a figure, and
-            # even then, never by echoing the caller's own words back. A
-            # refusal restating an unknown account id, an ok result restating
-            # a caller-chosen date, and a computation citing caller-supplied
-            # record ids are all echoes: numbers and ids that entered through
-            # the call's arguments ground nothing until some result carries
-            # them independently of the arguments that planted them.
-            if result.ok:
-                arg_tokens = _tokens_in(_strings_in(args))
-                if not registry.caller_supplies_record_ids(step["tool"]):
-                    seen_ids |= set(result.record_ids)
-                asserted = result.to_dict()
-                for span in asserted.pop("covers", None) or []:
-                    if span.get("from") and span.get("to"):
-                        periods.append((span["from"], span["to"]))
-                result_strings = _strings_in(asserted)
-                seen_strings |= result_strings
-                grounded_tokens |= (_tokens_in(result_strings) - arg_tokens)
-            continue
-        if "answer" not in step:
-            return _refused("bad_plan", "The planner's step names neither a "
-                            "tool nor an answer.",
-                            [t.to_dict() for t in transcript], len(transcript))
-        return _gate(step, transcript, seen_ids, seen_strings,
-                     grounded_tokens, periods)
+                continue
+            called = registry.call(step["tool"], step.get("args"),
+                                   figures=ground.book, question=question)
+            transcript.append(called)
+            if called.ok:
+                ground.stamp(called)
+        elif "answer" not in step:
+            result = _refused("bad_plan", "The planner's step names neither a "
+                              "tool nor an answer.",
+                              [t.to_dict() for t in transcript], len(transcript))
+        else:
+            result = _gate(step, transcript, ground)
+    if result.answered:
+        return result
+    return _voice(result, planner, ground, question,
+                  [t.to_dict() for t in transcript])
 
 
-def _gate(step: dict, transcript: list, seen_ids: set, seen_strings: set,
-          grounded_tokens: set, periods: list) -> RunResult:
-    """The composition check. Every declared figure must carry record ids the
-    run saw and a value some result asserted; every number in the answer text
-    must be covered by a figure or grounded by a result — where grounded
-    excludes anything that entered the run through the planner's own
-    arguments."""
-    text = str(step.get("answer", ""))
-    figures = step.get("figures", []) or []
-    dicts = [t.to_dict() for t in transcript]
-    grades = []
-    for figure in figures:
-        if not isinstance(figure, dict) or "value" not in figure:
-            return _refused("uncited_figure",
-                            "A figure was declared without a value.",
-                            dicts, len(transcript))
-        ids = figure.get("record_ids") or []
-        if not ids:
-            return _refused(
-                "uncited_figure",
-                f"The figure {figure['value']!r} cites no record — every "
-                "figure must stand on one.", dicts, len(transcript))
-        missing = [i for i in ids if i not in seen_ids]
-        if missing:
-            return _refused(
-                "uncited_figure",
-                f"The figure {figure['value']!r} cites records this run never "
-                "read: " + ", ".join(map(str, missing)), dicts, len(transcript))
-        if str(figure["value"]) not in seen_strings:
-            return _refused(
-                "unfounded_figure",
-                f"The figure {figure['value']!r} appears in no tool result "
-                "from this run.", dicts, len(transcript))
-        tainted = [t for t in _NUMBER.findall(str(figure["value"]))
-                   if t.replace(",", "") not in grounded_tokens]
-        if tainted:
-            return _refused(
-                "unfounded_figure",
-                f"The figure {figure['value']!r} rests on numbers this run's "
-                "results only echo from the planner's own arguments.",
-                dicts, len(transcript))
-        if figure.get("grade"):
-            grades.append(figure["grade"])
-    asserted_dates = {tok for tok in grounded_tokens if _ISO_DATE.match(tok)}
+def _check(step: dict, ground: _Ground) -> tuple[list, tuple | None]:
+    """The number check, over anything the model composed — an answer or a
+    refusal. Returns the cited figures and the problem, if any, as
+    `(machine tag, the sentence explaining it)`."""
+    cited: list = []
+    for entry in step.get("figures") or []:
+        fid = str(entry.get("id", "")) if isinstance(entry, dict) else ""
+        if fid not in ground.book:
+            return [], ("unknown_figure",
+                        f"The answer cites a figure {fid!r} that no tool "
+                        "emitted in this run.")
+        cited.append(ground.book[fid])
+    for fig in cited:
+        # A money figure with no record behind it is refused. The other kinds
+        # rest on ledger events or on the person's own premise, and are not
+        # checked for records here.
+        if fig["kind"] in MONEY_KINDS and not fig["record_ids"]:
+            return [], ("uncited_figure",
+                        f"The figure {fig['value']!r} cites no record — every "
+                        "figure about your money must stand on one.")
+
+    stipulated: set = set()
+    for entry in step.get("stipulated") or []:
+        value = str(entry.get("value", "")) if isinstance(entry, dict) else ""
+        if not value or not _tokens(value) <= ground.question:
+            return [], ("unfounded_stipulation",
+                        f"The answer treats {value!r} as something you said, "
+                        "but this turn's question does not contain it.")
+        stipulated |= _tokens(value)
+
     sayable: set = set()
-    for entry in step.get("dates", []) or []:
+    for entry in step.get("dates") or []:
         iso = str(entry.get("iso", "")) if isinstance(entry, dict) else ""
         # Shape first, then reality. The library accepts forms this gate cannot
         # take apart — a compact YYYYMMDD, an ISO week date — and a value that
         # parses but has no parts would raise on the way to being licensed.
         if not _ISO_DATE.match(iso) or not _is_real_date(iso):
-            return _refused(
-                "unfounded_date", f"A declared date {iso!r} is not a date.",
-                dicts, len(transcript))
-        if not (any(start <= iso <= end for start, end in periods)
-                or iso in asserted_dates):
-            return _refused(
-                "unfounded_date",
-                f"The date {iso!r} falls outside every period this run is "
-                "attested for and matches nothing this run's results assert.",
-                dicts, len(transcript))
+            return [], ("unfounded_date", f"A declared date {iso!r} is not a date.")
+        if not (any(start <= iso <= end for start, end in ground.periods)
+                or iso in ground.dates):
+            return [], ("unfounded_date",
+                        f"The date {iso!r} falls outside every period this run "
+                        "is attested for and matches nothing this run's "
+                        "results assert.")
         sayable |= _date_parts(iso)
 
-    seen_dates = sorted(asserted_dates)
-    covered = {str(f["value"]).replace(",", "") for f in figures}
-    for token in _NUMBER.findall(text):
+    # A figure's value is tokenised exactly as the answer's text is, so a
+    # movement of -40.00 licenses "40.00". A figure whose value is a date
+    # licenses nothing here; dates answer to the date rule alone.
+    covered: set = set()
+    for fig in cited:
+        covered |= {t for t in _tokens(fig["value"]) if not _ISO_DATE.match(t)}
+    for token in _NUMBER.findall(
+            _without_ids(str(step.get("answer", "")), ground.book)):
         plain = token.replace(",", "")
-        if plain in covered or plain in grounded_tokens or plain in sayable:
+        if (plain in covered or plain in sayable or plain in stipulated
+                or plain in ground.prose):
             continue
-        # Saying which failure this is matters: a date left undeclared and a
-        # number invented outright are the same refusal to the gate and very
-        # different news to the person reading it.
-        owner = next((d for d in seen_dates if plain in _date_parts(d)), "")
+        # An undeclared date and an invented number refuse alike; the detail
+        # says which one it was.
+        owner = next((d for d in sorted(ground.dates)
+                      if plain in _date_parts(d)), "")
         if owner:
-            return _refused(
-                "undeclared_date",
-                f"The answer writes '{token}', part of the date {owner!r} this "
-                "run read — a date must be declared before it can be said.",
-                dicts, len(transcript))
-        return _refused(
-            "unfounded_figure",
-            f"The answer contains '{token}', which no tool result from this "
-            "run contains and no declared figure covers.",
-            dicts, len(transcript))
-    return RunResult(answered=True, text=text, figures=list(figures),
-                     grade=weakest(grades), transcript=dicts,
-                     calls=len(transcript))
+            return [], ("undeclared_date",
+                        f"The answer writes '{token}', part of the date "
+                        f"{owner!r} this run read — a date must be declared "
+                        "before it can be said.")
+        return [], ("unfounded_figure",
+                    f"The answer contains '{token}', which no figure in this "
+                    "run carries and no result stated in words.")
+    return cited, None
+
+
+def _gate(step: dict, transcript: list, ground: _Ground) -> RunResult:
+    """The composition check on a delivered answer. Its grade is the weakest
+    among the money figures it cited; activity and hypothetical figures carry no
+    grade and do not move it."""
+    dicts = [t.to_dict() for t in transcript]
+    cited, problem = _check(step, ground)
+    if problem is not None:
+        return _refused(problem[0], problem[1], dicts, len(transcript))
+    return RunResult(
+        answered=True, text=str(step.get("answer", "")),
+        figures=[dict(f) for f in cited],
+        grade=weakest(f["grade"] for f in cited
+                      if f["kind"] in MONEY_KINDS),
+        transcript=dicts, calls=len(transcript))
+
+
+def _voice(result: RunResult, planner, ground: _Ground, question: str,
+           results: list) -> RunResult:
+    """Let the planner say the refusal the way Viva would, once.
+
+    The composed sentence goes through the same number check as an answer, so a
+    refusal that reaches for a figure it cannot cite is itself refused and the
+    deterministic sentence stands. One attempt, no loop. The machine tag stays
+    in the result for the logs and never appears in the prose, and whatever the
+    sentence did cite travels with it."""
+    compose = getattr(planner, "compose_refusal", None)
+    if compose is None or result.refusal == "model_unreachable":
+        return result
+    step = compose({"tag": result.refusal, "explanation": result.detail,
+                    "question": question, "results": results,
+                    "established": [f["what"] for f in ground.book.values()
+                                    if f.get("what")]})
+    if not isinstance(step, dict):
+        return result
+    spoken = str(step.get("answer", "")).strip()
+    if not spoken or result.refusal in spoken:
+        return result
+    cited, problem = _check(step, ground)
+    if problem is not None:
+        return result
+    return replace(result, text=spoken, figures=[dict(f) for f in cited],
+                   grade=weakest(f["grade"] for f in cited
+                                 if f["kind"] in MONEY_KINDS))

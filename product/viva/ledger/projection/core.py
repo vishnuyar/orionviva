@@ -292,13 +292,19 @@ class ProjectionCore:
         elif et == "QuestionDeclined":
             # Last decline wins; a question re-declined after returning simply
             # updates its snapshot to the new stake.
-            self._declined[event.body["question_id"]] = event.body
+            # The event id travels with the snapshot: a read reporting the
+            # agent's own behaviour cites the record that made it true, the way
+            # a read about money cites a document.
+            self._declined[event.body["question_id"]] = {
+                **event.body, "event_id": event.event_id}
 
         elif et == "AgentActed":
             # Kept in arrival order and never collapsed, so the log answers both
             # "what is the latest attempt on this target?" (the cooldown) and
             # "what has the agent been doing?" (the journal).
-            self._agent_log.append({**event.body, "occurred_at": event.occurred_at})
+            self._agent_log.append({**event.body,
+                                    "occurred_at": event.occurred_at,
+                                    "event_id": event.event_id})
 
         elif et in ("MerchantCategorized", "MerchantEnriched"):
             merchant = event.body["merchant"]
