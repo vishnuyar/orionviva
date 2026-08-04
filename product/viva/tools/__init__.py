@@ -1,9 +1,10 @@
 """The agent's read tools: a typed registry over the ledger projection.
 
-Five verbs, all deterministic, all local: ``query_ledger`` (the workhorse),
+Six verbs, all deterministic, all local: ``query_ledger`` (the workhorse, which
+answers in totals), ``list_movements`` (the individual rows, for a narrow ask),
 ``check_completeness``, ``get_provenance``, ``get_transparency`` and
 ``compute``. Verbs whose machinery does not exist yet are not registered at
-all — a tool that could only refuse would teach a planner to ignore tools.
+all.
 
 ``default_registry(proj)`` builds the registry over one live projection;
 ``runner.run`` drives any planner over it, native or text, and gates every
@@ -25,11 +26,14 @@ _NO_PARAMS = {"type": "object", "properties": {}}
 
 
 def default_registry(proj) -> Registry:
-    """The five read tools, bound to one projection."""
+    """The six read tools, bound to one projection."""
     registry = Registry()
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
         fn=lambda args: ledger_tools.query_ledger(proj, args)))
+    registry.register(ToolSpec(
+        name="list_movements", params=ledger_tools.LIST_MOVEMENTS_PARAMS,
+        fn=lambda args: ledger_tools.list_movements(proj, args)))
     registry.register(ToolSpec(
         name="check_completeness", params=_NO_PARAMS,
         fn=lambda args: ledger_tools.check_completeness(proj, args)))
@@ -42,7 +46,8 @@ def default_registry(proj) -> Registry:
     registry.register(ToolSpec(
         name="compute", params=COMPUTE_PARAMS,
         fn=compute,
-        # compute cannot check that the source documents its caller names
-        # exist; its record ids are pass-through, never vault-vouched.
-        record_ids_from_caller=True))
+        # Arithmetic reasons over the run rather than the vault: its operands
+        # are figures this turn emitted and values the person supposed, so it
+        # is handed both.
+        needs_figures=True))
     return registry

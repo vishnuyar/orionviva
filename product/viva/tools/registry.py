@@ -24,7 +24,7 @@ from .envelope import ToolResult, refusal
 
 PROMPTS = pathlib.Path(__file__).resolve().parent.parent / "prompts"
 
-DESCRIPTIONS_VERSION = "tools-v1"
+DESCRIPTIONS_VERSION = "tools-v2"
 
 _SECTION_MARK = "# tool: "
 
@@ -62,12 +62,10 @@ class ToolSpec:
     # Whether the tool reads only local state. Every registered tool must; the
     # flag exists so the guard is a checked property rather than a comment.
     local_only: bool = True
-    # Whether the record ids in this tool's results come from its caller
-    # rather than from the vault. A tool that validates its arguments against
-    # the vault vouches for the ids it echoes; one that passes them through
-    # unchecked cannot, and the runner treats such ids as citations only when
-    # some vault-derived result already produced them.
-    record_ids_from_caller: bool = False
+    # Whether this tool reasons over what the run has already established
+    # rather than over the vault. Such a tool is handed the run's figure book
+    # and the turn's question instead of reading the projection.
+    needs_figures: bool = False
 
 
 _TYPES = {"string": str, "boolean": bool, "integer": int, "object": dict,
@@ -128,10 +126,6 @@ class Registry:
     def names(self) -> list[str]:
         return sorted(self._specs)
 
-    def caller_supplies_record_ids(self, name: str) -> bool:
-        spec = self._specs.get(name)
-        return bool(spec and spec.record_ids_from_caller)
-
     def schemas(self) -> list[dict]:
         """Every tool as data — name, description (from the versioned file),
         parameter schema. What an adapter presents, natively or as text."""
@@ -140,9 +134,13 @@ class Registry:
                  "parameters": s.params}
                 for _, s in sorted(self._specs.items())]
 
-    def call(self, name: str, args: dict | None = None) -> ToolResult:
+    def call(self, name: str, args: dict | None = None,
+             figures: dict | None = None, question: str = "") -> ToolResult:
         """Validate and run one tool. Refuses rather than raising: the result
-        is always an envelope."""
+        is always an envelope.
+
+        The figure book and the question reach only a tool that declared it
+        reasons over them."""
         spec = self._specs.get(name)
         if spec is None:
             return refusal(name, "unknown_tool",
@@ -156,4 +154,6 @@ class Registry:
         if problems:
             return refusal(name, "invalid_arguments",
                            "; ".join(problems), schema=spec.params)
+        if spec.needs_figures:
+            return spec.fn(args, dict(figures or {}), question)
         return spec.fn(args)

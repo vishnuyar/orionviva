@@ -16,11 +16,20 @@ Two planners, one contract:
   reach.
 
 Both present one extra schema beside the registry's verbs: ``deliver_answer``,
-the terminator, through which the answer declares its figures and the dates it
-refers to. It is never registered — it executes nothing; it is how a turn
-ends. A malformed reply gets exactly one correction naming the problem, then
-the turn refuses with a machine tag. A transport failure refuses as
-``model_unreachable``. Nothing raises to the person.
+the terminator, through which the answer cites the figures it states, the
+amounts the person themselves supplied, and the dates it refers to. It is never
+registered — it executes nothing; it is how a turn ends. A malformed reply gets
+exactly one correction naming the problem, then the turn refuses with a machine
+tag. A transport failure refuses as ``model_unreachable``. Nothing raises to
+the person.
+
+Two shapes of last word exist besides an ordinary answer. When the call budget
+runs out, the runner asks once more with only the terminator on the table, so a
+turn already holding a grounded figure can still deliver it. And when a turn
+refuses for any reason the model could still speak to, the planner
+composes the refusal in Viva's voice through ``deliver_refusal`` — checked by
+the same number rule as an answer, once, with the machine's own sentence as the
+fallback.
 
 A session keeps prior turns as context so follow-ups resolve ("it", "that
 account"), but the gate's grounding is per-turn: any figure the model wants to
@@ -44,18 +53,30 @@ from vivacore import promptstore
 from .tools.registry import PROMPTS
 from .tools.runner import DEFAULT_MAX_CALLS, RunResult, run
 
-SPEAK_VERSION = "speak-v4"
-FINAL_VERSION = "speak-final-v4"
-PROTOCOL_VERSION = "speak-protocol-v4"
+SPEAK_VERSION = "speak-v5"
+FINAL_VERSION = "speak-final-v5"
+PROTOCOL_VERSION = "speak-protocol-v5"
 RETRY_VERSION = "speak-retry-v1"
+CLOSING_VERSION = "speak-closing-v1"
+REFUSAL_VERSION = "speak-refusal-v1"
+REFUSAL_SCHEMA_VERSION = "speak-refusal-schema-v1"
 
 FINAL_TOOL = "deliver_answer"
+REFUSAL_TOOL = "deliver_refusal"
 
 FINAL_PARAMS = {
     "type": "object",
     "properties": {
         "answer": {"type": "string"},
-        "figures": {"type": "array", "items": {"type": "object"}},
+        "figures": {"type": "array",
+                    "items": {"type": "object",
+                              "properties": {"id": {"type": "string"}},
+                              "required": ["id"]}},
+        "stipulated": {"type": "array",
+                       "items": {"type": "object",
+                                 "properties": {"value": {"type": "string"},
+                                                "as": {"type": "string"}},
+                                 "required": ["value"]}},
         "dates": {"type": "array",
                   "items": {"type": "object",
                             "properties": {"iso": {"type": "string"}},
@@ -65,7 +86,7 @@ FINAL_PARAMS = {
 }
 
 # One correction per malformed reply, then the turn refuses. Each correction
-# is a spent model call, so a flailing model meets the budget, never a loop.
+# spends a model call.
 MAX_CORRECTIONS = 1
 
 _FENCED = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
@@ -75,9 +96,9 @@ def _speak_prompt() -> str:
     return promptstore.load(PROMPTS, SPEAK_VERSION)
 
 
-def _final_schema() -> dict:
-    return {"name": FINAL_TOOL,
-            "description": promptstore.load(PROMPTS, FINAL_VERSION),
+def _final_schema(tool: str = FINAL_TOOL, version: str = "") -> dict:
+    return {"name": tool,
+            "description": promptstore.load(PROMPTS, version or FINAL_VERSION),
             "parameters": FINAL_PARAMS}
 
 
@@ -85,20 +106,28 @@ def _correction(problem: str) -> str:
     return promptstore.load(PROMPTS, RETRY_VERSION).format(problem=problem)
 
 
+def _refusal_prompt(context: dict) -> str:
+    established = "\n".join(f"- {w}" for w in context.get("established") or [])
+    return promptstore.load(PROMPTS, REFUSAL_VERSION).format(
+        explanation=context.get("explanation", ""),
+        established=established or "- nothing was established.")
+
+
 def _final_step(args: dict) -> tuple[dict | None, str]:
-    """The runner step a deliver_answer call means, or the problem with it."""
+    """The runner step a terminator call means, or the problem with it."""
     if not isinstance(args, dict) or not isinstance(args.get("answer"), str):
         return None, f"{FINAL_TOOL} needs an 'answer' string"
-    figures = args.get("figures") or []
-    if not isinstance(figures, list) or any(
-            not isinstance(f, dict) for f in figures):
-        return None, "'figures' must be a list of objects"
-    dates = args.get("dates") or []
-    if not isinstance(dates, list) or any(
-            not isinstance(d, dict) for d in dates):
-        return None, "'dates' must be a list of objects"
-    return {"answer": args["answer"], "figures": figures,
-            "dates": dates}, ""
+    lists = {}
+    for name in ("figures", "stipulated", "dates"):
+        value = args.get(name) or []
+        if not isinstance(value, list) or any(
+                not isinstance(v, dict) for v in value):
+            return None, f"'{name}' must be a list of objects"
+        lists[name] = value
+    if any("id" not in f for f in lists["figures"]):
+        return None, ("each entry in 'figures' is the id of a figure a tool "
+                      "returned this turn, as {\"id\": \"f1\"}")
+    return {"answer": args["answer"], **lists}, ""
 
 
 @dataclass
@@ -148,14 +177,20 @@ class NativePlanner:
     def __call__(self, context: dict) -> dict:
         if not self._started:
             self._start(context)
-        if self._awaiting is not None:
-            result = context["results"][-1]
-            self._messages.append({"role": "tool",
-                                   "tool_call_id": self._awaiting,
-                                   "content": json.dumps(result)})
-            self._awaiting = None
-        if self._queued:
-            return self._emit()
+        if context.get("final_call"):
+            self._close(context)
+        else:
+            if self._awaiting is not None:
+                # The remaining budget rides back with each tool result, so
+                # the model reads it rather than counting what it has spent.
+                result = dict(context["results"][-1],
+                              calls_remaining=context.get("calls_remaining"))
+                self._messages.append({"role": "tool",
+                                       "tool_call_id": self._awaiting,
+                                       "content": json.dumps(result)})
+                self._awaiting = None
+            if self._queued:
+                return self._emit()
 
         corrections = 0
         while True:
@@ -222,6 +257,73 @@ class NativePlanner:
         self._awaiting = call_id
         return {"tool": name, "args": args}
 
+    def _close(self, context: dict) -> None:
+        """The budget is spent: the reads come off the table and only the
+        terminator is offered. Every tool call the model has outstanding is
+        answered with the closing note, because the protocol needs each one
+        answered before another message can follow."""
+        closing = promptstore.load(PROMPTS, CLOSING_VERSION)
+        outstanding = ([self._awaiting] if self._awaiting is not None else [])
+        outstanding += [call_id for call_id, _, _ in self._queued]
+        self._awaiting, self._queued = None, []
+        for call_id in outstanding:
+            self._messages.append({"role": "tool", "tool_call_id": call_id,
+                                   "content": closing})
+        if not outstanding:
+            self._messages.append({"role": "user", "content": closing})
+        self._tools = [_final_schema()]
+
+    def _unanswered(self) -> list:
+        """The tool calls this thread has made and not yet answered. The
+        protocol needs every one answered before another message can follow, and
+        a turn ends with one outstanding: the terminator was called, and a
+        terminator returns no result."""
+        called: list = []
+        for message in self._messages:
+            if message.get("role") == "assistant":
+                called += [str((c or {}).get("id") or "")
+                           for c in message.get("tool_calls") or []]
+            elif message.get("role") == "tool":
+                answered = str(message.get("tool_call_id") or "")
+                called = [c for c in called if c != answered]
+        return called
+
+    def compose_refusal(self, context: dict) -> dict | None:
+        """One call, one attempt: say the refusal in Viva's voice. Whatever
+        comes back is checked by the runner exactly as an answer is, and None
+        leaves the deterministic sentence standing."""
+        from vivacore.models import AdapterError
+        explanation = _refusal_prompt(context)
+        messages = list(self._messages)
+        outstanding = self._unanswered()
+        for call_id in outstanding:
+            messages.append({"role": "tool", "tool_call_id": call_id,
+                             "content": explanation})
+        if not outstanding:
+            messages.append({"role": "user", "content": explanation})
+        try:
+            turn = self._adapter.converse(
+                messages,
+                [_final_schema(REFUSAL_TOOL, REFUSAL_SCHEMA_VERSION)])
+        except AdapterError:
+            return None
+        self.exchanges.append(Exchange(
+            modality=self.modality, request=turn.request,
+            response=turn.response, input_tokens=turn.input_tokens,
+            output_tokens=turn.output_tokens, cost_usd=turn.cost_usd,
+            latency_s=turn.latency_s, resolved_model=turn.resolved_model))
+        for call in turn.tool_calls or []:
+            fn = (call or {}).get("function") or {}
+            if fn.get("name") != REFUSAL_TOOL:
+                continue
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                return None
+            step, _ = _final_step(args)
+            return step
+        return None
+
     def _correct(self, turn, problem: str) -> None:
         """Answer the bad reply so the protocol stays well-formed: each of its
         tool calls gets the correction as its result; a plain-text reply gets
@@ -250,15 +352,24 @@ class TextPlanner:
         self._corrections = 0
         self.exchanges: list[Exchange] = []
 
-    def _prompt(self, context: dict) -> str:
+    def _prompt(self, context: dict, notes=()) -> str:
         template = promptstore.load(PROMPTS, PROTOCOL_VERSION)
-        tools = list(context["tools"]) + [_final_schema()]
+        if context.get("final_call"):
+            tools = [_final_schema()]
+        else:
+            tools = list(context.get("tools") or []) + [_final_schema()]
         conversation = [{"question": q, "viva": a} for q, a in self._prior]
-        problem = "\n" + _correction(self._problem) + "\n" if self._problem else ""
+        notes = list(notes)
+        if self._problem:
+            notes.append(_correction(self._problem))
+        if context.get("final_call"):
+            notes.append(promptstore.load(PROMPTS, CLOSING_VERSION))
+        problem = ("\n" + "\n".join(notes) + "\n") if notes else ""
         return template.format(
             system=_speak_prompt(), tools=json.dumps(tools, indent=1),
             conversation=json.dumps(conversation),
-            results=json.dumps(context["results"]),
+            results=json.dumps(context.get("results") or []),
+            calls_remaining=context.get("calls_remaining", 0),
             question=context["question"], problem=problem)
 
     def __call__(self, context: dict) -> dict:
@@ -299,11 +410,42 @@ class TextPlanner:
                                 "improvising an answer."}
             self._problem = problem
 
+    def compose_refusal(self, context: dict) -> dict | None:
+        """One call, one attempt, checked by the runner like any answer.
+
+        Built from the same template as every other step, so the voice, the
+        question and the results the turn did gather are all still in front of
+        the model."""
+        from vivacore.models import AdapterError
+        prompt = self._prompt({"question": context.get("question", ""),
+                               "results": context.get("results") or [],
+                               "calls_remaining": 0, "final_call": True},
+                              notes=[_refusal_prompt(context)])
+        try:
+            result = self._adapter.extract([], prompt)
+        except AdapterError:
+            return None
+        self.exchanges.append(Exchange(
+            modality=self.modality, request=result.request,
+            response=result.response, input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens, cost_usd=result.cost_usd,
+            latency_s=result.latency_s, resolved_model=result.resolved_model))
+        blocks = _FENCED.findall(result.text or "")
+        raw = blocks[0] if blocks else (result.text or "").strip()
+        try:
+            step = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(step, dict):
+            return None
+        composed, _ = _final_step(step)
+        return composed
+
     def _read(self, text: str) -> tuple[dict | None, str]:
         blocks = _FENCED.findall(text or "")
         if len(blocks) > 1:
-            # Executing whichever block came first would silently act on an
-            # illustration; the protocol demands exactly one.
+            # The protocol demands exactly one fenced block; more than one is
+            # a malformed step rather than a choice between them.
             return None, (f"the reply carried {len(blocks)} fenced JSON "
                           "blocks, and it must carry exactly one")
         raw = blocks[0] if blocks else (text or "").strip()
@@ -469,11 +611,15 @@ def _print_turn(turn: Turn) -> None:
         print(f"Viva: {result.text}")
         if result.grade:
             print(f"  grade: {result.grade}")
+        elif result.figures:
+            print("  grade: none — " + ", ".join(
+                sorted({f.get("kind", "") for f in result.figures})))
         for figure in result.figures:
             ids = ", ".join(map(str, figure.get("record_ids", [])))
-            grade = figure.get("grade", "")
-            print(f"  {figure.get('value')}"
-                  + (f" ({grade})" if grade else "") + f"  <- {ids}")
+            grade = figure.get("grade", "") or figure.get("kind", "")
+            print(f"  {figure.get('id')} {figure.get('value')}"
+                  + (f" ({grade})" if grade else "")
+                  + f"  {figure.get('what', '')}  <- {ids}")
     else:
         print(f"Viva: {result.text or 'I have no answer.'}")
         print(f"  refused: {result.refusal}")
