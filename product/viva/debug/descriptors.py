@@ -1,6 +1,6 @@
 """Measure the shape of a vault's counterparty descriptors. No model calls.
 
-    VIVA_VAULT_DIR=~/.viva-vault python -m viva.debug_descriptors
+    VIVA_VAULT_DIR=~/.viva-vault python -m viva.debug.descriptors
 
 Prints, in order: how many raw descriptors collapse into one normalized key; how
 many normalized keys share a head token; the heads shared by `SAFE_FANOUT` or
@@ -24,11 +24,11 @@ import pathlib
 import sys
 from decimal import Decimal
 
-from .env import load_dotenv
+from ..env import load_dotenv
 from merchantcore.descriptor import brand_candidate, parse_descriptor
 from merchantcore.normalize import _DATE_FRAGMENT
-from .ledger.merchants import is_shareable, normalize_merchant
-from .vault import Vault
+from ..ledger.merchants import is_shareable, normalize_merchant
+from ..vault import Vault
 
 SAFE_FANOUT = 3          # a head shared by this many distinct tails may be printed
 

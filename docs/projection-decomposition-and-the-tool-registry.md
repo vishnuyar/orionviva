@@ -122,7 +122,7 @@ This brief deliberately does **not** include: any write path or event schema cha
 
 ## 6. Order of work — strictly by reversibility
 
-- **Step 0 — characterize before touching.** Capture the real vault's current outputs (`debug_tiers`, `debug_networth`, `debug_vault`, the test suite) as the *before*. Changes nothing; this is the yardstick every later step is measured against.
+- **Step 0 — characterize before touching.** Capture the real vault's current outputs (`debug.tiers`, `debug.networth`, `debug.vault`, the test suite) as the *before*. Changes nothing; this is the yardstick every later step is measured against.
 - **Step 1 — extract the core.** `ProjectionCore` (fold + state + caches) behind the untouched facade. Suite and diff must be clean.
 - **Step 2 — move one family at a time** into its view module, facade delegating, diff after each family. Any family that resists cleanly separating is evidence for revisiting D1, cheaply, mid-flight.
 - **Step 3 — registry v1.** Schemas, envelope, refusal semantics; the five tools of D2 implemented over the view modules.

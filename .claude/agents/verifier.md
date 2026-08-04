@@ -21,7 +21,7 @@ is still a failure.
 **2. Does it behave on real documents?** Tests can't catch
 right-arithmetic-wrong-concept; every slice declared done without a real-run
 had defects. If the change touches ingestion, the ledger, projections, or
-answers, run the product's own debug tools against the vault (the `viva/debug_*`
+answers, run the product's own debug tools against the vault (the `viva/debug/`
 modules, the rebuild/reingest flow on the rebuilt vault — never mutate the
 baseline vault) and read the output like a skeptical accountant. If a
 real-document run is impossible from where you are running, say so loudly in

@@ -8,9 +8,9 @@ POST, HOLD or PARK.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
-    PYTHONPATH=../core:../merchant:. python3 -m viva.debug_claim            # list reads
-    PYTHONPATH=../core:../merchant:. python3 -m viva.debug_claim fbdcae06   # diagnose one
-    PYTHONPATH=../core:../merchant:. python3 -m viva.debug_claim fbdcae06 --raw
+    PYTHONPATH=../core:../merchant:. python3 -m viva.debug.claim            # list reads
+    PYTHONPATH=../core:../merchant:. python3 -m viva.debug.claim fbdcae06   # diagnose one
+    PYTHONPATH=../core:../merchant:. python3 -m viva.debug.claim fbdcae06 --raw
 
 `--raw` also prints the stored response verbatim. Read-only: nothing is written,
 and no model is called.
@@ -22,8 +22,8 @@ import os
 import pathlib
 import sys
 
-from .env import currency_from_env, load_dotenv, locale_from_env
-from .logs import configure as configure_logging
+from ..env import currency_from_env, load_dotenv, locale_from_env
+from ..logs import configure as configure_logging
 
 
 def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
@@ -33,11 +33,11 @@ def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
     from vivacore.verify.arithmetic import (check_balance_identity,
                                             check_brokerage_identity,
                                             check_paystub_identity)
-    from .ingest.brokerage import from_brokerage_json
-    from .ingest.paystub import from_paystub_json
-    from .ingest.registry import (BROKERAGE_IDENTITY, PAYSTUB_IDENTITY,
+    from ..ingest.brokerage import from_brokerage_json
+    from ..ingest.paystub import from_paystub_json
+    from ..ingest.registry import (BROKERAGE_IDENTITY, PAYSTUB_IDENTITY,
                                   profile_for)
-    from .ingest.statement import from_model_json
+    from ..ingest.statement import from_model_json
 
     profile = profile_for(doc_type)
     if profile is None:
@@ -65,7 +65,7 @@ def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
     if identity == BROKERAGE_IDENTITY:
         # The same sweep decision the projector makes, so this report matches
         # what an ingest would do.
-        from .ingest.brokerage import resolve_sweep_cash
+        from ..ingest.brokerage import resolve_sweep_cash
         facts, sweep_note = resolve_sweep_cash(facts)
         if sweep_note:
             print(f"[sweep]  money-market sweep counted as cash — {sweep_note}.")
@@ -104,7 +104,7 @@ def _parse_and_check(doc_type: str, text: str, doc_id: str, locale: str,
 def main() -> None:
     load_dotenv()
     configure_logging()
-    from .vault import Vault
+    from ..vault import Vault
 
     passphrase = os.environ.get("VIVA_PASSPHRASE")
     if not passphrase:
@@ -151,7 +151,7 @@ def main() -> None:
             # prompt version names one: it is a self-describing
             # `extract:<base>+<fragment>` composite, and a fragment belongs to
             # exactly one profile.
-            from .ingest.registry import doc_type_for_prompt_version
+            from ..ingest.registry import doc_type_for_prompt_version
             for candidate in [b] + [m.body for m in matches]:
                 recovered = doc_type_for_prompt_version(
                     candidate.get("prompt_version", ""))

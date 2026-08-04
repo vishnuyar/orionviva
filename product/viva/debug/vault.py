@@ -8,7 +8,7 @@ documents, and the model reads recorded. Read-only.
 
 Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
-    PYTHONPATH=../core:. python3 -m viva.debug_vault
+    PYTHONPATH=../core:. python3 -m viva.debug.vault
 
 The passphrase may be given as the first argument instead of in the environment.
 """
@@ -21,16 +21,16 @@ import os
 import pathlib
 import sys
 
-from .env import load_dotenv
-from .logs import configure as configure_logging
+from ..env import load_dotenv
+from ..logs import configure as configure_logging
 
 
 def main() -> None:
     load_dotenv()
     configure_logging()
-    from .answer import coverage_summary
-    from .ingest import held_items
-    from .vault import Vault
+    from ..answer import coverage_summary
+    from ..ingest import held_items
+    from ..vault import Vault
 
     passphrase = os.environ.get("VIVA_PASSPHRASE") or (sys.argv[1] if len(sys.argv) > 1 else None)
     if not passphrase:
@@ -47,7 +47,7 @@ def main() -> None:
         print(f"    {etype}: {n}")
     print(f"raw blobs (captured files): {len(vault.raw.doc_ids())}")
 
-    from .ingest.identity import masked
+    from ..ingest.identity import masked
     proj = vault.ledger.projection()
     infos = proj.account_infos()
     print(f"accounts posted: {len(infos)}")

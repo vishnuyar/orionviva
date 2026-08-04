@@ -169,7 +169,7 @@ def _verdict(counts: Counter, n: int) -> str:
     if learned + counts.get(PROPOSED, 0) == 0:
         return ("VERDICT: it anticipates nothing. Either enrichment has not run on "
                 "this vault, or the implications are coming back empty — check "
-                "`debug_tiers` for a structural tier before concluding anything.")
+                "`debug.tiers` for a structural tier before concluding anything.")
     return (f"VERDICT: partial — {learned}/{scorable} of the anticipatable. Worth "
             "looking at what the misses have in common; that is the next batch "
             "of world knowledge to teach enrichment.")

@@ -170,7 +170,7 @@ def test_no_implication_means_no_claim(tmp_path):
 
 
 def test_the_tier_summary_is_the_before_and_after_number(tmp_path):
-    from viva.debug_tiers import report
+    from viva.debug.tiers import report
 
     ledger = _vault(tmp_path, [("2026-03-06", "WHOLE FOODS MKT", "-180.00"),
                                ("2026-03-07", "NETFLIX.COM", "-15.00"),
@@ -387,7 +387,7 @@ def test_a_rebuild_that_produces_nothing_says_so(tmp_path):
     text = "\n".join(lines)
     assert "NOTHING WAS REBUILT" in text
     assert "not a result" in text
-    assert "debug_claim" in text          # and what to run next
+    assert "debug.claim" in text          # and what to run next
 
 
 def test_a_rebuild_stamps_the_classified_doc_type_onto_the_facts(tmp_path):

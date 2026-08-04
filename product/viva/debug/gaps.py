@@ -1,6 +1,6 @@
 """Why each held statement has not posted — the gap diagnosis.
 
-    VIVA_VAULT_DIR=<vault> python -m viva.debug_gaps
+    VIVA_VAULT_DIR=<vault> python -m viva.debug.gaps
 
 A statement posts when it connects to its account's chain, and the chain grows
 at exactly two ends:
@@ -25,9 +25,9 @@ from decimal import Decimal
 
 def diagnose(proj) -> list[dict]:
     """For each gap-held statement: what it needs, and what the chain has."""
-    from .ingest.pipeline import _resolve
-    from .ingest.registry import BALANCE_IDENTITY, identity_of_facts
-    from .ingest.statement import StatementFacts
+    from ..ingest.pipeline import _resolve
+    from ..ingest.registry import BALANCE_IDENTITY, identity_of_facts
+    from ..ingest.statement import StatementFacts
 
     rows = []
     for body in proj.gap_holds():
@@ -103,8 +103,8 @@ def report(proj) -> str:
 
 
 def main() -> None:
-    from .env import load_dotenv
-    from .vault import Vault
+    from ..env import load_dotenv
+    from ..vault import Vault
 
     load_dotenv()
     passphrase = os.environ.get("VIVA_PASSPHRASE")

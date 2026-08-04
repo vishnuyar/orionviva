@@ -63,7 +63,7 @@ The raw descriptor never leaves the encrypted ledger. The unencrypted catalog ho
   (T5/T6). Tested that PII is filtered and no financial data leaks.
 - ✅ **Surface.** The categorization card is now per-**merchant** ("N merchants to
   categorize", "categorize everywhere"), `/api/merchants` + `/api/assign-merchant`;
-  private (peer) merchants are marked. `debug_vault` shows catalog size + unknowns.
+  private (peer) merchants are marked. `debug.vault` shows catalog size + unknowns.
 
 Honest edges (deferred): the live model edge behind `categorize_fn` (injected,
 not yet wired to a real batched call — a thin follow-on, like the reader was);

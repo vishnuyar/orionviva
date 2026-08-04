@@ -230,7 +230,7 @@ def rebuild(source: pathlib.Path, dest: pathlib.Path, passphrase: str,
             "  This is not a result — do not enrich or measure it. Check, in order:\n"
             "    * the outcomes above: all `parked`/`held` means the PARSER failed,\n"
             "      and the bracketed reason on each line says how;\n"
-            "    * `python -m viva.debug_claim <doc_id>` re-parses one stored reply\n"
+            "    * `python -m viva.debug.claim <doc_id>` re-parses one stored reply\n"
             "      with today's code and prints exactly where it breaks;\n"
             "    * an unrecognised doc_type has no profile, so it parks by design.")
     return counts
@@ -260,7 +260,7 @@ def main() -> None:
                      by_date=by_date)
     print("\ndone: " + ", ".join(f"{n} {a}" for a, n in sorted(counts.items())))
     print(f"\nnext:  VIVA_VAULT_DIR={dest} python3 -m viva.enrich")
-    print(f"       VIVA_VAULT_DIR={dest} python3 -m viva.debug_tiers")
+    print(f"       VIVA_VAULT_DIR={dest} python3 -m viva.debug.tiers")
     print(f"       VIVA_VAULT_DIR={dest} python3 -m viva.diff_rulings <export.json>")
     print("\nthe source vault is untouched.")
 

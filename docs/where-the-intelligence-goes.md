@@ -225,7 +225,7 @@ Written against the code as it stands. **Nothing here touches ingest, verificati
 
 ## Step 0 — Measure before changing anything (no code moves)
 
-`viva.debug_tiers`: for every movement, classify it Tier 1 / 2 / 3 using *today's* catalog, and print the counts and money in each. This is a pure projection query.
+`viva.debug.tiers`: for every movement, classify it Tier 1 / 2 / 3 using *today's* catalog, and print the counts and money in each. This is a pure projection query.
 
 It decides whether the rest is worth doing, and it is also the **before** half of the only number that matters: *how many questions did the queue ask, and how many should it have asked?* Run it again after and the difference is the result.
 
@@ -319,7 +319,7 @@ after:   2 questions          — 33 per 100 movements
 
 - **`implication_for(merchant, inflow)`** had to exist separately from `implication_of(movement)`. `propose` needs to ask what a counterparty implies *before* it has a movement in hand, and scanning movements to find out was both slow and wrong for a proposal being composed.
 - **Confirming a `suggested` implication changes no figure — it removes the doubt about one.** That surfaced when a test asserted spending would drop on confirmation and it didn't: the implication had already excluded it, provisionally. That is the ladder working, and it is a better story than the old one: *"I believed this, and now I'm sure."*
-- **Unenriched counterparties raise no nature question at all.** Asking what money *became* before knowing *who received it* is the wrong order, so the flow is strictly ingest → enrich → ask. `debug_tiers` says so out loud when a vault has unenriched merchants, because otherwise the measurement would look artificially question-heavy.
+- **Unenriched counterparties raise no nature question at all.** Asking what money *became* before knowing *who received it* is the wrong order, so the flow is strictly ingest → enrich → ask. `debug.tiers` says so out loud when a vault has unenriched merchants, because otherwise the measurement would look artificially question-heavy.
 - **Tolerant on transport noise, strict on claims.** `clean_implications` accepts `" Asset "` (whitespace and case are noise) and drops `"assets"` or `"liability payment"` outright. An unrecognised `confidence` degrades to `suggested` and an unrecognised direction to `both` — always toward the rung that **asks** rather than the rung that **acts**.
 
 ### The instance that sized the tier work
@@ -328,7 +328,7 @@ On the first real run, **185 counterparties sat in `unenriched`** — the tier m
 
 ### Still to do
 
-**The real-vault run.** Everything above is measured on synthetic data. `python -m viva.debug_tiers` gives the honest before; `python -m viva.enrich` under `enrich-v3` fills in the implications; running `debug_tiers` again gives the after. The human rulings already made survive — `reset_categorization` keeps them by default, and they were true regardless of how naively they were asked for.
+**The real-vault run.** Everything above is measured on synthetic data. `python -m viva.debug.tiers` gives the honest before; `python -m viva.enrich` under `enrich-v3` fills in the implications; running `debug.tiers` again gives the after. The human rulings already made survive — `reset_categorization` keeps them by default, and they were true regardless of how naively they were asked for.
 
 ---
 
