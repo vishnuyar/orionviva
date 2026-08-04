@@ -1,6 +1,6 @@
 # Agent Toolset — the twelve verbs Viva may ever use
 
-**Status:** Design; **the read verbs are built and a model can now call them** — registry v1 (2026-08-01) implements `query_ledger`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), and the conversation loop above them exists: provider adapters (native tool-calling for every OpenAI-compatible endpoint, a text protocol for any other model), a planner that composes from tool results behind the citation gate, and `viva.speak` as the entrypoint. The remaining verbs await their machinery. · **Last updated:** 2026-08-01 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
+**Status:** Design; **the read verbs are built and a model can now call them** — the registry implements `query_ledger`, `list_movements`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), and the conversation loop above them exists: provider adapters (native tool-calling for every OpenAI-compatible endpoint, a text protocol for any other model), a planner that composes from tool results behind the citation gate, and `viva.speak` as the entrypoint. The remaining verbs await their machinery. · **Last updated:** 2026-08-04 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2 (compute/project are deterministic; no arithmetic in the model), T4 (all writes are events), T6 (no tool touches the network), X3 (irreversibility structurally impossible — no tool can do anything irreversible)
 
 ## The scaling law
@@ -98,3 +98,25 @@
 > it returns. Known residual, deferred to the structured-answers decision: a
 > deliberately constructed derivation through `compute` can still ground a
 > fabricated figure, and a figure's grade is caller-declared, unvalidated._
+
+> _Amended again 2026-08-04, after the availability cycle. **The workhorse split
+> in two.** `query_ledger` answers in totals and returns no rows; the individual
+> movements are `list_movements`, which refuses any call naming none of account,
+> category, merchant, tag or window — so a read that could return the whole
+> ledger cannot be called without narrowing it first. Six verbs are registered,
+> and the descriptions file is `tools-v2`.
+>
+> **The residual above is half closed.** Every number a tool asserts is now a
+> figure with an id; an answer cites ids rather than restating values; and
+> `compute`'s operands are figure ids or values the person stipulated in this
+> turn's question, never a decimal the model typed. So a grade is inherited from
+> the operands rather than declared by the caller, and a value resting on a
+> supposition stays `hypothetical` through every later hop. What stays open is a
+> magnitude written into `compute`'s *expression* string rather than passed as an
+> operand: `balance + 987654` still returns a figure wearing the balance's
+> document and grade. One ruling on that is outstanding.
+>
+> **Two shapes of honesty were added beside the gate:** every read declares what
+> it is attested for, per account; and a refused turn is spoken in Viva's voice
+> by the same model, checked by the same number rule as an answer, with the
+> machine's blunt sentence standing if that composition fails._

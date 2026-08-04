@@ -1,6 +1,6 @@
 # Design Invariants — the checklist every decision answers to
 
-**Status:** Living · **Last updated:** 2026-07-20
+**Status:** Living · **Last updated:** 2026-08-04
 
 ## Why this doc
 
@@ -8,7 +8,7 @@ Some requirements are cross-cutting: they belong to no single feature, so they'r
 
 ## Trust invariants (from ADRs 001–010)
 
-- **T1 — Provenance + confidence on every figure.** No number without a source pointer and a verification grade. (ADR-008 promise 1–2)
+- **T1 — Provenance + confidence on every figure.** No number without a source pointer and a verification grade. (ADR-008 promise 1–2) **Refined 2026-08-04:** a figure has an *identity*. Every number a tool asserts is emitted with an id, and an answer cites the id rather than restating the value — so a number no tool emitted has nothing to cite. Four kinds of figure exist and only two are claims about the person's money: `financial` and `computed` carry a grade; `activity` (what the agent itself did, standing on the ledger events that recorded it) and `hypothetical` (a value resting on the person's own premise) carry none, so composition can never lend them one. A grade is inherited from a figure's operands, never declared by its caller. (projection-decomposition-and-the-tool-registry.md)
 - **T2 — Arithmetic is deterministic; models never certify.** (ADR-010)
 - **T3 — Capture-first.** Originals and model I/O written before anything parses them; nothing trust-relevant is ever discarded. (ADR-003)
 - **T4 — Everything is an event.** State is a projection of the append-only, anchored log; the log assumes multiple writers (devices). (ADR-004, multi-device doc)

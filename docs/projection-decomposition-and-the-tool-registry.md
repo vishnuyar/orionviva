@@ -1,6 +1,6 @@
 # Breaking up the projection — and the tool registry it becomes
 
-**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01
+**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01 · **Last updated:** 2026-08-04
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2/ADR-010 (deterministic math; no arithmetic in the model), T4 (untouched — this brief writes no events), T6 (no tool touches the network), X3 (no tool can do anything irreversible), I5 (code universal, specifics are data), and the standing principle *read side early, write side late*.
 
 ---
@@ -219,3 +219,55 @@ join the citation pool — the residual (a deliberate derivation through
 already owed. Every conversation exchange is captured in the vault
 (`ReadRecorded`, `phase="speak"`) with its prompt digests, model, tokens and
 cost. The entrypoint is `viva.speak`; no model has yet met the real vault.
+
+**What the availability cycle changed (2026-08-04).** The residual recorded
+just above — a deliberate derivation through `compute` grounding a fabricated
+figure, and a grade the caller simply declares — was the subject. Closing it
+meant giving a number an identity.
+
+Every tool now emits each number it asserts as a **figure**: a value, what it
+is, what it rests on, and an id the runner stamps in emission order across the
+whole run. An answer cites ids; it does not restate values. A number no tool
+emitted has no id to cite, so an invention has nothing to stand on rather than
+merely failing a check afterwards. Four kinds exist, and only two are claims
+about the person's money: `financial` and `computed` carry a grade, while
+`activity` (what the agent itself did, standing on the ledger events that
+recorded it) and `hypothetical` (a value resting on the person's own premise)
+carry none. A grade is inherited from a figure's operands. Ruled with it: since
+arithmetic is deterministic, a sum of corroborated figures is corroborated —
+`compute` returns kind `computed` and inherits, rather than downgrading.
+
+`compute` follows from that. Its operands are figure ids, or values the person
+stipulated in this turn's question and which the question demonstrably
+contains; a decimal typed straight into `inputs` refuses on the first call and
+names the figures that are available. A supposition does not wear off — a
+result with any hypothetical operand is hypothetical however many times it is
+recomputed — and the arithmetic traps an inexact result rather than handing
+back a rounded figure wearing a grade. **Still open:** a magnitude written into
+the *expression* string rather than passed as an operand (`balance + 987654`)
+still returns a figure carrying the balance's document and grade.
+
+**The workhorse split in two.** `query_ledger` answers in totals and returns no
+rows; `list_movements` returns the individual rows and refuses a call that
+names none of account, category, merchant, tag or window. Six tools are
+registered, and the descriptions file is `tools-v2`.
+
+**What a result costs became a design constraint rather than an afterthought.**
+A tool result is resent in full on every model call for the rest of the turn,
+so its size is paid once per remaining call — which is what decides whether a
+small local model can hold the conversation at all. A figure's records no
+longer travel to the model at all: it cites an id and the runner resolves the
+rest, so only their count is sent. Every uncapped read is bounded by a named
+constant, and none of them grows with the ledger — measured at the reference
+vault shape and at ten times it.
+
+**Two shapes of honesty beside the gate.** Every read declares what it is
+attested for, per account. And a refused turn is spoken in Viva's voice: the
+planner composes the refusal once through `deliver_refusal`, checked by the
+same number rule as an answer, with the machine's blunt sentence standing if
+the composition fails or reaches for a figure it cannot cite.
+
+**Verification.** Two fresh-context rounds, both reporting FAIL, both repaired.
+The lesson worth keeping came from the second: its worst finding was a defect
+the first round's repair had introduced. A repair to a guard is itself a change
+to a guard, and needs the same mutation proof the guard got.
