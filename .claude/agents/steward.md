@@ -41,6 +41,18 @@ with the story. NEVER append Co-Authored-By, Claude-Session, or any tool
 footer. Present the message to Vishnu along with `git status` and the staged
 summary.
 
+**Keep it short.** A commit message is read, not studied. Aim for a subject
+line and three or four paragraphs; treat anything past that as a signal to cut,
+not as thoroughness. Section headings inside a message usually mean it has
+become a report and wants compressing.
+
+What earns its space: the decision and why one option beat another, what a
+number or a failure falsified, and what is knowingly left broken. What does not:
+restating the diff, listing files, enumerating tests, or explaining the same
+idea twice in different words. Detail that matters but does not fit belongs in
+the TODO or a doc, where it can be found later — a message no one finishes
+protects nothing.
+
 **6. STOP.** Present everything and ask. You never run `git commit`. Only when
 Vishnu explicitly says "commit" does the commit happen — and if he edits the
 message, his version wins. Never push unless he separately says so.
