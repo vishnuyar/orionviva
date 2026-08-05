@@ -13,16 +13,26 @@ exist, and the tool that emits one decides which it is:
 - ``activity`` — a number about the agent's own behaviour, standing on the
   ledger events that recorded it. Being wrong about it costs nothing but
   candour, so it carries no grade.
-- ``computed`` — exact arithmetic over other figures. It carries a grade,
-  inherits the weakest among its operands, and stands on every record they
-  stood on.
+- ``computed`` — arithmetic over other figures. It stands on the records of the
+  operands that actually determined it and carries the weakest grade among
+  them, and being a claim about money it is refused outright when it stands on
+  nothing.
 - ``hypothetical`` — a value derived from something the person supposed. It
   rests on their premise, not on evidence, so it carries no grade.
 
 Composition inherits the weakest grade among its parts, so a total built from
 one unverified balance is itself unverified, and a conflicted part makes the
-whole conflicted. A refusal is a first-class result: ``ok`` is False, ``refusal``
-carries a machine tag, and ``text`` says honestly what is and is not held.
+whole conflicted.
+
+What a figure rests on and how its arithmetic came out are two different
+questions, and a figure answers both separately. ``grade`` and ``record_ids``
+say what stands behind the value; ``exactness`` says whether the derivation
+terminated and, when it did not, what was done to write it down. Exactness is
+not a grade: it carries no evidentiary meaning and never moves one, and a
+number known perfectly well can still be one no pair of decimals holds.
+
+A refusal is a first-class result: ``ok`` is False, ``refusal`` carries a
+machine tag, and ``text`` says honestly what is and is not held.
 """
 
 from __future__ import annotations
@@ -54,12 +64,20 @@ PAYLOAD_TARGET = 4000
 # answer cites a figure by id and the runner resolves its records, so only their
 # count travels.
 MODEL_FACING_FIGURE = ("id", "value", "currency", "kind", "grade", "dated",
-                       "what")
+                       "exactness", "what")
 
 # Weakest-last, so composition takes the maximum index present. `conflicted`
 # sits below `unverified`: a figure that disagrees with its own evidence is
 # worse than one nothing has checked.
 _STRENGTH = (VERIFIED, CORROBORATED, UNVERIFIED, CONFLICTED)
+
+# How the arithmetic behind a figure came out. A number read off a record
+# terminated by construction, so `EXACT` is what a figure carries unless a
+# derivation says otherwise.
+EXACT = "exact"
+ROUNDED = "rounded"
+
+_EXACTNESS = (EXACT, ROUNDED)
 
 
 def weakest(grades) -> str:
@@ -71,23 +89,46 @@ def weakest(grades) -> str:
 
 
 def figure(value, what: str, kind: str = FINANCIAL, grade: str = "",
-           dated: str = "", currency: str = "", record_ids=()) -> dict:
+           dated: str = "", currency: str = "", record_ids=(),
+           exactness: str = EXACT) -> dict:
     """One number this result asserts, ready for the runner to stamp with an id.
 
     ``what`` is a short noun phrase naming the number, so an answer or a
     refusal can refer to it without restating its value. The id is assigned by
-    the runner, not here: tools stay stateless and ids belong to the run."""
+    the runner, not here: tools stay stateless and ids belong to the run.
+
+    A grade outside the ladder is an error here rather than a label nobody
+    checks: `weakest` ignores what it does not recognise, so an unknown grade
+    would travel to the person as a strength claim while counting for nothing
+    in composition. An exactness nothing recognises is refused for the same
+    reason, in the same place."""
+    if grade and grade not in _STRENGTH:
+        raise ValueError(f"grade {grade!r} is not on the ladder: "
+                         + ", ".join(_STRENGTH))
+    if exactness not in _EXACTNESS:
+        raise ValueError(f"exactness {exactness!r} says nothing about how the "
+                         "arithmetic came out: " + ", ".join(_EXACTNESS))
     return {"id": "", "value": str(value), "currency": currency, "kind": kind,
             "grade": grade if kind in GRADED_KINDS else "",
             "dated": dated, "record_ids": [str(r) for r in record_ids],
-            "what": what}
+            "exactness": exactness, "what": what}
+
+
+# What a model-facing field says when it has nothing to add. Every result is
+# resent on every remaining call of the turn, so a field carrying the ordinary
+# case on every figure is paid for many times over and tells the model nothing.
+UNSAID = {"exactness": EXACT}
 
 
 def _stated(fig: dict) -> dict:
     """One figure as the model sees it: what it asserts, and how many records
-    stand behind it. A field the tool left empty is omitted rather than sent as
-    an empty string."""
-    out = {k: fig[k] for k in MODEL_FACING_FIGURE if fig[k] != ""}
+    stand behind it. A field the tool left empty, or holding nothing worth
+    saying, is omitted rather than sent."""
+    out = {}
+    for key in MODEL_FACING_FIGURE:
+        value = fig[key]
+        if value != "" and value != UNSAID.get(key, ""):
+            out[key] = value
     out["records"] = len(fig["record_ids"])
     return out
 

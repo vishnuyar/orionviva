@@ -1,6 +1,6 @@
 # Agent Toolset — the twelve verbs Viva may ever use
 
-**Status:** Design; **the read verbs are built and a model can now call them** — the registry implements `query_ledger`, `list_movements`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), and the conversation loop above them exists: provider adapters (native tool-calling for every OpenAI-compatible endpoint, a text protocol for any other model), a planner that composes from tool results behind the citation gate, and `viva.speak` as the entrypoint. The remaining verbs await their machinery. · **Last updated:** 2026-08-04 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
+**Status:** Design; **the read verbs are built and a model can now call them** — the registry implements `query_ledger`, `list_movements`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), and the conversation loop above them exists: provider adapters (native tool-calling for every OpenAI-compatible endpoint, a text protocol for any other model), a planner that composes from tool results behind the citation gate, and `viva.speak` as the entrypoint. The remaining verbs await their machinery. · **Last updated:** 2026-08-05 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2 (compute/project are deterministic; no arithmetic in the model), T4 (all writes are events), T6 (no tool touches the network), X3 (irreversibility structurally impossible — no tool can do anything irreversible)
 
 ## The scaling law
@@ -98,26 +98,62 @@
 > dates travel as whole tokens, so a window filter cannot taint the dated rows
 > it returns. Known residual, deferred to the structured-answers decision: a
 > deliberately constructed derivation through `compute` can still ground a
-> fabricated figure, and a figure's grade is caller-declared, unvalidated._
+> fabricated figure, and a figure's grade is caller-declared, unvalidated. Both
+halves are closed in the 2026-08-05 amendment below._
 
 > _Amended again 2026-08-04, after the availability cycle. **The workhorse split
 > in two.** `query_ledger` answers in totals and returns no rows; the individual
 > movements are `list_movements`, which refuses any call naming none of account,
 > category, merchant, tag or window — so a read that could return the whole
 > ledger cannot be called without narrowing it first. Six verbs are registered,
-> and the descriptions file is `tools-v2`.
+> and the descriptions file was `tools-v2` at this point (`tools-v5` since the
+> amendment below).
 >
 > **The residual above is half closed.** Every number a tool asserts is now a
 > figure with an id; an answer cites ids rather than restating values; and
 > `compute`'s operands are figure ids or values the person stipulated in this
 > turn's question, never a decimal the model typed. So a grade is inherited from
 > the operands rather than declared by the caller, and a value resting on a
-> supposition stays `hypothetical` through every later hop. What stays open is a
-> magnitude written into `compute`'s *expression* string rather than passed as an
-> operand: `balance + 987654` still returns a figure wearing the balance's
-> document and grade. One ruling on that is outstanding.
+> supposition stays `hypothetical` through every later hop. What stayed open was
+> a magnitude written into `compute`'s *expression* string rather than passed as
+> an operand: `balance + 987654` came back wearing the balance's document and
+> grade. That is closed in the amendment below.
 >
 > **Two shapes of honesty were added beside the gate:** every read declares what
 > it is attested for, per account; and a refused turn is spoken in Viva's voice
 > by the same model, checked by the same number rule as an answer, with the
 > machine's blunt sentence standing if that composition fails._
+
+> _Amended again 2026-08-05, after the two-axis cycle. **A figure answers two
+> questions separately.** What it rests on is `grade` and `record_ids`; how its
+> arithmetic came out is `exactness`, which carries no evidentiary meaning and
+> never moves a grade. Asking one property both questions is what produced the
+> two residuals above at once.
+>
+> **The fabrication residual is closed.** In `compute`, multiplying or dividing
+> by a bare magnitude changes the units and preserves attestation; adding or
+> subtracting one injects a quantity nothing measured, so a total with any
+> unattested term stands on no record and carries no grade. `computed` remains a
+> money kind, so the existing gate refuses such a figure rather than delivering
+> it. **A grade is no longer merely inherited but validated** — a value off the
+> ladder raises where the figure is written, rather than travelling as a
+> strength claim that composition ignores; an unrecognised exactness raises in
+> the same place.
+>
+> **Every figure now says what it measures.** An amount states its currency, a
+> count states none, and nothing states a null — which is what lets the
+> arithmetic tell money from a plain number, refuse `money × money` and return
+> `money ÷ money` as a ratio in no currency. A quiet window is still an amount:
+> zero *of a currency*, resting on the accounts whose statements answer for the
+> period.
+>
+> **An inexact result is delivered, not refused.** A division that does not
+> terminate returns a figure marked rounded, and the runner attaches an approx
+> term to any bare statement of its value after the model has spoken, so the
+> hedge is not something the model can drop. Money is written at hundredths; a
+> dimensionless value is written to significant figures, because a fixed decimal
+> scale can write a nonzero ratio as `0.00` and a significant-figures rule
+> cannot. Six verbs are registered, and the descriptions file is `tools-v5`.
+> Recorded and not fixed: the term is attached by insertion and mangles known
+> sentence shapes (`$approx 85.71`); see the TODO and the closing sections of
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)._

@@ -9,6 +9,11 @@ shapes of read are separated: an aggregate answers "how much" without
 returning rows, and ``list_movements`` returns rows only for a question narrow
 enough to name one.
 
+A figure holding an amount states the currency it is in, and a figure counting
+things states none — that is how anything downstream tells an amount from a
+plain number. A summary whose movements are not all in one currency refuses:
+nothing here converts, so their sum would be a number in no currency at all.
+
 No tool here writes, calls a model, or touches the network; each reads the one
 live projection it was built over.
 """
@@ -221,6 +226,49 @@ def _attested_coverage(proj, filters: dict) -> tuple[list, list]:
     return covers, caveats
 
 
+def _shared_currency(currencies) -> str | None:
+    """The one currency a set of amounts is in, "" when none of them says, and
+    None when they disagree — which is a read that cannot be summed."""
+    held = {c for c in currencies if c}
+    if len(held) > 1:
+        return None
+    return held.pop() if held else ""
+
+
+def _scope(proj, filters: dict) -> list:
+    """The balance-holding accounts a read ranges over: the one it names, or
+    every one of them."""
+    named = filters.get("account")
+    return [i for i in _real_accounts(proj)
+            if not named or i.account == named]
+
+
+def _of_an_empty_read(proj, filters: dict) -> tuple[str, list]:
+    """What a total of nothing is an amount of, and what it rests on, as
+    `(currency, record ids)`.
+
+    A window in which nothing moved still has a total, and that total is zero
+    of a currency rather than a bare number. The accounts the read ranged over
+    say which currency, and their statements are what answer for the zero being
+    real rather than merely unobserved. Saying neither leaves the same zero
+    reading as a count, which no balance adds to."""
+    scope = _scope(proj, filters)
+    return (str(filters.get("currency") or "")
+            or _shared_currency(i.currency for i in scope) or "",
+            sorted(i.account for i in scope))
+
+
+def _mixed_currencies(tool: str, held) -> ToolResult:
+    """A total across currencies would be a number in none of them, and nothing
+    here converts between them."""
+    return refusal(tool, "mixed_currencies",
+                   "These amounts are in " + ", ".join(sorted(held))
+                   + ", and nothing here converts between currencies. A total "
+                   "across them would be a number in no currency. Ask for one "
+                   "currency at a time.",
+                   currencies=sorted(held))
+
+
 def _movement_row(proj, m, grades: dict) -> dict:
     ruling = proj.derived_category(m) or {}
     return {"record_id": m.key, "account": m.account, "date": m.date,
@@ -299,11 +347,18 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     How much moved, where and when. The rows themselves are `list_movements`,
     which answers only a narrower ask."""
     rows, _ = _matching_rows(proj, filters)
+    held = _shared_currency(r["currency"] for r in rows)
+    if held is None:
+        return _mixed_currencies(TOOL, {r["currency"] for r in rows
+                                        if r["currency"]})
     # A summary stands on the documents that attest the period and on the
     # accounts it ranged over, not on every movement inside it. Per-movement
     # keys belong to the read that returns individual rows.
     record_ids = sorted({r["doc_id"] for r in rows if r["doc_id"]}
                         | {r["account"] for r in rows})
+    currency = held or str(filters.get("currency") or "")
+    if not rows:
+        currency, record_ids = _of_an_empty_read(proj, filters)
     covers, caveats = _attested_coverage(proj, filters)
     money_in = sum((Decimal(r["amount"]) for r in rows
                     if Decimal(r["amount"]) > 0), Decimal("0"))
@@ -325,15 +380,17 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
         figure(len(rows), "movements matching the filters", grade=grade,
                record_ids=record_ids),
         figure(money_in, "money in over these movements", grade=grade,
-               record_ids=record_ids),
+               currency=currency, record_ids=record_ids),
         figure(money_out, "money out over these movements", grade=grade,
-               record_ids=record_ids),
+               currency=currency, record_ids=record_ids),
         figure(money_in - money_out, "net movement over this set", grade=grade,
-               record_ids=record_ids),
+               currency=currency, record_ids=record_ids),
     ]
-    figures += [figure(v, f"net movement on {k}", grade=grade, record_ids=[k])
+    figures += [figure(v, f"net movement on {k}", grade=grade,
+                       currency=currency, record_ids=[k])
                 for k, v in sorted(by_account.items())]
     figures += [figure(v, f"net movement in {k}", grade=grade,
+                       currency=currency,
                        record_ids=sorted(month_docs.get(k, ())))
                 for k, v in sorted(by_month.items())]
     return ToolResult(
@@ -458,6 +515,7 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
     out: dict[str, Decimal] = {}
     used_grades: list = []
     record_ids: set = set()
+    currencies: set = set()
     untagged = total = Decimal("0")
     count = 0
     for m in proj.movements():
@@ -468,6 +526,7 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
         amount = abs(m.amount)
         total += amount
         count += 1
+        currencies.add(m.currency)
         used_grades.append(grades.get(m.key, ""))
         if m.provenance.doc_id:
             record_ids.add(m.provenance.doc_id)
@@ -493,14 +552,24 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
             key = m.currency or "?"
         out[key] = out.get(key, Decimal("0")) + amount
     extras = {"total": total, "count": count, "untagged": untagged,
-              "grades": used_grades, "record_ids": sorted(record_ids)}
+              "grades": used_grades, "record_ids": sorted(record_ids),
+              "currencies": {c for c in currencies if c}}
     return out, extras
 
 
 def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
     grouped, extras = _spending_rows(proj, filters, group_by)
+    held = _shared_currency(extras["currencies"])
+    if held is None:
+        return _mixed_currencies(TOOL, extras["currencies"])
+    # The currency the counted movements are in, which is what the totals are
+    # amounts of. The filter is what narrowed the read, and answers for the
+    # caveats' own scope.
+    currency = held or str(filters.get("currency") or "")
+    record_ids = extras["record_ids"]
+    if not extras["count"]:
+        currency, record_ids = _of_an_empty_read(proj, filters)
     covers, span_caveats = _attested_coverage(proj, filters)
-    currency = filters.get("currency")
     data = {"metric": "spending", "group_by": group_by,
             "by_group": {k: str(v) for k, v in sorted(grouped.items())},
             "total": str(extras["total"]), "count": extras["count"]}
@@ -514,28 +583,28 @@ def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
     uncategorized = grouped.get("Uncategorized")
     if group_by == "category" and uncategorized:
         caveats.append(f"{uncategorized} is still uncategorized.")
-    provisional = proj.provisional_spending(currency)
+    provisional = proj.provisional_spending(filters.get("currency"))
     if provisional:
         caveats.append(f"{provisional} of this rests on provisional evidence "
                        "(a suggested implication, not a ruling).")
-    undecided = proj.undecomposed(currency)
+    undecided = proj.undecomposed(filters.get("currency"))
     if undecided["count"]:
         caveats.append(f"{undecided['total']} across {undecided['count']} "
                        "compound payment(s) has known components but unknown "
                        "proportions, and is reported apart, not counted here.")
     grade = weakest(extras["grades"])
     figures = [figure(v, f"spending — {group_by} '{k}'", grade=grade,
-                      currency=currency, record_ids=extras["record_ids"])
+                      currency=currency, record_ids=record_ids)
                for k, v in sorted(grouped.items())]
     figures.append(figure(extras["total"], f"total spending by {group_by}",
                           grade=grade, currency=currency,
-                          record_ids=extras["record_ids"]))
+                          record_ids=record_ids))
     figures.append(figure(extras["count"], "spending movements counted",
-                          grade=grade, record_ids=extras["record_ids"]))
+                          grade=grade, record_ids=record_ids))
     return ToolResult(
         tool=TOOL, ok=True, data=data, figures=figures,
         grade=grade, covers=covers,
-        record_ids=extras["record_ids"], caveats=caveats,
+        record_ids=record_ids, caveats=caveats,
         coverage=f"{extras['count']} spending movement(s) counted.",
         text=f"Spending by {group_by}: total {extras['total']}.")
 
