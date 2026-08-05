@@ -394,7 +394,7 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
         payload = json.loads(event.body["response_text"])
         assert payload["request"] and payload["response"]
         assert payload["prompt_versions"]["speak"].startswith("speak-v5@")
-        assert payload["prompt_versions"]["tools"].startswith("tools-v2@")
+        assert payload["prompt_versions"]["tools"].startswith("tools-v5@")
         assert payload["verdict"]["answered"] is True
     assert log.events[0].body["doc_id"] == "speak:s-test:1:1"
     assert log.events[1].body["doc_id"] == "speak:s-test:1:2"

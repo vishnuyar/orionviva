@@ -1,6 +1,6 @@
 # Breaking up the projection — and the tool registry it becomes
 
-**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01 · **Last updated:** 2026-08-04
+**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01 · **Last updated:** 2026-08-05
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2/ADR-010 (deterministic math; no arithmetic in the model), T4 (untouched — this brief writes no events), T6 (no tool touches the network), X3 (no tool can do anything irreversible), I5 (code universal, specifics are data), and the standing principle *read side early, write side late*.
 
 ---
@@ -177,9 +177,9 @@ only, every decimal figure arriving through `inputs` as an exact string, the
 result inheriting the weakest input grade.
 
 **Model-facing text stayed out of code.** Tool descriptions live in
-`viva/prompts/tools-v1.txt`, versioned and digest-pinned like every other
-prompt; the registry refuses to register a tool that has no description
-section, so a tool cannot reach a model unexplained.
+`viva/prompts/` (`tools-v1.txt` at this point), versioned and digest-pinned
+like every other prompt; the registry refuses to register a tool that has no
+description section, so a tool cannot reach a model unexplained.
 
 **The runner and the gate.** `viva/tools/runner.py` drives any *planner* — a
 provider adapter doing native tool-calling, a text-protocol parser, or a
@@ -242,15 +242,18 @@ stipulated in this turn's question and which the question demonstrably
 contains; a decimal typed straight into `inputs` refuses on the first call and
 names the figures that are available. A supposition does not wear off — a
 result with any hypothetical operand is hypothetical however many times it is
-recomputed — and the arithmetic traps an inexact result rather than handing
-back a rounded figure wearing a grade. **Still open:** a magnitude written into
-the *expression* string rather than passed as an operand (`balance + 987654`)
-still returns a figure carrying the balance's document and grade.
+recomputed. Two things this cycle left wrong were settled the next day, in
+*What the two-axis cycle changed* below: the arithmetic trapped an inexact
+result rather than rounding it, refusing a number the vault knows exactly; and
+a magnitude written into the *expression* string rather than passed as an
+operand (`balance + 987654`) came back carrying the balance's document and
+grade.
 
 **The workhorse split in two.** `query_ledger` answers in totals and returns no
 rows; `list_movements` returns the individual rows and refuses a call that
 names none of account, category, merchant, tag or window. Six tools are
-registered, and the descriptions file is `tools-v2`.
+registered, and the descriptions file was `tools-v2` at this point; it is
+`tools-v5` since the two-axis cycle below.
 
 **What a result costs became a design constraint rather than an afterthought.**
 A tool result is resent in full on every model call for the rest of the turn,
@@ -271,3 +274,69 @@ the composition fails or reaches for a figure it cannot cite.
 The lesson worth keeping came from the second: its worst finding was a defect
 the first round's repair had introduced. A repair to a guard is itself a change
 to a guard, and needs the same mutation proof the guard got.
+
+**What the two-axis cycle changed (2026-08-05).** Both defects left open above
+have the same cause: one property was being asked two unrelated questions.
+*What does this number rest on?* is an evidence question, answered by documents
+and a grade. *Did the arithmetic come out cleanly?* is a precision question,
+answered by the derivation itself and having nothing to do with evidence.
+Collapsing them produced both failure modes — a fabricated magnitude inherited
+evidence it never earned, and a division that does not terminate refused a
+number the vault knows exactly, which is the product saying *"I cannot know"*
+about something it does know.
+
+A figure now answers each separately. `grade` and `record_ids` say what stands
+behind the value; a new `exactness` says whether the derivation terminated.
+Exactness is not a grade: it carries no evidentiary meaning and never moves
+one.
+
+**Attestation follows the shape of the operator.** Multiplying or dividing by a
+bare magnitude is a change of units — it rescales an attested quantity and
+leaves it attested, so the result stands on every record either operand carries
+and takes the weakest grade among those that carry one; a graded count hands
+its evidence to what it scales rather than losing it. Adding or subtracting a
+bare magnitude injects a quantity nothing measured, so a total is attested only
+when every term is: one term standing on no record leaves the whole standing on
+none, with no grade either. That asymmetry is dimensional analysis applied to
+provenance. `computed` stays a money kind, so the gate that refuses a money
+figure citing no record is what turns *rests on nothing* into *cannot be said* —
+no new machinery, and the fabrication loophole is closed twice over: on
+dimensions where the injected magnitude meets money, and on attestation where
+it meets a plain number.
+
+**A quantity states what it measures.** Money in one currency, or dimensionless
+— a count, a ratio, a literal. Money adds to money and scales by a plain
+number; two amounts divide into a ratio and can never be multiplied; an amount
+and a plain number do not add at all. A currency clash is a property of the
+expression rather than of the call, so a figure bound to a name the arithmetic
+never reaches decides nothing. This only works if the reads say what they
+measure, so every amount a tool emits now states its currency and every count
+states none — including a window in which nothing moved, whose total is zero
+*of a currency*, resting on the accounts whose statements answer for the
+period. A summary whose movements are not all in one currency refuses rather
+than totalling them.
+
+**`inexact` no longer refuses.** A quotient that does not terminate comes back
+marked as rounded, and the runner attaches an approx term to any bare statement
+of its value after the model has spoken. The hedge cannot be dropped, because
+the model never writes it — the same reason it cannot say a number no tool
+emitted — and it is a substitution rather than a vocabulary check, so it is not
+a word list of size one. Money is written at hundredths, the precision money
+has. A dimensionless result is written to six **significant figures**, not to
+decimal places: a fixed decimal scale writes a small enough ratio as `0.00`,
+which is not an approximation of it but a different claim, and a
+significant-figures rule cannot round a nonzero value to zero at any magnitude.
+Counting from the leading digit also means a power of ten moves the point
+without moving the digits, so a proportion and the same proportion per hundred
+agree. The rounding is taken once, on the result, at a working precision far
+wider than the scale anything is finally written at.
+
+Six tools are still registered; the descriptions file is `tools-v5`.
+
+**Recorded, not fixed.** The approx term is attached by inserting it in front
+of the value, and that mangles sentences of known shapes — a currency symbol
+in front of the digits becomes `$approx 85.71`, and a range written with a
+hyphen is taken apart. The mechanism that is safe is substitution on figure
+ids, which the run itself minted; substitution into prose the model composed is
+not. That, and the same value printed unhedged by the terminal footer one line
+below the answer, are open items in the TODO rather than shipped fixes.

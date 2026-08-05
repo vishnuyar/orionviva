@@ -10,7 +10,7 @@ from viva.ledger import (LedgerProjection, Provenance, account_opened,
                          closing_balance_observed, merchant_categorized,
                          opening_balance_observed, simple_transaction,
                          transfer_linked)
-from viva.ledger.events import (CORROBORATED, UNVERIFIED, VERIFIED,
+from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
                                 agent_acted, document_captured,
                                 merchant_enriched, movement_tagged,
                                 position_observed, question_declined,
@@ -27,6 +27,7 @@ from vivacore import promptstore
 FROZEN_DESCRIPTIONS = {
     "tools-v1": "484999eebb3697a4",
     "tools-v2": "1cc22b5f642bf5df",
+    "tools-v5": "faa8b0ec1ff4b2cc",
 }
 
 
@@ -276,6 +277,81 @@ def test_aggregate_needs_a_metric(registry):
     assert not result.ok and result.refusal == "missing_metric"
 
 
+def _two_currency_registry():
+    """A vault holding two currencies, each with its own account and its own
+    movements. Every value in it is synthetic."""
+    evs = [
+        account_opened("acct-a", "depository", "Account A", "USD",
+                       "2026-01-01"),
+        account_opened("acct-b", "depository", "Account B", "EUR",
+                       "2026-01-01"),
+        document_captured("doc-a", "a.pdf", 10, "bank_statement", 0.9,
+                          "2026-02-01"),
+        document_captured("doc-b", "b.pdf", 10, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("acct-a", "500.00", "2026-01-01", _p("doc-a")),
+        opening_balance_observed("acct-b", "300.00", "2026-01-01", _p("doc-b")),
+        simple_transaction("acct-a", "-70.00", "COUNTERPARTY ONE",
+                           "2026-01-05", provenance=_p("doc-a")),
+        simple_transaction("acct-b", "-9.00", "COUNTERPARTY TWO",
+                           "2026-01-06", provenance=_p("doc-b")),
+    ]
+    return default_registry(LedgerProjection(evs))
+
+
+def test_a_summary_states_the_currency_of_what_it_summed(registry):
+    """A total is an amount, and an amount is a value and a currency. Without
+    the currency the same number is a bare magnitude, and arithmetic over it
+    cannot tell money from a count."""
+    result = registry.call("query_ledger", {"entity": "transactions"})
+    assert result.ok
+    figures = {f["what"]: f for f in result.figures}
+    for what, fig in figures.items():
+        if "movements matching" in what:
+            assert fig["currency"] == "", "a count is not an amount of anything"
+        else:
+            assert fig["currency"] == "USD", f"{what} states no currency"
+
+
+def test_a_spending_total_states_a_real_currency_and_never_a_null(registry):
+    """A spending read with no currency filter states a code on every amount
+    and states nothing at all on a count. No figure holds a null, and none
+    reaches the model carrying an empty currency."""
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending"})
+    assert result.ok
+    for fig in result.figures:
+        assert fig["currency"] is not None
+        if "counted" in fig["what"]:
+            assert fig["currency"] == ""
+        else:
+            assert fig["currency"] == "USD"
+    stated = result.to_dict()["figures"]
+    assert all(f.get("currency") != "null" for f in stated)
+    assert all("currency" not in f or f["currency"] for f in stated)
+
+
+def test_a_total_across_currencies_refuses_rather_than_adding_them():
+    """700 of one currency and 90 of another do not make 790 of anything.
+    Nothing here converts, so the sum is not a weaker figure — it is a number
+    that measures nothing, and it must not be emitted as a graded one."""
+    mixed = _two_currency_registry()
+    summary = mixed.call("query_ledger", {"entity": "transactions"})
+    assert not summary.ok and summary.refusal == "mixed_currencies"
+    assert set(summary.data["currencies"]) == {"USD", "EUR"}
+    spending = mixed.call("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending"})
+    assert not spending.ok and spending.refusal == "mixed_currencies"
+    # Narrowed to one currency, both reads answer normally and say which.
+    for args in ({"entity": "transactions", "filters": {"currency": "USD"}},
+                 {"entity": "aggregate", "metric": "spending",
+                  "filters": {"currency": "USD"}}):
+        one = mixed.call("query_ledger", args)
+        assert one.ok, one.text
+        assert all(f["currency"] in ("", "USD") for f in one.figures)
+        assert any(f["currency"] == "USD" for f in one.figures)
+
+
 def test_income_refuses_a_window_rather_than_ignoring_it(registry):
     """A lifetime figure presented as the answer to a dated question is a
     wrong number; income refuses the filter instead."""
@@ -377,6 +453,169 @@ def test_transparency_reads_the_agent_journal(registry):
     assert declined.ok and "q-1" in declined.data["declined"]
 
 
+# ------------------------------------------------- what every figure measures
+
+def _probe_vault(factor="1", more=0):
+    """One synthetic vault, twice parameterised: every amount is multiplied by
+    `factor`, and `more` says how many further movements, documents, agent
+    actions and set-aside questions it holds.
+
+    Two probes fall out of it. An amount moves when the factor moves and does
+    not care how many rows there are; a count is the opposite. That is what
+    makes the check below an argument about each figure rather than a list of
+    the figures we happen to emit today.
+
+    A figure that is zero here moves under neither probe and is classified as
+    neither, which says nothing about the figure. Every shape of amount a read
+    can emit is therefore non-zero in this vault: money coming in as well as
+    going out, and a liability as well as assets."""
+    def scaled(amount):
+        return str(Decimal(amount) * Decimal(factor))
+
+    evs = [
+        account_opened("chk", "depository", "Everyday", "USD", "2026-01-01"),
+        account_opened("card", "liability", "Card", "USD", "2026-01-01"),
+        account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"),
+        document_captured("doc-one", "one.pdf", 10, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("chk", scaled("1000.00"), "2026-01-01",
+                                 _p("doc-one")),
+        simple_transaction("chk", scaled("-40.50"), "COUNTERPARTY ONE",
+                           "2026-01-05", provenance=_p("doc-one")),
+        simple_transaction("chk", scaled("-60.25"), "COUNTERPARTY ONE",
+                           "2026-01-20", provenance=_p("doc-one")),
+        simple_transaction("chk", scaled("250.00"), "COUNTERPARTY THREE",
+                           "2026-01-25", provenance=_p("doc-one")),
+        closing_balance_observed("chk", scaled("1149.25"), "2026-01-31",
+                                 _p("doc-one", 6)),
+        opening_balance_observed("card", "0.00", "2026-01-01", _p("doc-one")),
+        # A card's balance is money owed, held as a positive magnitude, and a
+        # charge adds to it.
+        simple_transaction("card", scaled("25.75"), "COUNTERPARTY TWO",
+                           "2026-01-11", provenance=_p("doc-one")),
+        closing_balance_observed("card", scaled("25.75"), "2026-01-31",
+                                 _p("doc-one", 7)),
+        position_observed("brk", "SYNTH FUND", "10", scaled("1500.00"), "USD",
+                          "2026-01-31", cost_basis=scaled("1200.00"),
+                          provenance=_p("doc-one")),
+        merchant_enriched("counterparty one", "groceries",
+                          subcategory="supermarket", occurred_at="2026-02-02"),
+        agent_acted("enrich_unknown", "enrich", "brands", "done", "2026-02-03",
+                    calls=2),
+        question_declined("q-1", "nature", "2026-02-03",
+                          amount=scaled("300.00")),
+    ]
+    evs.append(movement_tagged(
+        movement_key("doc-one", "chk", "2026-01-20",
+                     Decimal(scaled("-60.25")), "COUNTERPARTY ONE", 0),
+        ["pantry"], "2026-02-05"))
+    for n in range(more):
+        evs.append(simple_transaction("chk", scaled("-40.50"),
+                                      "COUNTERPARTY ONE",
+                                      f"2026-01-{12 + n:02d}",
+                                      provenance=_p("doc-one")))
+        evs.append(account_opened(f"extra{n}", "depository", f"Extra {n}",
+                                  "USD", "2026-01-01"))
+        evs.append(opening_balance_observed(f"extra{n}", scaled("10.00"),
+                                            "2026-01-01", _p("doc-one")))
+        evs.append(position_observed("brk", f"SYNTH FUND {n}", "1",
+                                     scaled("10.00"), "USD", "2026-01-31",
+                                     provenance=_p("doc-one")))
+        evs.append(document_captured(f"doc-more-{n}", f"more{n}.pdf", 10,
+                                     "bank_statement", 0.9, "2026-02-01"))
+        evs.append(agent_acted("enrich_unknown", "enrich", f"more-{n}", "done",
+                               "2026-02-03", calls=1))
+        evs.append(question_declined(f"q-more-{n}", "nature", "2026-02-03",
+                                     amount=scaled("300.00")))
+    proj = LedgerProjection(evs)
+    return default_registry(proj), proj
+
+
+def _enumerated_args(schema: dict) -> list:
+    """Every combination of the enum-valued fields a tool's own schema
+    declares, with each optional one also left out. A new entity, metric,
+    group_by or topic is therefore exercised the day it is added, without this
+    test being edited."""
+    props = schema.get("properties") or {}
+    required = set(schema.get("required") or ())
+    combos = [{}]
+    for name, spec in props.items():
+        if "enum" not in spec:
+            continue
+        options = list(spec["enum"])
+        if name not in required:
+            options = [None] + options
+        combos = [dict(combo) if value is None else dict(combo, **{name: value})
+                  for combo in combos for value in options]
+    return combos
+
+
+def _every_figure(factor="1", more=0) -> dict:
+    """Every figure every registered tool emits over one vault, by what it
+    says it is. A tool no call here reaches fails the coverage check, so a new
+    tool cannot join the registry unexercised."""
+    registry, proj = _probe_vault(factor, more)
+    movement = next(m.key for m in proj.movements())
+    # What a schema cannot supply: the ids and expressions only a vault holds.
+    from_the_vault = {
+        "list_movements": [{"filters": {"account": "chk"}}],
+        "get_provenance": [{"record_id": "chk"}, {"record_id": "doc-one"},
+                           {"record_id": movement}],
+    }
+    out: dict = {}
+    reached = set()
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    money = next(f["id"] for f in book.values() if f["currency"])
+    calls = [("compute", {"expression": "a * 2", "inputs": {"a": money}})]
+    for schema in registry.schemas():
+        name = schema["name"]
+        for args in from_the_vault.get(name,
+                                       _enumerated_args(schema["parameters"])):
+            calls.append((name, args))
+    for name, args in calls:
+        result = registry.call(name, args, figures=book)
+        if not result.ok:
+            continue
+        reached.add(name)
+        for fig in result.figures:
+            out[fig["what"]] = fig
+    assert reached == set(registry.names()), (
+        f"{sorted(set(registry.names()) - reached)} emitted nothing here; a "
+        "tool this check never calls is a tool whose figures nothing measures")
+    return out
+
+
+def test_every_figure_a_tool_emits_says_what_it_measures():
+    """The dimension of every figure must be readable off the figure itself:
+    an amount states its currency, a count states none, and nothing states a
+    null. Arithmetic reads money and plain numbers apart by exactly this, so a
+    figure that will not say is one the arithmetic will silently mistake.
+
+    Neither side is asserted from a list of today's figures. A figure whose
+    value follows the amounts is money; one that follows the number of rows is
+    a count; one that follows neither — a date, a zero — is left alone."""
+    plain = _every_figure()
+    scaled = _every_figure(factor="7")
+    longer = _every_figure(more=2)
+    assert len(plain) > 20 and set(plain) <= set(longer)
+    assert set(plain) == set(scaled)
+    for what, fig in plain.items():
+        currency = fig["currency"]
+        assert isinstance(currency, str), (
+            f"{what!r} carries {currency!r} as its currency, which is neither "
+            "a code nor nothing at all")
+        if currency:
+            Decimal(fig["value"])          # an amount is a number, or nothing
+        if fig["value"] != scaled[what]["value"]:
+            assert currency, (
+                f"{what!r} follows the amounts, so it is money, and it states "
+                "no currency")
+        elif fig["value"] != longer.get(what, fig)["value"]:
+            assert not currency, (
+                f"{what!r} follows the number of rows, so it counts things, "
+                f"and it claims to be an amount in {currency}")
+
+
 # ------------------------------------------------------------------- compute
 
 def _one_figure(registry, tool, args):
@@ -470,18 +709,586 @@ def test_compute_will_not_mix_what_the_agent_did_with_what_you_hold(registry):
 def test_compute_comes_back_as_an_envelope_however_large_the_arithmetic(registry):
     """No arithmetic input makes the call raise across the boundary.
 
-    Overflow, an inexact division, a very long expression and a deeply nested
-    one all come back as refusal envelopes."""
-    for args, question in (
-            ({"expression": "x * x",
-              "inputs": {"x": {"stipulated": "1e999999999"}}}, "1e999999999"),
-            ({"expression": "x / 7",
-              "inputs": {"x": {"stipulated": "100"}}}, "100"),
-            ({"expression": "+".join(["1"] * 1200), "inputs": {}}, ""),
-            ({"expression": "1" + "*(1" * 400 + ")" * 400, "inputs": {}}, "")):
+    A magnitude larger than the context can carry, a division by zero, a very
+    long expression and a deeply nested one all come back as refusal envelopes.
+
+    The huge case scales an amount by a plain number on purpose. An expression
+    the walk turns away on its dimensions never reaches the arithmetic at all,
+    so it would pass this test while measuring nothing about it — which is why
+    the expected tags here are the arithmetic's own."""
+    for args, question, expected in (
+            ({"expression": "x * 10",
+              "inputs": {"x": {"stipulated": "1e999999999"}}}, "1e999999999",
+             ("bad_expression",)),
+            ({"expression": "x / 0",
+              "inputs": {"x": {"stipulated": "100"}}}, "100",
+             ("division_by_zero",)),
+            ({"expression": "+".join(["1"] * 1200), "inputs": {}}, "",
+             ("bad_expression", "bad_input")),
+            ({"expression": "1" + "*(1" * 400 + ")" * 400, "inputs": {}}, "",
+             ("bad_expression", "bad_input"))):
         result = registry.call("compute", args, figures={}, question=question)
-        assert not result.ok and result.refusal in ("bad_expression",
-                                                    "bad_input", "inexact")
+        assert not result.ok and result.refusal in expected, result.refusal
+
+
+def test_a_magnitude_the_expression_invented_stands_on_no_document(registry):
+    """Naming a figure and depending on it are different things. A magnitude
+    typed into an expression carries none of the documents of a figure the call
+    merely bound — one subtracted away, one multiplied by zero, one never
+    referred to at all — so it stands on nothing and cannot be said."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    balance = next(f["id"] for f in book.values() if "balance" in f["what"])
+    for expression in ("a - a + 424242", "a * 0 + 999999"):
+        refused = registry.call("compute",
+                                {"expression": expression,
+                                 "inputs": {"a": balance}}, figures=book)
+        assert not refused.ok, f"{expression} came back as {refused.figures}"
+        assert refused.refusal == "mixed_dimensions"
+    # Subtracting a figure from itself is not the fabrication and is not
+    # refused: zero really is what those documents say the difference is.
+    zero = registry.call("compute", {"expression": "a - a",
+                                     "inputs": {"a": balance}}, figures=book)
+    assert zero.ok and Decimal(zero.figures[0]["value"]) == 0
+    assert zero.record_ids == book[balance]["record_ids"]
+    # A magnitude alone inherits nothing from a figure it never touched, so
+    # nothing stands behind it and the answer cannot be composed.
+    alone = registry.call("compute", {"expression": "987654",
+                                      "inputs": {"a": balance}}, figures=book)
+    assert alone.ok and alone.figures[0]["record_ids"] == []
+    assert alone.figures[0]["grade"] == ""
+
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances"}}
+        if len(context["results"]) == 1:
+            return {"tool": "compute",
+                    "args": {"expression": "987654",
+                             "inputs": {"a": _fig(context["results"],
+                                                  "balance")}}}
+        return {"answer": "That comes to 987654.",
+                "figures": [{"id": _fig(context["results"], "result of")}]}
+    assert run("how much?", planner, registry).refusal == "uncited_figure"
+
+
+# ------------------------------------------ what a computed figure rests on
+
+def _book(*specs):
+    """A figure book as the runner would stamp one, built from
+    `(value, what, grade, currency, records)`. Every value in it is
+    synthetic."""
+    out = {}
+    for i, (value, what, grade, currency, records) in enumerate(specs, 1):
+        fig = figure(value, what, grade=grade, currency=currency,
+                     record_ids=records)
+        fig["id"] = f"f{i}"
+        out[fig["id"]] = fig
+    return out
+
+
+def _computed(registry, book, expression, **inputs):
+    """One arithmetic call over a book, asserted to have come back."""
+    result = registry.call("compute", {"expression": expression,
+                                       "inputs": inputs}, figures=book)
+    assert result.ok, f"{expression}: {result.refusal} — {result.text}"
+    return result.figures[0]
+
+
+TWO_AMOUNTS_AND_A_COUNT = (
+    ("600.00", "an amount", VERIFIED, "USD", ["doc-one"]),
+    ("200.00", "another amount", UNVERIFIED, "USD", ["doc-two"]),
+    ("7", "a count of things", CONFLICTED, "", ["doc-three"]),
+)
+
+
+def test_a_magnitude_added_to_a_plain_number_takes_the_total_off_its_evidence(
+        registry):
+    """A count is a plain number, so a magnitude may be added to it with no
+    dimension objecting. Adding is where a magnitude enters rather than
+    rescales, so a term standing on no record leaves the total standing on
+    none, and carrying no grade.
+
+    That the other terms were well evidenced is what the assertion is about:
+    their evidence says nothing about the number that came out."""
+    book = _book(*TWO_AMOUNTS_AND_A_COUNT)
+    for expression, inputs in (
+            ("n - n + 424242", {"n": "f3"}),
+            ("n * 0 + 777", {"n": "f3"}),
+            ("(a / b) * 0 + 8888", {"a": "f1", "b": "f2"})):
+        result = registry.call("compute", {"expression": expression,
+                                           "inputs": inputs}, figures=book)
+        assert result.ok, f"{expression} refused: {result.refusal}"
+        fig = result.figures[0]
+        assert fig["record_ids"] == [], f"{expression} cites {fig['record_ids']}"
+        assert fig["grade"] == "", f"{expression} claims {fig['grade']}"
+        assert result.record_ids == [] and result.grade == ""
+
+
+def test_a_fabricated_total_is_refused_before_it_can_be_said(registry):
+    """A computed figure is a claim about the person's money, so the gate that
+    refuses a money figure citing no record is what turns "rests on nothing"
+    into "cannot be said"."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances"}}
+        if len(context["results"]) == 1:
+            return {"tool": "compute",
+                    "args": {"expression": "n - n + 424242",
+                             "inputs": {"n": _fig(context["results"],
+                                                  "accounts holding")}}}
+        return {"answer": "That comes to 424242.",
+                "figures": [{"id": _fig(context["results"], "result of")}]}
+    run_result = run("how much?", planner, registry)
+    assert not run_result.answered
+    assert run_result.refusal == "uncited_figure"
+    # The count it was built from is a real figure with real documents, which
+    # is what made the fabrication look attested in the first place.
+    counted = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    count = next(f for f in counted.values() if "accounts holding" in f["what"])
+    assert count["record_ids"] and count["grade"]
+
+
+def test_scaling_a_figure_leaves_it_standing_where_it_stood(registry):
+    """Multiplying or dividing by a plain magnitude changes the units, not the
+    evidence: the result keeps the records and the grade of what was scaled.
+    Annualising, halving, splitting per person and expressing a proportion are
+    all this shape."""
+    book = _book(*TWO_AMOUNTS_AND_A_COUNT)
+    for expression, inputs, records, grade in (
+            ("a * 3", {"a": "f1"}, ["doc-one"], VERIFIED),
+            ("a / 3", {"a": "f1"}, ["doc-one"], VERIFIED),
+            ("(a / b) * 100", {"a": "f1", "b": "f2"},
+             ["doc-one", "doc-two"], UNVERIFIED)):
+        fig = _computed(registry, book, expression, **inputs)
+        assert fig["record_ids"] == records, expression
+        assert fig["grade"] == grade, expression
+
+
+def test_a_graded_count_hands_its_evidence_to_what_it_scales(registry):
+    """A count is a figure like any other: it has documents behind it and a
+    grade of its own. An amount nothing disputes, scaled by a count that
+    disagrees with its own evidence, is conflicted and cites both sides — not
+    verified, citing half of what it was built from."""
+    book = _book(*TWO_AMOUNTS_AND_A_COUNT)
+    fig = _computed(registry, book, "a * n", a="f1", n="f3")
+    assert fig["record_ids"] == ["doc-one", "doc-three"]
+    assert fig["grade"] == CONFLICTED
+    assert fig["currency"] == "USD"
+
+
+def test_a_total_of_attested_terms_keeps_them_all(registry):
+    """Two figures added stand on both sets of documents at the weaker grade,
+    and a figure subtracted from itself is a zero standing on its own
+    document."""
+    book = _book(*TWO_AMOUNTS_AND_A_COUNT)
+    total = _computed(registry, book, "a + b", a="f1", b="f2")
+    assert total["record_ids"] == ["doc-one", "doc-two"]
+    assert total["grade"] == UNVERIFIED and total["currency"] == "USD"
+    zero = _computed(registry, book, "a - a", a="f1")
+    assert Decimal(zero["value"]) == 0
+    assert zero["record_ids"] == ["doc-one"] and zero["grade"] == VERIFIED
+
+
+def test_a_figure_bound_and_never_named_decides_nothing(registry):
+    """What currency a computation is in is a property of the expression. A
+    second currency bound to a name the arithmetic never reaches leaves a
+    single-currency computation alone; two currencies the expression actually
+    reaches refuse."""
+    book = _book(("600.00", "an amount", VERIFIED, "USD", ["doc-one"]),
+                 ("100.00", "an amount elsewhere", VERIFIED, "EUR",
+                  ["doc-two"]))
+    fig = _computed(registry, book, "a * 2", a="f1", elsewhere="f2")
+    assert fig["currency"] == "USD" and fig["record_ids"] == ["doc-one"]
+    crossed = registry.call("compute",
+                            {"expression": "a + elsewhere",
+                             "inputs": {"a": "f1", "elsewhere": "f2"}},
+                            figures=book)
+    assert not crossed.ok and crossed.refusal == "mixed_currencies"
+
+
+def test_negating_a_figure_keeps_everything_true_of_it(registry):
+    """A sign is not a provenance event. What the figure measures, what it
+    stands on, how strong it is and how its arithmetic came out all survive the
+    minus — the last of these because a negated approximation stated as an
+    exact number is the same untruth as any other."""
+    book = _book(*TWO_AMOUNTS_AND_A_COUNT)
+    fig = _computed(registry, book, "-a", a="f1")
+    assert Decimal(fig["value"]) == Decimal("-600.00")
+    assert fig["currency"] == "USD"
+    assert fig["record_ids"] == ["doc-one"] and fig["grade"] == VERIFIED
+    assert fig["exactness"] == "exact"
+    rounded = _computed(registry, book, "-(a / 7)", a="f1")
+    assert rounded["exactness"] == "rounded"
+    assert Decimal(rounded["value"]) == Decimal("-85.71")
+    assert rounded["currency"] == "USD" and rounded["grade"] == VERIFIED
+    assert rounded["record_ids"] == ["doc-one"]
+
+
+def test_a_supposition_survives_being_computed_with_again(registry):
+    """A figure derived from something the person supposed is hypothetical, and
+    so is anything derived from that in turn, however many rounds of arithmetic
+    separate them from the premise."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    balance = next(f["id"] for f in book.values() if "balance" in f["what"])
+    first = registry.call(
+        "compute", {"expression": "have - trip",
+                    "inputs": {"have": balance, "trip": {"stipulated": "250"}}},
+        figures=book, question="what if a trip cost 250?")
+    assert first.ok and first.figures[0]["kind"] == "hypothetical"
+    assert first.figures[0]["grade"] == ""
+    book.update(_shift({"x": first.figures[0]}, len(book)))
+    again = _computed(registry, book, "supposed * 2",
+                      supposed=first.figures[0]["id"])
+    assert again["kind"] == "hypothetical" and again["grade"] == ""
+
+
+# --------------------------------------------------- how the arithmetic went
+
+def test_a_division_that_does_not_come_out_is_answered_not_refused(registry):
+    """A quotient that does not terminate comes back rather than refusing. The
+    value is written at the scale money is counted in, and the figure says of
+    itself that it was rounded."""
+    book = _book(("2000.00", "an amount", VERIFIED, "USD", ["doc-one"]))
+    for expression, value in (("a / 52", "38.46"), ("a / 12", "166.67")):
+        fig = _computed(registry, book, expression, a="f1")
+        assert fig["value"] == value, expression
+        assert fig["exactness"] == "rounded", expression
+        assert fig["currency"] == "USD"
+
+
+def test_how_the_arithmetic_went_never_moves_the_grade(registry):
+    """A figure that had to be rounded stands on the same documents at the same
+    grade as one that did not; only its account of the arithmetic differs."""
+    book = _book(*TWO_AMOUNTS_AND_A_COUNT)
+    exact = _computed(registry, book, "a / 3", a="f1")
+    rounded = _computed(registry, book, "a / 7", a="f1")
+    assert exact["exactness"] == "exact" and rounded["exactness"] == "rounded"
+    assert rounded["grade"] == exact["grade"] == VERIFIED
+    assert rounded["record_ids"] == exact["record_ids"] == ["doc-one"]
+    # And it travels the other way too: an exact operation over a rounded
+    # operand cannot pretend the result came out.
+    book.update(_shift({"x": rounded}, len(book)))
+    onward = _computed(registry, book, "r + b", r=rounded["id"], b="f2")
+    assert onward["exactness"] == "rounded"
+
+
+SMALL_AND_LARGE = (
+    ("1.00", "a small amount", VERIFIED, "USD", ["doc-one"]),
+    ("300000.00", "a large amount", VERIFIED, "USD", ["doc-two"]),
+    ("1234.56", "an amount", VERIFIED, "USD", ["doc-three"]),
+    ("98765.43", "another amount", VERIFIED, "USD", ["doc-four"]),
+)
+
+
+def test_a_ratio_is_written_to_significant_figures_and_never_down_to_zero(
+        registry):
+    """No dimensionless result that is not zero is written as zero, at any
+    magnitude.
+
+    Decimal places are money's scale, not a ratio's: a proportion smaller than
+    a hundredth written at two decimal places becomes 0.00, which is not an
+    approximation of it but a different claim — and one carrying the grade of
+    the documents it was derived from. Counting from the leading digit instead
+    cannot do that, whatever the magnitude."""
+    book = _book(*SMALL_AND_LARGE)
+    for expression, inputs in (
+            ("a / b", {"a": "f1", "b": "f2"}),
+            ("(a / b) * (a / b)", {"a": "f1", "b": "f2"}),
+            ("(a / b) * (a / b) * (a / b)", {"a": "f1", "b": "f2"}),
+            ("c / d", {"c": "f3", "d": "f4"}),
+            ("d / c", {"c": "f3", "d": "f4"}),
+            ("(d / c) * (d / c) * 1000000", {"c": "f3", "d": "f4"})):
+        fig = _computed(registry, book, expression, **inputs)
+        assert fig["exactness"] == "rounded", expression
+        assert Decimal(fig["value"]) != 0, (
+            f"{expression} came out as {fig['value']}, which is a claim about "
+            "the world rather than an approximation of the answer")
+        assert fig["currency"] == "" and fig["grade"] == VERIFIED, expression
+        digits = len(Decimal(fig["value"]).as_tuple().digits)
+        assert digits <= 6, f"{expression} kept {digits} significant figures"
+
+
+def test_a_proportion_and_the_same_proportion_per_hundred_agree(registry):
+    """The same quantity asked two ways gives the same answer. Counting
+    significant figures from the leading digit means a power of ten moves the
+    point without moving the digits, so scaling before or after the rounding
+    cannot disagree."""
+    book = _book(*SMALL_AND_LARGE)
+    for over, inputs in (("a / b", {"a": "f1", "b": "f2"}),
+                         ("c / d", {"c": "f3", "d": "f4"}),
+                         ("d / c", {"c": "f3", "d": "f4"})):
+        plain = _computed(registry, book, over, **inputs)
+        hundred = _computed(registry, book, f"({over}) * 100", **inputs)
+        assert (Decimal(hundred["value"]) == Decimal(plain["value"]) * 100), (
+            f"{over} is {plain['value']} but per hundred is "
+            f"{hundred['value']}")
+
+
+def test_money_is_written_at_the_scale_money_is_counted_in(registry):
+    """An amount of money is written to hundredths whatever the arithmetic did
+    to it, because that is the precision money has."""
+    book = _book(("2000.00", "a yearly amount", VERIFIED, "USD", ["doc-one"]))
+    for expression, value in (("a / 52", "38.46"), ("a / 12", "166.67"),
+                              ("a / 7", "285.71")):
+        fig = _computed(registry, book, expression, a="f1")
+        assert fig["value"] == value, expression
+        assert fig["currency"] == "USD" and fig["exactness"] == "rounded"
+        assert fig["grade"] == VERIFIED and fig["record_ids"] == ["doc-one"]
+
+
+def test_a_rounding_is_taken_once_at_the_end(registry):
+    """A third of an amount, tripled, comes back to the amount itself. It would
+    not if the third had been written at two decimals before the walk carried
+    it on."""
+    book = _book(("100.00", "an amount", VERIFIED, "USD", ["doc-one"]))
+    fig = _computed(registry, book, "a / 3 * 3", a="f1")
+    assert Decimal(fig["value"]) == Decimal("100.00")
+    assert fig["exactness"] == "rounded"
+
+
+def test_an_exactness_nothing_recognises_is_refused_where_it_is_written():
+    """A value outside the vocabulary raises where the figure is written. It
+    would otherwise travel as an account of the arithmetic while meaning
+    nothing to anything that reads it."""
+    assert figure("1", "a thing")["exactness"] == "exact"
+    assert figure("1", "a thing", exactness="rounded")["exactness"] == "rounded"
+    with pytest.raises(ValueError):
+        figure("1", "a thing", exactness="roughly")
+
+
+def test_the_model_is_told_only_when_a_figure_has_something_to_say():
+    """A figure whose arithmetic came out exactly omits the field; one that had
+    to be rounded sends it. Every result is resent on every remaining call of
+    the turn, so a field carrying the ordinary case is paid for repeatedly."""
+    ordinary = ToolResult(tool="t", ok=True,
+                          figures=[figure("1.00", "a thing", currency="USD",
+                                          record_ids=["doc-one"])])
+    assert "exactness" not in ordinary.to_dict()["figures"][0]
+    approximate = ToolResult(tool="t", ok=True,
+                             figures=[figure("1.00", "a thing", currency="USD",
+                                             record_ids=["doc-one"],
+                                             exactness="rounded")])
+    assert approximate.to_dict()["figures"][0]["exactness"] == "rounded"
+
+
+def _approximate_run(registry, answer, expression="a / 7"):
+    """One run whose answer speaks a figure the arithmetic had to round."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances"}}
+        if len(context["results"]) == 1:
+            return {"tool": "compute",
+                    "args": {"expression": expression,
+                             "inputs": {"a": _fig(context["results"],
+                                                  "Everyday Checking")}}}
+        fid = _fig(context["results"], "result of")
+        return {"answer": answer.replace("<id>", fid),
+                "figures": [{"id": fid}]}
+    return run("how much a week?", planner, registry)
+
+
+def test_an_approximate_value_never_reaches_the_person_bare(registry):
+    """An answer stating the value of a figure that had to be rounded reaches
+    the person carrying the term that says so.
+
+    The planner here writes the bare digits and asks for no hedge, which is
+    what makes this an assertion about the runner rather than about the
+    sentence it was handed."""
+    spoken = _approximate_run(registry, "You spend 85.71 a week.")
+    assert spoken.answered, spoken.detail
+    assert "85.71" in spoken.text
+    assert spoken.text == "You spend approx 85.71 a week."
+    # The figure itself is unchanged; only the sentence is rendered.
+    assert spoken.figures[0]["value"] == "85.71"
+    assert spoken.figures[0]["exactness"] == "rounded"
+
+
+def test_an_approximate_figure_named_by_id_is_rendered_as_its_value(registry):
+    """An answer naming the figure by its id rather than writing the digits
+    reaches the person as the same sentence: the id is replaced by the value
+    and the term together."""
+    spoken = _approximate_run(registry, "You spend <id> a week.")
+    assert spoken.answered, spoken.detail
+    assert spoken.text == "You spend approx 85.71 a week."
+
+
+def test_rendering_an_already_rendered_sentence_changes_nothing(registry):
+    """Rendering is idempotent. Nothing here reads the sentence's wording —
+    only this run's ids, its figures' values, and the term this code itself
+    inserts — so a sentence already carrying the term is left alone."""
+    from viva.tools.runner import _rendered
+    cited = [dict(figure("85.71", "a result", kind="computed",
+                         currency="USD", record_ids=["doc-one"],
+                         exactness="rounded"), id="f1")]
+    once = _rendered("You spend 85.71 a week.", cited)
+    assert _rendered(once, cited) == once == "You spend approx 85.71 a week."
+
+
+def test_a_negative_value_is_hedged_in_front_of_its_sign(registry):
+    """The term goes before the whole quantity, sign included, and a date in
+    the same sentence is not taken apart by it."""
+    from viva.tools.runner import _rendered
+    cited = [dict(figure("-85.71", "a result", kind="computed",
+                         currency="USD", record_ids=["doc-one"],
+                         exactness="rounded"), id="f1")]
+    spoken = _rendered("On 2026-01-31 you were -85.71 a week.", cited)
+    assert spoken == "On 2026-01-31 you were approx -85.71 a week."
+    assert _rendered(spoken, cited) == spoken
+
+
+def test_only_the_value_that_was_rounded_is_hedged(registry):
+    """The rendering reaches what the arithmetic could not write exactly, and
+    nothing else in the sentence.
+
+    A sentence stating an exact balance and an approximate weekly share of it
+    comes back with one of the two marked, not both. Both are in the one
+    sentence deliberately: a rendering that marked every number would satisfy
+    an assertion using approximate figures alone."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances"}}
+        balance = _fig(context["results"], "Everyday Checking")
+        if len(context["results"]) == 1:
+            return {"tool": "compute",
+                    "args": {"expression": "a / 7", "inputs": {"a": balance}}}
+        return {"answer": "Of 600.00 you spend 85.71 a week.",
+                "figures": [{"id": balance},
+                            {"id": _fig(context["results"], "result of")}]}
+    spoken = run("how much a week?", planner, registry)
+    assert spoken.answered, spoken.detail
+    assert spoken.text == "Of 600.00 you spend approx 85.71 a week."
+
+
+def test_an_answer_with_nothing_rounded_in_it_is_left_alone(registry):
+    """A run in which every figure came out exactly is not touched at all."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "query_ledger", "args": {"entity": "balances"}}
+        fid = _fig(context["results"], "Everyday Checking")
+        return {"answer": "Your balance is 600.00.", "figures": [{"id": fid}]}
+    spoken = run("how much?", planner, registry)
+    assert spoken.answered, spoken.detail
+    assert spoken.text == "Your balance is 600.00."
+
+
+# ------------------------------------ what a money figure is allowed to lack
+
+def test_every_money_figure_a_tool_emits_stands_on_a_record():
+    """Every figure stating a currency carries at least one record.
+
+    The attestation rule uses "carries a record" as the proxy for "is
+    attested", so an amount emitted with nothing behind it would let a
+    magnitude added to it inherit an attestation nothing earned, or would
+    strip a legitimate total of the evidence it did have."""
+    for what, fig in _every_figure().items():
+        if fig["currency"]:
+            assert fig["record_ids"], (
+                f"{what!r} is an amount of money standing on no record")
+
+
+def test_a_quiet_window_is_still_an_amount_and_still_stands_on_something(
+        registry):
+    """A window in which nothing moved has a total, and that total is zero of a
+    currency, resting on the accounts whose statements answer for the period.
+    Saying neither would make the zero read as a plain number, which no balance
+    adds to."""
+    quiet = {"entity": "transactions",
+             "filters": {"window": {"from": "2026-06-01", "to": "2026-06-30"}}}
+    summary = registry.call("query_ledger", quiet)
+    assert summary.ok and summary.data["count"] == 0
+    net = next(f for f in summary.figures
+               if f["what"] == "net movement over this set")
+    assert net["currency"] == "USD" and net["record_ids"]
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    book.update(_shift(_one_figure(registry, "query_ledger", quiet), len(book)))
+    balance = next(f["id"] for f in book.values()
+                   if "Everyday Checking" in f["what"])
+    still = next(f["id"] for f in book.values()
+                 if f["what"] == "net movement over this set")
+    combined = _computed(registry, book, "a + b", a=balance, b=still)
+    assert combined["currency"] == "USD" and combined["grade"]
+
+
+def test_a_refusal_to_add_says_what_it_actually_saw(registry):
+    """The refusal names what was observed — that one side states a currency
+    and the other states none — rather than guessing at what the plain side
+    counts or measures."""
+    book = _book(("600.00", "an amount", VERIFIED, "USD", ["doc-one"]),
+                 ("7", "a count of things", VERIFIED, "", ["doc-two"]))
+    refused = registry.call("compute", {"expression": "a + n",
+                                        "inputs": {"a": "f1", "n": "f2"}},
+                            figures=book)
+    assert not refused.ok and refused.refusal == "mixed_dimensions"
+    assert "count or a ratio" not in refused.text
+    assert "states a currency" in refused.text
+
+
+def test_two_amounts_divide_into_a_ratio_and_never_into_money(registry):
+    """Asking how a balance compares with a total is division, and its
+    answer is "three times over", not "three dollars". A currency on a ratio is
+    a claim about money that no money was ever measured for."""
+    book = {}
+    for i, (amount, grade) in enumerate((("600.00", VERIFIED),
+                                         ("200.00", UNVERIFIED)), 1):
+        f = figure(amount, f"an amount {i}", grade=grade, currency="USD",
+                   record_ids=[f"doc-{i}"])
+        f["id"] = f"f{i}"
+        book[f["id"]] = f
+    ratio = registry.call("compute", {"expression": "a / b",
+                                      "inputs": {"a": "f1", "b": "f2"}},
+                          figures=book)
+    assert ratio.ok and Decimal(ratio.figures[0]["value"]) == 3
+    assert ratio.figures[0]["currency"] == ""
+    assert set(ratio.record_ids) == {"doc-1", "doc-2"}
+    assert ratio.figures[0]["grade"] == UNVERIFIED
+    product = registry.call("compute", {"expression": "a * b",
+                                        "inputs": {"a": "f1", "b": "f2"}},
+                            figures=book)
+    assert not product.ok and product.refusal == "mixed_dimensions"
+    inverted = registry.call("compute", {"expression": "2 / a",
+                                         "inputs": {"a": "f1"}}, figures=book)
+    assert not inverted.ok and inverted.refusal == "mixed_dimensions"
+    # Splitting an amount by a plain number is still an amount of money.
+    split = registry.call("compute", {"expression": "a / 3",
+                                      "inputs": {"a": "f1"}}, figures=book)
+    assert split.ok and split.figures[0]["currency"] == "USD"
+    assert split.figures[0]["grade"] == VERIFIED
+
+
+def test_a_balance_still_combines_with_what_a_summary_totalled(registry):
+    """The two questions a person actually asks across reads — a balance with a
+    net movement, a balance less a total spent — are money and money, and they
+    must go through. A total that failed to state its currency would read as a
+    plain number and turn both into refusals."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    book.update(_shift(_one_figure(registry, "query_ledger",
+                                   {"entity": "transactions"}), len(book)))
+    book.update(_shift(_one_figure(registry, "query_ledger",
+                                   {"entity": "aggregate",
+                                    "metric": "spending"}), len(book)))
+    balance = next(f["id"] for f in book.values()
+                   if "Everyday Checking" in f["what"])
+    net = next(f["id"] for f in book.values()
+               if f["what"] == "net movement over this set")
+    spent = next(f["id"] for f in book.values()
+                 if f["what"].startswith("total spending"))
+    counted = next(f["id"] for f in book.values()
+                   if f["what"] == "movements matching the filters")
+    for expression, inputs in (("a + b", {"a": balance, "b": net}),
+                               ("a - b", {"a": balance, "b": spent})):
+        result = registry.call("compute", {"expression": expression,
+                                           "inputs": inputs}, figures=book)
+        assert result.ok, f"{expression}: {result.text}"
+        assert result.figures[0]["currency"] == "USD"
+        assert result.figures[0]["kind"] == "computed"
+        assert result.figures[0]["grade"] and result.record_ids
+    # And the two that must not: an amount times an amount, and a count added
+    # to an amount.
+    for expression, inputs in (("a * b", {"a": balance, "b": spent}),
+                               ("a + b", {"a": balance, "b": counted})):
+        refused = registry.call("compute", {"expression": expression,
+                                            "inputs": inputs}, figures=book)
+        assert not refused.ok, f"{expression} came back as {refused.figures}"
+        assert refused.refusal == "mixed_dimensions"
 
 
 def test_compute_refuses_a_number_typed_in_and_names_what_it_has(registry):
@@ -510,6 +1317,11 @@ def test_compute_over_something_only_the_person_said_is_hypothetical(registry):
     assert result.ok
     assert result.figures[0]["kind"] == "hypothetical"
     assert result.figures[0]["grade"] == ""
+    # An amount they named is money in the currency of what it is set against,
+    # so the subtraction goes through and the answer is an amount.
+    assert (Decimal(result.figures[0]["value"])
+            == Decimal(book[balance]["value"]) - 250)
+    assert result.figures[0]["currency"] == "USD"
 
 
 def test_compute_refuses_a_stipulation_the_person_never_made(registry):
@@ -749,6 +1561,18 @@ def test_weakest_grade_orders_conflicted_below_unverified():
     assert weakest([VERIFIED, CORROBORATED]) == CORROBORATED
     assert weakest([CORROBORATED, "conflicted", UNVERIFIED]) == "conflicted"
     assert weakest([]) == ""
+
+
+def test_a_grade_off_the_ladder_is_refused_where_it_is_written():
+    """`weakest` ignores a grade it does not recognise, so an invented one
+    would reach the person as a strength claim while counting for nothing in
+    composition. The figure is where that is caught, not the answer."""
+    assert figure("1", "a thing", grade=CORROBORATED)["grade"] == CORROBORATED
+    assert figure("1", "a thing")["grade"] == ""
+    with pytest.raises(ValueError):
+        figure("1", "a thing", grade="pretty solid")
+    # A kind that carries no grade still clears one rather than refusing it.
+    assert figure("1", "a thing", kind="activity", grade=VERIFIED)["grade"] == ""
 
 
 # -------------------------------------------------------------------- runner

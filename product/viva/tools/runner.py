@@ -19,6 +19,12 @@ One thing besides figures stays sayable: a number a tool wrote into its own
 prose. A tool's `text`, `coverage` and `caveats` are sentences the tool chose;
 its `data` is raw material. Sentences are sayable; payloads are not.
 
+What passes the gate is then rendered before anyone reads it. A figure whose
+arithmetic could not be written exactly is spoken with a term saying so,
+attached here rather than requested of the model. Nothing about the sentence's
+wording is inspected — only this run's own ids and values — so the rendering is
+a substitution rather than a vocabulary check.
+
 Dates are declared alongside the figures. A declared date licenses its own
 parts and nothing else, and must fall inside a period the run is attested for or
 match a date some result carries. An answer that fails any of this is refused
@@ -32,7 +38,7 @@ import datetime
 import re
 from dataclasses import dataclass, field, replace
 
-from .envelope import MONEY_KINDS, ToolResult, weakest
+from .envelope import EXACT, MONEY_KINDS, ToolResult, weakest
 from .registry import Registry
 
 # One tool call per planner step. Past this the run refuses rather than
@@ -48,6 +54,13 @@ _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # A figure id in ordinary prose is a name, not a quantity. Only an id this run
 # stamped matches; the digits of anything else are read as a number.
 _ID_MENTION = re.compile(r"(?<![A-Za-z0-9])(f\d+)(?![A-Za-z0-9])")
+
+# The one term a value the arithmetic could not write exactly is spoken with.
+APPROX_TERM = "approx"
+
+# A value as a sentence writes it, sign included, so the term goes in front of
+# the whole quantity rather than between the minus and its digits.
+_SIGNED = re.compile(r"-?(?:" + _NUMBER.pattern + r")")
 
 
 def _without_ids(text: str, ids) -> str:
@@ -278,6 +291,38 @@ def _check(step: dict, ground: _Ground) -> tuple[list, tuple | None]:
     return cited, None
 
 
+def _rendered(text: str, cited: list) -> str:
+    """The composed sentence as the person reads it: every statement of a value
+    the arithmetic could not write exactly carries the term that says so.
+
+    A figure named by its id is replaced by the value and the term; a value
+    written out keeps its own wording and gains the term. Idempotent: nothing
+    here inspects the sentence's vocabulary, only this run's figure ids, the
+    values those figures hold, and the term inserted here, so a sentence
+    already carrying it is returned unchanged."""
+    approximate = {fig["id"]: fig["value"] for fig in cited
+                   if fig["exactness"] != EXACT}
+    if not approximate:
+        return text
+    values = {t for value in approximate.values() for t in _tokens(value)}
+
+    def named(match) -> str:
+        """A figure referred to by its id becomes the value it holds."""
+        value = approximate.get(match.group(1))
+        return match.group(0) if value is None else f"{APPROX_TERM} {value}"
+
+    def written(match) -> str:
+        """A value the sentence spells out keeps the sentence's own wording and
+        gains the term, once."""
+        token = match.group(0)
+        if (token.lstrip("-").replace(",", "") not in values
+                or match.string[:match.start()].endswith(APPROX_TERM + " ")):
+            return token
+        return f"{APPROX_TERM} {token}"
+
+    return _SIGNED.sub(written, _ID_MENTION.sub(named, text))
+
+
 def _gate(step: dict, transcript: list, ground: _Ground) -> RunResult:
     """The composition check on a delivered answer. Its grade is the weakest
     among the money figures it cited; activity and hypothetical figures carry no
@@ -287,7 +332,7 @@ def _gate(step: dict, transcript: list, ground: _Ground) -> RunResult:
     if problem is not None:
         return _refused(problem[0], problem[1], dicts, len(transcript))
     return RunResult(
-        answered=True, text=str(step.get("answer", "")),
+        answered=True, text=_rendered(str(step.get("answer", "")), cited),
         figures=[dict(f) for f in cited],
         grade=weakest(f["grade"] for f in cited
                       if f["kind"] in MONEY_KINDS),
@@ -318,6 +363,7 @@ def _voice(result: RunResult, planner, ground: _Ground, question: str,
     cited, problem = _check(step, ground)
     if problem is not None:
         return result
-    return replace(result, text=spoken, figures=[dict(f) for f in cited],
+    return replace(result, text=_rendered(spoken, cited),
+                   figures=[dict(f) for f in cited],
                    grade=weakest(f["grade"] for f in cited
                                  if f["kind"] in MONEY_KINDS))
