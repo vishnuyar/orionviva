@@ -11,10 +11,11 @@ from viva.ledger import (LedgerProjection, Provenance, account_opened,
                          closing_balance_observed, opening_balance_observed,
                          simple_transaction)
 from viva.ledger.events import document_captured
-from viva.speak import (FINAL_TOOL, NativePlanner, Session, TextPlanner,
-                        max_calls_from_env, planner_factory, speak_spec)
+from viva.speak import (FINAL_TOOL, SPEAK_VERSION, NativePlanner, Session,
+                        TextPlanner, max_calls_from_env, planner_factory,
+                        speak_spec)
 from viva.tools import default_registry, run
-from viva.tools.registry import PROMPTS
+from viva.tools.registry import DESCRIPTIONS_VERSION, PROMPTS
 
 # The voice and the step protocol are released prompts: their text may never
 # change. To edit one, add a new version file and point the module at it.
@@ -34,6 +35,9 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-v5": "4afee4d00b859020",
     "speak-final-v5": "2e4f9493f790ea3f",
     "speak-protocol-v5": "d3b32dd56e5eb658",
+    "speak-v6": "87741100169f1700",
+    "speak-final-v6": "5f98748162cd1a98",
+    "speak-protocol-v6": "73b744eb3eced798",
     "speak-closing-v1": "cb35be62c4daf926",
     "speak-refusal-v1": "126880ba51c64e1f",
     "speak-refusal-schema-v1": "8bf922a9911e3a45",
@@ -393,8 +397,9 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
         assert event.body["parse_ok"] is True
         payload = json.loads(event.body["response_text"])
         assert payload["request"] and payload["response"]
-        assert payload["prompt_versions"]["speak"].startswith("speak-v5@")
-        assert payload["prompt_versions"]["tools"].startswith("tools-v5@")
+        assert payload["prompt_versions"]["speak"].startswith(f"{SPEAK_VERSION}@")
+        assert payload["prompt_versions"]["tools"].startswith(
+            f"{DESCRIPTIONS_VERSION}@")
         assert payload["verdict"]["answered"] is True
     assert log.events[0].body["doc_id"] == "speak:s-test:1:1"
     assert log.events[1].body["doc_id"] == "speak:s-test:1:2"

@@ -1,0 +1,44 @@
+{system}
+
+You cannot call tools natively in this conversation. Instead, every reply you
+make must be exactly one fenced JSON block and nothing outside it.
+
+The tools you may call, as JSON schemas:
+{tools}
+
+To call a tool, reply with:
+```json
+{{"tool": "<tool name>", "args": {{}}}}
+```
+filling `args` with the tool's parameters.
+
+To deliver the final answer, reply with:
+```json
+{{"answer": "<what Viva says>", "figures": [{{"id": "f1"}}], "stipulated": [{{"value": "3000", "as": "the trip you mentioned"}}], "dates": [{{"iso": "2026-01-31"}}]}}
+```
+using the ids and values this turn actually produced — the shapes above are examples, not values you may state. `figures` carries the **id** of every figure the answer states — ids
+only, since each figure's value, grade and records travel with the figure a
+tool returned; `stipulated` carries any amount the person named in their own
+question that the answer repeats back, and each such value must appear in this
+turn's question; and `dates` lists any date the answer refers to that this
+turn's results do not already carry, each as an ISO date inside a period a
+result reports covering. A date some result carries is already on this turn's
+record and needs no declaring. Either way, a date licenses its own year, month
+and day in the answer's text, and nothing else. When the answer names an
+account, write one of the forms that result gave under `identifiers`, exactly
+as written: a name's digits are sayable as part of the whole name and never on
+their own.
+
+The conversation so far, as JSON (earlier questions and what Viva answered):
+{conversation}
+
+The tool results so far in this turn, as JSON, in order:
+{results}
+
+Tool calls left in this turn: {calls_remaining}. When a read has answered the
+question, deliver it rather than looking for confirmation; when two remain,
+close with what you have and say what you could not finish.
+
+The person now asks: {question}
+{problem}
+Reply with exactly one fenced JSON block.

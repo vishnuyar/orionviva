@@ -1,6 +1,6 @@
 # Agent Toolset — the twelve verbs Viva may ever use
 
-**Status:** Design; **the read verbs are built and a model can now call them** — the registry implements `query_ledger`, `list_movements`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), and the conversation loop above them exists: provider adapters (native tool-calling for every OpenAI-compatible endpoint, a text protocol for any other model), a planner that composes from tool results behind the citation gate, and `viva.speak` as the entrypoint. The remaining verbs await their machinery. · **Last updated:** 2026-08-05 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
+**Status:** Design; **the read verbs are built and a model can now call them** — the registry implements `query_ledger`, `list_movements`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), and the conversation loop above them exists: provider adapters (native tool-calling for every OpenAI-compatible endpoint, a text protocol for any other model), a planner that composes from tool results behind the citation gate, and `viva.speak` as the entrypoint. The remaining verbs await their machinery. · **Last updated:** 2026-08-06 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2 (compute/project are deterministic; no arithmetic in the model), T4 (all writes are events), T6 (no tool touches the network), X3 (irreversibility structurally impossible — no tool can do anything irreversible)
 
 ## The scaling law
@@ -153,7 +153,32 @@ halves are closed in the 2026-08-05 amendment below._
 > hedge is not something the model can drop. Money is written at hundredths; a
 > dimensionless value is written to significant figures, because a fixed decimal
 > scale can write a nonzero ratio as `0.00` and a significant-figures rule
-> cannot. Six verbs are registered, and the descriptions file is `tools-v5`.
+> cannot. Six verbs are registered, and the descriptions file was `tools-v5` at
+> this point (`tools-v6` since the amendment below).
 > Recorded and not fixed: the term is attached by insertion and mangles known
 > sentence shapes (`$approx 85.71`); see the TODO and the closing sections of
 > [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)._
+
+> _Amended again 2026-08-06, after the first acceptance run against the real
+> vault. It answered 6 of 11 with no number wrong: every failure was a correct,
+> grounded sentence the gate would not release. **A name and a date are not
+> magnitudes**, and the gate had no way to tell one from a digit string, so an
+> account's own last four refused the answer that named it and a fifty-row
+> listing needed fifty date declarations to be speakable.
+>
+> **The run's ledger now holds names and dates, not only figures.** A read that
+> speaks about an account returns the names it used — the id, and the masked
+> form of the number — and the gate blanks a whole name out of the answer
+> before counting numbers, the way it already did for figure ids. A name is
+> licensed whole and only whole, so the masked form says which account while
+> the bare digits inside it stay unsayable; a name that is itself a quantity
+> licenses nothing. A date some result carries needs no declaring, because
+> declaring one the run already held was a ceremony that admitted everything it
+> was shown; a date no result carries must still be declared and must fall
+> inside an attested period. **A summary also states how many months it spans**,
+> as a citable figure, so a per-period average has a divisor at all.
+>
+> T1 is untouched: this widened what may be *said*, never what may be asserted
+> as money. Six verbs are registered, and the descriptions file is `tools-v6`.
+> Recorded and not fixed: a movement's description may carry digits of its own,
+> so listing descriptions is still refused._

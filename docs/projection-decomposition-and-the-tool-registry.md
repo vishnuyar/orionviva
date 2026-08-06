@@ -1,6 +1,6 @@
 # Breaking up the projection — and the tool registry it becomes
 
-**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01 · **Last updated:** 2026-08-05
+**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01 · **Last updated:** 2026-08-06
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2/ADR-010 (deterministic math; no arithmetic in the model), T4 (untouched — this brief writes no events), T6 (no tool touches the network), X3 (no tool can do anything irreversible), I5 (code universal, specifics are data), and the standing principle *read side early, write side late*.
 
 ---
@@ -253,7 +253,7 @@ grade.
 rows; `list_movements` returns the individual rows and refuses a call that
 names none of account, category, merchant, tag or window. Six tools are
 registered, and the descriptions file was `tools-v2` at this point; it is
-`tools-v5` since the two-axis cycle below.
+`tools-v6` since the names-and-dates cycle below.
 
 **What a result costs became a design constraint rather than an afterthought.**
 A tool result is resent in full on every model call for the rest of the turn,
@@ -331,7 +331,8 @@ without moving the digits, so a proportion and the same proportion per hundred
 agree. The rounding is taken once, on the result, at a working precision far
 wider than the scale anything is finally written at.
 
-Six tools are still registered; the descriptions file is `tools-v5`.
+Six tools are still registered; the descriptions file was `tools-v5` at this
+point.
 
 **Recorded, not fixed.** The approx term is attached by inserting it in front
 of the value, and that mangles sentences of known shapes — a currency symbol
@@ -340,3 +341,60 @@ hyphen is taken apart. The mechanism that is safe is substitution on figure
 ids, which the run itself minted; substitution into prose the model composed is
 not. That, and the same value printed unhedged by the terminal footer one line
 below the answer, are open items in the TODO rather than shipped fixes.
+
+**What the names-and-dates cycle changed (2026-08-06).** The first acceptance
+run against the real vault answered 6 of 11 and got no number wrong. Every
+failure was a correct, grounded sentence the gate would not release, and two
+shared one cause: **the gate could not tell a magnitude from a digit string.**
+An account's last four and a row's date are not claims about money — one is a
+name and the other a coordinate — and both were read as unlicensed numbers.
+
+The fix is the move figure identity already made, applied one layer out. A run
+holds a ledger of what it established, and an answer may say what is in it. So
+the ledger now holds three kinds of thing rather than one:
+
+**Names.** A read that speaks about an account returns the names it used, in
+`identifiers` — the id every filter takes, and the masked form of the number,
+which is what the surface already shows a person. The gate blanks a whole name
+out of the answer before it counts numbers, exactly as it already did for
+figure ids. A name is therefore licensed **whole and only whole**: the masked
+form says which account, and the four digits inside it, written bare, remain a
+number nothing emitted. A name that is itself a quantity licenses nothing, so
+calling a magnitude a label is not a way past the gate.
+
+Dates are deliberately held to a weaker rule than names, and the asymmetry is
+the decision rather than an inconsistency. A date's parts are bounded tokens —
+a day, a month, a four-digit year — and the declared-date rule already licensed
+them at a cost taken openly. An account's last four is an unbounded four-digit
+number that looks exactly like an amount, so it gets the stricter treatment.
+
+**Dates.** A date some result carries may now be said without being declared.
+Declaring one was never a check: the gate accepted any declaration of a date
+the run already held, so the ceremony refused true sentences and prevented
+nothing. What it did protect survives — a date no result carries must still be
+declared, and is admitted only inside a period the run is attested for. A
+listing read is usable in prose again as a result: writing fifty rows no longer
+means declaring fifty dates. The accepted cost, taken knowingly: the parts of
+every date a read asserted are sayable, so a small integer that coincides with
+a day of the month passes. That was already reachable by declaring it.
+
+**And a summary states how many months it spans**, as a figure with an id and
+no currency. The period count existed in the payload, where arithmetic could
+not reach it — so "what do I spend a month" had no divisor, and the model spent
+three tool calls in the acceptance run hunting for one before refusing. A
+divisor nothing emitted cannot be cited, and a number that cannot be cited
+cannot be computed with.
+
+T1 is untouched. Nothing about what licenses a *figure* moved; this cycle
+widened what may be **said**, never what may be asserted as money. Six tools
+are still registered; the descriptions file is `tools-v6`, and the speak
+prompts are the v6 trio.
+
+**Recorded, not fixed.** Two things this cycle surfaced and deliberately left.
+A movement's *description* is the statement's own words and may carry digits of
+its own — a store number in a payment line — so a listing answer that writes
+descriptions is still refused. Licensing descriptions wholesale is unsafe,
+because a description can contain an amount; it needs its own ruling. And the
+approx-term insertion recorded above now has a wider blast radius: it
+substitutes into a licensed name, so a rounded figure whose value equals an
+account's last four renders as `••••approx 4417`.

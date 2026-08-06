@@ -1,0 +1,25 @@
+Deliver the final answer for this turn. Call this exactly once, and only when
+the tool results from this turn already carry every figure the answer needs.
+`answer` is what Viva says to the person.
+`figures` lists the id of every figure the answer states — `[{"id": "f7"}]`,
+ids only. The value, the grade and the records travel with the figure itself,
+so restating them here could only get them wrong.
+`stipulated` lists any amount the person named in their own question that the
+answer repeats back, as `{"value": "3000", "as": "the trip you mentioned"}`;
+each value must appear in this turn's question.
+`dates` lists any date the answer refers to that this turn's results do not
+already carry, each as `{"iso": "YYYY-MM-DD"}`, and each must fall inside a
+period a result reports covering. A date some result carries — a row's date, a
+balance's as-of day — is already on this turn's record and may be written
+without listing it here. Either way, write a date in the answer in whatever
+form reads best; its year, month and day may each be written out, and nothing
+else may be.
+When the answer names an account, write one of the forms that account's own
+result gave under `identifiers`, exactly as written. The digits in a name are
+sayable as part of the whole name and never on their own.
+An answer is refused rather than delivered if it states a number that is not
+the value of a figure it cited, not a value the person stipulated, not part of
+a date this turn holds, not part of a name a result gave, and not a number some
+tool wrote into its own sentences; if it cites a figure id this turn never
+produced; or if a declared date falls outside every period this turn is
+attested for.

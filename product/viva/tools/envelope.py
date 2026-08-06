@@ -24,6 +24,12 @@ Composition inherits the weakest grade among its parts, so a total built from
 one unverified balance is itself unverified, and a conflicted part makes the
 whole conflicted.
 
+A number is not the only thing a read puts on the record. The *names* it used
+for the things it spoke about travel too, as ``identifiers`` — an account's id,
+and the masked form of its number. A name identifies rather than measures, and
+it is asserted whole: what an answer may write is the form the read wrote, not
+the digits inside it.
+
 What a figure rests on and how its arithmetic came out are two different
 questions, and a figure answers both separately. ``grade`` and ``record_ids``
 say what stands behind the value; ``exactness`` says whether the derivation
@@ -144,6 +150,11 @@ class ToolResult:
     # model may say is a number some tool emitted here; anything living only in
     # `data` is machinery, not a claim.
     figures: list = field(default_factory=list)
+    # The names this result used for the things it spoke about, each in the
+    # whole form it wrote — an account's id, and the masked form a person
+    # reads. A name identifies rather than measures, and it is asserted whole:
+    # a run of digits lifted out of one is a number again.
+    identifiers: list = field(default_factory=list)
     grade: str = ""                             # weakest grade the data rests on
     dated: str = ""                             # the value-time the data is good as of
     # What this read is attested for, one entry per account it ranged over, as
@@ -166,6 +177,7 @@ class ToolResult:
         the runner resolves the records — and only their count travels."""
         return {"tool": self.tool, "ok": self.ok, "data": self.data,
                 "figures": [_stated(f) for f in self.figures],
+                "identifiers": list(self.identifiers),
                 "grade": self.grade, "dated": self.dated,
                 "covers": [dict(c) for c in self.covers],
                 "records": len(self.record_ids),
