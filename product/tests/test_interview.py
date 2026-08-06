@@ -58,7 +58,18 @@ def test_no_answer_type_means_an_identifier():
 # A released schema pack is FROZEN, for the reason every other pack in this
 # project is: a person answered the words that were there, and those words must
 # keep resolving. To change one, add a pack file with a new version id.
-FROZEN_SCHEMA_PACKS = {"schemas-v1": "195ffd57ad000e0c"}
+def _frozen_schema_packs():
+    import pathlib
+
+    from vivacore import versions as manifest
+
+    from viva import schemas as _schemas
+    package = pathlib.Path(_schemas.__file__).resolve().parent.parent
+    return {v: d for v, d in manifest.manifest(package)["released"].items()
+            if v.startswith("schemas-")}
+
+
+FROZEN_SCHEMA_PACKS = _frozen_schema_packs()
 
 
 def test_released_schema_packs_are_frozen():

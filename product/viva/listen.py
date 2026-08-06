@@ -34,11 +34,13 @@ import json
 import logging
 from dataclasses import dataclass, field, replace
 
+from vivacore import versions
+
 from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_ATTRIBUTE,
                             SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
                             VERIFIED, account_opened, ruling_recorded)
-from .ingest.prompt_library import interpret_prompt
+from .ingest.prompt_library import PACKAGE, interpret_prompt
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 
@@ -115,10 +117,10 @@ class Interpretation:
 
 
 # The prompt text lives in the versioned, append-only library
-# (`viva/ingest/prompt_library.py`); this names the version to read. A recorded
-# ruling stamps its `prompt_version`, so every reading names the instructions
-# that produced it.
-INTERPRET_VERSION = "interpret-v2"
+# (`viva/ingest/prompt_library.py`) and which version is in force is declared in
+# `viva/versions.json`. A recorded ruling stamps its `prompt_version`, so every
+# reading names the instructions that produced it.
+INTERPRET_VERSION = versions.active(PACKAGE, "interpret")
 
 
 def interpret(said: str, descriptor: str = "", category: str = "",

@@ -37,9 +37,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 from functools import lru_cache
 
+from vivacore import versions
+
 _DIR = pathlib.Path(__file__).resolve().parent
 
-ACTIVE_REGISTRY = "expectations-v1"
+ACTIVE_REGISTRY = versions.active(_DIR.parent, "expectations")
 
 
 @lru_cache(maxsize=4)

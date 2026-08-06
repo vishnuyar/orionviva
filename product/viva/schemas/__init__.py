@@ -28,9 +28,11 @@ import pathlib
 from dataclasses import dataclass, field
 from functools import lru_cache
 
+from vivacore import versions
+
 _DIR = pathlib.Path(__file__).resolve().parent
 
-ACTIVE_PACK = "schemas-v1"
+ACTIVE_PACK = versions.active(_DIR.parent, "schema_pack")
 
 # The closed answer vocabulary. A pack entry outside it does not load.
 ANSWER_MONEY = "money"

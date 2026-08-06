@@ -18,18 +18,17 @@ from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
 from viva.ledger.projection import movement_key
 from viva.tools import default_registry, ledger_tools, run, weakest
 from viva.tools.envelope import ToolResult, figure
-from viva.tools.registry import PROMPTS, Registry, ToolSpec, descriptions
+from viva.tools.registry import (PACKAGE as _PACKAGE, PROMPTS, Registry,
+                                 ToolSpec, descriptions)
 from vivacore import promptstore
+from vivacore import versions as _manifest
 
 # The registry's description file is a released prompt: its text may never
 # change. To edit a description, add a new version file and point the registry
 # at it.
 FROZEN_DESCRIPTIONS = {
-    "tools-v1": "484999eebb3697a4",
-    "tools-v2": "1cc22b5f642bf5df",
-    "tools-v5": "faa8b0ec1ff4b2cc",
-    "tools-v6": "40796f1bbf55c1d0",
-}
+    v: d for v, d in _manifest.manifest(_PACKAGE)["released"].items()
+    if v.startswith("tools-")}
 
 
 def _p(doc, page=1):

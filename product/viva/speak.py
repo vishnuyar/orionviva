@@ -48,18 +48,18 @@ import re
 import uuid
 from dataclasses import dataclass, field, replace
 
-from vivacore import promptstore
+from vivacore import promptstore, versions
 
-from .tools.registry import PROMPTS
+from .tools.registry import PACKAGE, PROMPTS
 from .tools.runner import DEFAULT_MAX_CALLS, RunResult, run
 
-SPEAK_VERSION = "speak-v6"
-FINAL_VERSION = "speak-final-v6"
-PROTOCOL_VERSION = "speak-protocol-v6"
-RETRY_VERSION = "speak-retry-v1"
-CLOSING_VERSION = "speak-closing-v1"
-REFUSAL_VERSION = "speak-refusal-v1"
-REFUSAL_SCHEMA_VERSION = "speak-refusal-schema-v1"
+SPEAK_VERSION = versions.active(PACKAGE, "speak")
+FINAL_VERSION = versions.active(PACKAGE, "speak_final")
+PROTOCOL_VERSION = versions.active(PACKAGE, "speak_protocol")
+RETRY_VERSION = versions.active(PACKAGE, "speak_retry")
+CLOSING_VERSION = versions.active(PACKAGE, "speak_closing")
+REFUSAL_VERSION = versions.active(PACKAGE, "speak_refusal")
+REFUSAL_SCHEMA_VERSION = versions.active(PACKAGE, "speak_refusal_schema")
 
 FINAL_TOOL = "deliver_answer"
 REFUSAL_TOOL = "deliver_refusal"
@@ -522,13 +522,13 @@ class Session:
 
     def _record(self, turn: Turn, planner) -> None:
         from .ledger.events import read_recorded
-        versions = {"speak": f"{SPEAK_VERSION}@"
-                             f"{promptstore.digest(PROMPTS, SPEAK_VERSION)}",
-                    "tools": f"{self._registry.descriptions_version}@"
-                             f"{promptstore.digest(PROMPTS, self._registry.descriptions_version)}"}
+        stamps = {"speak": f"{SPEAK_VERSION}@"
+                           f"{promptstore.digest(PROMPTS, SPEAK_VERSION)}",
+                  "tools": f"{self._registry.descriptions_version}@"
+                           f"{promptstore.digest(PROMPTS, self._registry.descriptions_version)}"}
         n = len(self.turns)
         for i, ex in enumerate(turn.exchanges, 1):
-            payload = {"prompt_versions": versions,
+            payload = {"prompt_versions": stamps,
                        "modality": ex.modality,
                        "resolved_model": ex.resolved_model,
                        "question": turn.question,

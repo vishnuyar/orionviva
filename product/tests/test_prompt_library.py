@@ -14,29 +14,24 @@ import hashlib
 import pathlib
 
 import pytest
+from vivacore import versions as manifest
 
 from viva.ingest import prompt_library as pl
 
-# Pinned digests of every ACTIVE version. If one changes, the fix is not to bump
-# the number here — it is to add a new version id and leave the old text intact.
-FROZEN = {
-    "classify-v1": "78d4a6f76dda419c",
-    "classify-v2": "b0068911c228303a",
-    "base-v1": "93c67860a6626894",
-    "balance-generic-v1": "b7c12fe0406a602e",
-    "checking-v1": "2bda917dce1ee26f",
-    "savings-v1": "222ae6d74f94e8f6",
-    "card-v1": "1fb3e7b3dfb1c9c9",
-    "paystub-base-v1": "0c6d6940246743c5",
-    "paystub-v1": "03b31eadbe878505",
-    "interpret-v1": "999d8aa496da5691",
-    "interpret-v2": "7ac87ea8a867d0ba",
-}
+PACKAGE = pl.PACKAGE
+
+# The pins live in `viva/versions.json`, keyed by each file's own stem, so one
+# table covers prompts, packs and registries alike. If a digest changes, the fix
+# is not to bump the number there — it is to add a new version id and leave the
+# old text intact.
+FROZEN = {v: d for v, d in manifest.manifest(PACKAGE)["released"].items()
+          if v.startswith(("classify-", "interpret-", "extract-"))}
 
 
 def test_active_versions_are_frozen():
     live = set(pl.versions())
-    for version, digest in FROZEN.items():
+    for stem, digest in FROZEN.items():
+        version = stem[len("extract-"):] if stem.startswith("extract-") else stem
         assert version in live, f"{version} disappeared — versions are append-only"
         got = hashlib.sha256(pl.resolve(version).encode()).hexdigest()[:16]
         assert got == digest, (

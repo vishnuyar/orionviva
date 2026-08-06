@@ -16,14 +16,18 @@ import hashlib
 import pathlib
 
 import pytest
+from vivacore import versions as manifest
 
 from viva import persona
 
+_PACKAGE = pathlib.Path(persona.__file__).resolve().parent.parent
+
 
 def _pack_files(version):
-    d = persona.pack_dir if hasattr(persona, "pack_dir") else None
+    """What the pack consists of, as `versions.fingerprint` counts it — the same
+    accessor the manifest audit uses."""
     base = pathlib.Path(persona.__file__).resolve().parent / version
-    return sorted(p for p in base.iterdir() if p.suffix in (".json", ".md"))
+    return manifest.contents(base)
 
 
 def test_every_intent_has_a_phrasing_and_no_orphans():
@@ -89,11 +93,9 @@ def test_question_text_no_longer_lives_in_code():
 # table). pack-v1 is the original wording verbatim; pack-v2 is the Viva-manner
 # pass plus the expectation phrasings; pack-v3 adds the interview's wording,
 # which wraps the schema pack's own question and benefit in Viva's manner.
-FROZEN_PACKS = {
-    "pack-v1": "16c9bf533d3d4e31",
-    "pack-v2": "7e8f38e3db15c2f9",
-    "pack-v3": "62a56a4b9b7c1b5e",
-}
+FROZEN_PACKS = {v: d for v, d in
+                manifest.manifest(_PACKAGE)["released"].items()
+                if v.startswith("pack-")}
 
 
 def test_released_packs_are_frozen():
