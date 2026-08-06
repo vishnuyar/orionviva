@@ -4,10 +4,11 @@ vocabulary — its accounts, categories, tags, merchants and currencies — and 
 unknown value is refused with the known values named, never silently ignored.
 
 Each read emits every number it asserts as a figure, because a number that
-lives only inside a payload is machinery the answer may not speak. The two
-shapes of read are separated: an aggregate answers "how much" without
-returning rows, and ``list_movements`` returns rows only for a question narrow
-enough to name one.
+lives only inside a payload is machinery the answer may not speak. A read also
+names the accounts it spoke about, so an answer can say which account it means
+without the digits in that name being read as an amount. The two shapes of read
+are separated: an aggregate answers "how much" without returning rows, and
+``list_movements`` returns rows only for a question narrow enough to name one.
 
 A figure holding an amount states the currency it is in, and a figure counting
 things states none — that is how anything downstream tells an amount from a
@@ -23,6 +24,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from ..ledger import networth
+from ..ledger.identity import masked
 from ..ledger.projection import (MIXED, SETTLEMENT, SPENDING, TRANSFER,
                                  UnknownAccountError)
 from ..ledger.projection import movements as movements_view
@@ -79,6 +81,26 @@ def _real_accounts(proj) -> list:
 
 def _currencies(proj) -> set:
     return {i.currency for i in _real_accounts(proj) if i.currency}
+
+
+def _identifiers(proj, accounts) -> list:
+    """The names this read used for the accounts it spoke about, each whole.
+
+    An account answers to two names — the id every read and filter uses, and
+    the masked form a person reads — and both are returned, since either may
+    end up in a sentence. A form carrying no digit is omitted: it licenses
+    nothing, and every result is resent on every remaining call of the turn.
+    An account the projection does not hold contributes nothing."""
+    out: set = set()
+    for account in set(accounts):
+        try:
+            info = proj.account_info(account)
+        except UnknownAccountError:
+            continue
+        for form in (account, masked(info.number)):
+            if any(c.isdigit() for c in form):
+                out.add(form)
+    return sorted(out)
 
 
 def _is_iso_date(value: str) -> bool:
@@ -319,6 +341,7 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                           record_ids=sorted({r["record_id"] for r in rows})))
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
+        identifiers=_identifiers(proj, (r["record_id"] for r in rows)),
         # The amount, its grade, its currency and its as-of date travel as
         # figures. What stays here is what a figure cannot carry: which account
         # this is, and why its grade is what it is.
@@ -385,6 +408,11 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
                currency=currency, record_ids=record_ids),
         figure(money_in - money_out, "net movement over this set", grade=grade,
                currency=currency, record_ids=record_ids),
+        # The divisor a per-month average over this set is computed with.
+        # Arithmetic takes figure ids, so a count that lives only in the
+        # payload cannot be divided by.
+        figure(len(by_month), "months these movements span", grade=grade,
+               record_ids=record_ids),
     ]
     figures += [figure(v, f"net movement on {k}", grade=grade,
                        currency=currency, record_ids=[k])
@@ -395,6 +423,7 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
                 for k, v in sorted(by_month.items())]
     return ToolResult(
         tool=TOOL, ok=True,
+        identifiers=_identifiers(proj, [i.account for i in _scope(proj, filters)]),
         # The breakdown itself is the figures; `data` carries only the counts
         # and the totals, never a second copy of them.
         data={"count": len(rows), "money_in": str(money_in),
@@ -473,7 +502,9 @@ def list_movements(proj, args: dict) -> ToolResult:
     return ToolResult(
         tool=LIST_TOOL, ok=True, data={"movements": shown, "shown": len(shown),
                                        "total": total},
-        figures=figures, grade=weakest(r["grade"] for r in shown),
+        figures=figures, identifiers=_identifiers(
+            proj, (r["account"] for r in shown)),
+        grade=weakest(r["grade"] for r in shown),
         record_ids=record_ids, covers=covers, caveats=caveats,
         coverage=coverage, text=coverage)
 
@@ -501,7 +532,9 @@ def _query_holdings(proj, filters: dict) -> ToolResult:
                           record_ids=sorted({r["record_id"] for r in rows})))
     return ToolResult(
         tool=TOOL, ok=True, data={"holdings": rows, "count": len(rows)},
-        figures=figures, grade=weakest(r["grade"] for r in rows),
+        figures=figures, identifiers=_identifiers(
+            proj, (r["account"] for r in rows)),
+        grade=weakest(r["grade"] for r in rows),
         dated=min((r["as_of"] for r in rows if r["as_of"]), default=""),
         record_ids=record_ids, caveats=caveats,
         coverage=f"{len(rows)} holding(s) from the latest statement snapshots.",
@@ -603,6 +636,7 @@ def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
                           grade=grade, record_ids=record_ids))
     return ToolResult(
         tool=TOOL, ok=True, data=data, figures=figures,
+        identifiers=_identifiers(proj, [i.account for i in _scope(proj, filters)]),
         grade=grade, covers=covers,
         record_ids=record_ids, caveats=caveats,
         coverage=f"{extras['count']} spending movement(s) counted.",
@@ -670,6 +704,7 @@ def _aggregate_net_worth(proj, as_of: str | None) -> ToolResult:
                 for line in (data.get("lines") or []) if line.get("account")]
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
+        identifiers=_identifiers(proj, record_ids),
         data={"metric": "net_worth", "point": data},
         grade=weakest(_grades_in(data)),
         dated=data.get("as_of", ""),
@@ -793,6 +828,7 @@ def check_completeness(proj, args: dict) -> ToolResult:
                 for a in accounts if a["dated"]]
     return ToolResult(
         tool="check_completeness", ok=True, figures=figures,
+        identifiers=_identifiers(proj, (a["account"] for a in accounts)),
         data={"documents_held": len(captured), "posted": len(captured) - len(held),
               "awaiting": len(held), "awaiting_types": awaiting_types,
               "holds": holds, "accounts": accounts, "tiers": tiers,
@@ -832,6 +868,7 @@ def get_provenance(proj, args: dict) -> ToolResult:
             figures=[figure(proj.account_value(rid), f"{rid} — balance",
                             grade=ba.grade, dated=ba.dated,
                             currency=ba.currency, record_ids=ids)],
+            identifiers=_identifiers(proj, [rid]),
             record_ids=[rid] + ([ba.provenance.doc_id]
                                 if ba.provenance.doc_id else []),
             provenance=[ba.provenance.to_dict()],
@@ -852,6 +889,7 @@ def get_provenance(proj, args: dict) -> ToolResult:
                             f"{match.description} on {match.date}",
                             grade=grades.get(match.key, ""), dated=match.date,
                             currency=match.currency, record_ids=ids)],
+            identifiers=_identifiers(proj, [match.account]),
             record_ids=[match.key] + ([match.provenance.doc_id]
                                       if match.provenance.doc_id else []),
             provenance=[match.provenance.to_dict()],

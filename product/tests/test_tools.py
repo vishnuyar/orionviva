@@ -28,6 +28,7 @@ FROZEN_DESCRIPTIONS = {
     "tools-v1": "484999eebb3697a4",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
+    "tools-v6": "40796f1bbf55c1d0",
 }
 
 
@@ -306,8 +307,9 @@ def test_a_summary_states_the_currency_of_what_it_summed(registry):
     result = registry.call("query_ledger", {"entity": "transactions"})
     assert result.ok
     figures = {f["what"]: f for f in result.figures}
+    counts = ("movements matching", "months these movements span")
     for what, fig in figures.items():
-        if "movements matching" in what:
+        if any(c in what for c in counts):
             assert fig["currency"] == "", "a count is not an amount of anything"
         else:
             assert fig["currency"] == "USD", f"{what} states no currency"
@@ -1461,11 +1463,11 @@ def test_a_figures_records_do_not_travel_to_the_model():
 
 # -------------------------------------------------------------- the two reads
 
-def test_a_date_a_figure_carries_is_still_a_date_and_must_be_declared(registry):
+def test_a_date_a_read_asserted_may_be_said_without_declaring_it(registry):
     """`check_completeness` emits each account's as-of date as a figure whose
-    value IS a date. Citing that figure must not let the answer write the date
-    — otherwise citing a figure becomes a way around declaring one, and the
-    date rule stops being the only authority on dates."""
+    value IS a date. A date the run's results carry may be written with no
+    declaration; a date no result carries and no period covers still cannot be
+    said at all."""
     dated = _one_figure(registry, "check_completeness", {})
     fig = next(f for f in dated.values() if "good as of" in f["what"])
     assert fig["value"] == "2026-01-31"
@@ -1475,16 +1477,33 @@ def test_a_date_a_figure_carries_is_still_a_date_and_must_be_declared(registry):
             return {"tool": "check_completeness", "args": {}}
         return {"answer": "Its evidence runs to 2026-01-31.",
                 "figures": [{"id": _fig(context["results"], "good as of")}]}
-    result = run("how current is it?", planner, registry)
-    assert not result.answered and result.refusal == "undeclared_date"
+    assert run("how current is it?", planner, registry).answered
 
-    def declaring(context):
+    def inventing(context):
         if not context["results"]:
             return {"tool": "check_completeness", "args": {}}
-        return {"answer": "Its evidence runs to 2026-01-31.",
-                "figures": [{"id": _fig(context["results"], "good as of")}],
-                "dates": [{"iso": "2026-01-31"}]}
-    assert run("how current is it?", declaring, registry).answered
+        return {"answer": "Its evidence runs to 2019-03-04.", "figures": []}
+    result = run("how current is it?", inventing, registry)
+    assert not result.answered and result.refusal == "unfounded_figure"
+
+
+def test_a_page_of_rows_can_be_written_without_declaring_every_date(registry):
+    """A detailed read returns rows, and writing a row means writing its date.
+    The read carries every one of those dates, so an answer listing them
+    declares none.
+
+    Only the dates are written here. A description is a statement's own words
+    and may carry digits of its own, which no read licenses; a listing answer
+    that writes one is refused."""
+    def planner(context):
+        if not context["results"]:
+            return {"tool": "list_movements",
+                    "args": {"filters": {"merchant": "greenfield market"}}}
+        rows = context["results"][0]["data"]["movements"]
+        assert len(rows) > 1, "the fixture no longer returns several rows"
+        said = "; ".join(r["date"] for r in rows)
+        return {"answer": f"They fell on {said}.", "figures": []}
+    assert run("when did I shop there?", planner, registry).answered
 
 
 def test_a_date_a_tool_echoed_from_its_own_arguments_is_not_thereby_sayable(registry):
@@ -1555,6 +1574,26 @@ def test_the_transactions_read_returns_totals_and_no_rows(registry):
     assert any("money in" in w for w in described)
     assert any("net movement" in w for w in described)
     assert len(payload) < 4000
+
+
+def test_an_average_over_a_summary_has_a_divisor_it_can_cite(registry):
+    """A summary states how many months it spans, as a figure with an id. It
+    carries no currency, so dividing an amount by it yields an amount: that is
+    what makes a per-month average expressible at all, since arithmetic takes
+    figure ids and never a number the answer supplies."""
+    book = _one_figure(registry, "query_ledger", {"entity": "transactions"})
+    months = next(f for f in book.values()
+                  if "months these movements span" in f["what"])
+    assert months["value"] == "1" and months["currency"] == ""
+    spent = next(f["id"] for f in book.values()
+                 if "money out over these movements" in f["what"])
+    result = registry.call("compute",
+                           {"expression": "out / months",
+                            "inputs": {"out": spent, "months": months["id"]}},
+                           figures=book)
+    assert result.ok, result.text
+    assert result.figures[0]["currency"] == "USD", (
+        "money divided by a count is money")
 
 
 def test_weakest_grade_orders_conflicted_below_unverified():
@@ -1970,7 +2009,9 @@ def test_a_month_written_for_a_day_it_covers_is_accepted(registry):
 def test_a_period_a_read_is_attested_for_can_never_ground_a_figure(registry):
     """A period is scope, kept in its own pool, and that pool holds dates only.
     A spending aggregate names no row dates, so its period is the only place
-    its boundaries appear — and a figure may not stand on one."""
+    its boundaries appear — and a figure may not stand on one. The refusal says
+    which mechanism stopped it: a whole date inside an attested period is a
+    date that was never declared, not a number nobody emitted."""
     covers = registry.call("query_ledger", {"entity": "aggregate",
                                             "metric": "spending"}).covers
     edge = covers[0]["to"]
@@ -1981,7 +2022,7 @@ def test_a_period_a_read_is_attested_for_can_never_ground_a_figure(registry):
                                                      "metric": "spending"}}
         return {"answer": f"The figure is {edge}.", "figures": [], "dates": []}
     result = run("?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
+    assert not result.answered and result.refusal == "undeclared_date"
 
 def test_a_date_outside_everything_read_is_refused(registry):
     def planner(context):
@@ -1993,19 +2034,22 @@ def test_a_date_outside_everything_read_is_refused(registry):
     assert not result.answered and result.refusal == "unfounded_date"
 
 
-def test_a_date_component_written_but_not_declared_says_which_date_it_was(registry):
-    """A date left undeclared and a number invented outright are the same
-    refusal to the gate and very different news to the person."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger",
-                    "args": {"entity": "balances",
-                             "filters": {"account": "chk"}}}
-        return {"answer": "You were fine on the 31st.",
-                "figures": [], "dates": []}
-    result = run("when?", planner, registry)
-    assert not result.answered and result.refusal == "undeclared_date"
-    assert "2026-01-31" in result.detail
+def test_a_component_of_a_date_a_read_asserted_may_be_written(registry):
+    """A balance carries the date its evidence is good as of, so "the 31st" is
+    the run's own record said the way a person says it. A component of no date
+    the run holds is a number nothing emitted, and refuses as one."""
+    def planner_for(sentence):
+        def planner(context):
+            if not context["results"]:
+                return {"tool": "query_ledger",
+                        "args": {"entity": "balances",
+                                 "filters": {"account": "chk"}}}
+            return {"answer": sentence, "figures": [], "dates": []}
+        return planner
+    assert run("when?", planner_for("You were fine on the 31st."),
+               registry).answered
+    result = run("when?", planner_for("You were fine on the 17th."), registry)
+    assert not result.answered and result.refusal == "unfounded_figure"
 
 def test_a_declared_date_licenses_its_own_parts_and_nothing_else(registry):
     """The accepted cost of licensing a date by its parts, stated so it is not
@@ -2199,6 +2243,80 @@ def test_a_moment_read_licenses_its_own_date_without_a_period(registry):
         return {"answer": "As of 2026-01-31 you were fine.", "figures": [],
                 "dates": [{"iso": "2026-01-31"}]}
     assert run("?", planner, registry).answered
+
+
+def _numbered_account_projection():
+    """A vault whose account id carries the last four of its number, the shape
+    `account_key` derives when a statement shows a number."""
+    return LedgerProjection([
+        account_opened("acct:northgate:4417", "depository", "Everyday Checking",
+                       "USD", "2026-01-01", institution="Northgate Bank",
+                       account_number="XX4417", account_names=["R VANCE"]),
+        document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("acct:northgate:4417", "1000.00",
+                                 "2026-01-01", _p("doc-jan")),
+        closing_balance_observed("acct:northgate:4417", "600.00",
+                                 "2026-01-31", _p("doc-jan", 6)),
+    ])
+
+
+def test_an_answer_may_name_the_account_it_is_about(registry):
+    """The last four digits of an account are a name, not an amount, and an
+    answer that cannot write them cannot say which account it means. Both forms
+    the read used are sayable — the id every filter takes, and the masked form
+    a person reads — and each only whole."""
+    numbered = default_registry(_numbered_account_projection())
+    result = numbered.call("query_ledger", {"entity": "balances"})
+    assert set(result.identifiers) == {"acct:northgate:4417", "••••4417"}
+    assert result.to_dict()["identifiers"] == result.identifiers, (
+        "a name the answer must write has to reach the model")
+
+    def planner_for(sentence):
+        def planner(context):
+            if not context["results"]:
+                return {"tool": "query_ledger", "args": {"entity": "balances"}}
+            return {"answer": sentence,
+                    "figures": [{"id": _fig(context["results"], "balance")}]}
+        return planner
+    for named in ("Everyday Checking ••••4417 holds f1.",
+                  "Account acct:northgate:4417 holds f1."):
+        assert run("what do I have?", planner_for(named), numbered).answered, named
+    bare = run("what do I have?",
+               planner_for("Account 4417 holds f1."), numbered)
+    assert not bare.answered and bare.refusal == "unfounded_figure"
+
+
+def test_a_name_that_is_itself_a_quantity_licenses_nothing():
+    """A name is asserted whole so that naming a thing cannot become a way to
+    make a magnitude sayable. A read offering a bare run of digits as a name is
+    offering an amount, and a sign or a space around it does not make it
+    anything else. The reads here cannot produce such a name; the gate refuses
+    it anyway, because `identifiers` is a field any tool can set."""
+    def registry_naming(*names):
+        registry = Registry()
+        registry.register(ToolSpec(
+            name="query_ledger", params={"type": "object", "properties": {}},
+            fn=lambda args: ToolResult(
+                tool="query_ledger", ok=True, data={"note": "a name of digits"},
+                identifiers=list(names))))
+        return registry
+
+    def planner_for(sentence):
+        def planner(context):
+            if not context["results"]:
+                return {"tool": "query_ledger", "args": {}}
+            return {"answer": sentence, "figures": []}
+        return planner
+    assert run("?", planner_for("It is ••••4417."),
+               registry_naming("••••4417")).answered
+    for offered, said in (("4417", "It is 4417."),
+                          ("4,417", "It is 4,417."),
+                          ("-4417", "You are down -4417."),
+                          ("4417 ", "It is 4417 dollars.")):
+        result = run("?", planner_for(said), registry_naming(offered))
+        assert not result.answered, offered
+        assert result.refusal == "unfounded_figure", offered
 
 
 def test_a_period_missing_an_end_licenses_nothing():

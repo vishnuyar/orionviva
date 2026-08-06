@@ -24,7 +24,7 @@ from .envelope import ToolResult, refusal
 
 PROMPTS = pathlib.Path(__file__).resolve().parent.parent / "prompts"
 
-DESCRIPTIONS_VERSION = "tools-v5"
+DESCRIPTIONS_VERSION = "tools-v6"
 
 _SECTION_MARK = "# tool: "
 

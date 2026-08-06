@@ -8,12 +8,18 @@ text-protocol adapter parsing a model's JSON block; so is a scripted function
 in a test. The runner neither knows nor cares which — the contract is data in,
 data out, and the gate runs identically for all of them.
 
-The gate rests on one rule: a number the model may say is either a figure some
-tool emitted this run, a date declared from what the run is attested for, or a
-value the person themselves supplied in this turn's question. There is no
-fourth kind. Because tools emit figures with ids and an answer cites ids, an
-invented number has nothing to cite, and a value planted in a call's own
-arguments is not evidence when a result echoes it back.
+The gate rests on one rule: the answer may say what this run established. A
+number is either a figure some tool emitted, or a value the person themselves
+supplied in this turn's question. There is no third kind. Because tools emit
+figures with ids and an answer cites ids, an invented number has nothing to
+cite, and a value planted in a call's own arguments is not evidence when a
+result echoes it back.
+
+A name is not a number, and the run holds those too. A read that speaks about
+an account puts the names it used on the record, and an answer may write one —
+but only whole, in the form the read wrote it. The masked form of an account
+says which account; the run of digits inside it, written bare, is a number
+nothing emitted. A name that is itself a quantity licenses nothing.
 
 One thing besides figures stays sayable: a number a tool wrote into its own
 prose. A tool's `text`, `coverage` and `caveats` are sentences the tool chose;
@@ -25,11 +31,15 @@ attached here rather than requested of the model. Nothing about the sentence's
 wording is inspected — only this run's own ids and values — so the rendering is
 a substitution rather than a vocabulary check.
 
-Dates are declared alongside the figures. A declared date licenses its own
-parts and nothing else, and must fall inside a period the run is attested for or
-match a date some result carries. An answer that fails any of this is refused
-whole, and the refusal is spoken in Viva's voice when the planner can compose
-one, with the same number check run over what it composed.
+Dates are the run's record too. A date some result carries may be said, and its
+parts written out, without being declared. A date no result carries must be
+declared first, and is licensed only if it falls inside a period the run is
+attested for — a period is scope, not an account of what happened inside it. A
+declared date licenses its own parts and nothing else, and a date that is
+neither carried nor covered cannot be said at all. An answer that fails any of
+this is refused whole, and the
+refusal is spoken in Viva's voice when the planner can compose one, with the
+same number check run over what it composed.
 """
 
 from __future__ import annotations
@@ -71,6 +81,15 @@ def _without_ids(text: str, ids) -> str:
     return _ID_MENTION.sub(
         lambda m: " " * len(m.group(0)) if m.group(1) in ids else m.group(0),
         text)
+
+
+def _without_names(text: str, names) -> str:
+    """The text with the names this run asserted blanked out, character for
+    character. Longest first, so a name ending inside a longer one cannot take
+    its tail and leave the head to be read as a number."""
+    for name in sorted(names, key=len, reverse=True):
+        text = text.replace(name, " " * len(name))
+    return text
 
 
 def _is_real_date(iso: str) -> bool:
@@ -135,10 +154,11 @@ class _Ground:
     periods: list = field(default_factory=list)   # (from, to) a read is attested for
     dates: set = field(default_factory=set)       # ISO dates some result carries
     prose: set = field(default_factory=set)       # numbers tools wrote into sentences
+    names: set = field(default_factory=set)       # whole names reads asserted
 
     def stamp(self, result: ToolResult) -> None:
         """Absorb one ok result: give its figures ids, and note what it
-        attests, what it dates and what it said in words."""
+        attests, what it dates, what it named and what it said in words."""
         for span in result.covers or []:
             if span.get("from") and span.get("to"):
                 self.periods.append((span["from"], span["to"]))
@@ -149,6 +169,12 @@ class _Ground:
             self.book[fig["id"]] = fig
             if _ISO_DATE.match(str(fig.get("dated") or "")):
                 self.dates.add(str(fig["dated"]))
+        for name in result.identifiers or []:
+            # A name that is itself a quantity licenses nothing: a sign or
+            # surrounding space does not make a magnitude a label.
+            text = str(name)
+            if text and not _SIGNED.fullmatch(text.strip()):
+                self.names.add(text)
         for sentence in [result.text, result.coverage, *(result.caveats or [])]:
             self.prose |= {t for t in _tokens(sentence) if not _ISO_DATE.match(t)}
 
@@ -248,7 +274,10 @@ def _check(step: dict, ground: _Ground) -> tuple[list, tuple | None]:
                         "but this turn's question does not contain it.")
         stipulated |= _tokens(value)
 
-    sayable: set = set()
+    # A date some result carries is sayable as it stands. Declaring is what
+    # turns a date the run is only attested *for* into one the answer may
+    # write.
+    sayable: set = {part for iso in ground.dates for part in _date_parts(iso)}
     for entry in step.get("dates") or []:
         iso = str(entry.get("iso", "")) if isinstance(entry, dict) else ""
         # Shape first, then reality. The library accepts forms this gate cannot
@@ -270,21 +299,23 @@ def _check(step: dict, ground: _Ground) -> tuple[list, tuple | None]:
     covered: set = set()
     for fig in cited:
         covered |= {t for t in _tokens(fig["value"]) if not _ISO_DATE.match(t)}
-    for token in _NUMBER.findall(
-            _without_ids(str(step.get("answer", "")), ground.book)):
+    scanned = _without_names(
+        _without_ids(str(step.get("answer", "")), ground.book), ground.names)
+    for token in _NUMBER.findall(scanned):
         plain = token.replace(",", "")
         if (plain in covered or plain in sayable or plain in stipulated
                 or plain in ground.prose):
             continue
         # An undeclared date and an invented number refuse alike; the detail
-        # says which one it was.
-        owner = next((d for d in sorted(ground.dates)
-                      if plain in _date_parts(d)), "")
-        if owner:
+        # says which one it was. Only a whole date can be told apart from a
+        # magnitude here: a period attests a range, and one of its days written
+        # as a bare number is a number.
+        if _ISO_DATE.match(plain) and any(start <= plain <= end
+                                          for start, end in ground.periods):
             return [], ("undeclared_date",
-                        f"The answer writes '{token}', part of the date "
-                        f"{owner!r} this run read — a date must be declared "
-                        "before it can be said.")
+                        f"The answer writes '{token}', a date inside a period "
+                        "this run is attested for — a date the run's results "
+                        "do not carry must be declared before it can be said.")
         return [], ("unfounded_figure",
                     f"The answer contains '{token}', which no figure in this "
                     "run carries and no result stated in words.")
