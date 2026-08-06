@@ -53,6 +53,13 @@ product/**/*.jsonl
 raw-header.json
 .viva-vault/
 
+# The Witness's reports on real-vault runs. Scrubbed when written — no amounts,
+# no institution or merchant names, no account fragments, no dates from this
+# person's life — because the Steward reads them and commit messages are public.
+# Ignored anyway: a scrubbing discipline that is the only thing between a real
+# figure and a public repo is one mistake from being wrong.
+runs/
+
 # viva-bench local artifacts
 bench/.venv/
 bench/__pycache__/
