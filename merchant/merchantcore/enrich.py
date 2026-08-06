@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pathlib
 
-from vivacore import promptstore
+from vivacore import promptstore, versions
 
 import json
 import logging
@@ -30,7 +30,10 @@ from .taxonomy import (PRIMARY_CATEGORIES, TAXONOMY_VERSION, canonical_primary,
 
 log = logging.getLogger(__name__)
 
-ENRICHMENT_VERSION = "enrich-v4"       # the version stamped on records
+PACKAGE = pathlib.Path(__file__).resolve().parent
+
+# The version stamped on records, as `merchantcore/versions.json` declares it.
+ENRICHMENT_VERSION = versions.active(PACKAGE, "enrich")
 
 # The closed answer space an implication may name. Spelled out here rather than
 # imported: merchantcore does not depend on the product.
@@ -41,7 +44,7 @@ KINDS = ("business", "instrument", "peer")
 # costs one chunk and the rest of the run still lands.
 DEFAULT_CHUNK_SIZE = 40
 
-PROMPTS = pathlib.Path(__file__).resolve().parent / "prompts"
+PROMPTS = PACKAGE / "prompts"
 
 # The prompt lives in `prompts/<version>.txt`, so a recorded version resolves
 # to the exact text that produced the record.

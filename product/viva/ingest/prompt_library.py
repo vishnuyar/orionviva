@@ -19,8 +19,10 @@ from __future__ import annotations
 import pathlib
 
 from vivacore import promptstore
+from vivacore import versions as manifest
 
-PROMPTS = pathlib.Path(__file__).resolve().parent.parent / "prompts"
+PACKAGE = pathlib.Path(__file__).resolve().parent.parent
+PROMPTS = PACKAGE / "prompts"
 
 # Filenames carry a family prefix so the three namespaces share one directory
 # without colliding. The ids recorded on events omit the extract prefix.
@@ -34,16 +36,24 @@ def _file_id(version: str) -> str:
     return f"{_EXTRACT_PREFIX}{version}"
 
 
-def classify_prompt(version: str = "classify-v2") -> tuple[str, str]:
-    """The classification prompt text and its version id (v2 knows pay stubs)."""
+def classify_prompt(version: str | None = None) -> tuple[str, str]:
+    """The classification prompt text and its version id.
+
+    Omitting `version` gets the one `viva/versions.json` has in force. Any
+    version given, including the empty string, must resolve or this raises;
+    only an omitted argument falls back to the manifest."""
+    version = manifest.active(PACKAGE, "classify") if version is None else version
     return promptstore.load(PROMPTS, version), version
 
 
-def interpret_prompt(version: str = "interpret-v2") -> tuple[str, str]:
+def interpret_prompt(version: str | None = None) -> tuple[str, str]:
     """The interpretation prompt and its version id.
 
+    Omitting `version` gets the one `viva/versions.json` has in force; a version
+    that is given and does not resolve raises, as in `classify_prompt`.
     The caller fills the placeholders. The version is stamped on the ruling, so
     the reading stays reproducible after the text is superseded."""
+    version = manifest.active(PACKAGE, "interpret") if version is None else version
     return promptstore.load(PROMPTS, version), version
 
 

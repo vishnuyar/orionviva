@@ -18,13 +18,14 @@ from __future__ import annotations
 import pathlib
 from dataclasses import dataclass, field
 
-from vivacore import promptstore
+from vivacore import promptstore, versions
 
 from .envelope import ToolResult, refusal
 
-PROMPTS = pathlib.Path(__file__).resolve().parent.parent / "prompts"
+PACKAGE = pathlib.Path(__file__).resolve().parent.parent
+PROMPTS = PACKAGE / "prompts"
 
-DESCRIPTIONS_VERSION = "tools-v6"
+DESCRIPTIONS_VERSION = versions.active(PACKAGE, "tools")
 
 _SECTION_MARK = "# tool: "
 

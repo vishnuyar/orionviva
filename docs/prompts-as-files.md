@@ -1,6 +1,6 @@
 # Prompts as Files
 
-**Status:** ✅ **BUILT 2026-07-25** — P1 = (a), read-only package data · **Created:** 2026-07-25 · **Origin:** Vishnu: *"move all the prompts and versions out of code — I had mentioned this previously, it still drifted. Prompt versions have gone up but the previous versions are buried in code."*
+**Status:** ✅ **BUILT 2026-07-25** — P1 = (a), read-only package data · **Amended 2026-08-06** with *Where a version is declared* (the manifest) · **Created:** 2026-07-25 · **Origin:** Vishnu: *"move all the prompts and versions out of code — I had mentioned this previously, it still drifted. Prompt versions have gone up but the previous versions are buried in code."*
 
 **Invariants touched:** **T8 (a recorded `prompt_version` must resolve to the exact text that produced it)** · T3 (raw capture is worthless if the instructions behind it are unrecoverable) · I5 (code universal, specifics are data — a prompt is the most specific data there is) · X1 (a contributor's toolchain is never a user's problem).
 
@@ -162,3 +162,36 @@ Every version below still resolves; records written under any of them keep their
 ### Deferred, deliberately
 
 User-editable prompts (P1 (b)). `promptstore.load()` takes a directory argument precisely so an override path is later a second lookup rather than a rewrite — but an edited prompt breaks the digest chain, so overrides must arrive as **content-addressed new versions**, not edits. That is a slice, not a config flag.
+
+---
+
+# Where a version is declared
+
+**Amended 2026-08-06**, from [briefs/the-constants-that-are-not-constants.md](../briefs/the-constants-that-are-not-constants.md), Option C. The 2026-07-25 work made a prompt's *text* data. Its *declaration* stayed code: **eighteen active-version literals in three packages under three different names** — `PROMPT_VERSION`, `ACTIVE_PACK` (two different things with that name), `ACTIVE_REGISTRY`, `PACK_RULES`, seven in `speak.py` alone — pinned by **four independent frozen-digest tables** in four test files. That is the same condition that lost `enrich-v2`'s text, one level up.
+
+## The ask, and why it was not taken literally
+
+The request was to declare nothing and resolve the highest version at run time. It fails four ways mechanically: `sorted()` is lexicographic, so `speak-v10` reverts the product to `speak-v2`; a family notion has to be invented anyway, because `speak-v6` and `speak-refusal-schema-v1` share a directory and "the highest `speak`" resolves by prefix to the wrong one; a version deliberately **held back** — the open `speak-v5` length risk is exactly that case — is unexpressible; and a composite id like `extract:base-v1+card-v1` has two independent axes with no "highest".
+
+The reason that decided it is none of those. Auto-resolution puts a new prompt in force the moment a file lands, **with no diff showing that behaviour changed** — the same stale-artifact failure [the-surface-cards.md](the-surface-cards.md) reversed a build-step decision over. So the declaration is not the problem. **The declaration is the review gate.** The problem was that it was made in eighteen places.
+
+## What is built
+
+One `versions.json` per package (`product/viva/`, `merchant/merchantcore/`), shipped as package data, read through `vivacore.versions`. Per package, not per repo, because the three ship as independently installable wheels (T9).
+
+- **`released`** — every version file, by its own file stem, against `sha256[:16]` of its bytes. A directory-shaped version (a persona pack) hashes its files by name in sorted order, hidden files excluded. This is now the *only* pin table; the four test-file copies read from it.
+- **`in_force`** — the families that have one active pointer, and the directory each lives in. Nothing else declares a version id, and a test fails on any quoted id that reappears in a module.
+- **`withdrawn`** — per version, not per family, mapping a version to why it is not in force. Per family would have been a mute button: mark one version held and every later one lands unnoticed. Keyed to the version, holding `v2` back leaves `v3` raising the same complaint as before.
+- **`versions.audit`** — the promotion lint. A version file nobody pinned, a released file edited or deleted, a family pointing at nothing released, or a newer version sitting unpromoted with no reason all fail the suite. Its friction is real and accepted: a draft prompt on disk reds the build until it is promoted or marked.
+
+Nothing was promoted. Every id in force after is the id in force before.
+
+## What this does not yet cover
+
+- **`core/vivacore` has no manifest.** Its `PROMPT_VERSION = "p2"` and the `p2`/`t1`/`ti1` map remain literals, and those five prompt files are pinned nowhere. This is the same hole as TODO's *the bench records prompt versions that do not resolve*: `t1` and `ti1` do not name single files at all, so a manifest cannot key them until that is settled.
+- **Event stamps still carry a bare id.** `QuestionDeclined` records `pack-v3`, not `pack-v3@62a56a4b`. `versions.stamp()` exists and is tested, which makes the fix cheap — but it changes recorded payloads, so it is its own cycle and the owed TODO item stands.
+- **The literal test is textual.** It catches a quoted id; an id built by concatenation or an f-string passes it and is caught nowhere.
+
+## The rule this leaves standing
+
+A version id is declared once, as data, beside the code it governs — and **promotion is an explicit, reviewable act**, never a consequence of a file appearing. What the lint removes is not the decision; it is the ability to forget you owed one.

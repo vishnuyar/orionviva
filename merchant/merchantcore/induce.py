@@ -29,7 +29,7 @@ import logging
 import pathlib
 import re
 
-from vivacore import promptstore
+from vivacore import promptstore, versions
 
 from .descriptor import is_never_templatable
 from .profile import (PACK_RULES, PROFILE_FORMAT, Profile, ProfileError, SLOTS, Template,
@@ -38,9 +38,12 @@ from .profile import (PACK_RULES, PROFILE_FORMAT, Profile, ProfileError, SLOTS, 
 
 log = logging.getLogger(__name__)
 
-# The prompt version. A released version is never edited; a change is a new
-# file, so a grammar naming v1 keeps resolving to the text that produced it.
-INDUCTION_VERSION = "induce-profile-v2"
+PACKAGE = pathlib.Path(__file__).resolve().parent
+
+# The prompt version, as `merchantcore/versions.json` declares it. A released
+# version is never edited; a change is a new file, so a grammar naming v1 keeps
+# resolving to the text that produced it.
+INDUCTION_VERSION = versions.active(PACKAGE, "induce_profile")
 
 # How many descriptors ride in one induction call.
 DEFAULT_SAMPLE = 40
@@ -85,7 +88,7 @@ def holdout_split(counts: dict, share: float = HOLDOUT_SHARE,
         (test if bucket < share * 10_000 else train)[d] = n
     return (counts, {}) if not train or not test else (train, test)
 
-PROMPTS = pathlib.Path(__file__).resolve().parent / "prompts"
+PROMPTS = PACKAGE / "prompts"
 _PROMPT = promptstore.load(PROMPTS, INDUCTION_VERSION)
 
 

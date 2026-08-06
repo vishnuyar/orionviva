@@ -31,12 +31,15 @@ import pathlib
 import string
 from functools import lru_cache
 
+from vivacore import versions
+
 _DIR = pathlib.Path(__file__).resolve().parent
 
-# The voice currently speaking. Bump by ADDING a pack directory, never by
-# editing a released one — a decline records the pack that asked, and that
-# pack_version must keep resolving to the exact words it recorded.
-ACTIVE_PACK = "pack-v3"
+# The voice currently speaking, as `viva/versions.json` declares it. Change it
+# by ADDING a pack directory and promoting it there, never by editing a released
+# one — a decline records the pack that asked, and that pack_version must keep
+# resolving to the exact words it recorded.
+ACTIVE_PACK = versions.active(_DIR.parent, "persona_pack")
 
 # ------------------------------------------------------------- the contract
 #
