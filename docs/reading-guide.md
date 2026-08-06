@@ -1,6 +1,6 @@
 # Reading Guide — where every document sits
 
-**Status:** Living — this is the only place document order exists · **Last updated:** 2026-08-06 (prompts-as-files amended with the version manifest)
+**Status:** Living — this is the only place document order exists · **Last updated:** 2026-08-06 (prompts-as-files amended with the version manifest; WORKFLOW amended with the Witness)
 
 ## Why this doc
 
@@ -19,7 +19,7 @@ Read in this order if arriving fresh. Each entry: what it is, and when you'd ret
 **2 · The process spine — how we're deciding things**
 
 - [design-invariants.md](design-invariants.md) — the standing checklist (trust, internationalization, experience) every new design doc and ADR must answer to.
-- [`../WORKFLOW.md`](../WORKFLOW.md) (repo root) — the lanes a change travels down, the roles that carry it, and which checkpoints are the author's alone.
+- [`../WORKFLOW.md`](../WORKFLOW.md) (repo root) — the lanes a change travels down, the roles that carry it, and which checkpoints are the author's alone. **Amended 2026-08-06** with the **Witness**, the one role that opens the real vault and spends real money on it (step 4b). Read it for the two-tier record it establishes: the full account of a real run lives outside every working tree, and the only version that comes near the repo is scrubbed to verdicts rather than values.
 - [`../STYLE-COMMENT-PASS.md`](../STYLE-COMMENT-PASS.md) (repo root) — what a comment may say: behaviour, never provenance, argument or incident. A rule that must not be undone is a named test, not a paragraph.
 
 **3 · Design stances — how the core will work**

@@ -1,6 +1,6 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-07-30
+**Status:** Living · **Last updated:** 2026-08-06
 
 OrionViva is built by a product owner who directs, and an AI that engineers.
 This file is the contract between them: the roles, the loop, and the gates.
@@ -26,6 +26,14 @@ suite, runs the change against real documents where it can, and checks the
 diff did *only* what the brief said. Reports findings; fixes nothing. The
 builder never grades its own work — that separation is the point.
 
+**Witness** — the only role that opens the real vault. It reads `.env`, runs
+the product against Vishnu's own money on a bounded budget of real model calls,
+and testifies to what happened; the suite proves the machinery consistent with
+itself and cannot say whether Viva told a person something true. It writes two
+records: the full one under `~/.viva-runs/`, outside every working tree, and a
+**scrubbed** report in `runs/` — verdicts, never values — which is the one the
+Steward reads. Changes nothing, fixes nothing, never commits.
+
 **Steward** — the ship-time rituals once verified work is accepted: comment
 style pass, reading-guide and docs impact pass, TODO update, the paranoia
 grep, and a drafted commit message with no tool footers. Then it stops.
@@ -48,6 +56,10 @@ later as its own full-lane cycle ("design phase: issue #N").
    decides, amends. Nothing is built from an unapproved brief.
 3. Builder implements → delivers the walkthrough.
 4. Verifier (fresh context) runs → delivers the report.
+   - **4b — Witness, when the claim needs real money to settle it:** an
+     acceptance run, a suspected wrong number, a capability the suite cannot
+     reach. Not every cycle earns one; a cycle that changes what a person is
+     *told* does. Its scrubbed report joins the walkthrough at checkpoint 2.
 5. **Checkpoint 2 — accept the work.** Walkthrough plus verification report,
    read together. Findings loop back to the Builder; scope-fence flags loop
    back to the brief.
@@ -81,6 +93,9 @@ Roles are prompts; anything that must never happen is enforced by code:
   clone: `git config core.hooksPath .githooks`. Bypassing with `--no-verify`
   is a deliberate act, done only after the Steward's grep judged a hit
   synthetic.
+- `runs/` and `briefs/` are gitignored, so the Witness's scrubbing is not the
+  only thing standing between a real figure and a public repo. A discipline
+  that has to hold every time is not a gate.
 - The test suites, including the guards that fail the build on prompt
   literals. The suite is green at every checkpoint 2.
 
