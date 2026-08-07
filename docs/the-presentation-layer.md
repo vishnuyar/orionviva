@@ -1,6 +1,6 @@
 # The Presentation Layer
 
-**Status:** BUILT, and **explicitly a debug surface, not the product's presentation layer** (Vishnu, 2026-07-25) · **Last updated:** 2026-07-25
+**Status:** **DELETED 2026-08-06** — the page, the server, the endpoints and their contract test are gone; the engine beneath them moved to `viva/engine.py` first. It was **explicitly a debug surface, not the product's presentation layer** (Vishnu, 2026-07-25), and it was thrown away as one. Read it for the rulings and the spine, never for what exists. · **Last updated:** 2026-08-07
 
 > **This build is throwaway.** It exists so the author can see and exercise what the engine knows while building — nothing more. The real presentation layer is a **design conversation we have not had**: information architecture, what a person actually opens this for, the persona's voice, progressive disclosure done properly, mobile. Do not treat the current page as a decided design, and do not accumulate features on it. The rulings below (hybrid answering, implicit categories, React+Vite) were right *for a debug tool* and are all re-openable when the real thing is designed. What should survive is the **contract tests** — every endpoint called, every field rendered or deliberately dropped — because they are what caught the engine outrunning the surface in the first place. · **Block seeded:** the surface as a first-class layer — the ranked question queue as the page's spine, and every figure the engine knows finally visible.
 

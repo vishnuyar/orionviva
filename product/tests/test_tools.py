@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pytest
 
+from viva import quantity, render
 from viva.ledger import (LedgerProjection, Provenance, account_opened,
                          closing_balance_observed, merchant_categorized,
                          opening_balance_observed, simple_transaction,
@@ -20,6 +21,7 @@ from viva.tools import default_registry, ledger_tools, run, weakest
 from viva.tools.envelope import ToolResult, figure
 from viva.tools.registry import (PACKAGE as _PACKAGE, PROMPTS, Registry,
                                  ToolSpec, descriptions)
+from viva.tools.shape import BadShape, Clause, Shape, Slot
 from vivacore import promptstore
 from vivacore import versions as _manifest
 
@@ -48,6 +50,50 @@ def _figure(results, what):
 def _fig(results, what):
     """Its id — the only handle an answer is given for a number."""
     return _figure(results, what)["id"]
+
+
+def _shape(*clauses):
+    """A shape as a planner commits one: words with typed holes, no digits.
+
+    Each clause is `(text, [(hole name, what it holds), ...])`, where a hole
+    holding a magnitude adds what that magnitude is of. Written this way
+    because every test below has to author its sentence before it has read
+    anything, which is the property the whole mechanism rests on."""
+    return Shape(clauses=tuple(
+        Clause(text=text, slots=tuple(Slot(*slot) for slot in slots))
+        for text, slots in clauses))
+
+
+def _script(shape, *calls, bind=None):
+    """A planner that commits `shape`, makes `calls` in order, then binds.
+
+    `bind` is handed the results so far and returns the bindings map, so a test
+    says which established thing fills which hole and never writes a value."""
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if len(done) < len(calls):
+            tool, args = calls[len(done)]
+            return {"tool": tool, "args": args}
+        return {"bindings": {} if bind is None else bind(context["results"])}
+    return planner
+
+
+def _entity(results, label):
+    """The id of a thing a read spoke about, by the handle its figures use."""
+    for result in results:
+        for item in result.get("identifiers") or []:
+            if label in item["label"]:
+                return item["id"]
+    raise AssertionError(f"no thing labelled {label!r} was established")
+
+
+def _caveats(results):
+    """Every caveat this turn's reads have written, by id — what an answer has
+    to place if it states any of their figures."""
+    return [c["id"] for r in results for c in r.get("caveats") or []
+            if c.get("id")]
 
 
 def _statement_reply(opening, opening_date, closing, closing_date):
@@ -567,7 +613,10 @@ def _every_figure(factor="1", more=0) -> dict:
     reached = set()
     book = _one_figure(registry, "query_ledger", {"entity": "balances"})
     money = next(f["id"] for f in book.values() if f["currency"])
-    calls = [("compute", {"expression": "a * 2", "inputs": {"a": money}})]
+    calls = [("compute", {"expression": "a * 2", "inputs": {"a": money}}),
+             # An amount over an amount is the one figure only arithmetic
+             # produces, so a check over every emitter has to reach it here.
+             ("compute", {"expression": "a / a", "inputs": {"a": money}})]
     for schema in registry.schemas():
         name = schema["name"]
         for args in from_the_vault.get(name,
@@ -617,6 +666,29 @@ def test_every_figure_a_tool_emits_says_what_it_measures():
                 f"and it claims to be an amount in {currency}")
 
 
+def test_no_tool_can_emit_a_figure_that_does_not_say_what_it_measures():
+    """This is what makes the closed vocabulary safe. Every figure that can
+    reach a person comes from an emitter written here, so a quantity nobody
+    thought of shows up as a red suite rather than as a refused answer in front
+    of somebody. A vocabulary over language a model might produce could only
+    ever fail the other way round."""
+    for what, fig in _every_figure().items():
+        assert fig["quantity"] in quantity.MEASURES, (
+            f"{what!r} declares {fig['quantity']!r}, which says nothing about "
+            "what the number is of")
+
+
+def test_every_quantity_the_vocabulary_holds_can_be_asked_for():
+    """The other half of the same completeness. A quantity nothing can ask for
+    is a word a tool may declare that no sentence can ever be about, so the
+    figure carrying it is unsayable — and it would be unsayable silently."""
+    askable = {kind for kinds in render.QUANTITY_OF_TYPE.values()
+               for kind in kinds}
+    missing = sorted(set(quantity.KINDS) - askable)
+    assert not missing, (
+        f"{missing} can be measured and no hole can ask about it")
+
+
 # ------------------------------------------------------------------- compute
 
 def _one_figure(registry, tool, args):
@@ -643,7 +715,8 @@ def test_compute_is_exact(registry):
     measuring everything about arithmetic except whether it is right."""
     book = {}
     for i, amount in enumerate(("0.10", "0.20"), 1):
-        f = figure(amount, f"a tenth {i}", grade=VERIFIED, currency="USD",
+        f = figure(amount, f"a tenth {i}", quantity=quantity.BALANCE,
+                   grade=VERIFIED, currency="USD",
                    record_ids=["doc-jan"])
         f["id"] = f"f{i}"
         book[f["id"]] = f
@@ -682,7 +755,8 @@ def test_compute_will_not_add_across_currencies(registry):
     will not do at all."""
     book = {}
     for i, currency in enumerate(("USD", "EUR"), 1):
-        f = figure("100.00", f"balance {i}", grade=VERIFIED, currency=currency,
+        f = figure("100.00", f"balance {i}", quantity=quantity.BALANCE,
+                   grade=VERIFIED, currency=currency,
                    record_ids=[f"doc-{i}"])
         f["id"] = f"f{i}"
         book[f["id"]] = f
@@ -751,24 +825,30 @@ def test_a_magnitude_the_expression_invented_stands_on_no_document(registry):
                                      "inputs": {"a": balance}}, figures=book)
     assert zero.ok and Decimal(zero.figures[0]["value"]) == 0
     assert zero.record_ids == book[balance]["record_ids"]
-    # A magnitude alone inherits nothing from a figure it never touched, so
-    # nothing stands behind it and the answer cannot be composed.
+    # A magnitude alone inherits nothing from a figure it never touched: no
+    # records, no grade, and nothing saying what it is a magnitude of.
     alone = registry.call("compute", {"expression": "987654",
                                       "inputs": {"a": balance}}, figures=book)
     assert alone.ok and alone.figures[0]["record_ids"] == []
     assert alone.figures[0]["grade"] == ""
+    assert alone.figures[0]["quantity"] == quantity.UNMEASURED
+
+    shape = _shape(("That comes to {total}.", [("total", "count", "count")]))
 
     def planner(context):
-        if not context["results"]:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
             return {"tool": "query_ledger", "args": {"entity": "balances"}}
-        if len(context["results"]) == 1:
+        if len(done) == 1:
             return {"tool": "compute",
                     "args": {"expression": "987654",
                              "inputs": {"a": _fig(context["results"],
                                                   "balance")}}}
-        return {"answer": "That comes to 987654.",
-                "figures": [{"id": _fig(context["results"], "result of")}]}
-    assert run("how much?", planner, registry).refusal == "uncited_figure"
+        return {"bindings": {"total": {"figure": _fig(context["results"],
+                                                      "result of")}}}
+    assert run("how much?", planner, registry).refusal == "wrong_quantity"
 
 
 # ------------------------------------------ what a computed figure rests on
@@ -776,10 +856,15 @@ def test_a_magnitude_the_expression_invented_stands_on_no_document(registry):
 def _book(*specs):
     """A figure book as the runner would stamp one, built from
     `(value, what, grade, currency, records)`. Every value in it is
-    synthetic."""
+    synthetic.
+
+    A spec stating a currency is an amount held, and one stating none counts
+    things — which is what the specs below already mean, said once here so
+    every one of them does not have to repeat it."""
     out = {}
     for i, (value, what, grade, currency, records) in enumerate(specs, 1):
         fig = figure(value, what, grade=grade, currency=currency,
+                     quantity=quantity.BALANCE if currency else quantity.COUNT,
                      record_ids=records)
         fig["id"] = f"f{i}"
         out[fig["id"]] = fig
@@ -828,16 +913,21 @@ def test_a_fabricated_total_is_refused_before_it_can_be_said(registry):
     """A computed figure is a claim about the person's money, so the gate that
     refuses a money figure citing no record is what turns "rests on nothing"
     into "cannot be said"."""
+    shape = _shape(("That comes to {total}.", [("total", "count", "count")]))
+
     def planner(context):
-        if not context["results"]:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
             return {"tool": "query_ledger", "args": {"entity": "balances"}}
-        if len(context["results"]) == 1:
+        if len(done) == 1:
             return {"tool": "compute",
                     "args": {"expression": "n - n + 424242",
                              "inputs": {"n": _fig(context["results"],
                                                   "accounts holding")}}}
-        return {"answer": "That comes to 424242.",
-                "figures": [{"id": _fig(context["results"], "result of")}]}
+        return {"bindings": {"total": {"figure": _fig(context["results"],
+                                                      "result of")}}}
     run_result = run("how much?", planner, registry)
     assert not run_result.answered
     assert run_result.refusal == "uncited_figure"
@@ -1050,10 +1140,12 @@ def test_an_exactness_nothing_recognises_is_refused_where_it_is_written():
     """A value outside the vocabulary raises where the figure is written. It
     would otherwise travel as an account of the arithmetic while meaning
     nothing to anything that reads it."""
-    assert figure("1", "a thing")["exactness"] == "exact"
-    assert figure("1", "a thing", exactness="rounded")["exactness"] == "rounded"
+    plain = dict(quantity=quantity.COUNT)
+    assert figure("1", "a thing", **plain)["exactness"] == "exact"
+    assert figure("1", "a thing", exactness="rounded",
+                  **plain)["exactness"] == "rounded"
     with pytest.raises(ValueError):
-        figure("1", "a thing", exactness="roughly")
+        figure("1", "a thing", exactness="roughly", **plain)
 
 
 def test_the_model_is_told_only_when_a_figure_has_something_to_say():
@@ -1062,113 +1154,115 @@ def test_the_model_is_told_only_when_a_figure_has_something_to_say():
     the turn, so a field carrying the ordinary case is paid for repeatedly."""
     ordinary = ToolResult(tool="t", ok=True,
                           figures=[figure("1.00", "a thing", currency="USD",
+                                          quantity=quantity.BALANCE,
                                           record_ids=["doc-one"])])
     assert "exactness" not in ordinary.to_dict()["figures"][0]
     approximate = ToolResult(tool="t", ok=True,
                              figures=[figure("1.00", "a thing", currency="USD",
+                                             quantity=quantity.BALANCE,
                                              record_ids=["doc-one"],
                                              exactness="rounded")])
     assert approximate.to_dict()["figures"][0]["exactness"] == "rounded"
 
 
-def _approximate_run(registry, answer, expression="a / 7"):
-    """One run whose answer speaks a figure the arithmetic had to round."""
+def _approximate_run(registry, shape, bind, expression="a / 7",
+                     read=("balances", None), over="Everyday Checking"):
+    """One run whose answer states a figure the arithmetic had to round.
+
+    `read` is the entity the run looks at and `over` the figure of it the
+    arithmetic is done on, so the same run can be had over an amount, over a
+    number of things, or over a proportion of one by another.
+
+    The second call is written by hand rather than scripted because it binds a
+    figure id the first call produced."""
+    entity, filters = read
+    args = {"entity": entity}
+    if filters:
+        args["filters"] = filters
+
     def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances"}}
-        if len(context["results"]) == 1:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
+            return {"tool": "query_ledger", "args": args}
+        if len(done) == 1:
             return {"tool": "compute",
                     "args": {"expression": expression,
-                             "inputs": {"a": _fig(context["results"],
-                                                  "Everyday Checking")}}}
-        fid = _fig(context["results"], "result of")
-        return {"answer": answer.replace("<id>", fid),
-                "figures": [{"id": fid}]}
+                             "inputs": {"a": _fig(context["results"], over)}}}
+        return {"bindings": bind(context["results"])}
     return run("how much a week?", planner, registry)
 
 
 def test_an_approximate_value_never_reaches_the_person_bare(registry):
-    """An answer stating the value of a figure that had to be rounded reaches
-    the person carrying the term that says so.
+    """A figure the arithmetic could not write exactly reaches the person
+    carrying the term that says so.
 
-    The planner here writes the bare digits and asks for no hedge, which is
-    what makes this an assertion about the runner rather than about the
-    sentence it was handed."""
-    spoken = _approximate_run(registry, "You spend 85.71 a week.")
+    The shape asks for nothing of the kind and could not: it was written before
+    any arithmetic happened, so hedging cannot be something the sentence
+    remembered to do. The term travels with the figure, placed where the figure
+    is placed."""
+    spoken = _approximate_run(
+        registry,
+        _shape(("You spend {weekly} a week.", [("weekly", "money", "balance")])),
+        lambda results: {"weekly": {"figure": _fig(results, "result of")}})
     assert spoken.answered, spoken.detail
-    assert "85.71" in spoken.text
-    assert spoken.text == "You spend approx 85.71 a week."
-    # The figure itself is unchanged; only the sentence is rendered.
+    assert spoken.text == "You spend about USD 85.71 a week."
+    # The figure itself is unchanged; only what was written from it is hedged.
     assert spoken.figures[0]["value"] == "85.71"
     assert spoken.figures[0]["exactness"] == "rounded"
 
 
-def test_an_approximate_figure_named_by_id_is_rendered_as_its_value(registry):
-    """An answer naming the figure by its id rather than writing the digits
-    reaches the person as the same sentence: the id is replaced by the value
-    and the term together."""
-    spoken = _approximate_run(registry, "You spend <id> a week.")
+def test_an_approximate_number_of_things_never_reaches_the_person_bare(
+        registry):
+    """And the same of a count, which is a magnitude like any other.
+
+    A number of things the arithmetic could not write exactly is written to the
+    nearest whole thing, and the digits shown are the digits of the value: a
+    count cut off at the point would be a different number, always smaller, and
+    said with no sign that it had been rounded at all."""
+    spoken = _approximate_run(
+        registry,
+        _shape(("You make this many a week: {weekly}.",
+                [("weekly", "count", "count")])),
+        lambda results: {"weekly": {"figure": _fig(results, "result of")}},
+        expression="a * 5 / 7", read=("transactions", None),
+        over="movements matching the filters")
     assert spoken.answered, spoken.detail
-    assert spoken.text == "You spend approx 85.71 a week."
+    assert spoken.text == "You make this many a week: about 3."
+    assert spoken.figures[0]["value"] == "2.85714"
+    assert spoken.figures[0]["exactness"] == "rounded"
 
 
-def test_rendering_an_already_rendered_sentence_changes_nothing(registry):
-    """Rendering is idempotent. Nothing here reads the sentence's wording —
-    only this run's ids, its figures' values, and the term this code itself
-    inserts — so a sentence already carrying the term is left alone."""
-    from viva.tools.runner import _rendered
-    cited = [dict(figure("85.71", "a result", kind="computed",
-                         currency="USD", record_ids=["doc-one"],
-                         exactness="rounded"), id="f1")]
-    once = _rendered("You spend 85.71 a week.", cited)
-    assert _rendered(once, cited) == once == "You spend approx 85.71 a week."
-
-
-def test_a_negative_value_is_hedged_in_front_of_its_sign(registry):
-    """The term goes before the whole quantity, sign included, and a date in
-    the same sentence is not taken apart by it."""
-    from viva.tools.runner import _rendered
-    cited = [dict(figure("-85.71", "a result", kind="computed",
-                         currency="USD", record_ids=["doc-one"],
-                         exactness="rounded"), id="f1")]
-    spoken = _rendered("On 2026-01-31 you were -85.71 a week.", cited)
-    assert spoken == "On 2026-01-31 you were approx -85.71 a week."
-    assert _rendered(spoken, cited) == spoken
+def test_an_approximate_proportion_never_reaches_the_person_bare(registry):
+    """And of a proportion, which is the third and last kind of magnitude a
+    hole can hold. A share written to fewer digits than it was carried at is
+    still a share that did not come out exactly."""
+    spoken = _approximate_run(
+        registry,
+        _shape(("That is {share} of it.", [("share", "rate", "ratio")])),
+        lambda results: {"share": {"figure": _fig(results, "result of")}},
+        expression="a / a / 7")
+    assert spoken.answered, spoken.detail
+    assert spoken.text == "That is about 0.142857% of it."
+    assert spoken.figures[0]["exactness"] == "rounded"
 
 
 def test_only_the_value_that_was_rounded_is_hedged(registry):
-    """The rendering reaches what the arithmetic could not write exactly, and
-    nothing else in the sentence.
+    """The term reaches what the arithmetic could not write exactly, and
+    nothing else.
 
-    A sentence stating an exact balance and an approximate weekly share of it
-    comes back with one of the two marked, not both. Both are in the one
-    sentence deliberately: a rendering that marked every number would satisfy
-    an assertion using approximate figures alone."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances"}}
-        balance = _fig(context["results"], "Everyday Checking")
-        if len(context["results"]) == 1:
-            return {"tool": "compute",
-                    "args": {"expression": "a / 7", "inputs": {"a": balance}}}
-        return {"answer": "Of 600.00 you spend 85.71 a week.",
-                "figures": [{"id": balance},
-                            {"id": _fig(context["results"], "result of")}]}
-    spoken = run("how much a week?", planner, registry)
+    One sentence states an exact balance and an approximate weekly share of it,
+    deliberately: a rule that hedged every amount would satisfy an assertion
+    made with approximate figures alone."""
+    spoken = _approximate_run(
+        registry,
+        _shape(("Of {held} you spend {weekly} a week.",
+                [("held", "money", "balance"), ("weekly", "money", "balance")])),
+        lambda results: {"held": {"figure": _fig(results, "Everyday Checking")},
+                         "weekly": {"figure": _fig(results, "result of")}})
     assert spoken.answered, spoken.detail
-    assert spoken.text == "Of 600.00 you spend approx 85.71 a week."
-
-
-def test_an_answer_with_nothing_rounded_in_it_is_left_alone(registry):
-    """A run in which every figure came out exactly is not touched at all."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances"}}
-        fid = _fig(context["results"], "Everyday Checking")
-        return {"answer": "Your balance is 600.00.", "figures": [{"id": fid}]}
-    spoken = run("how much?", planner, registry)
-    assert spoken.answered, spoken.detail
-    assert spoken.text == "Your balance is 600.00."
+    assert spoken.text == ("Of USD 600.00 you spend about USD 85.71 a week.")
 
 
 # ------------------------------------ what a money figure is allowed to lack
@@ -1191,7 +1285,7 @@ def test_a_quiet_window_is_still_an_amount_and_still_stands_on_something(
     """A window in which nothing moved has a total, and that total is zero of a
     currency, resting on the accounts whose statements answer for the period.
     Saying neither would make the zero read as a plain number, which no balance
-    adds to."""
+    can be put together with at all."""
     quiet = {"entity": "transactions",
              "filters": {"window": {"from": "2026-06-01", "to": "2026-06-30"}}}
     summary = registry.call("query_ledger", quiet)
@@ -1205,7 +1299,7 @@ def test_a_quiet_window_is_still_an_amount_and_still_stands_on_something(
                    if "Everyday Checking" in f["what"])
     still = next(f["id"] for f in book.values()
                  if f["what"] == "net movement over this set")
-    combined = _computed(registry, book, "a + b", a=balance, b=still)
+    combined = _computed(registry, book, "a - b", a=balance, b=still)
     assert combined["currency"] == "USD" and combined["grade"]
 
 
@@ -1230,7 +1324,8 @@ def test_two_amounts_divide_into_a_ratio_and_never_into_money(registry):
     book = {}
     for i, (amount, grade) in enumerate((("600.00", VERIFIED),
                                          ("200.00", UNVERIFIED)), 1):
-        f = figure(amount, f"an amount {i}", grade=grade, currency="USD",
+        f = figure(amount, f"an amount {i}", quantity=quantity.BALANCE,
+                   grade=grade, currency="USD",
                    record_ids=[f"doc-{i}"])
         f["id"] = f"f{i}"
         book[f["id"]] = f
@@ -1256,10 +1351,10 @@ def test_two_amounts_divide_into_a_ratio_and_never_into_money(registry):
 
 
 def test_a_balance_still_combines_with_what_a_summary_totalled(registry):
-    """The two questions a person actually asks across reads — a balance with a
-    net movement, a balance less a total spent — are money and money, and they
-    must go through. A total that failed to state its currency would read as a
-    plain number and turn both into refusals."""
+    """The two questions a person actually asks across reads — a balance less
+    what moved over a set, a balance less a total spent — are money and money,
+    and they must go through. A total that failed to state its currency would
+    read as a plain number and turn both into refusals."""
     book = _one_figure(registry, "query_ledger", {"entity": "balances"})
     book.update(_shift(_one_figure(registry, "query_ledger",
                                    {"entity": "transactions"}), len(book)))
@@ -1274,7 +1369,7 @@ def test_a_balance_still_combines_with_what_a_summary_totalled(registry):
                  if f["what"].startswith("total spending"))
     counted = next(f["id"] for f in book.values()
                    if f["what"] == "movements matching the filters")
-    for expression, inputs in (("a + b", {"a": balance, "b": net}),
+    for expression, inputs in (("a - b", {"a": balance, "b": net}),
                                ("a - b", {"a": balance, "b": spent})):
         result = registry.call("compute", {"expression": expression,
                                            "inputs": inputs}, figures=book)
@@ -1290,6 +1385,107 @@ def test_a_balance_still_combines_with_what_a_summary_totalled(registry):
                                             "inputs": inputs}, figures=book)
         assert not refused.ok, f"{expression} came back as {refused.figures}"
         assert refused.refusal == "mixed_dimensions"
+
+
+def test_what_a_total_measures_follows_from_what_its_terms_measure(registry):
+    """What is held taken together with what moved is still what is held, so a
+    balance less what was spent is a balance and can be asked about as one.
+    Two different flows are two different questions and their sum answers
+    neither, so the arithmetic refuses rather than hand back a number whose
+    meaning the reader would have to supply."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    book.update(_shift(_one_figure(registry, "query_ledger",
+                                   {"entity": "transactions"}), len(book)))
+    book.update(_shift(_one_figure(registry, "query_ledger",
+                                   {"entity": "aggregate",
+                                    "metric": "spending"}), len(book)))
+    of = {f["what"]: f["id"] for f in book.values()}
+    balance = next(i for w, i in of.items() if "Everyday Checking" in w)
+    spent = next(i for w, i in of.items() if w.startswith("total spending"))
+    gross = of["money out over these movements"]
+
+    left = registry.call("compute", {"expression": "a - b",
+                                     "inputs": {"a": balance, "b": spent}},
+                         figures=book)
+    assert left.ok and left.figures[0]["quantity"] == quantity.BALANCE
+
+    both = registry.call("compute", {"expression": "a + b",
+                                     "inputs": {"a": spent, "b": gross}},
+                         figures=book)
+    assert not both.ok and both.refusal == "mixed_quantities"
+
+
+def test_only_a_flow_taken_out_of_a_stock_is_still_that_stock(registry):
+    """Which way round the two stand, and which way the operator runs, are both
+    part of what the total measures.
+
+    What is held, less what was spent, is what is left. Nothing else about that
+    pair is a balance: what was spent less what is held is a magnitude with the
+    wrong sign and no referent, and what is held plus what was spent is larger
+    than anything the person has. Each of those, called a balance, is a true
+    number under a false description — every record real, every grade earned,
+    and the sentence a lie about what was measured. So they refuse."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    book.update(_shift(_one_figure(registry, "query_ledger",
+                                   {"entity": "aggregate",
+                                    "metric": "spending"}), len(book)))
+    of = {f["what"]: f["id"] for f in book.values()}
+    held = next(i for w, i in of.items() if "Everyday Checking" in w)
+    spent = next(i for w, i in of.items() if w.startswith("total spending"))
+    left_over = Decimal(book[held]["value"]) - Decimal(book[spent]["value"])
+
+    kept = registry.call("compute", {"expression": "held - spent",
+                                     "inputs": {"held": held, "spent": spent}},
+                         figures=book)
+    assert kept.ok, kept.text
+    assert kept.figures[0]["quantity"] == quantity.BALANCE
+    assert Decimal(kept.figures[0]["value"]) == left_over
+
+    for expression in ("spent - held", "held + spent", "spent + held"):
+        refused = registry.call("compute",
+                                {"expression": expression,
+                                 "inputs": {"held": held, "spent": spent}},
+                                figures=book)
+        assert not refused.ok, (
+            f"{expression} came back as "
+            f"{refused.figures[0]['value']} of "
+            f"{refused.figures[0]['quantity']}")
+        assert refused.refusal == "mixed_quantities", expression
+
+
+def test_splitting_a_quantity_leaves_it_the_quantity_it_was(registry):
+    """A year's spending over its months is spending, so the answer to "on
+    average" is bindable where the answer to "in total" is. What it must not
+    become is a proportion: dividing by a count is splitting an amount up, not
+    comparing two things."""
+    book = _one_figure(registry, "query_ledger", {"entity": "transactions"})
+    of = {f["what"]: f["id"] for f in book.values()}
+    gross = of["money out over these movements"]
+    months = of["months these movements span"]
+    per_month = registry.call("compute", {"expression": "a / b",
+                                          "inputs": {"a": gross, "b": months}},
+                              figures=book)
+    assert per_month.ok, per_month.text
+    assert per_month.figures[0]["quantity"] == quantity.GROSS_FLOW
+    assert per_month.figures[0]["currency"] == "USD"
+
+
+def test_two_measured_things_divide_into_a_proportion(registry):
+    """Comparing an amount with an amount, or a count with a count, gives a
+    number of times over rather than an amount or a count of anything — which
+    is what a proportion is, and it is the only way one is ever produced."""
+    book = _one_figure(registry, "query_ledger", {"entity": "transactions"})
+    of = {f["what"]: f["id"] for f in book.values()}
+    for a, b in ((of["money out over these movements"],
+                  of["net movement over this set"]),
+                 (of["movements matching the filters"],
+                  of["months these movements span"])):
+        share = registry.call("compute", {"expression": "a / b",
+                                          "inputs": {"a": a, "b": b}},
+                              figures=book)
+        assert share.ok, share.text
+        assert share.figures[0]["quantity"] == quantity.RATIO
+        assert share.figures[0]["currency"] == ""
 
 
 def test_compute_refuses_a_number_typed_in_and_names_what_it_has(registry):
@@ -1471,19 +1667,23 @@ def test_a_date_a_read_asserted_may_be_said_without_declaring_it(registry):
     fig = next(f for f in dated.values() if "good as of" in f["what"])
     assert fig["value"] == "2026-01-31"
 
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "check_completeness", "args": {}}
-        return {"answer": "Its evidence runs to 2026-01-31.",
-                "figures": [{"id": _fig(context["results"], "good as of")}]}
-    assert run("how current is it?", planner, registry).answered
+    shape = _shape(("Its evidence runs to {when}.", [("when", "date")]),
+                   ("Bear in mind: {limits}", [("limits", "caveat")]))
 
-    def inventing(context):
-        if not context["results"]:
-            return {"tool": "check_completeness", "args": {}}
-        return {"answer": "Its evidence runs to 2019-03-04.", "figures": []}
-    result = run("how current is it?", inventing, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
+    def bind_to(iso):
+        return lambda results: {"when": {"date": iso},
+                                "limits": {"caveat": _caveats(results)}}
+
+    said = run("how current is it?",
+               _script(shape, ("check_completeness", {}),
+                       bind=bind_to("2026-01-31")), registry)
+    assert said.answered, said.detail
+    assert "2026-01-31" in said.text
+
+    result = run("how current is it?",
+                 _script(shape, ("check_completeness", {}),
+                         bind=bind_to("2019-03-04")), registry)
+    assert not result.answered and result.refusal == "unfounded_date"
 
 
 def test_a_page_of_rows_can_be_written_without_declaring_every_date(registry):
@@ -1494,15 +1694,22 @@ def test_a_page_of_rows_can_be_written_without_declaring_every_date(registry):
     Only the dates are written here. A description is a statement's own words
     and may carry digits of its own, which no read licenses; a listing answer
     that writes one is refused."""
+    shape = _shape(("They fell on {first} and {last}.",
+                    [("first", "date"), ("last", "date")]))
+
     def planner(context):
-        if not context["results"]:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
             return {"tool": "list_movements",
                     "args": {"filters": {"merchant": "greenfield market"}}}
-        rows = context["results"][0]["data"]["movements"]
+        rows = done[0]["data"]["movements"]
         assert len(rows) > 1, "the fixture no longer returns several rows"
-        said = "; ".join(r["date"] for r in rows)
-        return {"answer": f"They fell on {said}.", "figures": []}
-    assert run("when did I shop there?", planner, registry).answered
+        return {"bindings": {"first": {"date": rows[0]["date"]},
+                             "last": {"date": rows[-1]["date"]}}}
+    spoken = run("when did I shop there?", planner, registry)
+    assert spoken.answered, spoken.detail
 
 
 def test_a_date_a_tool_echoed_from_its_own_arguments_is_not_thereby_sayable(registry):
@@ -1516,13 +1723,14 @@ def test_a_date_a_tool_echoed_from_its_own_arguments_is_not_thereby_sayable(regi
     assert "2019-03-04" in echoed.text, (
         "the fixture no longer echoes the caller's date into the tool's prose")
 
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "get_transparency",
-                    "args": {"topic": "calls_spent", "since": "2019-03-04"}}
-        return {"answer": "Nothing since 2019-03-04.", "figures": []}
-    result = run("what have you spent?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
+    shape = _shape(("Nothing since {when}.", [("when", "date")]))
+    result = run("what have you spent?",
+                 _script(shape,
+                         ("get_transparency", {"topic": "calls_spent",
+                                               "since": "2019-03-04"}),
+                         bind=lambda r: {"when": {"date": "2019-03-04"}}),
+                 registry)
+    assert not result.answered and result.refusal == "unfounded_date"
 
 
 def test_a_detailed_read_refuses_to_dump_the_whole_ledger(registry):
@@ -1605,148 +1813,143 @@ def test_a_grade_off_the_ladder_is_refused_where_it_is_written():
     """`weakest` ignores a grade it does not recognise, so an invented one
     would reach the person as a strength claim while counting for nothing in
     composition. The figure is where that is caught, not the answer."""
-    assert figure("1", "a thing", grade=CORROBORATED)["grade"] == CORROBORATED
-    assert figure("1", "a thing")["grade"] == ""
+    plain = dict(quantity=quantity.COUNT)
+    assert figure("1", "a thing", grade=CORROBORATED,
+                  **plain)["grade"] == CORROBORATED
+    assert figure("1", "a thing", **plain)["grade"] == ""
     with pytest.raises(ValueError):
-        figure("1", "a thing", grade="pretty solid")
+        figure("1", "a thing", grade="pretty solid", **plain)
     # A kind that carries no grade still clears one rather than refusing it.
-    assert figure("1", "a thing", kind="activity", grade=VERIFIED)["grade"] == ""
+    assert figure("1", "a thing", kind="activity", grade=VERIFIED,
+                  **plain)["grade"] == ""
 
 
 # -------------------------------------------------------------------- runner
 
+def test_every_tag_the_runner_can_refuse_with_is_declared():
+    """A refusal is spoken from the pack by its tag, so a tag the vocabulary
+    does not hold has no words behind it and would fail in front of a person.
+    Read from the source rather than from a list someone maintains: every tag
+    handed to the refusal, and every tag a hole's own check returns."""
+    import ast
+    import pathlib
+
+    from viva.tools import runner as runner_module
+
+    tree = ast.parse(pathlib.Path(runner_module.__file__).read_text())
+    emitted = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "_refused" and node.args
+                and isinstance(node.args[0], ast.Constant)):
+            emitted.add(node.args[0].value)
+        if (isinstance(node, ast.Return) and isinstance(node.value, ast.Tuple)
+                and len(node.value.elts) == 3
+                and isinstance(node.value.elts[1], ast.Constant)):
+            emitted.add(node.value.elts[1].value)
+    undeclared = sorted(t for t in emitted
+                        if t and t not in runner_module.REFUSAL_TAGS)
+    assert not undeclared, (
+        f"{undeclared} can end a turn and is not in REFUSAL_TAGS, so nothing "
+        "in the pack answers for it")
+
+
 def test_scripted_planner_produces_a_cited_answer(registry):
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        fig = _figure(context["results"], "balance")
-        return {"answer": f"Your checking balance is USD {fig['value']}.",
-                "figures": [{"id": fig["id"]}]}
-    result = run("what is my checking balance?", planner, registry)
-    assert result.answered and result.calls == 1
+    """The whole mechanism, end to end. The sentence is authored while the run
+    holds nothing; the read then happens; then one reference per hole. At no
+    point does anything but the renderer write a character of the figure."""
+    shape = _shape(("Your {which} stands at {balance}.",
+                    [("which", "account"), ("balance", "money", "balance")]))
+    result = run(
+        "what is my checking balance?",
+        _script(shape,
+                ("query_ledger", {"entity": "balances",
+                                  "filters": {"account": "chk"}}),
+                bind=lambda results: {
+                    "which": {"entity": _entity(results, "chk")},
+                    "balance": {"figure": _fig(results, "balance")}}),
+        registry)
+    assert result.answered and result.calls == 2
     assert result.grade == CORROBORATED
-    assert "600.00" in result.text
+    assert result.text == "Your Everyday Checking stands at USD 600.00."
     assert result.figures[0]["record_ids"]
+    # And what was said is kept as the structure it was.
+    assert result.shape == shape.to_dict()
+    assert set(result.bindings) == {"which", "balance"}
 
 
 def test_a_figure_id_the_run_never_produced_is_refused(registry):
     """The replacement for citing a record the run never read: a model can no
     longer name a record at all, only an id, and an id it made up matches
     nothing."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances"}}
-        return {"answer": "You have 600.00.", "figures": [{"id": "f99"}]}
-    result = run("balance?", planner, registry)
+    result = run(
+        "balance?",
+        _script(_shape(("You have {total}.", [("total", "money", "balance")])),
+                ("query_ledger", {"entity": "balances"}),
+                bind=lambda results: {"total": {"figure": "f99"}}),
+        registry)
     assert not result.answered and result.refusal == "unknown_figure"
 
 
-def test_a_figure_id_in_the_prose_is_a_name_and_an_amount_is_not(registry):
-    """A figure id in an answer's prose is a name; anything else is a quantity.
-
-    Only an id this run stamped is read as a name. Digits attached to any other
-    prefix are read as a number and must be answered for."""
-    from viva.tools.runner import _tokens
-
-    stamped = {"f1": {}, "f2": {}}
-    assert _tokens("Figure f1 shows 600.00", stamped) == {"600.00"}
-    assert _tokens("f1 and f2 both", stamped) == set()
-    # Not stamped, so not a name: it is read, and will be answered for.
-    assert _tokens("see f12", stamped) == {"12"}
-    # Ordinary financial prose, with no space and no symbol.
-    for written, expected in (("USD4500", "4500"), ("Rs45000", "45000"),
-                              ("GBP1,250.00", "1250.00"),
-                              ("USD600.00", "600.00")):
-        assert _tokens(written, stamped) == {expected}, written
-    # And a date-shaped invention still travels whole, never shedding parts.
-    assert _tokens("x2026-01-31", stamped) == {"2026-01-31"}
-
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        fig = _figure(context["results"], "balance")
-        return {"answer": f"Figure {fig['id']} shows {fig['value']}, and your "
-                          "card holds USD4500.",
-                "figures": [{"id": fig["id"]}]}
-    result = run("balance?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-    assert "4500" in result.detail
-
-
-def test_an_amount_may_not_be_inflated_around_a_figure_it_cites(registry):
-    """The 5× error: citing a figure worth 600.00 and writing 1,600.00. Whole
-    tokens, always — a cited value licenses itself and nothing that contains
-    it."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        fig = _figure(context["results"], "balance")
-        return {"answer": "Your balance is GBP1,600.00.",
-                "figures": [{"id": fig["id"]}]}
-    result = run("balance?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-
-
 def test_a_number_in_a_payload_but_in_no_figure_cannot_be_said(registry):
-    """Payload laundering, dead. A holding's cost basis rides in `data`; the
-    read emits its market value as a figure and says nothing about what it
-    cost, so the cost is machinery, not a claim, and the answer may not speak
-    it however money-shaped it looks."""
+    """Payload laundering, dead — now by construction rather than by scanning.
+
+    A holding's cost basis rides in `data`; the read emits its market value as
+    a figure and says nothing about what it cost. A hole is filled by a
+    reference into what the run established, and a number sitting in a payload
+    has no identity to be referred to by."""
     holdings = registry.call("query_ledger", {"entity": "holdings"})
     buried = holdings.data["holdings"][0]["cost_basis"]
-    assert buried not in holdings.text and buried not in holdings.coverage
     assert all(buried != f["value"] for f in holdings.figures)
+    assert not any(buried == item.get("label")
+                   for item in holdings.identifiers)
 
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "holdings"}}
-        return {"answer": f"You paid {buried} for it.", "figures": []}
-    result = run("what did it cost?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-
-
-def test_a_number_a_tool_stated_in_words_may_be_said(registry):
-    """The safety valve, and the reason ordinary language keeps working: a
-    count a tool wrote into its own sentence is a claim it chose to make."""
-    completeness = registry.call("check_completeness", {})
-    assert "3 document(s) held" in completeness.text
-
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "check_completeness", "args": {}}
-        return {"answer": "I hold 3 documents for you.", "figures": []}
-    result = run("how many documents?", planner, registry)
-    assert result.answered, result.text
+    result = run(
+        "what did it cost?",
+        _script(_shape(("You paid {cost} for it.",
+                        [("cost", "money", "balance")])),
+                ("query_ledger", {"entity": "holdings"}),
+                bind=lambda results: {"cost": {"figure": "f99"}}),
+        registry)
+    assert not result.answered and result.refusal == "unknown_figure"
 
 
 def test_a_financial_figure_standing_on_no_record_is_refused(registry):
-    """Arithmetic over nothing but literals produces a number resting on no
-    document. It has an id, so it is citable — and it is refused anyway,
-    because what a figure about money must stand on has not moved."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "compute",
-                    "args": {"expression": "424242 + 0", "inputs": {}}}
-        return {"answer": "That makes 424242.",
-                "figures": [{"id": _fig(context["results"], "result of")}]}
-    result = run("how much?", planner, registry)
+    """A magnitude added to a counted thing leaves a number resting on no
+    document: the term nothing measured injects a quantity rather than
+    rescaling one, so the documents behind the count answer for a different
+    number. It has an id, so it can be referred to — and it is refused anyway,
+    because what a figure about money must stand on has not moved.
+
+    This is the one rule carried over from the mechanism this replaced, word
+    for word."""
+    result = run(
+        "how much?",
+        _script(_shape(("That makes {total}.", [("total", "count", "count")])),
+                ("check_completeness", {}),
+                ("compute", {"expression": "n + 424242",
+                             "inputs": {"n": "f1"}}),
+                bind=lambda results: {
+                    "total": {"figure": _fig(results, "result of")}}),
+        registry)
     assert not result.answered and result.refusal == "uncited_figure"
 
 
 def test_figure_ids_are_unique_across_tools_and_restart_each_turn(registry):
     seen = []
+    shape = _shape(("Noted.", []))
 
     def planner(context):
-        if not context["results"]:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
             return {"tool": "query_ledger", "args": {"entity": "balances"}}
-        if len(context["results"]) == 1:
+        if len(done) == 1:
             return {"tool": "check_completeness", "args": {}}
         seen.extend(f["id"] for r in context["results"]
                     for f in r["figures"])
-        return {"answer": "Noted.", "figures": []}
+        return {"bindings": {}}
 
     first = run("what do you hold?", planner, registry)
     assert first.answered
@@ -1760,47 +1963,102 @@ def test_figure_ids_are_unique_across_tools_and_restart_each_turn(registry):
 def test_an_amount_the_person_never_said_cannot_be_echoed_back(registry):
     """A stipulation is the person's own number handed back to them. Its whole
     warrant is that they said it, so the gate checks the question itself."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "check_completeness", "args": {}}
-        return {"answer": "The 5000 you mentioned is well within reach.",
-                "figures": [], "stipulated": [{"value": "5000",
-                                               "as": "the trip"}]}
-    result = run("could I afford a 3000 trip?", planner, registry)
+    shape = _shape(("The {trip} you mentioned is well within reach.",
+                    [("trip", "supposed", "spending")]))
+    result = run("could I afford a 3000 trip?",
+                 _script(shape, ("check_completeness", {}),
+                         bind=lambda r: {"trip": {"supposed": "5000"}}),
+                 registry)
     assert not result.answered and result.refusal == "unfounded_stipulation"
 
 
 def test_an_amount_the_person_did_say_may_be_said_back(registry):
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "check_completeness", "args": {}}
-        return {"answer": "About the 3000 you mentioned — I can look at that.",
-                "figures": [], "stipulated": [{"value": "3000",
-                                               "as": "the trip"}]}
-    result = run("could I afford a 3000 trip?", planner, registry)
-    assert result.answered, result.text
+    shape = _shape(("About the {trip} you mentioned — I can look at that.",
+                    [("trip", "supposed", "spending")]))
+    result = run("could I afford a 3000 trip?",
+                 _script(shape, ("check_completeness", {}),
+                         bind=lambda r: {"trip": {"supposed": "3000"}}),
+                 registry)
+    assert result.answered, result.detail
+    assert "3000" in result.text
     assert result.grade == ""          # nothing here is an evidence claim
+
+
+@pytest.mark.parametrize("part", ["300", "000", "00", "3"])
+def test_a_piece_of_a_number_the_person_wrote_is_not_a_number_they_said(
+        registry, part):
+    """Their warrant is that they said it, and said it whole. A number matched
+    inside another one lets a figure nobody named be handed back as the
+    person's own — a tenth of what they asked about, or a hundredth, reading as
+    something they themselves put on the table."""
+    shape = _shape(("The {trip} you mentioned is well within reach.",
+                    [("trip", "supposed", "spending")]))
+    result = run("can I afford a 3000 trip?",
+                 _script(shape, ("check_completeness", {}),
+                         bind=lambda r: {"trip": {"supposed": part}}),
+                 registry)
+    assert not result.answered and result.refusal == "unfounded_stipulation"
+
+
+def test_a_figure_the_person_supplied_is_written_as_theirs(registry):
+    """A figure resting on their premise and on no record of theirs reads as
+    one of ours unless something says otherwise, and "something in the sentence
+    around it" is not a thing any check can hold anyone to. The marker is part
+    of writing the value, so it cannot be left off."""
+    from viva import persona, render
+
+    shape = _shape(("About the {trip} you mentioned — I can look at that.",
+                    [("trip", "supposed", "spending")]))
+    result = run("could I afford a 3000 trip?",
+                 _script(shape, ("check_completeness", {}),
+                         bind=lambda r: {"trip": {"supposed": "3000"}}),
+                 registry)
+    assert result.answered, result.detail
+    marked = persona.moment("supposed_amount",
+                            amount=render.money("3000", locale=""))
+    assert marked in result.text
+    assert marked != "3000.00", "the marker adds nothing to the bare value"
+
+
+def test_something_that_is_not_a_magnitude_cannot_arrive_as_a_supposition(
+        registry):
+    """The hole holds a figure the person supplied. Words are not a figure, and
+    a hole that took them would be prose nobody reviewed reaching a person
+    through the one binding that carries a value at all."""
+    shape = _shape(("The {trip} you mentioned is well within reach.",
+                    [("trip", "supposed", "spending")]))
+    result = run("could I afford a 3000 trip?",
+                 _script(shape, ("check_completeness", {}),
+                         bind=lambda r: {"trip": {"supposed": "3000 or so, "
+                                                  "whatever you think"}}),
+                 registry)
+    assert not result.answered and result.refusal == "unfounded_stipulation"
 
 
 def test_a_hypothetical_figure_carries_no_grade_and_sets_none(registry):
     """Arithmetic over a premise is answerable and is not evidence. It can be
     spoken; it cannot make an answer look verified."""
+    shape = _shape(("Supposing the {trip} trip, {left} would be left — that "
+                    "rests on your figure, not on a statement.",
+                    [("trip", "supposed", "spending"),
+                     ("left", "money", "balance")]))
+
     def planner(context):
-        if not context["results"]:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
             return {"tool": "query_ledger", "args": {"entity": "balances",
                                                      "filters": {"account": "chk"}}}
-        if len(context["results"]) == 1:
+        if len(done) == 1:
             return {"tool": "compute",
                     "args": {"expression": "have - trip",
                              "inputs": {"have": _fig(context["results"],
                                                      "balance"),
                                         "trip": {"stipulated": "250"}}}}
-        left = _figure(context["results"], "result of")
-        return {"answer": f"Supposing the 250 trip, {left['value']} would be "
-                          "left — that rests on your figure, not on a "
-                          "statement.",
-                "figures": [{"id": left["id"]}],
-                "stipulated": [{"value": "250", "as": "the trip"}]}
+        return {"bindings": {"trip": {"supposed": "250"},
+                             "left": {"figure": _fig(context["results"],
+                                                     "result of")}}}
     result = run("could I afford a 250 trip?", planner, registry)
     assert result.answered, result.text
     assert result.figures[0]["kind"] == "hypothetical"
@@ -1842,16 +2100,25 @@ def test_a_supposition_does_not_wear_off_after_one_hop(registry):
 def test_an_answers_grade_ignores_activity_and_hypothetical_figures(registry):
     """A grade is an evidence claim. What the agent did, and what the person
     supposed, are neither — so neither may set or soften an answer's grade."""
+    shape = _shape(("I have taken {actions} action(s); your balance is "
+                    "{balance}.",
+                    [("actions", "count", "count"),
+                     ("balance", "money", "balance")]))
+
     def planner(context):
-        if not context["results"]:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
             return {"tool": "get_transparency",
                     "args": {"topic": "agent_activity"}}
-        if len(context["results"]) == 1:
+        if len(done) == 1:
             return {"tool": "query_ledger",
                     "args": {"entity": "balances", "filters": {"account": "chk"}}}
-        return {"answer": "I have taken 1 action; your balance is 600.00.",
-                "figures": [{"id": _fig(context["results"], "unattended actions")},
-                            {"id": _fig(context["results"], "balance")}]}
+        return {"bindings": {
+            "actions": {"figure": _fig(context["results"],
+                                       "unattended actions")},
+            "balance": {"figure": _fig(context["results"], "balance")}}}
     result = run("what have you done, and what is my balance?", planner, registry)
     assert result.answered, result.text
     kinds = {f["kind"] for f in result.figures}
@@ -1866,42 +2133,40 @@ def test_an_answers_grade_ignores_activity_and_hypothetical_figures(registry):
     balance = next(f for f in result.figures if f["kind"] == "financial")
     assert result.grade == balance["grade"] == CORROBORATED
 
-    from viva.tools.runner import _Ground, _check
+    from viva.tools.runner import _Ground, _gate
     ground = _Ground()
     for i, (kind, grade) in enumerate([("financial", CORROBORATED),
                                        ("activity", "conflicted")], 1):
-        fig = figure("1", "a thing", kind=kind, record_ids=["r"])
+        fig = figure("1", "a thing", quantity=quantity.COUNT, kind=kind,
+                     record_ids=["r"])
         fig.update(id=f"f{i}", grade=grade)      # a tool that graded carelessly
         ground.book[fig["id"]] = fig
-    cited, problem = _check({"answer": "1", "figures": [{"id": "f1"},
-                                                        {"id": "f2"}]}, ground)
-    assert problem is None
-    assert weakest(f["grade"] for f in cited
-                   if f["kind"] in ("financial", "computed")) == CORROBORATED
+    both = _shape(("{a} and {b}.", [("a", "count", "count"),
+                                    ("b", "count", "count")]))
+    spoken = _gate({"bindings": {"a": {"figure": "f1"}, "b": {"figure": "f2"}}},
+                   [], ground, both, "")
+    assert spoken.answered, spoken.detail
+    assert spoken.grade == CORROBORATED
 
 
 def test_a_number_no_tool_returned_is_refused(registry):
+    """A number no tool returned is not refused late, after a sentence has been
+    written around it — it cannot be written at all. The words of a clause carry
+    no digits, so the only route a magnitude has to a person is a hole, and a
+    hole is filled from what the run established.
+
+    Both halves are here: a shape that spells one out does not come into being,
+    and a run whose planner tries it never reaches a read."""
+    with pytest.raises(BadShape):
+        _shape(("Your balance is about 9999.99.", []))
+
     def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        return {"answer": "Your balance is about 9999.99.", "figures": []}
+        if not context["shaped"]:
+            return {"shape": {"clauses": [{"text": "About 9999.99.",
+                                           "slots": []}]}}
+        return {"bindings": {}}
     result = run("balance?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-
-
-def test_a_fabricated_number_cannot_ride_inside_a_seen_one(registry):
-    """Numeric tokens match whole, never as substrings: '6' is not grounded
-    by a result containing '600.00'."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "balances",
-                                                     "filters": {"account": "chk"}}}
-        return {"answer": "You made 26 payments this month.", "figures": []}
-    result = run("how many payments?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-    # '26' rides inside the dated '2026-01-31' as a substring; the refusal
-    # proves tokens are matched whole, not by containment.
+    assert not result.answered and result.refusal == "bad_plan"
 
 
 def test_a_ranging_read_reports_what_it_is_attested_for(registry):
@@ -1977,111 +2242,51 @@ def test_an_account_with_no_statement_says_so_rather_than_guessing(registry):
     assert any("No statement has posted for card" in c for c in result.caveats)
 
 def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
-    """A boundary date the planner supplied is scope the tool reports back, not
-    a number the planner invented, so the answer may say which period it read."""
+    """A span a read is attested for is a thing the read established, so the
+    answer may say which period it is answering for — by referring to that
+    span, never by writing its edges."""
     window = {"from": "2026-01-05", "to": "2026-01-20"}
-
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger",
-                    "args": {"entity": "aggregate", "metric": "spending",
-                             "filters": {"window": window}}}
-        total = context["results"][0]["data"]["total"]
-        return {"answer": f"Between January 5, 2026 and January 20, 2026 you "
-                          f"spent {total}.",
-                "figures": [{"id": _fig(context["results"], "total spending")}],
-                "dates": [{"iso": "2026-01-05"}, {"iso": "2026-01-20"}]}
-    result = run("what did I spend then?", planner, registry)
-    assert result.answered, result.text
-
-
-def test_a_month_written_for_a_day_it_covers_is_accepted(registry):
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
-        return {"answer": "Everything I hold was recorded in January 2026.",
-                "figures": [], "dates": [{"iso": "2026-01-05"}]}
-    result = run("when?", planner, registry)
-    assert result.answered, result.text
+    shape = _shape(("Over {span} you spent {total}.",
+                    [("span", "period"), ("total", "money", "spending")]),
+                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+    result = run(
+        "what did I spend then?",
+        _script(shape,
+                ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                                  "filters": {"window": window}}),
+                bind=lambda results: {
+                    "span": {"period": "p1"},
+                    "total": {"figure": _fig(results, "total spending")},
+                    "limits": {"caveat": _caveats(results)}}),
+        registry)
+    assert result.answered, result.detail
+    assert "2026-01-05 to 2026-01-20" in result.text
 
 
 def test_a_period_a_read_is_attested_for_can_never_ground_a_figure(registry):
-    """A period is scope, kept in its own pool, and that pool holds dates only.
-    A spending aggregate names no row dates, so its period is the only place
-    its boundaries appear — and a figure may not stand on one. The refusal says
-    which mechanism stopped it: a whole date inside an attested period is a
-    date that was never declared, not a number nobody emitted."""
-    covers = registry.call("query_ledger", {"entity": "aggregate",
-                                            "metric": "spending"}).covers
-    edge = covers[0]["to"]
+    """A period is scope — what a document answers for — and never a magnitude.
+    It has its own kind, so binding one where an amount belongs is a type
+    error rather than a matter of how the sentence was worded."""
+    shape = _shape(("The figure is {total}.", [("total", "money", "balance")]))
+    result = run(
+        "?",
+        _script(shape, ("query_ledger", {"entity": "aggregate",
+                                         "metric": "spending"}),
+                bind=lambda results: {"total": {"period": "p1"}}),
+        registry)
+    assert not result.answered and result.refusal == "wrong_kind"
 
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "aggregate",
-                                                     "metric": "spending"}}
-        return {"answer": f"The figure is {edge}.", "figures": [], "dates": []}
-    result = run("?", planner, registry)
-    assert not result.answered and result.refusal == "undeclared_date"
 
 def test_a_date_outside_everything_read_is_refused(registry):
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
-        return {"answer": "Nothing to report.", "figures": [],
-                "dates": [{"iso": "2019-12-31"}]}
-    result = run("when?", planner, registry)
+    """A day none of this run's results carries cannot be said, and there is no
+    longer any way to declare one into being."""
+    shape = _shape(("Nothing to report since {when}.", [("when", "date")]))
+    result = run(
+        "when?",
+        _script(shape, ("query_ledger", {"entity": "transactions"}),
+                bind=lambda results: {"when": {"date": "2019-12-31"}}),
+        registry)
     assert not result.answered and result.refusal == "unfounded_date"
-
-
-def test_a_component_of_a_date_a_read_asserted_may_be_written(registry):
-    """A balance carries the date its evidence is good as of, so "the 31st" is
-    the run's own record said the way a person says it. A component of no date
-    the run holds is a number nothing emitted, and refuses as one."""
-    def planner_for(sentence):
-        def planner(context):
-            if not context["results"]:
-                return {"tool": "query_ledger",
-                        "args": {"entity": "balances",
-                                 "filters": {"account": "chk"}}}
-            return {"answer": sentence, "figures": [], "dates": []}
-        return planner
-    assert run("when?", planner_for("You were fine on the 31st."),
-               registry).answered
-    result = run("when?", planner_for("You were fine on the 17th."), registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-
-def test_a_declared_date_licenses_its_own_parts_and_nothing_else(registry):
-    """The accepted cost of licensing a date by its parts, stated so it is not
-    rediscovered as a bug: a number equal to a component of a declared date
-    passes. It is bounded by exact equality — an amount that merely begins with
-    the year does not pass, and neither does one unrelated to any date. Nothing
-    is removed from the text to achieve this; text deleted before the numbers
-    are counted takes whatever else it overlaps with it."""
-    def answer(sentence):
-        def planner(context):
-            if not context["results"]:
-                return {"tool": "query_ledger",
-                        "args": {"entity": "transactions"}}
-            return {"answer": sentence, "figures": [],
-                    "dates": [{"iso": "2026-01-05"}]}
-        return run("how much?", planner, registry)
-
-    assert answer("In January 2026 you spent 2026 dollars.").answered
-    for invented in ("In January 2026 you spent 20261 dollars.",
-                     "In January 2026 there were 120 charges.",
-                     "In January 2026 you spent 4711 dollars."):
-        result = answer(invented)
-        assert not result.answered and result.refusal == "unfounded_figure"
-
-def test_a_declared_date_that_is_not_a_date_refuses_rather_than_raising(registry):
-    for bad in ("600.00", "2026-13-45", "", "2026-01-31 "):
-        def planner(context, bad=bad):
-            if not context["results"]:
-                return {"tool": "query_ledger", "args": {"entity": "transactions"}}
-            return {"answer": "Nothing to report.", "figures": [],
-                    "dates": [{"iso": bad}]}
-        result = run("when?", planner, registry)
-        assert not result.answered and result.refusal == "unfounded_date", bad
 
 
 def test_an_answer_has_no_way_to_name_a_record_at_all(registry):
@@ -2091,10 +2296,10 @@ def test_an_answer_has_no_way_to_name_a_record_at_all(registry):
     figure the tool emitted — so naming a record the run never read is not a
     thing an answer can express."""
     from viva.speak import FINAL_PARAMS
+    from viva.tools.runner import BINDING_KEYS
 
-    entry = FINAL_PARAMS["properties"]["figures"]["items"]
-    assert set(entry["properties"]) == {"id"}
-    assert "record_ids" not in FINAL_PARAMS["properties"]
+    assert set(FINAL_PARAMS["properties"]) == {"bindings"}
+    assert "record" not in BINDING_KEYS and "record_ids" not in BINDING_KEYS
 
 
 def test_the_call_budget_ends_in_one_closing_attempt_then_refuses(registry):
@@ -2103,56 +2308,72 @@ def test_the_call_budget_ends_in_one_closing_attempt_then_refuses(registry):
     than die beside it. If that closing reply reaches for a tool anyway, the
     turn refuses — and the planner is not asked again."""
     closings = []
+    shape = _shape(("Noted.", []))
 
     def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
         closings.append(bool(context["final_call"]))
         return {"tool": "check_completeness", "args": {}}
     result = run("loop forever", planner, registry, max_calls=3)
     assert not result.answered and result.refusal == "call_budget_exhausted"
     assert result.calls == 3
-    assert closings == [False, False, False, True]
+    assert closings == [False, False, True]
 
 
 def test_an_answer_delivered_on_the_closing_call_passes_the_gate_normally(registry):
+    shape = _shape(("Your checking balance is {balance}.",
+                    [("balance", "money", "balance")]))
+
     def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
         if not context["final_call"]:
             return {"tool": "query_ledger", "args": {"entity": "balances",
                                                      "filters": {"account": "chk"}}}
-        return {"answer": "Your checking balance is 600.00.",
-                "figures": [{"id": _fig(context["results"], "balance")}]}
-    result = run("balance?", planner, registry, max_calls=2)
+        return {"bindings": {"balance": {"figure": _fig(context["results"],
+                                                        "balance")}}}
+    result = run("balance?", planner, registry, max_calls=3)
     assert result.answered and result.grade == CORROBORATED
 
 
 def test_every_planner_context_says_how_many_calls_remain(registry):
     seen = []
+    shape = _shape(("Noted.", []))
 
     def planner(context):
         seen.append(context["calls_remaining"])
+        if not context["shaped"]:
+            return {"shape": shape}
         if len(seen) < 3:
             return {"tool": "check_completeness", "args": {}}
-        return {"answer": "Noted.", "figures": []}
+        return {"bindings": {}}
     assert run("?", planner, registry, max_calls=4).answered
     assert seen == [4, 3, 2]
 
 
 def test_a_refusal_result_flows_back_to_the_planner(registry):
     seen = {}
+    shape = _shape(("It stands at {balance}.", [("balance", "money", "balance")]))
+
     def planner(context):
-        if not context["results"]:
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
             return {"tool": "query_ledger",
                     "args": {"entity": "balances",
                              "filters": {"account": "mystery"}}}
-        seen["refusal"] = context["results"][0]["refusal"]
-        known = context["results"][0]["data"]["known_accounts"][0]
-        if len(context["results"]) == 1:
+        seen["refusal"] = done[0]["refusal"]
+        known = done[0]["data"]["known_accounts"][0]
+        if len(done) == 1:
             return {"tool": "query_ledger", "args": {"entity": "balances",
                                                      "filters": {"account": known}}}
-        fig = _figure(context["results"], "balance")
-        return {"answer": f"{fig['value']}.", "figures": [{"id": fig["id"]}]}
+        return {"bindings": {"balance": {"figure": _figure(context["results"],
+                                                           "balance")["id"]}}}
     result = run("balance of mystery?", planner, registry)
     assert seen["refusal"] == "unknown_account"
-    assert result.answered and result.calls == 2
+    assert result.answered and result.calls == 3
 
 
 # ------------------------------------------------- what the statements attest
@@ -2232,16 +2453,43 @@ def test_a_ledger_account_is_never_offered_as_one_with_no_statement(registry):
                    for c in result.caveats)
 
 
-def test_a_moment_read_licenses_its_own_date_without_a_period(registry):
-    """A balance carries a value-time and no period. Without the asserted-date
-    path it could not say the date printed on its own statement."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger",
-                    "args": {"entity": "balances", "filters": {"account": "chk"}}}
-        return {"answer": "As of 2026-01-31 you were fine.", "figures": [],
-                "dates": [{"iso": "2026-01-31"}]}
-    assert run("?", planner, registry).answered
+def _uncategorized_projection():
+    """One account and one spend nothing has categorized, so a spending read
+    writes a caveat with an amount in it."""
+    return LedgerProjection([
+        account_opened("chk", "depository", "Everyday Checking", "USD",
+                       "2026-01-01"),
+        document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("chk", "5000.00", "2026-01-01", _p("doc-jan")),
+        simple_transaction("chk", "-2665.44", "COUNTERPARTY ONE", "2026-01-05",
+                           provenance=_p("doc-jan")),
+        closing_balance_observed("chk", "2334.56", "2026-01-31",
+                                 _p("doc-jan", 6)),
+    ])
+
+
+@pytest.mark.parametrize("locale", ["en-US", "de-DE"])
+def test_an_amount_inside_a_caveat_is_written_like_every_other_amount(locale):
+    """A caveat is a sentence a tool writes and an answer passes on verbatim,
+    so an amount it spells for itself is a second convention arriving one line
+    under the first. The read composes it through the same renderer, so the
+    caveat and the answer above it write this person's money the same way."""
+    from viva import render
+
+    registry = default_registry(_uncategorized_projection(), locale)
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending",
+                                            "group_by": "category"})
+    assert result.ok
+    written = render.money("2665.44", "USD", locale=locale)
+    said = [c for c in result.caveats if "uncategorized" in c]
+    assert said == [f"{written} is still uncategorized."]
+    # And the figures the same read emits are written that way too, because
+    # they go through the same function on their way to a hole.
+    total = next(f for f in result.figures if f["what"].startswith("total"))
+    assert render.money(total["value"], total["currency"],
+                        locale=locale) == written
 
 
 def _numbered_account_projection():
@@ -2261,114 +2509,77 @@ def _numbered_account_projection():
 
 
 def test_an_answer_may_name_the_account_it_is_about(registry):
-    """The last four digits of an account are a name, not an amount, and an
-    answer that cannot write them cannot say which account it means. Both forms
-    the read used are sayable — the id every filter takes, and the masked form
-    a person reads — and each only whole."""
+    """An answer that cannot say which account it means answers nothing, and an
+    account has several names — a ledger path, a name someone gave it, a masked
+    number. It is one entity carrying all of them, so an answer refers to the
+    entity and the renderer chooses the form. There is no second form to allow
+    for, because there is no form the model gets to write."""
     numbered = default_registry(_numbered_account_projection())
     result = numbered.call("query_ledger", {"entity": "balances"})
-    assert set(result.identifiers) == {"acct:northgate:4417", "••••4417"}
-    assert result.to_dict()["identifiers"] == result.identifiers, (
-        "a name the answer must write has to reach the model")
+    (account,) = result.identifiers
+    assert account["kind"] == "account"
+    assert account["account"] == "acct:northgate:4417"
+    assert account["number_masked"] == "••••4417"
+    assert account["name"] == "Everyday Checking"
 
-    def planner_for(sentence):
-        def planner(context):
-            if not context["results"]:
-                return {"tool": "query_ledger", "args": {"entity": "balances"}}
-            return {"answer": sentence,
-                    "figures": [{"id": _fig(context["results"], "balance")}]}
-        return planner
-    for named in ("Everyday Checking ••••4417 holds f1.",
-                  "Account acct:northgate:4417 holds f1."):
-        assert run("what do I have?", planner_for(named), numbered).answered, named
-    bare = run("what do I have?",
-               planner_for("Account 4417 holds f1."), numbered)
-    assert not bare.answered and bare.refusal == "unfounded_figure"
-
-
-def test_a_name_that_is_itself_a_quantity_licenses_nothing():
-    """A name is asserted whole so that naming a thing cannot become a way to
-    make a magnitude sayable. A read offering a bare run of digits as a name is
-    offering an amount, and a sign or a space around it does not make it
-    anything else. The reads here cannot produce such a name; the gate refuses
-    it anyway, because `identifiers` is a field any tool can set."""
-    def registry_naming(*names):
-        registry = Registry()
-        registry.register(ToolSpec(
-            name="query_ledger", params={"type": "object", "properties": {}},
-            fn=lambda args: ToolResult(
-                tool="query_ledger", ok=True, data={"note": "a name of digits"},
-                identifiers=list(names))))
-        return registry
-
-    def planner_for(sentence):
-        def planner(context):
-            if not context["results"]:
-                return {"tool": "query_ledger", "args": {}}
-            return {"answer": sentence, "figures": []}
-        return planner
-    assert run("?", planner_for("It is ••••4417."),
-               registry_naming("••••4417")).answered
-    for offered, said in (("4417", "It is 4417."),
-                          ("4,417", "It is 4,417."),
-                          ("-4417", "You are down -4417."),
-                          ("4417 ", "It is 4417 dollars.")):
-        result = run("?", planner_for(said), registry_naming(offered))
-        assert not result.answered, offered
-        assert result.refusal == "unfounded_figure", offered
+    shape = _shape(("{which} holds {balance}.",
+                    [("which", "account"), ("balance", "money", "balance")]))
+    spoken = run("what do I have?",
+                 _script(shape, ("query_ledger", {"entity": "balances"}),
+                         bind=lambda results: {
+                             "which": {"entity": _entity(results, "northgate")},
+                             "balance": {"figure": _fig(results, "balance")}}),
+                 numbered)
+    assert spoken.answered, spoken.detail
+    assert spoken.text == "Everyday Checking holds USD 600.00."
+    # And the run of digits inside that name never reaches the person on its
+    # own, because nothing but the renderer ever writes the name.
+    assert "4417" not in spoken.text
 
 
-def test_a_period_missing_an_end_licenses_nothing():
-    """`covers` is data a tool sets, not a shape the gate can assume. A
-    half-filled entry must not become a period that admits every date up to its
-    other end."""
-    registry = Registry()
-    registry.register(ToolSpec(
-        name="query_ledger", params={"type": "object", "properties": {}},
-        fn=lambda args: ToolResult(
-            tool="query_ledger", ok=True, data={"note": "no start"},
-            covers=[{"account": "chk", "from": "", "to": "2026-12-31"}])))
-
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger", "args": {}}
-        return {"answer": "Fine.", "figures": [], "dates": [{"iso": "1999-01-01"}]}
-    result = run("?", planner, registry)
-    assert not result.answered and result.refusal == "unfounded_date"
-
-
-def _two_year_projection():
-    """A vault attested across a year boundary. A one-month fixture cannot tell
-    a shape check from containment: every malformed date sorts outside one
-    month, so both refuse and the test cannot say which mechanism fired."""
-    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
-                          "2026-01-01"),
-           opening_balance_observed("chk", "1000.00", "2026-01-01", _p("d-a"))]
-    evs += _statement_doc("d-a", "chk", "1000.00", "2026-01-01",
-                          "900.00", "2026-12-31")
-    evs += _statement_doc("d-b", "chk", "900.00", "2027-01-01",
-                          "800.00", "2027-12-31")
+def _twin_account_projection():
+    """Two accounts a person gave the same name, at different institutions —
+    the ordinary case of a name that does not tell one from another."""
+    evs = []
+    for key, inst, number, opening in (
+            ("acct:northgate:4417", "Northgate Bank", "XX4417", "1000.00"),
+            ("acct:meridian:9082", "Meridian Bank", "XX9082", "2500.00")):
+        evs += [
+            account_opened(key, "depository", "Everyday Checking", "USD",
+                           "2026-01-01", institution=inst,
+                           account_number=number),
+            opening_balance_observed(key, opening, "2026-01-01", _p("doc-jan")),
+        ]
+    evs.insert(0, document_captured("doc-jan", "jan.pdf", 100, "bank_statement",
+                                    0.9, "2026-02-01"))
     return LedgerProjection(evs)
 
 
-def test_a_declared_date_the_gate_cannot_take_apart_refuses(registry):
-    """The date library accepts forms this gate cannot split. Shape is checked
-    first, so a value that would raise on the way to being licensed is refused.
-    Driven against a vault wide enough that containment would admit them."""
-    wide = default_registry(_two_year_projection())
-    def planner_for(iso):
-        def planner(context):
-            if not context["results"]:
-                return {"tool": "query_ledger",
-                        "args": {"entity": "transactions"}}
-            return {"answer": "Fine.", "figures": [], "dates": [{"iso": iso}]}
-        return planner
-    for iso in ("20260105", "2026-W01-1", "2026-02-30", "2026-1-5"):
-        result = run("?", planner_for(iso), wide)
-        assert not result.answered and result.refusal == "unfounded_date", iso
-    # and the well-formed date inside the same period is admitted, so the
-    # refusals above are the shape check and not the window
-    assert run("?", planner_for("2026-06-15"), wide).answered
+def test_two_accounts_a_person_named_the_same_are_told_apart(registry):
+    """A name that names two things names neither. Where the name a person gave
+    an account does not tell it from another the run also spoke about, the
+    masked number goes with it — and where nothing collides, the plain name
+    stands, because a number shown for no reason is noise."""
+    twins = default_registry(_twin_account_projection())
+    shape = _shape(("{which} holds {balance}.",
+                    [("which", "account"), ("balance", "money", "balance")]))
+
+    def spoken_for(reg, handle):
+        return run("what do I have?",
+                   _script(shape, ("query_ledger", {"entity": "balances"}),
+                           bind=lambda results: {
+                               "which": {"entity": _entity(results, handle)},
+                               "balance": {"figure": _fig(results, "balance")}}),
+                   reg)
+
+    ambiguous = spoken_for(twins, "northgate")
+    assert ambiguous.answered, ambiguous.detail
+    assert ambiguous.text.startswith("Everyday Checking ••••4417 holds")
+
+    alone = spoken_for(default_registry(_numbered_account_projection()),
+                       "northgate")
+    assert alone.answered, alone.detail
+    assert alone.text.startswith("Everyday Checking holds")
 
 
 def _brokerage_reply():

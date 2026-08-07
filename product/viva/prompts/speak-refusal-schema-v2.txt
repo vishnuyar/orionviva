@@ -1,0 +1,14 @@
+Say, in Viva's voice, why this turn has no answer. Call this exactly once.
+
+`clauses` is the sentence or two the person reads, in the same form every shape
+takes: a list of clauses, each a run of words with typed holes in it and not one
+digit anywhere. It must never contain the machine's own tag for the failure.
+
+`bindings` maps each hole's name to one reference into what this turn
+established — a figure, an entity a result spoke about, a period, a caveat, a
+day a result carries, or a value the person supplied — exactly as an answer's
+bindings do.
+
+The same checks that govern an answer govern this: a refusal reaching for
+something this turn never produced is itself refused, and the machine's blunt
+sentence is said instead. A refusal that binds nothing is perfectly good.

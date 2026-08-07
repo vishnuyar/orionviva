@@ -66,8 +66,12 @@ INTENT_FIELDS: dict[str, dict[str, str]] = {
                                     "closing_date": DATE},
     "reconciliation_gap_why":      {"opening_money": MONEY},
     "reconciliation_flagged":      {"account_ref": ACCOUNT},
-    "reconciliation_held":         {"doc_type": DOCUMENT,
-                                    "for_account": ACCOUNT},
+    # A document held for review, and the same sentence where the account it
+    # belongs to is known. The account slot holds an account; the words around
+    # it, preposition included, are the pack's.
+    "reconciliation_held":         {"doc_type": DOCUMENT},
+    "reconciliation_held_for":     {"doc_type": DOCUMENT,
+                                    "account_ref": ACCOUNT},
     "transfer":                    {"date": DATE, "money": MONEY,
                                     "description": MERCHANT},
     "transfer_why":                {"candidates": COUNT},
@@ -192,6 +196,59 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # A slot that holds several of something: one payment that was genuinely
     # several things at once.
     "wants_several":            frozenset(),
+    # And what Viva says about an answer of her own. The term a value the
+    # arithmetic could not write exactly is spoken with travels with the figure
+    # rather than being asked of whoever writes the sentence, and there is one
+    # line for each kind of magnitude, so no kind of number is left with no way
+    # of saying it.
+    "approx_amount":            frozenset({"amount"}),
+    "approx_count":             frozenset({"count"}),
+    "approx_rate":              frozenset({"rate"}),
+    # A figure the person themselves put into the turn rests on their premise
+    # and on no record of theirs, and it is written saying so. A stretch of
+    # time they named is not a figure at all, and is not written as one.
+    "supposed_amount":          frozenset({"amount"}),
+    "supposed_time":            frozenset({"when"}),
+    # A hole nothing could fill costs its clause and not the turn, and what is
+    # missing is named by its kind rather than left as a silence.
+    "answer_gap":               frozenset({"what"}),
+    "gap_money":                frozenset(),
+    "gap_count":                frozenset(),
+    "gap_rate":                 frozenset(),
+    "gap_date":                 frozenset(),
+    "gap_period":               frozenset(),
+    "gap_account":              frozenset(),
+    "gap_merchant":             frozenset(),
+    "gap_category":             frozenset(),
+    "gap_document":             frozenset(),
+    "gap_grade":                frozenset(),
+    "gap_caveat":               frozenset(),
+    "gap_supposed":             frozenset(),
+    # And when there is no answer at all. One reviewed sentence per way a turn
+    # can fail, chosen by the machine's own tag: nothing composes a refusal at
+    # the moment of refusing, so the words a person hears when Viva has nothing
+    # are read before they are ever said, like every other thing she says.
+    "refusal_model_unreachable":     frozenset(),
+    "refusal_unparseable":           frozenset(),
+    "refusal_bad_plan":              frozenset(),
+    "refusal_unshaped_answer":       frozenset(),
+    "refusal_unshaped_read":         frozenset(),
+    "refusal_call_budget_exhausted": frozenset(),
+    "refusal_bad_delivery":          frozenset(),
+    "refusal_unshaped_binding":      frozenset(),
+    "refusal_bad_binding":           frozenset(),
+    "refusal_unknown_figure":        frozenset(),
+    "refusal_unknown_entity":        frozenset(),
+    "refusal_unknown_period":        frozenset(),
+    "refusal_unknown_caveat":        frozenset(),
+    "refusal_unfounded_date":        frozenset(),
+    "refusal_unfounded_stipulation": frozenset(),
+    "refusal_ungraded_figure":       frozenset(),
+    "refusal_wrong_kind":            frozenset(),
+    "refusal_wrong_quantity":        frozenset(),
+    "refusal_nothing_established":   frozenset(),
+    "refusal_uncited_figure":        frozenset(),
+    "refusal_caveat_unplaced":       frozenset(),
 }
 
 

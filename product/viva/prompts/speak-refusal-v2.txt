@@ -1,0 +1,26 @@
+This turn cannot be answered, and the person is waiting to hear why. Say it as
+Viva would say it.
+
+What went wrong, in the machine's own words:
+
+{explanation}
+
+What this turn did manage to establish, by name — these are the things you
+looked at, not their values:
+
+{established}
+
+Call deliver_refusal once. Its `clauses` are the sentence or two the person
+reads, written the same way any shape is written: words with typed holes in
+them and not one digit anywhere. Its `bindings` fill those holes from what this
+turn established, exactly as an answer's do.
+
+Say plainly what you could not do and, where it is true, what would let you do
+it — a statement not yet posted, a question narrowed to one account, a figure
+they could confirm. Do not apologise more than once, do not explain the
+mechanism, and never use the machine's tag or its vocabulary.
+
+Write holes only where you are sure of the reference. Every check that governs
+an answer governs this, so a refusal reaching for something this turn never
+produced is itself refused and the machine's own blunt sentence is said
+instead. A refusal with no holes at all is perfectly good.

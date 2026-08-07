@@ -24,11 +24,21 @@ Composition inherits the weakest grade among its parts, so a total built from
 one unverified balance is itself unverified, and a conflicted part makes the
 whole conflicted.
 
-A number is not the only thing a read puts on the record. The *names* it used
-for the things it spoke about travel too, as ``identifiers`` — an account's id,
-and the masked form of its number. A name identifies rather than measures, and
-it is asserted whole: what an answer may write is the form the read wrote, not
-the digits inside it.
+Every figure also declares **what it measures** — a balance, spending, a count
+of things — from the closed vocabulary in `viva.quantity`. A grade says how
+well a number is stood behind and says nothing about what the number is of, and
+a real number correctly graded is still a false sentence when it is put where
+something else belongs. The tool that measured it is the one that knows, so the
+declaration is made here, at the emitter, and code compares it against what the
+sentence asked for.
+
+A number is not the only thing a read puts on the record. The things it spoke
+about travel too, as ``identifiers`` — an account, a counterparty, a category,
+a kind of document — each an **entity** with its attributes rather than a
+string. An answer refers to one of them; which of its attributes a person is
+shown is the renderer's decision, made in one place. So an account with a name,
+a path and a masked number is one thing that can be named several ways, rather
+than several names that each have to be allowed for separately.
 
 What a figure rests on and how its arithmetic came out are two different
 questions, and a figure answers both separately. ``grade`` and ``record_ids``
@@ -46,6 +56,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..ledger import CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED
+from ..quantity import MEASURES
 
 FINANCIAL = "financial"
 ACTIVITY = "activity"
@@ -64,13 +75,25 @@ MONEY_KINDS = (FINANCIAL, COMPUTED)
 # The character budget one tool result aims to stay inside. Every result is
 # resent in full on every model call for the rest of the turn, so a result's
 # size is paid once per call the turn has left.
-PAYLOAD_TARGET = 4000
+#
+# A result now carries an identity for every thing it spoke about, not only for
+# every number it asserts, because an answer refers to a thing rather than
+# spelling its name. That is one short entry per account or counterparty in
+# scope — bounded by what the person holds, never by how much has moved — and
+# the budget names what it pays for.
+#
+# It also carries, on every figure, what that figure measures. That is one word
+# per number, on every remaining call of the turn, and it buys the check that
+# stops a real figure being spoken as a claim about something else. Like the
+# identities, it is bounded by how many numbers a read asserts rather than by
+# how much the ledger holds.
+PAYLOAD_TARGET = 5000
 
 # The figure fields the model is shown. `record_ids` is not among them: an
 # answer cites a figure by id and the runner resolves its records, so only their
 # count travels.
-MODEL_FACING_FIGURE = ("id", "value", "currency", "kind", "grade", "dated",
-                       "exactness", "what")
+MODEL_FACING_FIGURE = ("id", "value", "currency", "quantity", "kind", "grade",
+                       "dated", "exactness", "what")
 
 # Weakest-last, so composition takes the maximum index present. `conflicted`
 # sits below `unverified`: a figure that disagrees with its own evidence is
@@ -94,8 +117,8 @@ def weakest(grades) -> str:
     return _STRENGTH[max(_STRENGTH.index(g) for g in present)]
 
 
-def figure(value, what: str, kind: str = FINANCIAL, grade: str = "",
-           dated: str = "", currency: str = "", record_ids=(),
+def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
+           grade: str = "", dated: str = "", currency: str = "", record_ids=(),
            exactness: str = EXACT) -> dict:
     """One number this result asserts, ready for the runner to stamp with an id.
 
@@ -103,27 +126,89 @@ def figure(value, what: str, kind: str = FINANCIAL, grade: str = "",
     refusal can refer to it without restating its value. The id is assigned by
     the runner, not here: tools stay stateless and ids belong to the run.
 
+    ``quantity`` is what the tool measured, from the closed vocabulary in
+    `viva.quantity`, and it has no default. The author of the tool is the one
+    who knows, and a number whose meaning nobody stated is exactly the number
+    that gets put into a sentence claiming it means something else. Leaving it
+    out is an error where the emitter is written rather than a surprise where
+    the figure is spoken.
+
     A grade outside the ladder is an error here rather than a label nobody
     checks: `weakest` ignores what it does not recognise, so an unknown grade
     would travel to the person as a strength claim while counting for nothing
     in composition. An exactness nothing recognises is refused for the same
-    reason, in the same place."""
+    reason, in the same place, and so is a quantity outside the vocabulary."""
     if grade and grade not in _STRENGTH:
         raise ValueError(f"grade {grade!r} is not on the ladder: "
                          + ", ".join(_STRENGTH))
     if exactness not in _EXACTNESS:
         raise ValueError(f"exactness {exactness!r} says nothing about how the "
                          "arithmetic came out: " + ", ".join(_EXACTNESS))
-    return {"id": "", "value": str(value), "currency": currency, "kind": kind,
+    if quantity not in MEASURES:
+        raise ValueError(f"quantity {quantity!r} is not something this measures: "
+                         + ", ".join(MEASURES))
+    return {"id": "", "value": str(value), "currency": currency,
+            "quantity": quantity, "kind": kind,
             "grade": grade if kind in GRADED_KINDS else "",
             "dated": dated, "record_ids": [str(r) for r in record_ids],
             "exactness": exactness, "what": what}
+
+
+# The kinds of thing a read can put on the record besides a number. Each is a
+# type a hole in a sentence can declare, so what a read establishes and what an
+# answer may refer to are one vocabulary.
+ENTITY_ACCOUNT = "account"
+ENTITY_MERCHANT = "merchant"
+ENTITY_CATEGORY = "category"
+ENTITY_DOCUMENT = "document"
+
+ENTITY_KINDS = (ENTITY_ACCOUNT, ENTITY_MERCHANT, ENTITY_CATEGORY,
+                ENTITY_DOCUMENT)
+
+# The letter each kind's ids are stamped with, so what a thing IS travels in
+# its identity rather than as a field repeated on every remaining call of the
+# turn. The same economy figure ids already make.
+ENTITY_MARKS = {ENTITY_ACCOUNT: "a", ENTITY_MERCHANT: "m",
+                ENTITY_CATEGORY: "k", ENTITY_DOCUMENT: "d"}
+
+
+def entity(kind: str, **attrs) -> dict:
+    """One thing this result spoke about, ready for the runner to stamp with an
+    id.
+
+    An entity carries its attributes and never a chosen form: an account
+    carries its path, the name someone gave it and the masked form of its
+    number, and which of those a person reads is settled once, by the renderer,
+    rather than by whichever sentence got there first."""
+    if kind not in ENTITY_KINDS:
+        raise ValueError(f"{kind!r} is not a kind of thing a read establishes: "
+                         + ", ".join(ENTITY_KINDS))
+    return {"id": "", "kind": kind,
+            **{k: v for k, v in attrs.items() if v not in ("", None)}}
 
 
 # What a model-facing field says when it has nothing to add. Every result is
 # resent on every remaining call of the turn, so a field carrying the ordinary
 # case on every figure is paid for many times over and tells the model nothing.
 UNSAID = {"exactness": EXACT}
+
+
+def _named(item) -> dict:
+    """One entity as the model sees it: which thing it is, and one label to
+    tell it from another. What kind of thing it is travels in its id.
+
+    The label is the handle the figures use — an account's ledger path, a
+    counterparty's descriptor — so a result's numbers and the things they are
+    about can be matched up. It is not what a person reads: the rest of what an
+    entity carries, and the choice among those forms, belongs to the renderer,
+    and sending it would be paying on every remaining call of the turn for a
+    choice the model does not make."""
+    if not isinstance(item, dict):
+        return {"id": "", "label": str(item)}
+    return {"id": item.get("id", ""),
+            "label": str(item.get("account") or item.get("example")
+                         or item.get("label") or item.get("doc_type")
+                         or item.get("name") or "")}
 
 
 def _stated(fig: dict) -> dict:
@@ -150,10 +235,10 @@ class ToolResult:
     # model may say is a number some tool emitted here; anything living only in
     # `data` is machinery, not a claim.
     figures: list = field(default_factory=list)
-    # The names this result used for the things it spoke about, each in the
-    # whole form it wrote — an account's id, and the masked form a person
-    # reads. A name identifies rather than measures, and it is asserted whole:
-    # a run of digits lifted out of one is a number again.
+    # The things this result spoke about, each an entity with its attributes.
+    # An answer refers to one of them and the renderer chooses which attribute
+    # a person reads, so an entity's several names are one thing rather than
+    # several strings each needing to be allowed for.
     identifiers: list = field(default_factory=list)
     grade: str = ""                             # weakest grade the data rests on
     dated: str = ""                             # the value-time the data is good as of
@@ -177,12 +262,17 @@ class ToolResult:
         the runner resolves the records — and only their count travels."""
         return {"tool": self.tool, "ok": self.ok, "data": self.data,
                 "figures": [_stated(f) for f in self.figures],
-                "identifiers": list(self.identifiers),
+                "identifiers": [_named(i) for i in self.identifiers],
                 "grade": self.grade, "dated": self.dated,
                 "covers": [dict(c) for c in self.covers],
                 "records": len(self.record_ids),
                 "provenance": list(self.provenance),
-                "coverage": self.coverage, "caveats": list(self.caveats),
+                "coverage": self.coverage,
+                # A caveat is a thing an answer refers to, so it travels with
+                # the identity the run gave it. A tool writes the sentence; the
+                # run decides what it is called.
+                "caveats": [c if isinstance(c, dict) else {"text": str(c)}
+                            for c in self.caveats],
                 "refusal": self.refusal, "text": self.text}
 
 

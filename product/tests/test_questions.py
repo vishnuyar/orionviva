@@ -109,8 +109,11 @@ def test_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
          "documents": "invoice or bill of sale", "ask": "Shall I track it?"}])
     (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
     assert q["scope"] == "pattern"
-    # It states a hypothesis and its grounds, instead of asking what this is.
-    assert "normally mean a vehicle" in q["text"]
+    # It states a hypothesis and its grounds, instead of asking what this is —
+    # in the category this vault holds, not in the enrichment model's own words
+    # for the relationship.
+    assert "normally mean transport" in q["text"]
+    assert "a vehicle" not in q["text"]
     # ...and it closes with the pack's own words. A sentence the enrichment
     # model wrote is never spliced into the question text.
     assert "Shall I track it?" not in q["text"]

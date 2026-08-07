@@ -104,6 +104,46 @@ def test_an_amount_whose_currency_is_unknown_is_not_given_one():
     assert read.currency is None
 
 
+def _significant(written) -> str:
+    """The digits a written proportion actually shows. A sign, a point and any
+    leading zeros say where the value sits, not what it is."""
+    text = str(written).rstrip("%").lstrip("-")
+    return text.replace(",", "").replace(".", "").lstrip("0")
+
+
+@pytest.mark.parametrize("number, whole", [("18.9", "19"), ("18.2857", "18"),
+                                           ("-18.9", "-19"), ("1.5", "2"),
+                                           ("128", "128"), ("-0.4", "0")])
+def test_a_count_is_written_to_the_nearest_whole_thing(number, whole):
+    """A count is whole, and a value that is not is rounded to the nearest one.
+
+    Cutting it off at the point is a different number — always smaller, always
+    silently — and the person is shown digits that are not the digits of the
+    value they were told about. The last of these is the other half: a value
+    rounded away to nothing is nothing, and a sign in front of it would say a
+    direction it no longer has."""
+    assert render.count(number) == whole
+
+
+@pytest.mark.parametrize("power", [0, 2, -2, -4])
+def test_a_proportion_keeps_its_digits_wherever_the_point_falls(power):
+    """Significant digits, which is what the count of them is named for: a
+    power of ten moves the point without moving the digits, so a share far
+    smaller than a hundredth is written as itself rather than rounded a second
+    time by the position it happens to sit at."""
+    value = Decimal("1.23456789").scaleb(power)
+    written = render.rate(value)
+
+    assert _significant(written) == _significant(render.rate("1.23456789"))
+    assert len(_significant(written)) == render.RATE_FIGURES
+
+
+def test_a_proportion_shows_the_digits_it_was_rounded_to():
+    """And rounded, not cut: the last digit shown is the one the value rounds
+    to. Cutting would write 123456 where the value is nearer 123457."""
+    assert _significant(render.rate("0.1234567")) == "123457"
+
+
 def test_only_the_renderer_produces_something_a_money_slot_accepts():
     """An amount is a value AND a currency (I1). The renderer's output says so
     by its type, so a slot that needs one can ask for it and a bare number
@@ -115,12 +155,11 @@ def test_only_the_renderer_produces_something_a_money_slot_accepts():
 
 def test_no_module_that_speaks_to_a_person_formats_money_itself():
     """Every amount a person is shown goes through the one renderer. A number
-    formatted anywhere else is a second convention, and a second convention is
-    what disagreed with the first.
+    formatted anywhere else is a second convention.
 
-    Both halves of this are the point: the forms a figure can be formatted in
-    are checked, not one of them, and the modules checked are whichever ones
-    speak to a person, not a list someone remembered to extend."""
+    Both halves matter: the forms a figure can be formatted in are checked,
+    not one of them, and the modules checked are whichever ones speak to a
+    person rather than a list someone remembered to extend."""
     speaking = _person_facing()
     found = {str(p.relative_to(_PACKAGE)) for p in speaking}
     assert {"questions.py", "knowledge/__init__.py"} <= found, (

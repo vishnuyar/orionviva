@@ -182,3 +182,31 @@ halves are closed in the 2026-08-05 amendment below._
 > as money. Six verbs are registered, and the descriptions file is `tools-v6`.
 > Recorded and not fixed: a movement's description may carry digits of its own,
 > so listing descriptions is still refused._
+
+> _Amended again 2026-08-07, after the second acceptance run and the shape
+> cycle. **The gate the three amendments above describe is deleted.** It
+> answered 5 of 9 answerable questions and spent 67% of the run's budget on
+> refusals, every one of them triggered by a date or an identifier token and
+> none by a bad figure. A whitelist over free-form language had taken five
+> cycles of new rules without closing.
+>
+> **A model now writes no digits at all, in either direction.** An answer is a
+> shape — clauses of literal words with typed holes — committed before any tool
+> is on the table, so a claim cannot be tailored to a figure that turned up. A
+> clause whose own words carry a digit is rejected before a read happens. The
+> holes are then filled by references into the run's ledger, and one renderer
+> turns each reference into words. Nothing inspects the sentence.
+>
+> **Every figure declares what it measures**, from the closed vocabulary in
+> `viva/quantity.py`, and every hole holding a magnitude declares what it is
+> asking for. Code compares the two declarations, so a gross sum of postings
+> cannot be spoken as spending. ADR-010 is untouched: no model checks a model.
+>
+> **A refusal is a reviewed pack sentence chosen by machine tag** — no
+> composition, no call, no binding. The twelve verbs are unchanged; six are
+> registered; the descriptions file is `tools-v7`.
+>
+> Recorded and not fixed: whether a slot can be filled at all is still not
+> computed from the registry before a call is made, which is where the refused
+> spend was supposed to go. `{document}` is a declared slot type that no tool
+> emits. And none of this has met real data — the Witness runs next._

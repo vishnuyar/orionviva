@@ -39,7 +39,7 @@ from functools import lru_cache
 
 from vivacore import versions
 
-from ..render import money
+from ..render import accounts, date as render_date, document, money
 
 _DIR = pathlib.Path(__file__).resolve().parent
 
@@ -92,30 +92,32 @@ def _retirement_flow(proj, entry: dict, as_of: str,
         kind="retirement_flow", document=entry["document"],
         subject="Assets:Retirement", amount=amount, currency=currency,
         fields={"money": money(amount, currency, locale=locale),
-                "document": entry["document"]})]
+                "document": document(entry["document"])})]
 
 
 def _investment_account(proj, entry: dict, as_of: str,
                         locale: str = "") -> list[Expectation]:
     from viva.ledger import UnknownAccountError
-    accounts = [i for i in proj.account_infos() if i.kind == "investment"]
-    if not accounts or _doc_type_seen(proj, entry.get("expect_doc_types", [])):
+    held = [i for i in proj.account_infos() if i.kind == "investment"]
+    if not held or _doc_type_seen(proj, entry.get("expect_doc_types", [])):
         return []
     # The stake: investment income already recorded, which the tax document
     # would attest (and refine into short/long-term — money currently discarded).
     amount = Decimal("0")
-    currency = accounts[0].currency or "USD"
+    currency = held[0].currency or "USD"
     for acct in ("Income:CapitalGains", "Income:Dividends"):
         try:
             amount += abs(proj.balance(acct).amount)
         except UnknownAccountError:
             continue
-    names = ", ".join(sorted((i.name or i.account) for i in accounts))
+    names = accounts(sorted(({"name": i.name, "path": i.account}
+                             for i in held),
+                            key=lambda e: e["name"] or e["path"]))
     return [Expectation(
         id=f"expectation:{entry['id']}", entry_id=entry["id"],
         kind="investment_account", document=entry["document"],
-        subject=names, amount=amount, currency=currency, count=len(accounts),
-        fields={"account_name": names, "document": entry["document"],
+        subject=str(names), amount=amount, currency=currency, count=len(held),
+        fields={"account_name": names, "document": document(entry["document"]),
                 "money": money(amount, currency, locale=locale)})]
 
 
@@ -139,13 +141,14 @@ def _account_cadence(proj, entry: dict, as_of: str,
             continue
         if today - last <= timedelta(days=horizon):
             continue
-        name = info.name or info.account
         out.append(Expectation(
             id=f"expectation:{entry['id']}:{info.account}",
             entry_id=entry["id"], kind="account_cadence",
             document=entry["document"], subject=info.account,
             amount=Decimal("0"), currency=info.currency,
-            fields={"account_name": name, "last_date": ba.dated}))
+            fields={"account_name": accounts([{"name": info.name,
+                                               "path": info.account}]),
+                    "last_date": render_date(ba.dated)}))
     return out
 
 

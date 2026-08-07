@@ -1,6 +1,6 @@
 # The Question Queue
 
-**Status:** BUILT (`product/viva/questions.py`, `python -m viva.ask`, `/api/questions`) · **Last updated:** 2026-07-25 · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
+**Status:** BUILT (`product/viva/questions.py`, `python -m viva.ask`) · **Last updated:** 2026-08-07 (as-built amendment under *Viva's voice*: typed templates, a declared answer structure on every question, and no buttons) · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
 
 **Invariants touched:** T1 (a question carries the evidence it rests on) · T2 (questions are raised deterministically — a model never decides *whether* to ask) · **T4 (an answer is an append-only ruling event; we reuse the writers we already have)** · X2 (an unanswered question leaves the figure visibly incomplete, never silently resolved) · principle 5 (**serve, don't overwhelm** — the failure mode is asking about everything) · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts). Extends [verification-findings-and-correction.md](verification-findings-and-correction.md)'s Rung 2 ("the human, asked well") from one document to the whole vault.
 
@@ -58,6 +58,14 @@ Question text is a **deterministic template**, not a model call: the queue must 
 > "You have 12 transactions with FIRST AMERICAN TITLE totalling $23,512. Is that money spent, or a property purchase — something you now own?"
 
 Slice 9 (Viva) will re-voice these through the persona; the *content* — figure, evidence, options — stays deterministic. This is where the unwritten persona work (C1 uncertainty language, C3 when-to-speak) gets its first concrete surface.
+
+> _**As built, amended 2026-08-07. The rule above stands; three things around it changed.**_
+>
+> _**The templates are typed, not merely whitelisted.** `INTENT_FIELDS` was a per-question-key set of names a phrasing could place; it is now a per-key map of name to **slot type** — money, count, date, account, merchant, category, document — and the lint checks the type as well as the membership. A question text is still a deterministic template and still never a model call._
+>
+> _**Every question declares what structure an answer to it has.** Previously one of seven question kinds said so, and the other six were routed by kind rather than by declared type, so a sentence typed into a transfer question's box was parsed as a ruling about the four majors. Now each `Question` carries typed slots, and one inbound router reads any reply into them: the model turns language into structure and never into a value, and deterministic code validates each value against its type and writes. A reply that does not hold up goes back to the model once, with what it sent and what was wrong with it, before anyone troubles the person._
+>
+> _**`options` is gone, and so is `free_text`.** There is no button path and no second way in — a channel that triggers a write without anyone saying anything is the thing the design excludes. A closed vocabulary a reply must land in survives as **validation** rather than as clickable payloads. The `Question` sketch above still shows the old fields; treat the code as current. And `_money()` is deleted: the queue's figures go through the one renderer that writes every other amount in the product, from the same versioned locale rules the parser reads them with._
 
 ## Scope — the build
 

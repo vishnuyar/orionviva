@@ -57,7 +57,10 @@ from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_UNENRICHED, TIER_UNKNOWN)
 from .listen import RULING_SLOTS
 from .persona import say
-from .render import money as render_money
+from .render import (account as render_account, category as render_category,
+                     count as render_count, date as render_date,
+                     document as render_document, merchant as render_merchant,
+                     money as render_money)
 from .reply import Slot
 from .schemas import ANSWER_CHOICE, ANSWER_LABEL, ANSWER_LINK, ANSWER_YES_NO
 
@@ -126,16 +129,20 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
         f = h.facts
         amount = abs(f.closing_amount)
         if h.reason == "gap":
-            text = say("reconciliation_gap", account_ref=f.account_ref,
-                       opening_date=f.opening_date, closing_date=f.closing_date)
+            text = say("reconciliation_gap",
+                       account_ref=render_account({"name": f.account_ref}),
+                       opening_date=render_date(f.opening_date),
+                       closing_date=render_date(f.closing_date))
             why = say("reconciliation_gap_why",
                       opening_money=render_money(abs(f.opening_amount),
                                                  f.currency, locale=locale))
         elif h.reason == "identity":
-            text = say("identity", account_ref=f.account_ref)
+            text = say("identity",
+                       account_ref=render_account({"name": f.account_ref}))
             why = (h.finding or {}).get("message", "")
         else:
-            text = say("reconciliation_flagged", account_ref=f.account_ref)
+            text = say("reconciliation_flagged",
+                       account_ref=render_account({"name": f.account_ref}))
             why = (h.finding or {}).get("message", "")
         identity = h.reason == "identity"
         kind = IDENTITY if identity else RECONCILIATION
@@ -152,17 +159,26 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
     for b in other_holds(proj):
         out.append(Question(
             id=f"{RECONCILIATION}:{b['doc_id'][:12]}", kind=RECONCILIATION,
-            text=" ".join(say(
-                "reconciliation_held",
-                doc_type=b["doc_type"].replace("_", " "),
-                for_account=(("for " + b["account_ref"]) if b["account_ref"] else "")
-            ).split()),
+            text=_held_text(b),
             why=b.get("message", "") or f"held: {b.get('reason', '')}",
             amount=Decimal("0"), currency="", count=1, scope="one",
             # No slots: nothing said in words settles this one. The document
             # does, and looking at it answers nothing.
             refs={"doc_id": b["doc_id"]}))
     return out
+
+
+def _held_text(held: dict) -> str:
+    """What Viva says about a document she is holding.
+
+    Two whole sentences rather than one with a fragment slotted into it: the
+    account is either known or it is not, and a slot that holds an account
+    holds an account, never a preposition with a string behind it."""
+    doc_type = render_document(held["doc_type"].replace("_", " "))
+    if held["account_ref"]:
+        return say("reconciliation_held_for", doc_type=doc_type,
+                   account_ref=render_account({"name": held["account_ref"]}))
+    return say("reconciliation_held", doc_type=doc_type)
 
 
 def _transfer_questions(proj, locale: str = "") -> list[Question]:
@@ -183,10 +199,10 @@ def _transfer_questions(proj, locale: str = "") -> list[Question]:
         amount = abs(src.amount)
         out.append(Question(
             id=f"{TRANSFER}:{src.key}", kind=TRANSFER,
-            text=say("transfer", date=src.date,
+            text=say("transfer", date=render_date(src.date),
                      money=render_money(amount, src.currency, locale=locale),
-                     description=src.description),
-            why=say("transfer_why", candidates=len(cands)),
+                     description=render_merchant({"example": src.description})),
+            why=say("transfer_why", candidates=render_count(len(cands))),
             amount=amount, currency=src.currency, count=1, scope="one",
             # Was that the same money, or not: one slot, a yes or a no, and a
             # sentence that fills it with neither is asked again rather than
@@ -222,7 +238,9 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
         shareable = row.get("shareable", True)
         out.append(Question(
             id=f"{MERCHANT}:{key}", kind=MERCHANT,
-            text=(say("merchant", example=row["example"], count=row["count"],
+            text=(say("merchant",
+                      example=render_merchant({"example": row["example"]}),
+                      count=render_count(row["count"]),
                       money=render_money(amount, cur, locale=locale))
                   + ("" if shareable else " " + say("merchant_peer_note"))),
             why=say("merchant_why"),
@@ -287,7 +305,8 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
         ruling = proj.derived_category(m) or {}
         out.append(Question(
             id=f"{NATURE}:{m.key}", kind=NATURE,
-            text=say("nature_single", date=m.date, description=m.description,
+            text=say("nature_single", date=render_date(m.date),
+                     description=render_merchant({"example": m.description}),
                      money=render_money(abs(m.amount), m.currency,
                                         locale=locale)),
             why=say("nature_single_why"),
@@ -304,11 +323,18 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     # Tier 2 — an implication exists: state it, then offer the choice.
     for key, g in groups.items():
         implied = g["implied"]
-        what = implied.get("relationship") or g["subcategory"] or g["category"]
-        head = say("nature_group_head", count=g["count"], example=g["example"],
+        # What a payment of this kind is, as a category this vault holds. The
+        # counterparty's own words for the relationship it implies are a label a
+        # model coined, and a category slot holds a category.
+        what = g["subcategory"] or g["category"]
+        head = say("nature_group_head", count=render_count(g["count"]),
+                   example=render_merchant({"example": g["example"]}),
                    money=render_money(g["amount"], g["currency"],
                                       locale=locale))
-        text = f"{head} " + say("nature_group_meaning", what=what)
+        text = head
+        if what:
+            text += " " + say("nature_group_meaning",
+                              what=render_category(what))
         if implied.get("compound"):
             text += " " + say("nature_group_compound")
         # The closing ask comes from the pack, like every other sentence Viva
@@ -319,7 +345,7 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
         why = say("nature_group_why")
         if implied.get("documents"):
             why += " " + say("nature_group_why_documents",
-                             documents=implied["documents"])
+                             documents=render_document(implied["documents"]))
         out.append(Question(
             id=f"{NATURE}:{key}", kind=NATURE, text=text, why=why,
             amount=g["amount"], currency=g["currency"], count=g["count"],
@@ -359,11 +385,10 @@ def _corroboration_questions(proj, locale: str = "") -> list[Question]:
                 break
         if not doc:
             continue
-        name = account.split(":")[-1]
-        text = say("corroboration", name=name,
+        text = say("corroboration", name=render_account({"path": account}),
                    money=render_money(abs(row["paid"]), row["currency"],
                                       locale=locale),
-                   document=doc)
+                   document=render_document(doc))
         why = (say("corroboration_why")
                + (" " + say("corroboration_why_unreliable")
                   if not row["reliable_balance"] else ""))
@@ -409,7 +434,7 @@ def _interview_questions(proj, jurisdiction: str) -> list[Question]:
             continue
         out.append(Question(
             id=question_id(iv.account, f"opens:{opened}"), kind=INTERVIEW,
-            text=say("interview_opens", name=iv.name,
+            text=say("interview_opens", name=render_account({"name": iv.name}),
                      kind_label=schema.label or opened),
             why=say("interview_why"), amount=iv.stake, currency=iv.currency,
             count=iv.settles, scope="one",
@@ -449,7 +474,8 @@ def _interview_question(iv, q, ivs) -> Question:
         choices = tuple(other.account for other in ivs
                         if other.kind == q.links_to
                         and other.account != iv.account)
-    text = say("interview", name=iv.name, asks=q.asks)
+    text = say("interview", name=render_account({"name": iv.name}),
+               asks=q.asks)
     if q.unlocks:
         text += " " + say("interview_unlocks", unlocks=q.unlocks)
     return Question(

@@ -15,6 +15,12 @@ things states none — that is how anything downstream tells an amount from a
 plain number. A summary whose movements are not all in one currency refuses:
 nothing here converts, so their sum would be a number in no currency at all.
 
+Every figure also states what it measures, and the read that produced it is
+what decides: a balance is not spending, a gross sum of postings is not
+spending either, and a count of documents is not a proportion of anything. A
+read that measures something the vocabulary cannot name fails here rather than
+reaching a person inside a sentence about something else.
+
 No tool here writes, calls a model, or touches the network; each reads the one
 live projection it was built over.
 """
@@ -23,12 +29,15 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from .. import quantity, render
 from ..ledger import networth
 from ..ledger.identity import masked
 from ..ledger.projection import (MIXED, SETTLEMENT, SPENDING, TRANSFER,
                                  UnknownAccountError)
 from ..ledger.projection import movements as movements_view
-from .envelope import ACTIVITY, ToolResult, figure, refusal, weakest
+from .envelope import (ACTIVITY, ENTITY_ACCOUNT, ENTITY_CATEGORY,
+                       ENTITY_MERCHANT, ToolResult, entity, figure, refusal,
+                       weakest)
 from .registry import Registry, ToolSpec
 
 REAL_KINDS = ("depository", "liability", "investment")
@@ -84,23 +93,52 @@ def _currencies(proj) -> set:
 
 
 def _identifiers(proj, accounts) -> list:
-    """The names this read used for the accounts it spoke about, each whole.
+    """The accounts this read spoke about, each as an entity.
 
-    An account answers to two names — the id every read and filter uses, and
-    the masked form a person reads — and both are returned, since either may
-    end up in a sentence. A form carrying no digit is omitted: it licenses
-    nothing, and every result is resent on every remaining call of the turn.
-    An account the projection does not hold contributes nothing."""
-    out: set = set()
-    for account in set(accounts):
+    An account answers to several names — the ledger path every read and filter
+    uses, the name someone gave it, the masked form of its number — and one
+    entity carries all of them. Which one a person reads is the renderer's
+    decision, made once, so there is no form of a name that has to be allowed
+    for separately. An account the projection does not hold contributes
+    nothing."""
+    out: list = []
+    for account in sorted(set(accounts)):
         try:
             info = proj.account_info(account)
         except UnknownAccountError:
             continue
-        for form in (account, masked(info.number)):
-            if any(c.isdigit() for c in form):
-                out.add(form)
-    return sorted(out)
+        out.append(entity(ENTITY_ACCOUNT, account=account, name=info.name,
+                          number_masked=masked(info.number),
+                          account_kind=info.kind, currency=info.currency))
+    return out
+
+
+def _merchants(descriptors) -> list:
+    """The counterparties this read spoke about, each as an entity.
+
+    A movement's description is one of them: it names who the money went to,
+    which is a thing rather than a magnitude, however many digits a statement
+    happens to have written into it."""
+    out, seen = [], set()
+    for descriptor in descriptors:
+        text = str(descriptor or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(entity(ENTITY_MERCHANT, example=text))
+    return out
+
+
+def _categories(labels) -> list:
+    """The categories this read grouped by, each as an entity."""
+    out, seen = [], set()
+    for label in labels:
+        text = str(label or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(entity(ENTITY_CATEGORY, label=text))
+    return out
 
 
 def _is_iso_date(value: str) -> bool:
@@ -331,12 +369,14 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         return refusal(TOOL, "no_accounts",
                        "I don't have any balance-holding accounts on file yet.")
     figures = [figure(r["value"], f"{r['name'] or r['record_id']} — balance",
+                      quantity=quantity.BALANCE,
                       grade=r["grade"], dated=r["dated"], currency=r["currency"],
                       record_ids=[r["record_id"]]
                       + ([r["provenance"]["doc_id"]]
                          if r["provenance"].get("doc_id") else []))
                for r in rows]
     figures.append(figure(len(rows), "accounts holding a balance",
+                          quantity=quantity.COUNT,
                           grade=weakest(r["grade"] for r in rows),
                           record_ids=sorted({r["record_id"] for r in rows})))
     return ToolResult(
@@ -400,24 +440,32 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
             month_docs.setdefault(month, set()).add(r["doc_id"])
     grade = weakest(r["grade"] for r in rows)
     figures = [
-        figure(len(rows), "movements matching the filters", grade=grade,
-               record_ids=record_ids),
-        figure(money_in, "money in over these movements", grade=grade,
+        figure(len(rows), "movements matching the filters",
+               quantity=quantity.COUNT, grade=grade, record_ids=record_ids),
+        # Summed by the sign of the posting, which is why neither of these
+        # claims a direction: what a positive posting means depends on the
+        # account it sits on, and that is not established here.
+        figure(money_in, "money in over these movements",
+               quantity=quantity.GROSS_FLOW, grade=grade,
                currency=currency, record_ids=record_ids),
-        figure(money_out, "money out over these movements", grade=grade,
+        figure(money_out, "money out over these movements",
+               quantity=quantity.GROSS_FLOW, grade=grade,
                currency=currency, record_ids=record_ids),
-        figure(money_in - money_out, "net movement over this set", grade=grade,
+        figure(money_in - money_out, "net movement over this set",
+               quantity=quantity.NET_MOVEMENT, grade=grade,
                currency=currency, record_ids=record_ids),
         # The divisor a per-month average over this set is computed with.
         # Arithmetic takes figure ids, so a count that lives only in the
         # payload cannot be divided by.
-        figure(len(by_month), "months these movements span", grade=grade,
-               record_ids=record_ids),
+        figure(len(by_month), "months these movements span",
+               quantity=quantity.COUNT, grade=grade, record_ids=record_ids),
     ]
-    figures += [figure(v, f"net movement on {k}", grade=grade,
+    figures += [figure(v, f"net movement on {k}",
+                       quantity=quantity.NET_MOVEMENT, grade=grade,
                        currency=currency, record_ids=[k])
                 for k, v in sorted(by_account.items())]
-    figures += [figure(v, f"net movement in {k}", grade=grade,
+    figures += [figure(v, f"net movement in {k}",
+                       quantity=quantity.NET_MOVEMENT, grade=grade,
                        currency=currency,
                        record_ids=sorted(month_docs.get(k, ())))
                 for k, v in sorted(by_month.items())]
@@ -489,6 +537,7 @@ def list_movements(proj, args: dict) -> ToolResult:
                         | {r["record_id"] for r in shown})
     covers, caveats = _attested_coverage(proj, filters)
     figures = [figure(r["amount"], f"{r['description']} on {r['date']}",
+                      quantity=quantity.MOVEMENT,
                       grade=r["grade"], dated=r["date"], currency=r["currency"],
                       record_ids=[r["record_id"]]
                       + ([r["doc_id"]] if r["doc_id"] else []))
@@ -502,8 +551,9 @@ def list_movements(proj, args: dict) -> ToolResult:
     return ToolResult(
         tool=LIST_TOOL, ok=True, data={"movements": shown, "shown": len(shown),
                                        "total": total},
-        figures=figures, identifiers=_identifiers(
-            proj, (r["account"] for r in shown)),
+        figures=figures,
+        identifiers=(_identifiers(proj, (r["account"] for r in shown))
+                     + _merchants(r["description"] for r in shown)),
         grade=weakest(r["grade"] for r in shown),
         record_ids=record_ids, covers=covers, caveats=caveats,
         coverage=coverage, text=coverage)
@@ -522,12 +572,14 @@ def _query_holdings(proj, filters: dict) -> ToolResult:
     caveats = ["Each holding is a dated measurement from a statement, never "
                "a current price."]
     figures = [figure(r["market_value"], f"{r['instrument']} — measured value",
+                      quantity=quantity.BALANCE,
                       grade=r["grade"], dated=r["as_of"], currency=r["currency"],
                       record_ids=[r["record_id"]]
                       + ([r["provenance"]["doc_id"]]
                          if r["provenance"].get("doc_id") else []))
                for r in rows]
     figures.append(figure(len(rows), "measured holdings",
+                          quantity=quantity.COUNT,
                           grade=weakest(r["grade"] for r in rows),
                           record_ids=sorted({r["record_id"] for r in rows})))
     return ToolResult(
@@ -590,7 +642,8 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
     return out, extras
 
 
-def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
+def _aggregate_spending(proj, filters: dict, group_by: str,
+                        locale: str = "") -> ToolResult:
     grouped, extras = _spending_rows(proj, filters, group_by)
     held = _shared_currency(extras["currencies"])
     if held is None:
@@ -613,30 +666,50 @@ def _aggregate_spending(proj, filters: dict, group_by: str) -> ToolResult:
         data["overlaps"] = True
         caveats.append("Tags overlap: the per-tag figures do not sum to the "
                        "total, and untagged money appears in no line.")
+    # An amount inside a caveat is an amount, and is written by the one
+    # renderer that writes every other one. A caveat is passed on verbatim, so
+    # a figure it spelled for itself would be the sentence under the answer
+    # disagreeing with the answer about how this person's money is written.
+    def amount(value) -> str:
+        return str(render.money(value, currency, locale=locale))
+
     uncategorized = grouped.get("Uncategorized")
     if group_by == "category" and uncategorized:
-        caveats.append(f"{uncategorized} is still uncategorized.")
+        caveats.append(f"{amount(uncategorized)} is still uncategorized.")
     provisional = proj.provisional_spending(filters.get("currency"))
     if provisional:
-        caveats.append(f"{provisional} of this rests on provisional evidence "
-                       "(a suggested implication, not a ruling).")
+        caveats.append(f"{amount(provisional)} of this rests on provisional "
+                       "evidence (a suggested implication, not a ruling).")
     undecided = proj.undecomposed(filters.get("currency"))
     if undecided["count"]:
-        caveats.append(f"{undecided['total']} across {undecided['count']} "
-                       "compound payment(s) has known components but unknown "
-                       "proportions, and is reported apart, not counted here.")
+        caveats.append(f"{amount(undecided['total'])} across "
+                       f"{undecided['count']} compound payment(s) has known "
+                       "components but unknown proportions, and is reported "
+                       "apart, not counted here.")
     grade = weakest(extras["grades"])
-    figures = [figure(v, f"spending — {group_by} '{k}'", grade=grade,
+    figures = [figure(v, f"spending — {group_by} '{k}'",
+                      quantity=quantity.SPENDING, grade=grade,
                       currency=currency, record_ids=record_ids)
                for k, v in sorted(grouped.items())]
     figures.append(figure(extras["total"], f"total spending by {group_by}",
+                          quantity=quantity.SPENDING,
                           grade=grade, currency=currency,
                           record_ids=record_ids))
     figures.append(figure(extras["count"], "spending movements counted",
+                          quantity=quantity.COUNT,
                           grade=grade, record_ids=record_ids))
+    # What a spending read groups by is a thing it spoke about — a category, a
+    # counterparty, an account — and an answer refers to it rather than
+    # spelling it.
+    grouped_entities = (_categories(grouped)
+                        if group_by in ("category", "subcategory")
+                        else _merchants(grouped) if group_by == "merchant"
+                        else [])
     return ToolResult(
         tool=TOOL, ok=True, data=data, figures=figures,
-        identifiers=_identifiers(proj, [i.account for i in _scope(proj, filters)]),
+        identifiers=(_identifiers(proj, [i.account
+                                         for i in _scope(proj, filters)])
+                     + grouped_entities),
         grade=grade, covers=covers,
         record_ids=record_ids, caveats=caveats,
         coverage=f"{extras['count']} spending movement(s) counted.",
@@ -652,6 +725,7 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
                      if a.startswith("Income:") and a != "Income:Uncategorized")
     line_grades = [ln.grade for a in sources for ln in proj.transactions(a)]
     figures = [figure(v, f"attributed income in {k}, over everything ingested",
+                      quantity=quantity.INCOME,
                       grade=weakest(line_grades), currency=k,
                       record_ids=sources)
                for k, v in sorted(by_currency.items())]
@@ -693,11 +767,17 @@ def _aggregate_net_worth(proj, as_of: str | None) -> ToolResult:
     figures = []
     for currency, row in sorted(data.get("by_currency", {}).items()):
         for part in ("net", "assets", "liabilities"):
+            # What is held less what is owed is net worth; each side of it on
+            # its own is a total of balances, and saying so keeps a hole that
+            # asked for one from being filled with the other.
             figures.append(figure(row[part], f"{part} in {currency}",
+                                  quantity=(quantity.NET_WORTH if part == "net"
+                                            else quantity.BALANCE),
                                   grade=weakest(_grades_in(data)),
                                   dated=as_of, currency=currency,
                                   record_ids=record_ids))
     figures += [figure(line["amount"], f"{line['account']} — its part of net worth",
+                       quantity=quantity.BALANCE,
                        grade=line.get("grade", ""), dated=line.get("as_of", ""),
                        currency=line.get("currency", ""),
                        record_ids=[line["account"]])
@@ -744,7 +824,7 @@ def _unsupported_filters(kind: str, filters: dict) -> ToolResult | None:
         supported_filters=sorted(supported))
 
 
-def query_ledger(proj, args: dict) -> ToolResult:
+def query_ledger(proj, args: dict, locale: str = "") -> ToolResult:
     filters = args.get("filters", {})
     bad = _check_filters(proj, filters)
     if bad is not None:
@@ -777,8 +857,8 @@ def query_ledger(proj, args: dict) -> ToolResult:
                        "entity 'aggregate' needs a metric: spending, income, "
                        "or net_worth.")
     if metric == "spending":
-        return _aggregate_spending(proj, filters, args.get("group_by",
-                                                           "category"))
+        return _aggregate_spending(proj, filters,
+                                   args.get("group_by", "category"), locale)
     if metric == "income":
         return _aggregate_income(proj, filters)
     return _aggregate_net_worth(proj, args.get("as_of"))
@@ -814,15 +894,20 @@ def check_completeness(proj, args: dict) -> ToolResult:
                        "identified, so their categories are unknown.")
     all_docs = sorted(captured)
     figures = [
-        figure(len(captured), "documents held", record_ids=all_docs),
+        figure(len(captured), "documents held", quantity=quantity.COUNT,
+               record_ids=all_docs),
         figure(len(captured) - len(held), "documents posted to the ledger",
+               quantity=quantity.COUNT, record_ids=all_docs),
+        figure(len(held), "documents awaiting review", quantity=quantity.COUNT,
                record_ids=all_docs),
-        figure(len(held), "documents awaiting review", record_ids=all_docs),
         figure(unidentified, "counterparties not yet identified",
-               record_ids=all_docs),
+               quantity=quantity.COUNT, record_ids=all_docs),
     ]
+    # A day, which is a point in time and not a magnitude: it fills no hole
+    # that asks for an amount, a count or a proportion.
     figures += [figure(a["dated"], f"{a['name'] or a['account']} — the date "
                        "its evidence is good as of",
+                       quantity=quantity.TIME,
                        grade=a["grade"], dated=a["dated"],
                        record_ids=[a["account"]])
                 for a in accounts if a["dated"]]
@@ -866,6 +951,7 @@ def get_provenance(proj, args: dict) -> ToolResult:
         return ToolResult(
             tool="get_provenance", ok=True, grade=ba.grade, dated=ba.dated,
             figures=[figure(proj.account_value(rid), f"{rid} — balance",
+                            quantity=quantity.BALANCE,
                             grade=ba.grade, dated=ba.dated,
                             currency=ba.currency, record_ids=ids)],
             identifiers=_identifiers(proj, [rid]),
@@ -887,6 +973,7 @@ def get_provenance(proj, args: dict) -> ToolResult:
             grade=grades.get(match.key, ""), dated=match.date,
             figures=[figure(match.amount,
                             f"{match.description} on {match.date}",
+                            quantity=quantity.MOVEMENT,
                             grade=grades.get(match.key, ""), dated=match.date,
                             currency=match.currency, record_ids=ids)],
             identifiers=_identifiers(proj, [match.account]),
@@ -956,6 +1043,7 @@ def get_transparency(proj, args: dict) -> ToolResult:
             data={"topic": topic, "actions": shown, "shown": len(shown),
                   "count": len(log)},
             figures=[figure(len(log), "unattended actions on record",
+                            quantity=quantity.COUNT,
                             kind=ACTIVITY, record_ids=events)],
             record_ids=events, coverage=said, text=said)
     if topic == "calls_spent":
@@ -967,6 +1055,7 @@ def get_transparency(proj, args: dict) -> ToolResult:
             tool="get_transparency", ok=True,
             data={"topic": topic, "calls": calls, "since": since},
             figures=[figure(calls, "model calls the agent spent on its own",
+                            quantity=quantity.COUNT,
                             kind=ACTIVITY, record_ids=events)],
             record_ids=events,
             caveats=["Counts only the maintenance agent's unattended calls; "
@@ -980,6 +1069,7 @@ def get_transparency(proj, args: dict) -> ToolResult:
         tool="get_transparency", ok=True,
         data={"topic": topic, "declined": declined, "count": len(declined)},
         figures=[figure(len(declined), "questions set aside",
+                        quantity=quantity.COUNT,
                         kind=ACTIVITY, record_ids=events)],
         record_ids=events,
         text=f"{len(declined)} question(s) set aside.")
