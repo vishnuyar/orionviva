@@ -7,7 +7,8 @@
 The headline metric is the confidently-wrong rate rather than accuracy. Every
 reading is graded into one of:
 
-  SAFE      unreadable         no JSON, or no legs → the buttons still work
+  SAFE      unreadable         no JSON, or no legs → nothing is recorded and
+                               the person is asked again in Viva's voice
   WRONG     wrong_majors       a confident misreading
   RUIN      invented_split     a ratio nobody stated
   RUIN      leaked_amount      a figure from the model's head
@@ -15,6 +16,12 @@ reading is graded into one of:
 
 A call that never reached the model is BROKEN: it is excluded from every rate and
 reported on its own.
+
+**This measures ONE call.** The live path gives a model that did not fill the
+slots a second attempt before anyone is asked anything; the eval deliberately
+does not, because what it is grading is the model's reading, not the harness
+around it. So the unreadable rate here is the upper bound on what a person would
+actually be asked to repeat.
 
 Cases come from a frozen synthetic key (`evals/listen_cases.json`), so a run is
 free, offline-capable and reproducible. Each case accepts a *set* of correct
@@ -33,7 +40,9 @@ import pathlib
 import statistics
 import time
 
-from .listen import interpret
+from .listen import RULING_SLOTS, ruling_context, ruling_from
+from .reply import interpret as fill_slots
+from .reply import MAX_REPLY_TOKENS, read_reply
 
 CASES = pathlib.Path(__file__).parent / "evals" / "listen_cases.json"
 
@@ -107,9 +116,21 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
                 _c["raw"] = out
                 return out
 
-            interp = interpret(case["said"], case["descriptor"],
-                               case.get("category", ""), case.get("subcategory", ""),
-                               extract_fn=spy)
+            # The two halves, run apart rather than through `reply.answer`, so a
+            # reading that never reached the model is told apart from one the
+            # checks refused — and so the underlying cause survives into the
+            # report instead of becoming an unexplained failure.
+            filled = fill_slots(
+                case["said"], RULING_SLOTS,
+                context=ruling_context(case["descriptor"],
+                                       case.get("category", ""),
+                                       case.get("subcategory", "")),
+                extract_fn=spy)
+            checked = read_reply(RULING_SLOTS, filled.values)
+            interp = ruling_from(checked, case["said"])
+            interp.raw = filled.raw
+            if filled.failure:
+                interp.failure, interp.detail = filled.failure, filled.detail
             elapsed = time.monotonic() - started
             latencies.append(elapsed)
             row = score_one(case, interp, captured.get("raw", ""))
@@ -164,7 +185,7 @@ def report(result: dict, key_version: str = "") -> str:
         + (f"  (key {key_version})" if key_version else ""),
         "",
         f"  ok               {c[OK]:3}   {r[OK]:.0%}",
-        f"  unreadable       {c[SAFE]:3}   {r[SAFE]:.0%}   safe — the buttons still work",
+        f"  unreadable       {c[SAFE]:3}   {r[SAFE]:.0%}   safe — nothing recorded, asked again",
         f"  missed compound  {c[WEAK]:3}   {r[WEAK]:.0%}   weak — collapses a mortgage",
         f"  wrong majors     {c[WRONG]:3}   {r[WRONG]:.0%}   confidently wrong",
         f"  RUIN             {c[RUIN]:3}   {r[RUIN]:.0%}   fabricated a split or an amount",
@@ -204,7 +225,8 @@ def _verdict(result: dict) -> str:
                 "future payment to that counterparty.")
     if result["rates"][SAFE] > 0.25:
         return ("VERDICT: safe but weak — it declines often. Nothing is corrupted; "
-                "the person just falls back to buttons more than they should.")
+                "the person is just asked to say it again more often than they "
+                "should have to be.")
     return ("VERDICT: usable. No fabrication, few confident errors. Re-run after "
             "any prompt change — this is a regression test, not a one-off.")
 
@@ -243,9 +265,9 @@ def main() -> None:
         name="viva-listen-eval", adapter=args.adapter, model=args.model,
         base_url=args.base_url,
         api_key_env=None if (args.key_env or "").lower() in ("", "none") else args.key_env,
-        max_tokens=1024, json_mode=not args.no_json_mode)
+        max_tokens=MAX_REPLY_TOKENS, json_mode=not args.no_json_mode)
     if args.probe:
-        return _probe(spec, args.say, args.counterparty)
+        return _probe(spec, said=args.say, counterparty=args.counterparty)
     cases = load_cases()
     result = run(one_shot_extractor(spec), cases, repeat=args.repeat)
     if args.json:
@@ -256,29 +278,45 @@ def main() -> None:
 
 
 def _probe(spec, said: str = "i bought a car",
-           counterparty: str = "NORTHSIDE MOTORS") -> None:
-    """One call, with the prompt version, the endpoint, the raw reply, the parsed
-    legs and the failure all printed. An exception here is not swallowed the way
-    the eval swallows it: it prints and exits 1."""
-    from .listen import interpret, one_shot_extractor
+           counterparty: str = "NORTHSIDE MOTORS", extract_fn=None) -> None:
+    """One call, with the prompt version, the endpoint, the raw reply, the
+    checked legs and the failure all printed. An exception here is not swallowed
+    the way the eval swallows it: it prints and exits 1.
+
+    The two halves run apart, exactly as `run` runs them, so the reading printed
+    is the one that reply produced — no second call, and no second reading of
+    the same words. ``extract_fn`` replaces the live model edge, which is what
+    lets this be exercised without one."""
+    from .listen import one_shot_extractor
+    from .reply import INTERPRET_VERSION
     from .ingest.prompt_library import interpret_prompt
-    from .listen import INTERPRET_VERSION
-    text, version = interpret_prompt(INTERPRET_VERSION)
-    prompt = text.format(said=said, counterparty=counterparty,
-                         source="(an account they hold)",
-                         category="(unknown)", subcategory="(unknown)")
+    _text, version = interpret_prompt(INTERPRET_VERSION)
     print(f"prompt {version}, said={said!r}")
     print(f"POST {spec.base_url}  model={spec.model}  json_mode={spec.json_mode}\n")
+    captured = {}
+    call = extract_fn or one_shot_extractor(spec)
+
+    def spy(prompt):
+        captured["raw"] = call(prompt)
+        return captured["raw"]
+
     try:
-        reply = one_shot_extractor(spec)(prompt)
+        filled = fill_slots(said, RULING_SLOTS,
+                            context=ruling_context(counterparty),
+                            extract_fn=spy)
     except Exception as exc:                       # noqa: BLE001 - this is the point
         print(f"FAILED: {type(exc).__name__}: {exc}")
         raise SystemExit(1)
-    print("RAW REPLY:\n" + (reply or "(empty)"))
-    got = interpret(said, counterparty, extract_fn=lambda p: reply)
-    print(f"\nparsed legs: {got.legs or 'NONE'}")
-    print(f"category:    {got.category or '(none)'}")
-    print(f"failure:     {got.failure or 'none'}  {got.detail}")
+    print("RAW REPLY:\n" + (captured.get("raw") or "(empty)"))
+    if filled.failure == "unreachable":
+        print(f"FAILED: {filled.detail}")
+        raise SystemExit(1)
+    read = read_reply(RULING_SLOTS, filled.values)
+    got = ruling_from(read, said)
+    print(f"\nfilled:       {filled.failure or 'ok'}")
+    print(f"checked legs: {got.legs or 'NONE'}")
+    print(f"category:     {got.category or '(none)'}")
+    print(f"failure:      {filled.failure or read.why or got.failure or 'none'}")
 
 
 if __name__ == "__main__":

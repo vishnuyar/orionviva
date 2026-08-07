@@ -17,6 +17,7 @@ from viva.ledger import EventStore, Ledger
 from viva.ledger.events import merchant_enriched
 from viva.ledger.projection import (TIER_SETTLED, TIER_STRUCTURAL,
                                     TIER_UNENRICHED, TIER_UNKNOWN, TRANSFER)
+from viva.persona import say
 from viva.questions import NATURE, open_questions
 
 
@@ -85,10 +86,16 @@ def test_a_counterparty_that_implies_structure_is_proposed_not_asked(tmp_path):
     # A hypothesis with its grounds — not "what is this?"
     assert "normally mean a home loan" in q["text"]
     assert "several things at once" in q["text"]        # compound, stated up front
-    assert "Shall I set up the loan?" in q["text"]
+    # The closing ask is the pack's. What the counterparty implies reaches the
+    # question as structure — the relationship, the document, the category —
+    # and never as a sentence written at enrichment.
+    assert "Shall I set up the loan?" not in q["text"]
+    assert say("nature_group_ask") in q["text"]
     assert "mortgage statement or 1098" in q["why"]
-    assert q["options"][0]["args"]["major"] == "liability"
-    assert q["options"][0]["args"]["group"] == "Mortgage"
+    # What the implication suggests travels as references — structure a lint can
+    # check — rather than as a pre-answered button.
+    assert q["refs"]["implied_major"] == "liability"
+    assert q["refs"]["account_group"] == "Mortgage"
 
 
 def test_an_instrument_is_unknown_and_asked_one_at_a_time(tmp_path):

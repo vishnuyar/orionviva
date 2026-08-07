@@ -1,0 +1,49 @@
+A person was asked a question and answered in their own words. Turn what they
+said into the structure below. You are turning language into structure — you are
+not deciding anything and not answering anything yourself. Reply with JSON only.
+
+The question they were asked: {asked}
+Their answer: {said}
+What is already known:
+{context}
+
+Fill exactly these slots, and no others:
+{slots}
+
+Reply with one JSON object whose keys are the slot names above:
+{{"<slot name>": <value>}}
+
+How a value is written, by that slot's type:
+- money        {{"value": "1234.56", "currency": "USD"}} — the amount in plain
+               digits with a dot for the decimal, and the currency they meant.
+               Write what they SAID, normalised: "about 250k" is "250000",
+               "two fifty" said of a price is "250". Never a figure they did not
+               state.
+- date         "2019-06-01" — year, month, day.
+- rate         "4.25" — a proportion per hundred, digits only.
+- yes_no       "yes" or "no".
+- choice       exactly one of that slot's listed alternatives, copied
+               character for character. Never a word of your own.
+- label        their own short word for a thing they named, copied from their
+               words rather than tidied into a word you prefer. Many answers
+               name no thing at all — leave it empty then, and never manufacture
+               a name.
+- institution  the public name of the company, as they wrote it.
+- link         the account it points at, named exactly as the alternatives are.
+- a slot listed as SEVERAL holds a LIST of objects with the parts shown under
+  it. Return several where what they described is genuinely several things at
+  once, ordered most certain first.
+
+Rules that matter more than completeness:
+- Leave a slot out, or empty, rather than guess. An unfilled slot is handled
+  properly downstream; a guessed one puts something in someone's finances that
+  nobody said.
+- NEVER estimate or apportion a proportion. A split nobody stated is left
+  empty; that is the correct answer, not a gap.
+- Invent no amount, no date, no name. Every value has to be traceable to their
+  words or to what is already known above.
+- Answer about THIS question only. Anything else they mentioned that no slot
+  asks for is dropped.
+- What they are describing may sit in any financial instrument, in any country:
+  a bank or card account, a brokerage or retirement account, a loan account, a
+  wallet. Do not assume a currency, a date order or a jurisdiction.

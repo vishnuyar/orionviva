@@ -1,0 +1,12 @@
+Your previous reply did not fill those slots. This is what came back:
+
+{got}
+
+What was wrong with it: {problem}
+
+Read their answer again and reply with one JSON object filling exactly the slots
+listed above, written in the forms shown there. Change only what was wrong.
+
+Do not add anything to make it fit. If their answer does not say what a slot
+asks for, leave that slot out — an empty slot is handled properly, and a value
+nobody stated is not.

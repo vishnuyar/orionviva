@@ -38,11 +38,15 @@
     },
     "interpret": {
       "in": "prompts",
-      "active": "interpret-v2"
+      "active": "interpret-v3"
+    },
+    "interpret_retry": {
+      "in": "prompts",
+      "active": "interpret-retry-v1"
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v3"
+      "active": "pack-v4"
     },
     "schema_pack": {
       "in": "schemas",
@@ -68,11 +72,14 @@
     "extract-paystub-base-v1": "0c6d6940246743c5",
     "extract-paystub-v1": "03b31eadbe878505",
     "extract-savings-v1": "222ae6d74f94e8f6",
+    "interpret-retry-v1": "c1fa281c3e32b2e7",
     "interpret-v1": "999d8aa496da5691",
     "interpret-v2": "7ac87ea8a867d0ba",
+    "interpret-v3": "95529e0e6204f2ec",
     "pack-v1": "16c9bf533d3d4e31",
     "pack-v2": "7e8f38e3db15c2f9",
     "pack-v3": "62a56a4b9b7c1b5e",
+    "pack-v4": "ab13c947b9ee4086",
     "schemas-v1": "195ffd57ad000e0c",
     "speak-closing-v1": "cb35be62c4daf926",
     "speak-final-v1": "8e14a31d4ccd20e8",

@@ -28,10 +28,10 @@ Usage (from product/, auto-loads ./.env for VIVA_PASSPHRASE / VIVA_VAULT_DIR):
 
     PYTHONPATH=../core:. python3 -m viva.reset_categorization  [dest_dir]
 
-Then point the surface at the clean vault and re-enrich:
+Then point the clean vault at the enricher, and work its queue:
 
     VIVA_VAULT_DIR=<dest> python3 -m viva.enrich
-    VIVA_VAULT_DIR=<dest> python3 -m viva.web
+    VIVA_VAULT_DIR=<dest> python3 -m viva.ask
 """
 
 from __future__ import annotations
@@ -202,7 +202,7 @@ def main() -> None:
     print(f"\nnew chain verifies: {ok} ({count} records)")
     print(f"\nnext, re-fill categories on the clean vault:")
     print(f"  VIVA_VAULT_DIR={dest} python3 -m viva.enrich")
-    print(f"  VIVA_VAULT_DIR={dest} python3 -m viva.web")
+    print(f"  VIVA_VAULT_DIR={dest} python3 -m viva.ask")
 
 
 if __name__ == "__main__":

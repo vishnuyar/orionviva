@@ -39,6 +39,8 @@ from functools import lru_cache
 
 from vivacore import versions
 
+from ..render import money
+
 _DIR = pathlib.Path(__file__).resolve().parent
 
 ACTIVE_REGISTRY = versions.active(_DIR.parent, "expectations")
@@ -71,7 +73,8 @@ def _doc_type_seen(proj, doc_types: list) -> bool:
     return any(dt in seen for dt in doc_types)
 
 
-def _retirement_flow(proj, entry: dict, as_of: str) -> list[Expectation]:
+def _retirement_flow(proj, entry: dict, as_of: str,
+                     locale: str = "") -> list[Expectation]:
     from viva.ledger import UnknownAccountError
     try:
         bal = proj.balance("Assets:Retirement")
@@ -88,11 +91,12 @@ def _retirement_flow(proj, entry: dict, as_of: str) -> list[Expectation]:
         id=f"expectation:{entry['id']}", entry_id=entry["id"],
         kind="retirement_flow", document=entry["document"],
         subject="Assets:Retirement", amount=amount, currency=currency,
-        fields={"money": f"{currency} {amount:,.2f}",
+        fields={"money": money(amount, currency, locale=locale),
                 "document": entry["document"]})]
 
 
-def _investment_account(proj, entry: dict, as_of: str) -> list[Expectation]:
+def _investment_account(proj, entry: dict, as_of: str,
+                        locale: str = "") -> list[Expectation]:
     from viva.ledger import UnknownAccountError
     accounts = [i for i in proj.account_infos() if i.kind == "investment"]
     if not accounts or _doc_type_seen(proj, entry.get("expect_doc_types", [])):
@@ -112,10 +116,11 @@ def _investment_account(proj, entry: dict, as_of: str) -> list[Expectation]:
         kind="investment_account", document=entry["document"],
         subject=names, amount=amount, currency=currency, count=len(accounts),
         fields={"account_name": names, "document": entry["document"],
-                "money": f"{currency} {amount:,.2f}"})]
+                "money": money(amount, currency, locale=locale)})]
 
 
-def _account_cadence(proj, entry: dict, as_of: str) -> list[Expectation]:
+def _account_cadence(proj, entry: dict, as_of: str,
+                     locale: str = "") -> list[Expectation]:
     out: list[Expectation] = []
     horizon = int(entry.get("cadence_days", 45))
     try:
@@ -152,12 +157,16 @@ _MECHANISMS = {
 
 
 def evaluate(proj, as_of: str, jurisdiction: str = "US",
-             version: str = ACTIVE_REGISTRY) -> list[Expectation]:
+             version: str = ACTIVE_REGISTRY,
+             locale: str = "") -> list[Expectation]:
     """Every unmet expectation the registry raises against this ledger.
 
     Pure and deterministic: same events + same registry + same date → same
     expectations. Declines are NOT filtered here — that is the queue's job, so
-    the suppression rule lives in exactly one place."""
+    the suppression rule lives in exactly one place.
+
+    ``locale`` decides how the stake is written; the amount itself is on the
+    expectation either way, so nothing here computes a figure it also formats."""
     out: list[Expectation] = []
     for entry in load(version)["entries"]:
         allowed = entry.get("jurisdictions", ["*"])
@@ -169,5 +178,5 @@ def evaluate(proj, as_of: str, jurisdiction: str = "US",
             # silently skipped, or the registry rots invisibly.
             raise ValueError(f"registry entry {entry.get('id')!r} names unknown "
                              f"mechanism {entry.get('given')!r}")
-        out.extend(mechanism(proj, entry, as_of))
+        out.extend(mechanism(proj, entry, as_of, locale))
     return out

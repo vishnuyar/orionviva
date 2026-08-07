@@ -37,9 +37,9 @@ import time
 from .env import load_dotenv
 from .ingest import capture_and_ingest
 from .ingest.raw_store import RawStore
+from .ingest.reader import build_reader
 from .logs import configure as configure_logging
 from .vault import Vault
-from .web.__main__ import build_reader
 
 
 def _source_state(source, passphrase, doc_ids):
@@ -164,7 +164,7 @@ def main() -> None:
         print("  No document changed outcome. If you expected an improvement,")
         print("  the new prompt did not deliver it; if you expected none, this")
         print("  is the regression check passing.")
-    print(f"open the new vault with:  VIVA_VAULT_DIR={dest} python3 -m viva.web")
+    print(f"open the new vault with:  VIVA_VAULT_DIR={dest} python3 -m viva.ask")
 
 
 if __name__ == "__main__":

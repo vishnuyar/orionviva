@@ -16,11 +16,26 @@ from decimal import Decimal
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          capture_and_ingest)
 from viva.ledger import EventStore, Ledger
-from viva.ledger.events import (ASSERTED, MAJOR_ASSET, MAJOR_EXPENSE,
-                                MAJOR_LIABILITY, SCOPE_MERCHANT, SCOPE_MOVEMENT)
+from viva.ledger.events import (ASSERTED, MAJOR_ASSET, SCOPE_MERCHANT,
+                                SCOPE_MOVEMENT)
 from viva.ledger.projection import MIXED, SETTLEMENT, SPENDING, TRANSFER
-from viva.listen import (PLAIN, apply_proposal, interpret, listen, propose,
-                         resolve_account, suggest_answers)
+from viva.listen import (PLAIN, RULING_SLOTS, apply_proposal, listen, propose,
+                         resolve_account, ruling_context, ruling_from)
+from viva.reply import interpret as fill_slots
+from viva.reply import read_reply
+
+
+def _read(said, descriptor="", extract_fn=None):
+    """The inbound path a nature question takes, in the order that matters: the
+    model fills the slots the question declared, then the deterministic checks
+    decide what survives. Nothing here reads the raw sentence."""
+    filled = fill_slots(said, RULING_SLOTS, context=ruling_context(descriptor),
+                        extract_fn=extract_fn)
+    got = ruling_from(read_reply(RULING_SLOTS, filled.values), said)
+    got.raw = filled.raw
+    if filled.failure:
+        got.failure, got.detail = filled.failure, filled.detail
+    return got
 
 
 def _enrich(ledger, merchant, category="other", kind="business", implies=(),
@@ -109,12 +124,11 @@ def test_a_broken_model_degrades_the_surface_never_the_ledger(tmp_path):
     assert ledger.projection().rulings() == []       # nothing written, ever
 
 
-def test_with_no_model_the_buttons_still_work():
-    """Free text is an addition, never a dependency."""
-    assert interpret("i bought a car", "TESLA").legs == []
-    majors = [s["major"] for s in suggest_answers({"major": MAJOR_LIABILITY})]
-    assert majors[0] == MAJOR_LIABILITY          # lead with what is implied
-    assert all(s["label"] == PLAIN[s["major"]] for s in suggest_answers())
+def test_with_no_model_nothing_is_guessed():
+    """With nothing configured to fill the slots, the honest result is no
+    reading at all — never a leg assembled out of the sentence by something
+    downstream."""
+    assert _read("i bought a car", "TESLA").legs == []
     # And nobody is ever shown an accounting term.
     assert not any(m in PLAIN[m].lower() for m in PLAIN)
 
@@ -256,7 +270,6 @@ def test_the_corroboration_ask_is_the_path_from_asserted_to_issued(tmp_path):
 def test_the_button_path_and_the_sentence_path_write_the_same_events(tmp_path):
     """Free text is an alternative channel, never a second mechanism. A tapped
     answer and a typed one must be indistinguishable in the ledger."""
-    from viva.web import service
 
     def run(said):
         raw, ledger = _vault(tmp_path / said[:4])
@@ -265,7 +278,7 @@ def test_the_button_path_and_the_sentence_path_write_the_same_events(tmp_path):
 
     tapped = run("tap ")
     proj = tapped.projection()
-    p = propose(proj, interpret("", extract_fn=None), "TESLA MOTORS")
+    p = propose(proj, _read(""), "TESLA MOTORS")
     p.legs = [{"major": MAJOR_ASSET, "account": "Assets:Other:TESLA MOTORS", "share": ""}]
     p.new_accounts = ["Assets:Other:TESLA MOTORS"]
     apply_proposal(tapped, p, "2026-07-25")
@@ -325,19 +338,19 @@ def test_the_interpreter_is_configured_separately_and_can_be_local(monkeypatch):
     """Reading a statement is a hard vision task; reading a sentence is a tiny
     text task. One setting for both would overpay on every sentence or under-read
     every statement — and a local model is only reachable if it can be keyless."""
-    from viva.web import service
+    from viva import engine
 
     for var in ("VIVA_MODEL", "VIVA_MODEL_ADAPTER", "VIVA_MODEL_BASE_URL",
                 "VIVA_MODEL_KEY_ENV", "VIVA_INTERPRET_MODEL",
                 "VIVA_INTERPRET_BASE_URL", "VIVA_INTERPRET_KEY_ENV"):
         monkeypatch.delenv(var, raising=False)
-    assert service._interpreter() is None            # nothing configured: buttons only
+    assert engine._interpreter() is None      # nothing configured: no reader
 
     # A local, keyless server must build a spec without demanding an API key.
     monkeypatch.setenv("VIVA_INTERPRET_MODEL", "qwen3.6:4b")
     monkeypatch.setenv("VIVA_INTERPRET_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("VIVA_INTERPRET_KEY_ENV", "none")
-    assert service._interpreter() is not None        # would raise if a key were required
+    assert engine._interpreter() is not None        # would raise if a key were required
 
 
 # ------------------------------------------------- reading the model's reply
@@ -347,7 +360,7 @@ def test_json_is_found_inside_whatever_the_model_wraps_it_in():
     """Models fence their output, think out loud first, or add a cheerful
     sentence after — none of which is a failure of understanding, so requiring
     the WHOLE reply to be JSON throws away a perfectly good reading."""
-    from viva.listen import _first_json_object
+    from viva.reply import _first_json_object
 
     obj = {"legs": [{"major": "liability"}]}
     for wrapper in (
@@ -367,12 +380,12 @@ def test_a_truncated_reply_is_refused_not_half_read():
     """The important half of the leniency. A cut-off reading is not a partial
     reading, it is an UNKNOWN one — guessing the rest is how a wrong ruling gets
     written and then generalized."""
-    from viva.listen import _first_json_object
+    from viva.reply import _first_json_object
 
     cut = '{"legs": [{"major": "expense", "account_hint": "Newco inter'
     assert _first_json_object(cut) is None
 
-    got = interpret("this is my mortgage", "LENDER", extract_fn=lambda p: cut)
+    got = _read("this is my mortgage", "LENDER", extract_fn=lambda p: cut)
     assert got.legs == []
     assert got.failure == "unparseable"
     assert got.raw == cut                  # kept, so it can be diagnosed offline
@@ -503,7 +516,7 @@ def test_a_nested_reply_is_still_read(tmp_path):
     """Some providers and json_mode wrappers nest the answer —
     {"response": {"legs": [...]}} — so taking the OUTER object finds no legs.
     Search for the object that carries them, not merely the first one."""
-    from viva.listen import _first_json_object
+    from viva.reply import _first_json_object
 
     inner = {"legs": [{"major": "liability", "account_hint": "Lender"}],
              "kind": "mortgage"}
@@ -528,28 +541,22 @@ def test_each_failure_says_something_different_and_true(tmp_path):
     neither the person nor the log can tell them apart. Saying which is the
     difference between a product that admits a limit and one that just seems
     broken."""
-    from viva.web import service
-
-    raw, ledger = _vault(tmp_path)
-    _checking(raw, ledger, [("2026-03-01", "LENDER ACH PMT", Decimal("-4400.00"))])
-
-    class FakeVault:
-        pass
-    v = FakeVault()
-    v.ledger = ledger
+    from viva.reply import answer
 
     cases = {
         "unreachable": lambda p: (_ for _ in ()).throw(ConnectionError("down")),
         "unparseable": lambda p: "sure, it's a mortgage!",
-        "empty": lambda p: '{"legs": []}',
+        # Well-formed, and filling nothing: the reader answered, and what it
+        # returned does not settle the question.
+        "unanswered": lambda p: '{"legs": []}',
     }
     seen = set()
     for expected, fn in cases.items():
-        service._interpreter = lambda _fn=fn: _fn
-        out = service.listen_to(v, "mortgage payments", "LENDER ACH PMT")
-        assert out["understood"] is False
-        assert out["why"] == expected
-        seen.add(out["message"])
+        out = answer("mortgage payments", RULING_SLOTS,
+                     context=ruling_context("LENDER ACH PMT"), extract_fn=fn)
+        assert out.ok is False
+        assert out.why == expected
+        seen.add(out.message)
     assert len(seen) == 3, "each failure needs its own honest sentence"
 
 
@@ -625,9 +632,9 @@ def test_running_past_the_token_limit_is_its_own_failure(tmp_path):
     to rewrite a sentence that was never the problem."""
     from viva.listen import TRUNCATED_MARK
 
-    got = interpret("mortgage payments", "LENDER",
-                    extract_fn=lambda p: TRUNCATED_MARK +
-                    '{"legs": [{"major": "liabil')
+    got = _read("mortgage payments", "LENDER",
+                extract_fn=lambda p: TRUNCATED_MARK +
+                '{"legs": [{"major": "liabil')
     assert got.failure == "too_long"
     assert got.legs == []
     assert "token limit" in got.detail
@@ -635,7 +642,7 @@ def test_running_past_the_token_limit_is_its_own_failure(tmp_path):
 
     # A truncated reply that nonetheless CONTAINS a complete object is fine —
     # the model rambled after answering, which costs tokens, not correctness.
-    ok = interpret("mortgage payments", "LENDER",
-                   extract_fn=lambda p: TRUNCATED_MARK +
-                   '{"legs":[{"major":"liability"}]} and furthermore I should')
+    ok = _read("mortgage payments", "LENDER",
+               extract_fn=lambda p: TRUNCATED_MARK +
+               '{"legs":[{"major":"liability"}]} and furthermore I should')
     assert ok.legs and ok.failure == ""

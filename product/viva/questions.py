@@ -20,9 +20,25 @@ Three rules shape the list:
      reported with its count and total.
 
 Question text is a deterministic template, never a model call. The templates live
-in the persona pack (`viva/persona/`): the queue supplies the intent — figures,
-evidence, options — and the pack supplies the words, with a lint test
-guaranteeing a phrasing can only place fields the intent supplied.
+in the persona pack (`viva/persona/`): the queue supplies the intent — figures
+and evidence — and the pack supplies the words, with a lint test guaranteeing a
+phrasing can only place fields the intent supplied, of the kinds it declared.
+
+Nothing here formats a figure. An amount is written by the one renderer
+(`viva/render.py`), under the conventions of the configured locale, so a person
+reading a question and a person answering one meet the same amount written the
+same way.
+
+Every question also declares **the structure an answer to it has**: a list of
+typed slots (`viva/reply.py`). That declaration is the whole inbound contract.
+It is handed to the model as the structure to fill, and every value that comes
+back is checked against its slot's type before anything is written. A question
+that declares no slots is one nothing said in words can settle — its document
+answers it — and saying so is honest rather than a gap.
+
+**Every question is answered in language.** The queue carries no buttons, no
+actions and no arguments for any surface: a surface has the words a person typed
+and the question they answered, and nothing else to send.
 
 "Not now" is an answer: a declined question stays suppressed while its stake
 (amount, count) is unchanged, and returns the moment new evidence moves it.
@@ -39,8 +55,11 @@ from .ledger.events import ASSERTED
 from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_SETTLED, TIER_STRUCTURAL,
                                 TIER_UNENRICHED, TIER_UNKNOWN)
-from .listen import suggest_answers
+from .listen import RULING_SLOTS
 from .persona import say
+from .render import money as render_money
+from .reply import Slot
+from .schemas import ANSWER_CHOICE, ANSWER_LABEL, ANSWER_LINK, ANSWER_YES_NO
 
 # How many questions to surface before summarizing the rest. A count, never a
 # money threshold.
@@ -73,26 +92,33 @@ class Question:
     currency: str = ""
     count: int = 1                 # how many movements/documents it settles
     scope: str = "one"             # "one" | "pattern"
-    options: list = field(default_factory=list)   # {label, action, args}
-    free_text: str = ""            # the prompt for an answer no button can hold
+    # The structure an answer to this has. Empty means nothing said in words
+    # settles it — a document does.
+    slots: tuple = ()
     refs: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {"id": self.id, "kind": self.kind, "text": self.text,
                 "why": self.why, "amount": str(self.amount),
                 "currency": self.currency, "count": self.count,
-                "scope": self.scope, "options": self.options,
-                "free_text": self.free_text, "refs": self.refs}
-
-
-def _money(amount: Decimal, currency: str) -> str:
-    return f"{currency} {abs(amount):,.2f}".strip()
+                "scope": self.scope,
+                "slots": [s.to_dict() for s in self.slots], "refs": self.refs}
 
 
 # --------------------------------------------------------------- the sources
 
 
-def _held_questions(proj) -> list[Question]:
+# Is this the account you already have? A person answers that with a yes or a
+# no, so that is what the slot is. Which ruling a yes and a no each stand for is
+# decided by code on the write side, where the machine's words belong.
+IDENTITY_SLOTS = (Slot(name="same_account", type=ANSWER_YES_NO, required=True),)
+
+# Do you have the document? The document is what settles the question; the
+# answer only says whether to expect one.
+DOCUMENT_SLOTS = (Slot(name="have_it", type=ANSWER_YES_NO, required=True),)
+
+
+def _held_questions(proj, locale: str = "") -> list[Question]:
     """Documents held for review — a gap, an identity doubt, or a flagged
     reconciliation. The stake is the statement's closing amount."""
     out: list[Question] = []
@@ -103,24 +129,23 @@ def _held_questions(proj) -> list[Question]:
             text = say("reconciliation_gap", account_ref=f.account_ref,
                        opening_date=f.opening_date, closing_date=f.closing_date)
             why = say("reconciliation_gap_why",
-                      opening_money=_money(f.opening_amount, f.currency))
+                      opening_money=render_money(abs(f.opening_amount),
+                                                 f.currency, locale=locale))
         elif h.reason == "identity":
             text = say("identity", account_ref=f.account_ref)
             why = (h.finding or {}).get("message", "")
         else:
             text = say("reconciliation_flagged", account_ref=f.account_ref)
             why = (h.finding or {}).get("message", "")
-        kind = IDENTITY if h.reason == "identity" else RECONCILIATION
+        identity = h.reason == "identity"
+        kind = IDENTITY if identity else RECONCILIATION
         out.append(Question(
             id=f"{kind}:{h.doc_id[:12]}", kind=kind, text=text, why=why,
             amount=amount, currency=f.currency, count=1, scope="one",
-            options=([{"label": "Same account", "action": "confirm_identity",
-                       "args": {"doc_id": h.doc_id, "decision": "same"}},
-                      {"label": "A new account", "action": "confirm_identity",
-                       "args": {"doc_id": h.doc_id, "decision": "new"}}]
-                     if h.reason == "identity" else
-                     [{"label": "Review it", "action": "review",
-                       "args": {"doc_id": h.doc_id}}]),
+            # An identity doubt is settled by saying whether it is the account
+            # already held. A reconciliation is settled by a document, so
+            # nothing said in words answers it.
+            slots=IDENTITY_SLOTS if identity else (),
             refs={"doc_id": h.doc_id}))
     # Held documents with no fix-it flow yet (pay stub, brokerage) are still
     # asked about, with no option beyond showing the document.
@@ -134,13 +159,13 @@ def _held_questions(proj) -> list[Question]:
             ).split()),
             why=b.get("message", "") or f"held: {b.get('reason', '')}",
             amount=Decimal("0"), currency="", count=1, scope="one",
-            options=[{"label": "Show me the document", "action": "review",
-                      "args": {"doc_id": b["doc_id"]}}],
+            # No slots: nothing said in words settles this one. The document
+            # does, and looking at it answers nothing.
             refs={"doc_id": b["doc_id"]}))
     return out
 
 
-def _transfer_questions(proj) -> list[Question]:
+def _transfer_questions(proj, locale: str = "") -> list[Question]:
     """Two movements that might be the same money. Scoped to the one movement:
     an ambiguous pair generalizes to nothing. Candidates already linked by
     another ruling are dropped, and a suggestion with none left is skipped."""
@@ -159,19 +184,19 @@ def _transfer_questions(proj) -> list[Question]:
         out.append(Question(
             id=f"{TRANSFER}:{src.key}", kind=TRANSFER,
             text=say("transfer", date=src.date,
-                     money=_money(amount, src.currency),
+                     money=render_money(amount, src.currency, locale=locale),
                      description=src.description),
             why=say("transfer_why", candidates=len(cands)),
             amount=amount, currency=src.currency, count=1, scope="one",
-            options=[{"label": "Yes — same money", "action": "confirm_transfer",
-                      "args": {"movement_a": src.key, "movement_b": cands[0]}},
-                     {"label": "No — that's spending", "action": "reject_transfer",
-                      "args": {"movement_a": src.key}}],
+            # Was that the same money, or not: one slot, a yes or a no, and a
+            # sentence that fills it with neither is asked again rather than
+            # read as something else.
+            slots=(Slot(name="same_money", type=ANSWER_YES_NO, required=True),),
             refs={"movement": src.key, "candidates": cands}))
     return out
 
 
-def _merchant_questions(proj) -> list[Question]:
+def _merchant_questions(proj, locale: str = "") -> list[Question]:
     """Merchants we have no category for. Scoped to the MERCHANT — one ruling
     fills every transaction from it, past and future."""
     from .ingest.categorize import SEED_CATEGORIES
@@ -198,14 +223,18 @@ def _merchant_questions(proj) -> list[Question]:
         out.append(Question(
             id=f"{MERCHANT}:{key}", kind=MERCHANT,
             text=(say("merchant", example=row["example"], count=row["count"],
-                      money=_money(amount, cur))
+                      money=render_money(amount, cur, locale=locale))
                   + ("" if shareable else " " + say("merchant_peer_note"))),
             why=say("merchant_why"),
             amount=amount, currency=cur, count=row["count"],
             # A commercial merchant generalizes; a peer descriptor does not.
             scope="pattern" if shareable else "one",
-            options=[{"label": "Categorize it", "action": "assign_merchant",
-                      "args": {"merchant": key}}],
+            # What this merchant is, from the categories this vault knows. The
+            # vocabulary is validation, not a set of buttons: an answer outside
+            # it is asked again with the alternatives named, rather than minting
+            # a new category out of a typo.
+            slots=(Slot(name="category", type=ANSWER_CHOICE,
+                        choices=tuple(categories), required=True),),
             refs={"merchant": key, "example": row["example"],
                   "categories": categories,
                   # A peer is answered per transaction, so the surface needs the
@@ -214,7 +243,7 @@ def _merchant_questions(proj) -> list[Question]:
     return out
 
 
-def _nature_questions(proj) -> list[Question]:
+def _nature_questions(proj, locale: str = "") -> list[Question]:
     """What this money is — asked only where the counterparty cannot say.
 
     The tier decides:
@@ -259,13 +288,14 @@ def _nature_questions(proj) -> list[Question]:
         out.append(Question(
             id=f"{NATURE}:{m.key}", kind=NATURE,
             text=say("nature_single", date=m.date, description=m.description,
-                     money=_money(abs(m.amount), m.currency)),
+                     money=render_money(abs(m.amount), m.currency,
+                                        locale=locale)),
             why=say("nature_single_why"),
             amount=abs(m.amount), currency=m.currency, count=1, scope="one",
-            options=[{"label": s["label"], "action": "rule_major",
-                      "args": {"movement_key": m.key, "major": s["major"]}}
-                     for s in suggest_answers()],
-            free_text=say("free_text_invite"),
+            # What the money became, in the person's own words. Several slots,
+            # because one payment can be several things at once — and that is
+            # all "a ruling" ever was.
+            slots=RULING_SLOTS,
             refs={"movement": m.key, "movements": [m.key],
                   "descriptor": m.description,
                   "category": ruling.get("category", ""),
@@ -276,37 +306,38 @@ def _nature_questions(proj) -> list[Question]:
         implied = g["implied"]
         what = implied.get("relationship") or g["subcategory"] or g["category"]
         head = say("nature_group_head", count=g["count"], example=g["example"],
-                   money=_money(g["amount"], g["currency"]))
+                   money=render_money(g["amount"], g["currency"],
+                                      locale=locale))
         text = f"{head} " + say("nature_group_meaning", what=what)
         if implied.get("compound"):
             text += " " + say("nature_group_compound")
-        # The ask may come from the implication data itself (enrichment knows
-        # what setting up a mortgage means); the pack only supplies the default.
-        text += f" {implied.get('ask') or say('nature_group_ask')}"
+        # The closing ask comes from the pack, like every other sentence Viva
+        # says. What the counterparty implies travels with the question as its
+        # category and its documents — data a lint can check — never as a
+        # sentence written somewhere else and spliced in whole.
+        text += " " + say("nature_group_ask")
         why = say("nature_group_why")
         if implied.get("documents"):
             why += " " + say("nature_group_why_documents",
                              documents=implied["documents"])
-        options = [{"label": f"Yes — {what}", "action": "rule_major",
-                    "args": {"merchant": key, "major": implied.get("major", "expense"),
-                             "descriptor": g["example"],
-                             "group": implied.get("account_group", "")}},
-                   {"label": "No — that was money spent", "action": "rule_major",
-                    "args": {"merchant": key, "major": "expense",
-                             "descriptor": g["example"]}}]
         out.append(Question(
             id=f"{NATURE}:{key}", kind=NATURE, text=text, why=why,
             amount=g["amount"], currency=g["currency"], count=g["count"],
-            scope="pattern", options=options,
-            free_text=say("free_text_invite"),
+            scope="pattern", slots=RULING_SLOTS,
             refs={"merchant": key, "movements": g["keys"],
                   "descriptor": g["example"], "category": g["category"],
                   "subcategory": g["subcategory"],
+                  # What the counterparty implies travels as structure — the
+                  # major it suggests, the group an account would sit in, the
+                  # document that would corroborate it — and never as a sentence
+                  # someone else wrote.
+                  "implied_major": implied.get("major", ""),
+                  "account_group": implied.get("account_group", ""),
                   "documents": implied.get("documents", "")}))
     return out
 
 
-def _corroboration_questions(proj) -> list[Question]:
+def _corroboration_questions(proj, locale: str = "") -> list[Question]:
     """Documents that would corroborate a ruling.
 
     An account a ruling created is `asserted`: only the person says it exists.
@@ -330,18 +361,16 @@ def _corroboration_questions(proj) -> list[Question]:
             continue
         name = account.split(":")[-1]
         text = say("corroboration", name=name,
-                   money=_money(row["paid"], row["currency"]), document=doc)
+                   money=render_money(abs(row["paid"]), row["currency"],
+                                      locale=locale),
+                   document=doc)
         why = (say("corroboration_why")
                + (" " + say("corroboration_why_unreliable")
                   if not row["reliable_balance"] else ""))
         out.append(Question(
             id=f"{CORROBORATION}:{account}", kind=CORROBORATION, text=text.strip(),
             why=why.strip(), amount=row["paid"], currency=row["currency"],
-            count=row["count"], scope="one",
-            options=[{"label": f"I have the {doc}", "action": "upload",
-                      "args": {"account": account, "document": doc}},
-                     {"label": "Not right now", "action": "dismiss",
-                      "args": {"account": account}}],
+            count=row["count"], scope="one", slots=DOCUMENT_SLOTS,
             refs={"account": account, "document": doc}))
     return out
 
@@ -384,59 +413,61 @@ def _interview_questions(proj, jurisdiction: str) -> list[Question]:
                      kind_label=schema.label or opened),
             why=say("interview_why"), amount=iv.stake, currency=iv.currency,
             count=iv.settles, scope="one",
-            options=[{"label": "Yes, let's", "action": "open_kind",
-                      "args": {"kind": opened, "secures": iv.account}}],
-            free_text=say("free_text_invite"),
+            # Answering here NAMES the thing rather than saying something about
+            # it, so the one slot is the person's own word for it.
+            slots=(Slot(name="name", type=ANSWER_LABEL, required=True,
+                        asks=naming_asks(schema)),),
             # No `key`: this question is not about an attribute of an account
-            # that exists. `opens` is what tells the surface that typing here
-            # names the thing rather than answering about it.
+            # that exists. `opens` is what says the answer names the thing
+            # rather than answering about it.
             refs={"account": iv.account, "opens": opened, "key": "",
                   "kind_label": schema.label or opened}))
     return out
 
 
-def _interview_question(iv, q, ivs) -> Question:
-    """One schema question, worded and given its options.
+def naming_asks(schema) -> str:
+    """The schema pack's own words for "what do you call it?", or "".
 
-    The options come from the answer's own vocabulary — the two words of a
-    yes/no, the alternatives a choice enumerates, the accounts a link may point
-    at — so nothing the surface offers is outside what the schema permits."""
+    Reviewed prose, carried through as data — nothing here writes a sentence."""
+    naming = schema.naming_question()
+    return naming.asks if naming is not None else ""
+
+
+def _interview_question(iv, q, ivs) -> Question:
+    """One schema question, worded and given the one slot it declares.
+
+    The slot's vocabulary comes from the schema — the alternatives a choice
+    enumerates, the accounts a link may point at — so nothing outside what the
+    schema permits can be accepted, and the model is told exactly what may
+    land."""
     from . import schemas
     from .interview import question_id
-    options: list = []
-    if q.answer == schemas.ANSWER_YES_NO:
-        options = [{"label": word.title(), "action": "answer_attribute",
-                    "args": {"account": iv.account, "key": q.key,
-                             "value": word}}
-                   for word in ("yes", "no")]
-    elif q.answer == schemas.ANSWER_CHOICE:
-        options = [{"label": choice, "action": "answer_attribute",
-                    "args": {"account": iv.account, "key": q.key,
-                             "value": choice}}
-                   for choice in q.choices]
-    elif q.answer == schemas.ANSWER_LINK:
-        options = [{"label": other.name, "action": "answer_attribute",
-                    "args": {"account": iv.account, "key": q.key,
-                             "value": other.account}}
-                   for other in ivs if other.kind == q.links_to
-                   and other.account != iv.account]
+    choices = tuple(q.choices)
+    if q.answer == ANSWER_LINK:
+        # Which accounts this may point at. The vault still decides whether one
+        # resolves; this only says which are worth naming.
+        choices = tuple(other.account for other in ivs
+                        if other.kind == q.links_to
+                        and other.account != iv.account)
     text = say("interview", name=iv.name, asks=q.asks)
     if q.unlocks:
         text += " " + say("interview_unlocks", unlocks=q.unlocks)
     return Question(
             id=question_id(iv.account, q.key), kind=INTERVIEW, text=text,
             why=say("interview_why"), amount=iv.stake, currency=iv.currency,
-            count=iv.settles, scope="one", options=options,
-            # Every interview answer can be typed: a choice the person doesn't
-            # recognize is still answerable in their own words.
-            free_text=say("free_text_invite"),
+            count=iv.settles, scope="one",
+            # The schema already said what kind of answer this needs and in what
+            # words to ask for it, so the question carries both where every
+            # other question carries them.
+            slots=(Slot(name=q.key, type=q.answer, choices=choices,
+                        required=True, asks=q.asks),),
             refs={"account": iv.account, "kind": iv.kind, "key": q.key,
-                  "answer": q.answer, "choices": list(q.choices),
                   "unlocks": q.unlocks,
                   "corroborated_by": list(q.corroborated_by)})
 
 
-def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question]:
+def _expectation_questions(proj, as_of: str, jurisdiction: str,
+                           locale: str = "") -> list[Question]:
     """The knowledge registry's unmet expectations, asked as questions and ranked
     with everything else by the money the document would attest.
 
@@ -445,7 +476,7 @@ def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question
     question that settles money."""
     from .knowledge import evaluate
     out: list[Question] = []
-    for e in evaluate(proj, as_of, jurisdiction):
+    for e in evaluate(proj, as_of, jurisdiction, locale=locale):
         why_fields = {"money": e.fields.get("money", "")} \
             if e.kind == "investment_account" else {}
         out.append(Question(
@@ -453,11 +484,7 @@ def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question
             text=say(f"expectation_{e.kind}", **e.fields),
             why=say(f"expectation_{e.kind}_why", **why_fields),
             amount=e.amount, currency=e.currency, count=e.count,
-            scope="pattern" if e.count > 1 else "one",
-            options=[{"label": "I have it", "action": "upload",
-                      "args": {"document": e.document}},
-                     {"label": "Not right now", "action": "dismiss",
-                      "args": {"subject": e.subject}}],
+            scope="pattern" if e.count > 1 else "one", slots=DOCUMENT_SLOTS,
             refs={"document": e.document, "subject": e.subject,
                   "registry_entry": e.entry_id}))
     return out
@@ -467,7 +494,7 @@ def _expectation_questions(proj, as_of: str, jurisdiction: str) -> list[Question
 
 
 def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
-                   jurisdiction: str = "") -> dict:
+                   jurisdiction: str = "", locale: str = "") -> dict:
     """Everything awaiting the person, ranked by how much money answering moves.
 
     Returns ``{"questions": [...], "tail": {"count": n, "amount": "…"}, "total":
@@ -476,7 +503,10 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
 
     ``as_of`` grounds the cadence expectations — it defaults to today,
     and tests pass it explicitly so the queue stays reproducible. ``jurisdiction``
-    filters the knowledge registry; it defaults from ``VIVA_LOCALE``'s region."""
+    filters the knowledge registry; it defaults from ``VIVA_LOCALE``'s region.
+    ``locale`` decides how a figure is written, and defaults from the same
+    setting, so the conventions a question is written in are the conventions an
+    answer is read in."""
     if not as_of:
         from datetime import date as _date
         as_of = _date.today().isoformat()
@@ -485,14 +515,15 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
         # universal registry entries only.
         from .env import jurisdiction_from_env
         jurisdiction = jurisdiction_from_env().upper()
+    locale = locale or _locale()
     proj = getattr(source, "projection", lambda: source)()
     qs: list[Question] = []
-    qs += _held_questions(proj)
-    qs += _transfer_questions(proj)
-    qs += _merchant_questions(proj)
-    qs += _nature_questions(proj)
-    qs += _corroboration_questions(proj)
-    qs += _expectation_questions(proj, as_of, jurisdiction)
+    qs += _held_questions(proj, locale)
+    qs += _transfer_questions(proj, locale)
+    qs += _merchant_questions(proj, locale)
+    qs += _nature_questions(proj, locale)
+    qs += _corroboration_questions(proj, locale)
+    qs += _expectation_questions(proj, as_of, jurisdiction, locale)
     qs += _interview_questions(proj, jurisdiction)
     open_qs, pending = _split_declined(proj, qs)
     # Highest stake first; ties broken by id so the order is stable between reads.
@@ -506,7 +537,47 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
         # Questions set aside and still open. Deferring into a place the person
         # can look is how "it always comes back" and "never a nag" are both true.
         "pending": {"count": len(pending)},
+        # What the box a person writes in says before they write, and what
+        # stands in its place where a question only a document can settle. Both
+        # come from the pack with every other sentence Viva says, so no surface
+        # keeps person-facing words of its own.
+        "invite": say("free_text_invite"),
+        "answered_by_document": say("answered_by_document"),
     }
+
+
+def find_question(source, question_id: str, as_of: str = "",
+                  jurisdiction: str = "", locale: str = "") -> Question | None:
+    """One question from the live queue, by id, or None.
+
+    Built fresh from the same builders rather than taken from a caller, so an
+    answer can only reach a question that is still being asked, with the slots
+    it is being asked with. A question set aside is still found: answering one
+    the person went looking for is answering it."""
+    if not as_of:
+        from datetime import date as _date
+        as_of = _date.today().isoformat()
+    if not jurisdiction:
+        from .env import jurisdiction_from_env
+        jurisdiction = jurisdiction_from_env().upper()
+    locale = locale or _locale()
+    proj = getattr(source, "projection", lambda: source)()
+    qs: list[Question] = []
+    qs += _held_questions(proj, locale)
+    qs += _transfer_questions(proj, locale)
+    qs += _merchant_questions(proj, locale)
+    qs += _nature_questions(proj, locale)
+    qs += _corroboration_questions(proj, locale)
+    qs += _expectation_questions(proj, as_of, jurisdiction, locale)
+    qs += _interview_questions(proj, jurisdiction)
+    return next((q for q in qs if q.id == question_id), None)
+
+
+def _locale() -> str:
+    """The configured locale, through the one accessor. A figure is written the
+    way this person's paperwork writes one."""
+    from .env import locale_from_env
+    return locale_from_env()
 
 
 def _split_declined(proj, qs: list) -> tuple:
@@ -528,20 +599,22 @@ def _split_declined(proj, qs: list) -> tuple:
             [q for q in qs if still_declined(q)])
 
 
-def pending_questions(source, as_of: str = "", jurisdiction: str = "") -> dict:
+def pending_questions(source, as_of: str = "", jurisdiction: str = "",
+                      locale: str = "") -> dict:
     """Everything set aside and still open — the list the person opens
     themselves. Same builders, same ranking; only the decline filter is
     inverted, so a pending question cannot drift from its open twin."""
+    locale = locale or _locale()
     proj = getattr(source, "projection", lambda: source)()
     qs: list[Question] = []
-    qs += _held_questions(proj)
-    qs += _transfer_questions(proj)
-    qs += _merchant_questions(proj)
-    qs += _nature_questions(proj)
-    qs += _corroboration_questions(proj)
+    qs += _held_questions(proj, locale)
+    qs += _transfer_questions(proj, locale)
+    qs += _merchant_questions(proj, locale)
+    qs += _nature_questions(proj, locale)
+    qs += _corroboration_questions(proj, locale)
     qs += _interview_questions(proj, jurisdiction)
     if as_of:
-        qs += _expectation_questions(proj, as_of, jurisdiction)
+        qs += _expectation_questions(proj, as_of, jurisdiction, locale)
     _, pending = _split_declined(proj, qs)
     pending.sort(key=lambda q: (-q.amount, q.id))
     return {"questions": [q.to_dict() for q in pending], "total": len(pending)}

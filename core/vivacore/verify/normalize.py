@@ -166,6 +166,21 @@ def known_language_tags() -> tuple:
     return tuple(sorted(_COMMA_DECIMAL_LOCALES + _DOT_DECIMAL_LOCALES))
 
 
+def separators_for(locale: str | None) -> tuple[str, str]:
+    """``(decimal, grouping)`` for a locale — the conventions this module reads,
+    made available for writing a figure the same way.
+
+    A locale whose language this module knows no convention for groups with
+    nothing and separates with '.', which is the canonical form
+    :class:`Normalized` itself carries and the one form `parse_amount` reads
+    back without a locale to decide. Anything else would print a figure under a
+    convention nothing here can claim."""
+    decimal = _decimal_separator_for(locale)
+    if decimal is None:
+        return ".", ""
+    return decimal, ("." if decimal == "," else ",")
+
+
 def _decimal_separator_for(locale: str | None) -> str | None:
     if not locale:
         return None
