@@ -1,0 +1,4 @@
+Your last reply could not be used: {problem}
+
+Reply again, correctly formed: exactly one call, to exactly one of the tools
+you have been given, with that tool's own arguments.

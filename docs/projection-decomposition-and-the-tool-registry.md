@@ -1,6 +1,6 @@
 # Breaking up the projection — and the tool registry it becomes
 
-**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1, the envelope and the runner's citation gate; see *What the build did* at the end. The provider adapters followed the same day (see the closing note). Outstanding: the real-vault run. · **Created:** 2026-08-01 · **Last updated:** 2026-08-06
+**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1 and the envelope stand; see *What the build did* at the end. **The citation gate described below is deleted as of 2026-08-07** and replaced by shapes, typed holes and bindings — read the closing amendment first, then the rest for how the problem was understood. Outstanding: the real-vault run of the replacement. · **Created:** 2026-08-01 · **Last updated:** 2026-08-07
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2/ADR-010 (deterministic math; no arithmetic in the model), T4 (untouched — this brief writes no events), T6 (no tool touches the network), X3 (no tool can do anything irreversible), I5 (code universal, specifics are data), and the standing principle *read side early, write side late*.
 
 ---
@@ -398,3 +398,72 @@ because a description can contain an amount; it needs its own ruling. And the
 approx-term insertion recorded above now has a wider blast radius: it
 substitutes into a licensed name, so a rounded figure whose value equals an
 account's last four renders as `••••approx 4417`.
+
+**What the shape cycle changed (2026-08-07). The gate described above no longer
+exists.** Everything from *the runner and the gate* onward — the token scanner,
+the six licence sources, the name-blanking and id-blanking passes, the
+date-declaration mechanism, `ground.prose`, the approx-term insertion and the
+model-composed refusal through `deliver_refusal` — is deleted. Read those
+sections for how the problem was understood; nothing in them describes the
+code. What survives whole is the *envelope*: figure identity, the four figure
+kinds, `grade`/`record_ids`/`exactness`, `covers`, and the one rule the gate
+had that was never about tokens — **a money-kind figure with no `record_ids`
+refuses.**
+
+The second acceptance run is why. It answered 5 of 9 answerable questions on
+the hosted target against a bar of 9 of 11, spent 67% of its model budget on
+refused turns, and got no number wrong on either target. **Every refusal was
+triggered by a date or an identifier token; not one by a bad figure.** Six of
+seventeen turns refused for a bare four-digit year, in one case the year the
+person had just asked about. A whitelist over free-form language had taken five
+cycles of new rules without closing, and each new rule made the clause
+underneath harder to remove.
+
+**So a model writes no digits, in either direction.** An answer is a **shape**
+— a list of clauses, each a run of literal words with typed holes in it — and
+the shape is committed *before any tool is on the table*. A clause whose own
+words carry a digit is rejected before a read happens, which is a character
+class over one field rather than a list of allowed words. Then the reads run;
+everything they establish gets an identity in the run's ledger — figures, the
+accounts and counterparties they spoke about, the days they carry, the spans
+they attest, the caveats they wrote. Then the planner says which of those fills
+which hole. Every binding is a reference; not one is text. What is checked is
+that structure: totality, existence, type, records, and that every caveat
+standing behind a stated figure is placed. Nothing reads the sentence.
+
+**A number carries what it measures.** Typed holes make a magnitude impossible
+to invent and do nothing about a real one put where something else belongs —
+the failure the first run produced and only coincidence stopped, when a gross
+sum of postings including card settlements and own-account transfers was called
+*the total you spent*. So every figure declares a quantity from the closed
+vocabulary in `viva/quantity.py`, every hole holding a magnitude declares what
+it is asking for, and code compares the two declarations. ADR-010 is untouched:
+no model checks another model, and an emitter that cannot name what it measured
+fails the build rather than a person.
+
+**An account is an entity.** `identifiers` carries attributes rather than
+strings, and one function chooses which of an account's names a person reads,
+adding the masked number only where another account in the same sentence would
+otherwise read identically. The three-forms-of-a-name split the last run found
+has nothing left to happen in: the model never writes the name.
+
+**A refusal is a reviewed sentence chosen by machine tag.** Twenty-one tags,
+twenty-one sentences in the persona pack, the bijection enforced at build time.
+Nothing is composed at the moment of refusing, so a refused turn binds nothing
+and costs no model call. What it can no longer do — say what it *could* have
+told you — is the subject of [the-suggestions-channel.md](the-suggestions-channel.md).
+
+**A hole nothing can fill costs its clause, not the turn.** The clause is
+dropped and a pack phrase names what was missing, which is where the
+availability was supposed to come from. `PAYLOAD_TARGET` rose 4000 → 5000 to
+pay for the entity identities and the per-figure quantity, and sits at 96% of
+its ceiling.
+
+**Not built, and it is the largest piece of the design that is not.** §5.4's
+third consequence — computing from the registry whether a slot *can* be filled
+before a call is made — is unbuilt. `{document}` is the proof: it is a declared
+type, taught to the model and placed by three question phrasings, and no tool
+emits one. That is where the 67% of spend on refusals was supposed to go. Also
+unbuilt: `{tag}`, twelve of thirteen slot types having shipped. **And none of
+this has run against real data** — the acceptance runs above tested the
+machinery it replaces.

@@ -15,21 +15,22 @@ Two planners, one contract:
   completion — the degradation path for any model the ``extract`` contract can
   reach.
 
-Both present one extra schema beside the registry's verbs: ``deliver_answer``,
-the terminator, through which the answer cites the figures it states, the
-amounts the person themselves supplied, and the dates it refers to. It is never
-registered — it executes nothing; it is how a turn ends. A malformed reply gets
+Both present two schemas beside the registry's verbs, and which of them is on
+the table is decided by the runner rather than by either planner:
+``commit_shape``, through which a turn's sentence is authored before anything
+is read, and ``deliver_answer``, through which each of that sentence's holes is
+bound to something the reads established. Neither is registered — neither
+executes anything; one opens a turn and one ends it. A malformed reply gets
 exactly one correction naming the problem, then the turn refuses with a machine
 tag. A transport failure refuses as ``model_unreachable``. Nothing raises to
 the person.
 
-Two shapes of last word exist besides an ordinary answer. When the call budget
+One shape of last word exists besides an ordinary answer. When the call budget
 runs out, the runner asks once more with only the terminator on the table, so a
-turn already holding a grounded figure can still deliver it. And when a turn
-refuses for any reason the model could still speak to, the planner
-composes the refusal in Viva's voice through ``deliver_refusal`` — checked by
-the same number rule as an answer, once, with the machine's own sentence as the
-fallback.
+turn already holding grounded figures can still deliver what its shape asked
+for. A refusal is not the model's to write: it is a reviewed sentence in the
+persona pack chosen by the machine tag, so no planner is asked to compose one
+and a refused turn spends nothing.
 
 A session keeps prior turns as context so follow-ups resolve ("it", "that
 account"), but the gate's grounding is per-turn: any figure the model wants to
@@ -51,38 +52,55 @@ from dataclasses import dataclass, field, replace
 from vivacore import promptstore, versions
 
 from .tools.registry import PACKAGE, PROMPTS
-from .tools.runner import DEFAULT_MAX_CALLS, RunResult, run
+from .tools.runner import (DEFAULT_MAX_CALLS, FINAL_TOOL, SHAPE_TOOL,
+                           RunResult, run)
+from .quantity import KINDS as QUANTITY_KINDS
+from .tools.shape import SLOT_TYPES, read_shape
 
 SPEAK_VERSION = versions.active(PACKAGE, "speak")
 FINAL_VERSION = versions.active(PACKAGE, "speak_final")
+SHAPE_VERSION = versions.active(PACKAGE, "speak_shape")
 PROTOCOL_VERSION = versions.active(PACKAGE, "speak_protocol")
 RETRY_VERSION = versions.active(PACKAGE, "speak_retry")
 CLOSING_VERSION = versions.active(PACKAGE, "speak_closing")
-REFUSAL_VERSION = versions.active(PACKAGE, "speak_refusal")
-REFUSAL_SCHEMA_VERSION = versions.active(PACKAGE, "speak_refusal_schema")
 
-FINAL_TOOL = "deliver_answer"
-REFUSAL_TOOL = "deliver_refusal"
-
-FINAL_PARAMS = {
+# The shape: clauses of words with typed holes, and nothing else. The type
+# enum is the vocabulary itself, so a hole kind the code does not know cannot
+# be described to a model — and the same for what a hole says its number
+# measures, which is the other half of a magnitude's declaration.
+SHAPE_PARAMS = {
     "type": "object",
     "properties": {
-        "answer": {"type": "string"},
-        "figures": {"type": "array",
-                    "items": {"type": "object",
-                              "properties": {"id": {"type": "string"}},
-                              "required": ["id"]}},
-        "stipulated": {"type": "array",
-                       "items": {"type": "object",
-                                 "properties": {"value": {"type": "string"},
-                                                "as": {"type": "string"}},
-                                 "required": ["value"]}},
-        "dates": {"type": "array",
-                  "items": {"type": "object",
-                            "properties": {"iso": {"type": "string"}},
-                            "required": ["iso"]}},
+        "clauses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "slots": {
+                        "type": "array",
+                        "items": {"type": "object",
+                                  "properties": {
+                                      "name": {"type": "string"},
+                                      "type": {"type": "string",
+                                               "enum": list(SLOT_TYPES)},
+                                      "quantity": {
+                                          "type": "string",
+                                          "enum": list(QUANTITY_KINDS)}},
+                                  "required": ["name", "type"]}},
+                },
+                "required": ["text", "slots"]}},
     },
-    "required": ["answer"],
+    "required": ["clauses"],
+}
+
+# The delivery: one reference per hole, and no field a value could arrive in.
+# `bindings` is an open object because its keys are the hole names the shape
+# chose, which no schema written in advance can enumerate.
+FINAL_PARAMS = {
+    "type": "object",
+    "properties": {"bindings": {"type": "object"}},
+    "required": ["bindings"],
 }
 
 # One correction per malformed reply, then the turn refuses. Each correction
@@ -102,32 +120,51 @@ def _final_schema(tool: str = FINAL_TOOL, version: str = "") -> dict:
             "parameters": FINAL_PARAMS}
 
 
+def _shape_schema() -> dict:
+    return {"name": SHAPE_TOOL,
+            "description": promptstore.load(PROMPTS, SHAPE_VERSION),
+            "parameters": SHAPE_PARAMS}
+
+
+def _table(context: dict) -> list:
+    """What may be called at this point in the turn.
+
+    The order is enforced here rather than asked for: until a shape is
+    committed, committing one is the only thing on the table, so a read cannot
+    precede the sentence it is meant to fill."""
+    if not context.get("shaped"):
+        return [_shape_schema()]
+    if context.get("final_call"):
+        return [_final_schema()]
+    # A shape stays available so it can be weakened when the reads contradict
+    # what it assumed; it can never be widened.
+    return list(context.get("tools") or []) + [_shape_schema(), _final_schema()]
+
+
 def _correction(problem: str) -> str:
     return promptstore.load(PROMPTS, RETRY_VERSION).format(problem=problem)
 
 
-def _refusal_prompt(context: dict) -> str:
-    established = "\n".join(f"- {w}" for w in context.get("established") or [])
-    return promptstore.load(PROMPTS, REFUSAL_VERSION).format(
-        explanation=context.get("explanation", ""),
-        established=established or "- nothing was established.")
+def _shape_step(args: dict) -> tuple[dict | None, str]:
+    """The runner step a shape call means, or the problem with it. Where a
+    clause writes a digit in its own words, this is where the model is told
+    so — before any tool has run."""
+    shape, problem = read_shape(args if isinstance(args, dict) else None)
+    if shape is None:
+        return None, problem
+    return {"shape": shape}, ""
 
 
 def _final_step(args: dict) -> tuple[dict | None, str]:
-    """The runner step a terminator call means, or the problem with it."""
-    if not isinstance(args, dict) or not isinstance(args.get("answer"), str):
-        return None, f"{FINAL_TOOL} needs an 'answer' string"
-    lists = {}
-    for name in ("figures", "stipulated", "dates"):
-        value = args.get(name) or []
-        if not isinstance(value, list) or any(
-                not isinstance(v, dict) for v in value):
-            return None, f"'{name}' must be a list of objects"
-        lists[name] = value
-    if any("id" not in f for f in lists["figures"]):
-        return None, ("each entry in 'figures' is the id of a figure a tool "
-                      "returned this turn, as {\"id\": \"f1\"}")
-    return {"answer": args["answer"], **lists}, ""
+    """The runner step a delivery means, or the problem with it."""
+    if not isinstance(args, dict) or not isinstance(args.get("bindings"), dict):
+        return None, (f"{FINAL_TOOL} needs a 'bindings' object naming each hole "
+                      "in the shape")
+    for name, reference in args["bindings"].items():
+        if not isinstance(reference, dict) or len(reference) != 1:
+            return None, (f"the binding for {name!r} must name exactly one "
+                          "thing, as {\"figure\": \"f1\"}")
+    return {"bindings": args["bindings"]}, ""
 
 
 @dataclass
@@ -171,12 +208,12 @@ class NativePlanner:
             self._messages.append({"role": "user", "content": question})
             self._messages.append({"role": "assistant", "content": said})
         self._messages.append({"role": "user", "content": context["question"]})
-        self._tools = list(context["tools"]) + [_final_schema()]
         self._started = True
 
     def __call__(self, context: dict) -> dict:
         if not self._started:
             self._start(context)
+        self._tools = _table(context)
         if context.get("final_call"):
             self._close(context)
         else:
@@ -243,12 +280,20 @@ class NativePlanner:
                 return None, f"the arguments for '{name}' must be an object"
             parsed.append((str((call or {}).get("id") or ""), name, args))
         names = [name for _, name, _ in parsed]
-        if FINAL_TOOL in names and len(parsed) > 1:
-            return None, (f"{FINAL_TOOL} must be the only call in its reply — "
-                          "finish the tool calls first, then deliver")
-        if names == [FINAL_TOOL]:
-            step, problem = _final_step(parsed[0][2])
+        for terminator in (SHAPE_TOOL, FINAL_TOOL):
+            if terminator in names and len(parsed) > 1:
+                return None, (f"{terminator} must be the only call in its "
+                              "reply — a turn commits its shape, then reads, "
+                              "then delivers")
+        if names == [SHAPE_TOOL]:
+            step, problem = _shape_step(parsed[0][2])
+            if step is not None:
+                # The runner answers a committed shape with whether it took it,
+                # and the protocol needs that call answered like any other.
+                self._awaiting = parsed[0][0]
             return step, problem
+        if names == [FINAL_TOOL]:
+            return _final_step(parsed[0][2])
         self._queued = parsed
         return self._emit(), ""
 
@@ -271,58 +316,6 @@ class NativePlanner:
                                    "content": closing})
         if not outstanding:
             self._messages.append({"role": "user", "content": closing})
-        self._tools = [_final_schema()]
-
-    def _unanswered(self) -> list:
-        """The tool calls this thread has made and not yet answered. The
-        protocol needs every one answered before another message can follow, and
-        a turn ends with one outstanding: the terminator was called, and a
-        terminator returns no result."""
-        called: list = []
-        for message in self._messages:
-            if message.get("role") == "assistant":
-                called += [str((c or {}).get("id") or "")
-                           for c in message.get("tool_calls") or []]
-            elif message.get("role") == "tool":
-                answered = str(message.get("tool_call_id") or "")
-                called = [c for c in called if c != answered]
-        return called
-
-    def compose_refusal(self, context: dict) -> dict | None:
-        """One call, one attempt: say the refusal in Viva's voice. Whatever
-        comes back is checked by the runner exactly as an answer is, and None
-        leaves the deterministic sentence standing."""
-        from vivacore.models import AdapterError
-        explanation = _refusal_prompt(context)
-        messages = list(self._messages)
-        outstanding = self._unanswered()
-        for call_id in outstanding:
-            messages.append({"role": "tool", "tool_call_id": call_id,
-                             "content": explanation})
-        if not outstanding:
-            messages.append({"role": "user", "content": explanation})
-        try:
-            turn = self._adapter.converse(
-                messages,
-                [_final_schema(REFUSAL_TOOL, REFUSAL_SCHEMA_VERSION)])
-        except AdapterError:
-            return None
-        self.exchanges.append(Exchange(
-            modality=self.modality, request=turn.request,
-            response=turn.response, input_tokens=turn.input_tokens,
-            output_tokens=turn.output_tokens, cost_usd=turn.cost_usd,
-            latency_s=turn.latency_s, resolved_model=turn.resolved_model))
-        for call in turn.tool_calls or []:
-            fn = (call or {}).get("function") or {}
-            if fn.get("name") != REFUSAL_TOOL:
-                continue
-            try:
-                args = json.loads(fn.get("arguments") or "{}")
-            except json.JSONDecodeError:
-                return None
-            step, _ = _final_step(args)
-            return step
-        return None
 
     def _correct(self, turn, problem: str) -> None:
         """Answer the bad reply so the protocol stays well-formed: each of its
@@ -352,12 +345,9 @@ class TextPlanner:
         self._corrections = 0
         self.exchanges: list[Exchange] = []
 
-    def _prompt(self, context: dict, notes=()) -> str:
+    def _prompt(self, context: dict, notes=(), tools=None) -> str:
         template = promptstore.load(PROMPTS, PROTOCOL_VERSION)
-        if context.get("final_call"):
-            tools = [_final_schema()]
-        else:
-            tools = list(context.get("tools") or []) + [_final_schema()]
+        tools = _table(context) if tools is None else list(tools)
         conversation = [{"question": q, "viva": a} for q, a in self._prior]
         notes = list(notes)
         if self._problem:
@@ -410,37 +400,6 @@ class TextPlanner:
                                 "improvising an answer."}
             self._problem = problem
 
-    def compose_refusal(self, context: dict) -> dict | None:
-        """One call, one attempt, checked by the runner like any answer.
-
-        Built from the same template as every other step, so the voice, the
-        question and the results the turn did gather are all still in front of
-        the model."""
-        from vivacore.models import AdapterError
-        prompt = self._prompt({"question": context.get("question", ""),
-                               "results": context.get("results") or [],
-                               "calls_remaining": 0, "final_call": True},
-                              notes=[_refusal_prompt(context)])
-        try:
-            result = self._adapter.extract([], prompt)
-        except AdapterError:
-            return None
-        self.exchanges.append(Exchange(
-            modality=self.modality, request=result.request,
-            response=result.response, input_tokens=result.input_tokens,
-            output_tokens=result.output_tokens, cost_usd=result.cost_usd,
-            latency_s=result.latency_s, resolved_model=result.resolved_model))
-        blocks = _FENCED.findall(result.text or "")
-        raw = blocks[0] if blocks else (result.text or "").strip()
-        try:
-            step = json.loads(raw)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(step, dict):
-            return None
-        composed, _ = _final_step(step)
-        return composed
-
     def _read(self, text: str) -> tuple[dict | None, str]:
         blocks = _FENCED.findall(text or "")
         if len(blocks) > 1:
@@ -455,14 +414,18 @@ class TextPlanner:
             return None, "the reply carried no parseable JSON block"
         if not isinstance(step, dict):
             return None, "the JSON block must be an object"
-        if "tool" in step:
-            args = step.get("args") or {}
-            if not isinstance(args, dict):
-                return None, "'args' must be an object"
-            return {"tool": str(step["tool"]), "args": args}, ""
-        if "answer" in step:
-            return _final_step(step)
-        return None, "the JSON block names neither 'tool' nor 'answer'"
+        if "tool" not in step:
+            return None, ("the JSON block names no 'tool'; every reply calls "
+                          "exactly one of the tools you were given")
+        args = step.get("args") or {}
+        if not isinstance(args, dict):
+            return None, "'args' must be an object"
+        name = str(step["tool"])
+        if name == SHAPE_TOOL:
+            return _shape_step(args)
+        if name == FINAL_TOOL:
+            return _final_step(args)
+        return {"tool": name, "args": args}, ""
 
 
 @dataclass
@@ -498,12 +461,15 @@ class Session:
 
     def __init__(self, registry, planner_factory, ledger=None, model: str = "",
                  max_calls: int = DEFAULT_MAX_CALLS,
-                 session_id: str = "", today=None):
+                 session_id: str = "", today=None, locale: str = ""):
         self._registry = registry
         self._planner_factory = planner_factory
         self._ledger = ledger
         self._model = model
         self._max_calls = max_calls
+        # How a figure is written is a property of this person's paperwork, and
+        # it reaches the renderer the same way it reaches the question queue.
+        self._locale = locale
         self._session_id = session_id or uuid.uuid4().hex[:12]
         self._today = today or (lambda: datetime.date.today().isoformat())
         self.turns: list[Turn] = []
@@ -512,7 +478,7 @@ class Session:
         prior = [(t.question, t.said) for t in self.turns]
         planner = self._planner_factory(prior)
         result = run(question, planner, self._registry,
-                     max_calls=self._max_calls)
+                     max_calls=self._max_calls, locale=self._locale)
         turn = Turn(question=question, result=result,
                     exchanges=list(getattr(planner, "exchanges", [])))
         self.turns.append(turn)
@@ -533,6 +499,11 @@ class Session:
                        "resolved_model": ex.resolved_model,
                        "question": turn.question,
                        "request": ex.request, "response": ex.response,
+                       # What was said, as the structure it was. A sentence can
+                       # then be shown standing on what it stood on, and the
+                       # shapes a real conversation actually needs accumulate.
+                       "shape": turn.result.shape,
+                       "bindings": turn.result.bindings,
                        "verdict": {"answered": turn.result.answered,
                                    "refusal": turn.result.refusal,
                                    "calls": turn.result.calls}}
@@ -604,6 +575,18 @@ def max_calls_from_env() -> int:
     return int(raw) if raw.isdigit() and int(raw) > 0 else DEFAULT_MAX_CALLS
 
 
+def _shown(result: RunResult) -> dict:
+    """Figure id -> the words that figure was written as in the sentence.
+
+    The footer does not decide a second time how a figure becomes words. It
+    shows what the hole this figure filled was written as, so the number under
+    the sentence is the number in the sentence — its hedge, its currency, its
+    conventions and its kind all the same, because they are the same string."""
+    return {str(reference["figure"]): result.written.get(name, "")
+            for name, reference in result.bindings.items()
+            if "figure" in reference}
+
+
 def _print_turn(turn: Turn) -> None:
     result = turn.result
     print()
@@ -614,12 +597,19 @@ def _print_turn(turn: Turn) -> None:
         elif result.figures:
             print("  grade: none — " + ", ".join(
                 sorted({f.get("kind", "") for f in result.figures})))
+        shown = _shown(result)
         for figure in result.figures:
             ids = ", ".join(map(str, figure.get("record_ids", [])))
             grade = figure.get("grade", "") or figure.get("kind", "")
-            print(f"  {figure.get('id')} {figure.get('value')}"
-                  + (f" ({grade})" if grade else "")
+            parts = [str(figure.get("id"))]
+            if shown.get(str(figure.get("id"))):
+                parts.append(shown[str(figure.get("id"))])
+            if grade:
+                parts.append(f"({grade})")
+            print("  " + " ".join(parts)
                   + f"  {figure.get('what', '')}  <- {ids}")
+        for gap in result.gaps:
+            print(f"  gap: {gap['name']} ({gap['type']}) — nothing bound")
     else:
         print(f"Viva: {result.text or 'I have no answer.'}")
         print(f"  refused: {result.refusal}")
@@ -657,10 +647,14 @@ def main() -> None:
     from .tools import default_registry
     from .vault import Vault
 
+    from .env import locale_from_env
+
+    locale = locale_from_env()
     vault = Vault.open(vault_dir, passphrase)
-    registry = default_registry(vault.ledger.projection())
+    registry = default_registry(vault.ledger.projection(), locale)
     session = Session(registry, planner_factory(spec), ledger=vault.ledger,
-                      model=spec.model, max_calls=max_calls_from_env())
+                      model=spec.model, max_calls=max_calls_from_env(),
+                      locale=locale)
 
     questions = list(sys.argv[1:])
     if questions:

@@ -121,6 +121,25 @@ def test_phrasings_use_only_their_intent_fields():
         assert not extra, f"moment {key!r} references {sorted(extra)}"
 
 
+def test_every_way_a_turn_can_refuse_has_a_reviewed_sentence():
+    """A refusal is chosen by its machine tag, so a tag with no sentence in the
+    pack is a person hearing nothing — or hearing a tag. It fails here, at
+    build time, rather than there. And a sentence no tag can reach is dead
+    voice, the same way an orphan phrasing is."""
+    from viva.tools.runner import REFUSAL_MOMENT, REFUSAL_TAGS
+
+    declared = {k for k in persona.MOMENT_FIELDS if k.startswith(REFUSAL_MOMENT)}
+    wanted = {REFUSAL_MOMENT + tag for tag in REFUSAL_TAGS}
+    assert declared == wanted, (
+        f"only-in-pack={sorted(declared - wanted)}, "
+        f"only-in-code={sorted(wanted - declared)}")
+    for tag in REFUSAL_TAGS:
+        said = persona.moment(REFUSAL_MOMENT + tag)
+        assert said.strip(), tag
+        assert tag not in said, (
+            f"the sentence for {tag!r} says the machine's tag out loud")
+
+
 def test_a_slot_the_intent_fills_with_a_rendered_thing_declares_that_type():
     """The other half of the contract: the DECLARATION has to be true.
 
@@ -155,9 +174,11 @@ def test_rendering_is_strict_about_missing_slots():
     """A hole where a figure should be is a bluff by omission — raise, never
     render a blank."""
     written = render.money("12", "USD", locale="en-US")
+    who = render.merchant({"example": "ACME"})
+    how_many = render.count(3)
     with pytest.raises(KeyError):
-        persona.say("merchant", example="ACME")     # count and money missing
-    out = persona.say("merchant", example="ACME", count=3, money=written,
+        persona.say("merchant", example=who)        # count and money missing
+    out = persona.say("merchant", example=who, count=how_many, money=written,
                       irrelevant="ignored")          # extras are fine
     assert "ACME" in out and "USD 12.00" in out
 
@@ -169,12 +190,19 @@ def test_a_money_slot_cannot_be_handed_a_figure_that_formatted_itself():
     a currency and one locale's conventions. Anything else is a figure written
     under conventions nobody declared, and it is refused where the sentence is
     made rather than noticed after a person has read it."""
+    who = render.merchant({"example": "ACME"})
+    how_many = render.count(3)
     with pytest.raises(TypeError):
-        persona.say("merchant", example="ACME", count=3, money="12.00")
+        persona.say("merchant", example=who, count=how_many, money="12.00")
     with pytest.raises(TypeError):
-        persona.say("merchant", example="ACME", count=3,
+        persona.say("merchant", example=who, count=how_many,
                     money=f"USD {12:,.2f}")
-    out = persona.say("merchant", example="ACME", count=3,
+    # And the same rule on a slot that is not money: a counterparty a sentence
+    # spelled itself is a second decision about which of its names to show.
+    with pytest.raises(TypeError):
+        persona.say("merchant", example="ACME", count=how_many,
+                    money=render.money("12", "USD", locale="en-US"))
+    out = persona.say("merchant", example=who, count=how_many,
                       money=render.money("12", "USD", locale="en-US"))
     assert "USD 12.00" in out
 

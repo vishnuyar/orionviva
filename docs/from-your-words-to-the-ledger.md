@@ -171,6 +171,8 @@ Reading the code before writing it corrected two claims, and the tests found two
 
 `RulingRecorded` (generic, scoped: movement / merchant / account) · `origin: issued | asserted` on every account · the four majors + `account_path` · `MIXED` + `undecomposed()` + `ruled_accounts()` · `viva/listen.py` (the six steps, one model call) · the `corroboration` question kind · `/api/rule-major`, `/api/listen`, `/api/apply-ruling` · the sentence box and proposal card on the debug surface. **26 new tests, 249 green.**
 
+> _**Amended 2026-08-07.** The three endpoints and the debug surface are deleted; the engine they called moved to `viva/engine.py` and is reached from `viva.ask` at a terminal. The six steps and the four majors are unchanged. What did change is where `listen.py` sits: it is no longer the default reader for every question's free-text box — a question declares the typed slots an answer to it has, and `interpret` fills those slots rather than always reading a sentence as a ruling about the four majors. That routing defect is what this cycle's brief was opened on._
+
 ### Measuring the model (added the same day)
 
 `python -m viva.eval_listen` scores any model on the one job this slice gives it, against a **frozen synthetic key** of 22 sentences (`viva/evals/listen_cases.json` — invented counterparties, no amounts, safe in a public repo). Free, offline-capable, and reproducible.

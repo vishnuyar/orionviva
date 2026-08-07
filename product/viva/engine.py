@@ -414,7 +414,8 @@ def record_ruling(vault: Vault, interp, descriptor: str = "",
     # A `movement_key` scopes the answer to one transaction rather than to every
     # movement sharing the descriptor. The unknown tier — a cheque, an ATM
     # withdrawal, a peer — is asked one at a time for that reason.
-    proposal = propose(proj, interp, descriptor, amount, currency, movement_key)
+    proposal = propose(proj, interp, descriptor, amount, currency,
+                       movement_key, locale=locale_from_env())
     if proposal.needs_name:
         return {"ok": False, "why": "needs_name",
                 "message": proposal.summary(),
@@ -506,7 +507,8 @@ def open_kind(vault: Vault, kind: str, name: str = "", secures: str = "",
         new_accounts=[] if existing else [account],
         corroborates=(naming.corroborated_by[0]
                       if naming.corroborated_by else ""),
-        said=label, value=label, currency=currency, attributes=attributes)
+        said=label, value=label, currency=currency, attributes=attributes,
+        locale=locale_from_env())
     return {"ok": True, "confirm": True, "proposal": proposal.to_dict()}
 
 

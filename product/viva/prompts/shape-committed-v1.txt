@@ -1,0 +1,2 @@
+The shape is committed. The reads are now on the table; fill its holes from
+what they establish.

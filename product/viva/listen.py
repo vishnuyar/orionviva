@@ -41,6 +41,8 @@ from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             VERIFIED, account_opened, ruling_recorded)
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
+from .render import (accounts as render_accounts,
+                     money as render_money)
 from .reply import TRUNCATED_MARK, Slot, answer as read_answer
 from .schemas import ANSWER_CHOICE, ANSWER_LABEL, ANSWER_RATE
 
@@ -229,12 +231,23 @@ class Proposal:
     amount: str = ""
     currency: str = ""
     prompt_version: str = ""       # which instructions read the sentence
+    # How a figure is written for this person. The confirmation is the last
+    # sentence before an irreversible write, so it is written by the same
+    # renderer as the question that led to it.
+    locale: str = ""
 
     @property
     def applicable(self) -> bool:
         """False while something in it has no name. Applying then would open an
         account nobody named."""
         return not self.needs_name
+
+    @staticmethod
+    def _named(paths) -> str:
+        """Accounts as a person reads them. A ledger path is how the machine
+        files a thing; the name in it is what the person called it, and that is
+        what the renderer shows."""
+        return str(render_accounts({"path": p} for p in paths))
 
     def summary(self) -> str:
         """One sentence back before anything is written: the money moved and
@@ -247,7 +260,7 @@ class Proposal:
         if self.scope == SCOPE_ATTRIBUTE:
             parts = []
             if self.new_accounts:
-                parts.append("This creates " + ", ".join(self.new_accounts)
+                parts.append("This creates " + self._named(self.new_accounts)
                              + " — new, and only you say it exists.")
             parts.append(f"I'll record it as “{self.value}”.")
             if self.corroborates:
@@ -255,18 +268,20 @@ class Proposal:
                              "— it isn't needed to save it.")
             return " ".join(parts)
         what = ", ".join(PLAIN[leg["major"]].lower() for leg in self.legs)
-        head = (f"{self.currency} {self.amount}".strip()
-                + (f" across {self.settles} payments" if self.settles > 1 else ""))
+        head = str(render_money(self.amount or "0", self.currency,
+                                locale=self.locale))
+        if self.settles > 1:
+            head += f" across {self.settles} payments"
         parts = [f"I'd record {head} as: {what}."]
         if self.new_accounts:
-            parts.append("This creates " + ", ".join(self.new_accounts)
+            parts.append("This creates " + self._named(self.new_accounts)
                          + " — new, and only you say it exists.")
         # An account picked because it LOOKED like one you have is a guess, and
         # a guess the person confirms without being told about is a guess they
         # did not make.
         if self.confirm_accounts:
             parts.append("I've taken this to be your existing "
-                         + ", ".join(self.confirm_accounts)
+                         + self._named(self.confirm_accounts)
                          + " — say so if it is something else.")
         if self.unknown_split:
             parts.append("I can't tell how it splits between those, so I won't "
@@ -288,12 +303,13 @@ class Proposal:
                 "said": self.said,
                 "unknown_split": self.unknown_split, "settles": self.settles,
                 "amount": self.amount, "currency": self.currency,
-                "prompt_version": self.prompt_version,
+                "prompt_version": self.prompt_version, "locale": self.locale,
                 "summary": self.summary()}
 
 
 def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
-            currency: str = "", movement_key: str = "") -> Proposal:
+            currency: str = "", movement_key: str = "",
+            locale: str = "") -> Proposal:
     """Turn a reading into a concrete, reviewable proposal, deterministically.
 
     A commercial merchant generalizes: the proposal is scoped to the merchant
@@ -346,7 +362,7 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         category=interp.category, said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
         settles=max(settles, 1), amount=amount, currency=currency,
-        prompt_version=interp.version)
+        prompt_version=interp.version, locale=locale)
 
 
 def one_shot_extractor(spec):
@@ -445,7 +461,8 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
 
 def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "",
            movement_key: str = "", category: str = "", subcategory: str = "",
-           extract_fn=None, source: str = "", asked: str = "") -> Proposal | None:
+           extract_fn=None, source: str = "", asked: str = "",
+           locale: str = "") -> Proposal | None:
     """Steps 3–5 in one call: sentence in, reviewable Proposal out. Nothing is
     written — applying is a separate, explicit act."""
     read = read_answer(said, RULING_SLOTS, asked=asked,
@@ -455,4 +472,5 @@ def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "
     interp = ruling_from(read, said)
     if not interp.legs:
         return None
-    return propose(proj, interp, descriptor, amount, currency, movement_key)
+    return propose(proj, interp, descriptor, amount, currency, movement_key,
+                   locale=locale)

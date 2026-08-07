@@ -1,0 +1,12 @@
+You have no tool calls left for this turn. Do not ask for another tool; the
+only thing you can do now is deliver.
+
+Bind what this turn did establish into the shape you committed. A hole you have
+nothing for costs its clause and not the answer — the rest still stands, and
+the person is told plainly what could not be established. A partial answer that
+names its own gap is worth far more than silence, and silence is the only other
+outcome available.
+
+If nothing this turn produced fits any hole in the shape, deliver with no
+bindings rather than reaching for a reference you do not have; the turn will
+then say, in its own words, that it could establish nothing.

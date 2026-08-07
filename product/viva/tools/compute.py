@@ -38,6 +38,18 @@ two amounts of money divide into a ratio and cannot be multiplied; a scalar and
 an amount cannot be added at all. A value the person supposed is money whose
 currency nothing has stated, and it taints everything it reaches.
 
+What a quantity IS travels the same way, and each operator decides it for
+itself. Two amounts of the same thing add to that thing, and what is held less
+what moved is still what is held — a balance less what was spent is what is
+left. That subtraction is the only way a stock and a flow combine into anything
+nameable; every other pairing of unlike quantities, in either order, is a
+number with no honest name and refuses rather than take a permissive one that
+would mean whatever the reader assumed. Multiplying and dividing by a plain magnitude
+rescale: a year's spending over its months is spending, not something new. Two
+things that each mean something divide into a proportion. And a magnitude
+nothing has said the meaning of can fill no hole in any sentence, so an
+expression over nothing but literals produces a number that cannot be spoken.
+
 Three things the arithmetic refuses: combining unlike quantities, adding across
 currencies since nothing here converts between them, and mixing a claim about
 the person's money with a claim about the agent's own behaviour. A currency
@@ -55,6 +67,7 @@ from dataclasses import dataclass, field, replace
 from decimal import (Decimal, DecimalException, DivisionByZero, Inexact,
                      InvalidOperation)
 
+from ..quantity import FLOWS, RATIO, STOCKS, UNMEASURED
 from .envelope import (ACTIVITY, COMPUTED, EXACT, HYPOTHETICAL, ROUNDED,
                        ToolResult, figure, refusal, weakest)
 
@@ -99,6 +112,8 @@ UNSTATED = "?"
 
 MIXED_DIMENSIONS = "mixed_dimensions"
 MIXED_CURRENCIES = "mixed_currencies"
+MIXED_QUANTITIES = "mixed_quantities"
+UNDEFINED_QUANTITY = "undefined_quantity"
 
 
 class _Refuse(Exception):
@@ -125,6 +140,15 @@ class _Q:
     grade: str = ""
     supposed: bool = False
     exactness: str = EXACT
+    # What this measures, from the closed vocabulary the emitters declare into.
+    # A literal and a value the person supposed measure nothing anybody stated,
+    # which is what `UNMEASURED` says.
+    quantity: str = UNMEASURED
+
+    @property
+    def stated(self) -> bool:
+        """Whether anything has said what this quantity is of."""
+        return self.quantity != UNMEASURED
 
     @property
     def money(self) -> bool:
@@ -195,6 +219,72 @@ def _written(amount: Decimal, money: bool) -> Decimal:
         Decimal(1).scaleb(amount.adjusted() - SIGNIFICANT_FIGURES + 1))
 
 
+def _totalled(left: _Q, right: _Q, subtracting: bool) -> str:
+    """What a sum or a difference measures.
+
+    Two amounts of the same thing add to that thing. A stock and a flow meet in
+    exactly one arrangement: what is held, less what moved, is what is left, so
+    a flow taken out of a stock gives that stock. Nothing else about the pair is
+    nameable — a flow added to a stock, a stock taken out of a flow, two
+    different flows, two different stocks — and refusing is the result rather
+    than a kind that would mean whichever the reader assumed. Which side is
+    which and which way the operator runs are therefore both part of the rule,
+    because a sign is what tells being owed from being held.
+
+    A term nothing has said the meaning of takes the meaning of what it is
+    added to: a value the person supposed is a supposition about the same thing
+    the rest of the expression is about."""
+    if not left.stated:
+        return right.quantity
+    if not right.stated or left.quantity == right.quantity:
+        return left.quantity
+    if subtracting and left.quantity in STOCKS and right.quantity in FLOWS:
+        return left.quantity
+    raise _Refuse(MIXED_QUANTITIES,
+                  f"One of these measures {left.quantity} and the other "
+                  f"{right.quantity}. What is held, less what moved, is what is "
+                  "left; no other way of putting two unlike quantities together "
+                  "is a number about either of them, and there is no honest "
+                  "name for what it would be.")
+
+
+def _product(left: _Q, right: _Q, money: bool) -> str:
+    """What a product measures.
+
+    Multiplying is always a rescaling here, because two amounts of money never
+    reach this: an amount taken so many times over, or a share of it, is still
+    that amount. Where neither side is money, a proportion or a plain magnitude
+    rescales whatever it multiplies, and two of the same thing stay that
+    thing."""
+    if money:
+        return left.quantity if left.money else right.quantity
+    if left.quantity in (UNMEASURED, RATIO) and right.stated:
+        return right.quantity
+    return left.quantity
+
+
+def _quotient(left: _Q, right: _Q, money: bool) -> str:
+    """What a quotient measures.
+
+    Splitting an amount by a plain number leaves it the same kind of amount —
+    a year's spending over its months is still spending. Comparing two things
+    that each mean something gives a proportion. Dividing a plain number by
+    something meant measures nothing anybody can name, and refuses."""
+    if money:
+        return left.quantity
+    if left.money and right.money:
+        return RATIO
+    if left.stated and right.stated:
+        return RATIO
+    if left.stated:
+        return left.quantity
+    if right.stated:
+        raise _Refuse(UNDEFINED_QUANTITY,
+                      f"Dividing a plain number by {right.quantity} gives a "
+                      "quantity nothing measures.")
+    return UNMEASURED
+
+
 def _same_currency(left: _Q, right: _Q) -> str:
     """The currency two amounts share. A supposed value takes the currency of
     whatever it meets; two different currencies meet at no operator."""
@@ -209,7 +299,7 @@ def _same_currency(left: _Q, right: _Q) -> str:
     return left.dimension
 
 
-def _added(left: _Q, right: _Q, step) -> _Q:
+def _added(left: _Q, right: _Q, step, *, subtracting: bool) -> _Q:
     if left.money != right.money:
         # The sentence names what the figures state rather than what the plain
         # side might be counting, which nothing here knows.
@@ -221,10 +311,11 @@ def _added(left: _Q, right: _Q, step) -> _Q:
                       "amount by the plain number instead, if that is the "
                       "question.")
     dimension = _same_currency(left, right) if left.money else SCALAR
+    measures = _totalled(left, right, subtracting)
     records, grade = _summed(left, right)
     amount, came_out = _carefully(lambda: step(left.amount, right.amount))
     supposed, exactness = _carried(left, right, came_out)
-    return _Q(amount, dimension, records, grade, supposed, exactness)
+    return _Q(amount, dimension, records, grade, supposed, exactness, measures)
 
 
 def _multiplied(left: _Q, right: _Q) -> _Q:
@@ -236,10 +327,11 @@ def _multiplied(left: _Q, right: _Q) -> _Q:
                       "compare them.")
     money = left if left.money else right if right.money else None
     dimension = money.dimension if money is not None else SCALAR
+    measures = _product(left, right, money is not None)
     records, grade = _rescaled(left, right)
     amount, came_out = _carefully(lambda: left.amount * right.amount)
     supposed, exactness = _carried(left, right, came_out)
-    return _Q(amount, dimension, records, grade, supposed, exactness)
+    return _Q(amount, dimension, records, grade, supposed, exactness, measures)
 
 
 def _divided(left: _Q, right: _Q) -> _Q:
@@ -256,10 +348,11 @@ def _divided(left: _Q, right: _Q) -> _Q:
         dimension = SCALAR
     else:
         dimension = left.dimension
+    measures = _quotient(left, right, dimension != SCALAR)
     records, grade = _rescaled(left, right)
     amount, came_out = _carefully(lambda: left.amount / right.amount)
     supposed, exactness = _carried(left, right, came_out)
-    return _Q(amount, dimension, records, grade, supposed, exactness)
+    return _Q(amount, dimension, records, grade, supposed, exactness, measures)
 
 
 def _evaluate(node: ast.AST, bound: dict, depth: int = 0) -> _Q:
@@ -275,9 +368,9 @@ def _evaluate(node: ast.AST, bound: dict, depth: int = 0) -> _Q:
         left = _evaluate(node.left, bound, depth + 1)
         right = _evaluate(node.right, bound, depth + 1)
         if isinstance(node.op, ast.Add):
-            return _added(left, right, operator.add)
+            return _added(left, right, operator.add, subtracting=False)
         if isinstance(node.op, ast.Sub):
-            return _added(left, right, operator.sub)
+            return _added(left, right, operator.sub, subtracting=True)
         if isinstance(node.op, ast.Mult):
             return _multiplied(left, right)
         if isinstance(node.op, ast.Div):
@@ -289,7 +382,7 @@ def _evaluate(node: ast.AST, bound: dict, depth: int = 0) -> _Q:
             amount, came_out = _carefully(lambda: -value.amount)
             supposed, exactness = _carried(value, value, came_out)
             return _Q(amount, value.dimension, value.records, value.grade,
-                      supposed, exactness)
+                      supposed, exactness, value.quantity)
         if isinstance(node.op, ast.UAdd):
             return value
         raise ValueError("only unary + and - are supported")
@@ -306,9 +399,16 @@ def _evaluate(node: ast.AST, bound: dict, depth: int = 0) -> _Q:
     raise ValueError(f"unsupported syntax: {type(node).__name__}")
 
 
-def _numbers_in(text: str) -> set:
-    """The digits the person wrote, commas stripped — the only values a
-    stipulation may take."""
+def numbers_said(text: str) -> set:
+    """Every number in a string, commas dropped, matched whole and never as a
+    substring.
+
+    Whole is the whole of the rule. A value counts as the person's only when
+    each of its numbers is one of theirs entire: read as substrings, a question
+    about three thousand would let a tenth of it, or a hundredth, be handed back
+    as something they said. This is the one place that decides what "you said
+    that" means, and both the arithmetic's operands and the sentence's own hole
+    for a supposed figure ask it."""
     return {t.replace(",", "") for t in re.findall(r"\d[\d,]*(?:\.\d+)?",
                                                    str(text or ""))}
 
@@ -326,13 +426,13 @@ def compute(args: dict, figures: dict, question: str = "") -> ToolResult:
     if not isinstance(inputs, dict):
         return _bad_input("inputs must be an object binding each name to a "
                           "figure id or a stipulated value.", figures)
-    said = _numbers_in(question)
+    said = numbers_said(question)
     bound: dict[str, _Q] = {}
     used: list = []
     for name, value in inputs.items():
         if isinstance(value, dict) and STIPULATED in value:
             amount = str(value[STIPULATED])
-            if not _numbers_in(amount) <= said or not _numbers_in(amount):
+            if not numbers_said(amount) <= said or not numbers_said(amount):
                 return _bad_input(
                     f"input '{name}' is stipulated as {amount!r}, but you did "
                     "not say that in this question.", figures)
@@ -361,7 +461,8 @@ def compute(args: dict, figures: dict, question: str = "") -> ToolResult:
             bound[name] = _Q(Decimal(str(fig["value"])),
                              str(fig["currency"] or SCALAR),
                              frozenset(fig["record_ids"]), fig["grade"],
-                             fig["kind"] == HYPOTHETICAL, fig["exactness"])
+                             fig["kind"] == HYPOTHETICAL, fig["exactness"],
+                             str(fig["quantity"]))
         except InvalidOperation:
             return _bad_input(f"figure {fid} does not hold a number: "
                               f"{fig['value']!r}", figures)
@@ -421,7 +522,8 @@ def compute(args: dict, figures: dict, question: str = "") -> ToolResult:
     kind = HYPOTHETICAL if result_q.supposed else (
         ACTIVITY if kinds == {ACTIVITY} else COMPUTED)
     result = figure(
-        result_q.amount, f"the result of {expression}", kind=kind,
+        result_q.amount, f"the result of {expression}",
+        quantity=result_q.quantity, kind=kind,
         grade=result_q.grade,
         currency="" if result_q.dimension == UNSTATED else result_q.dimension,
         record_ids=record_ids, exactness=result_q.exactness)

@@ -83,8 +83,11 @@ def test_a_counterparty_that_implies_structure_is_proposed_not_asked(tmp_path):
 
     assert list(_tiers(ledger).values()) == [TIER_STRUCTURAL]
     (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
-    # A hypothesis with its grounds — not "what is this?"
-    assert "normally mean a home loan" in q["text"]
+    # A hypothesis with its grounds — not "what is this?" What it says these
+    # payments are is the category this vault holds for them, never the words a
+    # model at enrichment coined for the relationship it implies.
+    assert "normally mean mortgage" in q["text"]
+    assert "a home loan" not in q["text"]
     assert "several things at once" in q["text"]        # compound, stated up front
     # The closing ask is the pack's. What the counterparty implies reaches the
     # question as structure — the relationship, the document, the category —

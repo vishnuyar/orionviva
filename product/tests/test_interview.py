@@ -762,7 +762,10 @@ def test_a_guessed_existing_account_is_named_in_the_sentence_it_confirms(vault):
                        legs=[{"major": "asset", "account": "x", "share": ""}],
                        confirm_accounts=["Assets:Vehicles:The Estate"],
                        amount="100", currency="USD").summary()
-    assert "Assets:Vehicles:The Estate" in summary
+    # By the name the person gave it. A ledger path is how the machine files a
+    # thing; it is not what a person is shown before an irreversible write.
+    assert "The Estate" in summary
+    assert "Assets:Vehicles" not in summary
 
 
 def test_an_account_that_names_nothing_cannot_be_written(vault):

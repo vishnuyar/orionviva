@@ -7,13 +7,14 @@ import pytest
 
 from vivacore import promptstore
 from vivacore.models import AdapterError, ChatTurn, ModelSpec
+from viva import persona
 from viva.ledger import (LedgerProjection, Provenance, account_opened,
                          closing_balance_observed, opening_balance_observed,
                          simple_transaction)
 from viva.ledger.events import document_captured
-from viva.speak import (FINAL_TOOL, SPEAK_VERSION, NativePlanner, Session,
-                        TextPlanner, max_calls_from_env, planner_factory,
-                        speak_spec)
+from viva.speak import (FINAL_TOOL, SHAPE_TOOL, SPEAK_VERSION, NativePlanner,
+                        Session, TextPlanner, max_calls_from_env,
+                        planner_factory, speak_spec)
 from viva.tools import default_registry, run
 from viva.tools.registry import DESCRIPTIONS_VERSION, PROMPTS
 
@@ -41,7 +42,56 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-closing-v1": "cb35be62c4daf926",
     "speak-refusal-v1": "126880ba51c64e1f",
     "speak-refusal-schema-v1": "8bf922a9911e3a45",
+    "speak-v7": "b09527b1ae744da3",
+    "speak-final-v7": "4751e1115b0dc891",
+    "speak-shape-v1": "6dc9f1a9279a5a76",
+    "speak-protocol-v7": "efaf6d468d05d664",
+    "speak-retry-v2": "fc0ed5d5b85f4e4f",
+    "speak-closing-v2": "d14b9e242a758691",
+    "speak-refusal-v2": "0936b83589585cdf",
+    "speak-refusal-schema-v2": "2df04a260ba9f79f",
+    "speak-v8": "7110996ff9f3dfc1",
+    "speak-shape-v2": "c1eb515f0f44f510",
+    "speak-final-v8": "a696da8dc4063975",
 }
+
+
+def _slot(name, type_, quantity=""):
+    """One hole as a model sends it: what it is called, what shape of thing it
+    holds, and — where it holds a magnitude — what that magnitude is of."""
+    out = {"name": name, "type": type_}
+    if quantity:
+        out["quantity"] = quantity
+    return out
+
+
+def _shape_of(*clauses):
+    """A shape as the runner takes one, for a scripted planner."""
+    from viva.tools.shape import Clause, Shape, Slot
+    return Shape(clauses=tuple(
+        Clause(text=text, slots=tuple(Slot(*slot) for slot in slots))
+        for text, slots in clauses))
+
+
+def _shape_call(*clauses, call_id="c0"):
+    """The commit_shape call every turn opens with: words with typed holes."""
+    return _call(SHAPE_TOOL, {"clauses": [
+        {"text": text, "slots": [_slot(*slot) for slot in slots]}
+        for text, slots in clauses]}, call_id=call_id)
+
+
+def _shape_block(*clauses):
+    """The same, as the fenced block the text protocol speaks."""
+    return "```json\n" + json.dumps({
+        "tool": SHAPE_TOOL,
+        "args": {"clauses": [
+            {"text": text, "slots": [_slot(*slot) for slot in slots]}
+            for text, slots in clauses]}}) + "\n```"
+
+
+def _bind_block(bindings):
+    return "```json\n" + json.dumps({"tool": FINAL_TOOL,
+                                     "args": {"bindings": bindings}}) + "\n```"
 
 
 def _events():
@@ -128,16 +178,6 @@ class BrokenText:
         raise AdapterError("no route to model")
 
 
-# Every refusal now buys one more model call, to say what happened in Viva's
-# voice. A script ending in a refusal has to answer that call; these are the
-# replies that compose nothing, so the deterministic sentence stands.
-def _declines_to_compose():
-    return _turn(text="")
-
-
-NO_COMPOSITION = "not a JSON block"
-
-
 # ------------------------------------------------------------ frozen prompts
 
 def test_speak_prompts_are_frozen_files():
@@ -165,98 +205,62 @@ def test_every_version_the_module_speaks_under_is_pinned():
 
 def test_native_planner_produces_a_cited_answer(registry):
     script = ChatScript([
+        _turn([_shape_call(("Your checking holds {balance}, and that figure is "
+                            "{trust} against the statement.",
+                            [("balance", "money", "balance"),
+                             ("trust", "grade")]))]),
         _turn([_call("query_ledger", {"entity": "balances",
-                                      "filters": {"account": "chk"}})]),
-        _turn([_call(FINAL_TOOL, {
-            "answer": "Your checking holds 600.00, and that figure is "
-                      "verified against the statement.",
-            "figures": [{"id": "f1"}]}, call_id="c2")]),
+                                      "filters": {"account": "chk"}},
+                     call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {"balance": {"figure": "f1"},
+                                               "trust": {"figure": "f1"}}},
+                     call_id="c2")]),
     ])
     result = run("what is my checking balance?", NativePlanner(script), registry)
-    assert result.answered and result.calls == 1
-    # The grade is the ledger's, not the model's: the answer cited an id, and
-    # the grade travelled with the figure the tool emitted.
+    assert result.answered and result.calls == 2
+    # The grade is the ledger's, not the model's: the answer referred to an id,
+    # and the grade travelled with the figure the tool emitted.
     assert result.grade == "corroborated"
+    assert result.text == ("Your checking holds USD 600.00, and that figure is "
+                           "corroborated against the statement.")
     # The system prompt opened the conversation and the question followed it.
     first = script.seen[0]["messages"]
     assert first[0]["role"] == "system" and "Viva" in first[0]["content"]
     assert first[-1] == {"role": "user",
                          "content": "what is my checking balance?"}
-    # The terminator schema rides beside the registry's verbs, unregistered.
-    offered = {t["name"] for t in script.seen[0]["tools"]}
-    assert FINAL_TOOL in offered and "query_ledger" in offered
+    # Before the shape is committed there is nothing else on the table: the
+    # order the whole mechanism rests on is what the model is offered, not an
+    # instruction it is asked to follow.
+    assert [t["name"] for t in script.seen[0]["tools"]] == [SHAPE_TOOL]
+    offered = {t["name"] for t in script.seen[1]["tools"]}
+    assert {SHAPE_TOOL, FINAL_TOOL, "query_ledger"} <= offered
     assert FINAL_TOOL not in registry.names()
-
-
-def test_both_modalities_carry_a_date_declaration_to_the_gate(registry):
-    """The wiring, not the gate: a date declared through each real planner must
-    reach the gate and let the answer say the date in words. Neither planner may
-    quietly drop the field."""
-    answer = "The last movement I hold is from January 5, 2026."
-    native = ChatScript([
-        _turn([_call("list_movements", {"filters": {"account": "chk"}})]),
-        _turn([_call(FINAL_TOOL, {"answer": answer, "figures": [],
-                                  "dates": [{"iso": "2026-01-05"}]},
-                     call_id="c2")]),
-    ])
-    from_native = run("when?", NativePlanner(native), registry)
-    assert from_native.answered, from_native.text
-
-    text = TextScript([
-        '```json\n{"tool": "list_movements", '
-        '"args": {"filters": {"account": "chk"}}}\n```',
-        '```json\n{"answer": "' + answer + '", "figures": [], '
-        '"dates": [{"iso": "2026-01-05"}]}\n```',
-    ])
-    from_text = run("when?", TextPlanner(text), registry)
-    assert from_text.answered, from_text.text
-
-    # And the field is offered to a model in both modalities, not just honored
-    # when one happens to send it.
-    terminator = next(s for s in native.seen[0]["tools"] if s["name"] == FINAL_TOOL)
-    assert "dates" in terminator["parameters"]["properties"]
-    assert "dates" in text.prompts[0]
-
-
-def test_a_malformed_dates_field_is_corrected_rather_than_refused(registry):
-    """A shape a model can fix costs it a correction, never the whole turn."""
-    script = ChatScript([
-        _turn([_call("query_ledger", {"entity": "transactions"})]),
-        _turn([_call(FINAL_TOOL, {"answer": "Nothing to report.",
-                                  "figures": [], "dates": "January"},
-                     call_id="c2")]),
-        _turn([_call(FINAL_TOOL, {"answer": "Nothing to report.",
-                                  "figures": [], "dates": []},
-                     call_id="c3")]),
-    ])
-    result = run("when?", NativePlanner(script), registry)
-    assert result.answered, result.text
-    correction = script.seen[-1]["messages"][-1]
-    assert "dates" in correction["content"]
+    assert SHAPE_TOOL not in registry.names()
 
 
 def test_native_planner_threads_the_result_back_as_a_tool_message(registry):
     script = ChatScript([
+        _turn([_shape_call(("All settled.", []))]),
         _turn([_call("query_ledger", {"entity": "balances",
                                       "filters": {"account": "chk"}},
                      call_id="call-77")]),
-        _turn([_call(FINAL_TOOL, {"answer": "All settled.", "figures": []},
-                     call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
     ])
     run("balance?", NativePlanner(script), registry)
-    second = script.seen[1]["messages"]
+    second = script.seen[2]["messages"]
     tool_msgs = [m for m in second if m.get("role") == "tool"]
-    assert len(tool_msgs) == 1
-    assert tool_msgs[0]["tool_call_id"] == "call-77"
-    assert "600.00" in tool_msgs[0]["content"]
+    # One per call the model made, in order: what the runner said about the
+    # shape, then the read's own result.
+    assert [m["tool_call_id"] for m in tool_msgs] == ["c0", "call-77"]
+    assert "600.00" in tool_msgs[-1]["content"]
 
 
 def test_native_prose_without_a_step_gets_one_correction_then_refuses(registry):
     script = ChatScript([
         _turn(text="Your balance looks fine to me."),
         _turn(text="Really, it is fine."),
-        _declines_to_compose(),
     ])
+
     planner = NativePlanner(script)
     result = run("balance?", planner, registry)
     assert not result.answered and result.refusal == "unparseable"
@@ -265,36 +269,38 @@ def test_native_prose_without_a_step_gets_one_correction_then_refuses(registry):
     second = script.seen[1]["messages"]
     assert second[-1]["role"] == "user"
     assert "could not be used" in second[-1]["content"]
-    # The two bad replies, then the call that composes the refusal.
-    assert [e.parse_ok for e in planner.exchanges][:2] == [False, False]
+    # Two bad replies, and nothing after them: the refusal is not asked for.
+    assert [e.parse_ok for e in planner.exchanges] == [False, False]
 
 
 def test_native_malformed_arguments_are_corrected_as_the_calls_result(registry):
     script = ChatScript([
+        _turn([_shape_call(("I could not read the ledger this time.", []))]),
         _turn(raw_arguments="{not json"),
-        _turn([_call(FINAL_TOOL, {"answer": "I could not read the ledger "
-                                            "this time.",
-                                  "figures": []}, call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
     ])
     result = run("balance?", NativePlanner(script), registry)
     assert result.answered
     # The bad call got the correction as its own tool result, keeping the
     # message protocol well-formed.
-    second = script.seen[1]["messages"]
+    second = script.seen[2]["messages"]
     tool_msgs = [m for m in second if m.get("role") == "tool"]
-    assert len(tool_msgs) == 1 and "could not be used" in tool_msgs[0]["content"]
+    assert "could not be used" in tool_msgs[-1]["content"]
 
 
 def test_native_final_mixed_with_tool_calls_is_corrected(registry):
+    """A turn commits its shape, then reads, then delivers. A reply that mixes
+    a read with the delivery is not a choice between them; it is a step that
+    cannot be run, and it costs a correction."""
     script = ChatScript([
+        _turn([_shape_call(("Nothing to report.", []))]),
         _turn([_call("query_ledger", {"entity": "balances", "filters": {}}),
-               _call(FINAL_TOOL, {"answer": "done"}, call_id="c2")]),
-        _turn([_call(FINAL_TOOL, {"answer": "Nothing to report.",
-                                  "figures": []}, call_id="c3")]),
+               _call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c3")]),
     ])
     result = run("balance?", NativePlanner(script), registry)
-    assert result.answered and result.calls == 0
-    second = script.seen[1]["messages"]
+    assert result.answered and result.calls == 1
+    second = script.seen[2]["messages"]
     corrections = [m for m in second if m.get("role") == "tool"
                    and "could not be used" in m.get("content", "")]
     assert len(corrections) == 2
@@ -310,29 +316,34 @@ def test_native_transport_failure_refuses_model_unreachable(registry):
 
 def test_text_planner_produces_a_cited_answer(registry):
     steps = [
+        _shape_block(("Your checking holds {balance}, {trust}.",
+                      [("balance", "money", "balance"), ("trust", "grade")])),
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {"account": "chk"}}}\n```',
-        '```json\n{"answer": "Your checking holds 600.00, verified.", '
-        '"figures": [{"id": "f1"}]}\n```',
+        _bind_block({"balance": {"figure": "f1"}, "trust": {"figure": "f1"}}),
     ]
     script = TextScript(steps)
     result = run("what is my checking balance?", TextPlanner(script), registry)
     assert result.answered and result.grade == "corroborated"
-    # Each step's prompt carries the voice, the schemas and the results so far.
+    assert result.text == "Your checking holds USD 600.00, corroborated."
+    # Each step's prompt carries the voice, the schemas on the table at that
+    # point, and the results so far.
     assert "Viva" in script.prompts[0]
-    assert FINAL_TOOL in script.prompts[0]
-    assert "600.00" in script.prompts[1]
+    named = [f'"name": "{t}"' for t in (SHAPE_TOOL, FINAL_TOOL)]
+    assert named[0] in script.prompts[0] and named[1] not in script.prompts[0]
+    assert named[1] in script.prompts[1]
+    assert "600.00" in script.prompts[2]
 
 
 def test_text_planner_corrects_once_then_refuses(registry):
-    script = TextScript(["no json here at all", "still just prose",
-                         NO_COMPOSITION])
+    script = TextScript(["no json here at all", "still just prose"])
+
     planner = TextPlanner(script)
     result = run("balance?", planner, registry)
     assert not result.answered and result.refusal == "unparseable"
     assert "could not be used" in script.prompts[1]
-    # The two bad replies, then the call that composes the refusal.
-    assert [e.parse_ok for e in planner.exchanges][:2] == [False, False]
+    # Two bad replies, and nothing after them: the refusal is not asked for.
+    assert [e.parse_ok for e in planner.exchanges] == [False, False]
 
 
 def test_text_transport_failure_refuses_model_unreachable(registry):
@@ -344,11 +355,13 @@ def test_text_transport_failure_refuses_model_unreachable(registry):
 
 def _answer_script():
     return ChatScript([
+        _turn([_shape_call(("Your checking holds {balance}.",
+                            [("balance", "money", "balance")]))]),
         _turn([_call("query_ledger", {"entity": "balances",
-                                      "filters": {"account": "chk"}})]),
-        _turn([_call(FINAL_TOOL, {
-            "answer": "Your checking holds 600.00.",
-            "figures": [{"id": "f1"}]}, call_id="c2")]),
+                                      "filters": {"account": "chk"}},
+                     call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {"balance": {"figure": "f1"}}},
+                     call_id="c2")]),
     ])
 
 
@@ -389,7 +402,7 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
                       session_id="s-test", today=lambda: "2026-02-06")
     turn = session.ask("what is my checking balance?")
     assert turn.result.answered
-    assert len(log.events) == 2
+    assert len(log.events) == 3
     for event in log.events:
         assert event.body["phase"] == "speak"
         assert event.body["model"] == "pinned-model"
@@ -402,7 +415,14 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
             f"{DESCRIPTIONS_VERSION}@")
         assert payload["verdict"]["answered"] is True
     assert log.events[0].body["doc_id"] == "speak:s-test:1:1"
-    assert log.events[1].body["doc_id"] == "speak:s-test:1:2"
+    assert log.events[-1].body["doc_id"] == "speak:s-test:1:3"
+    # What was said is kept as the structure it was, so a sentence can be shown
+    # standing on what it stood on.
+    kept = json.loads(log.events[-1].body["response_text"])
+    assert kept["shape"]["clauses"][0]["slots"] == [{"name": "balance",
+                                                     "type": "money",
+                                                     "quantity": "balance"}]
+    assert kept["bindings"] == {"balance": {"figure": "f1"}}
 
 
 def test_a_turns_cost_is_the_sum_of_its_exchanges(registry):
@@ -412,18 +432,19 @@ def test_a_turns_cost_is_the_sum_of_its_exchanges(registry):
     session = Session(registry, factory, session_id="s-test",
                       today=lambda: "2026-02-06")
     turn = session.ask("what is my checking balance?")
-    assert turn.cost_usd == pytest.approx(0.002)
-    assert turn.tokens == (20, 10)
+    assert turn.cost_usd == pytest.approx(0.003)
+    assert turn.tokens == (30, 15)
 
 
 def test_text_planner_grants_its_correction_per_step_not_per_run(registry):
     steps = [
         "no json here at all",
+        _shape_block(("Your checking holds {balance}.",
+                      [("balance", "money", "balance")])),
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {"account": "chk"}}}\n```',
         "prose again, later in the turn",
-        '```json\n{"answer": "Your checking holds 600.00, verified.", '
-        '"figures": [{"id": "f1"}]}\n```',
+        _bind_block({"balance": {"figure": "f1"}}),
     ]
     result = run("balance?", TextPlanner(TextScript(steps)), registry)
     # The second malformed reply gets its own correction: a good step in
@@ -433,50 +454,67 @@ def test_text_planner_grants_its_correction_per_step_not_per_run(registry):
 
 def test_text_planner_corrects_a_reply_with_two_fenced_blocks(registry):
     steps = [
+        _shape_block(("Nothing to report.", [])),
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {}}}\n```\nfor example, and then really:\n'
-        '```json\n{"answer": "All fine.", "figures": []}\n```',
-        '```json\n{"answer": "Nothing to report.", "figures": []}\n```',
+        + _bind_block({}),
+        _bind_block({}),
     ]
     script = TextScript(steps)
     result = run("balance?", TextPlanner(script), registry)
     # Neither block ran — the ambiguous reply was corrected, not guessed at.
-    assert result.answered and result.calls == 0
-    assert "exactly one" in script.prompts[1]
+    assert result.answered and result.calls == 1
+    assert "exactly one" in script.prompts[2]
 
 
 # --------------------------------------------------- the gate and refusals
 
+def _step_planner(shape, steps):
+    """A planner that commits `shape`, then walks `steps` in order.
+
+    Each step is either a runner step or a callable handed the results so far.
+    """
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        step = steps[min(len(done), len(steps) - 1)]
+        return step(context["results"]) if callable(step) else step
+    return planner
+
+
 def test_a_number_echoed_by_a_refusal_cannot_ground_an_answer(registry):
     """A planner inventing a numeric account id gets a refusal that echoes the
-    digits; stating them as bare text must still be refused — a refusal
-    asserts nothing, so it grounds nothing."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger",
-                    "args": {"entity": "balances",
-                             "filters": {"account": "854203"}}}
-        assert context["results"][0]["ok"] is False
-        return {"answer": "Your savings holds 854203 dollars.", "figures": []}
-
-    result = run("savings balance?", planner, registry)
+    digits back. Nothing an answer can say is built from those digits: a
+    refusal emits no figure, so there is no reference to bind, and the clause
+    that wanted one is dropped."""
+    shape = _shape_of(("Your savings holds {total}.",
+                       [("total", "money", "balance")]))
+    result = run("savings balance?",
+                 _step_planner(shape, [
+                     {"tool": "query_ledger",
+                      "args": {"entity": "balances",
+                               "filters": {"account": "854203"}}},
+                     {"bindings": {"total": {"figure": "f1"}}}]),
+                 registry)
     assert not result.answered
-    assert result.refusal == "unfounded_figure"
+    assert result.refusal == "unknown_figure"
 
 
 def test_a_date_echoed_by_an_ok_result_cannot_ground_an_answer(registry):
     """An ok result restating a planner-chosen `since` is an echo, not an
-    assertion — its digits must not become citable spending figures."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "get_transparency",
-                    "args": {"topic": "calls_spent", "since": "8542-01-01"}}
-        assert context["results"][0]["ok"] is True
-        return {"answer": "You spent 8542 on that.", "figures": []}
-
-    result = run("what did I spend?", planner, registry)
+    assertion — the day it names is not one the run's results carry, so it
+    cannot be said."""
+    shape = _shape_of(("You have spent nothing since {when}.",
+                       [("when", "date")]))
+    result = run("what did I spend?",
+                 _step_planner(shape, [
+                     {"tool": "get_transparency",
+                      "args": {"topic": "calls_spent", "since": "8542-01-01"}},
+                     {"bindings": {"when": {"date": "8542-01-01"}}}]),
+                 registry)
     assert not result.answered
-    assert result.refusal == "unfounded_figure"
+    assert result.refusal == "unfounded_date"
 
 
 def test_a_number_the_caller_typed_cannot_become_a_computed_figure(registry):
@@ -485,38 +523,47 @@ def test_a_number_the_caller_typed_cannot_become_a_computed_figure(registry):
     figure id, so there is nothing left to plant. The refusal now lands on the
     first call, and it names what could have been used instead."""
     seen = {}
+    shape = _shape_of(("You hold {total} in savings.",
+                       [("total", "money", "balance")]))
 
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "compute",
-                    "args": {"expression": "x", "inputs": {"x": "854203.99"}}}
-        seen["refusal"] = context["results"][0]["refusal"]
-        return {"answer": "You hold 854203.99 in savings.", "figures": []}
+    def note(results):
+        seen["refusal"] = [r for r in results
+                           if r["tool"] == "compute"][0]["refusal"]
+        return {"bindings": {"total": {"figure": "f1"}}}
 
-    result = run("savings?", planner, registry)
+    result = run("savings?",
+                 _step_planner(shape, [
+                     {"tool": "compute",
+                      "args": {"expression": "x",
+                               "inputs": {"x": "854203.99"}}}, note]),
+                 registry)
     assert seen["refusal"] == "bad_input"
-    assert not result.answered and result.refusal == "unfounded_figure"
+    assert not result.answered and result.refusal == "unknown_figure"
 
 
 def test_compute_over_a_fetched_figure_still_grounds(registry):
     """The legitimate chain — fetch, then compute over what was fetched, citing
     the result — must keep working, and its provenance is inherited rather than
     asserted by the caller."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "query_ledger",
-                    "args": {"entity": "balances",
-                             "filters": {"account": "chk"}}}
-        if len(context["results"]) == 1:
-            balance = context["results"][0]["figures"][0]["id"]
-            return {"tool": "compute",
-                    "args": {"expression": "x * 2", "inputs": {"x": balance}}}
-        doubled = context["results"][1]["figures"][0]
-        return {"answer": f"Twice your checking balance would be "
-                          f"{doubled['value']}.",
-                "figures": [{"id": doubled["id"]}]}
+    shape = _shape_of(("Twice your checking balance would be {doubled}.",
+                       [("doubled", "money", "balance")]))
 
-    result = run("what is twice my balance?", planner, registry)
+    def compute_over(results):
+        return {"tool": "compute",
+                "args": {"expression": "x * 2",
+                         "inputs": {"x": results[-1]["figures"][0]["id"]}}}
+
+    def bind(results):
+        return {"bindings": {"doubled": {"figure":
+                                         results[-1]["figures"][0]["id"]}}}
+
+    result = run("what is twice my balance?",
+                 _step_planner(shape, [
+                     {"tool": "query_ledger",
+                      "args": {"entity": "balances",
+                               "filters": {"account": "chk"}}},
+                     compute_over, bind]),
+                 registry)
     assert result.answered and result.grade == "corroborated"
     assert result.figures[0]["record_ids"] == ["chk", "doc-jan"]
 
@@ -526,30 +573,39 @@ def test_an_answer_may_quote_a_row_date_from_a_windowed_read(registry):
     that found it shares its year — the filter is scope the read reports, and
     the row's date is something the read asserts, carried on the figure for
     that row's amount."""
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "list_movements",
-                    "args": {"filters": {"account": "chk",
-                                         "window": {"from": "2026-01-01",
-                                                    "to": "2026-01-31"}}}}
-        fig = context["results"][0]["figures"][0]
-        return {"answer": f"On {fig['dated']} you spent 400.00 at that market.",
-                "figures": [{"id": fig["id"]}],
-                "dates": [{"iso": fig["dated"]}]}
+    shape = _shape_of(("On {when} you spent {amount} at {who}.",
+                       [("when", "date"), ("amount", "money", "movement"),
+                        ("who", "merchant")]),
+                      ("Bear in mind: {limits}", [("limits", "caveat")]))
 
-    result = run("what did I spend in January?", planner, registry)
-    assert result.answered, result.text
+    def bind(results):
+        fig = results[-1]["figures"][0]
+        return {"bindings": {"when": {"date": fig["dated"]},
+                             "amount": {"figure": fig["id"]},
+                             "who": {"entity": "m1"},
+                             "limits": {"caveat": [c["id"] for c
+                                                   in results[-1]["caveats"]]}}}
+
+    result = run("what did I spend in January?",
+                 _step_planner(shape, [
+                     {"tool": "list_movements",
+                      "args": {"filters": {"account": "chk",
+                                           "window": {"from": "2026-01-01",
+                                                      "to": "2026-01-31"}}}},
+                     bind]),
+                 registry)
+    assert result.answered, result.detail
     assert "2026-01-05" in result.text
 
 
 def test_a_refusals_record_ids_do_not_join_the_grounding_pool(registry):
-    def planner(context):
-        if not context["results"]:
-            return {"tool": "get_provenance", "args": {"record_id": "999999"}}
-        return {"answer": "It rests on 999999.", "figures": []}
-
-    result = run("why?", planner, registry)
-    assert not result.answered
+    shape = _shape_of(("It rests on {which}.", [("which", "account")]))
+    result = run("why?",
+                 _step_planner(shape, [
+                     {"tool": "get_provenance", "args": {"record_id": "999999"}},
+                     {"bindings": {"which": {"entity": "a1"}}}]),
+                 registry)
+    assert not result.answered and result.refusal == "unknown_entity"
 
 
 # ------------------------------------------ the closing call and the refusal
@@ -558,11 +614,11 @@ def test_the_closing_call_takes_the_reads_off_the_table(registry):
     """At exhaustion the model is not asked nicely to stop reading — the reads
     are gone, and the only thing it can do is speak."""
     script = ChatScript([
+        _turn([_shape_call(("I could not finish that.", []))]),
         _turn([_call("check_completeness", {})]),
-        _turn([_call(FINAL_TOOL, {"answer": "I could not finish that.",
-                                  "figures": []}, call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
     ])
-    result = run("balance?", NativePlanner(script), registry, max_calls=1)
+    result = run("balance?", NativePlanner(script), registry, max_calls=2)
     assert result.answered and result.text == "I could not finish that."
     offered = {t["name"] for t in script.seen[-1]["tools"]}
     assert offered == {FINAL_TOOL}
@@ -572,140 +628,173 @@ def test_the_closing_call_takes_the_reads_off_the_table(registry):
     last = script.seen[-1]["messages"][-1]
     assert last["role"] == "tool" and last["tool_call_id"] == "c1"
     assert "no tool calls left" in last["content"]
-    assert len(script.seen) == 2
+    assert len(script.seen) == 3
 
 
 def test_the_model_is_told_how_many_calls_it_has_left(registry):
     """The runner computing a budget nobody is shown is not a budget. Both
     modalities must put it where the model actually reads."""
     script = ChatScript([
+        _turn([_shape_call(("All settled.", []))]),
         _turn([_call("check_completeness", {})]),
-        _turn([_call(FINAL_TOOL, {"answer": "All settled.", "figures": []},
-                     call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
     ])
     run("balance?", NativePlanner(script), registry, max_calls=4)
     threaded = [m for m in script.seen[-1]["messages"] if m["role"] == "tool"]
-    assert json.loads(threaded[-1]["content"])["calls_remaining"] == 3
+    assert json.loads(threaded[-1]["content"])["calls_remaining"] == 2
 
     text = TextScript([
+        _shape_block(("All settled.", [])),
         '```json\n{"tool": "check_completeness", "args": {}}\n```',
-        '```json\n{"answer": "All settled.", "figures": []}\n```',
+        _bind_block({}),
     ])
     run("balance?", TextPlanner(text), registry, max_calls=4)
     assert "Tool calls left in this turn: 4" in text.prompts[0]
     assert "Tool calls left in this turn: 3" in text.prompts[1]
+    assert "Tool calls left in this turn: 2" in text.prompts[2]
+
+
+def test_the_voice_does_not_promise_a_field_that_is_not_always_there(registry):
+    """The remaining budget rides back with each result, so on the native path
+    the first ask carries none. A prompt naming `calls_remaining` as something
+    every context holds tells the model to read a field that is not there, and
+    an instruction that is false where it is first read is worse than absent."""
+    script = ChatScript([
+        _turn([_shape_call(("All settled.", []))]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+    ])
+    run("balance?", NativePlanner(script), registry)
+    assert "calls_remaining" not in json.dumps(script.seen[0]["messages"])
+    assert "calls_remaining" not in promptstore.load(PROMPTS, SPEAK_VERSION)
 
 
 def test_the_text_protocol_teaches_the_shape_the_code_actually_accepts(registry):
     """A protocol prompt that teaches a superseded terminator costs every text
-    answer its one correction before it can succeed."""
-    text = TextScript(['```json\n{"answer": "All settled.", "figures": []}\n```'])
+    answer its one correction before it can succeed.
+
+    The old mismatch was that the protocol taught one reply shape while
+    rendering the terminator into its tools list as another. There is now one
+    reply shape — a named call with its arguments — so what the list says and
+    what the protocol asks for cannot drift apart."""
+    text = TextScript([_shape_block(("All settled.", [])), _bind_block({})])
     run("balance?", TextPlanner(text), registry)
-    taught = text.prompts[0]
-    assert '"figures": [{"id": "f1"}]' in taught
-    # ...and says so as an example, not as a value to state.
-    assert "examples, not values you may state" in taught
-    assert '"record_ids"' not in taught and '"grade": ""' not in taught
-    assert '"stipulated"' in taught
+    for taught in text.prompts:
+        assert '{{"tool": "<tool name>", "args": {{}}}}' not in taught
+        assert '{"tool": "<tool name>", "args": {}}' in taught
+        assert "an example, never a value you may" in taught
+    # The shape schema is what is on the table first, and it is described by
+    # the file rather than by a template nobody filled.
+    assert f'"name": "{SHAPE_TOOL}"' in text.prompts[0]
+    assert '"clauses"' in text.prompts[0]
+    assert '"bindings"' in text.prompts[1]
+    assert '"stipulated"' not in text.prompts[1]
 
 
-def test_a_refusal_request_answers_every_call_the_model_left_open(registry):
-    """A protocol needs each of its tool calls answered before another message
-    can follow. The turn ends in exactly the state where one is not: the model
-    called the terminator, and a terminator returns no result. An endpoint
-    rejects that shape, so the composed refusal would never arrive at all."""
+def test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag(registry):
+    """A refusal is spoken from words written long before the turn that needed
+    them, chosen by the machine's own tag. Nothing composes a sentence at the
+    moment of refusing, so the one moment a model can see exactly why it fell
+    short is not the moment it is asked to write about it."""
     script = ChatScript([
-        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []},
-                     call_id="open-1")]),
-        _declines_to_compose(),
+        _turn([_shape_call(("It is {total}.", [("total", "money", "balance")]))]),
+        _turn([_call(FINAL_TOOL, {"bindings": {"total": {"figure": "f9"}}})]),
     ])
-    run("balance?", NativePlanner(script), registry)
-    messages = script.seen[-1]["messages"]
-    called = [str(c["id"]) for m in messages if m["role"] == "assistant"
-              for c in m.get("tool_calls") or []]
-    answered = [str(m["tool_call_id"]) for m in messages if m["role"] == "tool"]
-    assert called and set(called) <= set(answered), (
-        f"{sorted(set(called) - set(answered))} were left unanswered")
-
-
-def test_a_composed_refusal_is_shown_standing_on_what_it_cited(registry):
-    """A refusal that states a figure is a claim like any other, and the
-    surface prints its grade and its records off the result."""
-    script = ChatScript([
-        _turn([_call("query_ledger", {"entity": "balances",
-                                      "filters": {"account": "chk"}})]),
-        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []},
-                     call_id="c2")]),
-        _turn([_call("deliver_refusal",
-                     {"answer": "I can only stand behind the 600.00 I read.",
-                      "figures": [{"id": "f1"}]}, call_id="c3")]),
-    ])
-    result = run("balance?", NativePlanner(script), registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-    assert result.figures and result.figures[0]["record_ids"]
-    assert result.grade == "corroborated"
-
-
-def test_the_refusal_terminators_description_is_not_a_raw_template(registry):
-    """Its description is sent to the model as the tool's contract. A prompt
-    with unfilled slots in it is model-facing garbage at exactly the moment
-    careful prose is being asked for — so this checks what actually goes on the
-    wire, not what a helper would build if asked nicely."""
-    script = ChatScript([
-        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []})]),
-        _declines_to_compose(),
-    ])
-    run("balance?", NativePlanner(script), registry)
-    offered = script.seen[-1]["tools"]
-    assert [t["name"] for t in offered] == ["deliver_refusal"]
-    described = offered[0]["description"]
-    assert "{explanation}" not in described and "{established}" not in described
-    assert set(offered[0]["parameters"]["properties"]) == {
-        "answer", "figures", "stipulated", "dates"}
-    # And the instruction reaches the model once, as the answer to the open
-    # call — not once there and again as a message after it.
-    sent = [m for m in script.seen[-1]["messages"]
-            if "cannot be answered" in str(m.get("content") or "")]
-    assert len(sent) == 1 and sent[0]["role"] == "tool"
-
-
-def test_a_refusal_is_spoken_in_vivas_voice_with_the_tag_kept_for_the_log(registry):
-    spoken = ("I could not stand that answer on anything I hold, so I would "
-              "rather say nothing than guess.")
-    script = ChatScript([
-        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []})]),
-        _turn([_call("deliver_refusal", {"answer": spoken, "figures": []},
-                     call_id="c2")]),
-    ])
-    result = run("balance?", NativePlanner(script), registry)
-    assert not result.answered
-    assert result.refusal == "unfounded_figure"      # the tag, for the log
-    assert result.text == spoken                     # the prose, for the person
-    assert "unfounded_figure" not in result.text
-
-
-def test_a_composed_refusal_reaching_for_a_number_is_itself_refused(registry):
-    """The guardrail that makes composing safe: the same check runs on what the
-    model wrote, and one failure falls back to the machine's own sentence
-    rather than trying again."""
-    script = ChatScript([
-        _turn([_call(FINAL_TOOL, {"answer": "It is 9999.99.", "figures": []})]),
-        _turn([_call("deliver_refusal",
-                     {"answer": "I cannot confirm the 12345.67 you asked "
-                                "about.", "figures": []}, call_id="c2")]),
-    ])
-    result = run("balance?", NativePlanner(script), registry)
-    assert not result.answered and result.refusal == "unfounded_figure"
-    assert "12345.67" not in result.text
-    assert "no figure in this run carries" in result.detail
-    assert not script.turns          # exactly one attempt, then the fallback
-
-
-def test_an_unreachable_model_is_never_asked_to_compose_its_own_silence(registry):
-    planner = NativePlanner(BrokenChat())
+    planner = NativePlanner(script)
     result = run("balance?", planner, registry)
-    assert result.refusal == "model_unreachable"
-    assert len(planner.exchanges) == 1
+    assert not result.answered
+    assert result.refusal == "unknown_figure"        # the tag, for the log
+    assert result.text == persona.moment("refusal_unknown_figure")
+    assert "unknown_figure" not in result.text       # the prose, for the person
+    # And it cost nothing: two model calls made the turn, and refusing bought
+    # no third.
+    assert len(planner.exchanges) == 2
+
+
+def test_a_planner_is_never_asked_to_speak_a_refusal(registry):
+    """No planner offers a way to compose one, so a refused turn cannot spend a
+    call on prose however a planner is written."""
+    for planner in (NativePlanner(BrokenChat()), TextPlanner(BrokenText())):
+        assert not hasattr(planner, "compose_refusal")
+        result = run("balance?", planner, registry)
+        assert result.refusal == "model_unreachable"
+        assert result.text == persona.moment("refusal_model_unreachable")
+        assert len(planner.exchanges) == 1
+
+
+def test_a_tag_the_machine_does_not_know_is_not_spoken_as_one(registry):
+    """A planner inventing a tag has no reviewed words behind it, and inventing
+    some at that moment is the thing this closes. The turn ends as a planner
+    that could not be followed, and what the planner said stays in the record
+    rather than reaching the person."""
+    def planner(context):
+        return {"refusal": "a_tag_nobody_declared", "text": "my own words"}
+
+    result = run("balance?", planner, registry)
+    assert not result.answered and result.refusal == "bad_plan"
+    assert result.text == persona.moment("refusal_bad_plan")
+    assert result.detail == "my own words"
+
+
+# ------------------------------------------------------------- the footer
+
+def test_the_footer_shows_each_figure_the_way_the_sentence_showed_it(
+        registry, capsys):
+    """The footer is read by the same person as the sentence one line above it.
+    A figure written twice under two decisions is two conventions on one
+    screen — an amount hedged in the sentence and bare underneath it, a count
+    written as money, a proportion without its sign. There is only one
+    decision: the footer prints the words the hole was filled with."""
+    from viva.speak import Turn, _print_turn
+    from viva.tools.shape import Clause, Shape, Slot
+
+    shape = Shape(clauses=(
+        Clause(text="Your balance is {total}.",
+               slots=(Slot("total", "money", "balance"),)),
+        Clause(text="I hold this many: {many}.",
+               slots=(Slot("many", "count", "count"),)),
+        Clause(text="A seventh of it is {part}, a share of {share}.",
+               slots=(Slot("part", "money", "balance"),
+                      Slot("share", "rate", "ratio"))),
+    ))
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != SHAPE_TOOL]
+        if not done:
+            return {"tool": "query_ledger", "args": {"entity": "balances"}}
+        if len(done) == 1:
+            return {"tool": "compute",
+                    "args": {"expression": "a / 7", "inputs": {"a": "f1"}}}
+        if len(done) == 2:
+            return {"tool": "compute",
+                    "args": {"expression": "a / b",
+                             "inputs": {"a": "f3", "b": "f1"}}}
+        return {"bindings": {"total": {"figure": "f1"},
+                             "many": {"figure": "f2"},
+                             "part": {"figure": "f3"},
+                             "share": {"figure": "f4"}}}
+
+    result = run("what is my balance?", planner, registry, locale="en-US")
+    assert result.answered, result.detail
+    _print_turn(Turn(question="what is my balance?", result=result))
+    footer = [line for line in capsys.readouterr().out.splitlines()
+              if line.startswith("  f")]
+    for figure in result.figures:
+        line = next(ln for ln in footer if ln.startswith(f"  {figure['id']} "))
+        assert result.written[
+            next(n for n, r in result.bindings.items()
+                 if r.get("figure") == figure["id"])] in line
+    # Which is to say: the hedge travels — whatever kind of magnitude it is
+    # about — a count is a count, and a proportion keeps the sign that says what
+    # it is.
+    said = {line.split()[0]: line.split(maxsplit=2)[1:] for line in footer}
+    assert said["f3"][0] == "about", "a rounded amount is bare under a hedged one"
+    assert said["f2"][0] == "1", "a count is written as an amount"
+    assert said["f4"][0] == "about", (
+        "a rounded proportion is bare under a hedged amount")
+    assert said["f4"][1].split()[0].endswith("%"), (
+        "a proportion loses what makes it one")
 
 
 # ----------------------------------------------- the adapter, over the wire
@@ -753,13 +842,16 @@ def test_the_recorded_request_is_what_was_sent_not_what_came_later(
     adapter, sent = _wire_adapter(monkeypatch, [
         _Response(_chat_payload(
             {"role": "assistant", "content": None,
-             "tool_calls": [_call("query_ledger",
-                                  {"entity": "balances",
-                                   "filters": {"account": "chk"}})]})),
+             "tool_calls": [_shape_call(("All settled.", []))]})),
         _Response(_chat_payload(
             {"role": "assistant", "content": None,
-             "tool_calls": [_call(FINAL_TOOL,
-                                  {"answer": "All settled.", "figures": []},
+             "tool_calls": [_call("query_ledger",
+                                  {"entity": "balances",
+                                   "filters": {"account": "chk"}},
+                                  call_id="c1")]})),
+        _Response(_chat_payload(
+            {"role": "assistant", "content": None,
+             "tool_calls": [_call(FINAL_TOOL, {"bindings": {}},
                                   call_id="c2")]})),
     ])
     planner = NativePlanner(adapter)
@@ -769,7 +861,7 @@ def test_the_recorded_request_is_what_was_sent_not_what_came_later(
     # sent, untouched by everything the planner appended afterwards.
     first = planner.exchanges[0].request["messages"]
     assert [m["role"] for m in first] == ["system", "user"]
-    assert len(sent[0]["messages"]) == 2 and len(sent[1]["messages"]) == 4
+    assert len(sent[0]["messages"]) == 2 and len(sent[-1]["messages"]) == 6
 
 
 def test_a_200_with_a_non_json_body_refuses_model_unreachable(
