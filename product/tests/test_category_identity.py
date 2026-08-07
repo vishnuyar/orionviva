@@ -118,6 +118,6 @@ def test_enrichment_is_shown_the_labels_that_already_exist():
         {"corner cafe": "CORNER CAFE"}, ["coffee shop", "warehouse club"])
     assert "coffee shop" in prompt and "warehouse club" in prompt
     assert "REUSE" in prompt
-    assert version.startswith("enrich-v4")
+    assert version.startswith("enrich-v5")
     bare, _ = build_enrichment_prompt({"corner cafe": "CORNER CAFE"})
     assert "none yet" in bare, "an empty vault must not print an empty bracket"

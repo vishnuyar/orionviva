@@ -22,9 +22,11 @@ changed, why, what is now observable, how to see it, what was left undone.
 Never commits.
 
 **Verifier** — a fresh context that did not build the code. Runs the full
-suite, runs the change against real documents where it can, and checks the
-diff did *only* what the brief said. Reports findings; fixes nothing. The
-builder never grades its own work — that separation is the point.
+suite and checks the diff did *only* what the brief said. Reports findings;
+fixes nothing. The builder never grades its own work — that separation is the
+point. **It does not open the vault and does not spend money on a model**;
+where a claim can only be settled by real data it names the case and the
+Witness runs it.
 
 **Witness** — the only role that opens the real vault. It reads `.env`, runs
 the product against Vishnu's own money on a bounded budget of real model calls,
@@ -56,10 +58,11 @@ later as its own full-lane cycle ("design phase: issue #N").
    decides, amends. Nothing is built from an unapproved brief.
 3. Builder implements → delivers the walkthrough.
 4. Verifier (fresh context) runs → delivers the report.
-   - **4b — Witness, when the claim needs real money to settle it:** an
+   - **4b — Witness, when the claim needs real data to settle it:** an
      acceptance run, a suspected wrong number, a capability the suite cannot
-     reach. Not every cycle earns one; a cycle that changes what a person is
-     *told* does. Its scrubbed report joins the walkthrough at checkpoint 2.
+     reach, or **the cases the Verifier named and could not run itself**. Not
+     every cycle earns one; a cycle that changes what a person is *told* does.
+     Its scrubbed report joins the walkthrough at checkpoint 2.
 5. **Checkpoint 2 — accept the work.** Walkthrough plus verification report,
    read together. Findings loop back to the Builder; scope-fence flags loop
    back to the brief.
@@ -73,6 +76,28 @@ are record rather than memory, and the Design Partner step then starts from
 the issue — a bug whose cause is understood is a design decision about what
 should be true, and gets the same treatment. Verifier findings accepted but
 not fixed immediately are offered to the Reporter too.
+
+## When a brief is sliced
+
+A large brief is cut into slices so the **Builder** has a linear path — one
+coherent piece at a time, each leaving the suite green. Slices are a build
+order, not units of shipping.
+
+- **Builder** works slice by slice, in order.
+- **Verifier** runs after each slice, because its question is *did this
+  Builder build what it was told to* — which is a question about a slice.
+- **Witness and Steward work at the scope of the whole brief, never a slice.**
+  A round trip through half a mechanism measures nothing, and a docs pass,
+  a TODO update and a commit message for a slice describe a state that never
+  existed as a thing anyone used.
+
+So a sliced brief has many Builder passes, one Verifier pass each, and then a
+single Witness run and a single Steward pass over the finished whole.
+
+The cost is a long stretch with nothing committed. Where that stretch is long
+enough to be worth protecting, a `wip(...)` commit off the commit gate is the
+established way — the log already carries several, including one recording work
+that was built, verified FAIL, and held off main.
 
 ## The fast lane
 

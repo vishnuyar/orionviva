@@ -122,24 +122,27 @@ def test_paystub_without_deposit_waits_then_heals(tmp_path):
     assert proj.balance("Assets:Retirement").amount == Decimal("400")
 
 
-def test_surface_shows_income_and_pending_paystubs(tmp_path):
+def test_income_is_counted_once_and_a_stub_awaiting_its_deposit_is_held(tmp_path):
+    """Two stubs, one deposit: income counts the pay once, the deduction buckets
+    carry their balances, and the stub whose deposit has not arrived is held
+    with the reason and the employer on it, rather than posted or dropped."""
     from viva.vault import Vault
-    from viva.web import service
     v = Vault.open(tmp_path / "vault", "pw")
     _checking_with_deposit(v.ledger, "3800")
     post_paystub(v.ledger, _paystub("5000", "3800",
                  [("Fed Tax", "700", "tax"), ("401k", "400", "retirement"),
                   ("Health", "100", "insurance")]))
-    # A second stub with no deposit yet → pending on the surface.
+    # A second stub with no deposit yet.
     post_paystub(v.ledger, _paystub("5000", "3800",
                  [("Fed Tax", "700", "tax"), ("401k", "400", "retirement"),
                   ("Health", "100", "insurance")], doc_id="P2", pay_date="2026-02-15"))
-    ov = service.overview(v)
-    assert ov["income"] == {"USD": "5000"}
-    assert any(r["label"] == "Retirement" for r in ov["income_breakdown"])
-    assert ov["paystub_review_count"] == 1
-    pr = service.paystub_review(v)["items"]
-    assert pr and pr[0]["reason"] == "awaiting_deposit" and pr[0]["employer"] == "Acme"
+    proj = v.ledger.projection()
+    assert proj.income_by_currency() == {"USD": Decimal("5000")}
+    assert proj.balance("Assets:Retirement").amount == Decimal("400")
+    held = [b for b in proj.open_holds() if "gross" in b.get("facts", {})]
+    assert len(held) == 1
+    assert held[0]["reason"] == "awaiting_deposit"
+    assert PayStubFacts.from_dict(held[0]["facts"]).employer == "Acme"
 
 
 def test_balance_statements_still_work(tmp_path):

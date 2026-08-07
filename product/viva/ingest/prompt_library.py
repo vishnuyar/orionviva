@@ -71,15 +71,16 @@ def compose_extraction(base_version: str, fragment_version: str) -> tuple[str, s
 def resolve(version: str) -> str:
     """Reconstruct the exact prompt text for any recorded ``prompt_version``.
 
-    Accepts a classify id, an interpret id, a base or fragment id, or the
-    composite ``extract:base+frag``. Raises rather than falling back to the
-    current text, so an old reading is never re-explained with new
-    instructions."""
+    Accepts a classify id, an interpret id, a base or fragment id, the composite
+    ``extract:base+frag``, or any ``a+b`` of ids joined the way the text was:
+    one prompt that stands on another is recorded as both, so what produced a
+    reading is still reconstructible whichever pass produced it. Raises rather
+    than falling back to the current text, so an old reading is never
+    re-explained with new instructions."""
     if version.startswith("extract:"):
-        base_v, frag_v = version[len("extract:"):].split("+", 1)
-        return (promptstore.load(PROMPTS, _file_id(base_v)) + "\n"
-                + promptstore.load(PROMPTS, _file_id(frag_v)))
-    return promptstore.load(PROMPTS, _file_id(version))
+        version = version[len("extract:"):]
+    return "\n".join(promptstore.load(PROMPTS, _file_id(part))
+                     for part in version.split("+"))
 
 
 def versions() -> list[str]:

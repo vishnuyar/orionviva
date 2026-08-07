@@ -146,7 +146,11 @@ def clean_implications(raw) -> list[dict]:
     MAJORS is dropped and logged; ``on`` and ``confidence`` fall back to
     "both" and "suggested"; the free-text fields are truncated. Returns [] for
     anything that is not a list; an empty list is a normal answer, not a parse
-    failure."""
+    failure.
+
+    An implication carries structure only — a relationship, a major, a
+    direction, an account group, a document — and no sentence for anyone to
+    say."""
     out: list[dict] = []
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
@@ -168,7 +172,6 @@ def clean_implications(raw) -> list[dict]:
             "compound": bool(item.get("compound")),
             "confidence": confidence,
             "documents": str(item.get("documents", "")).strip()[:80],
-            "ask": str(item.get("ask", "")).strip()[:160],
         })
     return out
 

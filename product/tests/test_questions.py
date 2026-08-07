@@ -11,6 +11,7 @@ from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          assign_merchant_category, capture_and_ingest,
                          rule_merchant_nature)
 from viva.ledger import EventStore, Ledger
+from viva.persona import say
 from viva.questions import MERCHANT, NATURE, TRANSFER, open_questions
 
 
@@ -110,14 +111,26 @@ def test_a_merchant_that_implies_structure_gets_a_proposal(tmp_path):
     assert q["scope"] == "pattern"
     # It states a hypothesis and its grounds, instead of asking what this is.
     assert "normally mean a vehicle" in q["text"]
-    assert "Shall I track it?" in q["text"]
+    # ...and it closes with the pack's own words. A sentence the enrichment
+    # model wrote is never spliced into the question text.
+    assert "Shall I track it?" not in q["text"]
+    assert say("nature_group_ask") in q["text"]
+    # What the counterparty implies still travels with the question, as
+    # structure: the category is a value from a vocabulary a lint can check,
+    # where a sentence is not.
+    assert q["refs"]["category"] == "transport"
     assert "because of who they are" in q["why"].lower()
     assert "invoice or bill of sale" in q["why"]
-    # The answer space is the four majors, reached in plain language, plus the
-    # escape hatch for the compound answers ("interest, principal and escrow")
-    # no button set can hold.
-    assert [o["args"]["major"] for o in q["options"]] == ["asset", "expense"]
-    assert q["free_text"]
+    # The answer space is declared as slots, and it is what a ruling is made
+    # of: several legs, each landing in the four majors, plus the label the
+    # person names. A payment that is several things at once ("interest,
+    # principal and escrow") is why the leg slot holds several.
+    legs = next(s for s in q["slots"] if s["name"] == "legs")
+    major = next(p for p in legs["parts"] if p["name"] == "major")
+    assert major["choices"] == ["expense", "asset", "liability", "income"]
+    assert {s["name"] for s in q["slots"]} == {"legs", "kind", "category"}
+    # And nothing in the payload is a button: no action, no arguments.
+    assert "options" not in q and "action" not in repr(q)
 
 
 def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_path):
@@ -211,3 +224,36 @@ def test_a_transfer_suggestion_becomes_a_one_off_question(tmp_path):
     if qs:                                   # only if the matcher left it ambiguous
         assert qs[0]["scope"] == "one"
         assert "own accounts" in qs[0]["text"]
+
+
+def test_the_queue_carries_no_instructions_for_a_surface():
+    """The engine holds no rules for a surface. A question carries what is being
+    asked and the slots an answer to it has — never a label to render, an action
+    to call or arguments to send.
+
+    Options were how a caller answered without saying anything: the payload
+    already contained the answer and the click merely picked one. That made the
+    engine responsible for a layer it cannot see, and it kept alive a second way
+    in that no deterministic check stood behind. Every question is answered in
+    language, through one door."""
+    import pathlib
+
+    import viva.questions as _questions
+    src = pathlib.Path(_questions.__file__).read_text()
+    for smell in ('"action"', '"label"', '"args"', "options="):
+        assert smell not in src, (
+            f"{smell} is back in questions.py — the queue is describing a "
+            "surface again")
+
+
+def test_the_queue_supplies_the_sentences_a_caller_places(tmp_path):
+    """Viva's words live in the persona pack, where the no-new-facts lint
+    reaches them and a released version pins their bytes. The two sentences a
+    caller needs around the questions — what the box a person writes in says,
+    and what stands in its place where only a document settles the question —
+    come from the queue, so nothing that shows a question keeps words of its
+    own."""
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    payload = open_questions(ledger, as_of="2026-01-01", jurisdiction="US")
+    assert payload["invite"] == say("free_text_invite")
+    assert payload["answered_by_document"] == say("answered_by_document")

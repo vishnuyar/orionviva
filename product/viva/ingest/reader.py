@@ -130,6 +130,50 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
     return rr
 
 
+def _parking_reader(data, doc_id):
+    """The reader when no model is configured: capture the document, park it,
+    read nothing. Nothing leaves the machine."""
+    return ReadResult("unknown", 0.0, None, "no model configured for live reading")
+
+
+def build_reader():
+    """The document reader the environment configures, as `(read_fn, is_live)`.
+
+    A live reader is returned only when both VIVA_MODEL_ADAPTER and VIVA_MODEL
+    are set; otherwise `(_parking_reader, False)` and every document parks
+    unread. Every entry point that ingests documents builds its reader here, so
+    one setting means the same thing wherever it is read.
+
+    Env to enable live reading:
+      VIVA_MODEL_ADAPTER   'anthropic' or 'openai-compatible'
+      VIVA_MODEL           a pinned model id (not a 'latest' alias)
+      VIVA_MODEL_KEY_ENV   name of the env var holding the API key
+      VIVA_MODEL_BASE_URL  (openai-compatible only, e.g. OpenRouter)
+      VIVA_LOCALE          default 'en-US'      VIVA_CURRENCY default 'USD'
+    """
+    import os
+
+    from ..env import currency_from_env, locale_from_env
+
+    adapter = os.environ.get("VIVA_MODEL_ADAPTER")
+    model = os.environ.get("VIVA_MODEL")
+    if not (adapter and model):
+        return _parking_reader, False
+
+    spec = ModelSpec(
+        name="viva-reader", adapter=adapter, model=model,
+        base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
+        api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "ANTHROPIC_API_KEY"),
+        json_mode=True)
+    locale = locale_from_env()
+    currency = currency_from_env()
+
+    def reader(data, doc_id):
+        return read_statement(data, doc_id, spec, locale, currency)
+
+    return reader, True
+
+
 def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
                     currency: str, prompt_version: str = "",
                     max_retries: int = 1, parse_fn=from_model_json) -> ReadResult:

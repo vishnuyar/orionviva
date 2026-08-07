@@ -5,22 +5,78 @@ Two disciplines, both enforced here rather than remembered:
 1. Prompts-as-files, extended to the persona: question text lives in the pack,
    never in Python — and a released pack is frozen (a recorded ``pack_version``
    must keep resolving to the exact words that asked).
-2. A phrasing may only place fields the deterministic question intent supplies
-   (``INTENT_FIELDS``). The queue decides WHAT is said; the pack decides HOW it
-   sounds. A template that could smuggle in a number would let a wording change
-   put a claim in Viva's mouth — the lint below makes that structurally
-   impossible rather than a review hope.
+2. A phrasing may only place fields the deterministic question intent supplies,
+   of the kinds it declares them to be (``INTENT_FIELDS``). The queue decides
+   WHAT is said; the pack decides HOW it sounds. A template that could smuggle
+   in a number would let a wording change put a claim in Viva's mouth — the lint
+   below makes that structurally impossible rather than a review hope.
+3. An amount placed in a sentence is what the one renderer wrote: a value, its
+   currency and one locale's conventions. A figure that formatted itself
+   somewhere else cannot reach a person.
 """
 
+import ast
 import hashlib
 import pathlib
 
 import pytest
 from vivacore import versions as manifest
 
-from viva import persona
+from viva import persona, render
 
 _PACKAGE = pathlib.Path(persona.__file__).resolve().parent.parent
+
+# The renderer for each type is the function named after it, which is how a
+# reader of `render.py` finds one. A call to any of them is code declaring
+# "this is that kind of thing in the world".
+_RENDERERS = {name: name for name in render.RENDERED}
+
+
+def _renderer_calls(tree) -> dict:
+    """The local names this module calls a renderer by, mapped to the slot type
+    each one renders. Read from the imports, so an alias is followed rather than
+    guessed at."""
+    called = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("render"):
+            for alias in node.names:
+                if alias.name in _RENDERERS:
+                    called[alias.asname or alias.name] = _RENDERERS[alias.name]
+    return called
+
+
+def _rendered_type(value, called: dict) -> str:
+    """The slot type a keyword's value was rendered as, or ""."""
+    if not isinstance(value, ast.Call):
+        return ""
+    func = value.func
+    if isinstance(func, ast.Name):
+        return called.get(func.id, "")
+    if isinstance(func, ast.Attribute):
+        return _RENDERERS.get(func.attr, "") if isinstance(func.value, ast.Name) \
+            and func.value.id.endswith("render") else ""
+    return ""
+
+
+def _placed_by_the_intent():
+    """Every `(phrasing key, slot name, the type it is filled with)` the code
+    actually places, read from the calls themselves."""
+    for path in sorted(_PACKAGE.rglob("*.py")):
+        tree = ast.parse(path.read_text())
+        called = _renderer_calls(tree)
+        if not called:
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "say" and node.args):
+                continue
+            key = node.args[0]
+            if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+                continue
+            for keyword in node.keywords:
+                placed = _rendered_type(keyword.value, called)
+                if keyword.arg and placed:
+                    yield path.name, key.value, keyword.arg, placed
 
 
 def _pack_files(version):
@@ -43,13 +99,21 @@ def test_every_intent_has_a_phrasing_and_no_orphans():
 
 def test_phrasings_use_only_their_intent_fields():
     """The no-new-facts lint: every {slot} must name a field the intent
-    supplies. This is the no-invented-figures boundary at the wording layer."""
+    supplies, and that field must be declared as some kind of thing in the
+    world. This is the no-invented-figures boundary at the wording layer — a
+    slot with no type could be handed anything, which is where a figure that
+    formatted itself would get in."""
     for key, template in persona.load()["phrasings"].items():
         if key.startswith("_"):
             continue
-        extra = persona.slots_of(template) - persona.INTENT_FIELDS[key]
+        declared = persona.INTENT_FIELDS[key]
+        extra = persona.slots_of(template) - set(declared)
         assert not extra, (f"phrasing {key!r} references {sorted(extra)} — "
                           "not fields the question intent supplies")
+        for name in persona.slots_of(template):
+            assert declared[name] in render.TYPES, (
+                f"phrasing {key!r} places {name!r} as {declared[name]!r}, which "
+                f"is not one of {render.TYPES}")
     for key, template in persona.load()["moments"].items():
         if key.startswith("_"):
             continue
@@ -57,14 +121,62 @@ def test_phrasings_use_only_their_intent_fields():
         assert not extra, f"moment {key!r} references {sorted(extra)}"
 
 
+def test_a_slot_the_intent_fills_with_a_rendered_thing_declares_that_type():
+    """The other half of the contract: the DECLARATION has to be true.
+
+    The lint above holds a template to what the intent supplies. Nothing held
+    the intent's own declaration to what the intent does, so a slot could be
+    declared as one kind of thing while being filled with another, and the
+    contract would read as settled while saying something false about itself."""
+    placed = list(_placed_by_the_intent())
+    assert placed, ("no phrasing slot is filled from the renderer — either the "
+                    "queue has stopped placing figures, or this lint has "
+                    "stopped finding them")
+    for module, key, name, rendered in placed:
+        declared = persona.INTENT_FIELDS[key].get(name, "")
+        assert declared == rendered, (
+            f"{module} fills {name!r} of phrasing {key!r} with what the "
+            f"{rendered} renderer wrote, and the contract declares it "
+            f"{declared!r} — the declaration is what anyone reading the "
+            "contract is told the slot holds")
+
+
+def test_a_declared_type_that_disagrees_with_what_is_placed_raises():
+    """And at the moment the sentence is made, for the fills a reader of the
+    source cannot follow — a value handed through a dict, or from further
+    away."""
+    written = render.money("12", "USD", locale="en-US")
+    with pytest.raises(TypeError):
+        # `count` is declared as a number of things; an amount is not one.
+        persona.say("merchant", example="ACME", count=written, money=written)
+
+
 def test_rendering_is_strict_about_missing_slots():
     """A hole where a figure should be is a bluff by omission — raise, never
     render a blank."""
+    written = render.money("12", "USD", locale="en-US")
     with pytest.raises(KeyError):
         persona.say("merchant", example="ACME")     # count and money missing
-    out = persona.say("merchant", example="ACME", count=3, money="USD 12.00",
+    out = persona.say("merchant", example="ACME", count=3, money=written,
                       irrelevant="ignored")          # extras are fine
     assert "ACME" in out and "USD 12.00" in out
+
+
+def test_a_money_slot_cannot_be_handed_a_figure_that_formatted_itself():
+    """The typed half of the contract, and the reason it is typed.
+
+    A slot declared as money takes an amount the one renderer wrote — a value,
+    a currency and one locale's conventions. Anything else is a figure written
+    under conventions nobody declared, and it is refused where the sentence is
+    made rather than noticed after a person has read it."""
+    with pytest.raises(TypeError):
+        persona.say("merchant", example="ACME", count=3, money="12.00")
+    with pytest.raises(TypeError):
+        persona.say("merchant", example="ACME", count=3,
+                    money=f"USD {12:,.2f}")
+    out = persona.say("merchant", example="ACME", count=3,
+                      money=render.money("12", "USD", locale="en-US"))
+    assert "USD 12.00" in out
 
 
 def test_moments_render_with_and_without_a_name():

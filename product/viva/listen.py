@@ -8,14 +8,16 @@ sentence, and this module is the path from one to a recorded ruling.
 The pipeline, and where the boundary sits:
 
     1  frame_question      deterministic   the question queue (already built)
-    2  suggest_answers     deterministic   from merchant category/subcategory
-    3  interpret           ← THE MODEL     the sentence → a structured reading
+    2  RULING_SLOTS        deterministic   the structure an answer to it has
+    3  reply.answer        ← THE MODEL     the sentence → those slots, filled,
+                                           then checked against their types
     4  resolve_account     deterministic   exact / candidate to confirm / new
     5  propose             deterministic   legs, accounts, what changes
     6  apply               deterministic   RulingRecorded (+ an asserted account)
 
-The model touches step 3 only. It never sees the ledger, never chooses an
-account, and never supplies a figure: amounts come from the movement, and
+The model touches step 3 only, and there it fills declared slots rather than
+writing anything of its own. It never sees the ledger, never chooses an account,
+and never supplies a figure: amounts come from the movement, and
 `ruling_recorded` refuses an amount outright.
 
 Two rules this path keeps:
@@ -30,25 +32,19 @@ Two rules this path keeps:
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field, replace
-
-from vivacore import versions
 
 from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_ATTRIBUTE,
                             SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
                             VERIFIED, account_opened, ruling_recorded)
-from .ingest.prompt_library import PACKAGE, interpret_prompt
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
+from .reply import TRUNCATED_MARK, Slot, answer as read_answer
+from .schemas import ANSWER_CHOICE, ANSWER_LABEL, ANSWER_RATE
 
 log = logging.getLogger("viva.listen")
-
-# An out-of-band marker for "the model ran past its token limit". Not an
-# exception: the partial text still travels, for logging and diagnosis.
-TRUNCATED_MARK = "\x00truncated\x00"
 
 # The plain-language label for each major. The majors are what is stored; these
 # are what a person is shown, so the surface never says "asset".
@@ -69,21 +65,21 @@ _FALLBACK_GROUP = "Other"
 # --------------------------------------------------------------------- step 2
 
 
-def suggest_answers(implied: dict | None = None) -> list[dict]:
-    """Plain-language answers to offer before anyone types anything.
-
-    Three labels, deterministic, so the queue keeps working with no model
-    configured. Where `implied` names a major, that one leads and two others
-    follow."""
-    ordered = [MAJOR_EXPENSE, MAJOR_ASSET, MAJOR_LIABILITY]
-    if implied and implied.get("major") in PLAIN:
-        # Lead with what the counterparty implies. That ordering is learned at
-        # enrichment, not kept in a word list here.
-        lead = implied["major"]
-        ordered = [lead] + [m for m in (MAJOR_EXPENSE, MAJOR_ASSET,
-                                        MAJOR_LIABILITY, MAJOR_INCOME)
-                            if m != lead][:2]
-    return [{"major": m, "label": PLAIN[m]} for m in ordered]
+# What an answer about the nature of money is MADE OF. A payment can be several
+# things at once — interest, principal and an amount held on your behalf — so
+# the legs slot holds several of something rather than one of anything, and each
+# leg's major must land in the ledger's own closed vocabulary. The plain-language
+# meanings travel with the alternatives so the four words are not asked about
+# bare.
+RULING_SLOTS = (
+    Slot(name="legs", required=True, parts=(
+        Slot(name="major", type=ANSWER_CHOICE, choices=MAJORS,
+             meanings=tuple(PLAIN.items()), required=True),
+        Slot(name="account_hint", type=ANSWER_LABEL),
+        Slot(name="share", type=ANSWER_RATE))),
+    Slot(name="kind", type=ANSWER_LABEL),
+    Slot(name="category", type=ANSWER_LABEL),
+)
 
 
 # --------------------------------------------------------------------- step 3
@@ -91,13 +87,12 @@ def suggest_answers(implied: dict | None = None) -> list[dict]:
 
 @dataclass
 class Interpretation:
-    """What a model may return from a sentence — meaning only, never money."""
+    """A ruling's slots, filled and checked — meaning only, never money."""
     legs: list[dict] = field(default_factory=list)   # {major, account_hint, share}
     kind: str = ""                 # vehicle | property | mortgage | loan | ...
     # A label the person named, not a guess about them. One sentence can carry
     # both a major and a label, and both halves reach the ledger.
     category: str = ""
-    confidence: float = 0.0
     said: str = ""                 # the person's own words, kept
     # Why there are no legs, when there are none. `unreachable` — the call never
     # landed — is carried distinctly from `unparseable` and `empty`, which are
@@ -116,143 +111,38 @@ class Interpretation:
         return bool(self.legs) and all(leg.get("share") for leg in self.legs)
 
 
-# The prompt text lives in the versioned, append-only library
-# (`viva/ingest/prompt_library.py`) and which version is in force is declared in
-# `viva/versions.json`. A recorded ruling stamps its `prompt_version`, so every
-# reading names the instructions that produced it.
-INTERPRET_VERSION = versions.active(PACKAGE, "interpret")
+def ruling_context(descriptor: str = "", category: str = "",
+                   subcategory: str = "", source: str = "") -> tuple:
+    """What is already known about the movement being ruled on, as data.
+
+    The movement may come from a bank, a card, a brokerage, a loan account or a
+    wallet, so the source is named where it is known and named as unknown
+    otherwise, rather than left to be assumed."""
+    return (("counterparty", descriptor or "(unknown)"),
+            ("source", source or "(an account they hold)"),
+            ("category", category or "(unknown)"),
+            ("subcategory", subcategory or "(unknown)"))
 
 
-def interpret(said: str, descriptor: str = "", category: str = "",
-              subcategory: str = "", extract_fn=None,
-              source: str = "", version: str = INTERPRET_VERSION) -> Interpretation:
-    """The one model call. Turns a sentence into a structured reading.
+def ruling_from(reply, said: str = "") -> Interpretation:
+    """A checked reply to a nature question, as the reading the rest of this
+    module works on.
 
-    Anything the model returns that is not in the closed vocabulary is dropped,
-    and an unparseable reply yields an Interpretation with no legs and a
-    `failure` naming why. Never raises: a model that is unavailable or wrong
-    degrades the surface, never the ledger."""
-    if extract_fn is None:
-        return Interpretation(said=said, failure="unreachable",
-                              detail="no model configured", version=version)
-    text, version = interpret_prompt(version)
-    prompt = text.format(
-        said=said, counterparty=descriptor or "(unknown)",
-        # The movement may come from a bank, a card, a brokerage, a loan account
-        # or a wallet, so the prompt is told the source when it is known and told
-        # that it is unknown otherwise, rather than being left to assume a bank.
-        source=source or "(an account they hold)",
-        category=category or "(unknown)", subcategory=subcategory or "(unknown)")
-    try:
-        raw = extract_fn(prompt)
-    except Exception as exc:                       # noqa: BLE001 - degrade, never raise
-        # The call never landed: wrong model name, server down, bad base URL,
-        # a rejected parameter. Not the model declining.
-        log.warning("interpret: could not reach the model (%s)", exc)
-        return Interpretation(said=said, failure="unreachable", detail=str(exc),
-                              version=version)
-    truncated = (raw or "").startswith(TRUNCATED_MARK)
-    if truncated:
-        raw = raw[len(TRUNCATED_MARK):]
-    body = _first_json_object(raw, require_key="legs")
-    if body is None:
-        if truncated:
-            return Interpretation(
-                said=said, failure="too_long",
-                detail=f"the model ran past its token limit ({len(raw)} chars back)",
-                raw=raw, version=version)
-        log.warning("interpret: no readable JSON object in the reply (%d chars)",
-                    len(raw or ""))
-        return Interpretation(said=said, failure="unparseable",
-                              detail="no complete JSON object in the reply",
-                              raw=raw or "", version=version)
-    legs = []
-    # A model's reply is untrusted input: `legs` arriving as a string, a number,
-    # or anything but a list of objects yields no legs rather than raising.
-    raw_legs = body.get("legs")
-    for leg in raw_legs if isinstance(raw_legs, list) else []:
-        if not isinstance(leg, dict):
-            log.warning("interpret: dropping a leg that isn't an object")
-            continue
-        major = str(leg.get("major", "")).strip().lower()
-        if major not in MAJORS:
-            log.warning("interpret: dropping leg with unknown major %r", major)
-            continue
-        legs.append({"major": major,
-                     "account_hint": str(leg.get("account_hint", "")).strip(),
-                     # Carried verbatim. A share is honoured only where the
-                     # person stated it, which `propose` decides.
-                     "share": str(leg.get("share", "")).strip()})
+    Every value here has already been through its type's deterministic check —
+    each leg's major landed in the ledger's own vocabulary, or the leg was
+    dropped before it got here. This only renames what survived."""
+    legs = [{"major": leg["major"],
+             "account_hint": leg.get("account_hint", ""),
+             # Carried verbatim. A share is honoured only where the person
+             # stated it, which `propose` decides.
+             "share": leg.get("share", "")}
+            for leg in reply.values.get("legs", [])]
     return Interpretation(
-        legs=legs, kind=str(body.get("kind", "")).strip().lower(),
-        category=str(body.get("category", "")).strip().lower()[:40],
-        confidence=float(body.get("confidence") or 0.0), said=said,
+        legs=legs, kind=reply.value("kind").lower(),
+        category=reply.value("category").lower()[:40], said=said,
         failure="" if legs else "empty",
-        detail="" if legs else "valid JSON, but no usable legs",
-        raw=raw or "", version=version)
-
-
-def _first_json_object(text: str, require_key: str = "") -> dict | None:
-    """The first complete, balanced JSON object in a reply — preferring one that
-    carries ``require_key`` — or None.
-
-    The whole reply need not be JSON: an object wrapped in a code fence,
-    prefixed with reasoning or followed by a sentence is still found. Scanning
-    for balance respects strings and escapes, so a reply cut off mid-object is
-    rejected rather than half-parsed."""
-    if not text:
-        return None
-    for start in range(len(text)):
-        if text[start] != "{":
-            continue
-        depth, in_str, escaped = 0, False, False
-        for i in range(start, len(text)):
-            ch = text[i]
-            if in_str:
-                if escaped:
-                    escaped = False
-                elif ch == "\\":
-                    escaped = True
-                elif ch == '"':
-                    in_str = False
-                continue
-            if ch == '"':
-                in_str = True
-            elif ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        found = json.loads(text[start:i + 1])
-                    except Exception:              # noqa: BLE001 - try the next '{'
-                        break
-                    if not isinstance(found, dict):
-                        break
-                    # Some providers and json_mode wrappers nest the answer:
-                    # {"response": {"legs": [...]}}. The outer object carries no
-                    # legs, so `require_key` descends to the one that does.
-                    if require_key:
-                        hit = _find_key(found, require_key)
-                        if hit is not None:
-                            return hit
-                        break                      # keep scanning for a better one
-                    return found
-        # unbalanced from here — the reply was cut off
-    return None
-
-
-def _find_key(obj, key: str, depth: int = 0):
-    """The nearest dict carrying ``key``, searching one or two levels down."""
-    if not isinstance(obj, dict) or depth > 2:
-        return None
-    if key in obj:
-        return obj
-    for value in obj.values():
-        hit = _find_key(value, key, depth + 1)
-        if hit is not None:
-            return hit
-    return None
+        detail="" if legs else "no usable legs",
+        version=reply.version)
 
 
 # --------------------------------------------------------------------- step 4
@@ -555,11 +445,14 @@ def apply_proposal(ledger, proposal: Proposal, occurred_at: str,
 
 def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "",
            movement_key: str = "", category: str = "", subcategory: str = "",
-           extract_fn=None, source: str = "") -> Proposal | None:
+           extract_fn=None, source: str = "", asked: str = "") -> Proposal | None:
     """Steps 3–5 in one call: sentence in, reviewable Proposal out. Nothing is
     written — applying is a separate, explicit act."""
-    interp = interpret(said, descriptor, category, subcategory, extract_fn,
-                       source=source)
+    read = read_answer(said, RULING_SLOTS, asked=asked,
+                       context=ruling_context(descriptor, category,
+                                              subcategory, source),
+                       extract_fn=extract_fn)
+    interp = ruling_from(read, said)
     if not interp.legs:
         return None
     return propose(proj, interp, descriptor, amount, currency, movement_key)

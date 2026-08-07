@@ -104,10 +104,12 @@ def test_the_interpret_prompt_is_addressable_like_every_other():
     """An unversioned prompt is rewritable in place, which would mean that
     tuning it silently reinterprets every ruling made before the change."""
     text, version = pl.interpret_prompt()
-    assert version == "interpret-v2"
+    assert version == "interpret-v3"
     assert pl.resolve(version) == text          # a recorded ruling round-trips
-    # v1 is retained, unchanged: rulings recorded under it stay explainable.
+    # v1 and v2 are retained, unchanged: rulings recorded under them stay
+    # explainable.
     assert pl.resolve("interpret-v1") != text
+    assert pl.resolve("interpret-v2") != text
 
 
 def test_the_interpret_prompt_assumes_no_particular_instrument():
@@ -129,13 +131,18 @@ def test_the_interpret_prompt_assumes_no_particular_instrument():
 
 def test_the_interpret_prompt_fills_from_named_placeholders():
     """Placeholders, not string surgery — so a caller can add context without
-    editing prose, and a missing one fails loudly instead of silently."""
+    editing prose, and a missing one fails loudly instead of silently.
+
+    The slots and the context are placeholders too: the instructions are the
+    same for every question, and what differs is data the caller supplies."""
     text, _ = pl.interpret_prompt()
-    filled = text.format(said="i bought a car", counterparty="ACME MOTORS",
-                         source="a credit account", category="transport",
-                         subcategory="auto dealer")
-    assert "i bought a car" in filled and "a credit account" in filled
-    assert "{" in text and "{" not in filled.split("Reply with:")[0]
+    filled = text.format(said="i bought a car",
+                         asked="What was this one for?",
+                         context="- counterparty: ACME MOTORS",
+                         slots="- legs: SEVERAL")
+    assert "i bought a car" in filled and "ACME MOTORS" in filled
+    assert "What was this one for?" in filled and "- legs: SEVERAL" in filled
+    assert "{" in text and "{" not in filled.split("Fill exactly")[0]
 
     import pytest
     with pytest.raises(KeyError):

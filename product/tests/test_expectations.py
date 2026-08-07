@@ -14,7 +14,7 @@ from viva.knowledge import evaluate
 from viva.ledger import EventStore, Ledger, Provenance
 from viva.questions import EXPECTATION, open_questions
 from viva.vault import Vault
-from viva.web import service
+from viva import engine
 
 AS_OF = "2026-04-01"      # pinned: cadence math must be reproducible
 
@@ -86,8 +86,8 @@ def test_retirement_flow_raises_an_expectation(tmp_path):
     q = next(x for x in qs["questions"] if x["kind"] == EXPECTATION
              and x["refs"]["registry_entry"] == "retirement-statements")
     assert "USD 750.00" in q["text"], "the phrasing carries the stake"
-    labels = [o["label"] for o in q["options"]]
-    assert labels == ["I have it", "Not right now"]
+    # Answered in words like everything else: do you have it, or not.
+    assert [(s["name"], s["type"]) for s in q["slots"]] == [("have_it", "yes_no")]
 
 
 def test_the_stake_grows_with_each_pay_stub_and_a_decline_respects_that(tmp_path):
@@ -97,7 +97,7 @@ def test_the_stake_grows_with_each_pay_stub_and_a_decline_respects_that(tmp_path
     _funded_paystub(vault)
     qs = open_questions(vault.ledger, as_of=AS_OF, jurisdiction="US")
     q = next(x for x in qs["questions"] if x["kind"] == EXPECTATION)
-    service.decline_question(vault, q["id"], "not_now")
+    engine.decline_question(vault, q["id"], "not_now")
     qs = open_questions(vault.ledger, as_of=AS_OF, jurisdiction="US")
     assert not [x for x in qs["questions"] if x["kind"] == EXPECTATION]
 

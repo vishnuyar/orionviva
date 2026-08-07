@@ -13,7 +13,7 @@ from viva.ingest import RawStore, ReadResult, StatementFacts, TxnFact, capture_a
 from viva.ledger import EventStore, Ledger
 from viva.questions import open_questions
 from viva.vault import Vault
-from viva.web import service
+from viva import engine
 
 
 def _stamp(f, doc_id):
@@ -54,7 +54,7 @@ def test_declined_question_goes_quiet(tmp_path):
     assert q is not None
     before = open_questions(vault.ledger, limit=1000)["total"]
 
-    r = service.decline_question(vault, q["id"], "not_now")
+    r = engine.decline_question(vault, q["id"], "not_now")
     assert r["ok"] and r["message"], "the ack speaks — silence was the old bug"
 
     after = open_questions(vault.ledger, limit=1000)
@@ -69,7 +69,7 @@ def test_declined_question_returns_on_new_evidence(tmp_path):
     _checking(vault, [("2026-03-05", "ACME SUB SHOP", "-120.00")],
               "10000.00", ("2026-03-01", "2026-03-31"), b"chk1")
     q = _merchant_question(vault, "ACME SUB SHOP")
-    service.decline_question(vault, q["id"], "not_now")
+    engine.decline_question(vault, q["id"], "not_now")
     assert _merchant_question(vault, "ACME SUB SHOP") is None
 
     # A second statement, continuing the balance chain, adds another ACME
@@ -88,7 +88,7 @@ def test_dont_know_is_recorded_with_its_reason(tmp_path):
     _checking(vault, [("2026-03-05", "ACME SUB SHOP", "-120.00")],
               "10000.00", ("2026-03-01", "2026-03-31"), b"chk1")
     q = _merchant_question(vault, "ACME SUB SHOP")
-    r = service.decline_question(vault, q["id"], "dont_know")
+    r = engine.decline_question(vault, q["id"], "dont_know")
     assert r["ok"]
     declined = vault.ledger.projection().declined_questions()
     assert declined[q["id"]]["reason"] == "dont_know"
@@ -97,23 +97,6 @@ def test_dont_know_is_recorded_with_its_reason(tmp_path):
 
 def test_declining_a_question_that_is_not_open_is_a_said_no_op(tmp_path):
     vault = _vault(tmp_path)
-    r = service.decline_question(vault, "merchant:nothing-here", "not_now")
+    r = engine.decline_question(vault, "merchant:nothing-here", "not_now")
     assert r["ok"] is False and "no longer open" in r["message"]
     assert vault.ledger.projection().declined_questions() == {}
-
-
-def test_greeting_speaks_from_the_pack(tmp_path):
-    """An empty vault gets the welcome; a working vault gets the return. The
-    words come from the pack, not from code."""
-    from viva import persona
-    vault = _vault(tmp_path)
-    g = service.greeting(vault)
-    assert g["moment"] == "welcome_empty"
-    assert g["text"] == persona.moment("welcome_empty", name_part="")
-    assert g["all_settled"]
-
-    _checking(vault, [("2026-03-05", "ACME SUB SHOP", "-120.00")],
-              "10000.00", ("2026-03-01", "2026-03-31"), b"chk1")
-    g2 = service.greeting(vault)
-    assert g2["moment"] == "welcome_back"
-    assert g2["pack"] == persona.ACTIVE_PACK

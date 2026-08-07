@@ -230,6 +230,53 @@ def test_a_declining_model_is_still_distinguished_from_a_broken_one():
     assert declined["confidently_wrong"] == 0     # measured, and genuinely zero
 
 
+# ------------------------------------------------------------- the diagnostic
+
+
+def _spec():
+    """A spec that is never dialled: every probe test supplies the reply."""
+    from vivacore.models import ModelSpec
+    return ModelSpec(name="probe", adapter="openai-compatible", model="stub",
+                     base_url="http://localhost:0/v1", json_mode=True)
+
+
+def test_the_probe_prints_the_reading_the_reply_produced(capsys):
+    """The first tool anyone reaches for when a real answer comes back unread,
+    and therefore the one that must work.
+
+    It is not the eval and the eval's tests do not reach it, so it is exercised
+    here. A diagnostic that dies sends you looking for the fault in the wrong
+    place, which is worse than having none."""
+    from viva.eval_listen import _probe
+
+    _probe(_spec(), said="i bought a car", counterparty="NORTHSIDE MOTORS",
+           extract_fn=lambda _p: json.dumps(
+               {"legs": [{"major": "asset", "account_hint": "car"}]}))
+
+    out = capsys.readouterr().out
+    assert "RAW REPLY" in out
+    assert "'major': 'asset'" in out, "the checked reading, not just the raw text"
+    assert "failure:      none" in out
+
+
+def test_the_probe_says_which_half_failed(capsys):
+    """A reply that never became JSON and a reply the checks refused are
+    different faults with different fixes. Printing one as the other is how an
+    hour goes into the wrong half."""
+    from viva.eval_listen import _probe
+
+    _probe(_spec(), extract_fn=lambda _p: "I'd rather not say.")
+    out = capsys.readouterr().out
+    assert "filled:       unparseable" in out
+    assert "checked legs: NONE" in out
+
+    _probe(_spec(), extract_fn=lambda _p: json.dumps(
+        {"legs": [{"major": "equity"}]}))
+    out = capsys.readouterr().out
+    assert "filled:       ok" in out, "the model answered; the checks refused it"
+    assert "failure:      unanswered" in out
+
+
 # ------------------------------------------ implications: the new ruin case
 
 

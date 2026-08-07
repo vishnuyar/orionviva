@@ -27,7 +27,9 @@ records**, and every answer carries a **grade** (`verified` / `corroborated` /
 - `viva/answer.py` — the answer path: `answer_balance` / `answer_total` / `coverage_summary`, with honest refusal (no LLM).
 - `viva/ingest/review.py` — held-statement review + human correction-as-event (posts at `verified`).
 - `viva/vault.py` — a vault: one directory + passphrase holding the event log and raw blobs.
-- `viva/web/` — the local surface: a stdlib HTTP server + a single self-contained page (dashboard, review/confirm, account drill-down, upload). Provenance built in, kept quiet.
+- `viva/engine.py` — what a person can do to a vault: `answer_question`, the one inbound door, and the write paths beneath it.
+- `viva/ask.py` — Viva asking you, at a terminal: the question queue, one question at a time.
+- `viva/speak.py` — you asking Viva, at a terminal: a question about your money, answered with what it stood on.
 
 ## Development setup
 
@@ -42,13 +44,13 @@ pip install -e product
 ```
 
 Editable (`-e`) links the installed package to your source, so every edit takes
-effect immediately with no rebuild. Then just `python3 -m viva.web` / `pytest`
+effect immediately with no rebuild. Then just `python3 -m viva.ask` / `pytest`
 work with no `PYTHONPATH`.
 
 **Or run against the source path** without installing:
 
 ```
-cd product && PYTHONPATH=../core:. python3 -m viva.web
+cd product && PYTHONPATH=../core:. python3 -m viva.ask
 ```
 
 **Gotcha — a stale install shadows your edits.** If you ever ran a plain
@@ -65,22 +67,25 @@ If it points at site-packages, `pip uninstall -y vivacore viva` and use one of
 the two methods above. (Never `pip install` the non-editable way for dev — and
 `build/` and `dist/` are git-ignored so a stray build can't be committed.)
 
-## Running the surface
+## Running it
 
 ```
 # put VIVA_PASSPHRASE and (optionally) the model vars in product/.env, then:
-PYTHONPATH=../core:. python3 -m viva.web        # or just: python3 -m viva.web  (if editable-installed)
-# then open http://127.0.0.1:8765
+PYTHONPATH=../core:. python3 -m viva.ask     # Viva asks; answer in your own words
+PYTHONPATH=../core:. python3 -m viva.ask --list   # the queue, answering nothing
+PYTHONPATH=../core:. python3 -m viva.speak   # you ask; she answers, with sources
 ```
 
-The surface auto-loads `./.env` (git-ignored), so you don't have to export
+Both entry points auto-load `./.env` (git-ignored), so you don't have to export
 anything — a `.env` with `VIVA_PASSPHRASE` (and, for live reading,
 `VIVA_MODEL_ADAPTER` / `VIVA_MODEL` / `VIVA_MODEL_KEY_ENV` / the key) is enough.
-Set `VIVA_SAMPLE=1` to seed fabricated data. Uploads park until a model is
-configured, so nothing leaves the machine until you choose the real run. The
-picker takes **multiple files** — each is read in its own model call (nothing
-batched). The reader uses **JSON mode** plus a one-shot parse-retry so long
-statements come back as valid JSON.
+Documents park until a model is configured, so nothing leaves the machine until
+you choose the real run. The reader uses **JSON mode** plus a one-shot
+parse-retry so long statements come back as valid JSON.
+
+There is no page: the presentation layer is an open design question, and a
+throwaway one was costing more than it taught. Everything a surface did reaches
+the same functions in `viva/engine.py`.
 
 Re-read every already-captured document into a fresh vault (e.g. after a prompt
 change) without re-uploading:

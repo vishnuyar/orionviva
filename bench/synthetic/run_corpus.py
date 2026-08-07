@@ -89,7 +89,7 @@ def main() -> int:
     load_dotenv()          # plus any .env beside the working directory
 
     from viva.vault import Vault
-    from viva.web.__main__ import build_reader
+    from viva.ingest.reader import build_reader
     from viva.ingest import capture_and_ingest, sweep
 
     print(f"vault    {vault_dir}\nconfig   {env_file or '(no product/.env found)'}\n"

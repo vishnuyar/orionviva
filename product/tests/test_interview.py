@@ -31,7 +31,7 @@ from viva.ledger.events import (SCOPE_ATTRIBUTE, VERIFIED, account_opened,
 from viva.ledger.networth import net_worth
 from viva.questions import INTERVIEW, open_questions, pending_questions
 from viva.vault import Vault
-from viva.web import service
+from viva import engine
 
 
 # --------------------------------------------------------------- the pack
@@ -444,14 +444,14 @@ def test_an_answer_outside_the_offered_vocabulary_is_refused_not_guessed(vault):
     _answer(vault, account, "nickname", "Cottage", "Cottage")
     _answer(vault, account, "purchase_price", "250000", "250,000", "USD")
     _answer(vault, account, "purchase_date", "2019-06-01", "2019-06-01")
-    out = service.answer_attribute(vault, account, "use", said="by the sea")
+    out = engine.answer_attribute(vault, account, "use", said="by the sea")
     assert out["ok"] is False and out["why"] == "not_in_vocabulary"
     assert set(out["choices"]) == {"occupied", "rented", "land"}
 
 
 def test_a_typed_amount_is_read_by_the_parser_and_kept_with_its_currency(vault):
     account = _property(vault)
-    out = service.answer_attribute(vault, account, "purchase_price",
+    out = engine.answer_attribute(vault, account, "purchase_price",
                                    said="$250,000")
     assert out["ok"] and out["value"] == "250000" and out["currency"] == "USD"
 
@@ -459,12 +459,20 @@ def test_a_typed_amount_is_read_by_the_parser_and_kept_with_its_currency(vault):
 # ------------------------------------------- an account nobody minted
 
 
+def _reading(major, hint="", said=""):
+    """A checked reading of what money became — what survives the slot checks
+    behind the model, and all the write path is ever handed."""
+    from viva.listen import Interpretation
+    return Interpretation(legs=[{"major": major, "account_hint": hint,
+                                 "share": ""}], said=said)
+
+
 def test_an_asset_answer_with_nothing_named_asks_rather_than_mints(vault):
-    """The finding this cycle closes: an empty hint plus an asset major used to
-    open `Assets:Other:Unnamed` in the same request."""
+    """An empty hint plus an asset major must not open `Assets:Other:Unnamed`
+    in the same request."""
     _seed_movement(vault)
-    out = service.rule_major(vault, merchant="", major="asset",
-                             movement_key=_first_movement(vault))
+    out = engine.record_ruling(vault, _reading("asset"),
+                                movement_key=_first_movement(vault))
     assert out["ok"] is False and out["why"] == "needs_name"
     proj = vault.ledger.projection()
     assert not [a for a in proj.accounts() if "Unnamed" in a]
@@ -472,13 +480,13 @@ def test_an_asset_answer_with_nothing_named_asks_rather_than_mints(vault):
 
 def test_an_answer_that_would_open_an_account_comes_back_to_be_confirmed(vault):
     _seed_movement(vault)
-    out = service.rule_major(vault, merchant="northgate motors", major="asset",
-                             descriptor="NORTHGATE MOTORS", name="The Estate")
+    out = engine.record_ruling(vault, _reading("asset", "The Estate"),
+                                descriptor="NORTHGATE MOTORS")
     assert out["confirm"] is True
     assert out["proposal"]["new_accounts"] == ["Assets:Other:The Estate"]
     assert not vault.ledger.projection().seen_account("Assets:Other:The Estate"), (
         "nothing may exist until the person says yes")
-    service.apply_ruling(vault, out["proposal"])
+    engine.apply_ruling(vault, out["proposal"])
     assert vault.ledger.projection().seen_account("Assets:Other:The Estate")
 
 
@@ -532,7 +540,7 @@ def test_a_yes_opens_the_next_interview_without_creating_anything(vault):
     _answer(vault, account, "financed", "yes", "yes")
     proj = vault.ledger.projection()
     assert [kind for _, kind in opens_pending(proj, "US")] == ["home_loan"]
-    out = service.open_kind(vault, "home_loan", secures=account)
+    out = engine.open_kind(vault, "home_loan", secures=account)
     assert out["ok"] is False and out["why"] == "needs_name"
     assert not [a for a in proj.accounts() if a.startswith("Liabilities:HomeLoan")]
 
@@ -540,10 +548,10 @@ def test_a_yes_opens_the_next_interview_without_creating_anything(vault):
 def test_the_opened_loan_is_created_by_a_confirmed_proposal_and_links_back(vault):
     account = _property(vault)
     _answer(vault, account, "financed", "yes", "yes")
-    out = service.open_kind(vault, "home_loan", name="Northgate Lending",
+    out = engine.open_kind(vault, "home_loan", name="Northgate Lending",
                             secures=account)
     assert out["confirm"] is True
-    service.apply_ruling(vault, out["proposal"])
+    engine.apply_ruling(vault, out["proposal"])
     proj = vault.ledger.projection()
     loan = "Liabilities:HomeLoan:Northgate Lending"
     assert proj.seen_account(loan)
@@ -650,7 +658,7 @@ def test_a_group_is_not_a_name(vault):
     """A name made only of punctuation cleans away to nothing, and what is left
     is the group. Opening it would be the same defect one segment shorter."""
     account = _property(vault)
-    out = service.open_kind(vault, "home_loan", name=":", secures=account)
+    out = engine.open_kind(vault, "home_loan", name=":", secures=account)
     assert out["ok"] is False and out["why"] == "needs_name"
     from viva.listen import Proposal, apply_proposal
     with pytest.raises(ValueError):
@@ -660,20 +668,36 @@ def test_a_group_is_not_a_name(vault):
                        "2026-03-02")
 
 
+def test_a_reply_that_cannot_open_an_account_still_says_something_to_a_person(vault):
+    """Every refusal carries Viva's words, and the naming one is no exception.
+
+    A refusal that hands back only a machine reason leaves whoever asked with
+    nothing to show: a person is left looking at an empty space where an
+    explanation should be, and the schema pack's own question — the one thing
+    that would tell them what to type — never reaches them."""
+    from viva import persona
+    account = _property(vault)
+    out = engine.open_kind(vault, "home_loan", secures=account)
+
+    assert out["ok"] is False and out["why"] == "needs_name"
+    assert out["message"] == persona.moment("reply_needs_name", asks=out["asks"])
+    assert out["asks"] and out["asks"] in out["message"]
+
+
 def test_the_currency_follows_the_vault_and_is_never_assumed(vault, monkeypatch):
     """A flat bought in rupees is not four and a half million dollars. The
     currency comes from the accounts the vault already holds, because there is
     no table here saying what money a country uses — and where nothing says,
     the product declines rather than picks one."""
     monkeypatch.setenv("VIVA_LOCALE", "en-IN")
-    empty = service.open_kind(vault, "property", name="Flat 3B")
+    empty = engine.open_kind(vault, "property", name="Flat 3B")
     assert empty["ok"] is False and empty["why"] == "no_currency"
     vault.ledger.append(account_opened(
         "Assets:Bank:Northgate", "depository", "Everyday", "INR", "2026-01-01",
         institution="Northgate"))
-    out = service.open_kind(vault, "property", name="Flat 3B")
-    service.apply_ruling(vault, out["proposal"])
-    answered = service.answer_attribute(
+    out = engine.open_kind(vault, "property", name="Flat 3B")
+    engine.apply_ruling(vault, out["proposal"])
+    answered = engine.answer_attribute(
         vault, "Assets:Property:Flat 3B", "purchase_price", said="4500000")
     assert answered["currency"] == "INR"
     line = next(ln for ln in net_worth(vault.ledger.projection()).lines
@@ -711,10 +735,10 @@ def test_a_stated_cost_beats_a_sum_of_the_payments_so_far(vault):
 
 def test_a_link_to_the_wrong_kind_of_thing_is_refused(vault):
     account = _property(vault)
-    out = service.open_kind(vault, "home_loan", name="Northgate Lending",
+    out = engine.open_kind(vault, "home_loan", name="Northgate Lending",
                             secures=account)
-    service.apply_ruling(vault, out["proposal"])
-    bad = service.answer_attribute(
+    engine.apply_ruling(vault, out["proposal"])
+    bad = engine.answer_attribute(
         vault, "Liabilities:HomeLoan:Northgate Lending", "secures",
         value="Assets:Bank:Northgate")
     assert bad["ok"] is False
@@ -724,10 +748,10 @@ def test_a_free_form_answer_is_not_read_as_a_number(vault):
     """The figure guards must not fire on a name. A lender called with a
     leading dash is not a negative amount."""
     account = _property(vault)
-    out = service.open_kind(vault, "home_loan", name="-Lakeside Lending",
+    out = engine.open_kind(vault, "home_loan", name="-Lakeside Lending",
                             secures=account)
     assert out["ok"] is True
-    service.apply_ruling(vault, out["proposal"])
+    engine.apply_ruling(vault, out["proposal"])
 
 
 def test_a_guessed_existing_account_is_named_in_the_sentence_it_confirms(vault):
@@ -745,14 +769,14 @@ def test_an_account_that_names_nothing_cannot_be_written(vault):
     """The confirmation endpoint trusts its own body less than the ledger
     does: a path whose last part is empty is a group, not a thing."""
     with pytest.raises(ValueError):
-        service.apply_ruling(vault, {
+        engine.apply_ruling(vault, {
             "scope": "movement", "subject": "m", "legs": [],
             "new_accounts": ["Assets:Other:"], "summary": ""})
 
 
 def test_a_name_cannot_inject_a_level_into_the_hierarchy(vault):
     account = _property(vault)
-    out = service.open_kind(vault, "home_loan", name="Lender:Sub:Deeper",
+    out = engine.open_kind(vault, "home_loan", name="Lender:Sub:Deeper",
                             secures=account)
     assert out["proposal"]["new_accounts"] == [
         "Liabilities:HomeLoan:Lender Sub Deeper"]

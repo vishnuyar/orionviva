@@ -8,14 +8,19 @@ resolving, exactly as a recorded ``prompt_version`` must), and a test keeps
 question text out of code the same way ``test_no_prompt_text_lives_in_code``
 keeps prompts out.
 
-Two hard rules, enforced mechanically (test_persona_pack.py):
+Three hard rules, enforced mechanically (test_persona_pack.py):
 
 1. **A phrasing may not introduce a fact.** Every ``{slot}`` in a template must
    name a field the deterministic question intent supplies — ``INTENT_FIELDS``
    below is that contract. The queue decides WHAT is said (figures, evidence,
    options); the pack only decides HOW it sounds. A phrasing's failure mode is
    *stiff*, never *false*.
-2. **Rendering is strict.** A template referencing a slot the caller didn't
+2. **A slot says what it holds.** The contract is typed, so a hole in a sentence
+   names a kind of thing in the world rather than only a word. An amount is a
+   value and a currency written under one locale's conventions, and a slot
+   asking for one cannot be handed a bare number — the type is checked where the
+   sentence is made, not hoped for at review.
+3. **Rendering is strict.** A template referencing a slot the caller didn't
    supply raises immediately rather than rendering a hole — a question with a
    blank where a figure should be is a bluff by omission.
 
@@ -33,6 +38,9 @@ from functools import lru_cache
 
 from vivacore import versions
 
+from ..render import (ACCOUNT, CATEGORY, COUNT, DATE, DOCUMENT, MERCHANT,
+                      MONEY, PROSE, RENDERED)
+
 _DIR = pathlib.Path(__file__).resolve().parent
 
 # The voice currently speaking, as `viva/versions.json` declares it. Change it
@@ -43,55 +51,76 @@ ACTIVE_PACK = versions.active(_DIR.parent, "persona_pack")
 
 # ------------------------------------------------------------- the contract
 #
-# Phrasing key -> the slots its template MAY use. These are the fields the
-# question queue's deterministic intent supplies — nothing else may appear in a
-# template, so a phrasing cannot smuggle a claim into a question.
-# Slot values arrive PRE-FORMATTED (money already carries its currency): the
-# pack places figures, it never computes them.
+# Phrasing key -> the slots its template MAY use, and what each slot IS. These
+# are the fields the question queue's deterministic intent supplies — nothing
+# else may appear in a template, so a phrasing cannot smuggle a claim into a
+# question.
+# Slot values arrive RENDERED: the pack places things, it never formats or
+# computes them. A money slot takes what `render.money` produced — a value, its
+# currency and one locale's conventions — and nothing else.
 
-INTENT_FIELDS: dict[str, frozenset] = {
-    "identity":                    frozenset({"account_ref"}),
-    "reconciliation_gap":          frozenset({"account_ref", "opening_date",
-                                              "closing_date"}),
-    "reconciliation_gap_why":      frozenset({"opening_money"}),
-    "reconciliation_flagged":      frozenset({"account_ref"}),
-    "reconciliation_held":         frozenset({"doc_type", "for_account"}),
-    "transfer":                    frozenset({"date", "money", "description"}),
-    "transfer_why":                frozenset({"candidates"}),
-    "merchant":                    frozenset({"example", "count", "money"}),
-    "merchant_peer_note":          frozenset(),
-    "merchant_why":                frozenset(),
-    "nature_single":               frozenset({"date", "description", "money"}),
-    "nature_single_why":           frozenset(),
-    "nature_group_head":           frozenset({"count", "example", "money"}),
-    "nature_group_meaning":        frozenset({"what"}),
-    "nature_group_compound":       frozenset(),
-    "nature_group_ask":            frozenset(),
-    "nature_group_why":            frozenset(),
-    "nature_group_why_documents":  frozenset({"documents"}),
-    "corroboration":               frozenset({"name", "money", "document"}),
-    "corroboration_why":           frozenset(),
-    "corroboration_why_unreliable": frozenset(),
-    "free_text_invite":            frozenset(),
+INTENT_FIELDS: dict[str, dict[str, str]] = {
+    "identity":                    {"account_ref": ACCOUNT},
+    "reconciliation_gap":          {"account_ref": ACCOUNT,
+                                    "opening_date": DATE,
+                                    "closing_date": DATE},
+    "reconciliation_gap_why":      {"opening_money": MONEY},
+    "reconciliation_flagged":      {"account_ref": ACCOUNT},
+    "reconciliation_held":         {"doc_type": DOCUMENT,
+                                    "for_account": ACCOUNT},
+    "transfer":                    {"date": DATE, "money": MONEY,
+                                    "description": MERCHANT},
+    "transfer_why":                {"candidates": COUNT},
+    "merchant":                    {"example": MERCHANT, "count": COUNT,
+                                    "money": MONEY},
+    "merchant_peer_note":          {},
+    "merchant_why":                {},
+    "nature_single":               {"date": DATE, "description": MERCHANT,
+                                    "money": MONEY},
+    "nature_single_why":           {},
+    "nature_group_head":           {"count": COUNT, "example": MERCHANT,
+                                    "money": MONEY},
+    # What a payment of this kind is: the relationship the counterparty implies,
+    # or the label already derived for it.
+    "nature_group_meaning":        {"what": CATEGORY},
+    "nature_group_compound":       {},
+    "nature_group_ask":            {},
+    "nature_group_why":            {},
+    "nature_group_why_documents":  {"documents": DOCUMENT},
+    "corroboration":               {"name": ACCOUNT, "money": MONEY,
+                                    "document": DOCUMENT},
+    "corroboration_why":           {},
+    "corroboration_why_unreliable": {},
+    # What the box a person writes in says before they write, and what stands in
+    # its place where nothing said in words can settle the question.
+    "free_text_invite":            {},
+    "answered_by_document":        {},
     # The expectations engine. One phrasing pair per mechanism;
     # the document name comes from the registry (data), never from the model.
-    "expectation_retirement_flow":         frozenset({"money", "document"}),
-    "expectation_retirement_flow_why":     frozenset(),
-    "expectation_investment_account":      frozenset({"account_name", "document"}),
-    "expectation_investment_account_why":  frozenset({"money"}),
-    "expectation_account_cadence":         frozenset({"account_name", "last_date"}),
-    "expectation_account_cadence_why":     frozenset(),
-    # The interview. The schema pack supplies the plain question (`asks`) and
-    # the benefit (`unlocks`) as reviewed data; the persona supplies the manner
-    # around them, so a generated schema arrives already speakable.
-    "interview":                           frozenset({"name", "asks"}),
-    "interview_unlocks":                   frozenset({"unlocks"}),
-    "interview_why":                       frozenset(),
-    "interview_opens":                     frozenset({"name", "kind_label"}),
+    "expectation_retirement_flow":         {"money": MONEY,
+                                            "document": DOCUMENT},
+    "expectation_retirement_flow_why":     {},
+    "expectation_investment_account":      {"account_name": ACCOUNT,
+                                            "document": DOCUMENT},
+    "expectation_investment_account_why":  {"money": MONEY},
+    "expectation_account_cadence":         {"account_name": ACCOUNT,
+                                            "last_date": DATE},
+    "expectation_account_cadence_why":     {},
+    # The interview. The schema pack supplies the plain question (`asks`), the
+    # benefit (`unlocks`) and the label for a kind of account as reviewed data;
+    # the persona supplies the manner around them, so a generated schema arrives
+    # already speakable. Reviewed prose nests inside reviewed prose — it is
+    # never a hole for words nobody reviewed.
+    "interview":                           {"name": ACCOUNT, "asks": PROSE},
+    "interview_unlocks":                   {"unlocks": PROSE},
+    "interview_why":                       {},
+    "interview_opens":                     {"name": ACCOUNT,
+                                            "kind_label": PROSE},
 }
 
 # Moment key -> its slots. Moments are the relationship lines: welcome, return,
-# the "I don't know" reassurance.
+# the "I don't know" reassurance, and what Viva says back about a reply she
+# could not read.
 # The only personal slot is the name, derived deterministically from the
 # vault's own account holders, never asked of a model.
 MOMENT_FIELDS: dict[str, frozenset] = {
@@ -101,6 +130,68 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "not_now_ack":    frozenset({"name_part"}),
     "dont_know_ack":  frozenset({"name_part"}),
     "all_settled":    frozenset({"name_part"}),
+    # Asking again. A value that does not survive the deterministic check behind
+    # the model is refused in Viva's voice and asked again; the slots carry what
+    # the check found, never a guess at what was meant.
+    "reply_empty":              frozenset(),
+    "reply_unanswered":         frozenset(),
+    "reply_unreadable_money":   frozenset({"reason"}),
+    # An amount is a value AND a currency. Where the currency stated and the
+    # currency the account is held in disagree, there is nothing to compute:
+    # this product converts nowhere, so it asks.
+    "reply_currency_conflict":  frozenset({"stated", "held"}),
+    "reply_unreadable_date":    frozenset({"reason"}),
+    "reply_unreadable_rate":    frozenset(),
+    "reply_not_in_vocabulary":  frozenset({"alternatives"}),
+    "reply_unknown_account":    frozenset(),
+    "reply_wrong_kind":         frozenset(),
+    "reply_too_long":           frozenset(),
+    "reply_not_in_words":       frozenset(),
+    "reply_question_closed":    frozenset(),
+    # And when the reader itself could not answer. A reader that is DOWN is a
+    # different thing from one that answered with something unusable: nothing
+    # the person can rephrase reaches a reader that is not there, so only one of
+    # these two asks them for anything. The other is reached only after the
+    # reader has already been given its one chance to fix its own reply.
+    "reply_unreachable":        frozenset(),
+    "reply_ask_again":          frozenset(),
+    # The ledger will not take a figure the sentence did not carry, however
+    # well-formed the reading of it was.
+    "reply_figure_not_said":    frozenset(),
+    # A yes to "do you have the document?" settles nothing on its own: the
+    # document is what settles it.
+    "reply_document_awaited":   frozenset(),
+    # A movement belongs to at most one transfer, so a pair that was already
+    # settled records nothing further — and says so, rather than reading as a
+    # reply that could not be understood.
+    "reply_already_linked":     frozenset(),
+    # A yes that says a thing exists has not said what it is called, and this
+    # product does not name a person's accounts for them. The schema pack's own
+    # words for the naming question nest inside Viva's.
+    "reply_needs_name":         frozenset({"asks"}),
+    # What became of an answer: recorded, or held back because applying it would
+    # change which accounts a person holds. What is held back is asked for in
+    # words like anything else — a yes or a no — and a reply that is not a yes
+    # leaves the ledger as it was and says so.
+    "reply_recorded":           frozenset(),
+    "reply_needs_confirming":   frozenset(),
+    "reply_confirm_asks":       frozenset(),
+    "reply_not_confirmed":      frozenset(),
+    # What a question wants back, one line per kind of thing a slot holds. A
+    # person can see that a yes or a no will do, that an amount is wanted, or
+    # which closed list an answer has to land in — the same declaration the
+    # inbound check reads, said in words.
+    "wants_yes_no":             frozenset(),
+    "wants_money":              frozenset(),
+    "wants_date":               frozenset(),
+    "wants_rate":               frozenset(),
+    "wants_choice":             frozenset({"alternatives"}),
+    "wants_label":              frozenset(),
+    "wants_institution":        frozenset(),
+    "wants_link":               frozenset(),
+    # A slot that holds several of something: one payment that was genuinely
+    # several things at once.
+    "wants_several":            frozenset(),
 }
 
 
@@ -132,8 +223,42 @@ class _Strict(dict):
 
 def say(key: str, *, version: str = ACTIVE_PACK, **fields) -> str:
     """Render one phrasing. Strict: a missing slot raises; extra fields are
-    ignored (the intent may know more than the phrasing chooses to say)."""
+    ignored (the intent may know more than the phrasing chooses to say); a
+    declared slot handed something of the wrong kind raises."""
+    _check_types(key, fields)
     return load(version)["phrasings"][key].format_map(_Strict(fields))
+
+
+def _check_types(key: str, fields: dict) -> None:
+    """Every declared field must be the kind of thing it was declared to be, and
+    the declaration must be the kind of thing the intent actually supplies.
+
+    Only a type whose renderer exists can be checked, and today that is money:
+    what `render.money` produced carries a currency and one locale's
+    conventions, and a bare number carries neither. A figure that formatted
+    itself somewhere else is refused here rather than reaching a person as the
+    only sentence in the product written under a convention nobody declared.
+
+    The check runs both ways, because a contract only one side is held to is
+    half a contract: a slot declared as money and handed something else fails,
+    and so does a slot handed a rendered amount while declaring it as anything
+    other than money."""
+    declared = INTENT_FIELDS[key]
+    for name, value in fields.items():
+        want = RENDERED.get(declared.get(name, ""))
+        if want is not None and not isinstance(value, want):
+            raise TypeError(
+                f"phrasing {key!r} places {name!r} as {declared[name]}, and was "
+                f"handed {value!r} — a {declared[name]} slot takes what the one "
+                f"renderer produced, never a value formatted elsewhere")
+        made = next((t for t, produced in RENDERED.items()
+                     if isinstance(value, produced)), "")
+        if made and name in declared and declared[name] != made:
+            raise TypeError(
+                f"phrasing {key!r} declares {name!r} as {declared[name]}, and "
+                f"the intent supplies what the {made} renderer wrote — the "
+                f"declaration is what a reader of the contract is told this "
+                f"slot holds, so it must say {made}")
 
 
 def moment(key: str, *, version: str = ACTIVE_PACK, **fields) -> str:
