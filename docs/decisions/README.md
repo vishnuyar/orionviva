@@ -16,3 +16,4 @@ Short records of decisions: context, alternatives considered, what was decided, 
 | [010](ADR-010-verification-never-in-weights.md) | Verification never moves into model weights | One-way (D8) |
 | [011](ADR-011-blind-host-tier.md) | Blind-host tier — encrypted hosting with client-held keys, client-side compute (Proposed, not adopted) | Two-way until publicly announced |
 | [012](ADR-012-the-interview-model-boundary.md) | The interview's model boundary — two enumerated outbound flows, a whitelisted envelope, no amounts or currency | One-way in trust (the whitelist); mechanism two-way |
+| [013](ADR-013-the-shape-before-the-data.md) | A sentence's shape is authored before its data, in both directions — a run holds a ledger of what it established, and an answer may say only what is in it | One-way in trust (the ordering); mechanism two-way |
