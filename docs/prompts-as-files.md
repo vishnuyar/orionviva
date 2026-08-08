@@ -195,3 +195,5 @@ Nothing was promoted. Every id in force after is the id in force before.
 ## The rule this leaves standing
 
 A version id is declared once, as data, beside the code it governs — and **promotion is an explicit, reviewable act**, never a consequence of a file appearing. What the lint removes is not the decision; it is the ability to forget you owed one.
+
+**And a version is released by being pinned here, not by a commit reaching a remote** (ruled 2026-08-06, when a pack was released in a commit held off `main`). T8's subject is the recorded stamp: an id written into an event must resolve to the exact bytes that produced that reading, forever, and a stamp does not know which branch it was written on. So once a version is in the manifest the next phrasing change is a new id — even while the commit that released the last one is still local, and even if nobody but you has ever run it.

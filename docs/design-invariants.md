@@ -1,6 +1,6 @@
 # Design Invariants — the checklist every decision answers to
 
-**Status:** Living · **Last updated:** 2026-08-06
+**Status:** Living · **Last updated:** 2026-08-08 (X3 refined: a confirmation is a question, not a second door)
 
 ## Why this doc
 
@@ -35,7 +35,7 @@ Some requirements are cross-cutting: they belong to no single feature, so they'r
 
 - **X1 — Target user skill: "can install an app."** No feature may require self-hosting, terminals, or knowing what an API key is on the default path. (Adoption doc)
 - **X2 — Uncertainty is visible, never decorative.** Confidence language in any surface maps 1:1 to verification grades. (Extraction doc)
-- **X3 — Irreversible actions wait for an explicit yes**, enforced in code, not prompts. (Promise 8)
+- **X3 — Irreversible actions wait for an explicit yes**, enforced in code, not prompts. (Promise 8) **Refined 2026-08-06:** the proposal-then-confirm pair *is* this mechanism, not a rival to it. An answer that would do something irreversible — opening an account is the standing case — comes back as a proposal stating in plain words what it would do, and the yes that applies it is a question like any other: a declared `yes_no` slot, a model reading the person's words into it, deterministic code deciding. What the design excludes is a channel that writes without anyone saying anything, not a second function with this gate between its halves. A loop that cannot confirm does not merely stop early; it has no way to satisfy this invariant at all.
 
 ## How to use this doc
 

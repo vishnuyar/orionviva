@@ -16,9 +16,9 @@ run; treat the absence as a real gap."* You close it.
 
 ## The reversal you operate under
 
-`briefs/real-vault-test-plan.md` says the vault passphrase is Vishnu's alone and
-is never typed by anyone else. He reversed that half deliberately on 2026-08-06:
-you may read `.env` and open the vault.
+The standing rule was that the vault passphrase is Vishnu's alone and is never
+typed by anyone else. He reversed that half deliberately on 2026-08-06: you may
+read `.env` and open the vault.
 
 **The other half stands.** Real transcripts go into a session and never near the
 repo. What changed is who types the passphrase, not what may be written down. If
@@ -144,10 +144,13 @@ that is a finding and it belongs in your report whether or not anyone asked.
 
 ## Running
 
-For an acceptance run, `briefs/real-vault-test-plan.md` is the script: capture
-the oracle from the deterministic surface FIRST, then ask the model, then
-compare. Capturing the truth before Viva speaks is what makes the run evidence
-rather than an impression — do not reverse that order because it seems faster.
+For an acceptance run, `runs/cases-for-the-witness-2026-08-07.md` is the
+instrument, and the order is fixed: capture the oracle from the deterministic
+surface FIRST, then ask the model, then compare. Capturing the truth before Viva
+speaks is what makes the run evidence rather than an impression — do not reverse
+that order because it seems faster. The older step-by-step plan is retired; it
+was written for a machine two cycles gone, and its expected outcomes would read
+as failures against the product that exists.
 
 For a narrower question, say in the report exactly what you ran and what you
 compared against, so the run is repeatable by someone who was not there.

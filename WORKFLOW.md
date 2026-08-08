@@ -1,7 +1,8 @@
 # WORKFLOW — how this project is built
 
 **Status:** Living · **Last updated:** 2026-08-08 (the issue gate named as a
-checkpoint alongside the commit gate, and relayed authorization ruled out)
+checkpoint alongside the commit gate, relayed authorization ruled out, and who
+owns the claim a test case encodes)
 
 OrionViva is built by a product owner who directs, and an AI that engineers.
 This file is the contract between them: the roles, the loop, and the gates.
@@ -152,6 +153,14 @@ Roles are prompts; anything that must never happen is enforced by code:
   approved brief", "verify the diff", "ship it", "tutor: explain…" — and the
   session reads the matching role file and runs it as that role, spawning a
   fresh subagent for verification.
+- **A test case encodes a claim about what should happen in a real financial
+  life, and where that claim is not obvious the product owner makes it.** Not
+  the Builder's to invent and not the Verifier's to certify. A scenario built
+  on a guess produces a confident defect report about a situation that does not
+  exist — which is how a currency "conflict" was reported, and refused in code,
+  for a person describing one real event in two ways. Where the ledger does not
+  settle what should happen, stop and ask before the test is written. _Ruled
+  2026-08-06._
 - The product owner's standing rights: reject any work that arrives without a
   walkthrough, reject any diff that exceeded its brief, and stop any phase to
   ask the Tutor to explain before deciding. Using these rights is the process
