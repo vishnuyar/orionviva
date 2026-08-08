@@ -3,7 +3,25 @@
 **Status:** INTAKE, not a design. Nothing is built and no option is chosen. This
 records a decision already made, the shape it implies, and the questions a later
 cycle must answer — so that cycle starts from a position rather than from
-memory. · **Opened:** 2026-08-06
+memory. · **Opened:** 2026-08-06 · **Checked 2026-08-08:** coherent, with one
+correction of tense and one addition of evidence, both below.
+
+**Read §1's "a refusal is composed after the model has seen every result" as
+history, not as code.** By the end of the same cycle a refusal stopped being
+composed at all: it is a reviewed sentence in the persona pack chosen by machine
+tag, binding nothing, costing no model call. That does not weaken the ruling in
+§2 — it is why the ruling was cheap to take, and it raises the bar for anything
+built here, because a suggestion would be the *only* thing on the refusal path
+that a model has any hand in.
+
+**And the real vault has since made the problem sharper.** On a local run a
+refusal was delivered to a person while the correct figure, at the top grade and
+bound to the right hole, was already sitting in the run — lost to the syntax of
+a reference ([issue #8](https://github.com/vishnuyar/orionviva/issues/8)). That
+is the §1 case at its most acute: not a run that established something adjacent,
+but a run that established the answer and said nothing. Whatever this channel
+becomes should be designed knowing that the thing withheld is sometimes not a
+consolation but the answer itself.
 
 **Invariants touched:** T1 (a suggestion carrying a figure stands on a record like
 any other) · T2 · X2 (a suggestion is uncertainty made visible, or it is

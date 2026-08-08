@@ -467,3 +467,32 @@ emits one. That is where the 67% of spend on refusals was supposed to go. Also
 unbuilt: `{tag}`, twelve of thirteen slot types having shipped. **And none of
 this has run against real data** — the acceptance runs above tested the
 machinery it replaces.
+
+**What the real vault then said (2026-08-08).** It has run now, three times: two
+local models side by side, and a read-only audit of a live sitting.
+
+The ordering rule holds. A model asked to author a shape before any tool is on
+the table does it, and does it first time — seven shapes from one model with
+none rejected, one from another under the text protocol. **The condition nobody
+had costed is the channel, not the shape:** the second model emitted no tool
+call in twenty native-protocol replies, so it never reached a shape at all, and
+the configuration in force was pointed at it. Whether this design works is a
+per-model question with a real answer, and the answer differs.
+
+**A wrong number reached a person, and the shape mechanism is not where it came
+from.** Four faults compounded — a rate renderer wrong by a factor of a hundred
+([#3](https://github.com/vishnuyar/orionviva/issues/3)), the card-direction
+defect ([#1](https://github.com/vishnuyar/orionviva/issues/1)) feeding the
+numerator, a model reaching for a read that answered a different question, and
+the quantity check ([#4](https://github.com/vishnuyar/orionviva/issues/4)).
+**That last one falsifies a property stated three paragraphs up.** "Code
+compares the two declarations" is true and is not sufficient: a division
+compares only the *result's* declaration against the hole's, so two operands of
+the wrong kind divide into a result of the right kind and the check passes. The
+same check refused a bad binding correctly one turn earlier in the same session.
+It sees a figure; it does not see through an operator.
+
+`{document}` is still unobserved rather than disproved — three runs and no model
+has ever authored one — and no turn has ever dropped a clause, so the clause-
+level degradation this design traded a clean refusal for has not been read by a
+person yet. Both are recorded as open coverage, not as passes.
