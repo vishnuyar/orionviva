@@ -154,8 +154,6 @@ def skeletons(descriptors) -> dict:
     return groups
 
 
-_HOLES = re.compile(r"\{[a-z_]+(?::[a-z]+)?\}")
-
 
 def narrow_templates(profile: Profile, descriptors) -> dict:
     """`{template: distinct lines it matches}`, for templates matching 0 or 1.
@@ -174,28 +172,6 @@ def narrow_templates(profile: Profile, descriptors) -> dict:
         hits = sum(1 for d in lines if rx.match(d))
         if hits <= 1:
             out[t.pattern] = hits
-    return out
-
-
-def _legacy_suspect_literals(profile: Profile, descriptors) -> dict:
-    """Literal words in a grammar that occur in only one line of the corpus.
-
-    Superseded by `narrow_templates`, which measures the same worry by counting
-    what a template matches. Kept for comparison; nothing calls it.
-
-    Returns ``{template: [suspect words]}``, alphabetic words only."""
-    df: dict[str, int] = {}
-    for d in {x for x in descriptors if x}:
-        for tok in {t.lower().strip(".,:;#*/-") for t in d.split()}:
-            if tok:
-                df[tok] = df.get(tok, 0) + 1
-    out: dict[str, list[str]] = {}
-    for t in profile.templates:
-        words = [w.lower().strip(".,:;#*/-")
-                 for w in _HOLES.sub(" ", t.pattern).split()]
-        bad = [w for w in words if w and w.isalpha() and df.get(w, 0) <= 1]
-        if bad:
-            out[t.pattern] = bad
     return out
 
 

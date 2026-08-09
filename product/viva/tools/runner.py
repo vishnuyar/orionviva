@@ -678,10 +678,6 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                 continue
             seen.add(fid)
             cited.append(ground.book[fid])
-        elif "caveat" in reference:
-            named = reference["caveat"]
-            placed |= {str(c) for c in
-                       (named if isinstance(named, list) else [named])}
 
     for fig in cited:
         # A money figure with no record behind it is refused. The other kinds

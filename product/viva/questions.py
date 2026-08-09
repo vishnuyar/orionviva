@@ -231,9 +231,8 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
             totals[key] = totals.get(key, Decimal("0")) + abs(m.amount)
             currency.setdefault(key, m.currency)
             movements.setdefault(key, []).append(m.key)
-    # The picker's options, read from the one definition of the vocabulary
-    # and held to what may be named to a model (T9).
-    categories = shareable_categories(category_vocabulary(proj))
+    # The picker's options, read from the one definition of the vocabulary.
+    categories = category_vocabulary(proj)
     for key, row in proj.uncategorized_merchants(expenses_only=True).items():
         amount = totals.get(key, Decimal("0"))
         cur = currency.get(key, "")
@@ -254,7 +253,11 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
             # it is asked again with the alternatives named, rather than minting
             # a new category out of a typo.
             slots=(Slot(name="category", type=ANSWER_CHOICE,
-                        choices=tuple(categories), required=True),),
+                        choices=tuple(categories),
+                        # A person answers with any category they hold; only
+                        # the shareable part of it is named to a model (T9).
+                        offered=shareable_categories(categories),
+                        required=True),),
             refs={"merchant": key, "example": row["example"],
                   "categories": categories,
                   # A peer is answered per transaction, so the surface needs the
@@ -278,9 +281,9 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     singles: list = []
     groups: dict[str, dict] = {}
     # A ruling can name a category, so it is offered from the same vocabulary
-    # a merchant question offers, held to what may be named to a model. What an
-    # answer lands on is `settled_category`, which reads the whole vocabulary.
-    categories = shareable_categories(category_vocabulary(proj))
+    # a merchant question offers; `ruling_slots` holds what reaches a model to
+    # what may cross (T9).
+    categories = category_vocabulary(proj)
 
     for m in proj.movements():
         if not proj._is_expense(m):

@@ -2863,6 +2863,47 @@ def test_two_accounts_a_person_named_the_same_are_told_apart(registry):
     assert alone.text.startswith("Everyday Checking holds")
 
 
+def test_a_total_is_dated_by_its_stalest_input_and_never_by_today(registry):
+    """A total is exactly as current as the oldest thing inside it.
+
+    The point's own `as_of` is when the sum was computed, which with no window
+    asked for is today — so dating the total that way states a currency the
+    balances do not have. It is one number over several measurements, and the
+    oldest one governs."""
+    result = registry.call("query_ledger",
+                           {"entity": "aggregate", "metric": "net_worth"})
+    assert result.ok, result.text
+    point = result.data["point"]
+    assert result.dated == point["oldest_input"], (
+        "the total is dated by something other than its stalest input")
+    assert result.dated != point["as_of"] or point["as_of"] == point["oldest_input"]
+    for fig in result.figures:
+        if fig["what"].endswith(" in USD"):
+            assert fig["dated"] == point["oldest_input"], fig["what"]
+
+
+def test_a_caveat_travels_to_the_model_as_a_sentence_and_not_as_a_handle():
+    """An answer cannot refer to a caveat, so the model is given no way to try.
+
+    The run still identifies caveats internally — that is how it knows which a
+    stated figure owes — but an id in the payload is a handle, and a handle a
+    released prompt once taught the model to bind costs a whole turn when it
+    binds one now."""
+    from viva.tools.envelope import ENTITY_ACCOUNT, ToolResult, entity
+    from viva.tools.runner import _Ground
+
+    result = ToolResult(tool="query_ledger", ok=True,
+                        caveats=["This does not cover everything."],
+                        identifiers=[entity(ENTITY_ACCOUNT, account="acct:x")])
+    ground = _Ground(question="?")
+    ground.stamp(result)
+
+    assert list(ground.caveats) == ["c1"], "the run still identifies it"
+    shown = result.to_dict()["caveats"]
+    assert shown == [{"text": "This does not cover everything."}]
+    assert "id" not in shown[0], "a caveat id is not a handle a model may bind"
+
+
 def test_an_account_two_reads_spoke_about_is_not_its_own_twin(registry):
     """One account named by two reads is one account.
 

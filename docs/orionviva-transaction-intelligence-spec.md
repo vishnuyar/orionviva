@@ -156,12 +156,16 @@ Consequences, all mandatory:
    moving. The registry format can be defined now; population waits for stability.
 3. A grammar is **not automatically safe to publish.** Holes are bounded by the
    vocabulary, but the literal text between them comes from the model and could
-   carry a name baked in. `suspect_literals()` flags any literal word occurring in
-   only one line of the corpus, deterministically, before a human reads it. Both
-   checks — the automated one and the human read — gate a contribution.
+   carry a name baked in. `narrow_templates()` flags any template matching zero
+   or one distinct line of the corpus, deterministically, before a human reads
+   it — a name baked into literal text can only ever match its own line, so it
+   lands there. Both checks — the automated one and the human read — gate a
+   contribution. *(Amended 2026-08-09: this named `suspect_literals()`, which
+   measured the same worry by inspecting words rather than by counting matches.
+   It was superseded, went uncalled, and was deleted.)*
 4. Contribution path for now = pull request to the git repo. Each grammar carries
    provenance (which OrionViva version induced it, on how many lines, with what
-   residue rate) and its `suspect_literals` result.
+   residue rate) and its `narrow_templates` result.
 
 ---
 
@@ -373,7 +377,7 @@ exactly the moment the temptation to appear clever is strongest.
    `cadence_class` or `amount_stability`** (§2).
 4. Search-enabled model calls: query = candidate brand string only (asserted);
    results quarantined from the commons until corroborated (§2.6).
-5. A grammar contribution passes `suspect_literals()` and a human read (§3.3).
+5. A grammar contribution passes `narrow_templates()` and a human read (§3.3).
 6. Every derived claim (category, billing model, stream kind) carries grade +
    provenance + the pointer to its evidence.
 

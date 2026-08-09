@@ -367,6 +367,61 @@ def test_a_word_outside_the_declared_vocabulary_is_refused_with_it_named(
     assert not vault.ledger.projection().linked_keys()
 
 
+def test_a_category_the_model_may_not_be_told_is_still_one_you_can_answer_with(
+        tmp_path, monkeypatch):
+    """What crosses to a model and what a person may say are two lists.
+
+    A category the person coined can carry another person's name, so it is held
+    back from the prompt (T9). It is still theirs: the slot validates against
+    the whole vocabulary, so answering with it settles the question rather than
+    being read back a list of alternatives that omits their own word."""
+    from viva.listen import shareable_categories
+    from viva.reply import _render_slots
+
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    _up(raw, ledger, b"chk", _facts(
+        "5000.00", [("2026-01-10", "SOMEWHERE LTD", "-40.00")], "4960.00",
+        ref="Everyday Checking 1111", doc_type="checking_statement",
+        number="10001111"))
+    vault = _Vault(ledger)
+    q = next(x for x in open_questions(ledger, as_of="2026-02-01")["questions"]
+             if x["kind"] == MERCHANT)
+
+    coined = "Money to family"
+    assert coined not in shareable_categories([coined]), (
+        "this test needs a category the gate actually withholds")
+
+    # Through the real question builder, with the vault's vocabulary holding a
+    # name the gate refuses — this is the wiring, not a hand-built slot.
+    import viva.listen as listen_module
+    import viva.questions as questions_module
+    whole = tuple(q["slots"][0]["choices"]) + (coined,)
+    monkeypatch.setattr(questions_module, "category_vocabulary",
+                        lambda _proj: whole)
+    monkeypatch.setattr(listen_module, "category_vocabulary",
+                        lambda _proj: whole)
+
+    built = questions_module._merchant_questions(ledger.projection())
+    assert built, "no merchant question to check the wiring on"
+    slot = built[0].slots[0]
+    assert coined in slot.choices, (
+        "the fence dropped the person's own word — they cannot answer with it")
+    assert coined not in (slot.offered or ()), "the gate let the name cross"
+    assert coined not in _render_slots((slot,)), "the model was told it anyway"
+
+    # And a reply naming it settles rather than being read back a list.
+    from viva.reply import answer as read_answer
+    read = read_answer(coined, (slot,))
+    assert read.ok, f"{read.why}: {read.message}"
+    assert read.values["category"] == coined
+
+    # The same holds for the ruling path's category slot.
+    ruling = next(s for s in listen_module.ruling_slots(whole)
+                  if s.name == "category")
+    assert coined in ruling.choices and coined not in (ruling.offered or ())
+
+
 def test_a_category_the_vault_does_not_know_is_refused_rather_than_minted(
         tmp_path, monkeypatch):
     """A merchant question's categories are a closed vocabulary — validation,

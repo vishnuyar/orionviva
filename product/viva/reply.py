@@ -117,8 +117,14 @@ class Slot:
 
     ``choices`` is the closed vocabulary a reply must land in — the categories a
     merchant question knows, the alternatives a schema question enumerates. It
-    is validation, not a set of buttons: the model is told what the vocabulary
-    is and returns a member of it, and anything outside is refused.
+    is validation, not a set of buttons: anything outside it is refused.
+
+    ``offered`` is the part of that vocabulary a model may be told, which is
+    not always all of it: a category a person coined can name another person,
+    and what crosses to a model is held to T9. ``None`` means unset and the
+    whole of ``choices`` is told; an empty tuple means nothing may be, and
+    nothing is. Narrowing it costs the model a prior — never the person an
+    answer, because what is allowed is still ``choices``.
 
     ``meanings`` gives a plain-language gloss for an alternative whose bare
     token would not say what it means. ``parts`` makes the slot hold SEVERAL of
@@ -129,6 +135,7 @@ class Slot:
     name: str
     type: str = ""                  # "" only for a slot that holds parts
     choices: tuple = ()
+    offered: tuple | None = None    # what a model is told; None = all of them
     meanings: tuple = ()            # (alternative, what it means) pairs
     parts: tuple = ()               # sub-slots; this slot holds several of them
     required: bool = False
@@ -149,6 +156,11 @@ class Slot:
             raise ValueError(
                 f"slot {self.name!r} asks for one of nothing — an enumerated "
                 "slot with no alternatives can only ever be refused")
+        if self.offered is not None and not set(self.offered) <= set(self.choices):
+            raise ValueError(
+                f"slot {self.name!r} offers {sorted(set(self.offered) - set(self.choices))}, "
+                "which it would then refuse; what a model is told is part of "
+                "what the slot allows")
 
     def to_dict(self) -> dict:
         """The declaration, as data. No action and no arguments: a surface reads
@@ -308,10 +320,11 @@ def _render_slots(slots, indent: str = "") -> str:
             out.append(_render_slots(s.parts, indent + "    "))
             continue
         line = f"{indent}- {s.name}: {s.type}"
-        if s.choices:
+        told = s.choices if s.offered is None else s.offered
+        if told:
             gloss = dict(s.meanings)
             line += " — one of: " + ", ".join(
-                f"{c} ({gloss[c]})" if c in gloss else c for c in s.choices)
+                f"{c} ({gloss[c]})" if c in gloss else c for c in told)
         if s.required:
             line += " (required)"
         if s.asks:

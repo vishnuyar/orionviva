@@ -474,10 +474,7 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
     the components, in this order of certainty, proportions unknown. The
     projection records the accounts and holds the decomposition provisional.
 
-    A ``share`` is a fraction of one: half is ``"0.5"``. Events recorded before
-    2026-08-08 carry the same field meaning percent — half is ``"50"`` — and
-    are not migrated, because no product path reads a leg share. A reader that
-    starts consuming it must decide what to do with the older events first.
+    A ``share`` is a fraction of one: half is ``"0.5"``.
 
     ``said`` keeps the person's own sentence verbatim and ``prompt_version``
     records the instructions that read it, so a later reading can be re-derived

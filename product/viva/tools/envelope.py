@@ -268,10 +268,11 @@ class ToolResult:
                 "records": len(self.record_ids),
                 "provenance": list(self.provenance),
                 "coverage": self.coverage,
-                # A caveat is a thing an answer refers to, so it travels with
-                # the identity the run gave it. A tool writes the sentence; the
-                # run decides what it is called.
-                "caveats": [c if isinstance(c, dict) else {"text": str(c)}
+                # The sentence only. An answer cannot refer to a caveat — the
+                # run places what a stated figure owes — so the identity it
+                # carries internally is not a handle anything may bind.
+                "caveats": [{"text": (c.get("text", "") if isinstance(c, dict)
+                                      else str(c))}
                             for c in self.caveats],
                 "refusal": self.refusal, "text": self.text}
 

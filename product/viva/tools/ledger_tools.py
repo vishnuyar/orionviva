@@ -794,10 +794,11 @@ def _aggregate_net_worth(proj, as_of: str | None) -> ToolResult:
     record_ids = sorted({line.get("account", "") for line in
                          (data.get("lines") or []) if line.get("account")})
     lines = [line for line in (data.get("lines") or []) if line.get("account")]
-    # A total is dated by the oldest thing inside it. The point's own `as_of`
+    # A total is dated by the stalest thing inside it, which the point already
+    # computes: `oldest_input` is empty when any line carries no date at all,
+    # and an empty date is the honest answer there — the point's own `as_of`
     # is when it was computed, which with no window asked for is today.
-    as_of = min((line["as_of"] for line in lines if line.get("as_of")),
-                default=data.get("as_of", ""))
+    as_of = data.get("oldest_input", "")
     figures = []
     for currency, row in sorted(data.get("by_currency", {}).items()):
         for part in ("net", "assets", "liabilities"):

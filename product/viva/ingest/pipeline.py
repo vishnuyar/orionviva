@@ -43,7 +43,7 @@ from ..ledger.postings import (brokerage_activity_transaction,
                                simple_transaction)
 from .brokerage import BrokerageFacts
 from .diagnose import FORCED, SUGGESTED, UNLOCALIZED, ReconciliationFinding, diagnose
-from .identity import account_key
+from ..ledger.identity import account_key
 from .paystub import PayStubFacts
 from .raw_store import RawStore
 from .registry import (BALANCE_IDENTITY, BROKERAGE_IDENTITY, INVESTMENT,

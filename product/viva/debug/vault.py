@@ -47,7 +47,7 @@ def main() -> None:
         print(f"    {etype}: {n}")
     print(f"raw blobs (captured files): {len(vault.raw.doc_ids())}")
 
-    from ..ingest.identity import masked
+    from ..ledger.identity import masked
     proj = vault.ledger.projection()
     infos = proj.account_infos()
     print(f"accounts posted: {len(infos)}")

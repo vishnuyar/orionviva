@@ -602,3 +602,35 @@ payment phrasing and misses one named after a person outright. It fails closed,
 and what it costs is a prior rather than a match — `settled_category` still
 reads the whole vocabulary locally, so an answer still lands on the person's
 own spelling.
+
+**What a model is told and what a person may say are two lists (2026-08-09,
+after review).** The T9 gate above was applied to a slot's `choices`, which
+carries two jobs at once: the vocabulary a reply is validated against, and the
+vocabulary the interpreter prompt is given. Narrowing it narrowed both, so a
+category the person had coined and already used became unanswerable on a
+merchant question — refused as outside the vocabulary, with the alternatives
+read back to them omitting their own word. The gate had been described as
+costing a prior and never an answer; on that path it cost the answer.
+
+A slot now declares `offered` beside `choices`: what a model may be told,
+`None` meaning all of it and an empty tuple meaning none of it. The fence stays
+the whole vocabulary. The gate moved into the two places a category slot is
+built, so no call site decides it, and a slot whose `offered` is not part of
+its `choices` fails at construction rather than telling a model about an option
+it would then refuse.
+
+**An aggregate with an undated line now carries no date at all.** The stalest-
+input rule reused an inline `min` rather than `NetWorthPoint.oldest_input`,
+which was already computed and already in the payload. The property returns
+empty when any line carries no date; the inline version skipped that line and
+dated the total by the oldest *known* one, which understates staleness exactly
+where it matters. The property is now what the tool reads. The consequence is
+that a point holding one undated asserted asset dates nothing — honest, and it
+means the run supplies no bindable date for that read. What the answer then
+does is not settled by any test and is named as a Witness case.
+
+**A caveat's identity stopped travelling.** The run still gives one an id —
+that is how it knows which caveats a stated figure owes — but the id no longer
+reaches the model, because no binding can name a caveat any more. Two released
+prompts had taught that exact shape, and a model still emitting one would have
+cost a whole turn rather than a clause.

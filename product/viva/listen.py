@@ -131,13 +131,14 @@ def category_vocabulary(proj) -> tuple:
 def shareable_categories(names) -> tuple:
     """The categories from a vault's vocabulary that may be named to a model.
 
-    A category is a name the person coined, so it can carry another person —
-    "Loan to Raj". The vocabulary is offered to the model as a prior, and the
-    model may be a third party, so what crosses that boundary is held to the
-    same test a merchant descriptor is before it reaches a shared catalog (T9).
-    Fails closed: a category withheld here costs the model a prior, never a
-    name, because `settled_category` still matches an answer against the whole
-    vocabulary locally."""
+    A category is a name the person coined, so it can carry another person's
+    name in it. The model may be a third party, so what crosses that boundary
+    is held to the same test a merchant descriptor is before it reaches a
+    shared catalog (T9).
+
+    Fails closed, and what it costs is a prior rather than an answer: this
+    narrows a slot's ``offered`` only, so the whole vocabulary remains what the
+    reply is validated against and what `settled_category` matches on."""
     return tuple(name for name in names if is_shareable(name))
 
 
@@ -160,12 +161,15 @@ def settled_category(proj, named: str) -> str:
 def ruling_slots(categories=()) -> tuple:
     """`RULING_SLOTS` with the category slot this vault's vocabulary makes.
 
-    ``categories`` is what `category_vocabulary` returns for the same vault. It
-    rides in the slot's ``choices``, where it is a prior and not a fence: a
-    label the vocabulary does not hold is still read, and `settled_category`
-    decides what it lands on."""
+    ``categories`` is what `category_vocabulary` returns for the same vault. The
+    whole of it rides in the slot's ``choices``, where it is a prior and not a
+    fence: a label the vocabulary does not hold is still read, and
+    `settled_category` decides what it lands on. Only the shareable part is
+    ``offered``, so what crosses to a model is held to T9
+    (local-categorization-and-custom-categories.md, D2)."""
     return RULING_SLOTS + (Slot(name="category", type=ANSWER_LABEL,
-                                choices=tuple(categories)),)
+                                choices=tuple(categories),
+                                offered=shareable_categories(categories)),)
 
 
 # --------------------------------------------------------------------- step 3
@@ -722,9 +726,7 @@ def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "
            locale: str = "") -> Proposal | None:
     """Steps 3–5 in one call: sentence in, reviewable Proposal out. Nothing is
     written — applying is a separate, explicit act."""
-    read = read_answer(said,
-                       ruling_slots(shareable_categories(
-                           category_vocabulary(proj))),
+    read = read_answer(said, ruling_slots(category_vocabulary(proj)),
                        asked=asked,
                        context=ruling_context(descriptor, category,
                                               subcategory, source),
