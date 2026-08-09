@@ -1,6 +1,6 @@
 # Honest Aggregates & the Learning Loop
 
-**Status:** ✅ **BUILT** — derived nature + honest aggregates, the reset guard, and the question queue (see [the-question-queue.md](the-question-queue.md)) · **Last updated:** 2026-07-25 · **Origin:** the first full real-vault run after positions and investments. The reported "spending" figure was materially inflated by internal money movement, and the largest category decomposed into two *opposite* natures under one label. **Blocks seeded:** movement **nature** (derived) · the **question queue** (the learning loop's front door).
+**Status:** ✅ **BUILT** — derived nature + honest aggregates, the reset guard, and the question queue (see [the-question-queue.md](the-question-queue.md)) · **Last updated:** 2026-08-08 (direction joins nature as a derived property, after a later reader got it wrong) · **Origin:** the first full real-vault run after positions and investments. The reported "spending" figure was materially inflated by internal money movement, and the largest category decomposed into two *opposite* natures under one label. **Blocks seeded:** movement **nature** (derived) · the **question queue** (the learning loop's front door).
 
 **Invariants touched:** T1 (a nature carries why it was decided) · T2 (nature is derived deterministically; a model may *suggest* a category, never certify a nature) · **T4 (a ruling is an append-only event; nature is a projection over events we already write)** · **M1 (cash-flow over accrual — "spending" must mean money that left your life, not money that left an account)** · X2 (an undecided nature is visible, never silently assumed) · principle 5 (serve, don't overwhelm — ask only where it pays) · principle 6 (you direct the pace — an unanswered question leaves the number *incomplete*, never wrong).
 
@@ -44,6 +44,8 @@ Read-side only. No new event type, no change to the ingest path, nothing re-read
 - The own-account rung reuses `account_tokens_from` / `_names_account` from `transfers.py` — no new matching logic, and deliberately **no loosening of the auto-link bar**: we get the honest number from nature, without gambling on speculative links (a wrong link is a wrong number; an unlinked-but-transfer-natured movement is merely a weaker explanation).
 
 This is retroactive for free: aggregates re-derive from movements at query time, so an existing vault becomes honest on the next read, with no re-ingest and no model cost.
+
+**A second derived property joined it, 2026-08-08: direction.** `nature` says whether money left your *life*; it does not say which *way* the money went, and a posting's sign does not either — a charge on a liability is recorded positive and the money is gone. Two later readers derived direction inline and one of them derived it wrong ([issue #1](https://github.com/vishnuyar/orionviva/issues/1)), which is the same shape as the failure this document was written about: one fact, two places deciding it, and the aggregate listening to the weaker one. It is now `money_effect(m)` in the same module as `is_expense` and `counts_as_spending` — positive in, negative out, the account's kind deciding. The split between what a merchant-scoped ruling *paid* and what *came back* reads it too, so a payment out of an investment account is a payment rather than money returning.
 
 ## The question queue (next, its own build)
 

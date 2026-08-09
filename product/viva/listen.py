@@ -43,6 +43,7 @@ from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 from .ledger.projection import BY_CATEGORY, BY_DEFAULT, BY_RULING
+from .ledger.projection.movements import money_effect
 from .render import (accounts as render_accounts,
                      money as render_money)
 from .reply import TRUNCATED_MARK, Slot, answer as read_answer
@@ -71,11 +72,14 @@ IN_A_SENTENCE = {
 
 # What a ruling reaches beyond the payments its question asked about. The
 # question is raised only where the counterparty cannot say what the money was,
-# and a ruling applies to every payment to that counterparty — so the two sets
-# differ, and both are named with their own count and total rather than
-# summed together or one of them left out.
+# and a ruling applies to every movement filed under that counterparty — so the
+# sets differ, and each is named with its own count and total. Money that came
+# back from them gets its own sentence: the same ruling reaches it, and it is
+# not a payment.
 ALSO_SETTLES = ("It also settles {count} other payment(s) to them, worth "
                 "{money} in total, that nothing needed to ask about.")
+ALSO_CAME_BACK = ("It also covers {count} movement(s) of money back from them, "
+                  "worth {money} in total.")
 
 # The account group used when the counterparty implies nothing: one level under
 # the major's root. Otherwise the group, the corroborating document and the
@@ -100,8 +104,55 @@ RULING_SLOTS = (
         Slot(name="account_hint", type=ANSWER_LABEL),
         Slot(name="share", type=ANSWER_RATE))),
     Slot(name="kind", type=ANSWER_LABEL),
-    Slot(name="category", type=ANSWER_LABEL),
 )
+
+
+def category_vocabulary(proj) -> tuple:
+    """Every category this vault knows: the seeds, then every one already in
+    use, in that order, with no two spellings of one name.
+
+    The one definition of the vocabulary: every path that offers a category and
+    every path that settles an answer against one reads it from here. A category
+    exists by being used, so the list grows with no event and no migration.
+    Names are compared under `_norm` and the first spelling wins, which puts a
+    seed ahead of any later variant of itself."""
+    from .ingest.categorize import SEED_CATEGORIES
+
+    used = sorted({(row.get("category") or "").strip()
+                   for row in proj.merchant_categories().values()} - {""})
+    known, out = set(), []
+    for name in tuple(SEED_CATEGORIES) + tuple(used):
+        if _norm(name) and _norm(name) not in known:
+            known.add(_norm(name))
+            out.append(name)
+    return tuple(out)
+
+
+def settled_category(proj, named: str) -> str:
+    """The vocabulary's own name for what an answer called something.
+
+    A name matching one in `category_vocabulary` under `_norm` returns as the
+    vocabulary spells it, so two spellings of one category never split a total.
+    A name nothing matches returns stripped, as the person wrote it: a category
+    they coin is theirs to add. An empty name returns empty."""
+    want = _norm(named)
+    if not want:
+        return ""
+    for known in category_vocabulary(proj):
+        if _norm(known) == want:
+            return known
+    return named.strip()
+
+
+def ruling_slots(categories=()) -> tuple:
+    """`RULING_SLOTS` with the category slot this vault's vocabulary makes.
+
+    ``categories`` is what `category_vocabulary` returns for the same vault. It
+    rides in the slot's ``choices``, where it is a prior and not a fence: a
+    label the vocabulary does not hold is still read, and `settled_category`
+    decides what it lands on."""
+    return RULING_SLOTS + (Slot(name="category", type=ANSWER_LABEL,
+                                choices=tuple(categories)),)
 
 
 # --------------------------------------------------------------------- step 3
@@ -178,15 +229,20 @@ class AccountMatch:
     verdict: str               # "same" | "existing" | "ambiguous" | "new"
     candidate: str = ""
     reason: str = ""
+    # What the person calls this account, carried rather than read back off the
+    # path: an account a document opened is keyed by an identity whose last
+    # segment is part of its number.
+    name: str = ""
 
 
 def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatch:
     """Which account a leg belongs to.
 
-    Names are normalized before comparison. An exact match on the last segment
-    returns `same`; a substring match either way returns `ambiguous` with the
-    candidate; nothing matching returns `new` with a proposed path, and that is
-    the one verdict this path always confirms."""
+    Names are normalized before comparison, and what each candidate answers to
+    comes from `_candidates`. One exact match returns `same`; more than one, or
+    a substring match either way, returns `ambiguous` with the candidate and its
+    name; nothing matching returns `new` with a proposed path, and that is the
+    one verdict this path always confirms."""
     # An expense or income leg with no named thing goes to the Uncategorized
     # bucket the ledger already has, where the category does the descriptive
     # work. Only a major that means "you now own or owe something" brings an
@@ -201,23 +257,60 @@ def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatc
         return AccountMatch("", "unnamed",
                             reason="you now own or owe something, and it has no name yet")
     want = _norm(hint)
-    known = set(proj.ruled_accounts()) | {
-        a for a in proj.accounts() if a.split(":")[0] == MAJOR_ROOTS.get(major)}
-    for account in sorted(known):
-        tail = _norm(account.split(":")[-1])
-        if want and tail == want:
-            return AccountMatch(account, "same", reason="an account you already have")
-    for account in sorted(known):
-        tail = _norm(account.split(":")[-1])
-        if want and tail and (want in tail or tail in want):
+    candidates = _candidates(proj, major)
+    # A name more than one account answers to is `ambiguous`, not `same`.
+    # Accounts a document opened are named by their statements, so one name
+    # across two institutions is ordinary.
+    exact = [(name, account) for name, account in candidates
+             if want and _norm(name) == want]
+    if len(exact) == 1:
+        return AccountMatch(exact[0][1], "same",
+                            reason="an account you already have")
+    if exact:
+        name, account = exact[0]
+        return AccountMatch(account, "ambiguous", candidate=account, name=name,
+                            reason=f"more than one of your accounts is called "
+                                   f"{name}")
+    for name, account in candidates:
+        known = _norm(name)
+        if want and known and (want in known or known in want):
             return AccountMatch(account, "ambiguous", candidate=account,
-                                reason=f"looks like your existing {account}")
+                                reason=f"looks like your existing {name}",
+                                name=name)
     proposed = account_path(major, group or _FALLBACK_GROUP, hint.strip())
     return AccountMatch(proposed, "new", reason="nothing like this exists yet")
 
 
 def _norm(text: str) -> str:
     return " ".join((text or "").lower().replace("-", " ").split())
+
+
+# Which kinds of issued account an answer under each major could be naming. An
+# account a document opened is something the person holds or owes, and its kind
+# is what says which. The majors absent here name no instrument: ordinary
+# spending and ordinary income go to their own buckets.
+_ISSUED_KINDS = {
+    MAJOR_ASSET: ("depository", "investment"),
+    MAJOR_LIABILITY: ("liability",),
+}
+
+
+def _candidates(proj, major: str) -> list:
+    """Every account an answer under this major could be naming, as
+    ``(the name it answers to, the account)`` pairs, sorted.
+
+    A ruled account's path ends in the name somebody gave it, so its tail is
+    what it answers to. An account a document opened is keyed by an identity
+    rather than by a name, so what it answers to is `info.name` — what its
+    statements call it — and it is a candidate only where its kind is one
+    `_ISSUED_KINDS` lists under this major."""
+    pairs = {(account.split(":")[-1], account)
+             for account in set(proj.ruled_accounts())
+             | {a for a in proj.accounts()
+                if a.split(":")[0] == MAJOR_ROOTS.get(major)}}
+    pairs |= {(info.name, info.account) for info in proj.account_infos()
+              if info.name and info.kind in _ISSUED_KINDS.get(major, ())}
+    return sorted(pairs)
 
 
 # --------------------------------------------------------------------- step 5
@@ -235,6 +328,11 @@ class Proposal:
     legs: list[dict] = field(default_factory=list)
     new_accounts: list[str] = field(default_factory=list)
     confirm_accounts: list[str] = field(default_factory=list)
+    # What the person calls each of those, where it is not the last segment of
+    # the path — an account a document opened is filed under an identity ending
+    # in part of its number. Positional with `confirm_accounts`; empty where the
+    # path's own tail is the name.
+    confirm_names: list[str] = field(default_factory=list)
     # Legs whose thing has no name yet. A proposal carrying one cannot be
     # applied: there is a question to ask first.
     needs_name: list[str] = field(default_factory=list)
@@ -248,12 +346,14 @@ class Proposal:
     said: str = ""
     unknown_split: bool = False
     # The payments the question asked about, and what the same ruling reaches
-    # beyond them: two sets, each with its own count and total, because a
-    # counterparty's other movements are settled by this answer without having
-    # been asked about.
+    # beyond them: separate sets, each with its own count and its own total.
+    # Money paid to them and money that came back from them are counted apart,
+    # and every total is per currency — nothing here converts between them.
     settles: int = 1
     also_settles: int = 0
-    also_amount: str = ""
+    also_totals: tuple = ()        # ((currency, total), ...) paid to them
+    also_back: int = 0
+    also_back_totals: tuple = ()   # ((currency, total), ...) come back
     amount: str = ""
     currency: str = ""
     prompt_version: str = ""       # which instructions read the sentence
@@ -267,6 +367,29 @@ class Proposal:
         """False while something in it has no name. Applying then would open an
         account nobody named."""
         return not self.needs_name
+
+    def _totals(self, totals) -> str:
+        """Every currency's own subtotal, written and joined into one phrase.
+
+        `totals` is `((currency, amount), ...)`. Nothing converts between
+        currencies, so two of them come out as two figures and no third that
+        would add them. Empty totals write zero in the proposal's own
+        currency."""
+        written = [str(render_money(amount, currency, locale=self.locale))
+                   for currency, amount in totals]
+        if len(written) < 2:
+            return written[0] if written else str(
+                render_money("0", self.currency, locale=self.locale))
+        return ", ".join(written[:-1]) + " and " + written[-1]
+
+    def _reads_as(self) -> str:
+        """The accounts awaiting confirmation, as the person reads them: the
+        name carried with each where there is one, and the path's own last
+        segment otherwise."""
+        names = list(self.confirm_names) + [""] * len(self.confirm_accounts)
+        return str(render_accounts(
+            {"name": name} if name else {"path": path}
+            for path, name in zip(self.confirm_accounts, names)))
 
     @staticmethod
     def _named(paths) -> str:
@@ -304,9 +427,10 @@ class Proposal:
         parts = [f"I'd record {head} as: {what}."]
         if self.also_settles:
             parts.append(ALSO_SETTLES.format(
-                count=self.also_settles,
-                money=render_money(self.also_amount or "0", self.currency,
-                                   locale=self.locale)))
+                count=self.also_settles, money=self._totals(self.also_totals)))
+        if self.also_back:
+            parts.append(ALSO_CAME_BACK.format(
+                count=self.also_back, money=self._totals(self.also_back_totals)))
         if self.new_accounts:
             parts.append("This creates " + self._named(self.new_accounts)
                          + " — new, and only you say it exists.")
@@ -315,7 +439,7 @@ class Proposal:
         # did not make.
         if self.confirm_accounts:
             parts.append("I've taken this to be your existing "
-                         + self._named(self.confirm_accounts)
+                         + self._reads_as()
                          + " — say so if it is something else.")
         if self.unknown_split:
             parts.append("I can't tell how it splits between those, so I won't "
@@ -331,13 +455,17 @@ class Proposal:
         return {"scope": self.scope, "subject": self.subject, "legs": self.legs,
                 "new_accounts": self.new_accounts,
                 "confirm_accounts": self.confirm_accounts,
+                "confirm_names": self.confirm_names,
                 "needs_name": self.needs_name, "value": self.value,
                 "attributes": self.attributes,
                 "corroborates": self.corroborates, "category": self.category,
                 "said": self.said,
                 "unknown_split": self.unknown_split, "settles": self.settles,
                 "also_settles": self.also_settles,
-                "also_amount": self.also_amount,
+                "also_totals": [list(pair) for pair in self.also_totals],
+                "also_back": self.also_back,
+                "also_back_totals": [list(pair)
+                                     for pair in self.also_back_totals],
                 "amount": self.amount, "currency": self.currency,
                 "prompt_version": self.prompt_version, "locale": self.locale,
                 "summary": self.summary()}
@@ -358,6 +486,18 @@ def movements_answered_about(proj, merchant: str) -> list:
             if merchant in proj.merchant_keys_of(m)
             and proj._is_expense(m)
             and m.nature_reason in (BY_CATEGORY, BY_DEFAULT)]
+
+
+def _by_currency(movements) -> tuple:
+    """The magnitude of these movements, as ``((currency, total), ...)`` sorted
+    by currency.
+
+    One subtotal per currency: nothing converts here, so a set spanning two of
+    them has no single total any document attests."""
+    totals: dict[str, Decimal] = {}
+    for m in movements:
+        totals[m.currency] = totals.get(m.currency, Decimal("0")) + abs(m.amount)
+    return tuple((currency, str(total)) for currency, total in sorted(totals.items()))
 
 
 def movements_also_settled(proj, merchant: str, asked: set) -> list:
@@ -417,6 +557,7 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         subject = matches[0].key
 
     legs, new_accounts, confirm, unnamed = [], [], [], []
+    confirm_names: list = []
     implied = proj.implication_for(merchant)
     # A counterparty named by a key carried in opens its new accounts in the
     # fallback group. Which group an account belongs in is a thing to know about
@@ -431,26 +572,36 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         if match.verdict == "new":
             new_accounts.append(match.account)
         elif match.verdict == "ambiguous":
+            # The path goes to the write; the name goes to the sentence the
+            # person confirms.
             confirm.append(match.candidate)
+            confirm_names.append(match.name)
         elif match.verdict == "unnamed":
             unnamed.append(leg["major"])
 
-    settles, also, also_amount = 1, 0, Decimal("0")
+    settles, paid, back = 1, [], []
     if scope == SCOPE_MERCHANT:
         asked = ({str(key) for key in movements} if movements
                  else {m.key for m in movements_answered_about(proj, merchant)})
         rest = movements_also_settled(proj, merchant, asked)
-        settles, also = len(asked), len(rest)
-        also_amount = sum((abs(m.amount) for m in rest), Decimal("0"))
+        settles = len(asked)
+        # The ruling reaches both, and only one of them is a payment. Which way
+        # a movement went comes from `money_effect` — the account's kind —
+        # rather than from the shape of spending.
+        paid = [m for m in rest if money_effect(m) < 0]
+        back = [m for m in rest if money_effect(m) > 0]
     return Proposal(
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
-        confirm_accounts=confirm, needs_name=unnamed,
+        confirm_accounts=confirm, confirm_names=confirm_names,
+        needs_name=unnamed,
         # The document comes from the counterparty's implication, learned at
         # enrichment, and never from the interpreter's free text.
         corroborates=(implied or {}).get("documents", ""),
-        category=interp.category, said=interp.said,
+        category=settled_category(proj, interp.category), said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
-        settles=max(settles, 1), also_settles=also, also_amount=str(also_amount),
+        settles=max(settles, 1),
+        also_settles=len(paid), also_totals=_by_currency(paid),
+        also_back=len(back), also_back_totals=_by_currency(back),
         amount=amount, currency=currency,
         prompt_version=interp.version, locale=locale)
 
@@ -555,7 +706,8 @@ def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "
            locale: str = "") -> Proposal | None:
     """Steps 3–5 in one call: sentence in, reviewable Proposal out. Nothing is
     written — applying is a separate, explicit act."""
-    read = read_answer(said, RULING_SLOTS, asked=asked,
+    read = read_answer(said, ruling_slots(category_vocabulary(proj)),
+                       asked=asked,
                        context=ruling_context(descriptor, category,
                                               subcategory, source),
                        extract_fn=extract_fn)

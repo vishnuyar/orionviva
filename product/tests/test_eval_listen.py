@@ -36,6 +36,27 @@ def _perfect(cases):
     return _model(answer)
 
 
+def test_the_instrument_asks_with_the_structure_the_product_sends():
+    """The slots are part of the prompt — rendered into it with their names,
+    their types and their vocabularies — so a harness asking with a slot list
+    the live path does not send measures something nobody is answering and
+    reports it as the product's number.
+
+    The vocabulary is a vault's and grows with use, so what is compared is the
+    structure: which slots are asked for, and of what type."""
+    from viva.eval_listen import EVAL_SLOTS
+    from viva.listen import ruling_slots
+
+    live = ruling_slots(("groceries", "dining", "a category someone added"))
+    def declared(slots):
+        return [(s.name, s.type, s.required,
+                 declared(s.parts) if s.parts else ()) for s in slots]
+
+    assert declared(EVAL_SLOTS) == declared(live)
+    assert EVAL_SLOTS[-1].choices, (
+        "the instrument offers no vocabulary where the product offers one")
+
+
 def test_a_perfect_model_scores_clean():
     cases = load_cases()
     r = run(_perfect(cases), cases)

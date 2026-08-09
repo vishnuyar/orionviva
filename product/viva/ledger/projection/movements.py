@@ -299,6 +299,16 @@ def is_expense(m: MovementInfo) -> bool:
             or (m.kind == "liability" and m.amount > 0))
 
 
+def money_effect(m: MovementInfo) -> Decimal:
+    """The movement's amount as it moved the person's money: positive in,
+    negative out.
+
+    The account's kind decides the sign, not the posting's. A liability
+    records a charge positive — what is owed grew — so its sign is read the
+    other way up; every other kind reads as recorded."""
+    return -m.amount if m.kind == "liability" else m.amount
+
+
 def counts_as_spending(m: MovementInfo) -> bool:
     """True when a movement belongs in a spending figure: it has the shape of
     an expense AND its nature is `spending`. A card payment, a brokerage

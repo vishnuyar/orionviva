@@ -49,6 +49,7 @@ from vivacore import versions
 
 from .ingest.prompt_library import PACKAGE, interpret_prompt
 from .persona import moment
+from .quantity import PER_HUNDRED
 from .schemas import (ANSWER_CHOICE, ANSWER_DATE, ANSWER_INSTITUTION,
                       ANSWER_LABEL, ANSWER_LINK, ANSWER_MONEY, ANSWER_RATE,
                       ANSWER_TYPES, ANSWER_YES_NO, MAX_FREE_FORM)
@@ -514,7 +515,9 @@ def _read_one(slot: Slot, text: str, currency: str, locale: str,
         got = parse_amount(text.replace("%", " ").strip(), locale=locale or None)
         if not got.ok:
             return _refuse(slot, "unreadable_rate", "reply_unreadable_rate")
-        return Reply(True, values={slot.name: str(got.decimal())})
+        # A person writes a proportion per hundred; `quantity.RATIO` is the
+        # quotient. `render.rate` applies the same scale the other way.
+        return Reply(True, values={slot.name: str(got.decimal() / PER_HUNDRED)})
 
     if slot.type in (ANSWER_YES_NO, ANSWER_CHOICE):
         allowed = YES_NO if slot.type == ANSWER_YES_NO else tuple(slot.choices)

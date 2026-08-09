@@ -55,7 +55,7 @@ from .ledger.events import ASSERTED
 from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_SETTLED, TIER_STRUCTURAL,
                                 TIER_UNENRICHED, TIER_UNKNOWN)
-from .listen import RULING_SLOTS
+from .listen import category_vocabulary, ruling_slots
 from .persona import say
 from .render import (account as render_account, category as render_category,
                      count as render_count, date as render_date,
@@ -220,7 +220,6 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
     expense-shaped ones. The wider view — every counterparty, inflows and card
     payments included — is what enrichment works from, not what is asked
     about here."""
-    from .ingest.categorize import SEED_CATEGORIES
     out: list[Question] = []
     totals: dict[str, Decimal] = {}
     currency: dict[str, str] = {}
@@ -231,12 +230,8 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
             totals[key] = totals.get(key, Decimal("0")) + abs(m.amount)
             currency.setdefault(key, m.currency)
             movements.setdefault(key, []).append(m.key)
-    # The picker's options: the seed categories plus every category already used
-    # in this vault. A category exists by being used, so the vocabulary grows
-    # with no event and no migration.
-    used = sorted({(r.get("category") or "").strip()
-                   for r in proj.merchant_categories().values()} - {""})
-    categories = list(SEED_CATEGORIES) + [c for c in used if c not in SEED_CATEGORIES]
+    # The picker's options, read from the one definition of the vocabulary.
+    categories = category_vocabulary(proj)
     for key, row in proj.uncategorized_merchants(expenses_only=True).items():
         amount = totals.get(key, Decimal("0"))
         cur = currency.get(key, "")
@@ -280,6 +275,9 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     out: list[Question] = []
     singles: list = []
     groups: dict[str, dict] = {}
+    # A ruling can name a category, so it is offered and checked against the
+    # same vocabulary a merchant question offers.
+    categories = category_vocabulary(proj)
 
     for m in proj.movements():
         if not proj._is_expense(m):
@@ -321,7 +319,7 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
             # What the money became, in the person's own words. Several slots,
             # because one payment can be several things at once — and that is
             # all "a ruling" ever was.
-            slots=RULING_SLOTS,
+            slots=ruling_slots(categories),
             refs={"movement": m.key, "movements": [m.key],
                   "descriptor": m.description,
                   "category": ruling.get("category", ""),
@@ -356,7 +354,7 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
         out.append(Question(
             id=f"{NATURE}:{key}", kind=NATURE, text=text, why=why,
             amount=g["amount"], currency=g["currency"], count=g["count"],
-            scope="pattern", slots=RULING_SLOTS,
+            scope="pattern", slots=ruling_slots(categories),
             refs={"merchant": key, "movements": g["keys"],
                   "descriptor": g["example"], "category": g["category"],
                   "subcategory": g["subcategory"],

@@ -67,7 +67,8 @@ from dataclasses import dataclass, field, replace
 from decimal import (Decimal, DecimalException, DivisionByZero, Inexact,
                      InvalidOperation)
 
-from ..quantity import FLOWS, RATIO, STOCKS, UNMEASURED
+from ..quantity import (COMPARABLE, FLOWS, RATIO, STOCKS, UNMEASURED,
+                        is_ratio, ratio_of)
 from .envelope import (ACTIVITY, COMPUTED, EXACT, HYPOTHETICAL, ROUNDED,
                        ToolResult, figure, refusal, weakest)
 
@@ -258,7 +259,7 @@ def _product(left: _Q, right: _Q, money: bool) -> str:
     thing."""
     if money:
         return left.quantity if left.money else right.quantity
-    if left.quantity in (UNMEASURED, RATIO) and right.stated:
+    if (left.quantity == UNMEASURED or is_ratio(left.quantity)) and right.stated:
         return right.quantity
     return left.quantity
 
@@ -268,14 +269,17 @@ def _quotient(left: _Q, right: _Q, money: bool) -> str:
 
     Splitting an amount by a plain number leaves it the same kind of amount —
     a year's spending over its months is still spending. Comparing two things
-    that each mean something gives a proportion. Dividing a plain number by
-    something meant measures nothing anybody can name, and refuses."""
+    that each mean something gives a proportion named for what it is a
+    proportion of: two operands of one kind give `ratio_of` that kind, two of
+    different kinds give bare `RATIO`, which fills no hole asking about a
+    particular quantity. Dividing a plain number by something meant measures
+    nothing anybody can name, and refuses."""
     if money:
         return left.quantity
     if left.money and right.money:
-        return RATIO
+        return _compared(left.quantity, right.quantity)
     if left.stated and right.stated:
-        return RATIO
+        return _compared(left.quantity, right.quantity)
     if left.stated:
         return left.quantity
     if right.stated:
@@ -283,6 +287,14 @@ def _quotient(left: _Q, right: _Q, money: bool) -> str:
                       f"Dividing a plain number by {right.quantity} gives a "
                       "quantity nothing measures.")
     return UNMEASURED
+
+
+def _compared(left: str, right: str) -> str:
+    """What a comparison of two quantities is a proportion of: the kind they
+    share, or nothing nameable when they differ or when either is unstated."""
+    if left == right and left in COMPARABLE:
+        return ratio_of(left)
+    return RATIO
 
 
 def _same_currency(left: _Q, right: _Q) -> str:

@@ -22,6 +22,8 @@ word outlives whatever code chose it.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 # Money that left the person's hands to somebody else, counted the way the
 # spending aggregate counts it: own-account transfers and settlements are not
 # in it, and a card purchase is.
@@ -56,7 +58,8 @@ MOVEMENT = "movement"
 # Never an amount of money.
 COUNT = "count"
 
-# One quantity divided by another: a share, a proportion, a multiple.
+# One quantity divided by another: a share, a proportion, a multiple. Carried
+# as the quotient itself, so one half is `0.5`.
 RATIO = "ratio"
 
 # A point in time — a day, a month, a year. Not a magnitude of anything: it
@@ -64,8 +67,36 @@ RATIO = "ratio"
 # never be filled by one.
 TIME = "time"
 
+# The scale between a proportion as it is carried and a proportion as it is
+# written and typed. Not a kind. `render.rate` multiplies by it and the reader
+# of a typed proportion in `reply` divides by it; nothing else applies it.
+PER_HUNDRED = Decimal(100)
+
+
+def ratio_of(kind: str) -> str:
+    """The name for a proportion of one particular kind of thing, as
+    ``ratio_of_<kind>``.
+
+    Bare ``RATIO`` is the name for a comparison of two unlike kinds, where no
+    single kind is true of the result."""
+    return f"{RATIO}_of_{kind}"
+
+
+# What may be compared with something of its own kind. `TIME` is not among
+# them: it measures no magnitude, so nothing is a proportion of it.
+COMPARABLE = (SPENDING, INCOME, BALANCE, NET_WORTH, GROSS_FLOW, NET_MOVEMENT,
+              MOVEMENT, COUNT)
+
+RATIOS = tuple(ratio_of(kind) for kind in COMPARABLE)
+
 KINDS = (SPENDING, INCOME, BALANCE, NET_WORTH, GROSS_FLOW, NET_MOVEMENT,
-         MOVEMENT, COUNT, RATIO, TIME)
+         MOVEMENT, COUNT, RATIO, TIME) + RATIOS
+
+
+def is_ratio(name: str) -> bool:
+    """Whether a name is a proportion, of anything or of nothing named."""
+    return name == RATIO or name in RATIOS
+
 
 # What is held at a moment, and what passed through over a stretch. The
 # distinction decides what putting two quantities together comes to: a flow

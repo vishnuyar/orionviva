@@ -339,6 +339,9 @@ def _movement_row(proj, m, grades: dict) -> dict:
     ruling = proj.derived_category(m) or {}
     return {"record_id": m.key, "account": m.account, "date": m.date,
             "description": m.description, "amount": str(m.amount),
+            # Which way the money went. The posting's own sign does not say
+            # it; the kind of account the posting sits on does.
+            "effect": str(movements_view.money_effect(m)),
             "currency": m.currency, "nature": m.nature,
             "nature_reason": m.nature_reason, "provisional": m.provisional,
             "category": ruling.get("category", ""),
@@ -429,15 +432,15 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     if not rows:
         currency, record_ids = _of_an_empty_read(proj, filters)
     covers, caveats = _attested_coverage(proj, filters)
-    money_in = sum((Decimal(r["amount"]) for r in rows
-                    if Decimal(r["amount"]) > 0), Decimal("0"))
-    money_out = sum((-Decimal(r["amount"]) for r in rows
-                     if Decimal(r["amount"]) < 0), Decimal("0"))
+    money_in = sum((Decimal(r["effect"]) for r in rows
+                    if Decimal(r["effect"]) > 0), Decimal("0"))
+    money_out = sum((-Decimal(r["effect"]) for r in rows
+                     if Decimal(r["effect"]) < 0), Decimal("0"))
     by_account: dict[str, Decimal] = {}
     by_month: dict[str, Decimal] = {}
     month_docs: dict[str, set] = {}
     for r in rows:
-        amount = Decimal(r["amount"])
+        amount = Decimal(r["effect"])
         by_account[r["account"]] = by_account.get(r["account"],
                                                   Decimal("0")) + amount
         month = r["date"][:7]
@@ -448,9 +451,8 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     figures = [
         figure(len(rows), "movements matching the filters",
                quantity=quantity.COUNT, grade=grade, record_ids=record_ids),
-        # Summed by the sign of the posting, which is why neither of these
-        # claims a direction: what a positive posting means depends on the
-        # account it sits on, and that is not established here.
+        # Summed by which way the money went, which is read off the account's
+        # kind rather than off the posting's sign.
         figure(money_in, "money in over these movements",
                quantity=quantity.GROSS_FLOW, grade=grade,
                currency=currency, record_ids=record_ids),

@@ -1240,11 +1240,13 @@ def test_an_approximate_proportion_never_reaches_the_person_bare(registry):
     still a share that did not come out exactly."""
     spoken = _approximate_run(
         registry,
-        _shape(("That is {share} of it.", [("share", "rate", "ratio")])),
+        _shape(("That is {share} of it.",
+                [("share", "rate", quantity.ratio_of(quantity.BALANCE))])),
         lambda results: {"share": {"figure": _fig(results, "result of")}},
         expression="a / a / 7")
     assert spoken.answered, spoken.detail
-    assert spoken.text == "That is about 0.142857% of it."
+    # One seventh, carried as the quotient and written per hundred.
+    assert spoken.text == "That is about 14.2857% of it."
     assert spoken.figures[0]["exactness"] == "rounded"
 
 
@@ -1484,8 +1486,57 @@ def test_two_measured_things_divide_into_a_proportion(registry):
                                           "inputs": {"a": a, "b": b}},
                               figures=book)
         assert share.ok, share.text
-        assert share.figures[0]["quantity"] == quantity.RATIO
+        assert quantity.is_ratio(share.figures[0]["quantity"])
         assert share.figures[0]["currency"] == ""
+
+
+def test_a_quotient_carries_what_its_operands_measured(registry):
+    """A quotient's quantity comes from its operands: two figures of one kind
+    give a proportion of that kind, and two of different kinds give a bare
+    proportion, since no single kind is true of it."""
+    book = _one_figure(registry, "query_ledger", {"entity": "transactions"})
+    of = {f["what"]: f["id"] for f in book.values()}
+
+    def divide(a, b):
+        got = registry.call("compute", {"expression": "a / b",
+                                        "inputs": {"a": of[a], "b": of[b]}},
+                            figures=book)
+        assert got.ok, got.text
+        return got.figures[0]["quantity"]
+
+    assert divide("net movement on card", "net movement on chk") == \
+        quantity.ratio_of(quantity.NET_MOVEMENT)
+    assert divide("movements matching the filters",
+                  "months these movements span") == \
+        quantity.ratio_of(quantity.COUNT)
+    assert divide("money out over these movements",
+                  "net movement over this set") == quantity.RATIO
+
+
+def test_a_proportion_of_one_thing_is_not_a_proportion_of_another(registry):
+    """The quantity check, reached through division: the hole asks about
+    spending and the operands are gross flows, so the number is real and the
+    description of it is not, and the answer is refused. The check compares two
+    declarations, so the division has to carry one of them."""
+    shape = _shape(("That is {share} of what you spend.",
+                    [("share", "rate", quantity.ratio_of(quantity.SPENDING))]))
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
+            return {"tool": "query_ledger", "args": {"entity": "transactions"}}
+        if len(done) == 1:
+            gross = _fig(done, "money out over")
+            return {"tool": "compute",
+                    "args": {"expression": "a / b",
+                             "inputs": {"a": gross, "b": gross}}}
+        return {"bindings": {"share": {"figure": _fig(context["results"],
+                                                      "result of")}}}
+
+    assert run("what share of my spending goes there?",
+               planner, registry).refusal == "wrong_quantity"
 
 
 def test_compute_refuses_a_number_typed_in_and_names_what_it_has(registry):
@@ -1606,11 +1657,13 @@ def test_what_a_read_costs_does_not_grow_with_the_ledger():
     assert large < PAYLOAD_TARGET
 
 
-# The tools whose arguments no schema can enumerate, and why each is left out
-# of the budget sweep. `list_movements` is the one read allowed past the budget
-# and is bounded by its own row cap; the other two take a value only a run can
-# supply — a record id another read emitted, or the figures a turn has already
-# established.
+# The tools whose arguments no schema can enumerate, against what bounds each
+# one instead. `list_movements` is the one read allowed past the budget and is
+# held by its own row cap; the other two take a value only a run can supply — a
+# record id another read emitted, or the figures a turn has already established
+# — and each answers about exactly one of them. Every entry is measured by
+# `test_what_the_sweep_cannot_enumerate_is_bounded_some_other_way`, so leaving
+# a tool out of the sweep costs a bound rather than nothing.
 UNENUMERABLE = ("list_movements", "get_provenance", "compute")
 
 
@@ -1644,6 +1697,97 @@ def _every_declared_call(registry) -> list:
             if required <= set(args):
                 calls.append((schema["name"], args))
     return calls
+
+
+def test_the_sweep_reaches_every_tool_or_says_which_it_does_not():
+    """Every tool is either swept over its whole declared argument space or
+    named in `UNENUMERABLE`, so what sits outside the sweep is written down
+    rather than implied. A name in `UNENUMERABLE` that no tool answers to is a
+    guard pointing at nothing, and fails here too."""
+    registry = _ledger()
+    named = {schema["name"] for schema in registry.schemas()}
+    swept = {tool for tool, _ in _every_declared_call(registry)}
+
+    assert set(UNENUMERABLE) <= named, sorted(set(UNENUMERABLE) - named)
+    assert swept | set(UNENUMERABLE) == named, (
+        "not swept and not declared unenumerable: "
+        + str(sorted(named - swept - set(UNENUMERABLE))))
+
+
+def test_what_the_sweep_cannot_enumerate_is_bounded_some_other_way():
+    """Every name in `UNENUMERABLE` has a bound of its own, measured here
+    against the largest input this vault can hand it: the capped read on every
+    movement it holds, and the two run-supplied tools on a value a read actually
+    emitted. Naming a tool unenumerable is what removes it from the budget
+    sweep, so a tool added to the list with nothing measuring it fails here."""
+    import json
+
+    from viva.tools.envelope import PAYLOAD_TARGET
+    from viva.tools.ledger_tools import MAX_ROWS
+
+    registry = _ledger(per_month=30, docs=720)
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    record = next(iter(book.values()))["record_ids"][0]
+    measured = {
+        "list_movements": registry.call("list_movements",
+                                        {"filters": {"account": "acct0"}}),
+        "get_provenance": registry.call("get_provenance", {"record_id": record}),
+        "compute": registry.call(
+            "compute", {"expression": "a", "inputs": {"a": "f1"}}, figures=book),
+    }
+    assert set(measured) == set(UNENUMERABLE), (
+        "an unenumerable tool with nothing measuring it: "
+        + str(sorted(set(UNENUMERABLE) - set(measured))))
+
+    # Two bounds, and the wider one comes first: the whole ledger is not a
+    # listing at all, and the widest listing there is stops at the row cap.
+    assert not registry.call("list_movements", {}).ok
+    rows = measured["list_movements"]
+    assert rows.ok, rows.text
+    assert len(rows.data["movements"]) <= MAX_ROWS
+    assert rows.data["total"] > MAX_ROWS, "the fixture never reaches the cap"
+    for tool in ("get_provenance", "compute"):
+        result = measured[tool]
+        assert result.ok, result.text
+        assert len(json.dumps(result.to_dict())) <= PAYLOAD_TARGET, tool
+
+
+def test_every_declared_call_answers_or_refuses_and_never_raises():
+    """The read boundary's own contract, asserted over the argument space
+    rather than over a sample: every call the schemas allow comes back as an
+    envelope — an answer carrying the sentence a model reads, or a refusal
+    carrying the machine tag that says which refusal it was. A tool that raises
+    instead ends the turn with no sentence at all."""
+    registry = _ledger()
+    for tool, args in _every_declared_call(registry):
+        result = registry.call(tool, args)
+        if result.ok:
+            assert result.text, f"{tool} {args} answered with no sentence"
+        else:
+            assert result.refusal, f"{tool} {args} refused with no machine tag"
+
+
+def test_every_figure_the_argument_space_emits_matches_its_own_declaration():
+    """Every figure the declared argument space emits names something, measures
+    a known quantity, and agrees with itself: an amount of money states the
+    currency it is in, and a number of things states none. Read over the whole
+    space, so a grouping or an entity emitting a figure of a new kind cannot
+    arrive disagreeing with its own declaration."""
+    from viva import quantity
+    from viva.render import COUNT, MONEY, QUANTITY_OF_TYPE
+
+    registry = _ledger()
+    seen = 0
+    for tool, args in _every_declared_call(registry):
+        for fig in registry.call(tool, args).figures:
+            seen += 1
+            assert fig["what"], f"{tool} {args} emitted a figure naming nothing"
+            assert fig["quantity"] in quantity.MEASURES, (tool, args, fig)
+            if fig["quantity"] in QUANTITY_OF_TYPE[MONEY]:
+                assert fig["currency"], (tool, args, fig["what"])
+            if fig["quantity"] in QUANTITY_OF_TYPE[COUNT]:
+                assert not fig["currency"], (tool, args, fig["what"])
+    assert seen, "the sweep emitted no figures to check"
 
 
 def test_no_uncapped_read_exceeds_what_a_result_may_cost():
@@ -1902,6 +2046,33 @@ def test_the_transactions_read_returns_totals_and_no_rows(registry):
     assert any("money in" in w for w in described)
     assert any("net movement" in w for w in described)
     assert len(payload) < 4000
+
+
+def test_a_charge_on_a_card_is_money_out_of_the_summary():
+    """The transactions summary reads direction off the account's kind, not off
+    the posting's sign. A purchase on a liability is recorded positive — what is
+    owed grew — and it is money gone, so a summary reading the sign alone gives
+    every card purchase the right magnitude, the right records and the right
+    grade under a false description of what it measures."""
+    events = [
+        account_opened("card", "liability", "Signature Card", "USD",
+                       "2026-01-01", institution="Meridian Cards"),
+        document_captured("doc-card", "card.pdf", 100, "card_statement", 0.9,
+                          "2026-02-01"),
+        simple_transaction("card", "500.00", "CITY GYM", "2026-01-08",
+                           provenance=_p("doc-card")),
+    ]
+    result = default_registry(LedgerProjection(events)).call(
+        "query_ledger", {"entity": "transactions"})
+    assert result.ok, result.text
+    assert result.data["money_out"] == "500.00"
+    assert result.data["money_in"] == "0"
+    assert result.data["net"] == "-500.00"
+    of = {f["what"]: f["value"] for f in result.figures}
+    assert of["money out over these movements"] == "500.00"
+    assert of["money in over these movements"] == "0"
+    assert of["net movement over this set"] == "-500.00"
+    assert of["net movement on card"] == "-500.00"
 
 
 def test_an_average_over_a_summary_has_a_divisor_it_can_cite(registry):

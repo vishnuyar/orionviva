@@ -33,6 +33,7 @@ from decimal import Decimal
 from vivacore.verify.normalize import separators_for
 
 from . import quantity
+from .quantity import PER_HUNDRED
 
 # What a slot holds — what kind of thing in the world it is, never what a
 # surface is about to do with it. The same type means the same thing in a
@@ -69,7 +70,7 @@ QUANTITY_OF_TYPE: dict[str, frozenset] = {
                       quantity.NET_WORTH, quantity.GROSS_FLOW,
                       quantity.NET_MOVEMENT, quantity.MOVEMENT}),
     COUNT: frozenset({quantity.COUNT}),
-    RATE: frozenset({quantity.RATIO}),
+    RATE: frozenset({quantity.RATIO}) | frozenset(quantity.RATIOS),
     SUPPOSED: frozenset(quantity.KINDS),
 }
 
@@ -186,15 +187,17 @@ def rate(proportion, *, locale: str = "") -> Rate:
     """A proportion, written per hundred, to a fixed count of significant
     digits.
 
-    Per-hundred and per-one must agree wherever a proportion is spoken, so one
-    of the two is chosen here and it is the one a person types: `parse_amount`
-    reads `12.5%` back to `12.5`, which is the value this takes.
+    The value taken is the quotient itself — one half is `0.5` — which is what
+    `quantity.RATIO` names and what every division in the product produces.
+    `quantity.PER_HUNDRED` is applied here and undone by the reader of a typed
+    proportion in `reply`, so a proportion has one value wherever it is carried
+    and one form wherever it is shown.
 
     Significant digits are counted from the leading digit, so a power of ten
     moves the point without moving the digits and a share far smaller than a
     hundredth keeps its own digits instead of being written as zero. Rounded,
     not truncated, to the same count of digits whatever the size."""
-    value = Decimal(str(proportion))
+    value = Decimal(str(proportion)) * PER_HUNDRED
     if value:
         value = value.quantize(
             Decimal(1).scaleb(value.adjusted() - RATE_FIGURES + 1))
@@ -318,8 +321,11 @@ def supposed(value, measures: str, *, locale: str = "") -> Supposed:
         return Supposed(moment("supposed_time", when=str(value).strip()))
     if measures == quantity.COUNT:
         written = count(value)
-    elif measures == quantity.RATIO:
-        written = rate(value, locale=locale)
+    elif quantity.is_ratio(measures):
+        # A value the person put into their own question is already per
+        # hundred, so it is scaled down before `rate` scales it back up and
+        # their own digits come out.
+        written = rate(Decimal(str(value)) / PER_HUNDRED, locale=locale)
     else:
         written = money(value, locale=locale)
     return Supposed(moment("supposed_amount", amount=written))

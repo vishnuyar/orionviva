@@ -52,6 +52,7 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-refusal-schema-v2": "2df04a260ba9f79f",
     "speak-v8": "7110996ff9f3dfc1",
     "speak-shape-v2": "c1eb515f0f44f510",
+    "speak-shape-v3": "86cdfecaf82680e9",
     "speak-final-v8": "a696da8dc4063975",
 }
 
@@ -754,7 +755,7 @@ def test_the_footer_shows_each_figure_the_way_the_sentence_showed_it(
                slots=(Slot("many", "count", "count"),)),
         Clause(text="A seventh of it is {part}, a share of {share}.",
                slots=(Slot("part", "money", "balance"),
-                      Slot("share", "rate", "ratio"))),
+                      Slot("share", "rate", "ratio_of_balance"))),
     ))
 
     def planner(context):

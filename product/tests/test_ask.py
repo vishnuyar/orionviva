@@ -182,10 +182,10 @@ def test_a_question_asks_for_each_thing_once(capsys):
     answer — a label, in the person's own words — so printed one per slot the
     question ends in the same line twice, which reads as a second thing to
     type."""
-    from viva.listen import RULING_SLOTS
+    from viva.listen import ruling_slots
     question = {"amount": "100.00", "currency": "USD", "scope": "one",
                 "count": 1, "text": "What was this?", "why": "because",
-                "slots": [s.to_dict() for s in RULING_SLOTS]}
+                "slots": [s.to_dict() for s in ruling_slots(("groceries",))]}
     ask.print_question(question, 1, "type away", "a document answers this")
     lines = [line for line in capsys.readouterr().out.splitlines()
              if line.startswith("  ")]

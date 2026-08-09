@@ -50,7 +50,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v2"
+      "active": "speak-shape-v3"
     },
     "shape_committed": {
       "in": "prompts",
@@ -108,6 +108,7 @@
     "speak-retry-v2": "fc0ed5d5b85f4e4f",
     "speak-shape-v1": "6dc9f1a9279a5a76",
     "speak-shape-v2": "c1eb515f0f44f510",
+    "speak-shape-v3": "86cdfecaf82680e9",
     "speak-v1": "8f65a0d62c9f73cb",
     "speak-v2": "f2154bf11552432d",
     "speak-v3": "c898f122b4069899",

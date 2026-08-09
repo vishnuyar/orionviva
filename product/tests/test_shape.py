@@ -656,9 +656,18 @@ def test_a_day_written_by_a_hole_reads_back_as_the_same_day():
 
 @pytest.mark.parametrize("locale", ["en-US", "de-DE"])
 def test_a_proportion_written_by_a_hole_reads_back_as_the_same_proportion(locale):
-    written = render.rate("12.5", locale=locale)
-    read = parse_amount(written.replace("%", " ").strip(), locale=locale)
-    assert read.ok and read.decimal() == Decimal("12.5")
+    """A proportion written into a hole reads back as the same proportion. What
+    the product carries is the quotient and what a person is shown is per
+    hundred, so the round trip crosses that boundary and runs through the reader
+    a reply goes through rather than through the number parser underneath it."""
+    from viva.reply import Slot as ReplySlot
+    from viva.reply import read_reply
+    from viva.schemas import ANSWER_RATE
+
+    written = render.rate("0.5", locale=locale)
+    read = read_reply((ReplySlot(name="share", type=ANSWER_RATE, required=True),),
+                      {"share": str(written)}, locale=locale)
+    assert read.ok and Decimal(read.values["share"]) == Decimal("0.5")
 
 
 def test_a_count_written_by_a_hole_reads_back_as_the_same_count():

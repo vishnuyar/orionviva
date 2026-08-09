@@ -1,6 +1,6 @@
 # Breaking up the projection — and the tool registry it becomes
 
-**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1 and the envelope stand; see *What the build did* at the end. **The citation gate described below is deleted as of 2026-08-07** and replaced by shapes, typed holes and bindings — read the closing amendment first, then the rest for how the problem was understood. Outstanding: the real-vault run of the replacement. · **Created:** 2026-08-01 · **Last updated:** 2026-08-07
+**Status:** ✅ Ruled 2026-08-01 (Vishnu accepted every recommendation, D1–D5) · **Built 2026-08-01** — the decomposition, registry v1 and the envelope stand; see *What the build did* at the end. **The citation gate described below is deleted as of 2026-08-07** and replaced by shapes, typed holes and bindings — read the closing amendment first, then the rest for how the problem was understood. Outstanding: the real-vault run of the replacement. · **Created:** 2026-08-01 · **Last updated:** 2026-08-08 (the quantity check's falsified property is repaired — a division carries its operands' kind)
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2/ADR-010 (deterministic math; no arithmetic in the model), T4 (untouched — this brief writes no events), T6 (no tool touches the network), X3 (no tool can do anything irreversible), I5 (code universal, specifics are data), and the standing principle *read side early, write side late*.
 
 ---
@@ -496,3 +496,21 @@ It sees a figure; it does not see through an operator.
 has ever authored one — and no turn has ever dropped a clause, so the clause-
 level degradation this design traded a clean refusal for has not been read by a
 person yet. Both are recorded as open coverage, not as passes.
+
+**The hole the division left is closed (2026-08-08).** A quotient now carries
+what its operands measured: two figures of one kind divide into
+`ratio_of_<kind>`, two of different kinds into bare `ratio`, and a hole asking
+about a particular quantity takes only its own. So the check no longer looks
+through an operator at a result of the right kind with the wrong operands
+behind it — the operands' kind is *in* the result. The eight `ratio_of_` names
+are taught to the model in a new released prompt (`speak-shape-v3`); `ratio`
+survives for the comparison of two unlike kinds, where no single name is true.
+
+Two of the other three faults in that paragraph are closed with it: the rate
+renderer carries a proportion as the quotient and writes it per hundred at one
+place, and the transactions summary reads direction off the account's kind
+rather than the posting's sign. The read that answered a different question is
+untouched. **And the direction fix is the summary only** — `list_movements`
+still hands the model a row whose `amount` is the raw posting sign with nothing
+in the row from which direction can be derived, so a model reading rows rather
+than totals can still call a card purchase money received.

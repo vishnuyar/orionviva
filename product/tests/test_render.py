@@ -144,6 +144,18 @@ def test_a_proportion_shows_the_digits_it_was_rounded_to():
     assert _significant(render.rate("0.1234567")) == "123457"
 
 
+@pytest.mark.parametrize("proportion,written", [
+    ("0.5", "50%"), ("1", "100%"), ("0.001", "0.1%"), ("2", "200%"), ("0", "0%"),
+])
+def test_a_proportion_is_carried_per_one_and_written_per_hundred(proportion,
+                                                                written):
+    """`ratio` is one quantity over another — a quotient — so a half is `0.5`
+    everywhere it is carried and fifty percent where it is written. The two
+    units meet in this function and in the reader of a typed proportion, and
+    nowhere else."""
+    assert str(render.rate(proportion)) == written
+
+
 def test_only_the_renderer_produces_something_a_money_slot_accepts():
     """An amount is a value AND a currency (I1). The renderer's output says so
     by its type, so a slot that needs one can ask for it and a bare number

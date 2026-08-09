@@ -40,11 +40,17 @@ import pathlib
 import statistics
 import time
 
-from .listen import RULING_SLOTS, ruling_context, ruling_from
+from .ingest.categorize import SEED_CATEGORIES
+from .listen import ruling_context, ruling_from, ruling_slots
 from .reply import interpret as fill_slots
 from .reply import MAX_REPLY_TOKENS, read_reply
 
 CASES = pathlib.Path(__file__).parent / "evals" / "listen_cases.json"
+
+# The slots this instrument asks with: the product's own structure, built by
+# the function the live path calls. The harness holds no vault, so the
+# vocabulary it offers is the seeds rather than a vault's grown list.
+EVAL_SLOTS = ruling_slots(SEED_CATEGORIES)
 
 SAFE, WRONG, RUIN, WEAK, OK = "unreadable", "wrong", "RUIN", "weak", "ok"
 # A call that never reached the model at all — a wrong model name, an
@@ -121,12 +127,12 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
             # checks refused — and so the underlying cause survives into the
             # report instead of becoming an unexplained failure.
             filled = fill_slots(
-                case["said"], RULING_SLOTS,
+                case["said"], EVAL_SLOTS,
                 context=ruling_context(case["descriptor"],
                                        case.get("category", ""),
                                        case.get("subcategory", "")),
                 extract_fn=spy)
-            checked = read_reply(RULING_SLOTS, filled.values)
+            checked = read_reply(EVAL_SLOTS, filled.values)
             interp = ruling_from(checked, case["said"])
             interp.raw = filled.raw
             if filled.failure:
@@ -301,7 +307,7 @@ def _probe(spec, said: str = "i bought a car",
         return captured["raw"]
 
     try:
-        filled = fill_slots(said, RULING_SLOTS,
+        filled = fill_slots(said, EVAL_SLOTS,
                             context=ruling_context(counterparty),
                             extract_fn=spy)
     except Exception as exc:                       # noqa: BLE001 - this is the point
@@ -311,7 +317,7 @@ def _probe(spec, said: str = "i bought a car",
     if filled.failure == "unreachable":
         print(f"FAILED: {filled.detail}")
         raise SystemExit(1)
-    read = read_reply(RULING_SLOTS, filled.values)
+    read = read_reply(EVAL_SLOTS, filled.values)
     got = ruling_from(read, said)
     print(f"\nfilled:       {filled.failure or 'ok'}")
     print(f"checked legs: {got.legs or 'NONE'}")
