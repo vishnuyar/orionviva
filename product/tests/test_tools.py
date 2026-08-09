@@ -2874,6 +2874,65 @@ def test_two_accounts_a_person_named_the_same_are_told_apart(registry):
     assert alone.text.startswith("Everyday Checking holds")
 
 
+def test_an_account_two_reads_spoke_about_is_not_its_own_twin(registry):
+    """One account named by two reads is one account.
+
+    Given a second identity it would collide with itself, and the renderer that
+    tells two same-named accounts apart would dutifully write the number out
+    beside a name nothing was competing with — an account written twice in one
+    breath because the run had counted it twice."""
+    numbered = default_registry(_numbered_account_projection())
+    shape = _shape(("{which} holds {balance}.",
+                    [("which", "account"), ("balance", "money", "balance")]))
+
+    spoken = run("what do I have?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "balances"}),
+                         ("query_ledger", {"entity": "balances"}),
+                         bind=lambda results: {
+                             "which": {"entity": _entity(results, "northgate")},
+                             "balance": {"figure": _fig(results, "balance")}}),
+                 numbered)
+    assert spoken.answered, spoken.detail
+    assert spoken.text == "Everyday Checking holds USD 600.00.", (
+        "a second read of one account made it collide with itself")
+    assert "4417" not in spoken.text
+
+
+def test_two_reads_saying_the_same_thing_say_it_once(registry):
+    """A caveat is a thing, not an occurrence of one.
+
+    Every read of the same kind writes the same sentence about what its numbers
+    do not cover. If each occurrence were its own caveat, an answer standing on
+    four of those reads would have to say the identical sentence four times to
+    get past the gate — and a sentence repeated four times reads as a machine
+    stuttering, not as a limit being disclosed."""
+    from viva.tools.envelope import ENTITY_ACCOUNT, ToolResult, entity
+    from viva.tools.runner import _Ground
+
+    def read():
+        return ToolResult(
+            tool="query_ledger", ok=True,
+            caveats=["Each line is only as current as its stalest input."],
+            identifiers=[entity(ENTITY_ACCOUNT, account="acct:northgate:4417",
+                                name="Everyday Checking",
+                                number_masked="••••4417")],
+            figures=[figure("600.00", "Everyday Checking — balance",
+                            quantity=quantity.BALANCE, currency="USD",
+                            grade=VERIFIED, record_ids=["doc-jan"])])
+
+    ground = _Ground(question="what do I have?")
+    for _ in range(4):
+        ground.stamp(read())
+
+    assert list(ground.caveats) == ["c1"], "one sentence, one caveat"
+    assert list(ground.entities) == ["a1"], "one account, one identity"
+    # Four figures, though: each read established its own number, and every one
+    # of them owes the one caveat, so placing it once answers for all four.
+    assert len(ground.book) == 4
+    assert {ids for ids in ground.owed.values()} == {("c1",)}
+
+
 def _brokerage_reply():
     import json
     return json.dumps({"as_of_raw": "2026-01-31", "cash_raw": "100.00",

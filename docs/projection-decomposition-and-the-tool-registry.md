@@ -514,3 +514,58 @@ untouched. **And the direction fix is the summary only** — `list_movements`
 still hands the model a row whose `amount` is the raw posting sign with nothing
 in the row from which direction can be derived, so a model reading rows rather
 than totals can still call a card purchase money received.
+
+**What a figure does not cover is placed by the run, not by the shape
+(2026-08-09).** The rule above — every caveat standing behind a stated figure
+is placed — was enforced by refusing an answer that left one unplaced, which
+made the shape answerable for it. A shape is authored before any read, so
+whether there will be a caveat at all is not knowable when a hole for one must
+be declared. That is a bet with no winning side: author the hole and read no
+caveats, and the clause holding it is dropped for a hole nothing could fill;
+leave it out and read one, and the turn refuses. A real turn lost every clause
+that way and refused `nothing_established` while holding three correct,
+corroborated balances.
+
+So the hole became optional and the rule became the runner's. An unfilled
+caveat hole is erased from its clause and the claim around it stands; every
+caveat owed by a stated figure and not already placed by the answer is appended
+verbatim after it, introduced by one pack line. The disclosure is now a
+property of the machine rather than an instruction a planner can fail. The
+`caveat_unplaced` tag is gone and the bijection stands at twenty tags; `pack-v6`
+carries the new line and drops the sentence nothing can reach, and `speak-v9`,
+`speak-shape-v4` and `speak-final-v9` teach the hole as optional.
+
+What this costs is text: a hole erased from mid-phrase leaves the phrase, so
+`"...{trust}, and {limit}"` becomes `"...corroborated, and"`. Repairing that
+would need a list of connective words, which is the sentence-reading this
+design exists to avoid, so the released shape prompt asks for the hole at a
+clause end or in its own sentence and the mechanism guarantees only that the
+caveat is said. The alternative considered and rejected was retiring the hole
+outright and always appending; it removes the awkward case and the second
+placement path with it, and remains available if the guidance does not hold.
+
+**Two identity defects the same runs surfaced, both repaired.** The claim above
+that a masked number is added *only* where another account would otherwise read
+identically was false in practice: the run minted a fresh entity id per
+occurrence, so one account named by four reads became four entities, collided
+with itself, and was written with its own masked number appended to a name
+nothing was competing with — `Everyday Checking ••••4417` for an account that
+was the only one in the sentence. Caveats
+had the same shape of bug one field over — a fresh id per occurrence meant four
+ids for one sentence, and the placement rule then demanded it be said four
+times. An identity now belongs to the thing rather than to the occurrence.
+
+Separately the citation footer cited one entry per *hole* rather than per
+figure, and displayed each figure's words keyed by figure id, so a figure
+filling both an amount hole and a grade hole appeared twice and showed whichever
+hole was read last — the total's amount never reached the footer at all. The
+footer is the surface that makes an answer checkable without re-checking it, so
+a footer that silently shows a grade where the sentence said an amount is worse
+than a duplicated line.
+
+**And the clause-level degradation has now been read by a person.** The open
+coverage noted above — that no turn had ever dropped a clause — closed in the
+worst available way: the first turn to drop clauses dropped all of them. The
+mechanism worked as designed. What it revealed is that a design where the model
+must bet, before reading, on what the reads will contain has no safe play, and
+that is the thing the repair addresses rather than the dropping itself.

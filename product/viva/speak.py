@@ -581,10 +581,20 @@ def _shown(result: RunResult) -> dict:
     The footer does not decide a second time how a figure becomes words. It
     shows what the hole this figure filled was written as, so the number under
     the sentence is the number in the sentence — its hedge, its currency, its
-    conventions and its kind all the same, because they are the same string."""
-    return {str(reference["figure"]): result.written.get(name, "")
-            for name, reference in result.bindings.items()
-            if "figure" in reference}
+    conventions and its kind all the same, because they are the same string.
+
+    One figure can fill more than one hole: an amount in one clause and, in
+    another, how well that same amount is stood behind. Every distinct form it
+    was written as is kept, joined in the order the sentence wrote them."""
+    forms: dict = {}
+    for name, reference in result.bindings.items():
+        if "figure" not in reference:
+            continue
+        written = result.written.get(name, "")
+        kept = forms.setdefault(str(reference["figure"]), [])
+        if written and written not in kept:
+            kept.append(written)
+    return {fid: ", ".join(kept) for fid, kept in forms.items()}
 
 
 def _print_turn(turn: Turn) -> None:

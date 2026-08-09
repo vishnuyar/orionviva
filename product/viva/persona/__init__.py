@@ -212,6 +212,11 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # A hole nothing could fill costs its clause and not the turn, and what is
     # missing is named by its kind rather than left as a silence.
     "answer_gap":               frozenset({"what"}),
+    # What a read said its own numbers do not cover, placed by the run for
+    # every figure the answer stated. The read's sentence is its own and is
+    # never reworded; these are the words that introduce it, so a limit does
+    # not arrive reading like another claim.
+    "answer_limits":            frozenset({"limits"}),
     "gap_money":                frozenset(),
     "gap_count":                frozenset(),
     "gap_rate":                 frozenset(),
@@ -248,7 +253,6 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "refusal_wrong_quantity":        frozenset(),
     "refusal_nothing_established":   frozenset(),
     "refusal_uncited_figure":        frozenset(),
-    "refusal_caveat_unplaced":       frozenset(),
 }
 
 

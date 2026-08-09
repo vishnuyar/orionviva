@@ -43,6 +43,11 @@ from ..render import PROSE, QUANTITY_OF_TYPE, TYPES
 # declared beside the text rather than inside it, so the text stays words.
 _HOLE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
+# What an erased hole leaves behind: a space with punctuation after it. Closing
+# it up is typography and not reading — the characters are fixed here and no
+# word is looked at.
+_SPACE_BEFORE_PUNCTUATION = re.compile(r"\s+([.,;:!?])")
+
 # The types a hole in an answer may declare. Reviewed pack prose is not among
 # them: it nests one reviewed template inside another and is never a hole for
 # words nobody reviewed.
@@ -137,6 +142,26 @@ class Clause:
         for it. Every hole must be filled; a clause that cannot be is dropped
         before it reaches here."""
         return _HOLE.sub(lambda m: str(filled[m.group(1)]), self.text)
+
+    def without(self, names) -> "Clause | None":
+        """This clause with the named holes erased, or None when what is left
+        declares no holes at all or has no words.
+
+        Only the spacing left behind is repaired: runs of whitespace closed up,
+        and a space no longer standing between a word and its punctuation. The
+        words themselves are neither read nor rewritten, so a clause whose
+        remaining text reads awkwardly is left reading awkwardly."""
+        names = set(names)
+        kept = tuple(s for s in self.slots if s.name not in names)
+        if not kept:
+            # Everything this clause asserted was in the holes now gone.
+            return None
+        text = _HOLE.sub(lambda m: "" if m.group(1) in names else m.group(0),
+                         self.text)
+        text = _SPACE_BEFORE_PUNCTUATION.sub(r"\1", " ".join(text.split()))
+        if not text.strip():
+            return None
+        return Clause(text=text, slots=kept)
 
     def to_dict(self) -> dict:
         return {"text": self.text, "slots": [s.to_dict() for s in self.slots]}

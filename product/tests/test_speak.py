@@ -54,6 +54,9 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-shape-v2": "c1eb515f0f44f510",
     "speak-shape-v3": "86cdfecaf82680e9",
     "speak-final-v8": "a696da8dc4063975",
+    "speak-v9": "31e8d77c14ed1fab",
+    "speak-shape-v4": "b1414ddd20442800",
+    "speak-final-v9": "73dde76b1444a822",
 }
 
 
@@ -796,6 +799,45 @@ def test_the_footer_shows_each_figure_the_way_the_sentence_showed_it(
         "a rounded proportion is bare under a hedged amount")
     assert said["f4"][1].split()[0].endswith("%"), (
         "a proportion loses what makes it one")
+
+
+def test_a_figure_two_holes_refer_to_stands_under_the_sentence_once(
+        registry, capsys):
+    """A sentence that states an amount and then says how well that same amount
+    is stood behind refers to one figure twice. It is one figure: it is cited
+    once, and the footer shows both the words it was written as — an amount and
+    a grade — rather than whichever hole happened to be read last."""
+    from viva.speak import Turn, _print_turn
+    from viva.tools.shape import Clause, Shape, Slot
+
+    shape = Shape(clauses=(
+        Clause(text="Your balance is {total}.",
+               slots=(Slot("total", "money", "balance"),)),
+        Clause(text="That figure is {how_well}.",
+               slots=(Slot("how_well", "grade"),)),
+    ))
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        if not [r for r in context["results"] if r["tool"] != SHAPE_TOOL]:
+            return {"tool": "query_ledger", "args": {"entity": "balances"}}
+        return {"bindings": {"total": {"figure": "f1"},
+                             "how_well": {"figure": "f1"}}}
+
+    result = run("what is my balance?", planner, registry, locale="en-US")
+    assert result.answered, result.detail
+    assert [f["id"] for f in result.figures] == ["f1"], (
+        "one figure filling two holes is cited once, not once per hole")
+
+    _print_turn(Turn(question="what is my balance?", result=result))
+    footer = [line for line in capsys.readouterr().out.splitlines()
+              if line.startswith("  f1 ")]
+    assert len(footer) == 1, "one figure, one line under the sentence"
+    assert result.written["total"] in footer[0], (
+        "the amount the sentence stated is missing from the line that is "
+        "supposed to make it checkable")
+    assert result.written["how_well"] in footer[0]
 
 
 # ----------------------------------------------- the adapter, over the wire

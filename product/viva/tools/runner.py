@@ -25,9 +25,12 @@ What is then checked is the structure, never the sentence. Every hole has one
 binding and every binding names a hole; the thing referred to exists in this
 run's ledger; its type is the type the hole declared; a figure filling a hole
 that asks for a magnitude measures the quantity that hole asked for; a figure
-about money that stands on no record refuses; every caveat carried behind a
-bound figure is placed. Nothing reads the words: there is no scanning, no token
-matching, no list of what may be said.
+about money that stands on no record refuses. Nothing reads the words: there is
+no scanning, no token matching, no list of what may be said.
+
+Every caveat carried behind a stated figure is then placed by the runner, out
+of what it already holds. A shape may still author a caveat hole and bind one,
+and where it does, the runner adds nothing the answer already says.
 
 The quantity check is what stops a true number from being spoken as an untrue
 claim — a gross sum of postings offered where the sentence says spending, a
@@ -37,7 +40,9 @@ is asked to check another model's work.
 
 A hole nothing can fill costs its clause and not the turn. The clause is
 dropped and a phrase from the persona pack says what could not be established,
-so a partial answer with a stated gap is the ordinary way this degrades.
+so a partial answer with a stated gap is the ordinary way this degrades. The
+caveat hole is the exception and costs only itself: it is erased from its
+clause, the claim around it stands, and its emptiness is not reported as a gap.
 
 And when there is no answer at all, the ordering holds there too. A refusal is
 a reviewed sentence in the pack, one per machine tag, written before the turn
@@ -127,6 +132,15 @@ class RunResult:
                 "written": dict(self.written), "gaps": list(self.gaps)}
 
 
+def _same_thing(known: dict, item: dict) -> bool:
+    """Whether two entities name the same thing.
+
+    Every attribute is compared except `id`, and nothing per-kind is decided
+    here: two entities carrying the same attributes are the same thing."""
+    return ({k: v for k, v in known.items() if k != "id"}
+            == {k: v for k, v in item.items() if k != "id"})
+
+
 @dataclass
 class _Ground:
     """Everything this run established, and therefore everything an answer may
@@ -134,7 +148,12 @@ class _Ground:
 
     Every id space is the run's own and is stamped in emission order across
     every tool, so two tools can never collide and an id from another turn
-    means nothing here."""
+    means nothing here.
+
+    An identity belongs to a thing, not to an occurrence of one. Several reads
+    speaking about the same account, or writing the same sentence about what
+    their numbers do not cover, establish one account and one caveat between
+    them, and it keeps the id it was first given."""
 
     question: str = ""                            # what the person typed
     book: dict = field(default_factory=dict)      # figure id -> figure
@@ -155,11 +174,17 @@ class _Ground:
                     else {"text": str(sentence or "")})
             if not item["text"].strip():
                 continue
-            cid = f"c{len(self.caveats) + 1}"
+            # One sentence is one caveat however many results write it, so
+            # placing it once answers for every figure that owes it.
+            cid = next((k for k, text in self.caveats.items()
+                        if text == item["text"]), "")
+            if not cid:
+                cid = f"c{len(self.caveats) + 1}"
+                self.caveats[cid] = item["text"]
             item["id"] = cid
-            self.caveats[cid] = item["text"]
             result.caveats[index] = item
-            caveat_ids.append(cid)
+            if cid not in caveat_ids:
+                caveat_ids.append(cid)
         for span in result.covers or []:
             if span.get("from") and span.get("to"):
                 pid = f"p{len(self.periods) + 1}"
@@ -179,6 +204,15 @@ class _Ground:
                     else {"kind": ENTITY_ACCOUNT, "name": str(named)})
             mark = ENTITY_MARKS.get(item.get("kind"))
             if mark is None:
+                continue
+            # A thing this run already established keeps the identity it was
+            # given, and the result that named it again refers to that one.
+            # Every entity of a kind is built by one constructor out of the
+            # projection, so equal attributes mean the same thing.
+            known = next((e for e in self.entities.values()
+                          if _same_thing(e, item)), None)
+            if known is not None:
+                result.identifiers[index] = known
                 continue
             # One id space per kind, so what a thing is travels in the way it
             # is referred to rather than as a field resent on every call.
@@ -206,7 +240,7 @@ REFUSAL_TAGS = (
     # a real figure was offered for a hole asking about something else
     "wrong_quantity",
     # the answer as a whole could not be stood behind
-    "nothing_established", "uncited_figure", "caveat_unplaced",
+    "nothing_established", "uncited_figure",
 )
 
 # How a tag finds its sentence in the pack.
@@ -635,11 +669,27 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     missing = {g["name"]: g["type"] for g in gaps}
     spoken, dropped = [], []
     for clause in shape.clauses:
-        unfilled = [s.type for s in clause.slots if s.name in missing]
-        if unfilled:
-            dropped.append(unfilled[0])
+        unfilled = [s for s in clause.slots if s.name in missing]
+        # A caveat hole nothing filled costs the hole and not the clause: what
+        # it would have said is placed below whether it was bound or not. Every
+        # other kind of hole is a claim, and a claim nothing could ground still
+        # costs its clause.
+        erased = [s.name for s in unfilled if s.type == render.CAVEAT]
+        ungrounded = [s.type for s in unfilled if s.type != render.CAVEAT]
+        if ungrounded:
+            dropped.append(ungrounded[0])
             continue
+        if erased:
+            erasure = clause.without(erased)
+            if erasure is None:
+                # The clause asserted nothing but its caveat, so it goes, and
+                # goes without a gap: the caveats are placed below.
+                continue
+            clause = erasure
         spoken.append(clause)
+    # A caveat hole nobody filled is never a gap in the answer, so it is not
+    # reported as one.
+    gaps = [g for g in gaps if g["type"] != render.CAVEAT]
     if not spoken:
         return _refused("nothing_established",
                         "Every clause of the answer rests on something this "
@@ -647,13 +697,22 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                         shape)
 
     # Only what survived asserts anything, so only what survived is answerable
-    # for its records and its caveats.
-    said = {s.name for c in spoken for s in c.slots}
-    cited, placed = [], set()
+    # for its records and its caveats. The holes are walked in the order the
+    # sentence places them, which is the order a person reads it in.
+    #
+    # One figure can fill more than one hole: an amount in one clause and, in
+    # another, how well that same amount is stood behind. It is one figure and
+    # it is cited once.
+    said = [s.name for c in spoken for s in c.slots]
+    cited, seen, placed = [], set(), set()
     for name in said:
         reference = references[name]
         if "figure" in reference:
-            cited.append(ground.book[str(reference["figure"])])
+            fid = str(reference["figure"])
+            if fid in seen:
+                continue
+            seen.add(fid)
+            cited.append(ground.book[fid])
         elif "caveat" in reference:
             named = reference["caveat"]
             placed |= {str(c) for c in
@@ -669,17 +728,20 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                             "every figure about your money must stand on one.",
                             dicts, len(transcript), shape)
 
-    owed = {cid for fig in cited for cid in ground.owed.get(fig["id"], ())}
-    unplaced = sorted(owed - placed)
-    if unplaced:
-        return _refused(
-            "caveat_unplaced",
-            "The answer states a figure whose own result said what it does not "
-            "cover, and does not say so: "
-            + "; ".join(ground.caveats[c] for c in unplaced),
-            dicts, len(transcript), shape)
+    # What the results said their own numbers do not cover, for every figure
+    # the answer stated and did not already place a caveat for. In the order
+    # the figures were stated, once each however many results wrote them, and
+    # verbatim — a caveat re-worded is a caveat weakened.
+    owed: list = []
+    for fig in cited:
+        for cid in ground.owed.get(fig["id"], ()):
+            if cid not in owed and cid not in placed:
+                owed.append(cid)
 
     text = " ".join(c.written(written) for c in spoken)
+    if owed:
+        text += " " + moment("answer_limits", limits=render.caveat(
+            " ".join(ground.caveats[cid] for cid in owed)))
     for kind in dropped:
         # A clause nothing could fill is a disclosed gap, never a zero and
         # never a silence. What is missing is named by its kind, in the pack's

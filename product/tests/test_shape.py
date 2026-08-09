@@ -334,19 +334,24 @@ def test_a_thing_of_the_wrong_kind_cannot_fill_a_hole(registry):
 
 
 def test_a_caveat_a_result_wrote_about_its_own_number_cannot_be_dropped(registry):
-    """A caveat is the tool saying what its own figure does not cover. An
-    answer that states the figure and not the caveat is a stronger claim than
-    the read made, so it refuses.
+    """A caveat is the tool saying what its own figure does not cover, and the
+    answer says it whether or not the answer thought to.
 
-    One caveat hole holds however many turn up, because the shape is authored
-    before anyone knows how many there will be."""
+    A shape is authored before anything is read, so whether there will be a
+    caveat is not knowable when a hole for one has to be declared. Leaving the
+    saying of it to a shape authored that early is leaving it to a guess. So a
+    shape that placed one says it where it placed it, a shape that placed none
+    says it after — and there is no shape that does not say it."""
     spending = ("query_ledger", {"entity": "aggregate", "metric": "spending"})
     silent = _shape(("You spent {total}.", [("total", "money", "spending")]))
     result = run("what did I spend?",
                  _script(silent, spending,
                          bind=lambda r: {"total": {"figure": _spending(r)}}),
                  registry)
-    assert not result.answered and result.refusal == "caveat_unplaced"
+    assert result.answered, result.detail
+    assert result.text.startswith("You spent USD 400.00.")
+    assert "Own-account transfers" in result.text, (
+        "a shape that placed no caveat still owes one, and the run places it")
 
     honest = _shape(("You spent {total}.", [("total", "money", "spending")]),
                     ("Bear in mind: {limits}", [("limits", "caveat")]))
@@ -359,11 +364,64 @@ def test_a_caveat_a_result_wrote_about_its_own_number_cannot_be_dropped(registry
                  registry)
     assert spoken.answered, spoken.detail
     assert "Own-account transfers" in spoken.text
+    # Placed once, by whichever of the two placed it — never both.
+    assert spoken.text.count("Own-account transfers") == 1
+    assert result.text.count("Own-account transfers") == 1
 
 
 def _spending(results):
     return next(f["id"] for f in results[-1]["figures"]
                 if "total spending" in f["what"])
+
+
+def test_a_caveat_hole_the_reads_left_empty_costs_the_hole_and_not_the_claim(
+        registry):
+    """The bet a shape cannot win, and no longer has to.
+
+    A shape is authored before anything is read, so a caveat hole is declared
+    without knowing whether any read will write one. This is the case where
+    none does — a balance read carries no caveats — and the answer around the
+    hole is a real answer that would otherwise have been deleted whole, for a
+    hole that could never have been filled."""
+    shape = _shape(("You hold {balance} in {which}. This is {trust} {limit}.",
+                    [("balance", "money", "balance"), ("which", "account"),
+                     ("trust", "grade"), ("limit", "caveat")]))
+
+    def bind(results):
+        figure = next(f["id"] for f in results[-1]["figures"]
+                      if "balance" in f["what"])
+        return {"balance": {"figure": figure},
+                "which": {"entity": results[-1]["identifiers"][0]["id"]},
+                "trust": {"figure": figure}}
+
+    result = run("what do I have?", _script(shape, BALANCES, bind=bind),
+                 registry)
+    assert result.answered, result.detail
+    # The hole is gone and so is the space it stood in — "corroborated ." is
+    # the erasure showing, and it does not reach a person.
+    assert result.text == ("You hold USD 600.00 in Everyday Checking. "
+                           "This is corroborated.")
+    assert not result.gaps, "an empty caveat hole is not a gap in the answer"
+    assert moment("answer_gap", what=moment("gap_caveat")) not in result.text
+
+
+def test_a_clause_that_was_only_its_caveat_says_nothing_rather_than_a_stub(
+        registry):
+    """Erasing the hole leaves the words around it. A clause whose only hole
+    was the caveat has no words of its own worth keeping — 'Bear in mind:' with
+    nothing after it — so it goes, and goes silently: nothing was established
+    that the person is missing."""
+    shape = _shape(("You hold {balance}.", [("balance", "money", "balance")]),
+                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+
+    def bind(results):
+        return {"balance": {"figure": next(f["id"] for f in results[-1]["figures"]
+                                           if "balance" in f["what"])}}
+
+    result = run("what do I have?", _script(shape, BALANCES, bind=bind),
+                 registry)
+    assert result.answered, result.detail
+    assert result.text == "You hold USD 600.00."
 
 
 def test_a_reference_the_hole_can_only_read_one_way_is_read_that_way(registry):
