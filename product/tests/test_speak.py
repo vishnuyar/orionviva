@@ -57,6 +57,9 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-v9": "31e8d77c14ed1fab",
     "speak-shape-v4": "b1414ddd20442800",
     "speak-final-v9": "73dde76b1444a822",
+    "speak-v10": "7bbe5d04dda5875f",
+    "speak-shape-v5": "9f6ca8be25194302",
+    "speak-final-v10": "0c7373aad33dd23e",
 }
 
 
@@ -579,16 +582,13 @@ def test_an_answer_may_quote_a_row_date_from_a_windowed_read(registry):
     that row's amount."""
     shape = _shape_of(("On {when} you spent {amount} at {who}.",
                        [("when", "date"), ("amount", "money", "movement"),
-                        ("who", "merchant")]),
-                      ("Bear in mind: {limits}", [("limits", "caveat")]))
+                        ("who", "merchant")]))
 
     def bind(results):
         fig = results[-1]["figures"][0]
         return {"bindings": {"when": {"date": fig["dated"]},
                              "amount": {"figure": fig["id"]},
-                             "who": {"entity": "m1"},
-                             "limits": {"caveat": [c["id"] for c
-                                                   in results[-1]["caveats"]]}}}
+                             "who": {"entity": "m1"}}}
 
     result = run("what did I spend in January?",
                  _step_planner(shape, [

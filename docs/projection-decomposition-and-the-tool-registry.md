@@ -569,3 +569,36 @@ worst available way: the first turn to drop clauses dropped all of them. The
 mechanism worked as designed. What it revealed is that a design where the model
 must bet, before reading, on what the reads will contain has no safe play, and
 that is the thing the repair addresses rather than the dropping itself.
+
+**The caveat hole is retired, and the aggregate is dated by its stalest input
+(2026-08-09, later the same day).** The amendment above made the hole optional
+and left two ways to place a caveat — the answer's own hole and the runner's
+append — with an erased hole still able to leave a dangling phrase behind it.
+Both close by removing the hole: `caveat` is no longer a kind a hole may
+declare, no binding names one, and the runner places what every stated figure
+owes. One path, no erasure, and nothing a planner can get wrong. `unknown_caveat`
+goes with `caveat_unplaced` and the vocabulary stands at nineteen tags;
+`pack-v7` drops the two sentences nothing can reach and `speak-v10`,
+`speak-shape-v5` and `speak-final-v10` teach the shorter grammar.
+
+Separately, `_aggregate_net_worth` dated its totals by the point's own `as_of`,
+which with no window asked for is the day the question was asked. A real run
+therefore stated a total "as of" today over balances two years old. The
+arithmetic was exact and the date was a claim the evidence did not support, so
+a total is now dated by the oldest line inside it. The per-account figures were
+already honest and are unchanged.
+
+**Two other things the same pass settled.** An account that answers to two
+names — the tail of its ledger path and what its statements call it — matched
+twice in `listen._candidates`, and the exact-match branch counted pairs rather
+than accounts, so it reported "more than one of your accounts is called X"
+about one account. That is the same self-collision the entity ids had, in a
+third place. And the category vocabulary, which rides into the interpreter
+prompt on every ruling, is now held to `is_shareable` before it crosses to a
+model (T9, D2's owed ruling). The gate is a merchant-descriptor heuristic doing
+a category's job: it withholds `" to "` and `" from "` phrasings, peer-app
+names and non-ASCII letters, so it catches a category naming a person in a
+payment phrasing and misses one named after a person outright. It fails closed,
+and what it costs is a prior rather than a match — `settled_category` still
+reads the whole vocabulary locally, so an answer still lands on the person's
+own spelling.

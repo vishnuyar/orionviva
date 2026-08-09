@@ -89,13 +89,6 @@ def _entity(results, label):
     raise AssertionError(f"no thing labelled {label!r} was established")
 
 
-def _caveats(results):
-    """Every caveat this turn's reads have written, by id — what an answer has
-    to place if it states any of their figures."""
-    return [c["id"] for r in results for c in r.get("caveats") or []
-            if c.get("id")]
-
-
 def _statement_reply(opening, opening_date, closing, closing_date):
     """What a model returned for a statement, in the shape the parser reads.
     Coverage is derived from this, so a fixture without it holds no period —
@@ -1932,12 +1925,10 @@ def test_a_date_a_read_asserted_may_be_said_without_declaring_it(registry):
     fig = next(f for f in dated.values() if "good as of" in f["what"])
     assert fig["value"] == "2026-01-31"
 
-    shape = _shape(("Its evidence runs to {when}.", [("when", "date")]),
-                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+    shape = _shape(("Its evidence runs to {when}.", [("when", "date")]))
 
     def bind_to(iso):
-        return lambda results: {"when": {"date": iso},
-                                "limits": {"caveat": _caveats(results)}}
+        return lambda results: {"when": {"date": iso}}
 
     said = run("how current is it?",
                _script(shape, ("check_completeness", {}),
@@ -2539,8 +2530,7 @@ def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
     span, never by writing its edges."""
     window = {"from": "2026-01-05", "to": "2026-01-20"}
     shape = _shape(("Over {span} you spent {total}.",
-                    [("span", "period"), ("total", "money", "spending")]),
-                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+                    [("span", "period"), ("total", "money", "spending")]))
     result = run(
         "what did I spend then?",
         _script(shape,
@@ -2548,8 +2538,7 @@ def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
                                   "filters": {"window": window}}),
                 bind=lambda results: {
                     "span": {"period": "p1"},
-                    "total": {"figure": _fig(results, "total spending")},
-                    "limits": {"caveat": _caveats(results)}}),
+                    "total": {"figure": _fig(results, "total spending")}}),
         registry)
     assert result.answered, result.detail
     assert "2026-01-05 to 2026-01-20" in result.text

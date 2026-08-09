@@ -215,11 +215,11 @@ def test_a_second_shape_may_only_take_claims_away():
     what the order exists to prevent, so nothing may be added or reworded."""
     first = _shape(("You hold {a}.", [("a", "money", "balance")]),
                    ("It is {g}.", [("g", "grade")]),
-                   ("Bear in mind: {c}", [("c", "caveat")]))
+                   ("As of {d}.", [("d", "date")]))
     assert weakens(first, first)
     assert weakens(first, _shape(("You hold {a}.", [("a", "money", "balance")])))
     assert weakens(first, _shape(("It is {g}.", [("g", "grade")]),
-                                 ("Bear in mind: {c}", [("c", "caveat")])))
+                                 ("As of {d}.", [("d", "date")])))
     # Added, reworded, and re-ordered: none of the three.
     held = ("You hold {a}.", [("a", "money", "balance")])
     assert not weakens(first, _shape(held, ("And more.", [])))
@@ -321,7 +321,7 @@ def test_a_thing_of_the_wrong_kind_cannot_fill_a_hole(registry):
                             ((render.ACCOUNT,), {"figure": "f1"}),
                             ((render.MONEY, "balance"), {"entity": "a1"}),
                             ((render.MERCHANT,), {"entity": "a1"}),
-                            ((render.CAVEAT,), {"date": "2026-01-31"}),
+                            ((render.PERIOD,), {"date": "2026-01-31"}),
                             ((render.SUPPOSED, "balance"), {"figure": "f1"})):
         result = run("?", _script(_shape(("It is {x}.", [("x", *hole)])),
                                   BALANCES,
@@ -335,13 +335,12 @@ def test_a_thing_of_the_wrong_kind_cannot_fill_a_hole(registry):
 
 def test_a_caveat_a_result_wrote_about_its_own_number_cannot_be_dropped(registry):
     """A caveat is the tool saying what its own figure does not cover, and the
-    answer says it whether or not the answer thought to.
+    answer says it whether or not the shape ever mentioned one.
 
-    A shape is authored before anything is read, so whether there will be a
-    caveat is not knowable when a hole for one has to be declared. Leaving the
-    saying of it to a shape authored that early is leaving it to a guess. So a
-    shape that placed one says it where it placed it, a shape that placed none
-    says it after — and there is no shape that does not say it."""
+    No hole asks for a caveat. A shape is authored before anything is read, so
+    whether there will be one to place is not knowable when a hole for it would
+    have to be declared — leaving the saying of it to the shape was leaving it
+    to a guess. The run places what its stated figures owe."""
     spending = ("query_ledger", {"entity": "aggregate", "metric": "spending"})
     silent = _shape(("You spent {total}.", [("total", "money", "spending")]))
     result = run("what did I spend?",
@@ -351,22 +350,10 @@ def test_a_caveat_a_result_wrote_about_its_own_number_cannot_be_dropped(registry
     assert result.answered, result.detail
     assert result.text.startswith("You spent USD 400.00.")
     assert "Own-account transfers" in result.text, (
-        "a shape that placed no caveat still owes one, and the run places it")
-
-    honest = _shape(("You spent {total}.", [("total", "money", "spending")]),
-                    ("Bear in mind: {limits}", [("limits", "caveat")]))
-    spoken = run("what did I spend?",
-                 _script(honest, spending,
-                         bind=lambda r: {
-                             "total": {"figure": _spending(r)},
-                             "limits": {"caveat": [c["id"] for c
-                                                   in r[-1]["caveats"]]}}),
-                 registry)
-    assert spoken.answered, spoken.detail
-    assert "Own-account transfers" in spoken.text
-    # Placed once, by whichever of the two placed it — never both.
-    assert spoken.text.count("Own-account transfers") == 1
+        "the shape says nothing about limits, and the run places them anyway")
+    # Once, however many results wrote it, and introduced in Viva's own words.
     assert result.text.count("Own-account transfers") == 1
+    assert moment("answer_limits", limits="").split("{")[0].strip() in result.text
 
 
 def _spending(results):
@@ -374,88 +361,44 @@ def _spending(results):
                 if "total spending" in f["what"])
 
 
-def test_a_caveat_hole_the_reads_left_empty_costs_the_hole_and_not_the_claim(
-        registry):
-    """The bet a shape cannot win, and no longer has to.
+def test_a_shape_cannot_declare_a_hole_for_a_caveat(registry):
+    """The bet a shape used to have to make, removed by removing the hole.
 
-    A shape is authored before anything is read, so a caveat hole is declared
-    without knowing whether any read will write one. This is the case where
-    none does — a balance read carries no caveats — and the answer around the
-    hole is a real answer that would otherwise have been deleted whole, for a
-    hole that could never have been filled."""
-    shape = _shape(("You hold {balance} in {which}. This is {trust} {limit}.",
-                    [("balance", "money", "balance"), ("which", "account"),
-                     ("trust", "grade"), ("limit", "caveat")]))
-
-    def bind(results):
-        figure = next(f["id"] for f in results[-1]["figures"]
-                      if "balance" in f["what"])
-        return {"balance": {"figure": figure},
-                "which": {"entity": results[-1]["identifiers"][0]["id"]},
-                "trust": {"figure": figure}}
-
-    result = run("what do I have?", _script(shape, BALANCES, bind=bind),
-                 registry)
-    assert result.answered, result.detail
-    # The hole is gone and so is the space it stood in — "corroborated ." is
-    # the erasure showing, and it does not reach a person.
-    assert result.text == ("You hold USD 600.00 in Everyday Checking. "
-                           "This is corroborated.")
-    assert not result.gaps, "an empty caveat hole is not a gap in the answer"
-    assert moment("answer_gap", what=moment("gap_caveat")) not in result.text
-
-
-def test_a_clause_that_was_only_its_caveat_says_nothing_rather_than_a_stub(
-        registry):
-    """Erasing the hole leaves the words around it. A clause whose only hole
-    was the caveat has no words of its own worth keeping — 'Bear in mind:' with
-    nothing after it — so it goes, and goes silently: nothing was established
-    that the person is missing."""
-    shape = _shape(("You hold {balance}.", [("balance", "money", "balance")]),
-                   ("Bear in mind: {limits}", [("limits", "caveat")]))
-
-    def bind(results):
-        return {"balance": {"figure": next(f["id"] for f in results[-1]["figures"]
-                                           if "balance" in f["what"])}}
-
-    result = run("what do I have?", _script(shape, BALANCES, bind=bind),
-                 registry)
-    assert result.answered, result.detail
-    assert result.text == "You hold USD 600.00."
+    A caveat hole was declared before any read, so a shape that authored one
+    and read no caveats lost the clause holding it, and a shape that authored
+    none and read one refused. Neither is reachable now: `caveat` is not a kind
+    of thing a hole may hold, and the run places what its figures owe."""
+    assert render.CAVEAT not in SLOT_TYPES
+    with pytest.raises(BadShape):
+        Clause(text="Bear in mind: {limits}",
+               slots=(Slot(name="limits", type=render.CAVEAT),))
+    shape, problem = read_shape({"clauses": [
+        {"text": "Bear in mind: {limits}",
+         "slots": [{"name": "limits", "type": "caveat"}]}]})
+    assert shape is None and "caveat" in problem
 
 
 def test_a_reference_the_hole_can_only_read_one_way_is_read_that_way(registry):
-    """A correct figure is not lost to a sibling that said the same thing in
+    """A correct answer is not lost to a reference that said the same thing in
     fewer words.
 
-    A caveat hole holds caveats and nothing else, so a delivery that names the
-    caveats without naming them AS caveats has still said which caveats it
-    means — and the money figure bound beside it, verified and in the right
-    hole, is spoken rather than spent on a refusal. The caveat is still owed
-    and still placed: what changed is the shape of the reference, never what it
-    has to answer for."""
-    spending = ("query_ledger", {"entity": "aggregate", "metric": "spending"})
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]),
-                   ("Bear in mind: {limits}", [("limits", "caveat")]))
-    result = run("what did I spend?",
-                 _script(shape, spending,
-                         bind=lambda r: {
-                             "total": {"figure": _spending(r)},
-                             # The caveats, bare: a list where the named form
-                             # was wanted.
-                             "limits": [c["id"] for c in r[-1]["caveats"]]}),
+    A date hole holds a day and nothing else, so a delivery naming the day
+    without naming it AS a day has still said which day it means. What changed
+    is the shape of the reference, never what it has to answer for."""
+    shape = _shape(("As of {when}, that is where it stood.", [("when", "date")]))
+    result = run("when?",
+                 _script(shape, BALANCES,
+                         # The day, bare: a value where the named form was wanted.
+                         bind=lambda r: {"when": "2026-01-31"}),
                  registry)
     assert result.answered, result.detail
-    assert result.text.startswith("You spent USD 400.00.")
-    assert "Own-account transfers" in result.text
-    # And it is answerable as a caveat reference, which is what it was.
-    assert list(result.bindings["limits"]) == ["caveat"]
+    assert result.text.startswith("As of ")
+    # And it is answerable as a date reference, which is what it was.
+    assert list(result.bindings["when"]) == ["date"]
 
 
-def test_only_the_hole_that_holds_several_may_be_bound_to_several(registry):
-    """One hole holds several of something — the caveat hole, because a shape is
-    authored before anyone knows how many caveats the reads will carry. Every
-    other hole holds one thing, so a list arriving at one names nothing, and
+def test_no_hole_may_be_bound_to_several_things(registry):
+    """Every hole holds one thing. A list arriving at one names nothing, and
     completing it from the hole's type would put a list of days where a day
     goes."""
     shape = _shape(("As of {when}, that is where it stood.", [("when", "date")]))
@@ -513,14 +456,12 @@ def test_a_gross_sum_of_postings_cannot_be_spoken_as_what_was_spent(registry):
     it is not what they spent — and a sentence that says spending gets the
     figure that measures spending, or it gets nothing."""
     summary = ("query_ledger", {"entity": "transactions"})
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]),
-                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
     result = run(
         "how much did I spend?",
         _script(shape, summary,
                 bind=lambda r: {
-                    "total": {"figure": _named(r, "money out over")},
-                    "limits": {"caveat": [c["id"] for c in r[-1]["caveats"]]}}),
+                    "total": {"figure": _named(r, "money out over")}}),
         registry)
     assert not result.answered, result.text
     assert result.refusal == "wrong_quantity"
@@ -533,14 +474,12 @@ def test_a_count_of_things_cannot_be_spoken_as_a_proportion(registry):
     whole. Three documents is three of something; it is not three per
     hundred of anything, and no property of the number says so."""
     shape = _shape(("That is {share} of your spending.",
-                    [("share", "rate", "ratio")]),
-                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+                    [("share", "rate", "ratio")]))
     result = run(
         "how much of my spending is that?",
         _script(shape, ("check_completeness", {}),
                 bind=lambda r: {
-                    "share": {"figure": _named(r, "documents held")},
-                    "limits": {"caveat": [c["id"] for c in r[-1]["caveats"]]}}),
+                    "share": {"figure": _named(r, "documents held")}}),
         registry)
     assert not result.answered, result.text
     assert result.refusal == "wrong_quantity"
@@ -551,14 +490,12 @@ def test_the_figure_the_hole_asked_about_is_spoken(registry):
     everything: the figure that measures what the sentence is about goes
     through, and is written as the amount it is."""
     spending = ("query_ledger", {"entity": "aggregate", "metric": "spending"})
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]),
-                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
     result = run(
         "how much did I spend?",
         _script(shape, spending,
                 bind=lambda r: {
-                    "total": {"figure": _spending(r)},
-                    "limits": {"caveat": [c["id"] for c in r[-1]["caveats"]]}}),
+                    "total": {"figure": _spending(r)}}),
         registry)
     assert result.answered, result.detail
     assert result.text.startswith("You spent USD 400.00.")

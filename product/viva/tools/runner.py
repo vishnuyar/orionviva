@@ -29,8 +29,9 @@ about money that stands on no record refuses. Nothing reads the words: there is
 no scanning, no token matching, no list of what may be said.
 
 Every caveat carried behind a stated figure is then placed by the runner, out
-of what it already holds. A shape may still author a caveat hole and bind one,
-and where it does, the runner adds nothing the answer already says.
+of what it already holds. No hole asks for one and no binding names one: a
+shape is authored before anything is read, so whether there will be a caveat to
+put in a hole is not knowable when the hole must be declared.
 
 The quantity check is what stops a true number from being spoken as an untrue
 claim — a gross sum of postings offered where the sentence says spending, a
@@ -40,9 +41,7 @@ is asked to check another model's work.
 
 A hole nothing can fill costs its clause and not the turn. The clause is
 dropped and a phrase from the persona pack says what could not be established,
-so a partial answer with a stated gap is the ordinary way this degrades. The
-caveat hole is the exception and costs only itself: it is erased from its
-clause, the claim around it stands, and its emptiness is not reported as a gap.
+so a partial answer with a stated gap is the ordinary way this degrades.
 
 And when there is no answer at all, the ordering holds there too. A refusal is
 a reviewed sentence in the pack, one per machine tag, written before the turn
@@ -235,8 +234,7 @@ REFUSAL_TAGS = (
     # the delivery was not a delivery
     "bad_delivery", "unshaped_binding", "bad_binding",
     # a hole was filled from outside this run's ledger
-    "unknown_figure", "unknown_entity", "unknown_period", "unknown_caveat",
-    "unfounded_date", "unfounded_stipulation", "ungraded_figure", "wrong_kind",
+    "unknown_figure", "unknown_entity", "unknown_period", "unfounded_date", "unfounded_stipulation", "ungraded_figure", "wrong_kind",
     # a real figure was offered for a hole asking about something else
     "wrong_quantity",
     # the answer as a whole could not be stood behind
@@ -388,8 +386,10 @@ def _committable(current, proposed: Shape, ground: _Ground) -> str:
 # ---------------------------------------------------------------- the binding
 
 # Which reference key each kind of thing is named by. A binding is one of
-# these and nothing else, so there is no field a value could arrive in.
-BINDING_KEYS = ("figure", "entity", "period", "caveat", "date", "supposed")
+# these and nothing else, so there is no field a value could arrive in. A
+# caveat is not among them: this module places what a stated figure owes, so
+# there is no hole for one to fill and nothing to refer to it by.
+BINDING_KEYS = ("figure", "entity", "period", "date", "supposed")
 
 # The one kind of reference a hole of each type can hold. Where a type admits
 # exactly one, the type has already said what a bare value refers to, and a
@@ -397,14 +397,10 @@ BINDING_KEYS = ("figure", "entity", "period", "caveat", "date", "supposed")
 # absent: a figure this run read and a value the person supposed both belong in
 # a money, count or rate hole, and the key is what tells them apart.
 SOLE_BINDING = {render.DATE: "date", render.PERIOD: "period",
-                render.CAVEAT: "caveat", render.GRADE: "figure",
+                render.GRADE: "figure",
                 render.SUPPOSED: "supposed",
                 render.ACCOUNT: "entity", render.MERCHANT: "entity",
                 render.CATEGORY: "entity", render.DOCUMENT: "entity"}
-
-# The one hole that holds several of something: a shape is authored before
-# anything is read, so it cannot know how many caveats the reads will carry.
-SEVERAL = render.CAVEAT
 
 
 def _named_reference(slot, reference) -> dict | None:
@@ -418,7 +414,8 @@ def _named_reference(slot, reference) -> dict | None:
     key = SOLE_BINDING.get(slot.type)
     if key is None:
         return None
-    if isinstance(reference, list) and slot.type != SEVERAL:
+    if isinstance(reference, list):
+        # Every hole holds one thing.
         return None
     return {key: reference}
 
@@ -479,22 +476,6 @@ def _bound(slot, reference, ground: _Ground, locale: str):
                 f"The hole {slot.name!r} wants {slot.type}, and a period is a "
                 "span a document answers for, never a magnitude.")
         return render.period(span["from"], span["to"]), "", ""
-
-    if key == "caveat":
-        if slot.type != render.CAVEAT:
-            return None, "wrong_kind", (
-                f"The hole {slot.name!r} wants {slot.type}, and a caveat is a "
-                "tool's own sentence about what its number does not cover.")
-        # One hole holds however many caveats the reads turn out to carry. The
-        # shape is authored before anything is read, so it cannot know how many
-        # there will be, and a rule that every caveat is placed would otherwise
-        # be a rule nobody could author for.
-        wanted = value if isinstance(value, list) else [value]
-        sentences = [ground.caveats.get(str(v)) for v in wanted]
-        if not wanted or any(s is None for s in sentences):
-            return None, "unknown_caveat", (
-                f"The answer refers to a caveat no result wrote: {value!r}.")
-        return render.caveat(" ".join(sentences)), "", ""
 
     if key == "date":
         if slot.type != render.DATE:
@@ -669,27 +650,11 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     missing = {g["name"]: g["type"] for g in gaps}
     spoken, dropped = [], []
     for clause in shape.clauses:
-        unfilled = [s for s in clause.slots if s.name in missing]
-        # A caveat hole nothing filled costs the hole and not the clause: what
-        # it would have said is placed below whether it was bound or not. Every
-        # other kind of hole is a claim, and a claim nothing could ground still
-        # costs its clause.
-        erased = [s.name for s in unfilled if s.type == render.CAVEAT]
-        ungrounded = [s.type for s in unfilled if s.type != render.CAVEAT]
-        if ungrounded:
-            dropped.append(ungrounded[0])
+        unfilled = [s.type for s in clause.slots if s.name in missing]
+        if unfilled:
+            dropped.append(unfilled[0])
             continue
-        if erased:
-            erasure = clause.without(erased)
-            if erasure is None:
-                # The clause asserted nothing but its caveat, so it goes, and
-                # goes without a gap: the caveats are placed below.
-                continue
-            clause = erasure
         spoken.append(clause)
-    # A caveat hole nobody filled is never a gap in the answer, so it is not
-    # reported as one.
-    gaps = [g for g in gaps if g["type"] != render.CAVEAT]
     if not spoken:
         return _refused("nothing_established",
                         "Every clause of the answer rests on something this "
@@ -704,7 +669,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # another, how well that same amount is stood behind. It is one figure and
     # it is cited once.
     said = [s.name for c in spoken for s in c.slots]
-    cited, seen, placed = [], set(), set()
+    cited, seen = [], set()
     for name in said:
         reference = references[name]
         if "figure" in reference:
@@ -735,7 +700,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     owed: list = []
     for fig in cited:
         for cid in ground.owed.get(fig["id"], ()):
-            if cid not in owed and cid not in placed:
+            if cid not in owed:
                 owed.append(cid)
 
     text = " ".join(c.written(written) for c in spoken)

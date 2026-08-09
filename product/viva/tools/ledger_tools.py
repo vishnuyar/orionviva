@@ -793,7 +793,11 @@ def _aggregate_net_worth(proj, as_of: str | None) -> ToolResult:
     data = point.to_dict()
     record_ids = sorted({line.get("account", "") for line in
                          (data.get("lines") or []) if line.get("account")})
-    as_of = data.get("as_of", "")
+    lines = [line for line in (data.get("lines") or []) if line.get("account")]
+    # A total is dated by the oldest thing inside it. The point's own `as_of`
+    # is when it was computed, which with no window asked for is today.
+    as_of = min((line["as_of"] for line in lines if line.get("as_of")),
+                default=data.get("as_of", ""))
     figures = []
     for currency, row in sorted(data.get("by_currency", {}).items()):
         for part in ("net", "assets", "liabilities"):
@@ -811,17 +815,17 @@ def _aggregate_net_worth(proj, as_of: str | None) -> ToolResult:
                        grade=line.get("grade", ""), dated=line.get("as_of", ""),
                        currency=line.get("currency", ""),
                        record_ids=[line["account"]])
-                for line in (data.get("lines") or []) if line.get("account")]
+                for line in lines]
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
         identifiers=_identifiers(proj, record_ids),
         data={"metric": "net_worth", "point": data},
         grade=weakest(_grades_in(data)),
-        dated=data.get("as_of", ""),
+        dated=as_of,
         record_ids=record_ids,
         caveats=["Each line is only as current as its stalest input; see the "
                  "point's own staleness fields."],
-        text=f"Net worth as of {data.get('as_of', 'unknown')}.")
+        text=f"Net worth as of {as_of or 'unknown'}.")
 
 
 # Which filters each read honors. A filter an entity would ignore is refused,

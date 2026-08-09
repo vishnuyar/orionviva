@@ -227,7 +227,6 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "gap_category":             frozenset(),
     "gap_document":             frozenset(),
     "gap_grade":                frozenset(),
-    "gap_caveat":               frozenset(),
     "gap_supposed":             frozenset(),
     # And when there is no answer at all. One reviewed sentence per way a turn
     # can fail, chosen by the machine's own tag: nothing composes a refusal at
@@ -245,7 +244,6 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "refusal_unknown_figure":        frozenset(),
     "refusal_unknown_entity":        frozenset(),
     "refusal_unknown_period":        frozenset(),
-    "refusal_unknown_caveat":        frozenset(),
     "refusal_unfounded_date":        frozenset(),
     "refusal_unfounded_stipulation": frozenset(),
     "refusal_ungraded_figure":       frozenset(),

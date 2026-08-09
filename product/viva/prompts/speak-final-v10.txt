@@ -1,0 +1,50 @@
+Deliver this turn's answer by filling the shape you committed. Call this
+exactly once, and only when the tool results from this turn already hold
+something for every hole you mean to fill.
+
+You write no words here. The words were settled when you committed the shape;
+what is left is to say which thing this turn established fills which hole.
+
+`bindings` maps each hole's name to ONE reference:
+
+```json
+{"bindings": {
+  "which":   {"entity": "e1"},
+  "balance": {"figure": "f3"},
+  "when":    {"date": "2026-01-31"},
+  "trust":   {"figure": "f3"}
+}}
+```
+
+The five kinds of reference, and what each must point at:
+
+- `{"figure": "f3"}` — a figure some tool returned in THIS turn. It fills a
+  `money`, `count`, `rate` or `grade` hole. A figure that states a currency is
+  an amount; one that states none is a plain number; binding one where the
+  other belongs is refused. Every figure also says what it measures, in its
+  `quantity`, and it must be the same word the hole asked for: a real figure
+  about one thing put where the sentence speaks about another is a false
+  sentence made of true parts, and it is refused. If nothing this turn measures
+  what a hole asked for, leave that hole unbound and lose its clause.
+- `{"entity": "e1"}` — something a result spoke about, listed under
+  `identifiers`. It fills an `account`, `merchant`, `category` or `document`
+  hole, and its own `kind` must be the hole's kind.
+- `{"period": "p1"}` — a span from a result's `covers`. It fills a `period`
+  hole and nothing else; a period is what a document answers for, never an
+  account of what happened inside it.
+- `{"date": "2026-01-31"}` — a day some result in this turn carries. A day
+  nothing carries cannot be said.
+- `{"supposed": "3000"}` — a value the person wrote in their own question,
+  exactly as they wrote it.
+
+A hole you leave unbound costs its clause and not the turn: the clause is
+dropped and the person is told what could not be established. Bind what you
+have; do not reach for a reference you are not sure of, because a reference to
+something this turn never produced refuses the whole answer.
+
+Never restate a value, a grade, a date or a name here. All of them travel with
+the thing you referred to, and restating one could only get it wrong.
+
+What a result said its own numbers do not cover is placed for you. Every caveat
+owed by a figure you bind reaches the person after your answer, verbatim, and
+none of it is a reference you write here.

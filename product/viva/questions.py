@@ -55,7 +55,8 @@ from .ledger.events import ASSERTED
 from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_SETTLED, TIER_STRUCTURAL,
                                 TIER_UNENRICHED, TIER_UNKNOWN)
-from .listen import category_vocabulary, ruling_slots
+from .listen import (category_vocabulary, ruling_slots,
+                     shareable_categories)
 from .persona import say
 from .render import (account as render_account, category as render_category,
                      count as render_count, date as render_date,
@@ -230,8 +231,9 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
             totals[key] = totals.get(key, Decimal("0")) + abs(m.amount)
             currency.setdefault(key, m.currency)
             movements.setdefault(key, []).append(m.key)
-    # The picker's options, read from the one definition of the vocabulary.
-    categories = category_vocabulary(proj)
+    # The picker's options, read from the one definition of the vocabulary
+    # and held to what may be named to a model (T9).
+    categories = shareable_categories(category_vocabulary(proj))
     for key, row in proj.uncategorized_merchants(expenses_only=True).items():
         amount = totals.get(key, Decimal("0"))
         cur = currency.get(key, "")
@@ -275,9 +277,10 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     out: list[Question] = []
     singles: list = []
     groups: dict[str, dict] = {}
-    # A ruling can name a category, so it is offered and checked against the
-    # same vocabulary a merchant question offers.
-    categories = category_vocabulary(proj)
+    # A ruling can name a category, so it is offered from the same vocabulary
+    # a merchant question offers, held to what may be named to a model. What an
+    # answer lands on is `settled_category`, which reads the whole vocabulary.
+    categories = shareable_categories(category_vocabulary(proj))
 
     for m in proj.movements():
         if not proj._is_expense(m):

@@ -128,6 +128,19 @@ def category_vocabulary(proj) -> tuple:
     return tuple(out)
 
 
+def shareable_categories(names) -> tuple:
+    """The categories from a vault's vocabulary that may be named to a model.
+
+    A category is a name the person coined, so it can carry another person —
+    "Loan to Raj". The vocabulary is offered to the model as a prior, and the
+    model may be a third party, so what crosses that boundary is held to the
+    same test a merchant descriptor is before it reaches a shared catalog (T9).
+    Fails closed: a category withheld here costs the model a prior, never a
+    name, because `settled_category` still matches an answer against the whole
+    vocabulary locally."""
+    return tuple(name for name in names if is_shareable(name))
+
+
 def settled_category(proj, named: str) -> str:
     """The vocabulary's own name for what an answer called something.
 
@@ -263,7 +276,10 @@ def resolve_account(proj, major: str, hint: str, group: str = "") -> AccountMatc
     # across two institutions is ordinary.
     exact = [(name, account) for name, account in candidates
              if want and _norm(name) == want]
-    if len(exact) == 1:
+    # Counted by account rather than by pair: one account answers to more than
+    # one name — the tail of its path and what its statements call it — so two
+    # pairs matching does not mean two accounts do.
+    if len({account for _, account in exact}) == 1:
         return AccountMatch(exact[0][1], "same",
                             reason="an account you already have")
     if exact:
@@ -706,7 +722,9 @@ def listen(proj, said: str, descriptor: str, amount: str = "", currency: str = "
            locale: str = "") -> Proposal | None:
     """Steps 3–5 in one call: sentence in, reviewable Proposal out. Nothing is
     written — applying is a separate, explicit act."""
-    read = read_answer(said, ruling_slots(category_vocabulary(proj)),
+    read = read_answer(said,
+                       ruling_slots(shareable_categories(
+                           category_vocabulary(proj))),
                        asked=asked,
                        context=ruling_context(descriptor, category,
                                               subcategory, source),
