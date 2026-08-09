@@ -114,6 +114,12 @@ def _write_answer(vault: Vault, q, parsed, spoken: str) -> dict:
         return record_ruling(
             vault, interp,
             descriptor=refs.get("descriptor") or refs.get("example", ""),
+            # The identity this question was asked under, and the movements
+            # it grouped, travel with the answer: what a person was shown is
+            # then what the answer speaks about, rather than something derived
+            # a second time from a raw line.
+            merchant=refs.get("merchant", ""),
+            movements=refs.get("movements", ()),
             movement_key=refs.get("movement", ""),
             amount=str(q.amount), currency=q.currency)
 
@@ -398,11 +404,16 @@ def answer_attribute(vault: Vault, account: str, key: str, value: str = "",
 
 def record_ruling(vault: Vault, interp, descriptor: str = "",
                   movement_key: str = "", amount: str = "",
-                  currency: str = "") -> dict:
+                  currency: str = "", merchant: str = "", movements=()) -> dict:
     """Turn a checked reading of what money became into a proposal, or write it.
 
     Deterministic from here on: every leg's major has already landed in the
     ledger's own vocabulary, and nothing in this function asks a model anything.
+
+    ``merchant`` is the key the question grouped its movements under, and
+    ``movements`` are the movements it grouped. Given, they are the counterparty
+    and the payments this answer is about; absent, the descriptor names the
+    counterparty and the population is derived.
 
     **An answer never opens an account by itself.** Where it would bring one
     into being, the proposal comes back for confirmation with the name the
@@ -415,7 +426,8 @@ def record_ruling(vault: Vault, interp, descriptor: str = "",
     # movement sharing the descriptor. The unknown tier — a cheque, an ATM
     # withdrawal, a peer — is asked one at a time for that reason.
     proposal = propose(proj, interp, descriptor, amount, currency,
-                       movement_key, locale=locale_from_env())
+                       movement_key, locale=locale_from_env(),
+                       merchant_key=merchant, movements=movements)
     if proposal.needs_name:
         return {"ok": False, "why": "needs_name",
                 "message": proposal.summary(),

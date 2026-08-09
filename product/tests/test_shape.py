@@ -366,6 +366,62 @@ def _spending(results):
                 if "total spending" in f["what"])
 
 
+def test_a_reference_the_hole_can_only_read_one_way_is_read_that_way(registry):
+    """A correct figure is not lost to a sibling that said the same thing in
+    fewer words.
+
+    A caveat hole holds caveats and nothing else, so a delivery that names the
+    caveats without naming them AS caveats has still said which caveats it
+    means — and the money figure bound beside it, verified and in the right
+    hole, is spoken rather than spent on a refusal. The caveat is still owed
+    and still placed: what changed is the shape of the reference, never what it
+    has to answer for."""
+    spending = ("query_ledger", {"entity": "aggregate", "metric": "spending"})
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]),
+                   ("Bear in mind: {limits}", [("limits", "caveat")]))
+    result = run("what did I spend?",
+                 _script(shape, spending,
+                         bind=lambda r: {
+                             "total": {"figure": _spending(r)},
+                             # The caveats, bare: a list where the named form
+                             # was wanted.
+                             "limits": [c["id"] for c in r[-1]["caveats"]]}),
+                 registry)
+    assert result.answered, result.detail
+    assert result.text.startswith("You spent USD 400.00.")
+    assert "Own-account transfers" in result.text
+    # And it is answerable as a caveat reference, which is what it was.
+    assert list(result.bindings["limits"]) == ["caveat"]
+
+
+def test_only_the_hole_that_holds_several_may_be_bound_to_several(registry):
+    """One hole holds several of something — the caveat hole, because a shape is
+    authored before anyone knows how many caveats the reads will carry. Every
+    other hole holds one thing, so a list arriving at one names nothing, and
+    completing it from the hole's type would put a list of days where a day
+    goes."""
+    shape = _shape(("As of {when}, that is where it stood.", [("when", "date")]))
+    result = run("when?",
+                 _script(shape, BALANCES,
+                         bind=lambda r: {"when": ["2026-01-31", "2026-01-05"]}),
+                 registry)
+    assert not result.answered and result.refusal == "bad_binding"
+
+
+def test_a_magnitude_hole_still_needs_to_say_which_kind_of_thing_fills_it(registry):
+    """The other side of the same rule, and the reason it is the hole's type
+    that decides. A figure this run read and an amount the person supposed both
+    belong in a money hole, so a bare value there names nothing and is refused
+    — inferring one would let a number the person never said be spoken as a
+    figure, or the reverse."""
+    shape = _shape(("Your balance is {total}.",
+                    [("total", "money", "balance")]))
+    result = run("balance?",
+                 _script(shape, BALANCES, bind=lambda r: {"total": "f1"}),
+                 registry)
+    assert not result.answered and result.refusal == "bad_binding"
+
+
 def test_a_caveat_behind_a_figure_no_clause_states_is_not_owed(registry):
     """What survives is what asserts, so what survives is what answers for its
     caveats. A clause that fell away states nothing and owes nothing."""

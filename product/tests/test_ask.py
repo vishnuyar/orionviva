@@ -175,6 +175,24 @@ def test_a_blank_line_ends_the_sitting(tmp_path, capsys, monkeypatch):
     assert moment("reply_recorded") not in capsys.readouterr().out
 
 
+def test_a_question_asks_for_each_thing_once(capsys):
+    """What a person is being asked for is the line, not the slot.
+
+    A ruling is made of several slots and two of them want the same kind of
+    answer — a label, in the person's own words — so printed one per slot the
+    question ends in the same line twice, which reads as a second thing to
+    type."""
+    from viva.listen import RULING_SLOTS
+    question = {"amount": "100.00", "currency": "USD", "scope": "one",
+                "count": 1, "text": "What was this?", "why": "because",
+                "slots": [s.to_dict() for s in RULING_SLOTS]}
+    ask.print_question(question, 1, "type away", "a document answers this")
+    lines = [line for line in capsys.readouterr().out.splitlines()
+             if line.startswith("  ")]
+    assert len(lines) == len(set(lines)), lines
+    assert len(lines) > 1, "the fixture asks for only one thing"
+
+
 def test_every_kind_of_slot_has_words_for_what_it_wants():
     """A person can see what a question is asking for. A slot type with no
     sentence in the pack would print nothing, or a code word — both leave

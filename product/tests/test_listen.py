@@ -16,11 +16,12 @@ from decimal import Decimal
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          capture_and_ingest)
 from viva.ledger import EventStore, Ledger
-from viva.ledger.events import (ASSERTED, MAJOR_ASSET, SCOPE_MERCHANT,
-                                SCOPE_MOVEMENT)
+from viva.ledger.events import (ASSERTED, MAJOR_ASSET, MAJOR_EXPENSE,
+                                SCOPE_MERCHANT, SCOPE_MOVEMENT)
 from viva.ledger.projection import MIXED, SETTLEMENT, SPENDING, TRANSFER
-from viva.listen import (PLAIN, RULING_SLOTS, apply_proposal, listen, propose,
-                         resolve_account, ruling_context, ruling_from)
+from viva.listen import (IN_A_SENTENCE, PLAIN, RULING_SLOTS, apply_proposal,
+                         listen, propose, resolve_account, ruling_context,
+                         ruling_from)
 from viva.reply import interpret as fill_slots
 from viva.reply import read_reply
 
@@ -176,6 +177,206 @@ def test_a_commercial_merchant_generalizes_and_a_person_does_not(tmp_path):
     assert friend.scope == SCOPE_MOVEMENT and friend.settles == 1
 
 
+def test_a_proposal_counts_the_payments_it_is_answering_about(tmp_path):
+    """One population per sentence.
+
+    The confirmation says an amount and a number of payments in one breath, so
+    both must describe one set of movements: the payments to this counterparty
+    whose meaning is still open. A refund that came back from it is not a
+    payment, and a payment whose nature the person already ruled is not one this
+    answer settles. Asserted against the projection's own population rather than
+    against a remembered number."""
+    from viva.ingest import assign_category
+    from viva.questions import MERCHANT, open_questions
+    raw, ledger = _vault(tmp_path)
+    _checking(raw, ledger, [("2026-03-01", "NEWCO MORTGAGE SERVICING", Decimal("-4400.00")),
+                            ("2026-03-31", "NEWCO MORTGAGE SERVICING", Decimal("-4400.00")),
+                            ("2026-04-02", "NEWCO MORTGAGE SERVICING", Decimal("-4400.00")),
+                            ("2026-04-05", "NEWCO MORTGAGE SERVICING", Decimal("120.00"))])
+    ruled = next(m for m in ledger.projection().movements() if m.date == "2026-04-02")
+    assign_category(ledger, ruled.key, "housing", nature="settlement", by="human")
+    proj = ledger.projection()
+
+    (q,) = [x for x in open_questions(ledger, as_of="2026-05-01")["questions"]
+            if x["kind"] == MERCHANT]
+    p = listen(proj, "this is my mortgage", "NEWCO MORTGAGE SERVICING",
+               amount=q["amount"], currency=q["currency"],
+               extract_fn=_reply({"legs": [{"major": "liability",
+                                            "account_hint": "Newco"}],
+                                  "kind": "mortgage"}))
+    assert p.scope == SCOPE_MERCHANT
+    # What the question counted is what the confirmation counts back.
+    assert p.settles == q["count"] > 1
+    assert f"across {q['count']} payments" in p.summary()
+
+
+def _branded(tmp_path, lines):
+    """A vault whose card lines resolve to a brand.
+
+    A card line carries the brand, the store, the city and the posting date, so
+    two visits to one restaurant are two descriptors and one counterparty. The
+    grammar is what tells them apart, and it is the shape every real vault
+    reads under."""
+    from merchantcore.profile import Profile, Template
+    from viva.ledger import account_opened, simple_transaction
+    from viva.ledger.merchant_keys import resolve_keys
+    from viva.vault import Vault
+    grammar = Profile("northbank", "depository", "v1", [
+        Template("CARD PURCHASE {date} {brand} {city} {region} CARD {account_ref}")])
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"),
+                    resolve_keys=lambda rows: resolve_keys(
+                        rows, profile_for=lambda i, k: grammar))
+    ledger.append(account_opened("chk", "depository", "Checking", "USD",
+                                 "2026-01-01", institution="northbank"))
+    for date, description, amount in lines:
+        ledger.append(simple_transaction("chk", amount, description, date))
+    return Vault(ledger=ledger, raw=RawStore.open(tmp_path / "raw", "pw"),
+                 directory=tmp_path)
+
+
+BISTRO = "golden fork bistro"
+PLANO_JUNE = "CARD PURCHASE 06/12 GOLDEN FORK BISTRO PLANO TX CARD 0000"
+AUSTIN_JULY = "CARD PURCHASE 07/03 GOLDEN FORK BISTRO AUSTIN TX CARD 0000"
+PLANO_JULY = "CARD PURCHASE 07/19 GOLDEN FORK BISTRO PLANO TX CARD 0000"
+THREE_VISITS = [("2026-06-12", PLANO_JUNE, "-42.10"),
+                ("2026-07-03", AUSTIN_JULY, "-18.00"),
+                ("2026-07-19", PLANO_JULY, "-66.20")]
+
+
+def _implies_a_membership(vault, grade="corroborated"):
+    """What the world knows about the brand: paying it implies a thing you then
+    own, and an invoice would prove it."""
+    from viva.ledger.events import merchant_enriched
+    vault.ledger.append(merchant_enriched(
+        BISTRO, "dining", grade=grade, by="model", occurred_at="2026-07-20",
+        attributes={"counterparty_kind": "business",
+                    "implies": [{"relationship": "a supper club",
+                                 "major": "asset", "on": "outflow",
+                                 "account_group": "Memberships",
+                                 "compound": False, "confidence": "suggested",
+                                 "documents": "invoice", "ask": ""}]}))
+
+
+def _answers(monkeypatch):
+    """A reading of the person's sentence. What it returns is untrusted; the
+    deterministic checks behind it still decide."""
+    import json
+
+    from viva import engine
+    monkeypatch.setattr(engine, "_interpreter", lambda: lambda _prompt: json.dumps(
+        {"legs": [{"major": "asset", "account_hint": "Supper Club"}]}))
+
+
+def _nature_questions(vault):
+    from viva.questions import NATURE, open_questions
+    return [q for q in open_questions(vault.ledger)["questions"]
+            if q["kind"] == NATURE]
+
+
+def test_an_answer_settles_the_payments_its_question_counted(tmp_path, monkeypatch):
+    """The number a person is shown and the number their answer settles are one
+    number, and the answer reaches every payment it named.
+
+    A question is asked about a counterparty; an answer to it must be about the
+    same counterparty. Where a grammar names the brand behind two different card
+    lines, re-deriving the identity from one of those lines names something
+    narrower than the question did — and a person reads one count, confirms
+    another, and the payments outside the narrower name go on being asked
+    about."""
+    from viva import engine
+
+    vault = _branded(tmp_path, THREE_VISITS)
+    _implies_a_membership(vault)
+    _answers(monkeypatch)
+
+    (q,) = _nature_questions(vault)
+    outcome = engine.answer_question(vault, q["id"], "that's the club membership")
+    proposal = outcome["proposal"]
+    assert proposal["settles"] == q["count"] > 1
+    assert f"across {q['count']} payments" in proposal["summary"]
+
+    applied = engine.apply_ruling(vault, proposal)
+    # Filed under the identity the question was asked under, so one answer
+    # reaches every payment the question counted and none is left asking.
+    assert applied["subject"] == q["refs"]["merchant"]
+    assert not _nature_questions(vault)
+
+
+def test_a_proposal_states_the_payments_it_settles_that_nobody_asked_about(
+        tmp_path, monkeypatch):
+    """Two true numbers, each over the set it is true of.
+
+    A question is raised only where the counterparty cannot say what the money
+    was. Here one of three visits to one restaurant is already explained by an
+    answer given before a grammar could name the brand, so the question is over
+    two payments — and the ruling, which outranks what a category merely
+    implied, will decide all three. The confirmation states both, because the
+    sentence before an irreversible write is the wrong place to learn that it
+    did more than it said."""
+    from decimal import Decimal as D
+
+    from viva import engine
+    from viva.ledger import merchant_categorized
+    from viva.ledger.events import VERIFIED
+    from viva.ledger.projection import BY_RULING
+    from viva.render import money
+
+    vault = _branded(tmp_path, THREE_VISITS)
+    _implies_a_membership(vault)
+    # The person's own older answer about one of the lines, filed under the
+    # descriptor because that is the only name the vault had at the time. It
+    # explains that visit, so nothing needs to ask about it.
+    vault.ledger.append(merchant_categorized(
+        "card purchase golden fork bistro austin tx card", "dining", VERIFIED,
+        "2026-05-01"))
+    _answers(monkeypatch)
+
+    (q,) = _nature_questions(vault)
+    asked = set(q["refs"]["movements"])
+    rest = [m for m in vault.ledger.projection().movements()
+            if m.key not in asked]
+    assert len(asked) == q["count"] and rest, "the fixture asks about everything"
+
+    proposal = engine.answer_question(
+        vault, q["id"], "that's the club membership")["proposal"]
+    summary = proposal["summary"]
+    # The set the question was over — its own count, and its own total.
+    assert proposal["settles"] == q["count"]
+    assert f"across {q['count']} payments" in summary
+    assert str(money(q["amount"], q["currency"])) in summary
+    # And the set it reaches beyond it, named rather than folded in.
+    assert proposal["also_settles"] == len(rest)
+    assert D(proposal["also_amount"]) == sum(abs(m.amount) for m in rest)
+    assert str(proposal["also_settles"]) in summary
+    assert str(money(proposal["also_amount"], q["currency"])) in summary
+
+    # ...and the second sentence was true: applying it does settle them.
+    engine.apply_ruling(vault, proposal)
+    settled = {m.key for m in vault.ledger.projection().movements()
+               if m.nature_reason == BY_RULING}
+    assert settled == asked | {m.key for m in rest}
+
+
+def test_a_new_account_opens_in_the_fallback_group(tmp_path, monkeypatch):
+    """What kind of thing an account holds is not a level in its path. Until it
+    is a thing known about the account, a counterparty named by a carried key
+    opens its accounts in the one fallback group — and the document that would
+    prove the account still comes from what the counterparty implies, because
+    the question already told the person it would."""
+    from viva import engine
+
+    vault = _branded(tmp_path, THREE_VISITS)
+    _implies_a_membership(vault)
+    _answers(monkeypatch)
+
+    (q,) = _nature_questions(vault)
+    proposal = engine.answer_question(
+        vault, q["id"], "that's the club membership")["proposal"]
+    assert proposal["new_accounts"] == ["Assets:Other:Supper Club"]
+    assert proposal["corroborates"] == "invoice"
+    assert "invoice" in q["why"], "the question already named the document"
+
+
 # --------------------------------------------------------------- the proposal
 
 
@@ -210,6 +411,33 @@ def test_a_proposal_states_what_it_does_not_know(tmp_path):
     assert proj.account_info("Liabilities:Mortgage:Newco").origin == ASSERTED
     # ...but its balance is not to be trusted as debt reduction: part was interest.
     assert proj.ruled_accounts()["Liabilities:Mortgage:Newco"]["reliable_balance"] is False
+
+
+def test_a_proposal_names_each_meaning_once_and_in_the_middle_of_a_sentence(
+        tmp_path):
+    """What a person reads back before anything is written.
+
+    One payment can be two things at once — and it can be two of the same
+    thing, an insurance premium and a repair on one bill, both money spent. The
+    summary says what the money became, once per meaning; and it says it as a
+    clause, because the four majors' other form is a whole sentence in the
+    person's own voice and setting one down inside another sentence reads as a
+    fragment."""
+    raw, ledger = _vault(tmp_path)
+    _checking(raw, ledger, [("2026-03-01", "NORTHGATE SERVICES", Decimal("-900.00"))])
+    proj = ledger.projection()
+    p = listen(proj, "part was the premium, part was the repair",
+               "NORTHGATE SERVICES", amount="900.00", currency="USD",
+               extract_fn=_reply({"legs": [
+                   {"major": "expense", "account_hint": "premium"},
+                   {"major": "expense", "account_hint": "repair"}]}))
+    summary = p.summary()
+    assert summary.count(IN_A_SENTENCE[MAJOR_EXPENSE]) == 1
+    # Not the standalone form, spliced into the middle of another sentence.
+    assert PLAIN[MAJOR_EXPENSE].lower() not in summary
+    # And neither form ever shows a person an accounting term.
+    assert not any(m in IN_A_SENTENCE[m].lower() for m in IN_A_SENTENCE)
+    assert set(IN_A_SENTENCE) == set(PLAIN)
 
 
 def test_a_stated_split_is_kept_and_an_invented_one_is_not(tmp_path):

@@ -1544,7 +1544,20 @@ def test_compute_refuses_what_it_cannot_do_exactly(registry):
 
 # ------------------------------------------------------- what a result costs
 
+# The counterparties this ledger spends at — a pool a person could plausibly
+# have over a year, cycled through, so that grouping by counterparty produces
+# far more groups than one read may name. Every one is synthetic.
+COUNTERPARTIES = [f"COUNTERPARTY {chr(65 + i // 26)}{chr(65 + i % 26)} DESCRIPTOR"
+                  for i in range(60)]
+
+
 def _ledger(accounts=6, months=12, per_month=3, docs=12, actions=0):
+    """The read tools over a ledger a person could actually have."""
+    return default_registry(LedgerProjection(
+        _ledger_events(accounts, months, per_month, docs, actions)))
+
+
+def _ledger_events(accounts=6, months=12, per_month=3, docs=12, actions=0):
     """A ledger built through the real event constructors, at a shape a person
     could actually have. Every value in it is synthetic."""
     evs, p = [], _p("doc-0000")
@@ -1559,12 +1572,13 @@ def _ledger(accounts=6, months=12, per_month=3, docs=12, actions=0):
         for m in range(1, months + 1):
             for d in range(per_month):
                 evs.append(simple_transaction(
-                    f"acct{a}", "-12.34", f"COUNTERPARTY {a}{m}{d} DESCRIPTOR",
+                    f"acct{a}", "-12.34",
+                    COUNTERPARTIES[(a * 31 + m * 7 + d) % len(COUNTERPARTIES)],
                     f"2025-{m:02d}-{(d % 28) + 1:02d}", provenance=p))
     for i in range(actions):
         evs.append(agent_acted("enrich", "enrich", f"target-{i}", "done",
                                "2026-02-03", calls=1))
-    return default_registry(LedgerProjection(evs))
+    return evs
 
 
 def _payload(registry, tool, args):
@@ -1592,28 +1606,135 @@ def test_what_a_read_costs_does_not_grow_with_the_ledger():
     assert large < PAYLOAD_TARGET
 
 
+# The tools whose arguments no schema can enumerate, and why each is left out
+# of the budget sweep. `list_movements` is the one read allowed past the budget
+# and is bounded by its own row cap; the other two take a value only a run can
+# supply — a record id another read emitted, or the figures a turn has already
+# established.
+UNENUMERABLE = ("list_movements", "get_provenance", "compute")
+
+
+def _every_declared_call(registry) -> list:
+    """Every call the registry's own schemas allow, generated from them.
+
+    A parameter's enum IS the set of values a model may send, so the argument
+    space is read off the schema rather than kept as a list beside it: a
+    grouping or an entity added to a tool enters this sweep by existing.
+    Optional fields are enumerated present and absent, and a field with no enum
+    names a value only this vault could supply, so it is left unset."""
+    import itertools
+    calls = []
+    for schema in registry.schemas():
+        if schema["name"] in UNENUMERABLE:
+            continue
+        params = schema["parameters"]
+        required = set(params.get("required", ()))
+        choices = []
+        for name, spec in sorted(params.get("properties", {}).items()):
+            if "enum" not in spec:
+                continue
+            values = [{name: v} for v in spec["enum"]]
+            if name not in required:
+                values.append({})
+            choices.append(values)
+        for combination in itertools.product(*choices):
+            args: dict = {}
+            for part in combination:
+                args.update(part)
+            if required <= set(args):
+                calls.append((schema["name"], args))
+    return calls
+
+
 def test_no_uncapped_read_exceeds_what_a_result_may_cost():
     """Every result is resent in full on every model call for the rest of the
     turn, so one oversized read is paid for as many times as the turn has left
-    to run. `list_movements` is the one read allowed past this, and it is
-    bounded by its own cap instead."""
+    to run.
+
+    What this proves: every combination of the enumerated arguments — each
+    entity, each metric, each grouping, each transparency topic, present and
+    absent — is inside the budget, generated from the schemas rather than
+    listed here, so a read that fits under one grouping and not under another
+    cannot pass by being absent from a list. What it does not reach: the
+    parameters no enum bounds (filters, windows, accounts, record ids), and the
+    three tools named in `UNENUMERABLE`."""
+    import json
+
     from viva.tools.envelope import PAYLOAD_TARGET
 
     registry = _ledger(per_month=30, docs=720, actions=1000)
-    for tool, args in (
-            ("query_ledger", {"entity": "transactions"}),
-            ("query_ledger", {"entity": "balances"}),
-            ("query_ledger", {"entity": "holdings"}),
-            ("query_ledger", {"entity": "aggregate", "metric": "spending"}),
-            ("query_ledger", {"entity": "aggregate", "metric": "income"}),
-            ("query_ledger", {"entity": "aggregate", "metric": "net_worth"}),
-            ("check_completeness", {}),
-            ("get_transparency", {"topic": "agent_activity"}),
-            ("get_transparency", {"topic": "calls_spent"}),
-            ("get_transparency", {"topic": "declined_questions"})):
-        size = _payload(registry, tool, args)
+    calls = _every_declared_call(registry)
+    assert len(calls) > 10, "the argument space collapsed to a handful of calls"
+    for tool, args in calls:
+        result = registry.call(tool, args)
+        size = len(json.dumps(result.to_dict()))
         assert size <= PAYLOAD_TARGET, (
             f"{tool} {args} returned {size} characters, over {PAYLOAD_TARGET}")
+
+
+def test_the_groups_a_capped_read_names_are_the_largest_ones():
+    """Which groups a cap keeps is the honest half of capping.
+
+    Naming ten groups and caveating away the rest is a true sentence whichever
+    ten are named, so nothing about the payload's size can catch a read that
+    keeps the smallest. What makes the cap answerable is that the money it
+    names is the money there is most of, and that two reads of one ledger name
+    the same ten."""
+    proj = LedgerProjection(_ledger_events(per_month=30))
+    result = default_registry(proj).call("query_ledger",
+                                         {"entity": "aggregate",
+                                          "metric": "spending",
+                                          "group_by": "merchant"})
+    everything, _ = ledger_tools._spending_rows(proj, {}, "merchant")
+    named = {k: Decimal(v) for k, v in result.data["by_group"].items()}
+    dropped = {k: v for k, v in everything.items() if k not in named}
+    assert named and dropped
+    assert min(named.values()) >= max(dropped.values())
+
+
+def test_the_groups_a_cap_keeps_are_the_same_ones_on_every_read():
+    """Ordered by magnitude, and ties broken by name — so a read repeated
+    against an unchanged ledger names the same groups, and a person who asks
+    twice is not told about two different sets of counterparties."""
+    sized = {f"counterparty {chr(97 + i)}": Decimal(i) for i in range(30)}
+    named, tail = ledger_tools._largest_groups(sized)
+    assert len(named) == ledger_tools.MAX_GROUPS
+    assert set(named) == set(sorted(sized, key=sized.get,
+                                    reverse=True)[:ledger_tools.MAX_GROUPS])
+    assert tail["count"] == len(sized) - len(named)
+    assert tail["total"] == sum(v for k, v in sized.items() if k not in named)
+
+    # All one size: nothing but the name can decide, and the name does — not
+    # the order they happen to have been folded in.
+    tied = {f"counterparty {chr(97 + i)}": Decimal("10")
+            for i in reversed(range(30))}
+    kept, _ = ledger_tools._largest_groups(tied)
+    assert list(kept) == sorted(tied)[:ledger_tools.MAX_GROUPS]
+
+
+def test_a_grouped_read_names_the_largest_and_caveats_the_tail_it_dropped():
+    """A grouping is as wide as the vault's own vocabulary — by counterparty,
+    the group count is the counterparty count — so a read that named every
+    group would grow with the ledger. It names the largest, and what it did not
+    name rides a caveat: the one thing a result carries that has an identity, can
+    be placed in a sentence, and cannot be dropped from an answer that states a
+    figure it sits behind. A coverage line would say it where nothing could
+    speak it."""
+    registry = _ledger(per_month=30)
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "spending",
+                                            "group_by": "merchant"})
+    assert result.ok
+    groups = result.data["groups"]
+    assert groups["total"] > ledger_tools.MAX_GROUPS
+    assert groups["named"] == ledger_tools.MAX_GROUPS
+    assert len(result.data["by_group"]) == ledger_tools.MAX_GROUPS
+    dropped = groups["total"] - groups["named"]
+    assert any(f"{dropped} smaller group(s)" in c for c in result.caveats)
+    # The total is over everything counted, capped or not: what the cap dropped
+    # is missing from the named groups, never from the sum.
+    assert (sum(Decimal(v) for v in result.data["by_group"].values())
+            < Decimal(result.data["total"]))
 
 
 def test_the_row_cap_is_the_thing_that_bounds_a_detailed_read():

@@ -73,6 +73,28 @@ def test_an_unknown_merchant_asks_what_it_is_scoped_to_the_merchant(tmp_path):
     assert "ACME HARDWARE" in q["text"]
 
 
+def test_a_merchant_question_counts_the_movements_its_money_is_over(tmp_path):
+    """One population per sentence.
+
+    A question that says "N payments, X in total" must have counted the same
+    movements it summed. Money that came BACK from the counterparty — a refund
+    posted under the same descriptor — is not a payment to ask about, so it
+    swells neither number. Asserted as a property against the projection's own
+    population, never against a memorized pair of figures."""
+    ledger = _checking(tmp_path, [
+        ("2026-03-05", "ACME HARDWARE #12", "-100.00"),
+        ("2026-03-09", "ACME HARDWARE #44", "-150.00"),
+        ("2026-03-11", "ACME HARDWARE #12", "40.00"),
+    ])
+    proj = ledger.projection()
+    (q,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == MERCHANT]
+    population = [m for m in proj.uncategorized_expenses()
+                  if proj.merchant_key_of(m) == q["refs"]["merchant"]]
+    assert population, "the fixture asks about nothing"
+    assert q["count"] == len(population)
+    assert Decimal(q["amount"]) == sum(abs(m.amount) for m in population)
+
+
 def test_a_peer_payment_is_scoped_to_itself_not_a_rule(tmp_path):
     """A commercial merchant generalizes; a person does not — one Zelle is a
     gift, the next a loan repayment."""
@@ -163,6 +185,30 @@ def test_answering_a_nature_question_settles_the_merchant_and_stops_asking(tmp_p
     proj = ledger.projection()
     assert sum(proj.spending_by_category().values()) == Decimal("0")
     assert proj.provisional_spending() == Decimal("0")
+
+
+def test_a_ruled_one_off_question_is_never_asked_again(tmp_path):
+    """The queue can be driven to empty.
+
+    A payment to a person, a cheque or a cash withdrawal is asked about one at a
+    time, because the counterparty cannot say what the money was. Once the
+    person has said what it was, the question is answered — and a question that
+    came back would be the same question, at the same stake, with the same id,
+    in every sitting after this one."""
+    from viva.listen import Interpretation, apply_proposal, propose
+    ledger = _checking(tmp_path, [("2026-03-05", "ZELLE PAYMENT TO JOHN", "-200.00")])
+    (before,) = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+
+    proj = ledger.projection()
+    (m,) = proj.movements()
+    p = propose(proj, Interpretation(legs=[{"major": "expense", "account_hint": ""}],
+                                     said="tickets I bought for both of us"),
+                m.description, movement_key=m.key)
+    apply_proposal(ledger, p, "2026-04-02")
+
+    after = [q for q in open_questions(ledger)["questions"] if q["kind"] == NATURE]
+    assert before["id"] not in [q["id"] for q in after]
+    assert not after
 
 
 def test_the_queue_introduces_no_new_event_type(tmp_path):

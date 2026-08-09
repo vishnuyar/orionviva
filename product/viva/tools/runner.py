@@ -357,6 +357,37 @@ def _committable(current, proposed: Shape, ground: _Ground) -> str:
 # these and nothing else, so there is no field a value could arrive in.
 BINDING_KEYS = ("figure", "entity", "period", "caveat", "date", "supposed")
 
+# The one kind of reference a hole of each type can hold. Where a type admits
+# exactly one, the type has already said what a bare value refers to, and a
+# reference that arrived without its key is read as that kind. A magnitude is
+# absent: a figure this run read and a value the person supposed both belong in
+# a money, count or rate hole, and the key is what tells them apart.
+SOLE_BINDING = {render.DATE: "date", render.PERIOD: "period",
+                render.CAVEAT: "caveat", render.GRADE: "figure",
+                render.SUPPOSED: "supposed",
+                render.ACCOUNT: "entity", render.MERCHANT: "entity",
+                render.CATEGORY: "entity", render.DOCUMENT: "entity"}
+
+# The one hole that holds several of something: a shape is authored before
+# anything is read, so it cannot know how many caveats the reads will carry.
+SEVERAL = render.CAVEAT
+
+
+def _named_reference(slot, reference) -> dict | None:
+    """The binding as a named reference, or None when nothing names it.
+
+    A binding is one named reference. Where the hole's own type leaves only one
+    kind it could be, a value that arrived without its name is completed with
+    it; where the type admits several kinds, nothing is assumed."""
+    if isinstance(reference, dict):
+        return reference if len(reference) == 1 else None
+    key = SOLE_BINDING.get(slot.type)
+    if key is None:
+        return None
+    if isinstance(reference, list) and slot.type != SEVERAL:
+        return None
+    return {key: reference}
+
 
 def _bound(slot, reference, ground: _Ground, locale: str):
     """One hole, filled — or the problem with filling it, as
@@ -365,11 +396,14 @@ def _bound(slot, reference, ground: _Ground, locale: str):
     Every branch resolves a reference into this run's ledger and hands the
     thing to its renderer. Nothing here writes characters: the renderer does,
     once, in one place."""
-    if not isinstance(reference, dict) or len(reference) != 1:
+    named = _named_reference(slot, reference)
+    if named is None:
         return None, "bad_binding", (
-            f"The hole {slot.name!r} is bound to something that names nothing; "
-            "a binding is one of " + ", ".join(BINDING_KEYS) + ".")
-    key, value = next(iter(reference.items()))
+            f"The hole {slot.name!r} wants {slot.type} and is bound to "
+            f"{reference!r}, which names nothing. A binding names what it "
+            "refers to — one of " + ", ".join(BINDING_KEYS)
+            + " — as {\"figure\": \"f1\"}.")
+    key, value = next(iter(named.items()))
     if key not in BINDING_KEYS:
         return None, "bad_binding", (
             f"The hole {slot.name!r} is bound by {key!r}, which refers to "
@@ -582,6 +616,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                 "this turn committed to.", dicts, len(transcript), shape)
 
     written: dict = {}
+    references: dict = {}
     gaps: list = []
     for name, slot in slots.items():
         if name not in bindings:
@@ -591,6 +626,11 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         if value is None:
             return _refused(tag, detail, dicts, len(transcript), shape)
         written[name] = value
+        # What the answer cites and what it places are read from the binding
+        # in the form the value was written from, so a reference the hole's
+        # type completed answers for its records and its caveats like any
+        # other.
+        references[name] = _named_reference(slot, bindings[name])
 
     missing = {g["name"]: g["type"] for g in gaps}
     spoken, dropped = [], []
@@ -611,7 +651,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     said = {s.name for c in spoken for s in c.slots}
     cited, placed = [], set()
     for name in said:
-        reference = bindings[name]
+        reference = references[name]
         if "figure" in reference:
             cited.append(ground.book[str(reference["figure"])])
         elif "caveat" in reference:
@@ -651,7 +691,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         grade=weakest(f["grade"] for f in cited if f["kind"] in MONEY_KINDS),
         transcript=dicts, calls=len(transcript),
         shape=shape.to_dict(),
-        bindings={n: bindings[n] for n in said},
+        bindings={n: references[n] for n in said},
         written={n: str(written[n]) for n in said}, gaps=gaps)
 
 

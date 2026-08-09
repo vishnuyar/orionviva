@@ -214,7 +214,12 @@ def _transfer_questions(proj, locale: str = "") -> list[Question]:
 
 def _merchant_questions(proj, locale: str = "") -> list[Question]:
     """Merchants we have no category for. Scoped to the MERCHANT — one ruling
-    fills every transaction from it, past and future."""
+    fills every transaction from it, past and future.
+
+    The count and the money in the question are over one set of movements: the
+    expense-shaped ones. The wider view — every counterparty, inflows and card
+    payments included — is what enrichment works from, not what is asked
+    about here."""
     from .ingest.categorize import SEED_CATEGORIES
     out: list[Question] = []
     totals: dict[str, Decimal] = {}
@@ -232,7 +237,7 @@ def _merchant_questions(proj, locale: str = "") -> list[Question]:
     used = sorted({(r.get("category") or "").strip()
                    for r in proj.merchant_categories().values()} - {""})
     categories = list(SEED_CATEGORIES) + [c for c in used if c not in SEED_CATEGORIES]
-    for key, row in proj.uncategorized_merchants().items():
+    for key, row in proj.uncategorized_merchants(expenses_only=True).items():
         amount = totals.get(key, Decimal("0"))
         cur = currency.get(key, "")
         shareable = row.get("shareable", True)
@@ -284,11 +289,13 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
             continue                      # already known; nothing to ask
         if tier == TIER_UNENRICHED:
             continue                      # that is a MERCHANT question, not this
+        # Whatever the tier, a movement whose nature something stronger has
+        # already decided is not asked about again.
+        if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT):
+            continue                      # a link, an own account or a ruling settled it
         if tier == TIER_UNKNOWN:
             singles.append(m)             # a check, an ATM, a peer: one at a time
             continue
-        if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT):
-            continue                      # a link, an own account or a ruling settled it
         key = proj.merchant_key_of(m)
         g = groups.setdefault(key, {
             "amount": Decimal("0"), "count": 0, "currency": m.currency,

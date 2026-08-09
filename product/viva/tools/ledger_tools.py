@@ -50,6 +50,12 @@ MAX_JOURNAL = 20
 # not show and which filters would narrow it.
 MAX_ROWS = 50
 
+# How many groups an aggregate names. A grouping is as wide as the vault's own
+# vocabulary — group spending by counterparty and the group count is the
+# counterparty count — so the largest are named and the rest rides a caveat
+# carrying its size and its value, which an answer states or refuses.
+MAX_GROUPS = 10
+
 QUERY_LEDGER_PARAMS = {
     "type": "object",
     "properties": {
@@ -642,9 +648,22 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
     return out, extras
 
 
+def _largest_groups(grouped: dict) -> tuple[dict, dict]:
+    """The groups an aggregate names, and the tail it did not.
+
+    Ordered by magnitude, ties broken by name, so two reads of one ledger name
+    the same groups. The tail carries how many groups it holds and what they
+    are worth together."""
+    ranked = sorted(grouped.items(), key=lambda kv: (-kv[1], kv[0]))
+    return (dict(ranked[:MAX_GROUPS]),
+            {"count": len(ranked[MAX_GROUPS:]),
+             "total": sum((v for _, v in ranked[MAX_GROUPS:]), Decimal("0"))})
+
+
 def _aggregate_spending(proj, filters: dict, group_by: str,
                         locale: str = "") -> ToolResult:
     grouped, extras = _spending_rows(proj, filters, group_by)
+    named, tail = _largest_groups(grouped)
     held = _shared_currency(extras["currencies"])
     if held is None:
         return _mixed_currencies(TOOL, extras["currencies"])
@@ -657,7 +676,8 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
         currency, record_ids = _of_an_empty_read(proj, filters)
     covers, span_caveats = _attested_coverage(proj, filters)
     data = {"metric": "spending", "group_by": group_by,
-            "by_group": {k: str(v) for k, v in sorted(grouped.items())},
+            "by_group": {k: str(v) for k, v in sorted(named.items())},
+            "groups": {"named": len(named), "total": len(grouped)},
             "total": str(extras["total"]), "count": extras["count"]}
     caveats = ["Own-account transfers and settlements are excluded by nature; "
                "card purchases are included."] + span_caveats
@@ -686,11 +706,19 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
                        f"{undecided['count']} compound payment(s) has known "
                        "components but unknown proportions, and is reported "
                        "apart, not counted here.")
+    # What the cap dropped is a caveat, like everything else this read says its
+    # own numbers do not cover: it carries an identity, it can be placed in a
+    # sentence, and a figure it sits behind cannot be stated without it.
+    if tail["count"]:
+        caveats.append(f"The largest {len(named)} of {len(grouped)} "
+                       f"{group_by} group(s) are named here, plus "
+                       f"{tail['count']} smaller group(s) worth "
+                       f"{amount(tail['total'])} in total.")
     grade = weakest(extras["grades"])
     figures = [figure(v, f"spending — {group_by} '{k}'",
                       quantity=quantity.SPENDING, grade=grade,
                       currency=currency, record_ids=record_ids)
-               for k, v in sorted(grouped.items())]
+               for k, v in sorted(named.items())]
     figures.append(figure(extras["total"], f"total spending by {group_by}",
                           quantity=quantity.SPENDING,
                           grade=grade, currency=currency,
@@ -701,9 +729,9 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
     # What a spending read groups by is a thing it spoke about — a category, a
     # counterparty, an account — and an answer refers to it rather than
     # spelling it.
-    grouped_entities = (_categories(grouped)
+    grouped_entities = (_categories(named)
                         if group_by in ("category", "subcategory")
-                        else _merchants(grouped) if group_by == "merchant"
+                        else _merchants(named) if group_by == "merchant"
                         else [])
     return ToolResult(
         tool=TOOL, ok=True, data=data, figures=figures,

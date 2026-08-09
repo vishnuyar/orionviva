@@ -82,8 +82,10 @@ def print_question(q: dict, remaining: int, invite: str,
     if not q["slots"]:
         print(f"  {answered_by_document}")
         return
-    for slot in q["slots"]:
-        print(f"  {wants(slot)}")
+    # What a person is being asked for is the line, not the slot: two slots
+    # that want the same kind of answer say it once.
+    for line in dict.fromkeys(wants(slot) for slot in q["slots"]):
+        print(f"  {line}")
     print(f"  {invite}")
 
 

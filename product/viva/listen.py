@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 
 from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_ATTRIBUTE,
@@ -41,6 +42,7 @@ from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             VERIFIED, account_opened, ruling_recorded)
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
+from .ledger.projection import BY_CATEGORY, BY_DEFAULT, BY_RULING
 from .render import (accounts as render_accounts,
                      money as render_money)
 from .reply import TRUNCATED_MARK, Slot, answer as read_answer
@@ -56,6 +58,24 @@ PLAIN = {
     MAJOR_LIABILITY: "It changed what I owe",
     MAJOR_INCOME: "Money that came to me",
 }
+
+# The same four as a clause, for the places one is read inside a longer
+# sentence. The form above is a whole sentence in the person's own voice; this
+# one is a fragment that sits in the middle of another sentence.
+IN_A_SENTENCE = {
+    MAJOR_EXPENSE: "money spent and gone",
+    MAJOR_ASSET: "something you still have, in another form",
+    MAJOR_LIABILITY: "a change in what you owe",
+    MAJOR_INCOME: "money that came to you",
+}
+
+# What a ruling reaches beyond the payments its question asked about. The
+# question is raised only where the counterparty cannot say what the money was,
+# and a ruling applies to every payment to that counterparty — so the two sets
+# differ, and both are named with their own count and total rather than
+# summed together or one of them left out.
+ALSO_SETTLES = ("It also settles {count} other payment(s) to them, worth "
+                "{money} in total, that nothing needed to ask about.")
 
 # The account group used when the counterparty implies nothing: one level under
 # the major's root. Otherwise the group, the corroborating document and the
@@ -227,7 +247,13 @@ class Proposal:
     category: str = ""             # what the person called it, if they said
     said: str = ""
     unknown_split: bool = False
+    # The payments the question asked about, and what the same ruling reaches
+    # beyond them: two sets, each with its own count and total, because a
+    # counterparty's other movements are settled by this answer without having
+    # been asked about.
     settles: int = 1
+    also_settles: int = 0
+    also_amount: str = ""
     amount: str = ""
     currency: str = ""
     prompt_version: str = ""       # which instructions read the sentence
@@ -267,12 +293,20 @@ class Proposal:
                 parts.append(f"Your {self.corroborates} would let me prove this "
                              "— it isn't needed to save it.")
             return " ".join(parts)
-        what = ", ".join(PLAIN[leg["major"]].lower() for leg in self.legs)
+        # Each meaning is named once, however many legs carry it: one payment
+        # can be two of the same thing — two expenses, on two accounts.
+        what = ", ".join(dict.fromkeys(IN_A_SENTENCE[leg["major"]]
+                                       for leg in self.legs))
         head = str(render_money(self.amount or "0", self.currency,
                                 locale=self.locale))
         if self.settles > 1:
             head += f" across {self.settles} payments"
         parts = [f"I'd record {head} as: {what}."]
+        if self.also_settles:
+            parts.append(ALSO_SETTLES.format(
+                count=self.also_settles,
+                money=render_money(self.also_amount or "0", self.currency,
+                                   locale=self.locale)))
         if self.new_accounts:
             parts.append("This creates " + self._named(self.new_accounts)
                          + " — new, and only you say it exists.")
@@ -302,22 +336,69 @@ class Proposal:
                 "corroborates": self.corroborates, "category": self.category,
                 "said": self.said,
                 "unknown_split": self.unknown_split, "settles": self.settles,
+                "also_settles": self.also_settles,
+                "also_amount": self.also_amount,
                 "amount": self.amount, "currency": self.currency,
                 "prompt_version": self.prompt_version, "locale": self.locale,
                 "summary": self.summary()}
 
 
+def movements_answered_about(proj, merchant: str) -> list:
+    """The payments an answer about this counterparty is about, derived.
+
+    For a caller with no question behind it. Where a question raised the
+    subject it carries the movements it grouped, and that list is used instead:
+    a population computed once and handed on cannot drift from the count and
+    the amount a person was shown, and one derived a second time can.
+
+    Expense-shaped movements filed under the counterparty, whose nature nothing
+    stronger has settled — a link, an account the person holds, or a ruling
+    already made."""
+    return [m for m in proj.movements()
+            if merchant in proj.merchant_keys_of(m)
+            and proj._is_expense(m)
+            and m.nature_reason in (BY_CATEGORY, BY_DEFAULT)]
+
+
+def movements_also_settled(proj, merchant: str, asked: set) -> list:
+    """The payments a merchant-scoped ruling reaches that were not asked about.
+
+    A ruling outranks what a counterparty's category merely implied, so it
+    decides every movement filed under that counterparty — including ones no
+    question raised, and money that came back from them. A live transfer link
+    outranks a ruling, and a movement already ruled keeps the ruling it has, so
+    neither is among these."""
+    return [m for m in proj.movements()
+            if merchant in proj.merchant_keys_of(m)
+            and m.key not in asked
+            and not m.linked
+            and m.nature_reason != BY_RULING]
+
+
 def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
-            currency: str = "", movement_key: str = "",
-            locale: str = "") -> Proposal:
+            currency: str = "", movement_key: str = "", locale: str = "",
+            merchant_key: str = "", movements=()) -> Proposal:
     """Turn a reading into a concrete, reviewable proposal, deterministically.
 
     A commercial merchant generalizes: the proposal is scoped to the merchant
     and settles every payment to it, past and future. A peer descriptor or an
     instrument is scoped to one movement. Raises ValueError when a
     movement-scoped answer has no key and the descriptor covers more than one
-    movement."""
-    merchant = normalize_merchant(descriptor)
+    movement.
+
+    ``merchant_key`` is the identity the question was asked under, carried in
+    rather than re-derived. A descriptor is one line of one statement, and
+    normalizing it names the line; the key names the counterparty. Without one
+    the descriptor names it, which is what every read did before a grammar
+    could tell the brand from the store number around it. The descriptor is
+    still what decides whether an answer may generalize at all, because that is
+    a judgement about the raw line.
+
+    ``movements`` are the movement keys the question grouped — the very set its
+    count and its amount were computed over, carried in rather than rebuilt
+    here. A caller with no question behind it passes none, and the population is
+    derived instead."""
+    merchant = merchant_key or normalize_merchant(descriptor)
     # An instrument — a check, an ATM withdrawal, a wire — never generalizes,
     # even when several share a descriptor. The kind comes from enrichment
     # (`counterparty_kind`), not from a list of words kept by hand.
@@ -337,9 +418,14 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
 
     legs, new_accounts, confirm, unnamed = [], [], [], []
     implied = proj.implication_for(merchant)
+    # A counterparty named by a key carried in opens its new accounts in the
+    # fallback group. Which group an account belongs in is a thing to know about
+    # the account rather than a level in its path, and until that is where it
+    # lives, one flat group is what a person reads.
+    group = "" if merchant_key else (implied or {}).get("account_group", "")
     for leg in interp.legs:
         match = resolve_account(proj, leg["major"], leg.get("account_hint", ""),
-                                group=(implied or {}).get("account_group", ""))
+                                group=group)
         legs.append({"major": leg["major"], "account": match.account,
                      "share": leg.get("share", "")})
         if match.verdict == "new":
@@ -349,10 +435,13 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         elif match.verdict == "unnamed":
             unnamed.append(leg["major"])
 
-    settles = 1
+    settles, also, also_amount = 1, 0, Decimal("0")
     if scope == SCOPE_MERCHANT:
-        settles = sum(1 for m in proj.movements()
-                      if merchant in proj.merchant_keys_of(m))
+        asked = ({str(key) for key in movements} if movements
+                 else {m.key for m in movements_answered_about(proj, merchant)})
+        rest = movements_also_settled(proj, merchant, asked)
+        settles, also = len(asked), len(rest)
+        also_amount = sum((abs(m.amount) for m in rest), Decimal("0"))
     return Proposal(
         scope=scope, subject=subject, legs=legs, new_accounts=new_accounts,
         confirm_accounts=confirm, needs_name=unnamed,
@@ -361,7 +450,8 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
         corroborates=(implied or {}).get("documents", ""),
         category=interp.category, said=interp.said,
         unknown_split=interp.compound and not interp.shares_known,
-        settles=max(settles, 1), amount=amount, currency=currency,
+        settles=max(settles, 1), also_settles=also, also_amount=str(also_amount),
+        amount=amount, currency=currency,
         prompt_version=interp.version, locale=locale)
 
 
