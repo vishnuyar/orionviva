@@ -3,8 +3,9 @@
     VIVA_VAULT_DIR=<vault> python -m viva.debug.categories
 
 Prints every category label with what it is worth, the subcategory vocabulary
-enrichment has written, spending by tag against total spending and the untagged
-remainder, and the aliases already folded together. It does not guess which
+enrichment has written, what each subcategory is worth under its own category
+with the remainder no subcategory names, spending by tag against total spending
+and the untagged remainder, and the aliases already folded together. It does not guess which
 labels mean the same thing; that is recorded once as a ruling and applied on the
 read side:
 
@@ -38,6 +39,25 @@ def report(proj) -> str:
     if subs:
         out += ["  the finer vocabulary (enrichment writes these)", ""]
         out.append("    " + ", ".join(subs))
+        out.append("")
+    tree = proj.spending_by_category_then_subcategory()
+    finer = {c: w for c, w in tree.items() if any(s for s in w)}
+    if finer:
+        out += ["  what each subcategory is worth, under its category", ""]
+        for label, within in sorted(finer.items(),
+                                    key=lambda kv: -sum(kv[1].values())):
+            out.append(f"    {label[:34]:34} {sum(within.values()):>14,.2f}")
+            for sub, amount in sorted(within.items(), key=lambda kv: -kv[1]):
+                if not sub:
+                    continue
+                out.append(f"      {sub[:32]:32} {amount:>14,.2f}")
+            # Named, never dropped: a category's subcategories sum to less than
+            # the category itself until every movement under it is named, and a
+            # total that quietly did not add up would read as a discrepancy.
+            unassigned = within.get("", Decimal("0"))
+            if unassigned:
+                out.append(f"      {'— of which unassigned':32} "
+                           f"{unassigned:>14,.2f}")
         out.append("")
     tags = proj.known_tags()
     by_tag = proj.spending_by_tag()

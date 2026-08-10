@@ -101,6 +101,70 @@ def test_subcategory_enables_a_finer_slice(tmp_path):
                                               "movies": Decimal("30.00")}
 
 
+def test_a_subcategory_summary_keeps_its_parent_and_names_the_remainder(tmp_path):
+    """A finer summary that a person can add up.
+
+    `spending_by_subcategory` falls back to the category label when a movement
+    has no subcategory, so its keys are two vocabularies in one namespace and
+    nothing says which category a slice came from. The nested read keeps them
+    apart: every category's inner values sum to exactly what
+    `spending_by_category` gives that category, and the money no subcategory
+    names sits under `""` rather than being dropped or silently folded into a
+    sibling."""
+    ledger = _card([("2026-01-05", "NETFLIX.COM", "15.00"),
+                    ("2026-01-06", "SPOTIFY USA", "10.00"),
+                    ("2026-01-08", "AMC THEATRES 123", "30.00"),
+                    ("2026-01-09", "CORNER NEWSAGENT", "5.00")], tmp_path)
+    cat = Catalog()
+
+    def extract(prompt):
+        # The newsagent is entertainment with no finer name — the ordinary case
+        # early on, and the one a flat view cannot show.
+        return ('{"netflix com": {"category":"entertainment","subcategory":"streaming"},'
+                '"spotify usa": {"category":"entertainment","subcategory":"streaming"},'
+                '"amc theatres": {"category":"entertainment","subcategory":"movies"},'
+                '"corner newsagent": {"category":"entertainment"}}')
+
+    enrich_merchants(ledger, cat, extract)
+    proj = ledger.projection()
+    tree = proj.spending_by_category_then_subcategory()
+
+    assert tree == {"entertainment": {"streaming": Decimal("25.00"),
+                                      "movies": Decimal("30.00"),
+                                      "": Decimal("5.00")}}
+    # It closes: the finer view adds up to the coarser one, category by category.
+    coarse = proj.spending_by_category()
+    for label, within in tree.items():
+        assert sum(within.values()) == coarse[label], label
+
+
+def test_the_category_report_shows_each_subcategory_under_its_parent(tmp_path):
+    """The report is where a person reads this, so the nesting and the named
+    remainder are asserted on the rendered text, not only on the read."""
+    from viva.debug.categories import report
+
+    ledger = _card([("2026-01-05", "NETFLIX.COM", "15.00"),
+                    ("2026-01-08", "AMC THEATRES 123", "30.00"),
+                    ("2026-01-09", "CORNER NEWSAGENT", "5.00")], tmp_path)
+    cat = Catalog()
+    enrich_merchants(ledger, cat, lambda prompt: (
+        '{"netflix com": {"category":"entertainment","subcategory":"streaming"},'
+        '"amc theatres": {"category":"entertainment","subcategory":"movies"},'
+        '"corner newsagent": {"category":"entertainment"}}'))
+
+    text = report(ledger.projection())
+    assert "what each subcategory is worth, under its category" in text
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    heading = next(i for i, ln in enumerate(lines)
+                   if "under its category" in ln)
+    section = lines[heading + 1:heading + 5]
+    assert any("entertainment" in ln and "50.00" in ln for ln in section)
+    assert any("streaming" in ln and "15.00" in ln for ln in section)
+    assert any("movies" in ln and "30.00" in ln for ln in section)
+    assert any("unassigned" in ln and "5.00" in ln for ln in section), (
+        "money the category holds that no subcategory names went unreported")
+
+
 def test_sync_is_idempotent(tmp_path):
     ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00")], tmp_path)
     cat = Catalog()

@@ -135,6 +135,36 @@ def spending_by_subcategory(core: ProjectionCore,
     return out
 
 
+def spending_by_category_then_subcategory(
+        core: ProjectionCore,
+        currency: str | None = None) -> dict[str, dict[str, Decimal]]:
+    """Spending grouped by category, and within each by subcategory.
+
+    ``{category: {subcategory: amount}}``, where the inner key is ``""`` for
+    money the category carries that no subcategory names. Positive magnitudes;
+    ``currency`` filters if given; non-spending natures excluded, exactly as
+    `spending_by_category` excludes them.
+
+    The nesting is what `spending_by_subcategory` cannot express: that view
+    falls back to the category label when a movement has no subcategory, so its
+    keys are two vocabularies in one namespace and a subcategory sharing a name
+    with a category is summed with it. Here the two stay apart, and each
+    category's inner values sum to the same total `spending_by_category` gives
+    it."""
+    out: dict[str, dict[str, Decimal]] = {}
+    for m in movements_view.movements(core):
+        if not movements_view.counts_as_spending(m):
+            continue
+        if currency is not None and m.currency != currency:
+            continue
+        ruling = derived_category(core, m) or {}
+        category = ruling.get("category") or "Uncategorized"
+        sub = (ruling.get("subcategory") or "").strip()
+        within = out.setdefault(category, {})
+        within[sub] = within.get(sub, Decimal("0")) + abs(m.amount)
+    return out
+
+
 def uncategorized_expenses(core: ProjectionCore) -> list:
     """Expense movements whose *derived* category is still unknown — no
     override and no merchant-catalog entry. The categorization queue;

@@ -258,6 +258,11 @@ class LedgerProjection:
     def spending_by_subcategory(self, currency: str | None = None) -> dict[str, Decimal]:
         return _categories.spending_by_subcategory(self._core, currency)
 
+    def spending_by_category_then_subcategory(
+            self, currency: str | None = None) -> dict[str, dict[str, Decimal]]:
+        return _categories.spending_by_category_then_subcategory(
+            self._core, currency)
+
     def uncategorized_expenses(self) -> list[MovementInfo]:
         return _categories.uncategorized_expenses(self._core)
 
