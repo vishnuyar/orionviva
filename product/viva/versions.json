@@ -22,7 +22,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v7"
+      "active": "tools-v8"
     },
     "classify": {
       "in": "prompts",
@@ -129,6 +129,7 @@
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",
-    "tools-v7": "161d75442c9398df"
+    "tools-v7": "161d75442c9398df",
+    "tools-v8": "c2afd103226bed82"
   }
 }

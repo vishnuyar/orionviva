@@ -232,9 +232,14 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
     batch = catalog.pending()
     if batch:
         # The subcategories this vault already uses are shown to the model, so
-        # an answer reuses an existing label where one fits.
+        # an answer reuses an existing label where one fits — held to what may
+        # cross to a model, exactly as the category vocabulary is (T9). A
+        # subcategory is a name the person's own rulings coined, so it can
+        # carry a person in it.
+        from ..listen import shareable_categories
         enricher = Enricher(extract_fn,
-                            known_subcategories=proj.known_subcategories())
+                            known_subcategories=shareable_categories(
+                                proj.known_subcategories()))
         records = enricher.enrich(batch)
         catalog.add_all(records)
         enriched = len(records)

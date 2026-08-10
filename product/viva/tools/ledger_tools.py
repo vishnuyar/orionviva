@@ -147,6 +147,13 @@ def _categories(labels) -> list:
     return out
 
 
+def _today() -> str:
+    """Today, as the one place this module reads a clock."""
+    import datetime
+
+    return datetime.date.today().isoformat()
+
+
 def _is_iso_date(value: str) -> bool:
     """A structural YYYY-MM-DD check — lexical, like every date comparison in
     the projection."""
@@ -338,9 +345,11 @@ def _mixed_currencies(tool: str, held) -> ToolResult:
 def _movement_row(proj, m, grades: dict) -> dict:
     ruling = proj.derived_category(m) or {}
     return {"record_id": m.key, "account": m.account, "date": m.date,
-            "description": m.description, "amount": str(m.amount),
-            # Which way the money went. The posting's own sign does not say
-            # it; the kind of account the posting sits on does.
+            "description": m.description,
+            # How much, and which way it went. The posting's own sign does not
+            # say the direction — the kind of account it sits on does — so the
+            # raw signed amount is not a field of a row at all. A reader that
+            # needs it has the movement.
             "effect": str(movements_view.money_effect(m)),
             "currency": m.currency, "nature": m.nature,
             "nature_reason": m.nature_reason, "provisional": m.provisional,
@@ -501,7 +510,12 @@ LIST_MOVEMENTS_PARAMS = {
 
 # What one row says: what identifies the movement and what it was ruled to be.
 # The reasoning behind the ruling is what `get_provenance` answers for.
-ROW_FIELDS = ("record_id", "account", "date", "description", "amount",
+#
+# The magnitude travels as `effect` and not as the raw posting `amount`,
+# because a posting's own sign does not say which way the money went — the kind
+# of account it sits on does. A row carrying the raw sign lets a card purchase
+# be read as money received, and nothing else in the row contradicts it.
+ROW_FIELDS = ("record_id", "account", "date", "description", "effect",
               "currency", "nature", "category", "subcategory", "tags",
               "grade", "doc_id")
 
@@ -544,7 +558,7 @@ def list_movements(proj, args: dict) -> ToolResult:
     record_ids = sorted({r["doc_id"] for r in shown if r["doc_id"]}
                         | {r["record_id"] for r in shown})
     covers, caveats = _attested_coverage(proj, filters)
-    figures = [figure(r["amount"], f"{r['description']} on {r['date']}",
+    figures = [figure(r["effect"], f"{r['description']} on {r['date']}",
                       quantity=quantity.MOVEMENT,
                       grade=r["grade"], dated=r["date"], currency=r["currency"],
                       record_ids=[r["record_id"]]
@@ -631,12 +645,23 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
                 out[tag] = out.get(tag, Decimal("0")) + amount
             continue
         if group_by == "category":
-            key = (proj.derived_category(m) or {}).get("category",
-                                                       "Uncategorized")
+            # Missing or empty: a ruling can carry an empty category name, and
+            # a nameless group is money a person can neither read nor filter
+            # on. The same default the projection and the subcategory grouping
+            # take, so all three agree about how much is unnamed — including
+            # the caveat below, which states that figure to a person verbatim.
+            key = (proj.derived_category(m) or {}).get("category") or "Uncategorized"
         elif group_by == "subcategory":
+            # Named under its parent, because a subcategory alone is not a
+            # vocabulary: "streaming" says nothing about which category it
+            # slices, and a subcategory sharing a name with a category would
+            # otherwise have its total summed into it. Money the category holds
+            # that no subcategory names is its own group rather than a silent
+            # part of the parent.
             ruling = proj.derived_category(m) or {}
-            key = (ruling.get("subcategory") or ruling.get("category")
-                   or "Uncategorized")
+            category = ruling.get("category") or "Uncategorized"
+            sub = (ruling.get("subcategory") or "").strip()
+            key = f"{category} / {sub}" if sub else f"{category} / unassigned"
         elif group_by == "merchant":
             key = proj.merchant_key_of(m) or m.description
         elif group_by == "account":
@@ -728,11 +753,15 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
     figures.append(figure(extras["count"], "spending movements counted",
                           quantity=quantity.COUNT,
                           grade=grade, record_ids=record_ids))
-    # What a spending read groups by is a thing it spoke about — a category, a
-    # counterparty, an account — and an answer refers to it rather than
-    # spelling it.
-    grouped_entities = (_categories(named)
-                        if group_by in ("category", "subcategory")
+    # What a spending read groups by is sometimes a thing it spoke about — a
+    # category, a counterparty — and an answer refers to that rather than
+    # spelling it. A subcategory group is not one: its key names a pair, the
+    # vault holds no such category, and `_check_filters` refuses the same
+    # string on the follow-up. Naming the parent instead would be worse, since
+    # the figure beside it measures one slice of that parent rather than all of
+    # it. So the pair stays a group key and the answer speaks of it through the
+    # figure it is attached to.
+    grouped_entities = (_categories(named) if group_by == "category"
                         else _merchants(named) if group_by == "merchant"
                         else [])
     return ToolResult(
@@ -788,17 +817,21 @@ def _grades_in(value) -> list:
     return out
 
 
-def _aggregate_net_worth(proj, as_of: str | None) -> ToolResult:
-    point = networth.net_worth(proj, as_of)
+def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult:
+    # With no day asked for, the day it is asked on. A balance carries forward,
+    # so the total is good now; `net_worth` on its own would date the point by
+    # its newest input, which is when the evidence was taken rather than when
+    # the answer is good for.
+    point = networth.net_worth(proj, as_of or today or None)
     data = point.to_dict()
     record_ids = sorted({line.get("account", "") for line in
                          (data.get("lines") or []) if line.get("account")})
     lines = [line for line in (data.get("lines") or []) if line.get("account")]
-    # A total is dated by the stalest thing inside it, which the point already
-    # computes: `oldest_input` is empty when any line carries no date at all,
-    # and an empty date is the honest answer there — the point's own `as_of`
-    # is when it was computed, which with no window asked for is today.
-    as_of = data.get("oldest_input", "")
+    # A balance carries: absent a newer statement, the last one observed is
+    # still what the account holds, so the total is good as of the day it was
+    # asked for. How stale the evidence under it is rides in the caveat and on
+    # each line's own `as_of`, which the per-account figures carry.
+    as_of = data.get("as_of", "")
     figures = []
     for currency, row in sorted(data.get("by_currency", {}).items()):
         for part in ("net", "assets", "liabilities"):
@@ -859,7 +892,8 @@ def _unsupported_filters(kind: str, filters: dict) -> ToolResult | None:
         supported_filters=sorted(supported))
 
 
-def query_ledger(proj, args: dict, locale: str = "") -> ToolResult:
+def query_ledger(proj, args: dict, locale: str = "",
+                 today: str = "") -> ToolResult:
     filters = args.get("filters", {})
     bad = _check_filters(proj, filters)
     if bad is not None:
@@ -875,6 +909,15 @@ def query_ledger(proj, args: dict, locale: str = "") -> ToolResult:
         if not _is_iso_date(args["as_of"]):
             return refusal(TOOL, "bad_date",
                            f"as_of must be an ISO date, got '{args['as_of']}'.")
+        # A balance carries forward, so any day from the newest evidence up to
+        # today is a day this can answer for. Past today it is not carrying a
+        # balance, it is projecting one, and the date would otherwise found a
+        # claim about a day that has not happened.
+        bound = today or _today()
+        if args["as_of"] > bound:
+            return refusal(TOOL, "as_of_in_the_future",
+                           f"I cannot answer for {args['as_of']}, which has "
+                           f"not happened yet. I can answer up to {bound}.")
         if not (entity == "aggregate" and args.get("metric") == "net_worth"):
             return refusal(TOOL, "as_of_unsupported",
                            "as_of applies to the net_worth metric; other "
@@ -896,7 +939,7 @@ def query_ledger(proj, args: dict, locale: str = "") -> ToolResult:
                                    args.get("group_by", "category"), locale)
     if metric == "income":
         return _aggregate_income(proj, filters)
-    return _aggregate_net_worth(proj, args.get("as_of"))
+    return _aggregate_net_worth(proj, args.get("as_of"), today or _today())
 
 
 # ---------------------------------------------------------- check_completeness
@@ -1006,7 +1049,7 @@ def get_provenance(proj, args: dict) -> ToolResult:
         return ToolResult(
             tool="get_provenance", ok=True,
             grade=grades.get(match.key, ""), dated=match.date,
-            figures=[figure(match.amount,
+            figures=[figure(movements_view.money_effect(match),
                             f"{match.description} on {match.date}",
                             quantity=quantity.MOVEMENT,
                             grade=grades.get(match.key, ""), dated=match.date,
@@ -1017,8 +1060,9 @@ def get_provenance(proj, args: dict) -> ToolResult:
             provenance=[match.provenance.to_dict()],
             data={"kind": "movement",
                   "movement": _movement_row(proj, match, grades)},
-            text=(f"Movement of {match.amount} on {match.date}: nature "
-                  f"'{match.nature}', decided by rung '{match.nature_reason}'."))
+            text=(f"Movement of {movements_view.money_effect(match)} on "
+                  f"{match.date}: nature '{match.nature}', decided by rung "
+                  f"'{match.nature_reason}'."))
     return refusal("get_provenance", "unknown_record",
                    f"'{rid}' names no document, account or movement I hold.",
                    accepted=["a doc_id from check_completeness",

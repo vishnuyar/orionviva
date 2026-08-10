@@ -165,6 +165,64 @@ def test_the_category_report_shows_each_subcategory_under_its_parent(tmp_path):
         "money the category holds that no subcategory names went unreported")
 
 
+def test_a_category_with_no_name_is_unnamed_in_both_views(tmp_path):
+    """The coarse and finer views must agree about how much is unnamed.
+
+    A nature ruling on a merchant with no catalog record writes a category that
+    is present but empty. Defaulting only on a *missing* key left that money in
+    a `''` bucket the coarse view reported and the finer one did not, so a
+    report rendering both showed one page disagreeing with itself. An empty
+    name is not a category in either."""
+    from viva.ingest import rule_merchant_nature
+
+    ledger = _card([("2026-01-05", "NETFLIX.COM", "15.00"),
+                    ("2026-01-09", "CORNER NEWSAGENT", "5.00")], tmp_path)
+    enrich_merchants(ledger, Catalog(), lambda prompt: (
+        '{"netflix com": {"category":"entertainment","subcategory":"streaming"}}'))
+    rule_merchant_nature(ledger, "CORNER NEWSAGENT", "spending")
+
+    proj = ledger.projection()
+    coarse = proj.spending_by_category()
+    tree = proj.spending_by_category_then_subcategory()
+    assert "" not in coarse, "money is filed under a name a person cannot read"
+    assert set(tree) == set(coarse)
+    for label, within in tree.items():
+        assert sum(within.values()) == coarse[label], label
+
+
+def test_the_uncategorized_caveat_states_what_is_actually_unnamed(tmp_path):
+    """The caveat a person reads verbatim must be the figure it claims to be.
+
+    The read grouped by category defaulted only on a MISSING category key, so
+    money whose ruling carried an empty one sat in a group the caveat's lookup
+    never saw. A caveat is joined into the answer text as written, so a person
+    read a confident amount, with no id and no grade behind it, understating
+    what the agent does not know."""
+    from viva.ingest import rule_merchant_nature
+    from viva.tools import default_registry
+
+    ledger = _card([("2026-01-05", "NETFLIX.COM", "15.00"),
+                    ("2026-01-09", "CORNER NEWSAGENT", "5.00"),
+                    ("2026-01-10", "UNKNOWN SHOP", "3.00")], tmp_path)
+    enrich_merchants(ledger, Catalog(), lambda prompt: (
+        '{"netflix com": {"category":"entertainment","subcategory":"streaming"}}'))
+    rule_merchant_nature(ledger, "CORNER NEWSAGENT", "spending")
+    proj = ledger.projection()
+
+    result = default_registry(proj).call(
+        "query_ledger", {"entity": "aggregate", "metric": "spending",
+                         "group_by": "category"})
+    assert result.ok, result.text
+    assert "" not in result.data["by_group"], (
+        "a group holding money under no name a person could read or filter on")
+
+    unnamed = proj.spending_by_category()["Uncategorized"]
+    (said,) = [str(c) for c in result.caveats if "uncategorized" in str(c).lower()]
+    assert str(unnamed) in said.replace(",", ""), (
+        f"the caveat states a different figure from what is unnamed: {said!r} "
+        f"against {unnamed}")
+
+
 def test_sync_is_idempotent(tmp_path):
     ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00")], tmp_path)
     cat = Catalog()

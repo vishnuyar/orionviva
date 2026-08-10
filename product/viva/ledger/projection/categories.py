@@ -111,7 +111,11 @@ def spending_by_category(core: ProjectionCore,
             continue
         if currency is not None and m.currency != currency:
             continue
-        cat = (derived_category(core, m) or {}).get("category", "Uncategorized")
+        # An empty category name is not a category: a ruling can carry one,
+        # and a `''` bucket in a spending report is a line a person cannot read
+        # and cannot filter on. It is the same default the finer view takes, so
+        # the two agree about how much is unnamed.
+        cat = (derived_category(core, m) or {}).get("category") or "Uncategorized"
         out[cat] = out.get(cat, Decimal("0")) + abs(m.amount)
     return out
 

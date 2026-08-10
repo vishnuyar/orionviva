@@ -40,18 +40,18 @@ BALANCE = "balance"
 # What is held less what is owed, at a moment, across everything in scope.
 NET_WORTH = "net_worth"
 
-# The sum of postings over a set of movements before anything is netted off.
-# It says nothing about direction: direction is a property of the account a
-# posting sits on rather than of the posting's sign, and this product does not
-# establish it.
+# The sum of postings over a set of movements before anything is netted off,
+# each taken in the direction its account gives it. It says which way the money
+# went for the set as a whole, and nothing about any one movement in it.
 GROSS_FLOW = "gross_flow"
 
 # What a set of movements came to once the postings are netted against each
 # other. Still not spending: a settlement and a transfer are in it.
 NET_MOVEMENT = "net_movement"
 
-# The amount of one posting, whatever that posting turns out to be. A single
-# card settlement is one of these, and so is a single purchase.
+# One movement, signed by which way the money went — negative out, positive in
+# — read off the kind of account it sits on rather than off the posting's own
+# sign. A single card settlement is one of these, and so is a single purchase.
 MOVEMENT = "movement"
 
 # A number of things — accounts, documents, movements, months, counterparties.

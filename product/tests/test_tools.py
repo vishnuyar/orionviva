@@ -290,7 +290,11 @@ def test_transactions_filter_by_nature_window_and_tag(proj, registry):
     assert tagged.data["count"] == 1
     assert "transactions" not in tagged.data       # a summary returns no rows
     rows = registry.call("list_movements", {"filters": {"tag": "pantry"}})
-    assert rows.data["movements"][0]["amount"] == "-60.00"
+    # The row carries which way the money went, never the raw posting sign: a
+    # model reading rows can no longer call a card purchase money received.
+    row = rows.data["movements"][0]
+    assert "amount" not in row
+    assert row["effect"] == "-60.00"
     windowed = registry.call("query_ledger",
                              {"entity": "transactions",
                               "filters": {"window": {"to": "2026-01-10"}}})
@@ -2066,6 +2070,107 @@ def test_a_charge_on_a_card_is_money_out_of_the_summary():
     assert of["net movement on card"] == "-500.00"
 
 
+def test_a_row_and_its_figure_say_which_way_the_money_went():
+    """The other half of the same rule, one read down.
+
+    The summary was taught to read direction off the account's kind; a detailed
+    read was not, and handed both its rows and its per-row figures the raw
+    posting `amount`. On a liability a purchase is recorded positive — what is
+    owed grew — so a model reading rows rather than totals could state a card
+    charge as money received, with the right magnitude, the right record and
+    the right grade under a false sign. Nothing else in the row contradicted
+    it."""
+    events = [
+        account_opened("card", "liability", "Signature Card", "USD",
+                       "2026-01-01", institution="Meridian Cards"),
+        document_captured("doc-card", "card.pdf", 100, "card_statement", 0.9,
+                          "2026-02-01"),
+        simple_transaction("card", "500.00", "CITY GYM", "2026-01-08",
+                           provenance=_p("doc-card")),
+    ]
+    result = default_registry(LedgerProjection(events)).call(
+        "list_movements", {"filters": {"account": "card"}})
+    assert result.ok, result.text
+
+    (row,) = result.data["movements"]
+    assert "amount" not in row, "the raw posting sign is not a row field"
+    assert row["effect"] == "-500.00", "a charge on a card is money out"
+
+    (fig,) = [f for f in result.figures if "CITY GYM" in f["what"]]
+    assert fig["value"] == "-500.00", (
+        "the figure an answer would state carries the raw sign")
+
+    # And through the tool that exists to justify a figure. Two tools naming
+    # one movement with the same `what` and the same quantity, disagreeing on
+    # sign, would put both in the run's book with citable ids — and `compute`
+    # would add them to zero.
+    registry = default_registry(LedgerProjection(events))
+    told = registry.call("list_movements", {"filters": {"account": "card"}})
+    stood_on = registry.call("get_provenance",
+                             {"record_id": told.data["movements"][0]["record_id"]})
+    assert stood_on.ok, stood_on.text
+    (justified,) = stood_on.figures
+    (stated,) = told.figures
+    assert justified["what"] == stated["what"]
+    assert justified["value"] == stated["value"] == "-500.00"
+    assert "amount" not in stood_on.data["movement"]
+    assert "500.00" in stood_on.text and "-500.00" in stood_on.text, (
+        "the sentence spells a number the figure disagrees with")
+
+
+def test_a_subcategory_group_is_not_offered_as_a_category(registry):
+    """A group key naming a pair is not a thing the vault holds.
+
+    Grouping by subcategory keys each group by its parent and its own name, so
+    two vocabularies stay apart. That key is not a category: `known_categories`
+    does not hold it and the filter check refuses the same string on a
+    follow-up, so minting it as a category entity would hand the answer a name
+    to speak that no other read accepts. Naming the parent instead would be
+    worse — the figure beside it measures one slice of that parent."""
+    grouped = registry.call("query_ledger",
+                            {"entity": "aggregate", "metric": "spending",
+                             "group_by": "subcategory"})
+    assert grouped.ok, grouped.text
+    assert grouped.data["by_group"], "this fixture groups nothing"
+    assert not [i for i in grouped.identifiers if i["kind"] == "category"], (
+        "a pair was offered as a category the answer could name")
+
+    # And the same read grouped by category does still name them, because
+    # those keys are categories the vault holds.
+    by_category = registry.call("query_ledger",
+                                {"entity": "aggregate", "metric": "spending",
+                                 "group_by": "category"})
+    named = [i for i in by_category.identifiers if i["kind"] == "category"]
+    assert named
+    for item in named:
+        assert registry.call(
+            "query_ledger",
+            {"entity": "aggregate", "metric": "spending",
+             "filters": {"category": item["label"]}}).ok, item["label"]
+
+
+def test_a_day_that_has_not_happened_is_not_a_day_a_read_answers_for(registry):
+    """A balance carries forward, so a read answers for any day from the newest
+    evidence up to today. Past today it would be projecting rather than
+    carrying, and the date is worse than useless: `as_of` is echoed into the
+    result's own date, which is what founds a day an answer may state — so an
+    unbounded one lets a figure be spoken as good for a day nothing has
+    happened on yet."""
+    ahead = registry.call("query_ledger", {"entity": "aggregate",
+                                           "metric": "net_worth",
+                                           "as_of": "2030-01-01"})
+    assert not ahead.ok
+    assert ahead.refusal == "as_of_in_the_future"
+    assert "2030-01-01" in ahead.text
+
+    # Up to today still answers, which is what carrying forward means.
+    behind = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "net_worth",
+                                            "as_of": "2026-01-31"})
+    assert behind.ok, behind.text
+    assert behind.dated == "2026-01-31"
+
+
 def test_an_average_over_a_summary_has_a_divisor_it_can_cite(registry):
     """A summary states how many months it spans, as a figure with an id. It
     carries no currency, so dividing an amount by it yields an amount: that is
@@ -2863,23 +2968,52 @@ def test_two_accounts_a_person_named_the_same_are_told_apart(registry):
     assert alone.text.startswith("Everyday Checking holds")
 
 
-def test_a_total_is_dated_by_its_stalest_input_and_never_by_today(registry):
-    """A total is exactly as current as the oldest thing inside it.
+def test_a_total_is_dated_by_when_it_was_asked_for_not_by_its_oldest_line():
+    """A balance carries forward: absent a newer statement, what was last
+    observed is still what the account holds. So a total is good as of the day
+    it was asked for, and how old the evidence under it is rides in the caveat
+    and in each line's own `as_of`.
 
-    The point's own `as_of` is when the sum was computed, which with no window
-    asked for is today — so dating the total that way states a currency the
-    balances do not have. It is one number over several measurements, and the
-    oldest one governs."""
-    result = registry.call("query_ledger",
-                           {"entity": "aggregate", "metric": "net_worth"})
+    The fixture holds three distinct dates — the day asked on, the newest
+    evidence and the oldest — because a vault where they coincide cannot tell
+    the competing rules apart."""
+    events = [
+        account_opened("old", "depository", "Dormant Savings", "USD",
+                       "2026-01-01"),
+        account_opened("new", "depository", "Everyday Checking", "USD",
+                       "2026-01-01"),
+        document_captured("doc-old", "old.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        document_captured("doc-new", "new.pdf", 100, "bank_statement", 0.9,
+                          "2026-07-01"),
+        opening_balance_observed("old", "100.00", "2026-01-01", _p("doc-old")),
+        closing_balance_observed("old", "100.00", "2026-01-31", _p("doc-old")),
+        opening_balance_observed("new", "500.00", "2026-01-01", _p("doc-new")),
+        closing_balance_observed("new", "500.00", "2026-06-30", _p("doc-new")),
+    ]
+    asked_on = "2026-08-09"
+    result = default_registry(LedgerProjection(events), today=asked_on).call(
+        "query_ledger", {"entity": "aggregate", "metric": "net_worth"})
     assert result.ok, result.text
     point = result.data["point"]
-    assert result.dated == point["oldest_input"], (
-        "the total is dated by something other than its stalest input")
-    assert result.dated != point["as_of"] or point["as_of"] == point["oldest_input"]
+
+    # Three distinct dates, so no two rules can be confused for each other: the
+    # day asked on, the newest evidence, and the oldest.
+    assert point["oldest_input"] == "2026-01-31"
+    assert asked_on > "2026-06-30" > point["oldest_input"]
+    assert result.dated == asked_on, (
+        "the total is dated by its evidence rather than by the day it is "
+        "good for — the carry-forward ruling is written down, not built")
     for fig in result.figures:
         if fig["what"].endswith(" in USD"):
-            assert fig["dated"] == point["oldest_input"], fig["what"]
+            assert fig["dated"] == asked_on, fig["what"]
+    # And the per-account lines still carry their own evidence dates, which is
+    # where the age of any one part of it reaches a reader.
+    lines = {ln["account"]: ln.get("as_of", "") for ln in point["lines"]}
+    assert set(lines.values()) == {"2026-01-31", "2026-06-30"}
+    for fig in result.figures:
+        if " — its part of net worth" in fig["what"]:
+            assert fig["dated"] == lines[fig["what"].split(" — ")[0]]
 
 
 def test_a_caveat_travels_to_the_model_as_a_sentence_and_not_as_a_handle():

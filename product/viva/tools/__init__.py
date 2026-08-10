@@ -25,17 +25,21 @@ __all__ = ["Registry", "ToolSpec", "ToolResult", "RunResult",
 _NO_PARAMS = {"type": "object", "properties": {}}
 
 
-def default_registry(proj, locale: str = "") -> Registry:
+def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     """The six read tools, bound to one projection.
 
     The locale travels with them because a read writes amounts of its own — a
     caveat saying how much of a total is not yet settled is a sentence with an
     amount in it — and this person's conventions decide how those are written,
-    exactly as they decide it for the answer the caveat sits under."""
+    exactly as they decide it for the answer the caveat sits under.
+
+    ``today`` bounds how far forward a read may be asked to answer; it defaults
+    to the day the call is made, and is a parameter so a test does not depend
+    on the day it runs."""
     registry = Registry()
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
-        fn=lambda args: ledger_tools.query_ledger(proj, args, locale)))
+        fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today)))
     registry.register(ToolSpec(
         name="list_movements", params=ledger_tools.LIST_MOVEMENTS_PARAMS,
         fn=lambda args: ledger_tools.list_movements(proj, args)))

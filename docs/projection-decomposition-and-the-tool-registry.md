@@ -511,7 +511,7 @@ renderer carries a proportion as the quotient and writes it per hundred at one
 place, and the transactions summary reads direction off the account's kind
 rather than the posting's sign. The read that answered a different question is
 untouched. **And the direction fix is the summary only** — `list_movements`
-still hands the model a row whose `amount` is the raw posting sign with nothing
+handed the model a row whose `amount` was the raw posting sign with nothing
 in the row from which direction can be derived, so a model reading rows rather
 than totals can still call a card purchase money received.
 
@@ -634,3 +634,36 @@ that is how it knows which caveats a stated figure owes — but the id no longer
 reaches the model, because no binding can name a caveat any more. Two released
 prompts had taught that exact shape, and a model still emitting one would have
 cost a whole turn rather than a clause.
+
+**The dating rule is reversed, and a row stops carrying two numbers
+(2026-08-09, fourth amendment).** The stalest-input rule above was shipped and
+reversed the same day. Vishnu's ruling: a balance carries forward — absent a
+newer statement, the last value observed is still what the account holds — so a
+total is dated by the day it is good *for*, not by the day its evidence was
+taken. With no `as_of` asked for that is today; how old the evidence under it
+is rides on each line's own date. Two things came out of the reversal. It
+opened a hole, because `as_of` was validated for shape alone and echoed into
+the result's date, which is what founds a day an answer may state: a future
+`as_of` let a figure be spoken as good for a day that had not happened. A read
+now refuses one. And the ruling turned out to be written down rather than
+built — `net_worth` with no argument dates its point by its newest input, so
+the tool passes today explicitly. The test that should have caught that was a
+tautology over the line it was testing, in a fixture where every date was the
+same; it now uses three distinct dates and asserts the ruling.
+
+Separately, `_movement_row` carried both the raw signed posting and the
+direction-corrected `effect`. `list_movements` filtered to `effect`;
+`get_provenance` returned the row whole and built its figure from the raw
+amount. So one card charge produced two figures with the same description, the
+same declared quantity and opposite signs, both citable in one turn — in the
+tool whose whole purpose is to stand behind a figure. The field is gone from
+the row rather than filtered out of two of three readers, which is the
+difference between a rule and a habit.
+
+**And a caveat stated a figure that was not the figure.** A ruling can carry a
+category that is present and empty, and the read grouped by category defaulted
+only on a *missing* key — so that money sat in a nameless group the "still
+uncategorized" caveat never counted. A caveat is joined into the answer
+verbatim, so a person read a confident amount, with no id and no grade behind
+it, understating what the agent did not know. Every path now treats missing and
+empty as the same absence.
