@@ -52,6 +52,12 @@ product/**/*.jsonl
 *.blob
 raw-header.json
 .viva-vault/
+# A run that did not expand `~` writes a real vault into a literal tilde
+# directory. Every file in one happens to match a rule above, so nothing was
+# committable — a coincidence of which files exist, not containment. Ignore the
+# path itself.
+~/
+product/~/
 
 # The Witness's reports on real-vault runs. Scrubbed when written — no amounts,
 # no institution or merchant names, no account fragments, no dates from this
