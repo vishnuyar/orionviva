@@ -35,9 +35,11 @@ from ..ledger.identity import masked
 from ..ledger.projection import (MIXED, SETTLEMENT, SPENDING, TRANSFER,
                                  UnknownAccountError)
 from ..ledger.projection import movements as movements_view
-from .envelope import (ACTIVITY, ENTITY_ACCOUNT, ENTITY_CATEGORY,
-                       ENTITY_MERCHANT, ToolResult, entity, figure, refusal,
-                       weakest)
+from .envelope import (ACTIVITY, BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT,
+                       BY_PERIOD, BY_SINCE, BY_UNTIL, ENTITY_ACCOUNT,
+                       ENTITY_CATEGORY, ENTITY_MERCHANT, GAP_REFUSED,
+                       GAP_UNOBSERVED, ToolResult, bounded, entity, figure,
+                       refusal, weakest)
 from .registry import Registry, ToolSpec
 
 REAL_KINDS = ("depository", "liability", "investment")
@@ -361,6 +363,10 @@ def _movement_row(proj, m, grades: dict) -> dict:
 
 def _query_balances(proj, filters: dict) -> ToolResult:
     infos = _real_accounts(proj)
+    # How many balance-holding accounts this person has, before any filter
+    # narrows the read. It is what a per-account figure is one of, so it is
+    # taken while it still means that.
+    holds = len(infos)
     if "account" in filters:
         infos = [i for i in infos if i.account == filters["account"]]
         if not infos:
@@ -386,17 +392,23 @@ def _query_balances(proj, filters: dict) -> ToolResult:
     if not rows:
         return refusal(TOOL, "no_accounts",
                        "I don't have any balance-holding accounts on file yet.")
+    # One account's balance is one account's balance, whatever it is asked for:
+    # it covers one of the accounts held, and it says so where the whole of
+    # them is more than one. The count covers as many as this read ranged over.
     figures = [figure(r["value"], f"{r['name'] or r['record_id']} — balance",
                       quantity=quantity.BALANCE,
                       grade=r["grade"], dated=r["dated"], currency=r["currency"],
                       record_ids=[r["record_id"]]
                       + ([r["provenance"]["doc_id"]]
-                         if r["provenance"].get("doc_id") else []))
+                         if r["provenance"].get("doc_id") else []),
+                      boundary=bounded(whole=holds == 1, counted=1, held=holds))
                for r in rows]
     figures.append(figure(len(rows), "accounts holding a balance",
                           quantity=quantity.COUNT,
                           grade=weakest(r["grade"] for r in rows),
-                          record_ids=sorted({r["record_id"] for r in rows})))
+                          record_ids=sorted({r["record_id"] for r in rows}),
+                          boundary=bounded(whole=len(rows) == holds,
+                                           counted=len(rows), held=holds)))
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
         identifiers=_identifiers(proj, (r["record_id"] for r in rows)),
@@ -675,6 +687,49 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
     return out, extras
 
 
+# How each filter narrows a set. A filter absent here still narrows the read —
+# it is part of what the read is not whole about — but there is no way of
+# writing what it named, so it names nothing rather than naming something else.
+# `window` is not here because one filter yields three different narrowings
+# depending on which of its edges are given.
+_FILTER_NAMES = {"account": BY_ACCOUNT, "category": BY_CATEGORY,
+                 "merchant": BY_MERCHANT}
+
+# And how each grouping cuts a set, for the same reason: a subcategory pair, a
+# tag and a currency are group keys the vault holds no entity for.
+_GROUP_NAMES = {"category": BY_CATEGORY, "merchant": BY_MERCHANT,
+                "account": BY_ACCOUNT}
+
+# The groupings under which every counted movement lands in exactly one group.
+# Tags do not: one movement carries several of them and money carrying none
+# lands in no group at all, so a tag group is a slice of the population however
+# few tags there are.
+_PARTITIONING = ("category", "subcategory", "merchant", "account", "currency")
+
+
+def _narrowed_to(proj, filters: dict) -> list:
+    """How the filters narrowed this read, as the things they named.
+
+    A category is named in the vault's own word for it rather than in the word
+    the filter arrived as: what is stated is what was counted. A window is
+    named by which of its edges were given, so a half-open one is still said
+    rather than dropped."""
+    out = []
+    for name in sorted(set(filters) & set(_FILTER_NAMES)):
+        value = (proj.canonical_category(filters[name])
+                 if name == "category" else filters[name])
+        out.append({"kind": _FILTER_NAMES[name], "value": value})
+    window = filters.get("window") or {}
+    start, end = (window.get("from") or "")[:10], (window.get("to") or "")[:10]
+    if start and end:
+        out.append({"kind": BY_PERIOD, "value": start, "to": end})
+    elif start:
+        out.append({"kind": BY_SINCE, "value": start})
+    elif end:
+        out.append({"kind": BY_UNTIL, "value": end})
+    return out
+
+
 def _largest_groups(grouped: dict) -> tuple[dict, dict]:
     """The groups an aggregate names, and the tail it did not.
 
@@ -742,17 +797,41 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
                        f"{tail['count']} smaller group(s) worth "
                        f"{amount(tail['total'])} in total.")
     grade = weakest(extras["grades"])
-    figures = [figure(v, f"spending — {group_by} '{k}'",
-                      quantity=quantity.SPENDING, grade=grade,
-                      currency=currency, record_ids=record_ids)
-               for k, v in sorted(named.items())]
+    # What each of these figures was taken over. The total and the count were
+    # taken over whatever the filters left; a group was taken over one slice of
+    # that, and says which slice where the grouping cuts by a thing the vault
+    # names.
+    #
+    # A group is the whole of the spending its quantity ranges over only where
+    # the grouping puts every counted movement in exactly one group AND there
+    # is only that one group AND nothing narrowed the read. How many groups
+    # there are decides nothing on its own: under a grouping that does not
+    # partition, the one group is still a slice, and money in no group at all
+    # is money the figure does not carry.
+    narrowed = _narrowed_to(proj, filters)
+    filtered = bool(set(filters) & _SUPPORTED_FILTERS["aggregate:spending"])
+    covers_all = (not filtered and group_by in _PARTITIONING
+                  and len(grouped) == 1)
+    figures = []
+    for k, v in sorted(named.items()):
+        cut = ([{"kind": _GROUP_NAMES[group_by], "value": k}]
+               if group_by in _GROUP_NAMES and not covers_all else [])
+        figures.append(figure(v, f"spending — {group_by} '{k}'",
+                              quantity=quantity.SPENDING, grade=grade,
+                              currency=currency, record_ids=record_ids,
+                              boundary=bounded(whole=covers_all,
+                                               selected=narrowed + cut)))
     figures.append(figure(extras["total"], f"total spending by {group_by}",
                           quantity=quantity.SPENDING,
                           grade=grade, currency=currency,
-                          record_ids=record_ids))
+                          record_ids=record_ids,
+                          boundary=bounded(whole=not filtered,
+                                           selected=narrowed)))
     figures.append(figure(extras["count"], "spending movements counted",
                           quantity=quantity.COUNT,
-                          grade=grade, record_ids=record_ids))
+                          grade=grade, record_ids=record_ids,
+                          boundary=bounded(whole=not filtered,
+                                           selected=narrowed)))
     # What a spending read groups by is sometimes a thing it spoke about — a
     # category, a counterparty — and an answer refers to that rather than
     # spelling it. A subcategory group is not one: its key names a pair, the
@@ -817,6 +896,75 @@ def _grades_in(value) -> list:
     return out
 
 
+PARTS = ("net", "assets", "liabilities")
+
+
+def _side_of(account: str, kind: str = "") -> str:
+    """Which part of a net-worth point an account belongs to, or "" when
+    nothing says. A ledger kind decides where one is defined; otherwise the
+    root of the path does."""
+    if kind:
+        return "liabilities" if kind == "liability" else "assets"
+    if account.startswith(networth.LIABILITY_ROOT):
+        return "liabilities"
+    if account.startswith(networth.ASSET_ROOT):
+        return "assets"
+    return ""
+
+
+def _not_counted(point: dict) -> tuple[dict, bool]:
+    """What a net-worth point claims to measure and does not include, per part
+    of it, as ``({part: [{account, settled_by}]}, placed)``.
+
+    Two things a point holds are two ways of not being in it: an account whose
+    figure the point refused, and an account held that no measurement in this
+    point covers. Both are money the person has and the total does not carry,
+    so both are the total's boundary.
+
+    An account whose only statement is dated after this point is among them.
+    Whether the person held it before that statement is not something the
+    ledger knows — an account's opening date is read off the first document
+    that arrived, so it says when the evidence starts and not when the account
+    did — and a total that called itself complete over a don't-know would be
+    the claim this field exists to stop.
+
+    One account is one gap however many of the point's own lists hold it. An
+    account a ruling brought into being and that was also opened is in both, so
+    a gap per list would put two reasons on one account — and the two disagree
+    about whether anything can close it. The reason that names a remedy is the
+    one kept, because it is the one an answer could act on.
+
+    ``placed`` is False when any of them could not be put on a side, so a side
+    that might be short of something never says it is whole."""
+    out: dict = {part: [] for part in PARTS}
+    placed = True
+    noted: set = set()
+
+    def note(account: str, side: str, **fields) -> None:
+        nonlocal placed
+        if account in noted:
+            return
+        noted.add(account)
+        item = {"account": account, **fields}
+        out["net"].append(item)
+        if side:
+            out[side].append(item)
+        else:
+            placed = False
+
+    # Refused first, so an account in both lists keeps the reason that carries
+    # what would settle it.
+    for row in point.get("missing") or []:
+        account = str(row.get("account", ""))
+        note(account, _side_of(account), reason=GAP_REFUSED,
+             settled_by=str(row.get("would_fix", "")))
+    for row in point.get("skipped") or []:
+        account = str(row.get("account", ""))
+        note(account, _side_of(account, str(row.get("kind", ""))),
+             reason=GAP_UNOBSERVED)
+    return out, placed
+
+
 def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult:
     # With no day asked for, the day it is asked on. A balance carries forward,
     # so the total is good now; `net_worth` on its own would date the point by
@@ -832,18 +980,34 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
     # asked for. How stale the evidence under it is rides in the caveat and on
     # each line's own `as_of`, which the per-account figures carry.
     as_of = data.get("as_of", "")
+    # What the point already knows it does not include: the accounts it refused
+    # a figure for, the accounts held whose balance has never been observed,
+    # and the documents read but not posted. A side's own total leaves out what
+    # is missing from that side; the net figure leaves out all of it, and a
+    # side that might be short of something nothing could place says so too.
+    left_out, placed = _not_counted(data)
+    # A document read and not posted is a gap no account can name: it may be
+    # about an account that does not exist yet, which is why the point keeps it
+    # apart from what it lists per account. It is counted, and said as a count.
+    unposted = len(data.get("held") or [])
     figures = []
     for currency, row in sorted(data.get("by_currency", {}).items()):
-        for part in ("net", "assets", "liabilities"):
+        for part in PARTS:
             # What is held less what is owed is net worth; each side of it on
             # its own is a total of balances, and saying so keeps a hole that
             # asked for one from being filled with the other.
+            missing = left_out[part]
             figures.append(figure(row[part], f"{part} in {currency}",
                                   quantity=(quantity.NET_WORTH if part == "net"
                                             else quantity.BALANCE),
                                   grade=weakest(_grades_in(data)),
                                   dated=as_of, currency=currency,
-                                  record_ids=record_ids))
+                                  record_ids=record_ids,
+                                  boundary=bounded(
+                                      whole=(not missing and not unposted
+                                             and placed),
+                                      unmeasured=missing,
+                                      unposted=unposted)))
     figures += [figure(line["amount"], f"{line['account']} — its part of net worth",
                        quantity=quantity.BALANCE,
                        grade=line.get("grade", ""), dated=line.get("as_of", ""),

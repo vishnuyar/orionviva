@@ -95,3 +95,27 @@ Tests: `test_nature.py` (7) + 2 brokerage; full suite **279 green**.
 ## Deferred
 
 The generic scoped ruling — **since arrived** (`RulingRecorded` with `scope` + `same_as`). Principal/interest splitting on a mortgage payment (Slice 11, where amortization data lives). Per-transaction custom categories for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)) — they compose over nature unchanged. Loosening the transfer auto-link bar (deliberately not done here).
+
+## The doctrine reaches the answering path (2026-08-10)
+
+This document's rule — *an unanswered question leaves a number incomplete,
+never wrong*, and a total resting on something undecided is never silently
+resolved either way — held everywhere beneath the voice and nowhere inside it.
+The answer path had a word for how well evidence stands up and a word for
+whether arithmetic terminated, and none for how much of the question an answer
+covered. Asked what was owed, a run stated one liability of three and graded it
+`corroborated`, which was true of that balance: a false sentence assembled
+entirely out of true parts.
+
+A figure now states the set it was taken over (see the tool registry's third
+axis), and the run places that statement the way it places a caveat. An
+incomplete total states the number **with** its gap rather than refusing until
+the gap is filled — the owner's ruling, on the ground that a person asking what
+they owe is better served by a figure and its hole than by silence.
+
+The other half of the doctrine — that a gap becomes a question Viva asks — is
+**not built**. The queue raises nothing that could answer this one: the drafted
+ask wants an amount, the queue's question for the same account carries only a
+yes/no about whether a document exists, and answering it writes nothing by
+design. Closing that needs a question source that can record a balance, which
+is its own cycle.

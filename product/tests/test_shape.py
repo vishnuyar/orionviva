@@ -711,3 +711,242 @@ def test_the_shape_and_its_bindings_are_kept(registry):
     assert result.answered
     assert result.to_dict()["shape"] == shape.to_dict()
     assert result.to_dict()["bindings"] == {"total": {"figure": "f1"}}
+
+
+# ------------------------------------------- where a stated figure's claim ends
+
+
+def _two_accounts():
+    """A person with more than one account and a loan nothing has measured."""
+    from viva.ledger.events import merchant_enriched, ruling_recorded
+    p = Provenance("doc-jan", 1, "r")
+    return [
+        account_opened("chk", "depository", "Everyday Checking", "USD",
+                       "2026-01-01", institution="Northgate Bank",
+                       account_number="XX4417", account_names=["R VANCE"]),
+        account_opened("card", "liability", "Signature Card", "USD",
+                       "2026-01-01", institution="Meridian Cards",
+                       account_number="XX2291", account_names=["R VANCE"]),
+        document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("chk", "10000.00", "2026-01-01", p),
+        simple_transaction("chk", "-2000.00", "MERIDIAN LOAN SERVICING",
+                           "2026-01-10", provenance=p),
+        simple_transaction("chk", "-100.00", "CITY TRANSIT",
+                           "2026-01-11", provenance=p),
+        simple_transaction("chk", "-300.00", "GREENFIELD MARKET",
+                           "2026-01-12", provenance=p),
+        closing_balance_observed("chk", "7600.00", "2026-01-31",
+                                 Provenance("doc-jan", 6, "r")),
+        merchant_enriched("city transit", "transport", subcategory="fares",
+                          occurred_at="2026-02-02"),
+        merchant_enriched("greenfield market", "groceries",
+                          subcategory="supermarket", occurred_at="2026-02-02"),
+        ruling_recorded(
+            scope="merchant", subject="meridian loan servicing",
+            legs=[{"major": "liability",
+                   "account": "Liabilities:HomeLoan:Meridian"}],
+            occurred_at="2026-02-01", by="human"),
+    ]
+
+
+@pytest.fixture()
+def several():
+    return default_registry(LedgerProjection(_two_accounts()))
+
+
+def _figure_id(results, what):
+    for result in results:
+        for f in result.get("figures") or []:
+            if what in f["what"]:
+                return f["id"]
+    raise AssertionError(f"no figure described as {what!r} was emitted")
+
+
+def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(several):
+    """One account's balance, correctly graded and correctly cited, stated
+    under a sentence that reads like a total, says which set it came from.
+
+    The shape says nothing about sets — it was authored before anything was
+    read — and the run places the boundary anyway, out of what the read
+    declared. Nothing here asks a planner to remember."""
+    shape = _shape(("You currently owe {total}.",
+                    [("total", "money", "balance")]))
+    result = run("what do I owe?",
+                 _script(shape, ("query_ledger", {"entity": "balances"}),
+                         bind=lambda r: {
+                             "total": {"figure": _figure_id(r, "Signature Card")}}),
+                 several)
+    assert result.answered, result.detail
+    assert result.text.startswith("You currently owe ")
+    assert moment("boundary_accounts", counted=render.count(1),
+                  held=render.count(2)) in result.text
+
+
+def test_a_figure_whose_set_is_everything_it_measures_places_nothing(registry):
+    """The statement fires only where there is a set worth stating. This vault
+    holds one account, so its balance is every balance there is, and the answer
+    is the sentence the shape declared and nothing else."""
+    result = run("balance?",
+                 _script(_shape(("Your balance is {total}.",
+                                 [("total", "money", "balance")])),
+                         BALANCES,
+                         bind=lambda r: {"total": {"figure": "f1"}}),
+                 registry)
+    assert result.answered, result.detail
+    assert result.text == "Your balance is USD 600.00."
+
+
+def test_an_incomplete_total_cannot_be_stated_without_its_gap(several):
+    """A total resting on a set that is not everything it claims to measure
+    names every account it leaves out — whether or not the sentence around it
+    mentioned any of them, and whichever of the two ways an account came to be
+    left out.
+
+    This vault holds both: a loan a ruling brought into being and no statement
+    has ever measured, and a card held with no statement at all."""
+    shape = _shape(("Your net worth is {n}.", [("n", "money", "net_worth")]))
+    result = run("what am I worth?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "net_worth"}),
+                         bind=lambda r: {"n": {"figure": _figure_id(r, "net in")}}),
+                 several)
+    assert result.answered, result.detail
+    # Both accounts are named in one sentence, not one sentence each.
+    said = moment("boundary_unmeasured", account=render.accounts(
+        [{"account": "Liabilities:HomeLoan:Meridian"}, {"account": "card"}]))
+    assert said in result.text
+    # The frame around the accounts is said once, not once per account. Read
+    # from the pack rather than spelled here, so the count follows the wording.
+    _, _, frame = moment("boundary_unmeasured", account="\x00").partition("\x00")
+    assert result.text.count(frame) == 1
+    # What would settle a gap is carried on the figure and never spoken.
+    stated = next(f for f in result.figures if f["what"].startswith("net in"))
+    assert stated["boundary"]["unmeasured"] == [
+        {"account": "Liabilities:HomeLoan:Meridian", "reason": "refused",
+         "settled_by": "the loan or mortgage statement"},
+        {"account": "card", "reason": "unobserved", "settled_by": ""}]
+
+
+
+def test_a_boundary_is_said_once_however_many_figures_say_it(several):
+    """The same discipline a caveat is held to. Two figures over the same set
+    are one boundary between them, not two sentences a person reads twice."""
+    shape = _shape(("You hold {a} and owe {b}.",
+                    [("a", "money", "balance"), ("b", "money", "balance")]))
+    result = run("where do I stand?",
+                 _script(shape, ("query_ledger", {"entity": "balances"}),
+                         bind=lambda r: {
+                             "a": {"figure": _figure_id(r, "Everyday Checking")},
+                             "b": {"figure": _figure_id(r, "Signature Card")}}),
+                 several)
+    assert result.answered, result.detail
+    said = moment("boundary_accounts", counted=render.count(1),
+                  held=render.count(2))
+    assert result.text.count(said) == 1
+
+
+def test_a_figures_boundary_comes_before_what_it_does_not_cover(several):
+    """A boundary says what the claim is a claim about; a limit says what that
+    claim does not reach. Read the other way round, the limit is about a set
+    the person has not been told the shape of yet."""
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    result = run("what did I spend on transport?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending",
+                                           "group_by": "category"}),
+                         bind=lambda r: {
+                             "total": {"figure": _figure_id(
+                                 r, "spending — category 'transport'")}}),
+                 several)
+    assert result.answered, result.detail
+    boundary = result.text.find(moment("boundary_selected_category",
+                                       category=render.category("transport")))
+    limits = result.text.find(moment("answer_limits", limits="").split("{")[0])
+    assert 0 < boundary < limits
+
+
+def test_a_boundary_is_not_said_three_times_for_one_set_of_gaps():
+    """A net worth and each of its two sides carry three overlapping lists of
+    the same gaps by design. An answer stating all three used to say three
+    near-identical sentences, two of them naming subsets of the first — the
+    degradation a placed channel is most prone to, deterministic and with no
+    model in it. What the answer leaves out is one set across every figure it
+    stated, said once.
+
+    The vault holds one unmeasured account on each side, so the three lists are
+    genuinely three different sets and a run that merged them by rendered text
+    could not have collapsed them."""
+    p = Provenance("doc-jan", 1, "r")
+    registry = default_registry(LedgerProjection([
+        account_opened("chk", "depository", "Everyday Checking", "USD",
+                       "2026-01-01"),
+        account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"),
+        account_opened("loan", "liability", "Home Loan", "USD", "2026-01-01"),
+        document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("chk", "9900.00", "2026-01-01", p),
+        closing_balance_observed("chk", "9900.00", "2026-01-31",
+                                 Provenance("doc-jan", 6, "r")),
+    ]))
+    shape = _shape(("Net {n}, held {a}, owed {l}.",
+                    [("n", "money", "net_worth"), ("a", "money", "balance"),
+                     ("l", "money", "balance")]))
+    result = run("where do I stand?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "net_worth"}),
+                         bind=lambda r: {
+                             "n": {"figure": _figure_id(r, "net in")},
+                             "a": {"figure": _figure_id(r, "assets in")},
+                             "l": {"figure": _figure_id(r, "liabilities in")}}),
+                 registry)
+    assert result.answered, result.detail
+    # Every gap any of the three figures carries, named once, in one sentence.
+    _, _, frame = moment("boundary_unmeasured", account="\x00").partition("\x00")
+    assert result.text.count(frame) == 1
+    assert moment("boundary_unmeasured", account=render.accounts(
+        [{"account": "brk"}, {"account": "loan"}])) in result.text
+    # The three figures really do disagree about their own gaps, or this test
+    # would pass on a vault that could never have produced the failure.
+    gaps = {tuple(item["account"]
+                  for item in (f["boundary"].get("unmeasured") or []))
+            for f in result.figures}
+    assert len(gaps) == 3, gaps
+
+
+def test_a_gap_no_account_can_name_is_still_said():
+    """A document read and not posted is money no figure here carries, and it
+    has no account to name — it may be about one that does not exist yet, which
+    is why the point keeps it apart from everything it lists per account.
+
+    A figure that declared itself short of it and said nothing would leave a
+    person told a total is incomplete with no way to learn of what. It is said
+    as a number of documents."""
+    from viva.ledger.events import statement_held
+    p = Provenance("doc-jan", 1, "r")
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01", p),
+           closing_balance_observed("chk", "1000.00", "2026-01-31",
+                                    Provenance("doc-jan", 6, "r")),
+           document_captured("doc-x", "x.pdf", 90, "bank_statement", 0.5,
+                             "2026-02-01"),
+           statement_held("doc-x", {"account_ref": "elsewhere"}, None, "gap",
+                          "2026-02-01")]
+    registry = default_registry(LedgerProjection(evs))
+    result = run("what am I worth?",
+                 _script(_shape(("Your net worth is {n}.",
+                                 [("n", "money", "net_worth")])),
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "net_worth"}),
+                         bind=lambda r: {"n": {"figure": _figure_id(r, "net in")}}),
+                 registry)
+    assert result.answered, result.detail
+    stated = next(f for f in result.figures if f["what"].startswith("net in"))
+    assert stated["boundary"] == {"whole": False, "unposted": 1}
+    assert moment("boundary_unposted", count=render.count(1)) in result.text

@@ -47,6 +47,17 @@ terminated and, when it did not, what was done to write it down. Exactness is
 not a grade: it carries no evidentiary meaning and never moves one, and a
 number known perfectly well can still be one no pair of decimals holds.
 
+How much of what it claims to measure a figure was actually taken over is a
+third question, and ``boundary`` answers it. A grade says how well a number is
+stood behind and exactness says how its arithmetic came out; neither says how
+much of the question the number answers, so a well-graded exact figure taken
+over one account of six is a false sentence when it is spoken as a total. The
+read that took the figure is the one that knows what set it was taken over, so
+the declaration is made at the emitter, structured rather than written out — a
+number's boundary has to be checkable, comparable between two answers, and
+usable as the scope clause of a claim, and a sentence appended to prose is none
+of those.
+
 A refusal is a first-class result: ``ok`` is False, ``refusal`` carries a
 machine tag, and ``text`` says honestly what is and is not held.
 """
@@ -91,7 +102,10 @@ PAYLOAD_TARGET = 5000
 
 # The figure fields the model is shown. `record_ids` is not among them: an
 # answer cites a figure by id and the runner resolves its records, so only their
-# count travels.
+# count travels. Neither is `boundary`: a figure's boundary is placed by the run
+# beside the figure it belongs to, the same way what a figure does not cover is
+# placed, so it is a property of the machine rather than something a planner is
+# asked to read and remember.
 MODEL_FACING_FIGURE = ("id", "value", "currency", "quantity", "kind", "grade",
                        "dated", "exactness", "what")
 
@@ -119,7 +133,7 @@ def weakest(grades) -> str:
 
 def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
            grade: str = "", dated: str = "", currency: str = "", record_ids=(),
-           exactness: str = EXACT) -> dict:
+           exactness: str = EXACT, boundary=None) -> dict:
     """One number this result asserts, ready for the runner to stamp with an id.
 
     ``what`` is a short noun phrase naming the number, so an answer or a
@@ -137,7 +151,18 @@ def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
     checks: `weakest` ignores what it does not recognise, so an unknown grade
     would travel to the person as a strength claim while counting for nothing
     in composition. An exactness nothing recognises is refused for the same
-    reason, in the same place, and so is a quantity outside the vocabulary."""
+    reason, in the same place, and so is a quantity outside the vocabulary.
+
+    ``boundary`` is what `bounded` built, or nothing. Only what that
+    constructor produced is accepted, because its checks are the whole of what
+    makes a boundary true and a dict assembled beside it would carry none of
+    them. Nothing means no read has said what set this was taken over, which is
+    not the same as saying the set is everything — a default of "whole" would
+    put a coverage claim on every figure nobody made one about."""
+    if boundary is not None and not isinstance(boundary, Boundary):
+        raise TypeError("a figure's boundary is what `bounded` returned; a "
+                        "mapping built anywhere else has passed none of the "
+                        "checks that make one true")
     if grade and grade not in _STRENGTH:
         raise ValueError(f"grade {grade!r} is not on the ladder: "
                          + ", ".join(_STRENGTH))
@@ -151,7 +176,8 @@ def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
             "quantity": quantity, "kind": kind,
             "grade": grade if kind in GRADED_KINDS else "",
             "dated": dated, "record_ids": [str(r) for r in record_ids],
-            "exactness": exactness, "what": what}
+            "exactness": exactness, "boundary": dict(boundary or {}),
+            "what": what}
 
 
 # The kinds of thing a read can put on the record besides a number. Each is a
@@ -185,6 +211,130 @@ def entity(kind: str, **attrs) -> dict:
                          + ", ".join(ENTITY_KINDS))
     return {"id": "", "kind": kind,
             **{k: v for k, v in attrs.items() if v not in ("", None)}}
+
+
+# How a set may be narrowed. Each member is a thing this product already has
+# one way of writing — an entity a read establishes, a span, a day — and each
+# has exactly one reviewed sentence that says it. The list is closed and it
+# grows by editing it here; a filter with no member is a set this cannot name,
+# and it says so by naming nothing rather than by naming something else.
+BY_ACCOUNT = ENTITY_ACCOUNT
+BY_CATEGORY = ENTITY_CATEGORY
+BY_MERCHANT = ENTITY_MERCHANT
+BY_PERIOD = "period"          # both edges of a span, as two days
+BY_SINCE = "since"            # one edge: the day it runs from
+BY_UNTIL = "until"            # one edge: the day it runs to
+
+SELECTED_KINDS = (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD, BY_SINCE,
+                  BY_UNTIL)
+
+# The one member that takes two days rather than one.
+_TWO_ENDED = (BY_PERIOD,)
+
+# Why something a figure claims to measure is not in it. The two differ in
+# whether anything can be named that would close the gap, which is why they are
+# told apart rather than merged: a figure that was refused a number knows what
+# it was refused for, and one nothing ever observed has nothing to point at.
+GAP_REFUSED = "refused"        # a figure was refused, and a remedy is named
+GAP_UNOBSERVED = "unobserved"  # nothing has measured it, and nothing is named
+
+GAP_REASONS = (GAP_REFUSED, GAP_UNOBSERVED)
+
+# The reasons that must name what would close the gap. A gap nothing can close
+# is honest; a gap that could name its remedy and did not is a disclosure with
+# the useful half left out.
+_MUST_NAME_A_REMEDY = (GAP_REFUSED,)
+
+
+class Boundary(dict):
+    """What `bounded` produced. A field a sentence is placed from can then be
+    asked for by type, so a dict assembled anywhere else cannot pass as one."""
+
+    __slots__ = ()
+
+
+def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
+            unmeasured=(), unposted: int = 0) -> Boundary:
+    """What one figure was taken over, and whether that set is everything the
+    quantity it declares would range over.
+
+    ``whole`` is the load-bearing word: True says the set and the quantity are
+    the same thing, and there is nothing further to say. False says they are
+    not, and the rest says how they differ. A total of one category is a real
+    figure and it is not every movement its quantity names, so it is not whole
+    however exactly it was arrived at.
+
+    ``counted`` of ``held`` accounts is one of N: a per-account balance stated
+    where a total was asked for is a true figure over the wrong set.
+    ``selected`` names how the set was narrowed, each entry a member of
+    ``SELECTED_KINDS`` with the thing it was narrowed to — ``value``, plus
+    ``to`` for the members that take two days. ``unmeasured`` names what the
+    figure claims to measure and does not include, each with why it is out and
+    the document that would settle it — which a gap of a reason that has one
+    must carry, and a gap of a reason that has none may not be asked for.
+    ``unposted`` counts documents read and not posted: they are a gap of the
+    same standing that no account can name, because such a document may be
+    about an account that does not exist yet, so it is counted rather than
+    listed and is said as a number of documents.
+
+    A whole set excludes nothing, so a figure declaring one and also naming
+    what it leaves out is a contradiction, and it is refused where the emitter
+    is written rather than read as a disclosure by whoever places it."""
+    counts = {"counted": int(counted), "held": int(held)}
+    if counts["counted"] < 0 or counts["counted"] > counts["held"]:
+        raise ValueError(f"a figure covering {counts['counted']} of "
+                         f"{counts['held']} covers more than there is")
+    chosen = [{"kind": str(item["kind"]), "value": str(item["value"]),
+               "to": str(item.get("to", ""))}
+              for item in selected]
+    for item in chosen:
+        if item["kind"] not in SELECTED_KINDS:
+            raise ValueError(f"a set is not narrowed by {item['kind']!r}: "
+                             + ", ".join(SELECTED_KINDS))
+        if not item["value"]:
+            raise ValueError("a set narrowed to something unnamed says nothing "
+                             "about what it was narrowed to")
+        if bool(item["to"]) != (item["kind"] in _TWO_ENDED):
+            raise ValueError(f"a set narrowed by {item['kind']!r} is written "
+                             "from " + ("two days" if item["kind"] in _TWO_ENDED
+                                        else "one thing")
+                             + ", and it carries the other number of them")
+        if not item["to"]:
+            del item["to"]
+    left_out = [{"account": str(item["account"]),
+                 "reason": str(item.get("reason", "")),
+                 "settled_by": str(item.get("settled_by", ""))}
+                for item in unmeasured]
+    for item in left_out:
+        if not item["account"]:
+            raise ValueError("something left out of a figure is named; an "
+                             "unnamed gap is one nobody can close")
+        if item["reason"] not in GAP_REASONS:
+            raise ValueError(f"{item['reason']!r} is not why something is out "
+                             "of a figure: " + ", ".join(GAP_REASONS))
+        if bool(item["settled_by"]) != (item["reason"] in _MUST_NAME_A_REMEDY):
+            raise ValueError(
+                f"a gap of reason {item['reason']!r} "
+                + ("names what would close it, and this one does not"
+                   if item["reason"] in _MUST_NAME_A_REMEDY
+                   else "has nothing to name, and this one names something"))
+    if int(unposted) < 0:
+        raise ValueError("a figure cannot be short of a negative number of "
+                         "documents")
+    if whole and (chosen or left_out or int(unposted)
+                  or counts["counted"] != counts["held"]):
+        raise ValueError("a figure whose set is everything it claims to "
+                         "measure cannot also name what it leaves out")
+    out = Boundary(whole=bool(whole))
+    if counts["held"]:
+        out["accounts"] = counts
+    if chosen:
+        out["selected"] = chosen
+    if left_out:
+        out["unmeasured"] = left_out
+    if int(unposted):
+        out["unposted"] = int(unposted)
+    return out
 
 
 # What a model-facing field says when it has nothing to add. Every result is

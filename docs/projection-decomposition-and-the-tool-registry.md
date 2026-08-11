@@ -667,3 +667,40 @@ uncategorized" caveat never counted. A caveat is joined into the answer
 verbatim, so a person read a confident amount, with no id and no grade behind
 it, understating what the agent did not know. Every path now treats missing and
 empty as the same absence.
+
+## The third axis: what a figure covers (2026-08-10)
+
+A figure said two things about itself. `grade` and `record_ids` say what it
+rests on; `exactness` says whether its arithmetic terminated. Neither says
+**which set the number was taken over**, so a figure that was one of six
+account balances and a figure that was the total of all six made the same
+declaration, and the check that exists to stop a real number being spoken as a
+claim about something else compares two strings that both read `balance`.
+
+A figure now carries `boundary`: whether the set it ranged over is everything
+the quantity it declares would range over, how many of a countable set it
+counted, what a filter narrowed it to, and what it leaves out. It is a
+structured field rather than prose, because a sentence appended to an answer
+cannot be compared between two answers and cannot become the scope clause of a
+claim shown to a counterparty. It is not in the model-facing payload; the run
+places its sentences the way it places caveats, so the disclosure is a property
+of the machine rather than an instruction a planner can fail.
+
+The three reads that populate it hold the knowledge already: balances knows a
+per-account figure is one of many, the spending read knows what its filters
+narrowed it to, and the net-worth point knows what it could not count. A gap
+carries a reason from a closed vocabulary, and whether it may name a remedy
+follows from that reason: a figure the point refused names what would settle
+it, and an account nothing measured names nothing, because a remedy there would
+be invented.
+
+Two shapes only a real vault produced. One account can be **both** a ruling
+target and an opened account with no statement, arriving as two gaps whose
+reasons contradict; gaps collapse by account. And a document read but not
+posted is a gap that names no account at all, since it may attest an account
+that does not exist yet — it is counted rather than named.
+
+*Not covered:* narrowing by tag, nature or currency records a boundary and
+places no sentence, because naming one needs a written form none of them has.
+What would settle a gap travels as data and is not spoken, since those words
+live where the gap is computed rather than in a reviewed pack.

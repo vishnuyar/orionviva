@@ -38,7 +38,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v7"
+      "active": "pack-v8"
     },
     "schema_pack": {
       "in": "schemas",
@@ -83,6 +83,7 @@
     "pack-v5": "aefde3a9ca01f3f5",
     "pack-v6": "5ca2cb75916f1a9e",
     "pack-v7": "8f87378af7229e06",
+    "pack-v8": "5a57730c77773f91",
     "schemas-v1": "195ffd57ad000e0c",
     "shape-committed-v1": "3ee9f7e276259486",
     "speak-closing-v1": "cb35be62c4daf926",

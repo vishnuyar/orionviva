@@ -140,6 +140,23 @@ def test_every_way_a_turn_can_refuse_has_a_reviewed_sentence():
             f"the sentence for {tag!r} says the machine's tag out loud")
 
 
+def test_every_kind_a_set_can_be_narrowed_to_has_a_reviewed_sentence():
+    """A figure says what set it was taken over, and a kind of thing with no
+    sentence in the pack is a boundary the machine holds and cannot say. It
+    fails here, at build time, rather than as a figure reaching a person
+    looking like a total. The other way round is dead voice."""
+    from viva.tools.envelope import SELECTED_KINDS
+    from viva.tools.runner import SELECTED_TERMS
+
+    assert set(SELECTED_TERMS) == set(SELECTED_KINDS), (
+        f"only-in-terms={sorted(set(SELECTED_TERMS) - set(SELECTED_KINDS))}, "
+        f"only-in-vocabulary={sorted(set(SELECTED_KINDS) - set(SELECTED_TERMS))}")
+    for kind in SELECTED_KINDS:
+        key, slot, _writes = SELECTED_TERMS[kind]
+        assert persona.MOMENT_FIELDS[key] == {slot}
+        assert persona.moment(key, **{slot: "something"}).strip()
+
+
 def test_a_slot_the_intent_fills_with_a_rendered_thing_declares_that_type():
     """The other half of the contract: the DECLARATION has to be true.
 

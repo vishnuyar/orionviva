@@ -33,6 +33,12 @@ of what it already holds. No hole asks for one and no binding names one: a
 shape is authored before anything is read, so whether there will be a caveat to
 put in a hole is not knowable when the hole must be declared.
 
+A stated figure's boundary is placed the same way, and for the same reason. A
+figure carries the set it was taken over and whether that set is everything it
+claims to measure; where it is not, the run says so beside the number, out of
+the reads' own declarations. A boundary is a property of the claim, so it is
+placed by the machine rather than left to whoever wrote the sentence around it.
+
 The quantity check is what stops a true number from being spoken as an untrue
 claim — a gross sum of postings offered where the sentence says spending, a
 count of documents offered where it says a proportion. It is code comparing the
@@ -59,8 +65,9 @@ from vivacore import promptstore, versions
 from .. import render
 from ..persona import moment
 from .compute import numbers_said
-from .envelope import (ENTITY_ACCOUNT, ENTITY_MARKS, EXACT, HYPOTHETICAL,
-                       MONEY_KINDS, ToolResult, weakest)
+from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD,
+                       BY_SINCE, BY_UNTIL, ENTITY_ACCOUNT, ENTITY_MARKS, EXACT,
+                       HYPOTHETICAL, MONEY_KINDS, ToolResult, weakest)
 from .registry import PACKAGE, PROMPTS, Registry
 from .shape import Shape
 
@@ -611,6 +618,119 @@ def _figure_bound(slot, fig: dict, locale: str):
         "magnitude.")
 
 
+# -------------------------------------------------------- where a claim ends
+
+# How each way of narrowing a set is said: the pack's line for it, the name
+# that line places it by, and how the thing becomes words. One entry per member
+# of the vocabulary, so a way of narrowing with nowhere to say what it selected
+# is a build failure rather than a figure that reaches a person looking like a
+# total.
+SELECTED_TERMS = {
+    BY_ACCOUNT: ("boundary_selected_account", "account",
+                 lambda item, ground: _account_written(item["value"], ground)),
+    BY_CATEGORY: ("boundary_selected_category", "category",
+                  lambda item, ground: render.category(item["value"])),
+    BY_MERCHANT: ("boundary_selected_merchant", "merchant",
+                  lambda item, ground: render.merchant({"key": item["value"]})),
+    BY_PERIOD: ("boundary_selected_period", "period",
+                lambda item, ground: render.period(item["value"], item["to"])),
+    BY_SINCE: ("boundary_selected_since", "day",
+               lambda item, ground: render.date(item["value"])),
+    BY_UNTIL: ("boundary_selected_until", "day",
+               lambda item, ground: render.date(item["value"])),
+}
+
+
+def _known_account(path: str, ground: _Ground) -> dict:
+    """One account as this run established it, or as its path alone gives it.
+
+    An account the reads already spoke about carries the name a person is shown
+    everywhere else, so the name in a boundary is the name in the sentence."""
+    return next((e for e in ground.entities.values()
+                 if e["kind"] == ENTITY_ACCOUNT and e.get("account") == path),
+                {"account": path})
+
+
+def _account_written(path: str, ground: _Ground) -> render.Account:
+    """One account, written among the others of its kind this run
+    established, so two accounts are never written identically."""
+    company = [e for e in ground.entities.values()
+               if e["kind"] == ENTITY_ACCOUNT]
+    known = _known_account(path, ground)
+    return render.account(known, among=company or [known])
+
+
+def _accounts_written(paths, ground: _Ground) -> render.Account:
+    """Several accounts in one place, each told apart from the others beside
+    it."""
+    return render.accounts([_known_account(path, ground) for path in paths])
+
+
+def _boundary(fig: dict) -> tuple[list, list]:
+    """Where one figure's claim ends, as ``(statements, accounts left out)``.
+
+    The two halves merge differently. A statement about how a set was narrowed
+    is compared whole; accounts left out are returned as a list for the caller
+    to gather across every figure the answer stated.
+
+    Both empty where the set is everything the figure claims to measure, and
+    where no read declared a boundary at all.
+
+    What would settle a gap stays on the figure and is not said."""
+    bound = fig.get("boundary") or {}
+    if not bound or bound.get("whole", True):
+        return [], []
+    said = []
+    counts = bound.get("accounts") or {}
+    if counts and counts["counted"] < counts["held"]:
+        said.append(("boundary_accounts",
+                     {"counted": counts["counted"], "held": counts["held"]}))
+    for item in bound.get("selected") or []:
+        said.append((SELECTED_TERMS[item["kind"]][0], dict(item)))
+    if bound.get("unposted"):
+        # A gap no account names is still said. It is a number of documents,
+        # because a document read and not posted may be about an account that
+        # does not exist yet and there is nothing else to call it.
+        said.append(("boundary_unposted", {"count": bound["unposted"]}))
+    return said, [item["account"] for item in bound.get("unmeasured") or []]
+
+
+def _said(statement, ground: _Ground) -> str:
+    """One statement about how a set was narrowed, in the pack's words."""
+    key, fields = statement
+    if key == "boundary_accounts":
+        return moment(key, counted=render.count(fields["counted"]),
+                      held=render.count(fields["held"]))
+    if key == "boundary_unposted":
+        return moment(key, count=render.count(fields["count"]))
+    _key, name, written = SELECTED_TERMS[fields["kind"]]
+    return moment(key, **{name: written(fields, ground)})
+
+
+def _boundaries(cited, ground: _Ground) -> list:
+    """Where the whole answer's claims end, once each.
+
+    Statements about narrowing are gathered in the order the figures were
+    stated and said once however many figures make the same one. What the
+    answer leaves out is one set across every figure it stated, said in a
+    single sentence however many figures carry overlapping gaps."""
+    statements: list = []
+    left_out: list = []
+    for fig in cited:
+        said, gaps = _boundary(fig)
+        for statement in said:
+            if statement not in statements:
+                statements.append(statement)
+        for account in gaps:
+            if account not in left_out:
+                left_out.append(account)
+    lines = [_said(statement, ground) for statement in statements]
+    if left_out:
+        lines.append(moment("boundary_unmeasured",
+                            account=_accounts_written(left_out, ground)))
+    return lines
+
+
 # ------------------------------------------------------------------- the gate
 
 
@@ -699,7 +819,14 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
             if cid not in owed:
                 owed.append(cid)
 
+    # And where the answer's claims end, in the order the figures were stated.
+    # It goes ahead of the limits: a boundary says what the claim is a claim
+    # about, and what the claim does not cover is read against that.
+    boundary = _boundaries(cited, ground)
+
     text = " ".join(c.written(written) for c in spoken)
+    if boundary:
+        text += " " + " ".join(boundary)
     if owed:
         text += " " + moment("answer_limits", limits=render.caveat(
             " ".join(ground.caveats[cid] for cid in owed)))

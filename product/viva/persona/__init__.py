@@ -217,6 +217,23 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # never reworded; these are the words that introduce it, so a limit does
     # not arrive reading like another claim.
     "answer_limits":            frozenset({"limits"}),
+    # And where a stated figure's claim ends, placed by the run the same way. A
+    # grade says how well a number is stood behind and says nothing about how
+    # much of the question it answers, so a figure over one account of six says
+    # which set it came from rather than leaving the sentence around it to
+    # imply the whole. One line per way a set can fall short of what the figure
+    # claims to measure.
+    "boundary_accounts":           frozenset({"counted", "held"}),
+    "boundary_selected_account":   frozenset({"account"}),
+    "boundary_selected_category":  frozenset({"category"}),
+    "boundary_selected_merchant":  frozenset({"merchant"}),
+    "boundary_selected_period":    frozenset({"period"}),
+    "boundary_selected_since":     frozenset({"day"}),
+    "boundary_selected_until":     frozenset({"day"}),
+    "boundary_unmeasured":         frozenset({"account"}),
+    # A gap no account can name: a document read and not posted may be about an
+    # account that does not exist yet, so it is said as a number of documents.
+    "boundary_unposted":           frozenset({"count"}),
     "gap_money":                frozenset(),
     "gap_count":                frozenset(),
     "gap_rate":                 frozenset(),
