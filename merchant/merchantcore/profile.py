@@ -63,11 +63,11 @@ SLOTS = {
 # a judgement about the text that landed in it.
 PERSONAL_SLOTS = frozenset({"counterparty", "counterparty_handle", "account_ref"})
 
-# Slots that name the party a payment was made to or from. A template holding
-# none of these describes a payment with nobody in it, which is what `party_slot`
-# reads.
-PARTY_SLOTS = frozenset({"counterparty", "counterparty_handle", "brand",
-                         "institution"})
+# Slots that name the party a payment was made to or from — not `institution`,
+# which names the conduit the money crossed rather than whoever was at the other
+# end. A template holding none of these describes a payment with nobody named in
+# it, which is what `party_slot` reads.
+PARTY_SLOTS = frozenset({"counterparty", "counterparty_handle", "brand"})
 
 # The account kinds whose descriptors name a party transacted with. An
 # allowlist governing two gates: a grammar may be induced for the kind, and its
@@ -212,10 +212,11 @@ class Template:
 def party_slot(pattern: str) -> str:
     """Returns "contact" when a template's `{contact}` holds the party, else "".
 
-    A template naming no party at all — no brand, no institution, no
-    counterparty, no counterparty_handle — is one whose `{contact}` is a
-    person's contact detail rather than a shop's public number, so it is
-    treated as personal.
+    A template naming no party at all — no brand, no counterparty, no
+    counterparty_handle — is one whose `{contact}` is a person's contact detail
+    rather than a shop's public number, so it is treated as personal. A named
+    institution does not count as a party: it carried the payment rather than
+    being on the other side of it.
 
     Reads the template's slot composition only, never the value that landed in
     a slot, so it covers grammars frozen before `counterparty_handle` existed."""

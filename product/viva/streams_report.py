@@ -5,10 +5,12 @@
     ... --private        # amounts and descriptors, for you alone
 
 A **stream** is every movement sharing a counterparty and a rail. This reports
-each stream's role, the layer that named its counterparty, its channel, how
-often it arrives, how steady the amount is, and which streams a grammar named as
-a person. It contains no hypotheses: nothing here guesses that a stream is a
-subscription or a rent payment.
+each stream's role, the layer that named its counterparty, its channel, and
+which streams a grammar named as a person. Cadence and amount stability belong
+to a **direction** of a stream rather than to the stream, so those rows count
+(stream, direction) pairs — money out and money back with one counterparty are
+one relationship with two rhythms. It contains no hypotheses: nothing here
+guesses that a stream is a subscription or a rent payment.
 
 **Nothing here separates what belongs to the bank from what belongs to a
 merchant.** That is Layer 1's job — an induced grammar does it from evidence
@@ -141,28 +143,34 @@ def main() -> int:
 
     print(f"\n{'-' * 78}\nWHAT RECURS\n{'-' * 78}")
     print(f"  A cadence needs at least {MIN_FOR_CADENCE} observations. Below that the")
-    print("  answer is `unknown` rather than a guess — one interval is not a rhythm.\n")
-    cad = collections.Counter(s.cadence_class for s in streams)
+    print("  answer is `unknown` rather than a guess — one interval is not a rhythm.")
+    print("  A rhythm belongs to a DIRECTION, not to a stream: money out and money")
+    print("  back are one relationship with two rhythms, and one figure over both")
+    print("  would show neither. So the rows below count (stream, direction) pairs,")
+    print("  which is the same as counting streams wherever money moves one way.\n")
+    flows = [(s, f) for s in streams for f in s.flows]
+    cad = collections.Counter(f.cadence_class for _s, f in flows)
     for label in ("weekly", "biweekly", "monthly", "quarterly", "annual",
                   "irregular", "unknown"):
         if cad.get(label):
-            moves = sum(s.n for s in streams if s.cadence_class == label)
-            print(f"    {cad[label]:5d} stream(s)  {moves:6d} movement(s)   {label}")
-    recurring = [s for s in streams if s.recurring]
+            moves = sum(f.n for _s, f in flows if f.cadence_class == label)
+            print(f"    {cad[label]:5d} flow(s)  {moves:6d} movement(s)   {label}")
+    recurring = [(s, f) for s, f in flows if f.recurring]
     cp_moves = sum(s.n for s in streams)
-    print(f"\n    {len(recurring)} recurring stream(s), covering "
-          f"{sum(s.n for s in recurring)} of {cp_moves} counterparty movement(s)")
+    print(f"\n    {len(recurring)} recurring flow(s) in "
+          f"{len({s.key for s, _f in recurring})} stream(s), covering "
+          f"{sum(f.n for _s, f in recurring)} of {cp_moves} counterparty movement(s)")
     for label in ("fixed", "variable", "unknown"):
-        n = sum(1 for s in recurring if s.amount_stability == label)
+        n = sum(1 for _s, f in recurring if f.amount_stability == label)
         if n:
             print(f"      {n:5d} of them are {label} in amount")
 
-    print(f"\n{'-' * 78}\nRECURRING STREAMS  (names withheld unless --private)\n{'-' * 78}")
-    print("       n  channel  cadence    amount     day  layer")
-    for s in sorted(recurring, key=lambda s: (-s.n, s.counterparty))[:40]:
+    print(f"\n{'-' * 78}\nRECURRING FLOWS  (names withheld unless --private)\n{'-' * 78}")
+    print("       n  dir  channel  cadence    amount     day  layer")
+    for s, f in sorted(recurring, key=lambda sf: (-sf[1].n, sf[0].counterparty))[:40]:
         name = f"  {s.counterparty}" if args.private else ""
-        print(f"    {s.n:4d}  {s.channel:7s}  {s.cadence_class:9s}  "
-              f"{s.amount_stability:9s} {str(s.day_of_month_mode or '-'):>3s}  "
+        print(f"    {f.n:4d}  {f.direction:3s}  {s.channel:7s}  {f.cadence_class:9s}  "
+              f"{f.amount_stability:9s} {str(f.day_of_month_mode or '-'):>3s}  "
               f"{s.layer:10s}{name}")
 
     people = [s for s in streams if s.is_person]
@@ -193,9 +201,11 @@ def main() -> int:
         print(f"\n{'-' * 78}\nPRIVATE — names and amounts. For your eyes only.\n{'-' * 78}")
         for s in sorted(every, key=lambda s: -float(s.total))[:30]:
             print(f"\n  {s.counterparty}   [{s.role}, {s.channel}, {s.layer}, "
-                  f"n={s.n}, {s.cadence_class}, {s.amount_stability}]")
-            print(f"    total {s.total:,.2f}   median {s.amount_median:,.2f}   "
-                  f"{s.first_seen} .. {s.last_seen}")
+                  f"n={s.n}, {s.direction_mix}]")
+            for f in s.flows:
+                print(f"    {f.direction:3s}  n={f.n:<4d} {f.cadence_class:9s} "
+                      f"{f.amount_stability:9s} total {f.total:,.2f}   "
+                      f"median {f.amount_median:,.2f}   {f.first_seen} .. {f.last_seen}")
             for o in s.occurrences[:4]:
                 print(f"      {o.date}  {o.amount:>12,.2f}  {o.description[:56]}")
     else:

@@ -27,8 +27,8 @@ from decimal import Decimal
 from merchantcore.descriptor import linted_example, split_ach_heads, word_owners
 from merchantcore.profile import Profile, Template
 from merchantcore.resolve import resolve_descriptor
-from viva.ledger.streams import (ACTIVITY, COUNTERPARTY, INTERNAL, MIXED,
-                                 build_streams)
+from viva.ledger.streams import (ACTIVITY, COUNTERPARTY, IN, INTERNAL, MIXED,
+                                 OUT, build_streams)
 
 
 def M(d, amount, desc, account="chk"):
@@ -87,7 +87,8 @@ def test_a_drip_user_and_a_bulk_user_converge():
     conclusions must too."""
     mv = sorted(_life(), key=lambda m: m.date)
     early = build_streams(mv[:6])
-    assert all(s.cadence_class in ("unknown", "irregular") for s in early)  # honest
+    assert all(f.cadence_class in ("unknown", "irregular")           # honest
+               for s in early for f in s.flows)
     assert [s.to_dict() for s in build_streams(mv)] == \
            [s.to_dict() for s in build_streams(list(reversed(mv)))]
 
@@ -103,6 +104,104 @@ def test_one_counterparty_on_two_rails_is_two_streams():
           M(date(2026, 1, 20), "-250.00", "Cloudstore Invoice PPD ID: 7788")]
     channels = {s.channel for s in build_streams(mv)}
     assert channels == {"card", "ach"}
+
+
+def test_a_merchant_with_one_proven_channel_does_not_split_across_templates():
+    """Where a counterparty's own lines prove exactly one rail, its unproven
+    lines are keyed to that rail.
+
+    A grammar claims a merchant's lines with several templates and only one of
+    them carries the structure that proves a channel; purchase, recurring
+    payment and refund are one stream on that channel, not three streams keyed
+    by template."""
+    prof = Profile("nb", "dep", "v1",
+                   [Template("CARD PURCHASE {date} {brand} {region}"),
+                    Template("RECURRING PAYMENT {brand}"),
+                    Template("REFUND {brand}")])
+    mv = [M("2026-01-05", "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA"),
+          M("2026-02-05", "-9.99", "RECURRING PAYMENT CLOUDSTORE"),
+          M("2026-03-05", "9.99", "REFUND CLOUDSTORE")]
+    (s,) = build_streams(mv, lambda m: prof)
+    assert s.channel == "card" and s.n == 3
+
+
+def test_an_atm_withdrawal_and_a_cheque_still_separate():
+    """Where nothing about a counterparty proves a channel, the template stands
+    in for the rail, so one counterparty on two templates is two streams — cash
+    over a counter is not a cheque. A single line resolved with no corpus behind
+    it gives the same answer."""
+    prof = Profile("nb", "dep", "v1",
+                   [Template("ATM WITHDRAWAL {date} {brand} {city}"),
+                    Template("CHEQUE {reference} {brand}")])
+    mv = [M("2026-01-05", "-100.00", "ATM WITHDRAWAL 01/05 OAKRIDGE PLANO"),
+          M("2026-02-05", "-250.00", "CHEQUE AB1234 OAKRIDGE")]
+    streams = build_streams(mv, lambda m: prof)
+    assert {s.counterparty for s in streams} == {"oakridge"}     # one counterparty
+    assert len(streams) == 2                                     # two rails
+    assert all(s.channel.startswith("tmpl:") for s in streams)
+    # And the same answer from one line with no corpus behind it.
+    assert (resolve_descriptor("CHEQUE AB1234 OAKRIDGE", prof).rail
+            == "tmpl:CHEQUE {reference} {brand}")
+
+
+# Two parties, addressed each of the ways the closed vocabulary can name one.
+_PARTIES = {"counterparty": ("ARJUN VARMA", "PRIYA NAIR"),
+            "counterparty_handle": ("arjun@example.test", "priya@example.test"),
+            "brand": ("CLOUDSTORE", "STREAMCO"),
+            "contact": ("214-555-0142", "214-555-0199")}
+
+# The words a bank prints around the party — including the ones naming the
+# conduit the money crossed rather than whoever was at the other end of it.
+_FRAMES = ("PAYMENT TO <party>",
+           "PAYMENT VIA {institution} TO <party>",
+           "{institution} TRANSFER <party> REF {reference}",
+           "PAYMENT <party> {trace} VIA {institution}")
+
+_FILLER = {"{institution}": "NORTHBANK", "{reference}": "AB1234",
+           "{trace}": "990011"}
+
+
+def _party_lines():
+    """`(template, line, other line)` for every way this vocabulary names a
+    party, in every frame. The two lines differ in the party and in nothing
+    else."""
+    for frame in _FRAMES:
+        for slot, (one, two) in sorted(_PARTIES.items()):
+            pattern = frame.replace("<party>", "{%s}" % slot)
+            lines = []
+            for value in (one, two):
+                line = pattern.replace("{%s}" % slot, value)
+                for hole, filler in _FILLER.items():
+                    line = line.replace(hole, filler)
+                lines.append(line)
+            yield (pattern, *lines)
+
+
+def test_a_stream_key_never_drops_the_party():
+    """Two movements differing only in who was on the other side never land in
+    one stream.
+
+    Asserted over the shape of a template rather than over one bank's line: every
+    slot the closed vocabulary can name a party with, in every frame a bank
+    prints around one."""
+    for pattern, one, two in _party_lines():
+        prof = Profile("nb", "dep", "v1", [Template(pattern)])
+        streams = build_streams([M("2026-01-05", "-10.00", one),
+                                 M("2026-02-05", "-10.00", two)],
+                                lambda m: prof)
+        assert len({s.counterparty for s in streams}) == 2, pattern
+
+
+def test_an_institution_never_occupies_the_brand_slot():
+    """The same property at the layer that names a brand: a template naming an
+    institution and no brand resolves to no brand, leaving the key on the whole
+    line rather than on the conduit everyone reached that way shares."""
+    for pattern, line, _other in _party_lines():
+        if "{brand}" in pattern:
+            continue
+        res = resolve_descriptor(line, Profile("nb", "dep", "v1",
+                                               [Template(pattern)]))
+        assert res.brand == "", pattern
 
 
 def test_word_recurrence_is_a_diagnostic_and_decides_nothing():
@@ -141,12 +240,63 @@ def test_over_cleaning_a_brand_is_worse_than_under_cleaning_it():
     assert len(names) == 2                       # still distinct, if inelegant
 
 
+# --- direction -------------------------------------------------------------
+
+def _two_way():
+    """A counterparty money moves both ways with: six equal payments out on the
+    same day of each month, and three unequal amounts back at no rhythm.
+
+    The shape of a brokerage (contributions out, distributions in), of a loan to
+    a friend (lent out, repaid in), of a mortgage."""
+    line = "Northline Brokerage Contrib PPD ID: 5001"
+    out = [M(date(2026, m, 5), "-500.00", line) for m in range(1, 7)]
+    back = [M(date(2026, 2, 17), "120.40", line),
+            M(date(2026, 3, 2), "38.10", line),
+            M(date(2026, 6, 21), "902.55", line)]
+    return out + back
+
+
+def test_a_steady_outflow_keeps_its_rhythm_when_money_comes_back():
+    """The outflow reports monthly and fixed while the inflows, whose dates
+    interleave with it at no rhythm, report irregular and variable. The stream
+    is recurring because one of its directions is."""
+    (s,) = build_streams(_two_way())
+    assert s.direction_mix == "both" and s.n == 9
+    assert s.flow(OUT).cadence_class == "monthly"
+    assert s.flow(OUT).amount_stability == "fixed"
+    assert s.flow(OUT).day_of_month_is_stable
+    assert s.flow(IN).cadence_class == "irregular"
+    assert s.flow(IN).amount_stability == "variable"
+    assert s.recurring                    # because one of its directions is
+
+
+def test_one_relationship_stays_one_stream():
+    """Direction splits the statistics and never the key. Two-way movement with
+    one counterparty on one rail is one relationship — a refund belongs to the
+    merchant that took the payment — so the split is in what is measured, not in
+    what is counted."""
+    streams = build_streams(_two_way())
+    assert len(streams) == 1 and len(streams[0].flows) == 2
+
+
+def test_no_rhythm_is_offered_across_two_directions():
+    """Every rhythm statistic is on the flow and absent from the stream, so a
+    figure averaged over both directions is not merely unused — it cannot be
+    read at all."""
+    (s,) = build_streams(_two_way())
+    for name in ("cadence_class", "amount_stability", "amount_cv",
+                 "interval_is_steady", "median_interval_days",
+                 "day_of_month_is_stable"):
+        assert not hasattr(s, name), name
+        assert all(hasattr(f, name) for f in s.flows), name
+
+
 # --- what a stream is allowed to say ---------------------------------------
 
 def test_cadence_and_stability_are_measured_not_asked_for():
     streams = {s.counterparty: s for s in build_streams(_life())}
-    utility = streams["utilityco bill pay"]
-    payroll = streams["cedarline holdings payroll"]
+    utility = streams["utilityco bill pay"].flow(OUT)
+    payroll = streams["cedarline holdings payroll"].flow(IN)
     assert utility.cadence_class == "monthly" and utility.amount_stability == "variable"
     assert payroll.cadence_class == "biweekly" and payroll.amount_stability == "fixed"
 
@@ -156,7 +306,7 @@ def test_below_the_floor_it_says_unknown_rather_than_guessing():
           M(date(2026, 2, 5), "-9.99", "CARD PURCHASE 02/05 CLOUDSTORE WA")]
     (s,) = build_streams(mv)
     # Two observations is one interval, and one interval is not a rhythm.
-    assert s.n == 2 and s.cadence_class == "unknown" and not s.recurring
+    assert s.n == 2 and s.flow(OUT).cadence_class == "unknown" and not s.recurring
 
 
 def test_dates_arrive_as_iso_strings_and_intervals_still_work():
@@ -168,7 +318,8 @@ def test_dates_arrive_as_iso_strings_and_intervals_still_work():
           M("2026-02-05", "-9.99", "CARD PURCHASE 02/05 CLOUDSTORE WA"),
           M("2026-03-05", "-9.99", "CARD PURCHASE 03/05 CLOUDSTORE WA")]
     (s,) = build_streams(mv)
-    assert s.median_interval_days == 29.5 and s.cadence_class == "monthly"
+    assert s.flow(OUT).median_interval_days == 29.5
+    assert s.flow(OUT).cadence_class == "monthly"
 
 
 def test_a_movement_with_an_unreadable_date_is_skipped_not_defaulted():
@@ -178,20 +329,22 @@ def test_a_movement_with_an_unreadable_date_is_skipped_not_defaulted():
           M("2026-03-05", "-9.99", "CARD PURCHASE 03/05 CLOUDSTORE WA")]
     (s,) = build_streams(mv)
     # Defaulting it to today would not add noise — it would make the cadence wrong.
-    assert s.n == 3 and s.cadence_class == "monthly"
+    assert s.n == 3 and s.flow(OUT).cadence_class == "monthly"
 
 
 def test_a_single_amount_has_no_variation_and_says_so():
     (s,) = build_streams([M(date(2026, 1, 5), "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA")])
     # 0.0 would read as "perfectly fixed"; it means "nothing to compare".
-    assert s.amount_cv is None and s.amount_stability == "unknown"
+    assert s.flow(OUT).amount_cv is None
+    assert s.flow(OUT).amount_stability == "unknown"
 
 
 def test_a_day_of_month_anchor_survives_weekend_drift():
     mv = [M(date(2026, m, d), "-2400.00", "RENT OAKRIDGE PROPERTY MGMT")
           for m, d in ((1, 1), (2, 2), (3, 1), (4, 3), (5, 1))]
     (s,) = build_streams(mv)
-    assert s.day_of_month_is_stable and s.cadence_class == "monthly"
+    assert s.flow(OUT).day_of_month_is_stable
+    assert s.flow(OUT).cadence_class == "monthly"
 
 
 def test_money_that_never_left_your_life_is_marked_not_measured():

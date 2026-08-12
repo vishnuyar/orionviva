@@ -102,7 +102,8 @@ first survives that treatment:
   about the plan this user bought. A utility's amount stability is a fact about
   this user's consumption. These are **observed locally** (§4.3 already computes
   `median_interval_days` and `amount_cv`), with an optional model prior used only
-  before observation exists (§5).
+  before observation exists (§5). Both are properties of a **flow** — one
+  direction of a stream — rather than of the stream (§4.1).
 
 Consequences, all mandatory:
 
@@ -184,6 +185,23 @@ measure them.
   **Counterparty alone is not enough:** a large retailer is both a subscription
   and a one-off store, and a single institution receives both a savings sweep and
   a loan repayment. Features computed over that mixture describe nothing.
+- **The channel is proven, or inherited, or stood in for.** A line's own
+  structure proves a rail where it can; failing that the rail comes from the
+  channel this counterparty's other lines on the same account prove, when they
+  prove exactly one; failing that the matched template stands in for it, so an
+  ATM withdrawal and a cheque still separate. The inheritance is bounded to one
+  account at one institution, so a merchant paid on cards at two banks is still
+  two streams.
+- **A stream key never drops the party.** Two movements differing only in who
+  was on the other side may not land in one stream, and an institution — the
+  conduit, shared by everyone reached over it — never occupies the brand slot or
+  counts as the party a template names. Fragmentation is recoverable;
+  a merged key is a rhythm nobody has, computed over somebody else's money.
+- **Direction splits the statistics and never the key.** Money moving both ways
+  with one counterparty is one relationship — a brokerage, a loan to a friend, a
+  refund against a purchase — so a stream holds a **flow** per direction and no
+  rhythm statistic spans two directions. Anything reading a rhythm — a noticing
+  that one changed, above all — reads a `(stream, direction)` pair.
 - A stream may **split further** when its amounts are clearly bimodal. A split is
   **visible in the surface**, never silent — "one answer labels the stream" is a
   promise to the user, and a stream that silently divided has broken it.
@@ -197,15 +215,20 @@ every counterparty you pay more than once, how often, how much, and how steady"*
 which is real user value, needs no model, and cannot be wrong about the world
 because it only reports what the ledger contains.
 
-### 4.3 Stream features (deterministic, computed per stream on every ingest)
+### 4.3 Stream features (deterministic, computed on every ingest)
 
-`n` (count), `direction_mix`, `median_interval_days`, `interval_mad`, `amount_cv`,
-`amount_mode`, `day_of_month_mode` and its stability, `entry_descriptions` seen,
-`sec_codes` seen, `channel`, `first_seen`, `last_seen`, `gap_since_expected`
-(§4.5).
+On the **stream**: `n` (count), `direction_mix`, `channel`, `role`,
+`first_seen`, `last_seen`, `entry_descriptions` seen, `sec_codes` seen.
+
+On each **flow** — one per direction the money moved: `n`,
+`median_interval_days`, `interval_mad`, `amount_cv`, `amount_mode`,
+`day_of_month_mode` and its stability, `first_seen`, `last_seen`,
+`gap_since_expected` (§4.5).
 
 `cadence_class` and `amount_stability` (§2) are **derived from these**, not
-fetched, whenever `n` is sufficient — see §5 for what sufficient means.
+fetched, whenever a flow's `n` is sufficient — see §5 for what sufficient means.
+A stream carries neither, so no figure averaged across both directions can be
+read by accident.
 
 ### 4.4 Hypothesis distribution
 
@@ -405,7 +428,7 @@ exactly the moment the temptation to appear clever is strongest.
 | 1 | ~~C2 fix~~ **DONE** | the example is Layer-0 linted, the store lints again on submit, and a test asserts no digit crosses |
 | 2 | ~~NACHA → Layer 0~~ **DONE** | SEC code and company id parsed from the spec; the Name/Entry-Description boundary is gone from any single line and is recovered from the statement |
 | 3 | ~~Two-key model~~ **DONE, and simpler than planned** | the vault is being rebuilt, so there is no catalog to migrate and no alias layer: enrichment keys on the brand from the start |
-| 4 | ~~Stream engine + features~~ **DONE** | streams key on (counterparty, rail) and carry a role; cadence and stability are measured, `unknown` below three observations |
+| 4 | ~~Stream engine + features~~ **DONE** | streams key on (counterparty, rail) and carry a role; cadence and stability are measured per direction on a flow, `unknown` below three observations |
 | 5 | ~~Order-independence test~~ **DONE** | four shuffles plus a reversed run; asserted, not argued |
 | 6 | Hypotheses + priors | **each row of §4.4's table checked against the real vault** and its strength recorded; distribution renders with evidence |
 | 7 | Forecast ledger | a later ingest auto-resolves ≥1 forecast end-to-end; past-dated forecasts resolve silently |

@@ -623,6 +623,40 @@ check. Reading it is the only thing that catches that. So a grammar may be
 induced and used unattended, and publishing one to the commons waits for a
 person.
 
+## What the rail measurement changed  (2026-08-11, the same vault)
+
+**A template standing in for a rail over-separates one merchant.** The rule
+above is unchanged where nothing is proven, but it was applied per line, so a
+merchant reached one way acquired a rail per template: a card purchase, a
+recurring payment and a refund of the same merchant on the same card arrived as
+three streams. The rail now falls back to the channel that merchant's *other*
+lines on the same account prove, when they prove exactly one, before it falls
+back to the template. The inference is bounded to one account at one
+institution, so the same brand paid on cards at two banks stays two streams;
+widening it across institutions is a later decision, not this one.
+
+**An institution is a conduit, and the code was reading it as a party in two
+places.** `PARTY_SLOTS` counted `{institution}` as naming the other side, so a
+template naming a bank and a `{contact}` was read as naming somebody, and the
+contact stayed a shop's public number rather than being promoted as a person's.
+And `_slot_from` fell back to the institution when a grammar named no brand,
+which keys every party reached over that bank's rail under the bank. Neither now
+holds: where a grammar names no brand, `merchant_key` falls back to the whole
+line, which still carries whoever was on it.
+
+**The gate that is open is the one this document already named.** A stream key
+that drops the party is the one error direction this engine may not have —
+fragmentation still yields true statements about a merchant, while two parties
+in one stream is a rhythm nobody has. The two rules above close the mechanisms
+the resolver controls, and a test asserts the property over every slot the
+vocabulary can name a party with. Neither reaches the case this vault actually
+holds: an induced template labelled a slot `brand`, an institution's name landed
+in it, and the party's name went to two slots the vocabulary treats as
+impersonal. No guard over slot *names* can see a party in a slot that does not
+name one — this is the "matched, never slotted correctly" hole recorded just
+above, and only a person reading the grammar catches it. Accepted and open, not
+closed; closing it means re-inducing that grammar.
+
 ## The parts the code decided, and this document did not
 
 Seven rulings that live in `merchantcore` and were argued nowhere else. Each one

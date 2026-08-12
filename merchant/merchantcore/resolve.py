@@ -68,15 +68,10 @@ class Resolution:
 
     @property
     def rail(self) -> str:
-        """What to key a stream on alongside the counterparty.
-
-        The proven channel when there is one, otherwise `tmpl:<template>` when
-        a grammar matched, otherwise "unknown". Two lines produced by one
-        template came off one rail by construction, so the template separates an
-        ATM withdrawal from a cheque without either word appearing here."""
-        if self.channel != "unknown":
-            return self.channel
-        return f"tmpl:{self.template}" if self.template else "unknown"
+        """What to key a stream on alongside the counterparty, from this line
+        alone. `rail_of` is the same answer with the rest of the corpus in
+        hand."""
+        return rail_of(self)
 
     @property
     def key(self) -> str:
@@ -145,6 +140,27 @@ _DE43_RULES = frozenset({"de43_region_tail", "asterisk_at_3", "asterisk_at_7",
                          "asterisk_at_12", "phone_in_city_slot", "url_in_city_slot"})
 
 
+def rail_of(res: "Resolution", proven=()) -> str:
+    """What to key a stream on alongside the counterparty.
+
+    In order: the channel this line proves; failing that the channel `proven`
+    for the same counterparty's other lines, when those agree on exactly one;
+    failing that `tmpl:<template>` when a grammar matched; otherwise "unknown".
+    Two lines produced by one template came off one rail by construction, so
+    where nothing about this counterparty is proven the template separates an
+    ATM withdrawal from a cheque without either word appearing here.
+
+    `proven` is the set of channels the caller has seen proven for this
+    counterparty, which one line cannot know by itself; an empty one asks only
+    about this line."""
+    if res.channel != "unknown":
+        return res.channel
+    elsewhere = {c for c in proven if c and c != "unknown"}
+    if len(elsewhere) == 1:
+        return elsewhere.pop()
+    return f"tmpl:{res.template}" if res.template else "unknown"
+
+
 def channel_of(descriptor: str, parse=None) -> str:
     """Which rail carried this: "wire", "ach", "card", or "unknown".
 
@@ -172,7 +188,11 @@ def _slot_from(res: Resolution, match, parse, ach_split, raw: str) -> Resolution
     # However the sender addressed them — a name, a phone, an email, a
     # username, or a contact slot sitting where the party belongs.
     res.counterparty = match.party()
-    res.brand = (res.fields.get("brand") or res.fields.get("institution") or "")
+    # Only a brand slot names a brand. An institution is the conduit the money
+    # crossed, not the party at the other end, so it is not read as one: where a
+    # grammar names no brand, `merchant_key` falls back to the whole line, which
+    # still carries whoever was on it.
+    res.brand = res.fields.get("brand") or ""
     # A peer rail is one the grammar identified as such, by putting a person in
     # a slot named for one. A proven card or wire channel is not overwritten.
     if res.counterparty and res.channel in ("unknown", "ach"):

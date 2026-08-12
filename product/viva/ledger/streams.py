@@ -35,6 +35,13 @@ spending?" and role answers "is there someone on the other side?" A mortgage
 payment is not spending and still has a party; only a live transfer link proves
 the other side is yours.
 
+**Direction splits the statistics and never the key.** Money moving both ways
+with one counterparty is one relationship — a brokerage taking contributions and
+paying distributions, a friend lent to and repaying, a refund coming back down
+the line that took the payment. So a stream holds a **flow** per direction, and
+cadence, interval steadiness and amount stability are measured inside a flow.
+No statistic spans two directions.
+
 This module contains no hypotheses. It reports what the ledger holds: how often,
 how much, how steady, through which rail.
 """
@@ -48,9 +55,9 @@ from decimal import Decimal
 
 from merchantcore.descriptor import split_ach_heads
 from merchantcore.normalize import normalize_merchant
-from merchantcore.resolve import resolve_descriptor
+from merchantcore.resolve import rail_of, resolve_descriptor
 
-STREAM_VERSION = "stream-v1"
+STREAM_VERSION = "stream-v2"
 
 # Below this many observations a stream is reported but never described as
 # recurring: one interval is not a rhythm.
@@ -64,6 +71,9 @@ STEADY_INTERVAL_RATIO = 0.25
 # Amounts are "fixed" below this coefficient of variation. A subscription that
 # changes price once a year is still fixed; a utility is not.
 FIXED_AMOUNT_CV = 0.05
+
+# Which way the money went, from the sign of a movement. A flow is one of these.
+IN, OUT = "in", "out"
 
 
 def _as_date(value):
@@ -89,6 +99,152 @@ class Occurrence:
     amount: Decimal
     account: str
     description: str
+
+    @property
+    def direction(self) -> str:
+        return IN if self.amount > 0 else OUT
+
+
+@dataclass
+class Flow:
+    """One direction of one stream, and the rhythm those movements make.
+
+    Every statistic describing a rhythm lives here rather than on the stream, so
+    none of them can be taken across a two-way relationship: a stream with a
+    steady outflow and irregular inflows reports both, separately."""
+
+    direction: str
+    occurrences: list = field(default_factory=list)
+
+    @property
+    def n(self) -> int:
+        return len(self.occurrences)
+
+    # ---- shape ---------------------------------------------------------
+
+    @property
+    def dates(self) -> list:
+        return sorted(o.date for o in self.occurrences)
+
+    @property
+    def first_seen(self):
+        return self.dates[0] if self.occurrences else None
+
+    @property
+    def last_seen(self):
+        return self.dates[-1] if self.occurrences else None
+
+    @property
+    def intervals(self) -> list:
+        d = self.dates
+        return [(b - a).days for a, b in zip(d, d[1:])]
+
+    @property
+    def median_interval_days(self):
+        iv = self.intervals
+        return statistics.median(iv) if iv else None
+
+    @property
+    def interval_mad(self):
+        """Mean absolute deviation from the median interval, or None with no
+        intervals. Used instead of standard deviation so one missed month does
+        not make a steady stream look erratic."""
+        iv, med = self.intervals, self.median_interval_days
+        return (sum(abs(x - med) for x in iv) / len(iv)) if iv else None
+
+    @property
+    def interval_is_steady(self) -> bool:
+        med, mad = self.median_interval_days, self.interval_mad
+        return bool(self.n >= MIN_FOR_CADENCE and med and mad is not None
+                    and mad <= STEADY_INTERVAL_RATIO * med)
+
+    # ---- money ---------------------------------------------------------
+
+    @property
+    def total(self) -> Decimal:
+        return sum((abs(o.amount) for o in self.occurrences), Decimal("0"))
+
+    @property
+    def amount_median(self) -> Decimal:
+        vals = sorted(abs(o.amount) for o in self.occurrences)
+        return vals[len(vals) // 2] if vals else Decimal("0")
+
+    @property
+    def amount_cv(self):
+        """Coefficient of variation, or None below two observations — a single
+        amount has nothing to compare, which is not the same as 0.0."""
+        vals = [float(abs(o.amount)) for o in self.occurrences]
+        if len(vals) < 2:
+            return None
+        mean = sum(vals) / len(vals)
+        return (statistics.pstdev(vals) / mean) if mean else None
+
+    @property
+    def amount_is_fixed(self):
+        cv = self.amount_cv
+        return None if cv is None else cv <= FIXED_AMOUNT_CV
+
+    @property
+    def day_of_month_mode(self):
+        if not self.occurrences:
+            return None
+        days = [o.date.day for o in self.occurrences]
+        return max(set(days), key=lambda d: (days.count(d), -d))
+
+    @property
+    def day_of_month_is_stable(self) -> bool:
+        """True when every occurrence falls within three days of one anchor day,
+        wrapping around month end. A bill due on the 1st posts on the 1st, 2nd
+        or 3rd depending on the weekend, and those are one rhythm."""
+        mode = self.day_of_month_mode
+        if mode is None or self.n < MIN_FOR_CADENCE:
+            return False
+        return all(min(abs(o.date.day - mode),
+                       31 - abs(o.date.day - mode)) <= 3 for o in self.occurrences)
+
+    # ---- what this is allowed to say -----------------------------------
+
+    @property
+    def cadence_class(self) -> str:
+        """weekly | biweekly | monthly | quarterly | annual | irregular |
+        unknown — measured from this flow's own intervals, never borrowed from
+        a brand's usual cadence or from the other direction.
+
+        `unknown` below ``MIN_FOR_CADENCE`` observations; `irregular` above it
+        when the intervals are not steady or match no band."""
+        if self.n < MIN_FOR_CADENCE or not self.interval_is_steady:
+            return "unknown" if self.n < MIN_FOR_CADENCE else "irregular"
+        med = self.median_interval_days
+        for label, lo, hi in (("weekly", 5, 9), ("biweekly", 12, 16),
+                              ("monthly", 26, 35), ("quarterly", 85, 96),
+                              ("annual", 350, 380)):
+            if lo <= med <= hi:
+                return label
+        return "irregular"
+
+    @property
+    def amount_stability(self) -> str:
+        fixed = self.amount_is_fixed
+        return "unknown" if fixed is None else ("fixed" if fixed else "variable")
+
+    @property
+    def recurring(self) -> bool:
+        return self.cadence_class not in ("unknown", "irregular")
+
+    def to_dict(self) -> dict:
+        return {"direction": self.direction, "n": self.n,
+                "first_seen": str(self.first_seen), "last_seen": str(self.last_seen),
+                "median_interval_days": self.median_interval_days,
+                "interval_mad": (round(self.interval_mad, 2)
+                                 if self.interval_mad is not None else None),
+                "interval_is_steady": self.interval_is_steady,
+                "amount_cv": (round(self.amount_cv, 4)
+                              if self.amount_cv is not None else None),
+                "day_of_month_mode": self.day_of_month_mode,
+                "day_of_month_is_stable": self.day_of_month_is_stable,
+                "cadence_class": self.cadence_class,
+                "amount_stability": self.amount_stability,
+                "recurring": self.recurring}
 
 
 @dataclass
@@ -152,107 +308,48 @@ class Stream:
     def last_seen(self):
         return self.dates[-1] if self.occurrences else None
 
-    @property
-    def intervals(self) -> list:
-        d = self.dates
-        return [(b - a).days for a, b in zip(d, d[1:])]
-
-    @property
-    def median_interval_days(self):
-        iv = self.intervals
-        return statistics.median(iv) if iv else None
-
-    @property
-    def interval_mad(self):
-        """Mean absolute deviation from the median interval, or None with no
-        intervals. Used instead of standard deviation so one missed month does
-        not make a steady stream look erratic."""
-        iv, med = self.intervals, self.median_interval_days
-        return (sum(abs(x - med) for x in iv) / len(iv)) if iv else None
-
-    @property
-    def interval_is_steady(self) -> bool:
-        med, mad = self.median_interval_days, self.interval_mad
-        return bool(self.n >= MIN_FOR_CADENCE and med and mad is not None
-                    and mad <= STEADY_INTERVAL_RATIO * med)
-
     # ---- money ---------------------------------------------------------
 
     @property
     def direction_mix(self) -> str:
-        signs = {("in" if o.amount > 0 else "out") for o in self.occurrences}
+        signs = {o.direction for o in self.occurrences}
         return signs.pop() if len(signs) == 1 else "both"
 
     @property
     def total(self) -> Decimal:
+        """How much money crossed, in either direction. A size, not a balance:
+        a stream that took 100 and gave 100 back moved 200."""
         return sum((abs(o.amount) for o in self.occurrences), Decimal("0"))
-
-    @property
-    def amount_median(self) -> Decimal:
-        vals = sorted(abs(o.amount) for o in self.occurrences)
-        return vals[len(vals) // 2] if vals else Decimal("0")
-
-    @property
-    def amount_cv(self):
-        """Coefficient of variation, or None below two observations — a single
-        amount has nothing to compare, which is not the same as 0.0."""
-        vals = [float(abs(o.amount)) for o in self.occurrences]
-        if len(vals) < 2:
-            return None
-        mean = sum(vals) / len(vals)
-        return (statistics.pstdev(vals) / mean) if mean else None
-
-    @property
-    def amount_is_fixed(self):
-        cv = self.amount_cv
-        return None if cv is None else cv <= FIXED_AMOUNT_CV
-
-    @property
-    def day_of_month_mode(self):
-        if not self.occurrences:
-            return None
-        days = [o.date.day for o in self.occurrences]
-        return max(set(days), key=lambda d: (days.count(d), -d))
-
-    @property
-    def day_of_month_is_stable(self) -> bool:
-        """True when every occurrence falls within three days of one anchor day,
-        wrapping around month end. A bill due on the 1st posts on the 1st, 2nd
-        or 3rd depending on the weekend, and those are one rhythm."""
-        mode = self.day_of_month_mode
-        if mode is None or self.n < MIN_FOR_CADENCE:
-            return False
-        return all(min(abs(o.date.day - mode),
-                       31 - abs(o.date.day - mode)) <= 3 for o in self.occurrences)
 
     # ---- what this is allowed to say -----------------------------------
 
     @property
-    def cadence_class(self) -> str:
-        """weekly | biweekly | monthly | quarterly | annual | irregular |
-        unknown — measured from this stream's own intervals, never borrowed from
-        a brand's usual cadence.
+    def flows(self) -> list:
+        """This stream's directions, inflow first, each with its own rhythm.
 
-        `unknown` below ``MIN_FOR_CADENCE`` observations; `irregular` above it
-        when the intervals are not steady or match no band."""
-        if self.n < MIN_FOR_CADENCE or not self.interval_is_steady:
-            return "unknown" if self.n < MIN_FOR_CADENCE else "irregular"
-        med = self.median_interval_days
-        for label, lo, hi in (("weekly", 5, 9), ("biweekly", 12, 16),
-                              ("monthly", 26, 35), ("quarterly", 85, 96),
-                              ("annual", 350, 380)):
-            if lo <= med <= hi:
-                return label
-        return "irregular"
+        A one-way relationship has one flow and a two-way one has two; a
+        direction nothing moved in is absent rather than empty."""
+        out = []
+        for direction in (IN, OUT):
+            occ = [o for o in self.occurrences if o.direction == direction]
+            if occ:
+                out.append(Flow(direction=direction, occurrences=occ))
+        return out
 
-    @property
-    def amount_stability(self) -> str:
-        fixed = self.amount_is_fixed
-        return "unknown" if fixed is None else ("fixed" if fixed else "variable")
+    def flow(self, direction: str):
+        """The flow going one way, or None when nothing went that way."""
+        for f in self.flows:
+            if f.direction == direction:
+                return f
+        return None
 
     @property
     def recurring(self) -> bool:
-        return self.cadence_class not in ("unknown", "irregular")
+        """Whether some direction of this stream has a rhythm.
+
+        Composed from the flows rather than measured across them: a steady
+        outflow is a rhythm whether or not anything ever came back."""
+        return any(f.recurring for f in self.flows)
 
     def to_dict(self) -> dict:
         return {"counterparty": self.counterparty, "channel": self.channel,
@@ -262,16 +359,7 @@ class Stream:
                 "layer": self.layer, "entry_description": self.entry_description,
                 "n": self.n, "direction": self.direction_mix,
                 "first_seen": str(self.first_seen), "last_seen": str(self.last_seen),
-                "median_interval_days": self.median_interval_days,
-                "interval_mad": (round(self.interval_mad, 2)
-                                 if self.interval_mad is not None else None),
-                "interval_is_steady": self.interval_is_steady,
-                "amount_cv": (round(self.amount_cv, 4)
-                              if self.amount_cv is not None else None),
-                "day_of_month_mode": self.day_of_month_mode,
-                "day_of_month_is_stable": self.day_of_month_is_stable,
-                "cadence_class": self.cadence_class,
-                "amount_stability": self.amount_stability,
+                "flows": [f.to_dict() for f in self.flows],
                 "recurring": self.recurring,
                 "stream_version": STREAM_VERSION}
 
@@ -314,6 +402,12 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
     `kind_for(movement) -> str` gives the account kind, so an investment
     account's own activity lines are marked rather than read as counterparties.
 
+    Two passes, because a rail is a fact about a counterparty rather than about
+    a line: the first resolves every descriptor and notes which rails each
+    counterparty is *proven* to use on each account, the second keys each
+    movement with that in hand. The inference is bounded to one account, so a
+    channel proven at one institution never explains a line from another.
+
     Ingest order is never consulted and no state survives the call, so the
     result depends only on the set of movements passed in."""
     movements = list(movements)
@@ -321,7 +415,7 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
     # computed once here over every descriptor rather than per line.
     ach_split = split_ach_heads(m.description for m in movements)
 
-    streams: dict = {}
+    resolved, proven = [], {}
     for m in movements:
         res = resolve_descriptor(m.description,
                                  profile_for(m) if profile_for else None,
@@ -331,21 +425,26 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
         # merchant is filed and looked up under one name. A refused line is
         # still keyed and still counted, it simply gets no decomposition.
         counterparty = res.counterparty if res.is_person else res.merchant_key
-        if not counterparty:
+        when = _as_date(m.date)
+        # A movement with an unreadable date is skipped rather than defaulted
+        # into a rhythm it would put wrong.
+        if not counterparty or when is None:
             continue
+        resolved.append((m, res, counterparty, when))
+        if res.channel != "unknown":
+            proven.setdefault((counterparty, m.account), set()).add(res.channel)
+
+    streams: dict = {}
+    for m, res, counterparty, when in resolved:
         role = movement_role(m, kind_for(m) if kind_for else None)
-        st = streams.get((counterparty, res.rail))
+        rail = rail_of(res, proven.get((counterparty, m.account), ()))
+        st = streams.get((counterparty, rail))
         if st is None:
-            st = Stream(counterparty=counterparty, channel=res.rail,
+            st = Stream(counterparty=counterparty, channel=rail,
                         is_person=res.is_person, brand=res.brand, layer=res.layer,
                         entry_description=res.fields.get("entry_description", ""),
                         refused=res.refused)
             streams[st.key] = st
-        when = _as_date(m.date)
-        if when is None:
-            # A movement with an unreadable date is skipped rather than
-            # defaulted into a rhythm it would put wrong.
-            continue
         st.occurrences.append(Occurrence(date=when, amount=m.amount,
                                          account=m.account,
                                          description=m.description))

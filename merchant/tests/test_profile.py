@@ -175,14 +175,25 @@ def test_a_contact_where_the_party_belongs_is_personal_by_STRUCTURE():
     same slot beside a brand is the merchant's public number. Decided from the
     template's slot composition, without reading the extracted value."""
     party = _profile("ZELLE TO {contact} {reference}").apply(
-        "ZELLE TO 508-496-2249 ABC123")
-    assert party.personal() == {"contact": "508-496-2249"}     # promoted
+        "ZELLE TO 214-555-0147 ABC123")
+    assert party.personal() == {"contact": "214-555-0147"}     # promoted
     assert party.shareable() == {"reference": "ABC123"}
     # ...and the same slot beside a brand is the merchant's public number.
     merchant = _profile("CARD PURCHASE {date} {brand} {contact} {region}").apply(
-        "CARD PURCHASE 01/18 STRONG HOME MTG 571-443-2000 VA")
-    assert merchant.shareable()["contact"] == "571-443-2000"
+        "CARD PURCHASE 01/18 STRONG HOME MTG 571-555-0168 VA")
+    assert merchant.shareable()["contact"] == "571-555-0168"
     assert merchant.personal() == {}
+
+
+def test_a_named_institution_does_not_answer_who_was_on_the_other_side():
+    """A template naming an institution still names no party, so the `{contact}`
+    beside it is promoted as the party's own and stays personal, while the
+    institution stays shareable."""
+    m = _profile("TRANSFER VIA {institution} TO {contact}").apply(
+        "TRANSFER VIA NORTHBANK TO 214-555-0147")
+    assert m.party() == "214-555-0147"
+    assert m.personal() == {"contact": "214-555-0147"}
+    assert m.shareable() == {"institution": "NORTHBANK"}
 
 
 # --- the pack: versioned, never edited -------------------------------------
@@ -402,8 +413,8 @@ def test_nothing_usable_returns_none_rather_than_an_empty_grammar():
 def test_a_wire_is_refused_a_grammar_however_good_the_template_looks():
     # The shape is refused before templates are consulted, so the refusal does
     # not depend on which templates happen to exist.
-    wire = ("02/14 ONLINE DOMESTIC WIRE TRANSFER VIA: SOMEBANK NA/111014325 "
-            "A/C: SOME TITLE LLC REF: 8000362/9021 SOME DRIVE IMAD: 0214X")
+    wire = ("02/14 ONLINE DOMESTIC WIRE TRANSFER VIA: SOMEBANK NA/999555006 "
+            "A/C: SOME TITLE LLC REF: 9990001/1000 SOME DRIVE IMAD: 0214X")
     assert _profile("{purpose} {noise}").apply(wire) is None
     # One marker is not a wire: an ordinary line may print "Ref" and still be
     # an ordinary line.
