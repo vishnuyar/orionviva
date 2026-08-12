@@ -8,6 +8,15 @@ rather than walking raw movements.
 slot said a person is in it: the grammar's `{counterparty}` or
 `{counterparty_handle}`.
 
+**And a brand slot is corroborated, never believed on its own.** A slot name may
+say a hole holds a person; it may not, by itself, say a hole holds a business.
+Where a grammar named the brand, the hint crosses only if a published format —
+read from each line behind it, never from a sibling — says the other side was a
+business. The unit withheld is the whole hint, brand and context together,
+because a party's name can land in any slot a model called impersonal. Nothing
+about local resolution changes: the stream still keys on the brand, the merchant
+key still forms, categorization still works. Only the crossing is gated.
+
 **Where no grammar exists, `is_shareable` is the fallback.** Without a grammar
 there is no slot to say a line holds a person, so the substring list stands in.
 It over-blocks by design: its errors cost enrichment coverage rather than
@@ -31,7 +40,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from merchantcore.descriptor import split_ach_heads
 from merchantcore.normalize import is_shareable, normalize_merchant
+from merchantcore.resolve import corroborates_a_business
 
 from .streams import ACTIVITY, COUNTERPARTY, INTERNAL, MIXED
 
@@ -85,8 +96,18 @@ def enrichment_hints(streams) -> dict:
     A `mixed` stream still crosses: it is one counterparty with some links
     missing, and the merchant behind it is as real as any other.
 
+    A brand a grammar named crosses only where a published format corroborates
+    it on every line behind it — see `_named_by_a_slot`. One uncorroborated
+    occurrence withholds the whole hint, whatever else contributed to it.
+
     Each hint's `context` holds only slot values every occurrence agreed on."""
+    streams = list(streams)
+    # The NACHA name/description split needs the statement as a whole, so it is
+    # computed once over every line behind these streams rather than per line.
+    ach_split = split_ach_heads(o.description
+                                for s in streams for o in s.occurrences)
     out: dict = {}
+    withheld: set = set()
     for s in streams:
         if s.is_person or s.refused:
             continue
@@ -100,6 +121,14 @@ def enrichment_hints(streams) -> dict:
         brand = (s.brand or s.counterparty or "").strip()
         key = normalize_merchant(brand)
         if not key:
+            continue
+        # A model's word that a hole holds a business, standing alone, is not
+        # enough to send it. Corroboration is read from each line, so a rail
+        # proven by a sibling certifies nothing here.
+        if _named_by_a_slot(s) and not all(
+                corroborates_a_business(o.description, ach_split)
+                for o in s.occurrences):
+            withheld.add(key)
             continue
         hint = out.get(key)
         if hint is None:
@@ -117,11 +146,24 @@ def enrichment_hints(streams) -> dict:
                     hint._values.setdefault(slot, set()).add(value.strip())
         if s.entry_description:
             hint._values.setdefault("entry_description", set()).add(s.entry_description)
+    # Brand and context leave together or not at all: emitting the rest of a
+    # hint whose brand was withheld still sends whatever a context slot holds.
+    for key in withheld:
+        out.pop(key, None)
     for hint in out.values():
         # Unanimous or absent. A brand with two cities has no city.
         hint.context = {k: next(iter(v)) for k, v in hint._values.items()
                         if len(v) == 1}
     return out
+
+
+def _named_by_a_slot(stream) -> bool:
+    """Whether this stream's brand came out of a grammar's brand slot.
+
+    True means the claim that a business is on the other side rests on a model's
+    label. A published rule's reading and the whole-line fallback are not this,
+    and are not gated by corroboration."""
+    return stream.layer == "grammar" and bool(stream.brand)
 
 
 _ORDER = {"grammar": 3, "published": 2, "normalizer": 1, "refused": 0}

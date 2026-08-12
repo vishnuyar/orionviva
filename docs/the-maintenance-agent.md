@@ -1,6 +1,6 @@
 # The Maintenance Agent — what Viva does when nobody asked
 
-**Status:** Implemented · **Last updated:** 2026-07-30 · **Origin:** the grammar
+**Status:** Implemented · **Last updated:** 2026-08-12 (the enrichment step is held out of the autonomous set) · **Origin:** the grammar
 induction and merchant enrichment paths both cost model calls, both improve the
 vault, and both were run by hand. Running them by hand does not scale past one
 person paying attention, and running them unattended is spending money nobody
@@ -134,6 +134,26 @@ statements. An investment activity line is not a merchant, and offering one to a
 model as if it were is how a catalog fills with nonsense. The gate is on the
 account **kind** — a fact the ledger already holds — never on anything about the
 text.
+
+## What runs unattended, and what waits  (amended 2026-08-12)
+
+`AUTONOMOUS` holds `induce_missing` and `reinduce_drifted`. **`enrich_unknown` is
+not among them**, so an enrichment is planned, costed and proposed, and a person
+allows it — the file's existing semantics for any rule outside that set, not a
+new mechanism.
+
+The reason is what an enrichment hint carries. Where an induced grammar labelled
+a slot `{brand}` and a party's name landed in it, the hint carries that name to
+the model and to the pending queue, which persists to unencrypted JSON before
+any model call is made — so an unattended run reaches the crossing with nobody
+reading it. The corroboration gate at the enrichment boundary
+(`the-conduit-and-the-counterparty.md`) narrows that crossing and does not close
+it: the ACH half of its evidence is recovered from the corpus and hands back a
+person's name as a company name. The hold therefore survived that gate, and
+anything restoring `enrich_unknown` says first what closed the crossing.
+
+Induction is unaffected. It reads lines this vault already holds and writes a
+grammar; it is the *enrichment* step that sends something out.
 
 ## Open
 

@@ -86,9 +86,22 @@ def test_mechanics_are_autonomous_and_publishing_is_not():
     wrong for everybody, and no automated check catches the failure that
     matters — a grammar can cover 90% of lines while putting cities in {brand},
     and only reading it finds that."""
-    assert {"induce_missing", "reinduce_drifted", "enrich_unknown"} <= AUTONOMOUS
+    assert {"induce_missing", "reinduce_drifted"} <= AUTONOMOUS
     assert not (AUTONOMOUS & NEEDS_RATIFICATION)
     assert {"publish_grammar", "publish_merchant"} <= NEEDS_RATIFICATION
+
+
+def test_enrichment_does_not_act_unattended_while_the_crossing_is_ungated():
+    """Blast radius again, and the reason is a person's name rather than a
+    grammar. An enrichment hint carries a party's name whenever a slot the
+    model labelled impersonal holds one, and the crossing writes it to an
+    unencrypted queue before any model call, on a path nobody is reading.
+
+    The corroboration gate narrows that crossing and does not close it: a name
+    an ACH head recovers as a company name still crosses. So enrichment is
+    proposed and waits, and what restores it here says first what closed the
+    crossing."""
+    assert "enrich_unknown" not in AUTONOMOUS
 
 
 def test_assess_asks_nobody_anything(tmp_path):

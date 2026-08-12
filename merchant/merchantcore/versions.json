@@ -6,7 +6,7 @@
     },
     "induce_profile": {
       "in": "prompts",
-      "active": "induce-profile-v2"
+      "active": "induce-profile-v3"
     }
   },
   "released": {
@@ -15,6 +15,7 @@
     "enrich-v4": "2efcedbb7bc6570b",
     "enrich-v5": "cc200acfed53a401",
     "induce-profile-v1": "0e9e765cfdd270c4",
-    "induce-profile-v2": "c6ae43456931e2c1"
+    "induce-profile-v2": "c6ae43456931e2c1",
+    "induce-profile-v3": "b3ff11284894bd92"
   }
 }

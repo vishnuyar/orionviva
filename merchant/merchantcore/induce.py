@@ -31,10 +31,11 @@ import re
 
 from vivacore import promptstore, versions
 
-from .descriptor import is_never_templatable
+from .descriptor import is_never_templatable, split_ach_heads
 from .profile import (PACK_RULES, PROFILE_FORMAT, Profile, ProfileError, SLOTS, Template,
                       validate_evidence,
                       validate)
+from .resolve import corroborates_a_business
 
 log = logging.getLogger(__name__)
 
@@ -172,6 +173,39 @@ def narrow_templates(profile: Profile, descriptors) -> dict:
         hits = sum(1 for d in lines if rx.match(d))
         if hits <= 1:
             out[t.pattern] = hits
+    return out
+
+
+def uncorroborated_brands(profile: Profile, descriptors) -> dict:
+    """`{template: distinct lines it matches that nothing published corroborates}`,
+    for templates naming a brand.
+
+    A brand slot says a hole holds a business. Where no published format on the
+    line says the same, that claim is the only thing between whoever is in the
+    hole and the enrichment boundary.
+
+    The count is over distinct lines, and it is not a measure of what the
+    boundary withholds: the boundary works in hints and the movements behind
+    them, and one uncorroborated line withholds the whole hint it contributed
+    to. What stays behind is never only these lines.
+
+    Read at induction, where a person is looking at the templates. It reaches no
+    grammar already in force and it decides nothing; the boundary is where the
+    withholding happens.
+
+    Templates matching nothing, and templates naming no brand, are absent rather
+    than reported as zero. The count is over distinct non-empty descriptors."""
+    out: dict = {}
+    lines = [d for d in {x for x in descriptors if x} if d.strip()]
+    ach_split = split_ach_heads(lines)
+    for t in profile.templates:
+        if not any(name == "brand" for name, _shape in t.slots()):
+            continue
+        rx = t.compile()
+        bare = sum(1 for d in lines if rx.match(d)
+                   and not corroborates_a_business(d, ach_split))
+        if bare:
+            out[t.pattern] = bare
     return out
 
 

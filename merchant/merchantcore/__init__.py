@@ -20,7 +20,7 @@ from .profile import (INDUCIBLE_KINDS, PACK_RULES, PARTY_SLOTS, PERSONAL_SLOTS,
                       validate, validate_evidence,
                       ProfileStore, Template, is_inducible, party_slot)
 from .resolve import (RESOLVER_VERSION, Resolution, channel_of,
-                      resolve_descriptor)
+                      corroborates_a_business, resolve_descriptor)
 from .record import MerchantRecord
 from .taxonomy import (FALLBACK_CATEGORY, PRIMARY_CATEGORIES, TAXONOMY_VERSION,
                        canonical_primary, is_primary, normalize_subcategory)
@@ -30,6 +30,7 @@ __all__ = [
     "parse_descriptor", "brand_candidate", "DescriptorParse", "PARSER_VERSION",
     "linted_example", "split_ach_heads", "is_never_templatable",
     "resolve_descriptor", "Resolution", "channel_of", "RESOLVER_VERSION",
+    "corroborates_a_business",
     "MerchantRecord",
     "Profile", "ProfileStore", "ProfileError", "Template", "SLOTS",
     "PERSONAL_SLOTS", "PROFILE_FORMAT", "INDUCIBLE_KINDS", "is_inducible",

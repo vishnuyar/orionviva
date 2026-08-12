@@ -371,6 +371,27 @@ def test_a_template_is_judged_by_what_it_MATCHES_not_by_its_words():
         "NEVER SEEN {brand}": 0}
 
 
+def test_a_brand_slot_is_counted_against_the_lines_that_prove_nothing():
+    """`uncorroborated_brands` reports, per template, how many distinct lines
+    put a party in a brand slot with no published format agreeing.
+
+    The card line ends at the region subfield a published rule reads, so it is
+    corroborated and is not counted. The peer-rail line proves nothing about
+    who is on the other side, so it is. A template naming no brand is not
+    reported at all, whatever its lines prove."""
+    from merchantcore.induce import uncorroborated_brands
+    corpus = ["CARD PURCHASE 01/09 CORNER COFFEE PLANO TX",
+              "ZELLE PAYMENT FROM BRIGHTFORD LABS INC 191346536",
+              "ZELLE PAYMENT FROM ARJUN VARMA ABC1"]
+    assert uncorroborated_brands(
+        _profile("CARD PURCHASE {date} {brand} {city} {region}"), corpus) == {}
+    assert uncorroborated_brands(
+        _profile("ZELLE PAYMENT FROM {brand} {reference}"), corpus) == {
+            "ZELLE PAYMENT FROM {brand} {reference}": 2}
+    assert uncorroborated_brands(
+        _profile("ZELLE PAYMENT FROM {counterparty} {reference}"), corpus) == {}
+
+
 def test_a_worse_rerun_cannot_silently_become_the_grammar(tmp_path):
     """A version explaining fewer of the same movements than the one it
     succeeds is refused; `force=True` writes it anyway."""
@@ -592,9 +613,10 @@ def test_every_recorded_prompt_version_still_resolves():
     from vivacore import promptstore
     from merchantcore.induce import PROMPTS
     have = set(promptstore.ids(PROMPTS))
-    assert {"induce-profile-v1", "induce-profile-v2"} <= have
-    assert promptstore.load(PROMPTS, "induce-profile-v1") != \
-        promptstore.load(PROMPTS, "induce-profile-v2")
+    released = {"induce-profile-v1", "induce-profile-v2", "induce-profile-v3"}
+    assert released <= have
+    texts = {promptstore.load(PROMPTS, v) for v in released}
+    assert len(texts) == len(released)
 
 
 # ------------------------------------ {brand} must be able to hold a merchant

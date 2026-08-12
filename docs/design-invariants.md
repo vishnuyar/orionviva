@@ -1,6 +1,6 @@
 # Design Invariants — the checklist every decision answers to
 
-**Status:** Living · **Last updated:** 2026-08-08 (X3 refined: a confirmation is a question, not a second door)
+**Status:** Living · **Last updated:** 2026-08-12 (T9 amended: impersonal by construction means corroborated by something that is not a model — and the corroboration this build accepts is not yet that)
 
 ## Why this doc
 
@@ -16,7 +16,7 @@ Some requirements are cross-cutting: they belong to no single feature, so they'r
 - **T6 — Nothing leaves silently.** New outbound bytes of any kind are a *decision* (ADR + promise check), never an implementation detail. (ADR-006)
 - **T7 — IDs are permanent; fingerprints are versioned.** (ADR-007)
 - **T8 — Models are pinned, provider-swappable, and never trusted** — access modes: bundled local, OAuth-brokered, BYOK, future attested-cloud. (ADR-001, model trust policy, adoption doc)
-- **T9 — The personal/impersonal boundary is drawn at package edges (added 2026-07-24).** Shared-knowledge packages (e.g. `merchantcore`, the format commons) may hold and share only *impersonal* data — merchant knowledge, format knowledge — never personal financial data. What crosses the product → such a package must be impersonal by construction (a normalized merchant key + a privacy-linted example; a format profile) — never amounts, dates, accounts, or PII descriptors. The unencrypted-safety of a shared catalog is a *consequence* of this boundary, not an exception to T5. (merchantcore-package.md, format-commons.md)
+- **T9 — The personal/impersonal boundary is drawn at package edges (added 2026-07-24).** Shared-knowledge packages (e.g. `merchantcore`, the format commons) may hold and share only *impersonal* data — merchant knowledge, format knowledge — never personal financial data. What crosses the product → such a package must be impersonal by construction (a normalized merchant key + a privacy-linted example; a format profile) — never amounts, dates, accounts, or PII descriptors. The unencrypted-safety of a shared catalog is a *consequence* of this boundary, not an exception to T5. (merchantcore-package.md, format-commons.md) **Amended 2026-08-12:** *impersonal by construction* holds only where something that is not a model says so. A slot name in an induced grammar is a model's claim, and it is not symmetric: it may say a hole holds a person, because believing that costs enrichment coverage and never a name, and it may not by itself say a hole holds a business. So a brand a grammar named crosses only where a published format read from the line it occurred on agrees, never one a sibling line proved, and the unit withheld is the whole hint — brand and context together — because a party's name lands in whichever slot the model called impersonal. The corroboration this build accepts includes one signal recovered from the corpus rather than read from a published boundary, so the boundary is narrowed and not sealed: a person's name an ACH head hands back as a company name still crosses, and the maintenance agent's enrichment step stays non-autonomous until that is closed. (the-conduit-and-the-counterparty.md)
 
 ## Internationalization invariants (added 2026-07-20, standing directive: never lose these while deep in other features)
 

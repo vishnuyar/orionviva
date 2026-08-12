@@ -1,0 +1,105 @@
+You are given transaction descriptions printed by ONE bank on ONE kind of
+statement. A bank composes these lines from a small number of fixed templates,
+filling holes with details that change per transaction. Your task is to recover
+those templates.
+
+Return the templates and nothing else. Do not identify merchants, do not
+categorise anything, do not comment on any individual transaction.
+
+A template is literal text plus named holes in curly braces:
+
+    ZELLE TO {{counterparty}} {{reference}}
+    CARD PURCHASE {{date}} {{brand}} {{city}} {{region}}
+
+RULES, all of them strict:
+
+1. A hole may ONLY be one of these names. Nothing else is accepted, and a
+   template using any other name is discarded:
+
+{slots}
+
+2. You may not write regular expressions, character classes, wildcards,
+   quantifiers, or alternation. Only literal words and named holes. Each hole
+   already knows what shape of text it matches.
+
+3. A template must describe the WHOLE line from beginning to end. Every part of
+   a line must fall either inside a hole or inside the literal text. If part of
+   a line is filler that nothing needs, put it in {{noise}}.
+
+4. Generalise — with one exception, and the exception is not rare.
+
+   Usually a template that reproduces one example exactly, with no holes, is an
+   example rather than a grammar. Write the shape that would match every line of
+   that kind, including ones not shown here.
+
+   THE EXCEPTION is a line with nothing variable in it. A fee, a payment
+   acknowledgement, an interest charge, a credit: the bank prints the identical
+   string every time, and that sameness is what the line IS. Write those as
+   literal text with no holes at all. They are templates, not examples.
+
+   Two things not to do when a line looks like that. Do not invent a hole to
+   satisfy the rule about generalising — an invented hole matches text that is
+   never there. And do not shorten the line to make it look more general: a
+   template must still describe the line from beginning to end, so a truncated
+   version of a fixed phrase matches nothing at all and is worse than either.
+
+5. A hole name may appear AT MOST ONCE in a template. Some lines carry two
+   different identifiers — a transfer id and a transaction number, an
+   originator's id and a trace number. Use two different names for them:
+   {{reference}}, {{trace}} and {{company_id}} are three distinct holes and
+   exist precisely for this. Repeating one name discards the template.
+
+6. Prefer FEW templates. If two lines differ only in the value of a hole, they
+   are one template. If they differ in their literal words, they are two.
+
+7. Order matters: the first template that matches a line wins, so put more
+   specific templates before more general ones.
+
+8. THE PERSON. A payment between two people identifies the other one however the
+   sender addressed them, and all of these are the same thing:
+
+       a name          ZELLE TO {{counterparty}} {{reference}}
+       a phone number  ZELLE TO {{counterparty_handle}} {{reference}}
+       an email        ZELLE TO {{counterparty_handle}} {{reference}}
+       a username      ZELLE TO {{counterparty_handle}} {{reference}}
+
+   Use {{counterparty}} when the hole holds a person's NAME. Use
+   {{counterparty_handle}} when it holds a phone number, an email address or a
+   username standing in for a person. Never use {{contact}} for either —
+   {{contact}} is a phone number or web address a MERCHANT printed, which is
+   public, and these are not.
+
+   A shop, a company, a utility or a bank is {{brand}} or {{institution}}, never
+   a counterparty of any kind. This distinction decides what is treated as
+   private, so err toward the counterparty holes when a hole clearly holds a
+   person and away from them for anything else.
+
+   DIRECTION DOES NOT CHANGE WHAT IS IN THE HOLE. Money arriving FROM a person
+   names that person exactly as money going out to one does:
+
+       ZELLE PAYMENT FROM {{counterparty}} {{reference}}
+       PEER CREDIT FROM {{counterparty_handle}} {{reference}}
+       {{counterparty}} {{purpose}} {{reference}} PPD ID: {{company_id}}
+
+   The last one is the one most often written wrong. An inbound payment from a
+   person frequently arrives as an ordinary bank-composed line, with the
+   sender's name standing where an originator's name would stand. A company's
+   name and a person's name look alike in that position and the line itself
+   does not say which it is. If lines of that shape carry people's names, the
+   hole is {{counterparty}} — on the way in exactly as on the way out.
+
+   The two mistakes are not equal. A business in {{counterparty}} costs a
+   little knowledge about a merchant. A person in {{brand}} is a private name
+   in a hole labelled public.
+
+9. If some lines do not fit any template you can write, leave them out. A
+   grammar that honestly covers most lines is worth more than one that claims
+   all of them by being vague.
+
+Reply with JSON and nothing else:
+
+{{"templates": ["...", "..."]}}
+
+The descriptions:
+
+{descriptors}

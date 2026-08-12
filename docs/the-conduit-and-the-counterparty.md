@@ -621,7 +621,9 @@ whether a template **matched**, never whether it **slotted correctly** — a
 grammar can cover 90% of lines while putting cities in `{brand}` and pass every
 check. Reading it is the only thing that catches that. So a grammar may be
 induced and used unattended, and publishing one to the commons waits for a
-person.
+person. *Refined 2026-08-12 — see* What a slot name may be believed about *below:
+privacy is a slot name where the slot says a person, and a corroborated slot
+where it says a business.*
 
 ## What the rail measurement changed  (2026-08-11, the same vault)
 
@@ -655,7 +657,81 @@ in it, and the party's name went to two slots the vocabulary treats as
 impersonal. No guard over slot *names* can see a party in a slot that does not
 name one — this is the "matched, never slotted correctly" hole recorded just
 above, and only a person reading the grammar catches it. Accepted and open, not
-closed; closing it means re-inducing that grammar.
+closed; closing it means re-inducing that grammar. *Amended 2026-08-12:* a
+second route exists and was not taken — the crossing is now gated on
+corroboration, and narrowing what counts as corroboration withholds the hint
+without touching the grammar. At the setting built, this case still crosses.
+
+## What a slot name may be believed about  (2026-08-12, the same vault)
+
+**A slot name may say a hole holds a person. It may not, by itself, say a hole
+holds a business.** Believing `{counterparty}` costs enrichment coverage and
+never a name, so it is believed. `{brand}` is the claim that goes the other way,
+and it was believed on a model's word alone: the hole the section above left open
+— a party's name in a slot the vocabulary treats as impersonal — reaches the
+enrichment boundary, the catalog and the pending queue with nothing between it
+and the crossing but a label a forward pass wrote.
+
+So the crossing is now gated. Where a grammar named the brand, a hint leaves only
+if a published format **read from each line behind it** says the other side was a
+business: an ISO 8583 DE43 structure fired, or a NACHA line's Company Name field
+came back with a value. The unit withheld is the **whole hint** — brand and
+context together — because a party's name lands in whatever slot the model called
+impersonal, and a hint's example is the brand followed by its agreed context
+slots. Withholding the brand value alone would have sent the name in `{purpose}`.
+Corroboration is not inherited: a stream's rail may be a channel a *sibling* line
+proved, and reading that would certify a line by association, so the gate
+recomputes the Layer 0 reading per occurrence out of the raw line it already
+holds. Nothing about local resolution moves — the stream still keys on the brand,
+the merchant key still forms, categorization still works. Only what crosses is
+gated, which is the boundary T9 draws.
+
+**The gate applies to every grammar, not only to one that demonstrably carries
+people.** A card-only grammar names nobody and still makes the brand claim.
+Measured over this vault: **43 of 235 hints and 169 of 863 movements (18.3% /
+19.6%) stop crossing**, against 11 / 80 if the gate fired only on grammars with a
+person slot. The errors this gate makes all have one shape — a genuine business
+on a rail that proves nothing loses its enrichment — and that asymmetry, coverage
+rather than a name, is the reason to accept the price.
+
+**What this does not close, stated plainly, because a fence believed to close
+something it does not is worse than no fence.** The second clause is weaker than
+the first, and it is weak in exactly the way this document warns about elsewhere:
+the Company Name / Entry Description boundary is not printed on the display line,
+so `split_ach_heads` recovers it from the statement as a whole — an inference over
+this vault's own values. It returned a value for every ACH line measured here, so
+**an ACH line whose head is a person's given name is corroborated by it and
+crosses.** The mislabelled template this cycle began from still crosses, and so
+does the sibling line whose `{purpose}` holds a name. The durable rule the
+measurement argues for is stricter — corroboration read from a published boundary
+on the line, never recovered from what other lines look like — and this build does
+not implement it. What it implements is the weaker true sentence: **the crossing
+is gated, and the gate's evidence includes one signal inferred from the corpus.**
+
+Two consequences follow and are carried rather than resolved. The maintenance
+agent's enrichment step stays **out of the autonomous set**: with the crossing
+still open, letting an unattended run reach it re-opens exactly what the hold
+exists for, and anything that restores it says first what closed the crossing.
+And the shape is built to be re-pointed — what counts as corroboration is one
+predicate, `corroborates_a_business`, so narrowing it is a change in one place
+and a re-measurement rather than a redesign.
+
+**Two limits worth knowing before reading a withheld share as a coverage
+figure.** Both clauses are US-scope by construction, and every corroboration in
+this vault came from them; on a rail proving neither — UPI, SEPA — this gate
+withholds every brand-slot hint, and no third signal exists anywhere in the code
+to rescue it (I3, I5). And the gate only sees what a brand slot produced: where a
+grammar's template names no brand at all, the key falls back to the whole
+normalized line, which crosses without passing through this gate or the
+substring fallback either.
+
+Induction gained a companion that decides nothing: `uncorroborated_brands` prints,
+per template, how many distinct lines put a party in a brand slot with nothing
+published agreeing, for the person reading a fresh grammar. It cannot reach a
+grammar already in force, and the counts are lines rather than a measure of what
+the boundary withholds. `induce-profile-v3` adds the inbound peer-rail examples
+rule 8 never had — all four of its worked examples pointed outward, and the model's
+error mirrored them — and remains a repair to the prompt, not a fence.
 
 ## The parts the code decided, and this document did not
 

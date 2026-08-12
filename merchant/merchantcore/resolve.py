@@ -177,6 +177,30 @@ def channel_of(descriptor: str, parse=None) -> str:
     return "unknown"
 
 
+def corroborates_a_business(descriptor: str, ach_split=None) -> bool:
+    """Whether a published format says the other side of THIS line is a business.
+
+    A slot name may say a hole holds a person; it may not, by itself, say a
+    hole holds a business. This is what stands beside that claim:
+
+        card   an ISO 8583 DE43 structure fired, and the network specifies its
+               acceptor as a merchant
+        ach    a NACHA line whose Company Name field came back with a value
+
+    Read per line. A format proven by another line of the same counterparty
+    corroborates nothing here, and "no" is a legitimate answer.
+
+    The two clauses are not equally strong. The Company Name boundary is not
+    printed on the line, so `split_ach_heads` recovers it from the statement as
+    a whole, and any ACH line with a non-empty head satisfies that clause —
+    including one whose head is a person's name. `ach_split` is that map, or
+    None to leave the clause unsatisfiable."""
+    if channel_of(descriptor) == "card":
+        return True
+    name, _entry = (ach_split or {}).get(descriptor, ("", ""))
+    return bool(name)
+
+
 def _slot_from(res: Resolution, match, parse, ach_split, raw: str) -> Resolution:
     """Fill a resolution from a grammar match, and return it.
 

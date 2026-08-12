@@ -136,7 +136,8 @@ def main() -> int:
     from merchantcore.induce import (HOLDOUT_SHARE, MIN_LINES_TO_INDUCE, Inducer,
                                      build_induction_prompt, drift,
                                      holdout_split, narrow_templates,
-                                     sample_descriptors, skeletons)
+                                     sample_descriptors, skeletons,
+                                     uncorroborated_brands)
     from merchantcore.profile import (INDUCIBLE_KINDS, PERSONAL_SLOTS,
                                       ProfileStore, is_inducible)
     from .vault import Vault
@@ -346,6 +347,18 @@ def main() -> int:
               f"only ever match its own line. Read these:\n")
         for pattern, hits in sorted(narrow.items(), key=lambda kv: kv[1]):
             print(f"    {pattern}\n        matches {hits} distinct line(s)")
+
+    bare = uncorroborated_brands(profile, eligible)
+    if bare:
+        print(f"\n  ⚠ {len(bare)} template(s) put a brand on lines no published "
+              f"format\n    corroborates. A brand slot says a business is on the "
+              f"other side, and on\n    these lines nothing but the slot name "
+              f"says it. The enrichment boundary\n    withholds whole hints, so "
+              f"these counts of distinct lines are a floor on\n    what stays "
+              f"here rather than a measure of it. Read them and check what\n"
+              f"    is in that hole:\n")
+        for pattern, lines in sorted(bare.items(), key=lambda kv: -kv[1]):
+            print(f"    {pattern}\n        {lines} uncorroborated distinct line(s)")
 
     print(f"\n{'-' * 72}\nHELD-OUT COVERAGE\n{'-' * 72}")
     print(f"  Measured on all {sum(eligible.values())} eligible movements, not "

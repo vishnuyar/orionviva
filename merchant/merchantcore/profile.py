@@ -36,7 +36,7 @@ PROFILE_FORMAT = "prof-v1"
 # loads by it and nothing is salted by it; `machinery_version()` carries it into
 # the agent's stake, so a refusal recorded under older rules expires when the
 # rules change.
-PACK_RULES = "pack-v5"
+PACK_RULES = "pack-v6"
 
 # The closed slot vocabulary. A profile may name these and nothing else.
 SLOTS = {

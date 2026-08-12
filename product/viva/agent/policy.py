@@ -44,7 +44,13 @@ RULES = {
 
 # Rules an agent may act on unattended. Anything not listed here is proposed
 # and waits.
-AUTONOMOUS = frozenset({"induce_missing", "reinduce_drifted", "enrich_unknown"})
+#
+# `enrich_unknown` is not one of them. An enrichment hint carries a party's name
+# whenever a slot a grammar called impersonal holds one, and the crossing writes
+# that name to the unencrypted pending queue before any model call. The
+# corroboration gate narrows what crosses without closing that case, so an
+# enrichment is proposed and waits for a person.
+AUTONOMOUS = frozenset({"induce_missing", "reinduce_drifted"})
 
 # Rules that change what other people see. A human ratifies these, always.
 NEEDS_RATIFICATION = frozenset({"publish_grammar", "publish_merchant"})
