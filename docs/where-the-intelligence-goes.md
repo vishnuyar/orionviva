@@ -104,6 +104,13 @@ answering it: what the person actually arranged is theirs to say, and where the
 ledger has measured enough to have an opinion, the measurement is what the
 proposal proposes.*
 
+*Amended 2026-08-13: a party a grammar slot declared is not on this axis at all.
+Tier 3 is where a peer belongs and it stays there — the rhythm read drops those
+movements before it measures anything, so no arrangement is ever proposed about
+a person. The declaration is a slot name, so the limit is the gate's: a person's
+name in a `{brand}` slot is declared a person by nothing and is sorted like any
+merchant.*
+
 ---
 
 ## The confidence ladder — reuse, don't invent

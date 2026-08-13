@@ -3,9 +3,11 @@
 A merchant is filed under its BRAND: two locations of one retailer are one
 key and one record. Naming the brand takes the resolution layers, and the
 best of them is a grammar living outside the event log — so the key map is
-built by an injected resolver rather than derived from events. Without one
-a descriptor normalizes to itself, which is what every read did before
-grammars existed.
+built by an injected resolver rather than derived from events. What comes
+back is the key each line is filed under and the lines a grammar slot
+declared a person on, the one thing about a line no read can recover for
+itself. Without a resolver a descriptor normalizes to itself and no line is
+declared anything, which is what every read did before grammars existed.
 
 Every lookup therefore considers TWO keys. Knowledge recorded before a
 grammar could name the brand sits under the descriptor, and a person's
@@ -18,26 +20,39 @@ name it happens to be filed under.
 from __future__ import annotations
 
 from ..events import SCOPE_MERCHANT
+from ..merchant_keys import MerchantKeys
 from ..merchants import normalize_merchant
 from .core import ProjectionCore, _grade_rank
 
 
-def merchant_key_map(core: ProjectionCore) -> dict:
-    """`{(account, descriptor): brand key}` for every line held.
+def merchant_key_map(core: ProjectionCore) -> MerchantKeys:
+    """`{(account, descriptor): brand key}` for every line held, carrying the
+    lines a grammar slot declared a person on.
 
     Built once and dropped whenever a transaction or an account arrives,
-    because both can change how a descriptor resolves."""
+    because both can change how a descriptor resolves.
+
+    Always a `MerchantKeys`: the empty one a projection with no resolver gets
+    declares no persons, and so does a resolver that named none. Raises
+    `TypeError` where a resolver returns any other mapping, which carries no
+    declaration to tell apart from a declaration of nobody."""
     if core._mkeys is None:
         if core._resolve_keys is None:
-            core._mkeys = {}
+            core._mkeys = MerchantKeys()
         else:
             # Only the accounts `movements` reads: the other side of a
             # posting is a category, and a category has no counterparty.
-            core._mkeys = core._resolve_keys(
+            resolved = core._resolve_keys(
                 [(account, st.institution, st.kind, ln.description)
                  for account, st in core._acct.items()
                  if st.kind in ("depository", "liability", "investment")
                  for ln in st.lines])
+            if not isinstance(resolved, MerchantKeys):
+                raise TypeError(
+                    "a resolver must return MerchantKeys, which carries the "
+                    "lines a slot declared a person on; got "
+                    f"{type(resolved).__name__}")
+            core._mkeys = resolved
     return core._mkeys
 
 
@@ -64,6 +79,18 @@ def merchant_key_of(core: ProjectionCore, m) -> str:
     """The single key this movement's merchant is known by now — what a
     surface groups on and what a new ruling about it is written under."""
     return merchant_keys_of(core, m)[0]
+
+
+def is_person(core: ProjectionCore, m) -> bool:
+    """True where a grammar slot declared the other side of this movement a
+    person.
+
+    The same declaration the enrichment gate reads, asked of a movement rather
+    than of a stream: a slot named a party, never a guess from the text. False
+    wherever no grammar has named the line, and false from a resolver that
+    declared nobody.
+    """
+    return (m.account, m.description) in merchant_key_map(core).persons
 
 
 def merchant_graded(core: ProjectionCore, get, m) -> dict | None:

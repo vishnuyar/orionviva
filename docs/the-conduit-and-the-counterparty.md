@@ -733,6 +733,37 @@ the boundary withholds. `induce-profile-v3` adds the inbound peer-rail examples
 rule 8 never had — all four of its worked examples pointed outward, and the model's
 error mirrored them — and remains a repair to the prompt, not a fence.
 
+## What the declaration reaches, beyond the crossing  (2026-08-13)
+
+A slot name saying a hole holds a person was, until now, read at one place: the
+gate above, deciding what leaves for a model. The rhythm read measured every
+counterparty it could key, person or not, and what kept a peer relationship out
+of it was that no catalog record existed under those keys yet — an accident of
+what had not been bought, not a fence. Measured on this vault: **58
+`(merchant key, direction)` flows carry movements from a person's stream, and
+three of them clear the cadence floor.** The enrichment that would give them a
+record is the same one the gate stands in front of.
+
+So the declaration now travels with the keys. A resolver returns the map of
+lines to merchant keys **and** the lines a slot named a party on
+(`MerchantKeys`), because person-ness is knowable only from an induced grammar,
+which lives on disk rather than in the event log — the projection could not ask
+the question at all. `merchants.is_person` reads that, the rhythm read drops
+those movements before any flow is formed, and a person contributes no
+hypothesis, no question and no subject a ruling could be recorded under. It is
+the same declaration `hints.py` reads, never a second way of asking. A resolver
+returning any other mapping raises rather than defaulting to silence: a shape
+that lost the declaration and a resolver that declared nobody are
+indistinguishable, and the default would fail towards measuring a person.
+
+**This makes the rhythm path as safe as the enrichment gate and no safer.** A
+person's given name sitting in a `{brand}` slot is declared a person by nothing,
+reads `is_person == False` everywhere, and still forms a flow — so the two keys
+this vault holds could raise a rhythm question once a record exists and their
+spacing clears the cadence floor, which would render a person's descriptor into
+a sentence proposing they are a merchant with a billing model. That is the
+accepted consequence recorded above arriving on a third surface, not a new one.
+
 ## The parts the code decided, and this document did not
 
 Seven rulings that live in `merchantcore` and were argued nowhere else. Each one

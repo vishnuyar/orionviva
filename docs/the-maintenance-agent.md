@@ -144,9 +144,10 @@ new mechanism.
 
 The reason is what an enrichment hint carries. Where an induced grammar labelled
 a slot `{brand}` and a party's name landed in it, the hint carries that name to
-the model and to the pending queue, which persists to unencrypted JSON before
-any model call is made — so an unattended run reaches the crossing with nobody
-reading it. The corroboration gate at the enrichment boundary
+the model and to the pending queue, which persists to unencrypted JSON when the
+enriched records are saved — after the call, so the queue cannot be read ahead
+of the spend to see what is about to cross, and an unattended run reaches the
+crossing with nobody reading it. The corroboration gate at the enrichment boundary
 (`the-conduit-and-the-counterparty.md`) narrows that crossing and does not close
 it: the ACH half of its evidence is recovered from the corpus and hands back a
 person's name as a company name. The hold therefore survived that gate, and

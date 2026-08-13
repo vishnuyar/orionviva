@@ -109,7 +109,9 @@ A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("
 
 The queue gained **rhythm**: *what kind of arrangement is this?*, one grouped
 proposal per `(merchant key, direction)` pair the merchant catalog says an
-arrangement is even possible for. It is the fifth question type this doc said
+arrangement is even possible for — and, *amended 2026-08-13*, never a pair whose
+other side a grammar slot declared a person, whose movements the read drops
+before it measures anything. It is the fifth question type this doc said
 the generic scoped ruling was waiting on, and it proves the shape — the answer
 is a `RulingRecorded` at a new scope, carrying a set-valued `value` and no
 `same_as`, written through the same slot machinery as every other reply. No new

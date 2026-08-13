@@ -775,6 +775,77 @@ def test_a_person_shaped_stream_reaches_no_prompt_no_catalog_and_no_question():
     assert _rhythm_questions(proj) == []
 
 
+# One bank's peer rail, written two ways: a template whose slot names a party
+# and a template whose slot names a brand. The only difference between the two
+# runs of payments below is which kind of slot was filled.
+PEER_GRAMMAR = Profile("northbank", "depository", "v1", [
+    Template("TRANSFER TO {counterparty} REF {reference}"),
+    Template("SUBSCRIPTION TO {brand} REF {reference}"),
+])
+STEADY_PERSON = "TRANSFER TO ROHAN IYER REF 4417"
+ERRATIC_PERSON = "TRANSFER TO PRIYA NAIR REF 5502"
+PEER_RAIL_BRAND = "SUBSCRIPTION TO ORBIT ATLAS REF 6690"
+
+
+def _peer_txns():
+    """Three runs on one rail: a person paid the same amount every month, a
+    person paid odd amounts at odd intervals, and a business paid the same
+    amount every month."""
+    steady = [(f"2026-{month:02d}-05", STEADY_PERSON, "-250.00")
+              for month in range(1, 7)]
+    erratic = [("2026-01-11", ERRATIC_PERSON, "-40.00"),
+               ("2026-01-29", ERRATIC_PERSON, "-115.50"),
+               ("2026-03-02", ERRATIC_PERSON, "-8.25"),
+               ("2026-05-19", ERRATIC_PERSON, "-620.00")]
+    brand = [(f"2026-{month:02d}-07", PEER_RAIL_BRAND, "-19.00")
+             for month in range(1, 7)]
+    return steady + erratic + brand
+
+
+def _key_for(proj, description):
+    return next(proj.merchant_key_of(m) for m in proj.movements()
+                if m.description == description)
+
+
+def test_a_slot_declared_person_contributes_no_flow_however_steady_or_licensed():
+    """A person a grammar slot declared is out of the measurement itself: no
+    flow, no hypothesis, no question — for the steady monthly run and the
+    erratic one alike, each carrying a record that says everything a record can
+    say.
+
+    The declaration is the whole of the guarantee. A person's name a template
+    put in a `{brand}` slot is declared a person by nothing, and contributes a
+    flow like any other counterparty."""
+    txns = _peer_txns()
+    plain = _proj(txns, resolver=_resolver(PEER_GRAMMAR))
+    priors = [_prior(_key_for(plain, line), "standing", "monthly")
+              for line in (STEADY_PERSON, ERRATIC_PERSON)]
+    proj = _proj(txns, resolver=_resolver(PEER_GRAMMAR), extra=priors)
+
+    assert proj.rhythm_hypotheses() == []
+    assert _rhythm_questions(proj) == []
+
+
+def test_a_merchant_on_the_same_rail_still_reaches_a_rhythm_question():
+    """The same bank, the same rail and the same monthly shape still propose an
+    arrangement where a slot named a brand rather than a party."""
+    txns = _peer_txns()
+    plain = _proj(txns, resolver=_resolver(PEER_GRAMMAR))
+    brand_key = _key_for(plain, PEER_RAIL_BRAND)
+    person_keys = {_key_for(plain, line)
+                   for line in (STEADY_PERSON, ERRATIC_PERSON)}
+    proj = _proj(txns, resolver=_resolver(PEER_GRAMMAR),
+                 extra=[_prior(k, "standing", "monthly")
+                        for k in person_keys | {brand_key}])
+
+    (hypothesis,) = proj.rhythm_hypotheses()
+    assert hypothesis.merchant == brand_key and hypothesis.count == 6
+    (q,) = _rhythm_questions(proj)
+    assert q["refs"]["merchant"] == brand_key
+    # And no subject a person could be answered under exists anywhere in it.
+    assert not person_keys & {h.merchant for h in proj.rhythm_hypotheses()}
+
+
 def test_the_hypothesis_is_a_pure_function_of_the_movement_set():
     """Order in, same beliefs out — a person who loads a year in one afternoon
     and a person who loads a statement a month reach the same reading."""

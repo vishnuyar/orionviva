@@ -312,6 +312,14 @@ numbers.
 > Left open: the false-mixture rate is unmeasured on real data, and the
 > decomposition accepts two survivors it describes as one arrangement — a
 > monthly-plus-annual pair on one anchor day, and a sub-monthly interleave.
+>
+> *Amended 2026-08-13:* **a person is not a counterparty on this axis.** What
+> two people arrange between them is a relationship rather than a billing model,
+> so a movement whose other side a grammar slot declared a party is dropped
+> before any flow is formed — no measurement, no hypothesis, no question, no
+> subject. The declaration is the enrichment gate's, carried to the projection
+> by the resolver, and it is exactly as wide: a name in a slot the grammar
+> called `{brand}` is declared a person by nothing and still forms a flow.
 
 ### 4.5 Forecast ledger
 

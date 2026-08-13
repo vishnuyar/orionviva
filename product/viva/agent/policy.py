@@ -46,10 +46,12 @@ RULES = {
 # and waits.
 #
 # `enrich_unknown` is not one of them. An enrichment hint carries a party's name
-# whenever a slot a grammar called impersonal holds one, and the crossing writes
-# that name to the unencrypted pending queue before any model call. The
-# corroboration gate narrows what crosses without closing that case, so an
-# enrichment is proposed and waits for a person.
+# whenever a slot a grammar called impersonal holds one, and the crossing puts
+# that name in the payload and in the unencrypted pending queue, which reaches
+# disk when the enriched records are saved — after the call, so the queue cannot
+# be read ahead of the spend to see what is about to cross. The corroboration
+# gate narrows what crosses without closing that case, so an enrichment is
+# proposed and waits for a person.
 AUTONOMOUS = frozenset({"induce_missing", "reinduce_drifted"})
 
 # Rules that change what other people see. A human ratifies these, always.

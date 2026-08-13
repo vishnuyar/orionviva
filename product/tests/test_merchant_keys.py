@@ -13,14 +13,16 @@ brand key would lose them.
 
 from decimal import Decimal
 
+import pytest
 from merchantcore.normalize import is_shareable
 from merchantcore.profile import Profile, Template
 from viva.ledger import (LedgerProjection, account_opened,
                          merchant_categorized, simple_transaction)
 from viva.ledger.events import (SCOPE_MERCHANT, UNVERIFIED, VERIFIED,
                                 merchant_enriched, ruling_recorded)
-from viva.ledger.merchant_keys import resolve_keys
+from viva.ledger.merchant_keys import MerchantKeys, resolve_keys
 from viva.ledger.projection import BY_RULING, TIER_STRUCTURAL
+from viva.ledger.projection.merchants import is_person
 
 # A grammar for one bank's card lines: the brand sits in a slot, with a store
 # number, a city and a posting date around it.
@@ -211,6 +213,47 @@ def test_a_peer_line_is_not_given_a_cleaner_key_than_it_earned():
         proj.apply(event)
     key = proj.merchant_key_of(_movement(proj))
     assert "alex rivera" in key and not is_shareable(key)
+
+
+def test_a_resolver_declaring_nothing_is_told_apart_from_one_of_the_wrong_shape():
+    """A resolver that named nobody reads as silence; a mapping that cannot
+    carry a declaration raises.
+
+    A plain dict of the same pairs and a copy of a `MerchantKeys` both lose the
+    declaration, so `is_person` raises `TypeError` on either. A `MerchantKeys`
+    declaring nobody answers False, and the keys resolve the same either way."""
+    grammar = Profile("northbank", "depository", "v1", [
+        Template("ZELLE PAYMENT TO {counterparty} {reference}"),
+    ])
+    peer_line = "ZELLE PAYMENT TO ALEX RIVERA X9F2"
+
+    def resolved(rows):
+        return resolve_keys(rows, profile_for=lambda i, k: grammar)
+
+    def built(resolver):
+        proj = LedgerProjection([], resolve_keys=resolver)
+        for event in [account_opened("chk", "depository", "Checking", "USD",
+                                     "2026-01-01", institution="northbank"),
+                      simple_transaction("chk", "-25.00", peer_line,
+                                         "2026-05-04")]:
+            proj.apply(event)
+        return proj
+
+    declared = built(resolved)
+    m = declared.movements()[0]
+    assert is_person(declared.core, m)
+
+    # The same mapping with nothing declared over it, read as silence, with the
+    # keys themselves unchanged.
+    silent = built(lambda rows: MerchantKeys(resolved(rows)))
+    assert not is_person(silent.core, m)
+    assert silent.merchant_key_of(m) == declared.merchant_key_of(m)
+
+    # And the shapes that lost the declaration on the way out.
+    for shapeless in (lambda rows: dict(resolved(rows)),
+                      lambda rows: resolved(rows).copy()):
+        with pytest.raises(TypeError):
+            is_person(built(shapeless).core, m)
 
 
 def test_the_key_map_is_built_once_per_read_not_once_per_lookup():

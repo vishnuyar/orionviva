@@ -94,8 +94,10 @@ def test_mechanics_are_autonomous_and_publishing_is_not():
 def test_enrichment_does_not_act_unattended_while_the_crossing_is_ungated():
     """Blast radius again, and the reason is a person's name rather than a
     grammar. An enrichment hint carries a party's name whenever a slot the
-    model labelled impersonal holds one, and the crossing writes it to an
-    unencrypted queue before any model call, on a path nobody is reading.
+    model labelled impersonal holds one. The crossing puts it in the payload and
+    in the unencrypted queue, which reaches disk only when the enriched records
+    are saved — after the call, so nobody can read the queue ahead of the spend
+    to see what is about to cross.
 
     The corroboration gate narrows that crossing and does not close it: a name
     an ACH head recovers as a company name still crosses. So enrichment is

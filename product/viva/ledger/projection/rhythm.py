@@ -24,6 +24,12 @@ amounts repeat, and everything else — and every cadence, interval and
 steadiness belongs to one part. One part is described as one thing; two are
 named as two, with no cadence claimed over the whole.
 
+**A person is not a counterparty here.** What two people arrange between them
+is a relationship rather than a billing model, so where a slot declared the
+other side a person nothing is measured, nothing is proposed and no subject
+exists to record an answer under. The declaration is the enrichment gate's, and
+this read makes the same one.
+
 **A confirmation is recorded at the counterparty and a direction, never at a
 rail.** Money out to a counterparty and money back from it are two
 arrangements, so direction is part of the subject; a merchant billing one
@@ -196,6 +202,11 @@ def _prior_of(core: ProjectionCore, movements) -> dict:
     these movements could be filed under, strongest record winning. A record
     written under a descriptor still licenses the question after a grammar
     names the brand."""
+    # No privacy fence of its own, and it needs none only because every path
+    # that writes a record has already refused a key `is_shareable` rejects:
+    # the enrichment hints, and a merge of a catalog export filtered by it. A
+    # path that filed records without that filter would put a prior on a
+    # person's key, and this read would license a question about them.
     best = None
     for m in movements:
         found = merchants_view.merchant_record(core, m)
@@ -215,10 +226,16 @@ def _flows_by_merchant(core: ProjectionCore) -> dict:
     would speak about. Movements a live transfer link proves are between the
     person's own accounts are absent, and so is any movement whose date will
     not parse.
+
+    Movements a slot declared a person on are absent too, whatever they do:
+    with no flow there is no hypothesis, no question and no subject a ruling
+    could be written under.
     """
     groups: dict[tuple, list] = {}
     for m in movements_view.movements(core):
         if getattr(m, "linked", False):
+            continue
+        if merchants_view.is_person(core, m):
             continue
         when = _as_date(m.date)
         key = merchants_view.merchant_key_of(core, m)
