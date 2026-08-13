@@ -38,6 +38,11 @@ class Turn:
     resolved_model: str = ""
     request: dict[str, Any] | None = None   # elided; set on the first turn only
     response: dict[str, Any] = field(default_factory=dict)
+    # Some models answer on two channels: the visible content and a hidden
+    # reasoning stream. `text` is the visible one; these carry the other, and
+    # stay empty for a reply that has none.
+    reasoning_text: str = ""
+    reasoning_tokens: int = 0
 
 
 def run_to_completion(call_once: Callable[[str, int], Turn],
@@ -51,11 +56,16 @@ def run_to_completion(call_once: Callable[[str, int], Turn],
     At most ``max_continuations`` continuations are made, after which the
     stitched text is returned with ``finish_reason`` still "length".
 
+    A truncated turn that contributed no characters also ends the loop, before
+    the bound is reached. The stitched text and the turn's own
+    ``finish_reason`` are returned unchanged.
+
     The adapter owns request-shaping; this owns the loop, the bound, and the
     accounting. Tokens, cost and latency are summed across turns; ``request`` is
     the first turn's and ``response`` the last turn's."""
     accumulated = ""
-    in_tok = out_tok = 0
+    reasoning = ""
+    in_tok = out_tok = reasoning_tok = 0
     cost = latency = 0.0
     finish = resolved = ""
     first_request: dict[str, Any] | None = None
@@ -63,8 +73,10 @@ def run_to_completion(call_once: Callable[[str, int], Turn],
     for attempt in range(max_continuations + 1):
         turn = call_once(accumulated, attempt)
         accumulated += turn.text
+        reasoning += turn.reasoning_text
         in_tok += turn.input_tokens
         out_tok += turn.output_tokens
+        reasoning_tok += turn.reasoning_tokens
         cost += turn.cost_usd
         latency += turn.latency_s
         finish = turn.finish_reason
@@ -75,10 +87,14 @@ def run_to_completion(call_once: Callable[[str, int], Turn],
             first_request = turn.request
         if finish != "length":
             break
+        if not turn.text:
+            # Nothing to continue from.
+            break
     return ModelResult(
         text=accumulated, resolved_model=resolved, input_tokens=in_tok,
         output_tokens=out_tok, cost_usd=cost, latency_s=latency,
-        request=first_request or {}, response=last_response, finish_reason=finish)
+        request=first_request or {}, response=last_response, finish_reason=finish,
+        reasoning_text=reasoning, reasoning_tokens=reasoning_tok)
 
 
 @dataclass(frozen=True)
@@ -107,6 +123,11 @@ class ModelResult:
     request: dict[str, Any]      # verbatim request body (images elided by hash)
     response: dict[str, Any]     # verbatim response body
     finish_reason: str = ""      # "stop" | "length" (truncated) | ...
+    # The hidden reasoning channel, where the endpoint reports one: the text
+    # stitched across turns and the tokens billed to it. Both stay empty/zero
+    # for a reply that carries no such channel. `text` remains the answer.
+    reasoning_text: str = ""
+    reasoning_tokens: int = 0
 
 
 class ModelAdapter(Protocol):

@@ -15,6 +15,9 @@ the model env — VIVA_MODEL_ADAPTER / VIVA_MODEL / VIVA_MODEL_KEY_ENV):
     PYTHONPATH=../core:../merchant:. python3 -m viva.enrich
 
 The passphrase may be given as the first argument instead of in the environment.
+
+How many merchants ride in one model call is `--chunk-size N`, or
+`VIVA_CHUNK_SIZE`, and defaults to the package's own.
 """
 
 from __future__ import annotations
@@ -52,6 +55,56 @@ def catalog_path(vault_dir=None) -> pathlib.Path:
     return shared
 
 
+CHUNK_FLAG = "--chunk-size"
+
+
+def read_chunk_size(args, environ=None) -> tuple[int, list[str]]:
+    """How many merchants ride in one model call, and the arguments left over.
+
+    `--chunk-size N` (or `--chunk-size=N`) first, then `VIVA_CHUNK_SIZE`, then
+    the package's own default. The flag is taken out of the arguments it was
+    read from, so the passphrase stays the first thing that is not a flag.
+
+    A value that is not a whole number of at least one raises SystemExit
+    before anything is spent; it is never clamped to a usable one."""
+    from merchantcore.enrich import DEFAULT_CHUNK_SIZE
+    environ = os.environ if environ is None else environ
+    rest: list[str] = []
+    given, awaiting = None, False
+    for arg in args:
+        if awaiting:
+            given, awaiting = arg, False
+        elif arg == CHUNK_FLAG:
+            awaiting = True
+        elif arg.startswith(CHUNK_FLAG + "="):
+            given = arg.split("=", 1)[1]
+        else:
+            rest.append(arg)
+    if awaiting:
+        raise SystemExit(f"{CHUNK_FLAG} needs a number: how many merchants "
+                         f"ride in one model call.")
+    if given is None:
+        # An environment variable set to the empty string counts as unset; a
+        # flag given no value does not.
+        from_env = environ.get("VIVA_CHUNK_SIZE", "")
+        if not from_env.strip():
+            return DEFAULT_CHUNK_SIZE, rest
+        given = from_env
+    if not str(given).strip():
+        raise SystemExit(f"{CHUNK_FLAG} needs a number: how many merchants "
+                         f"ride in one model call.")
+    try:
+        size = int(str(given).strip())
+    except ValueError:
+        raise SystemExit(f"chunk size {str(given).strip()!r} is not a number. "
+                         f"Nothing was run and nothing was spent.")
+    if size < 1:
+        raise SystemExit(f"chunk size {size} would send no merchants at all; "
+                         f"it is a count of merchants per call, so it is 1 or "
+                         f"more. Nothing was run and nothing was spent.")
+    return size, rest
+
+
 def main() -> None:
     load_dotenv()
     configure_logging()
@@ -62,8 +115,9 @@ def main() -> None:
     from .ingest import enrich_merchants
     from .vault import Vault
 
+    chunk_size, args = read_chunk_size(sys.argv[1:])
     passphrase = os.environ.get("VIVA_PASSPHRASE") or (
-        sys.argv[1] if len(sys.argv) > 1 else None)
+        args[0] if args else None)
     if not passphrase:
         raise SystemExit("Set VIVA_PASSPHRASE (or pass it as the first argument).")
     vault_dir = os.environ.get("VIVA_VAULT_DIR", os.path.expanduser("~/.viva-vault"))
@@ -97,6 +151,9 @@ def main() -> None:
              "        first — the whole purpose of the catalog is that this\n"
              "        knowledge is bought once."))
 
+    # What one call will carry, printed before anything is spent.
+    print(f"chunk size: {chunk_size} merchant(s) per model call")
+
     # Both closures are passed. `profile_for` keys records by the induced
     # grammar's name rather than by the normalizer alone; `kind_for` supplies the
     # account kind the allowlist gates on, which is what keeps an investment
@@ -125,10 +182,21 @@ def main() -> None:
         return _kinds[m.account]
 
     result = enrich_merchants(vault.ledger, catalog, model_extractor(spec),
-                              profile_for=profile_for, kind_for=kind_for)
+                              profile_for=profile_for, kind_for=kind_for,
+                              chunk_size=chunk_size)
     print(f"submitted {result['submitted']} new merchant(s); enriched "
           f"{result['enriched']}; synced {result['synced']} into the ledger.")
+    print(f"  {result['minted']} subcategory label(s) minted beyond the "
+          f"vocabulary shown")
     proj = vault.ledger.projection()
+    # Which subcategory spellings now count as one label. The fold moves a
+    # figure and appends no event, so the run says so once.
+    merges = proj.subcategory_merges()
+    if merges:
+        print(f"subcategory spellings now counted as one label "
+              f"({len(merges)} label(s)):")
+        for label, spellings in merges.items():
+            print(f"  {label}  ←  " + ", ".join(spellings))
     print(f"merchants known: {len(proj.merchant_categories())}; still unknown: "
           f"{len(proj.uncategorized_merchants())} "
           f"({len(proj.uncategorized_expenses())} transactions)")

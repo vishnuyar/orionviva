@@ -3441,6 +3441,143 @@ def test_a_grouping_the_vault_names_nothing_for_selects_nothing():
         assert f["boundary"] == {"whole": False}
 
 
+def test_a_subcategory_read_says_which_spellings_it_counted_as_one():
+    """A spending read grouped by subcategory carries a caveat naming the
+    spellings it counted as one label, and a read grouped by category, which
+    the fold does not touch, carries none."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01",
+                                    _p("doc-jan")),
+           simple_transaction("chk", "-40.00", "ALPHA STORE",
+                              "2026-01-05", provenance=_p("doc-jan")),
+           simple_transaction("chk", "-60.00", "BETA STORE",
+                              "2026-01-06", provenance=_p("doc-jan")),
+           closing_balance_observed("chk", "900.00", "2026-01-31",
+                                    _p("doc-jan", 6)),
+           merchant_enriched("alpha store", "shopping", subcategory="book shop",
+                             occurred_at="2026-02-02"),
+           merchant_enriched("beta store", "shopping", subcategory="book_shop",
+                             occurred_at="2026-02-02")]
+    proj = LedgerProjection(evs)
+    result = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "subcategory"})
+    (said,) = [c for c in result.caveats if "spelling" in c]
+    assert "book shop" in said and "book_shop" in said
+    assert result.data["by_group"]["shopping / book shop"] == "100.00", \
+        "the caveat is about a figure the same read states"
+
+    # And a grouping the fold does not touch says nothing about spellings.
+    by_category = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "category"})
+    assert not [c for c in by_category.caveats if "spelling" in c]
+
+
+def _spellings_vault(rows):
+    """A vault whose merchants carry the subcategory spellings given, as
+    ``(merchant, subcategory, date, amount)`` — the shape a run leaves behind
+    when one idea comes back spelled more than one way."""
+    spent = sum(Decimal(amount) for _, _, _, amount in rows)
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           document_captured("doc-q1", "q1.pdf", 100, "bank_statement", 0.9,
+                             "2026-03-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01",
+                                    _p("doc-q1"))]
+    for merchant, subcategory, when, amount in rows:
+        evs.append(simple_transaction("chk", amount, merchant.upper(), when,
+                                      provenance=_p("doc-q1")))
+        evs.append(merchant_enriched(merchant, "shopping",
+                                     subcategory=subcategory,
+                                     occurred_at="2026-03-02"))
+    evs.append(closing_balance_observed(
+        "chk", str(Decimal("1000.00") + spent), "2026-02-28", _p("doc-q1", 6)))
+    return LedgerProjection(evs)
+
+
+def _by_subcategory(proj, **filters):
+    return ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "subcategory",
+               **({"filters": filters} if filters else {})})
+
+
+def _spelling_caveat(result) -> str:
+    said = [c for c in result.caveats if "spelling" in c]
+    return said[0] if said else ""
+
+
+def test_a_filtered_read_speaks_only_of_the_spellings_it_counted():
+    """The caveat names only the spellings this read counted: a window that
+    leaves one spelling out carries no caveat, and the unfiltered read of the
+    same vault carries one."""
+    proj = _spellings_vault([("alpha store", "book shop", "2026-01-05", "-40.00"),
+                             ("beta store", "book_shop", "2026-02-06", "-60.00")])
+    january = _by_subcategory(proj, window={"from": "2026-01-01",
+                                            "to": "2026-01-31"})
+    assert january.data["by_group"]["shopping / book shop"] == "40.00", \
+        "one spelling counted"
+    assert not _spelling_caveat(january), \
+        "nothing met inside this read, so nothing is said about spellings"
+
+    whole = _by_subcategory(proj)
+    assert whole.data["by_group"]["shopping / book shop"] == "100.00"
+    said = _spelling_caveat(whole)
+    assert "book shop" in said and "book_shop" in said, \
+        "the read that did count both says so"
+
+
+def test_a_fold_is_named_the_way_the_read_names_its_own_lines():
+    """A fold is named as `category / subcategory`, the way the read names its
+    own lines, since one subcategory can sit under two categories."""
+    proj = _spellings_vault([("alpha store", "book shop", "2026-01-05", "-40.00"),
+                             ("beta store", "book_shop", "2026-01-06", "-60.00")])
+    said = _spelling_caveat(_by_subcategory(proj))
+    assert "shopping / book shop (book shop, book_shop)" in said
+
+
+def test_a_caveat_says_only_what_is_true_of_the_lines_it_names():
+    """Where a punctuation fold and a ruling land on one label, the caveat
+    lists only the spellings that met by punctuation."""
+    from viva.ledger.events import ruling_recorded
+    proj = _spellings_vault([("alpha store", "book shop", "2026-01-05", "-40.00"),
+                             ("beta store", "book_shop", "2026-01-06", "-60.00"),
+                             ("gamma store", "book shops", "2026-01-07", "-30.00")])
+    proj.apply(ruling_recorded(scope="category", subject="book shops",
+                               same_as="book shop", occurred_at="2026-03-03"))
+    result = _by_subcategory(proj)
+    assert result.data["by_group"]["shopping / book shop"] == "130.00", \
+        "the ruling and the fold both land on one line"
+    said = _spelling_caveat(result)
+    assert "(book shop, book_shop)" in said
+    assert "book shops" not in said, \
+        "a merge a person ruled is not handed back as a warning about spelling"
+
+
+def test_a_long_list_of_folds_is_capped_and_says_how_many_it_did_not_name():
+    """The caveat names the folded lines that moved the most money, up to
+    MAX_FOLDS, and states the rest as a count."""
+    rows = []
+    for n in range(9):
+        amount = str(Decimal("-100.00") - n * Decimal("10.00"))
+        rows.append((f"alpha {n} store", f"topic {n}", "2026-01-05", amount))
+        rows.append((f"beta {n} store", f"topic_{n}", "2026-01-06", amount))
+    said = _spelling_caveat(_by_subcategory(_spellings_vault(rows)))
+    assert said.startswith(
+        "More than one spelling counts as one label on 9 line(s) here")
+    assert "and 6 more line(s)" in said
+    for n in (8, 7, 6):
+        assert f"shopping / topic {n} (topic {n}, topic_{n})" in said, \
+            "the lines named are the ones that moved the most money"
+    for n in range(6):
+        assert f"(topic {n}, topic_{n})" not in said, \
+            "and the smaller ones are counted rather than recited"
+
+
 def _owing_a_never_measured_loan():
     """A vault where a ruling brought a liability into being and no statement
     has ever measured it — the shape net worth reports as incomplete."""

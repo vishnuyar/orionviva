@@ -254,6 +254,12 @@ class LedgerProjection:
     def known_subcategories(self) -> list[str]:
         return _categories.known_subcategories(self._core)
 
+    def subcategory_spelling(self, m: MovementInfo) -> tuple[str, str]:
+        return _categories.subcategory_spelling(self._core, m)
+
+    def subcategory_merges(self) -> dict[str, list[str]]:
+        return _categories.subcategory_merges(self._core)
+
     def spending_by_category(self, currency: str | None = None) -> dict[str, Decimal]:
         return _categories.spending_by_category(self._core, currency)
 

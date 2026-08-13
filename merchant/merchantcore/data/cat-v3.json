@@ -1,0 +1,196 @@
+{
+  "version": "cat-v3",
+  "_comment": "The seed subcategory vocabulary that travels with the package. Authored against PRIMARY_CATEGORIES from world knowledge, never from any vault. A model is shown this list and told to reuse a label whenever one fits; it mints its own only when nothing does, and the run reports how many it minted. A person may always coin their own label — this list constrains the model's default, never the person. Convention: lowercase, singular, spaces, no punctuation, no ampersands, at most three words. No label here may equal a primary category name.",
+  "subcategories": {
+    "income": {
+      "salary": "regular pay from an employer",
+      "self employment": "earnings from one's own trade, freelance or contract work",
+      "pension": "a retirement income paid on a schedule",
+      "benefit": "a state or institutional payment made to a person",
+      "investment income": "dividend, interest or distribution paid out",
+      "rental income": "rent received from a property one owns",
+      "refund": "money returned for something previously paid",
+      "reward": "cashback, loyalty or points redeemed as money",
+      "gift received": "money given by another person, not owed"
+    },
+    "transfers": {
+      "own account transfer": "money moved between accounts the same person holds",
+      "card payment": "money paid to settle a card balance",
+      "person to person": "money sent to or received from another individual",
+      "cash withdrawal": "cash taken out, at a machine or a counter",
+      "cash deposit": "cash paid in",
+      "investment contribution": "money moved into an investment or retirement account",
+      "savings contribution": "money set aside into a savings product",
+      "currency exchange": "money converted from one currency to another"
+    },
+    "loan_payments": {
+      "mortgage": "a payment against a loan secured on property",
+      "vehicle loan": "a payment against a loan secured on a vehicle",
+      "student loan": "a payment against a loan taken for education",
+      "personal loan": "a payment against an unsecured personal loan",
+      "credit line": "a payment against a revolving line of credit",
+      "loan interest": "interest charged on borrowing, billed separately"
+    },
+    "fees": {
+      "account fee": "a charge for holding or running an account",
+      "transaction fee": "a charge for a single movement of money",
+      "late fee": "a charge for paying after a due date",
+      "foreign transaction fee": "a charge for paying in another currency",
+      "cash withdrawal fee": "a charge for taking out cash",
+      "overdraft fee": "a charge for going below zero",
+      "penalty": "a charge levied for a breach or a shortfall"
+    },
+    "groceries": {
+      "supermarket": "a general food shop selling a full range",
+      "grocer": "a smaller shop selling everyday food",
+      "wholesale club": "a membership shop selling in bulk",
+      "market stall": "an open-air or covered market seller",
+      "butcher": "a shop selling meat",
+      "bakery goods": "bread and baked goods bought to take away",
+      "produce": "fruit and vegetables bought on their own",
+      "specialty food": "a shop for one kind of food or one cuisine",
+      "beverage": "drinks bought to take away, alcoholic or not"
+    },
+    "dining": {
+      "restaurant": "a sit-down meal served at a table",
+      "cafe": "coffee, tea and light food",
+      "fast food": "a counter-service meal, eaten quickly or taken away",
+      "street food": "food from a stall, cart or window",
+      "bar": "a place whose main trade is drink",
+      "canteen": "a workplace, school or institutional eating place",
+      "food delivery": "a meal ordered for delivery",
+      "catering": "food supplied for an occasion",
+      "vending": "food or drink from a machine"
+    },
+    "shopping": {
+      "clothing": "garments and footwear",
+      "electronics": "devices and the things that plug into them",
+      "household goods": "things a home is furnished and run with",
+      "furniture": "large items a home is furnished with",
+      "hardware": "tools, materials and things for repair and building",
+      "books and media": "books, music, film and games as things bought",
+      "toys and games": "playthings, for children or adults",
+      "sporting goods": "equipment and clothing for sport",
+      "beauty products": "cosmetics and grooming goods bought as things",
+      "pet supplies": "food and goods for an animal one keeps",
+      "gift": "something bought to give to another person",
+      "online marketplace": "a general seller carrying many kinds of goods",
+      "department store": "a large shop selling many kinds of goods under one roof",
+      "discount store": "a shop trading mainly on low price",
+      "convenience store": "a small shop open long hours for immediate needs",
+      "office supplies": "stationery and things a desk is run with",
+      "stationery": "paper, pens and writing materials"
+    },
+    "transport": {
+      "fuel": "petrol, diesel or gas put into a vehicle",
+      "vehicle charging": "electricity put into a vehicle",
+      "public transport": "bus, train, tram or metro fares",
+      "taxi": "a hired car with a driver, hailed or booked",
+      "parking": "a charge for leaving a vehicle somewhere",
+      "toll": "a charge for using a road, bridge or tunnel",
+      "vehicle maintenance": "servicing, repair and parts for a vehicle",
+      "vehicle rental": "a vehicle hired for a period",
+      "vehicle insurance": "cover for a vehicle",
+      "vehicle registration": "a charge to keep a vehicle licensed",
+      "bicycle": "a bicycle, its parts, or its hire",
+      "vehicle cleaning": "washing and valeting a vehicle"
+    },
+    "travel": {
+      "airfare": "a flight",
+      "accommodation": "a place to stay away from home",
+      "rail travel": "long-distance rail rather than a daily fare",
+      "ferry": "travel by boat",
+      "tour": "a guided trip or an excursion",
+      "travel insurance": "cover for a journey",
+      "visa and passport": "the cost of documents permitting travel",
+      "baggage": "a charge for carrying luggage",
+      "travel booking": "an agent or platform that arranges travel rather than providing it"
+    },
+    "utilities": {
+      "electricity": "electricity supplied to a property",
+      "natural gas": "piped or bottled gas supplied to a property",
+      "water": "water supplied to a property",
+      "waste": "refuse collection and disposal",
+      "heating fuel": "oil, wood or pellets bought to heat a property",
+      "internet": "a fixed connection to a property",
+      "mobile": "a mobile telephone service",
+      "landline": "a fixed telephone line",
+      "television service": "broadcast or cable television carriage"
+    },
+    "housing": {
+      "rent": "a payment for the use of a home one does not own",
+      "property tax": "a tax levied on holding property",
+      "home insurance": "cover for a home and what is in it",
+      "service charge": "a recurring charge for the upkeep of shared parts",
+      "home maintenance": "repair and upkeep of a property",
+      "home improvement": "work that changes or extends a property",
+      "cleaning": "domestic cleaning of a home",
+      "gardening": "upkeep of a garden or grounds",
+      "storage": "space rented to keep possessions",
+      "moving": "the cost of moving home"
+    },
+    "health": {
+      "doctor": "a consultation with a physician",
+      "dentist": "dental treatment",
+      "optician": "eye tests, glasses and lenses",
+      "pharmacy": "medicines and what a pharmacy sells",
+      "hospital": "treatment given by a hospital",
+      "specialist care": "treatment by a specialist or a consultant",
+      "mental health": "therapy, counselling and psychiatric care",
+      "health insurance": "cover for medical costs",
+      "medical device": "equipment used for a condition",
+      "veterinary": "medical care for an animal one keeps"
+    },
+    "personal_care": {
+      "hairdressing": "cutting, colouring and dressing hair",
+      "beauty treatment": "a treatment given at a salon",
+      "spa": "massage, bathing and related treatment",
+      "gym": "a subscription or fee for a place to exercise",
+      "fitness class": "an instructed session of exercise",
+      "grooming": "barbering, nails and personal upkeep",
+      "laundry": "washing, pressing or dry cleaning done for one"
+    },
+    "entertainment": {
+      "streaming": "film, television or music delivered over a connection",
+      "cinema": "a film seen at a cinema",
+      "live event": "a concert, a match or a performance attended",
+      "museum": "a museum, a gallery or an exhibition",
+      "attraction": "a park, a zoo or a place visited for the day",
+      "gaming": "games played, and what is bought inside them",
+      "hobby": "materials and fees for a pastime",
+      "club membership": "a subscription to a society or a club",
+      "news and periodical": "newspapers, magazines and what is read by subscription",
+      "gambling": "money staked on an outcome"
+    },
+    "services": {
+      "education": "tuition, courses and what is paid to be taught",
+      "childcare": "the care of a child by another",
+      "professional advice": "legal, accounting and similar counsel",
+      "financial advice": "advice about money, paid for",
+      "repair": "the mending of a thing one owns",
+      "postage and shipping": "sending something, and what carries it",
+      "printing": "documents produced to order",
+      "software subscription": "software paid for by the period",
+      "cloud service": "computing or storage rented by the period",
+      "domain and hosting": "a name or a server rented for a site",
+      "security service": "alarms, monitoring and guarding",
+      "life insurance": "cover paid on a death",
+      "insurance other": "cover that fits no other named kind"
+    },
+    "government_nonprofit": {
+      "income tax": "tax levied on earnings",
+      "sales tax": "tax levied on a purchase, paid separately",
+      "local government": "a charge or tax levied by a local authority",
+      "licence": "official permission to do or hold something",
+      "court and legal fee": "a charge levied by a court or a registry",
+      "fine": "a penalty levied by an authority",
+      "charity donation": "money given to a charity",
+      "religious giving": "money given to a religious body",
+      "political contribution": "money given to a party or a campaign",
+      "union dues": "a subscription to a trade union or a professional body"
+    },
+    "other": {
+      "uncategorised": "money whose kind is not yet established"
+    }
+  }
+}

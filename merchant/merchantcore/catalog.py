@@ -194,10 +194,28 @@ class Catalog:
              "unanswered": self._unanswered,
              "restaged": sorted(self._restaged)}, indent=2))
 
+    def _load_file(self, path: Path) -> None:
+        """Lay a catalog file's records down as the layer everything sits on.
+
+        Records only: a pending queue and an unanswered set are not read from
+        here. Every record read here is marked ``shipped``, so it stays
+        distinguishable from what this installation learned once the first
+        save copies it into the learned file."""
+        data = json.loads(path.read_text())
+        for key, value in data.get("records", {}).items():
+            record = MerchantRecord.from_dict(value)
+            record.source = "shipped"
+            self._records[key] = record
+
     def load(self) -> None:
+        """Read the learned catalog over whatever is already held.
+
+        Per key the learned record wins outright, whatever its grade — the
+        precedence ``home`` states for every store: learned first, shipped
+        second. A key the learned file does not carry survives."""
         data = json.loads(self._path.read_text())
-        self._records = {k: MerchantRecord.from_dict(v)
-                         for k, v in data.get("records", {}).items()}
+        for key, value in data.get("records", {}).items():
+            self._records[key] = MerchantRecord.from_dict(value)
         self._pending = dict(data.get("pending", {}))
         # A catalog written without this key loads with nothing marked.
         self._unanswered = dict(data.get("unanswered", {}))

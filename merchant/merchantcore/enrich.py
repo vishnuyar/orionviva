@@ -26,7 +26,8 @@ import re
 from .normalize import NORMALIZER_VERSION
 from .record import MerchantRecord
 from .taxonomy import (PRIMARY_CATEGORIES, TAXONOMY_VERSION, canonical_primary,
-                       normalize_subcategory)
+                       normalize_subcategory, subcategory_identity,
+                       subcategory_vocabulary)
 
 log = logging.getLogger(__name__)
 
@@ -79,13 +80,16 @@ def build_enrichment_prompt(merchants: dict,
     the version is enrichment prompt + taxonomy + normalizer, so a record can
     be re-derived from what produced it.
 
-    ``known_subcategories`` is the vault's existing finer vocabulary, shown to
-    the model so it reuses a value rather than inventing a synonym. Impersonal:
-    a subcategory says nothing about who bought what, when, or for how much."""
+    ``known_subcategories`` is the vault's existing finer vocabulary. What the
+    model is shown is the shipped seed followed by that, deduped, so a cold
+    vault starts anchored and a vault with a vocabulary of its own keeps every
+    label in it. Impersonal: a subcategory says nothing about who bought what,
+    when, or for how much."""
     lines = "\n".join(f"- {key}: {example}" for key, example in merchants.items())
     header = _PROMPT.format(
         primaries=", ".join(PRIMARY_CATEGORIES) + ", other",
-        known_subcategories=", ".join(known_subcategories or []) or "none yet")
+        known_subcategories=", ".join(
+            subcategory_vocabulary(known_subcategories)) or "none yet")
     version = f"{ENRICHMENT_VERSION}+{TAXONOMY_VERSION}+{NORMALIZER_VERSION}"
     return header + lines, version
 
@@ -252,6 +256,11 @@ class Enricher:
         # Reported separately from keys the model did not mention, so a caller
         # recording "asked and got nothing" does not record a transport failure.
         self.unparsed: list[str] = []
+        # Subcategory labels a reply named that were not in the list that reply
+        # was shown, in the order they were minted. Also reset every `enrich`.
+        # Minting is never blocked; this is how far past the offered vocabulary
+        # a run went.
+        self.minted: list[str] = []
 
     def enrich(self, merchants: dict) -> dict:
         """Enrich ``{key: example}`` into ``{key: MerchantRecord}``.
@@ -259,7 +268,11 @@ class Enricher:
         One model call per chunk of at most ``chunk_size`` merchants, merged. A
         chunk whose reply does not parse contributes nothing and does not abort
         the others; its keys land in ``self.unparsed``. Returns {} for an empty
-        input, without calling the model."""
+        input, without calling the model.
+
+        The vocabulary grows as the run goes: a label chunk N minted is in the
+        list chunk N+1 is shown. Labels minted across the whole run land in
+        ``self.minted``, also reset here."""
         if not merchants:
             return {}
         items = list(merchants.items())
@@ -270,8 +283,11 @@ class Enricher:
                  len(items), len(chunks), self._chunk_size, version)
         out: dict[str, MerchantRecord] = {}
         self.unparsed = []
+        self.minted = []
+        anchor = list(self._known)
         for n, chunk in enumerate(chunks, 1):
-            prompt, version = build_enrichment_prompt(chunk, self._known)
+            shown = subcategory_vocabulary(anchor)
+            prompt, version = build_enrichment_prompt(chunk, anchor)
             text = self._extract(prompt)
             records, parsed = parse_enrichment_chunk(
                 text, list(chunk.keys()), version)
@@ -280,11 +296,34 @@ class Enricher:
                      "" if parsed else "   [reply did not parse — not an answer]")
             if not parsed:
                 self.unparsed.extend(chunk.keys())
+            anchor.extend(self._new_labels(records, shown))
             out.update(records)
         log.info("enrich: got %d record(s) total%s", len(out),
                  f", {len(self.unparsed)} in chunk(s) that did not parse"
                  if self.unparsed else "")
+        log.info("enrich: %d subcategory label(s) minted beyond the %d shown%s",
+                 len(self.minted), len(subcategory_vocabulary(self._known)),
+                 (": " + ", ".join(self.minted)) if self.minted else "")
         return out
+
+    def _new_labels(self, records, shown) -> list[str]:
+        """The subcategory labels in these records that ``shown`` did not hold.
+
+        Recorded on ``self.minted`` and handed back, so the next chunk is shown
+        them. Compared under `subcategory_identity`, so a chunk re-spelling a
+        label it was given has minted nothing."""
+        seen = {subcategory_identity(label) for label in shown}
+        seen |= {subcategory_identity(label) for label in self.minted}
+        fresh: list[str] = []
+        for record in records.values():
+            label = (record.subcategory or "").strip()
+            identity = subcategory_identity(label)
+            if not identity or identity in seen:
+                continue
+            seen.add(identity)
+            self.minted.append(label)
+            fresh.append(label)
+        return fresh
 
 
 def model_extractor(spec):
@@ -295,9 +334,16 @@ def model_extractor(spec):
 
     def _extract(prompt: str) -> str:
         result = adapter.extract([], prompt)
-        # The adapter continues across provider truncation. A reply still
-        # truncated after that may be missing tail records, so it is logged.
-        if result.finish_reason == "length":
+        # A reply whose visible channel is empty while its reasoning channel is
+        # not spent its whole output budget thinking and returned nothing to
+        # parse. Named separately from truncation, which the adapter continues
+        # across and which may leave a reply missing its tail records.
+        if not result.text and (result.reasoning_text or result.reasoning_tokens):
+            log.warning("enrich: the reply carried no visible text — the model "
+                        "spent its output budget on its reasoning channel "
+                        "(%d reasoning token(s), finish reason %r)",
+                        result.reasoning_tokens, result.finish_reason)
+        elif result.finish_reason == "length":
             log.warning("enrich: reply still truncated after continuation — "
                         "a chunk may be incomplete; consider a smaller chunk_size")
         return result.text

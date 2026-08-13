@@ -1,6 +1,6 @@
 # Categories & Tags — one partitions, one overlays
 
-**Status:** ✅ **BUILT 2026-07-26** · **Created:** 2026-07-26 · **Origin:** Vishnu: *"how are we addressing the differentiation between category and tags — user answers should fall under a category and subcategory and at the same time it can be a tag too. I do not think we have come back to the multiple tags discussion."* · **Blocks seeded:** the **tag overlay** (`MovementTagged`) · a second alias vocabulary.
+**Status:** ✅ **BUILT 2026-07-26** · **Amended 2026-08-13** (three classes of duplicate label, and who may merge each) · **Created:** 2026-07-26 · **Origin:** Vishnu: *"how are we addressing the differentiation between category and tags — user answers should fall under a category and subcategory and at the same time it can be a tag too. I do not think we have come back to the multiple tags discussion."* · **Blocks seeded:** the **tag overlay** (`MovementTagged`) · a second alias vocabulary.
 
 **Invariants touched:** **T4** (an overlay over events already written; the complete tag set is re-asserted, never mutated) · **T9** (a category is shareable world knowledge; **a tag is personal meaning and never leaves the device**) · **X2** (a report whose parts do not sum must say so) · principle 2 (never bluff a number).
 
@@ -67,6 +67,41 @@ _D4 unchanged, with a third scope coming: an account-scope tag — the interview
 **Alias maps are maintained as the events replay, not derived per lookup.** Both vocabularies fold on the read side — but the fold reads a map built during replay; it does not walk the ruling set on every call. The naive version is a line shorter and is O(movements × rulings): it took the test suite from 32s to over 44s, on a fixture set far smaller than a real vault. The read-side fold is the design; recomputing it per call is not part of it.
 
 **Resolution is a recorded ruling, never a similarity score.** The obvious shortcut for `poker` / `playing poker` is an embedding with a threshold, and it fails twice over. A tuned threshold is a keyword list with decimals — the same hand-maintained judgement this project keeps refusing, wearing a number instead of a word. And a score recomputed each run lets two labels merge on one run and separate on the next, which makes *a total that changed for no reason* a normal event. A ruling is asked once, recorded, and reversed by appending.
+
+---
+
+## Three classes of duplicate label, and who may merge each (2026-08-13)
+
+A vault that let a model mint its own subcategory vocabulary came back with the
+same idea under several labels. They are not one problem, and they do not have
+one owner.
+
+1. **Spelling.** `credit_card_payment` / `credit card payment`;
+   `peer_to_peer` / `peer-to-peer`; `gym & fitness` / `gym and fitness`. Two
+   labels differing only by a separator cannot encode a distinction anybody
+   made.
+2. **Number and connective.** `restaurant` / `restaurants`;
+   `internet cable` / `internet and cable`. Fixable by convention going
+   forward; historically only by English morphology, which **I5** forbids.
+3. **Meaning.** `supermarket` / `grocery store`; `atm` / `cash withdrawal`.
+   Whether two of these are one thing is a claim about how *this person's*
+   money should be sliced.
+
+| | Decision | Why |
+|---|---|---|
+| **D8** | **Class 1 folds deterministically, at the read funnel; classes 2 and 3 never fold without a ruling** | `subcategory_identity` maps underscore, hyphen, whitespace runs and `&` to one identity, and `derived_category` applies it where the alias fold already runs. Characters only, no vocabulary — so it is locale-safe in a way a plural rule is not, and it cannot merge two labels that differ in anything but punctuation. The primary category is untouched; its controlled names carry underscores of their own. |
+| **D9** | **A fold that nobody was asked about is reported** | The separator fold moves a figure and appends no event, so `subcategory_merges()` names every group it brought together, the enrichment run prints it once, and a spending read grouped by subcategory carries it as a caveat beside the figures it changed — the three highest-value lines named and the rest counted. A group whose spellings met because a person *ruled* them the same is left out: it has an event behind it and was their own decision. |
+| **D10** | **A model may propose a fold and may never apply one** | Merging two totals deletes a measurement's separateness. See **T9** in [design-invariants.md](design-invariants.md); a fold offered as a proposal can only cost a question, a fold applied on a model's word can delete a distinction the person made. The asker for classes 2 and 3 — one question per pair, ranked by the money it moves — is designed and unbuilt. |
+
+The build note above still stands and now covers both maps: the subcategory
+fold is maintained during replay, keyed *and* valued by identity, so a ruling
+recorded against one spelling reaches every spelling the fold declares the
+same, and the read funnel does not rebuild it per movement.
+
+Measured consequence worth recording: after the seed vocabulary shipped, this
+vault's fold reports **zero merges** — 73 labels, 73 spellings. The problem
+dissolved as a side effect of one controlled file with one canonical spelling
+per label, not because the fold did work.
 
 ---
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from merchantcore.descriptor import linted_example
+from merchantcore.taxonomy import subcategory_identity
 
 from ..merchants import is_shareable
 from . import merchants as merchants_view
@@ -24,25 +25,43 @@ from . import movements as movements_view
 from .core import ProjectionCore
 
 
+def _record_for(core: ProjectionCore, m) -> dict | None:
+    """The record a movement's category is read off: a per-transaction override
+    wins, else the strongest catalog record its merchant is filed under."""
+    override = core._categories.get(m.key)
+    return (override if override is not None
+            else merchants_view.merchant_record(core, m))
+
+
 def derived_category(core: ProjectionCore, m) -> dict | None:
     """A movement's effective category: a per-transaction override wins,
     else the strongest catalog record its merchant is filed under, else
     None. Returns the ruling dict ({category, grade, ...}) with its labels
     canonicalized."""
-    override = core._categories.get(m.key)
-    found = override if override is not None else merchants_view.merchant_record(core, m)
+    found = _record_for(core, m)
     if found is None:
         return None
     # Canonicalized here, at the one funnel every aggregate reads through,
     # so a single alias ruling corrects spending-by-category,
     # spending-by-subcategory, the tiers and net worth at once.
+    #
+    # The subcategory is folded by separator as well: two spellings differing
+    # only in punctuation are one label and one total, with no ruling behind
+    # it, and a ruling reaches every spelling that fold declares the same.
+    # Everything past punctuation — a plural, a connective, a synonym — stays
+    # two labels until a person rules. The primary category is left alone; its
+    # controlled names carry underscores of their own.
     if not core._category_alias_map:
-        return found
+        subcategory = (found.get("subcategory") or "").strip()
+        folded = subcategory_identity(subcategory)
+        return found if folded == subcategory else {**found, "subcategory": folded}
     out = dict(found)
-    for field_name in ("category", "subcategory"):
-        value = (out.get(field_name) or "").strip()
-        if value:
-            out[field_name] = canonical_category(core, value)
+    category = (out.get("category") or "").strip()
+    if category:
+        out["category"] = canonical_category(core, category)
+    subcategory = (out.get("subcategory") or "").strip()
+    if subcategory:
+        out["subcategory"] = canonical_subcategory(core, subcategory)
     return out
 
 
@@ -71,6 +90,36 @@ def canonical_category(core: ProjectionCore, label: str) -> str:
     return current
 
 
+def canonical_subcategory(core: ProjectionCore, label: str) -> str:
+    """Follow a subcategory label to the one every total counts it under.
+
+    The separator fold applies on both sides of the lookup: the label asked
+    about is folded, and so is every label a ruling was recorded against, so a
+    ruling recorded against one spelling reaches every spelling the fold
+    declares the same.
+
+    Chains are followed and a cycle terminates, as in `canonical_category`."""
+    aliases = core._subcategory_alias_map
+    seen: set[str] = set()
+    current = subcategory_identity(label)
+    while current in aliases and current not in seen:
+        seen.add(current)
+        current = aliases[current]
+    return current
+
+
+def subcategory_spelling(core: ProjectionCore, m) -> tuple[str, str]:
+    """How this movement's record spells its subcategory, and the label every
+    spelling differing only in punctuation is counted under.
+
+    ``(spelling, label)``: the spelling is what the record wrote, the label is
+    what the figure is filed under. Asked per movement, so a caller collects
+    the spellings its own filters actually counted rather than every spelling
+    the vault holds. ``("", "")`` where the record names no subcategory."""
+    raw = ((_record_for(core, m) or {}).get("subcategory") or "").strip()
+    return (raw, subcategory_identity(raw)) if raw else ("", "")
+
+
 def known_categories(core: ProjectionCore) -> list[str]:
     """The category vocabulary that already exists, canonical labels only.
 
@@ -87,12 +136,36 @@ def known_categories(core: ProjectionCore) -> list[str]:
 
 def known_subcategories(core: ProjectionCore) -> list[str]:
     """The finer vocabulary, canonicalized — the subcategory labels the
-    merchant catalog and the per-movement overlay carry."""
-    out = {canonical_category(core, s)
+    merchant catalog and the per-movement overlay carry.
+
+    Spelled as the totals count them, so this list and the totals agree."""
+    out = {canonical_subcategory(core, s)
            for row in list(core._merchant_categories.values())
            + list(core._categories.values())
            for s in [(row.get("subcategory") or "").strip()] if s}
-    return sorted(out)
+    return sorted(out - {""})
+
+
+def subcategory_merges(core: ProjectionCore) -> dict[str, list[str]]:
+    """The subcategory spellings this vault holds that now count as one label.
+
+    ``{the label they count under: every spelling behind it}``, and only where
+    the separator fold is what brought two of them together. A group whose
+    spellings met because a person ruled them the same is left out; an empty
+    result means no total moved without an event behind it.
+
+    A ruling landing on one spelling of a folded label does not remove the
+    group — it is still reported, under the label the ruling moved it to."""
+    groups: dict[str, set[str]] = {}
+    for row in (list(core._merchant_categories.values())
+                + list(core._categories.values())):
+        raw = (row.get("subcategory") or "").strip()
+        if not raw:
+            continue
+        groups.setdefault(canonical_subcategory(core, raw), set()).add(raw)
+    return {label: sorted(spellings)
+            for label, spellings in sorted(groups.items())
+            if len({subcategory_identity(s) for s in spellings}) < len(spellings)}
 
 
 def spending_by_category(core: ProjectionCore,

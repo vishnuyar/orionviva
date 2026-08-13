@@ -1,6 +1,6 @@
 # Merchant Catalog & the Categorization Commons — categorize the merchant, once, for everyone
 
-**Status:** Implemented · **Superseded-in-part by:** [merchantcore-package.md](merchantcore-package.md) (the merchantcore package lifts normalization + enrichment + the catalog/commons into the standalone `merchantcore` package; this doc remains the design of *how the product applies* merchant knowledge to its ledger). · **Last updated:** 2026-07-24 · **Origin:** the category overlay ships per-transaction categorization, and real use immediately showed the flaw: you categorize one Amazon charge and the next Amazon charge (a different transaction) asks again — twenty Amazon purchases, twenty asks. The fix is to categorize the **merchant**, not the transaction. A vault has thousands of transactions but ~hundreds of distinct merchants; a merchant→category mapping is the small, *impersonal* unit — so batching turns categorization from an O(transactions) model cost into an O(new-merchants) one, and the mapping is exactly the artifact a **commons** can share. This is Vishnu's batched-catalog idea, refined.
+**Status:** Implemented · **Amended 2026-08-13** (the seed subcategory vocabulary and the growing anchor; the shipped-catalog precedence, learned first; the sync filter) · **Superseded-in-part by:** [merchantcore-package.md](merchantcore-package.md) (the merchantcore package lifts normalization + enrichment + the catalog/commons into the standalone `merchantcore` package; this doc remains the design of *how the product applies* merchant knowledge to its ledger). · **Last updated:** 2026-07-24 · **Origin:** the category overlay ships per-transaction categorization, and real use immediately showed the flaw: you categorize one Amazon charge and the next Amazon charge (a different transaction) asks again — twenty Amazon purchases, twenty asks. The fix is to categorize the **merchant**, not the transaction. A vault has thousands of transactions but ~hundreds of distinct merchants; a merchant→category mapping is the small, *impersonal* unit — so batching turns categorization from an O(transactions) model cost into an O(new-merchants) one, and the mapping is exactly the artifact a **commons** can share. This is Vishnu's batched-catalog idea, refined.
 
 **Invariants touched:** T1 (a derived category carries a grade + points to the merchant rule behind it), T4 (merchant rulings are append-only events; the catalog is a *projection* over them, the source of truth stays the encrypted log), **T5 (personal data never leaves the encrypted layer — the raw descriptor, with its order-ids and peer names, stays encrypted; only an impersonal, privacy-linted merchant→category catalog is ever unencrypted or shared)**, T6 (contributing to the commons is an opt-in *decision*, never silent), T8 (the batched categorizer is a pinned, injected model edge), I3/I5/I6 (merchants are locale-sharded, categories are open data, the commons is pack-extensible). Principle 2 (a merchant category is a *graded prior*, always overridable), principle 7 (known merchants auto-fill safely and reversibly; unknown ones wait and are shown as unknown).
 
@@ -31,6 +31,44 @@
   into `merchantcore`. A record written by a superseded prompt can now be
   returned to the pending queue (`Catalog.restage`), so a new field reaches the
   merchants a vault already holds rather than only new ones.
+- **The subcategory is seeded, and the anchor grows (2026-08-13).** The finer
+  label was an open value a model invented per call, and a run told call N+1
+  nothing about what call N had decided — so one idea came back under three
+  spellings, with the split falling on a call boundary. Two halves of one fix.
+  A vocabulary of 156 labels ships with the package at `data/cat-v3.json`,
+  named for the taxonomy version it *is*, so a record's stamp resolves to the
+  exact list that produced it (T8); it is authored against the sixteen
+  primaries from world knowledge, never from a vault (T9). And the list a chunk
+  is shown grows by whatever the previous chunk minted. The seed leads and a
+  vault's own labels follow, deduped under a separator identity, so a seed
+  label wins on *spelling* only and never removes a label already in use.
+  Minting stays allowed; the run reports how many labels it minted.
+  **Measured on a real vault:** seed labels went from 23.2% to 98.6% of
+  distinct labels and from 35.1% to 99.5% of merchants, with **one** label
+  minted beyond the 156. Of 190 keys in both catalogs, 124 moved minted→seed
+  and none moved the other way. **The honest limit:** the file groups labels
+  under a primary and glosses each, the loader validates both and then returns
+  a flat tuple, so the model sees 156 bare words. At `(primary, label)`
+  granularity the same run reads 31.7% → 87.5%, with 12% of records landing on
+  a seed word under a primary the seed does not file it under. Showing the
+  grouping, or the gloss, is a free experiment nobody has run.
+- **A seed record is a base layer, not a first value (2026-08-13).** `Catalog`
+  took a `shipped` path, had no `_load_file` to serve it, and a `load()` that
+  replaced its record dict wholesale — so the day a file landed in `data/`,
+  construction would raise, and a correct loader would have been erased by the
+  first learned catalog anyway. Both repaired, under the precedence `home`
+  already states for every store: **learned first, shipped second, per key and
+  outright**, whatever grade either record carries. A shipped record is marked
+  `source="shipped"` so it stays distinguishable once the first save copies it
+  into the learned file. No `catalog.json` is shipped; this disarms a trap
+  rather than enabling a feature.
+- **The sync reaches only merchants this vault holds (2026-08-13).**
+  `enrich_merchants` synced *every* record in the catalog into the ledger. The
+  catalog is shared by every vault on the machine and may one day be seeded, so
+  that would write `MerchantEnriched` events about merchants this person never
+  paid into an append-only log that has no delete. It now syncs only the keys
+  this vault offered or already carries a record for. A no-op today, which is
+  exactly why it was cheap to close.
 - **The batched categorizer:** an injected model edge (like the reader) — `categorize_merchants(list) -> {merchant: category}` — offline-testable, pinned model, run on the pending set at a threshold.
 - **The unencrypted export:** a linted snapshot of the catalog for the commons; contribution opt-in (T6), popular-biased, PII-filtered.
 

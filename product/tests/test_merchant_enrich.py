@@ -1,9 +1,12 @@
 """The product ↔ merchantcore loop: an impersonal boundary, then sync-as-events
 so categorization is retrospective and the ledger self-contained."""
 
+import json
 from decimal import Decimal
 
-from merchantcore import Catalog
+import pytest
+
+from merchantcore import Catalog, MerchantRecord
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          account_id_for, assign_category, capture_and_ingest,
                          enrich_merchants)
@@ -312,3 +315,88 @@ def test_a_card_account_is_enriched_like_a_bank_account(tmp_path):
                      lambda p: (seen.append(p) or '{"costco whse": {"category": "shopping"}}'),
                      kind_for=lambda m: "liability")
     assert seen
+
+
+def test_a_record_about_a_merchant_this_vault_never_paid_is_not_synced(tmp_path):
+    """The sync is restricted to the merchants this vault offered or already
+    holds a record for, and what it holds still syncs as before."""
+    ledger = _card([("2026-01-05", "ALPHA SHOP LTD", "50.00")], tmp_path)
+    cat = Catalog()
+    cat.add(MerchantRecord(key="beta shop", canonical_name="Beta",
+                           category="shopping", grade="corroborated"))
+
+    res = enrich_merchants(ledger, cat, lambda p: (
+        '{"alpha shop ltd": {"canonical_name":"Alpha","category":"shopping",'
+        '"subcategory":"book shop"}}'))
+    assert res["synced"] == 1, "this vault's own merchant, and only it"
+    known = ledger.projection().merchant_categories()
+    assert "alpha shop ltd" in known
+    assert "beta shop" not in known, "a stranger's merchant is not this log's"
+
+
+def test_the_run_says_how_many_labels_it_minted(tmp_path):
+    """A label outside the vocabulary shown is counted in the run's result."""
+    ledger = _card([("2026-01-05", "ALPHA SHOP LTD", "50.00")], tmp_path)
+    res = enrich_merchants(ledger, Catalog(), lambda p: (
+        '{"alpha shop ltd": {"canonical_name":"Alpha","category":"shopping",'
+        '"subcategory":"a label no list holds"}}'))
+    assert res["minted"] == 1
+
+
+# ------------------------------- how many merchants ride in one call
+
+
+def test_how_many_merchants_ride_in_one_call_is_the_callers_to_set(tmp_path):
+    """`chunk_size` bounds the merchants in one model call, and omitting it
+    leaves the package's default in force."""
+    ledger = _card([("2026-01-05", "ALPHA SHOP LTD", "50.00"),
+                    ("2026-01-06", "BETA STORE LLC", "20.00"),
+                    ("2026-01-07", "GAMMA MARKET INC", "30.00")], tmp_path)
+    calls: list = []
+
+    def extract(prompt):
+        calls.append(prompt)
+        key = prompt.rsplit("- ", 1)[1].split(":")[0]
+        return json.dumps({key: {"canonical_name": key.title(),
+                                 "category": "shopping"}})
+
+    enrich_merchants(ledger, Catalog(), extract, chunk_size=1)
+    assert len(calls) == 3, "one merchant to a call is one call to a merchant"
+
+    calls.clear()
+    enrich_merchants(ledger, Catalog(), extract)
+    assert len(calls) == 1, "and the default is unchanged for anyone who "\
+        "does not set it"
+
+
+def test_the_chunk_size_is_read_from_the_flag_then_the_environment(tmp_path):
+    from merchantcore.enrich import DEFAULT_CHUNK_SIZE
+    from viva.enrich import read_chunk_size
+    assert read_chunk_size([], {}) == (DEFAULT_CHUNK_SIZE, []), \
+        "unset is what the package already does"
+    assert read_chunk_size([], {"VIVA_CHUNK_SIZE": "12"}) == (12, [])
+    assert read_chunk_size(["--chunk-size", "8"],
+                           {"VIVA_CHUNK_SIZE": "12"}) == (8, []), \
+        "what was typed for this run beats what the environment remembers"
+    assert read_chunk_size(["--chunk-size=8"], {}) == (8, [])
+
+
+def test_the_passphrase_is_still_the_first_thing_that_is_not_a_flag():
+    """The flag and its value are removed from the arguments returned, on
+    either side of the passphrase."""
+    from viva.enrich import read_chunk_size
+    assert read_chunk_size(["--chunk-size", "8", "a-passphrase"], {}) == \
+        (8, ["a-passphrase"])
+    assert read_chunk_size(["a-passphrase", "--chunk-size", "8"], {}) == \
+        (8, ["a-passphrase"])
+
+
+def test_a_chunk_size_that_is_not_a_count_of_merchants_is_refused():
+    """A value that is not a whole number of at least one raises SystemExit
+    rather than being clamped to a usable one."""
+    from viva.enrich import read_chunk_size
+    for bad in ("0", "-4", "many", "1.5", ""):
+        with pytest.raises(SystemExit):
+            read_chunk_size(["--chunk-size", bad], {})
+    with pytest.raises(SystemExit):
+        read_chunk_size(["--chunk-size"], {}), "a flag with no number"

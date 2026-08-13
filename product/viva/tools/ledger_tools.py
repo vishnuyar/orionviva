@@ -58,6 +58,11 @@ MAX_ROWS = 50
 # carrying its size and its value, which an answer states or refuses.
 MAX_GROUPS = 10
 
+# How many folded subcategory lines a caveat names before it counts the rest.
+# The named ones are the lines that moved the most money; the remainder is
+# stated as a count, never dropped.
+MAX_FOLDS = 3
+
 QUERY_LEDGER_PARAMS = {
     "type": "object",
     "properties": {
@@ -636,6 +641,7 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
     record_ids: set = set()
     currencies: set = set()
     untagged = total = Decimal("0")
+    spellings: dict = {}
     count = 0
     for m in proj.movements():
         if not proj._counts_as_spending(m):
@@ -674,6 +680,12 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
             category = ruling.get("category") or "Uncategorized"
             sub = (ruling.get("subcategory") or "").strip()
             key = f"{category} / {sub}" if sub else f"{category} / unassigned"
+            # Which spellings this read counted, per group and per punctuation
+            # class, so a caveat afterwards speaks about these figures and not
+            # about spellings the filters left out.
+            spelled, identity = proj.subcategory_spelling(m)
+            if spelled:
+                spellings.setdefault((key, identity), set()).add(spelled)
         elif group_by == "merchant":
             key = proj.merchant_key_of(m) or m.description
         elif group_by == "account":
@@ -683,7 +695,8 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
         out[key] = out.get(key, Decimal("0")) + amount
     extras = {"total": total, "count": count, "untagged": untagged,
               "grades": used_grades, "record_ids": sorted(record_ids),
-              "currencies": {c for c in currencies if c}}
+              "currencies": {c for c in currencies if c},
+              "spellings": spellings}
     return out, extras
 
 
@@ -774,6 +787,32 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
     # disagreeing with the answer about how this person's money is written.
     def amount(value) -> str:
         return str(render.money(value, currency, locale=locale))
+
+    # Two subcategory spellings differing only in punctuation are counted as
+    # one label, which moves a figure and appends no event, so the merge is
+    # stated beside the numbers it changed.
+    #
+    # Only spellings this read counted, and only spellings that met by
+    # punctuation: a group whose figure came from one spelling had nothing
+    # merged into it, and a fold a person ruled has an event behind it. Lines
+    # are named as the read names them, since a subcategory alone does not say
+    # which line it means.
+    if group_by == "subcategory":
+        folds = sorted(((key, sorted(spelled)) for (key, _), spelled
+                        in extras["spellings"].items() if len(spelled) > 1),
+                       key=lambda fold: (-grouped.get(fold[0], Decimal("0")),
+                                         fold[0]))
+        if folds:
+            named_folds = folds[:MAX_FOLDS]
+            unnamed = len(folds) - len(named_folds)
+            caveats.append(
+                "More than one spelling counts as one label on "
+                f"{len(folds)} line(s) here — "
+                + "; ".join(f"{key} ({', '.join(spelled)})"
+                            for key, spelled in named_folds)
+                + (f", and {unnamed} more line(s)" if unnamed else "")
+                + ". Spellings differing only in punctuation are one label; "
+                "anything else stays separate until you say otherwise.")
 
     uncategorized = grouped.get("Uncategorized")
     if group_by == "category" and uncategorized:

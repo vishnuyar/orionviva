@@ -190,7 +190,7 @@ def categorize_merchants_batch(ledger: Ledger, categorize_fn,
 
 
 def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
-                     kind_for=None) -> dict:
+                     kind_for=None, chunk_size: int | None = None) -> dict:
     """Enrich the vault's unknown brands through merchantcore.
 
     Keyed on the brand, not the descriptor. What crosses is a brand and the
@@ -205,8 +205,11 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
     are optional — without them the resolution falls back through the published
     rules and the normalizer, and no account kind is filtered out.
 
-    Returns counts of `submitted`, `enriched`, `synced`, `unanswered`, `offered`
-    and `withheld_people`."""
+    ``chunk_size`` bounds how many merchants ride in one model call; None takes
+    the package's own default.
+
+    Returns counts of `submitted`, `enriched`, `synced`, `unanswered`, `offered`,
+    `minted` and `withheld_people`."""
     from merchantcore import Enricher
 
     from ..ledger.hints import enrichment_hints
@@ -228,7 +231,7 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
     streams = build_streams(movements, profile_for, kind_for)
     offered = enrichment_hints(streams)
     submitted = catalog.submit((h.key, h.example()) for h in offered.values())
-    enriched, unanswered = 0, 0
+    enriched, unanswered, minted = 0, 0, 0
     batch = catalog.pending()
     if batch:
         # The subcategories this vault already uses are shown to the model, so
@@ -236,13 +239,20 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
         # cross to a model, exactly as the category vocabulary is (T9). A
         # subcategory is a name the person's own rulings coined, so it can
         # carry a person in it.
+        from merchantcore.enrich import DEFAULT_CHUNK_SIZE
+
         from ..listen import shareable_categories
         enricher = Enricher(extract_fn,
+                            chunk_size=(DEFAULT_CHUNK_SIZE if chunk_size is None
+                                        else chunk_size),
                             known_subcategories=shareable_categories(
                                 proj.known_subcategories()))
         records = enricher.enrich(batch)
         catalog.add_all(records)
         enriched = len(records)
+        # How far the run went beyond the vocabulary it was shown. Minting is
+        # never blocked; it is counted, so a growing label set is visible.
+        minted = len(enricher.minted)
         # Marked unanswered: what the model was shown and declined to name, so
         # the queue stops re-asking it. Brands in a chunk whose reply never
         # parsed are excluded — they stay pending and are asked again.
@@ -252,9 +262,17 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
 
     # Sync: import catalog records the ledger does not already reflect at an
     # equal or higher grade. Idempotent.
+    #
+    # Only for merchants this vault actually holds — the ones it offered, plus
+    # the ones its ledger already carries a record for. The catalog is shared
+    # across every vault on the machine and may be seeded, so a record about a
+    # merchant this vault never paid appends no event to this vault's log.
     existing = proj.merchant_categories()
+    held = set(offered) | set(existing)
     synced = 0
     for key, r in catalog.records().items():
+        if key not in held:
+            continue
         cur = existing.get(key)
         if cur is None or _GRADE_RANK.get(r.grade, 0) > _GRADE_RANK.get(cur.get("grade"), 0):
             ledger.append(merchant_enriched(
@@ -267,7 +285,7 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
                  "synced %d; %d person stream(s) withheld",
                  len(offered), submitted, enriched, synced, withheld)
     return {"submitted": submitted, "enriched": enriched, "synced": synced,
-            "unanswered": unanswered,
+            "unanswered": unanswered, "minted": minted,
             "offered": len(offered), "withheld_people": withheld}
 
 

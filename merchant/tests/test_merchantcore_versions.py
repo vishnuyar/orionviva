@@ -12,6 +12,7 @@ from vivacore import versions
 import merchantcore
 from merchantcore.enrich import ENRICHMENT_VERSION
 from merchantcore.induce import INDUCTION_VERSION
+from merchantcore.taxonomy import TAXONOMY_VERSION
 
 PACKAGE = pathlib.Path(merchantcore.__file__).resolve().parent
 
@@ -25,7 +26,8 @@ def test_the_versions_stamped_on_records_come_from_the_manifest():
     and the manifest is what says which text that is."""
     assert ENRICHMENT_VERSION == versions.active(PACKAGE, "enrich")
     assert INDUCTION_VERSION == versions.active(PACKAGE, "induce_profile")
-    for version in (ENRICHMENT_VERSION, INDUCTION_VERSION):
+    assert TAXONOMY_VERSION == versions.active(PACKAGE, "taxonomy")
+    for version in (ENRICHMENT_VERSION, INDUCTION_VERSION, TAXONOMY_VERSION):
         assert versions.path_of(PACKAGE, version).is_file()
 
 
@@ -42,3 +44,13 @@ def test_no_version_id_is_declared_as_a_literal():
     assert not offenders, (
         "a version id is written as a literal again — read it through "
         f"versions.active() instead: {offenders}")
+
+
+def test_a_new_vocabulary_did_not_disturb_the_prompt_in_force():
+    """A vocabulary rides in a `str.format` argument, not in the prompt's text,
+    so shipping one leaves the enrichment prompt byte-identical and every
+    record that names it still resolving to what produced it."""
+    manifest = versions.manifest(PACKAGE)
+    active = manifest["in_force"]["enrich"]["active"]
+    assert versions.fingerprint(versions.path_of(PACKAGE, active)) == \
+        manifest["released"][active]

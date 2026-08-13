@@ -89,15 +89,27 @@ class OpenAICompatAdapter:
 
             try:
                 choice = data["choices"][0]
-                text = choice["message"]["content"] or ""
+                message = choice["message"]
+                text = message["content"] or ""
             except (KeyError, IndexError, TypeError) as e:
                 raise AdapterError(
                     f"[{c.name}] response shape unexpected (not chat-completions?): "
                     f"{str(data)[:500]}") from e
 
+            # A reasoning model answers on a second channel, named "reasoning"
+            # or "reasoning_content" depending on the provider. Carried, never
+            # parsed: `text` stays the answer.
+            reasoning = str(message.get("reasoning")
+                            or message.get("reasoning_content") or "")
+
             usage = data.get("usage") or {}
             step_in = int(usage.get("prompt_tokens", 0))
             step_out = int(usage.get("completion_tokens", 0))
+            details = usage.get("completion_tokens_details") or {}
+            try:
+                reasoning_tok = int(details.get("reasoning_tokens", 0) or 0)
+            except (TypeError, ValueError):
+                reasoning_tok = 0
             reported_cost = usage.get("cost")
             if reported_cost is not None:
                 try:
@@ -115,7 +127,8 @@ class OpenAICompatAdapter:
                 latency_s=latency, resolved_model=str(data.get("model", c.model)),
                 request=(elide_images(body, [p.sha256 for p in pages])
                          if attempt == 0 else None),
-                response=data)
+                response=data,
+                reasoning_text=reasoning, reasoning_tokens=reasoning_tok)
 
         # None means the driver's own default; see ModelSpec.max_continuations.
         if c.max_continuations is None:

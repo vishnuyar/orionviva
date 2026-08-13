@@ -379,6 +379,14 @@ def test_a_record_with_no_version_is_not_stale():
     assert not enrichment_is_stale(MerchantRecord(key="acme", version=""))
 
 
+def test_a_new_taxonomy_does_not_restage_a_record():
+    """Staleness compares the prompt component of a record's version alone, so
+    a record stamped with an older taxonomy is not restaged."""
+    from merchantcore.enrich import ENRICHMENT_VERSION, enrichment_is_stale
+    assert not enrichment_is_stale(MerchantRecord(
+        key="acme", version=f"{ENRICHMENT_VERSION}+an-older-taxonomy+merch-v2"))
+
+
 def test_restaging_survives_a_reload(tmp_path):
     from merchantcore.enrich import enrichment_is_stale
     cat = Catalog(tmp_path / "catalog.json")

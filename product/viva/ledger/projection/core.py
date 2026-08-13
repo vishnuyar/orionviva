@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Iterable
 
+from merchantcore.taxonomy import subcategory_identity
+
 from ..events import (SCOPE_ACCOUNT, SCOPE_ATTRIBUTE, SCOPE_CATEGORY,
                       SCOPE_MERCHANT, SCOPE_TAG, CORROBORATED, ISSUED,
                       UNVERIFIED, VERIFIED, Event, Provenance, postings_of)
@@ -136,6 +138,11 @@ class ProjectionCore:
         self._movement_tags: dict[str, list] = {}
         self._merchant_tags: dict[str, list] = {}
         self._category_alias_map: dict[str, str] = {}
+        # The same category folds, keyed and valued by subcategory identity, so
+        # a ruling recorded against one spelling reaches every spelling the
+        # separator fold declares the same. Built here rather than folded per
+        # lookup: `derived_category` reads it once per movement.
+        self._subcategory_alias_map: dict[str, str] = {}
         self._tag_alias_map: dict[str, str] = {}
         # Merchant catalog: normalized merchant -> {category, grade, by}. The
         # prior a transaction's category derives from when it has no
@@ -288,6 +295,13 @@ class ProjectionCore:
                 target = (self._category_alias_map if scope == SCOPE_CATEGORY
                           else self._tag_alias_map)
                 target[event.body["subject"]] = event.body["same_as"]
+                if scope == SCOPE_CATEGORY:
+                    subject = subcategory_identity(event.body["subject"])
+                    same_as = subcategory_identity(event.body["same_as"])
+                    # A fold whose two sides share one identity is already
+                    # folded, and would be a step from a label to itself.
+                    if subject and same_as and subject != same_as:
+                        self._subcategory_alias_map[subject] = same_as
 
         elif et == "QuestionDeclined":
             # Last decline wins; a question re-declined after returning simply
