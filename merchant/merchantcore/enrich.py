@@ -38,7 +38,13 @@ ENRICHMENT_VERSION = versions.active(PACKAGE, "enrich")
 # The closed answer space an implication may name. Spelled out here rather than
 # imported: merchantcore does not depend on the product.
 MAJORS = ("expense", "asset", "liability", "income")
-KINDS = ("business", "instrument", "peer")
+
+# What kind of counterparty a descriptor names. A reply naming anything else is
+# dropped, so a record carries one of these or no kind at all.
+KIND_BUSINESS = "business"
+KIND_INSTRUMENT = "instrument"
+KIND_PEER = "peer"
+KINDS = (KIND_BUSINESS, KIND_INSTRUMENT, KIND_PEER)
 
 # How a merchant charges everybody who deals with them. `standing` is one
 # agreement that keeps producing payments; `per_purchase` is one decision per

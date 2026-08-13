@@ -764,6 +764,18 @@ spacing clears the cadence floor, which would render a person's descriptor into
 a sentence proposing they are a merchant with a billing model. That is the
 accepted consequence recorded above arriving on a third surface, not a new one.
 
+**Amended 2026-08-13:** narrower than that now, and still not sealed. The rhythm
+read no longer licenses on the billing prior alone — the catalog record must
+also say the counterparty is a `business`, and both keys above already hold a
+record, graded `corroborated`, saying `peer`. So the sentence feared here now
+needs the *next* enrichment to contradict its own earlier answer about the same
+key, affirmatively: an absent or unparseable kind withholds too. Both keys sit
+in the 192 a restage would re-ask, and a reply replaces the record the fence
+reads, which is why this narrows the residue rather than closing it. What the
+paragraph above says is unchanged: a name in a `{brand}` slot is declared a
+person by nothing, and the fence that reaches it is a label about a merchant
+rather than a declaration about a party.
+
 ## The parts the code decided, and this document did not
 
 Seven rulings that live in `merchantcore` and were argued nowhere else. Each one

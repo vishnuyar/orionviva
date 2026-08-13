@@ -14,14 +14,18 @@ import types
 from decimal import Decimal
 
 import pytest
+from merchantcore.enrich import (BILLING_PERIODS, BILLINGS, KIND_BUSINESS,
+                                 KIND_INSTRUMENT, KIND_PEER, KINDS)
 from merchantcore.profile import Profile, Template
 from viva import persona
 from viva.engine import _write_answer, record_rhythm
 from viva.ledger import EventStore, Ledger, account_opened, simple_transaction
-from viva.ledger.events import (PERIODICITIES, SCOPE_ATTRIBUTE, SCOPE_RHYTHM,
-                                VERIFIED, merchant_enriched, ruling_recorded)
+from viva.ledger.events import (CORROBORATED, PERIODICITIES, SCOPE_ATTRIBUTE,
+                                SCOPE_RHYTHM, UNVERIFIED, VERIFIED,
+                                merchant_enriched, ruling_recorded)
 from viva.ledger.merchant_keys import resolve_keys
 from viva.ledger.projection import LedgerProjection
+from viva.ledger.projection import rhythm as rhythm_read
 from viva.ledger.streams import MIN_FOR_CADENCE, Flow, Occurrence, _as_date
 from viva.persona import say
 from viva.questions import (RHYTHM, find_question, open_questions,
@@ -69,14 +73,18 @@ def _ledger(tmp_path, txns, resolver=None):
     return ledger
 
 
-def _prior(merchant, billing="", period="", kind="business"):
-    """A catalog record for a merchant, as enrichment would have synced it."""
-    attributes = {"counterparty_kind": kind}
+def _prior(merchant, billing="", period="", kind=KIND_BUSINESS,
+           grade=CORROBORATED):
+    """A catalog record for a merchant, as enrichment would have synced it.
+
+    An empty ``kind`` writes no ``counterparty_kind`` at all, which is the
+    record a reply naming a kind outside the closed set leaves behind."""
+    attributes = {"counterparty_kind": kind} if kind else {}
     if billing:
         attributes["billing"] = billing
     if period:
         attributes["billing_period"] = period
-    return merchant_enriched(merchant, "other", grade="corroborated",
+    return merchant_enriched(merchant, "other", grade=grade,
                              occurred_at="2026-04-01", by="model",
                              attributes=attributes)
 
@@ -844,6 +852,164 @@ def test_a_merchant_on_the_same_rail_still_reaches_a_rhythm_question():
     assert q["refs"]["merchant"] == brand_key
     # And no subject a person could be answered under exists anywhere in it.
     assert not person_keys & {h.merchant for h in proj.rhythm_hypotheses()}
+
+
+# --- what kind of counterparty, the second half of the licence --------------
+
+# Every grade a catalog record can be written at, and every combination of
+# billing values a record can carry.
+_ANY_GRADE = (VERIFIED, CORROBORATED, UNVERIFIED)
+_ANY_BILLING = (("standing", "monthly"), ("standing", "annual"),
+                ("either", "either"), ("either", ""), ("per_purchase", ""))
+# One sighting, and enough of them to clear the cadence floor and be measured.
+_ANY_COUNT = (1, 2, MIN_FOR_CADENCE, MIN_FOR_CADENCE + 3)
+
+
+@pytest.mark.parametrize("kind", [KIND_PEER, KIND_INSTRUMENT])
+def test_a_counterparty_that_is_not_a_business_is_asked_nothing(kind):
+    """An arrangement is a thing one has with a business. A record naming any
+    other kind of counterparty raises no hypothesis and no question, whatever
+    the world says about how they bill, however the record is graded, and on
+    either side of the cadence floor — so neither a long steady run nor a
+    confident grade can talk the read into proposing one."""
+    for grade in _ANY_GRADE:
+        for billing, period in _ANY_BILLING:
+            for n in _ANY_COUNT:
+                proj = _proj(_monthly(n=n), extra=[
+                    _prior(BRAND, billing, period, kind=kind, grade=grade)])
+                where = (kind, grade, billing, period, n)
+                assert proj.rhythm_hypotheses() == [], where
+                assert _rhythm_questions(proj) == [], where
+
+
+def test_a_record_that_names_no_counterparty_kind_licenses_nothing():
+    """The fence fails closed. A reply naming a kind outside the closed set
+    leaves a record carrying its billing model and no kind at all, and that
+    record licenses nothing: what is missing withholds rather than passes."""
+    from merchantcore.enrich import parse_enrichment
+
+    garbled = '{"%s": {"counterparty_kind": "sole trader", "billing": "standing"}}'
+    (record,) = parse_enrichment(garbled % BRAND, [BRAND], "test").values()
+    assert "counterparty_kind" not in record.attributes
+    assert record.attributes["billing"] == "standing"
+
+    for grade in _ANY_GRADE:
+        for billing, period in _ANY_BILLING:
+            for n in _ANY_COUNT:
+                proj = _proj(_monthly(n=n), extra=[
+                    _prior(BRAND, billing, period, kind="", grade=grade)])
+                where = (grade, billing, period, n)
+                assert proj.rhythm_hypotheses() == [], where
+                assert _rhythm_questions(proj) == [], where
+
+
+def test_a_business_record_still_reaches_both_branches_of_the_read():
+    """The licensed kind is the ordinary case, and it reaches both branches.
+    Above the floor the measurement speaks and below it the world's knowledge
+    does, and both arrive as one question."""
+    measured = _proj(_monthly(n=4), extra=[_prior(BRAND, "standing", "monthly")])
+    (h,) = measured.rhythm_hypotheses()
+    assert h.measured and h.steady and h.cadence == "monthly"
+    assert h.count == 4 and h.proposed == ("monthly",)
+    (q,) = _rhythm_questions(measured)
+    assert q["refs"]["measured"] is True and q["why"] == say("rhythm_why_measured")
+
+    supposed = _proj(_monthly(n=1), extra=[_prior(BRAND, "standing", "monthly")])
+    (h,) = supposed.rhythm_hypotheses()
+    assert not h.measured and h.count == 1 and h.proposed == ("monthly",)
+    (q,) = _rhythm_questions(supposed)
+    assert q["refs"]["measured"] is False and q["why"] == say("rhythm_why_prior")
+
+
+def _flow_shapes(proj):
+    """Every flow the ledger formed, as `{pair: (count, total, movements)}` —
+    what a measurement of a relationship consists of."""
+    return {pair: (flow.n, flow.total, tuple(m.key for m in movements))
+            for pair, (flow, movements) in
+            rhythm_read._flows_by_merchant(proj._core).items()}
+
+
+def test_the_flows_the_ledger_measures_do_not_depend_on_the_catalog():
+    """What is withheld is the question, never the measurement.
+
+    The same movements form the same flows, holding the same counts and the
+    same amounts, whatever the catalog says the counterparty is — including
+    where it says nothing, and where there is no record at all."""
+    txns = _monthly(n=5)
+    catalogs = {
+        "no record": [],
+        "no kind": [_prior(BRAND, "standing", "monthly", kind="")],
+        **{kind: [_prior(BRAND, "standing", "monthly", kind=kind)]
+           for kind in KINDS},
+    }
+    shapes = {name: _flow_shapes(_proj(txns, extra=extra))
+              for name, extra in catalogs.items()}
+    baseline = shapes["no record"]
+    assert len(baseline) == 1 and next(iter(baseline.values()))[0] == 5
+    for name, shape in shapes.items():
+        assert shape == baseline, name
+
+    # And the withheld case is measured all the same: the flow is there, with
+    # its count and its amount, and only the proposal is absent.
+    peer = _proj(txns, extra=catalogs[KIND_PEER])
+    (measured,) = _flow_shapes(peer).values()
+    assert measured == next(iter(baseline.values()))
+    assert measured[0] == 5 and measured[1] != Decimal("0")
+    assert peer.rhythm_hypotheses() == [] and _rhythm_questions(peer) == []
+
+
+def _licensed(proj):
+    """What the read proposes, as `{(subject, count, amount, proposed)}`."""
+    return {(h.subject, h.count, h.amount, h.proposed)
+            for h in proj.rhythm_hypotheses()}
+
+
+def test_no_catalog_value_licenses_a_pair_the_billing_prior_alone_would_not(
+        monkeypatch):
+    """The conjunction property, over every combination of catalog values.
+
+    Reading a second fact off the record can only ever withhold a proposal.
+    For every kind, billing model, period and movement count, what the two
+    facts license is a subset of what the billing model licenses on its own:
+    no combination of catalog values raises a pair the billing model alone
+    would not have raised."""
+    kinds = ("", *KINDS)
+    narrowed_somewhere = False
+    for kind in kinds:
+        for billing in ("", *BILLINGS):
+            for period in ("", *BILLING_PERIODS):
+                for n in (1, MIN_FOR_CADENCE + 1):
+                    proj = _proj(_monthly(n=n), extra=[
+                        _prior(BRAND, billing, period, kind=kind)])
+                    where = (kind, billing, period, n)
+                    both = _licensed(proj)
+                    # Opening the kind test to every value a record can carry
+                    # is the licensing the billing prior does on its own.
+                    monkeypatch.setattr(rhythm_read, "LICENSED_KINDS", kinds)
+                    billing_alone = _licensed(proj)
+                    monkeypatch.undo()
+                    assert both <= billing_alone, where
+                    narrowed_somewhere |= both != billing_alone
+    assert narrowed_somewhere, "the second fact never withheld anything"
+
+
+def test_a_withheld_pair_stays_withheld_whatever_order_the_ledger_filled_in():
+    """The fence is part of a pure function of the movement set: a person who
+    loads a year in one afternoon and a person who loads a statement a month
+    reach the same silence, and a record arriving after the movements changes
+    nothing either."""
+    txns = _monthly(n=5)
+    for kind in (KIND_PEER, KIND_INSTRUMENT, ""):
+        prior = _prior(BRAND, "standing", "monthly", kind=kind)
+        forwards = _proj(txns, extra=[prior])
+        backwards = _proj(list(reversed(txns)), extra=[prior])
+        assert forwards.rhythm_hypotheses() == backwards.rhythm_hypotheses() == []
+        assert _flow_shapes(forwards) == _flow_shapes(backwards)
+
+        late = LedgerProjection([])
+        for event in list(_events(txns)) + [prior]:
+            late.apply(event)
+        assert late.rhythm_hypotheses() == []
 
 
 def test_the_hypothesis_is_a_pure_function_of_the_movement_set():

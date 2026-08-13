@@ -320,6 +320,15 @@ numbers.
 > subject. The declaration is the enrichment gate's, carried to the projection
 > by the resolver, and it is exactly as wide: a name in a slot the grammar
 > called `{brand}` is declared a person by nothing and still forms a flow.
+>
+> *Amended 2026-08-13 (second):* **the prior licenses on two facts of one
+> record, not one.** The pair is raised only where the catalog says the
+> counterparty is a `business` *and* says an arrangement with them is possible,
+> so a record naming a rail or a person — or naming no kind at all — raises
+> nothing however it bills. The flow is measured either way: the label withholds
+> the question, never the measurement. The label is itself model-authored and is
+> rewritten by the next enrichment, so this narrows what a name in a `{brand}`
+> slot can reach and does not close it.
 
 ### 4.5 Forecast ledger
 

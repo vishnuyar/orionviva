@@ -111,6 +111,22 @@ a person. The declaration is a slot name, so the limit is the gate's: a person's
 name in a `{brand}` slot is declared a person by nothing and is sorted like any
 merchant.*
 
+*Amended 2026-08-13 (second): the sort is now enforced where the question is
+licensed, rather than inherited from what a grammar happened to declare. A
+rhythm proposal is raised only where the catalog record says the counterparty is
+a `business` **and** says an arrangement with them is possible; `instrument` and
+`peer` withhold, and so does a record naming no kind at all. It is the same
+`counterparty_kind` the tier ladder has read since it was written, finally read
+by the tier-2 machine that grew up beside it and never asked it anything.*
+
+*The limit, plainly: the fence stands on a model-authored label that the next
+enrichment re-authors, so a reply saying `business` turns it off for the very
+keys it was built for. It narrows the residue the grammar's declaration cannot
+reach and it does not seal it. And because the label withholds the question and
+never the measurement — the flow map is untouched, so a peer relationship is
+still counted and totalled locally — a later read over flows must license
+itself, because it inherits nothing from this one.*
+
 ---
 
 ## The confidence ladder — reuse, don't invent

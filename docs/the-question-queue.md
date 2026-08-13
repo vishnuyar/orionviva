@@ -111,7 +111,11 @@ The queue gained **rhythm**: *what kind of arrangement is this?*, one grouped
 proposal per `(merchant key, direction)` pair the merchant catalog says an
 arrangement is even possible for — and, *amended 2026-08-13*, never a pair whose
 other side a grammar slot declared a person, whose movements the read drops
-before it measures anything. It is the fifth question type this doc said
+before it measures anything. *Amended again the same day:* the catalog must say
+two things rather than one, that the counterparty is a business and that an
+arrangement with them is possible, so a record naming a rail or a person, or
+naming no kind at all, raises nothing however it bills — a question withheld,
+never a measurement dropped. It is the fifth question type this doc said
 the generic scoped ruling was waiting on, and it proves the shape — the answer
 is a `RulingRecorded` at a new scope, carrying a set-valued `value` and no
 `same_as`, written through the same slot machinery as every other reply. No new

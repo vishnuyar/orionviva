@@ -2,11 +2,15 @@
 
 Two inputs meet here, and each does one half of the work.
 
-**The catalog prior licenses the question.** How a merchant bills is a fact
-about the merchant, true for everybody who deals with them. A merchant the
-world only ever sells to per purchase implies no arrangement, so nothing is
-asked about them; a merchant who can be dealt with by a continuing arrangement
-is worth one proposal.
+**The catalog record licenses the question, on two of its facts.** How a
+merchant bills is a fact about the merchant, true for everybody who deals with
+them, and what kind of counterparty they are is another. Both must be
+affirmative: the record says the counterparty is a business, and says an
+arrangement with them is possible. A merchant the world only ever sells to per
+purchase implies no arrangement, so nothing is asked about them; neither does a
+record naming a rail or a person, whatever it says about billing. A record that
+names no kind at all licenses nothing. Either fact may withhold the question;
+neither creates one.
 
 **The measured flow proposes the answer.** Above the cadence floor the prior is
 not consulted: movements that hold their spacing have a cadence, and movements
@@ -45,7 +49,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from merchantcore.enrich import BILLING_EITHER, BILLING_STANDING
+from merchantcore.enrich import BILLING_EITHER, BILLING_STANDING, KIND_BUSINESS
 
 from ..events import (PERIOD_ANNUAL, PERIOD_IRREGULAR, PERIOD_MONTHLY,
                       SCOPE_RHYTHM, periodicities_in, rhythm_subject)
@@ -58,6 +62,10 @@ from .core import ProjectionCore, _grade_rank
 # question worth asking. A merchant billed only per purchase is the `settled`
 # rung on this axis: silence.
 LICENSING = (BILLING_STANDING, BILLING_EITHER)
+
+# The counterparty kinds an arrangement may be proposed about. A record naming
+# any other kind, or naming none at all, licenses nothing however it bills.
+LICENSED_KINDS = (KIND_BUSINESS,)
 
 # Which measured cadences the confirmable vocabulary has a word for. A steady
 # rhythm the vocabulary cannot name proposes nothing at all: it is neither
@@ -196,17 +204,13 @@ def rhythm_of(core: ProjectionCore, merchant: str, direction: str,
 
 
 def _prior_of(core: ProjectionCore, movements) -> dict:
-    """The billing attributes the catalog holds for a merchant, or `{}`.
+    """The attributes of the highest-graded catalog record these movements
+    resolve to, or `{}` where none of them has one.
 
     Resolved the way every other catalog read is: through every key each of
     these movements could be filed under, strongest record winning. A record
-    written under a descriptor still licenses the question after a grammar
-    names the brand."""
-    # No privacy fence of its own, and it needs none only because every path
-    # that writes a record has already refused a key `is_shareable` rejects:
-    # the enrichment hints, and a merge of a catalog export filtered by it. A
-    # path that filed records without that filter would put a prior on a
-    # person's key, and this read would license a question about them.
+    written under a descriptor is still found after a grammar names the
+    brand."""
     best = None
     for m in movements:
         found = merchants_view.merchant_record(core, m)
@@ -325,9 +329,14 @@ def _component(flow: Flow, movements: list, indexes: list) -> RhythmComponent:
 def rhythm_hypotheses(core: ProjectionCore) -> list:
     """Every `(merchant, direction)` pair worth proposing an arrangement for.
 
-    Licensed by the catalog prior and evidenced by the flow. A pair whose
-    merchant has no billing prior, or whose prior says the world only sells to
-    them per purchase, is absent.
+    Licensed by two facts on one catalog record and evidenced by the flow. A
+    pair is present only where that record says the counterparty is a business
+    and says an arrangement with them is possible; a pair whose merchant has no
+    record, no billing prior, no counterparty kind, or whose prior says the
+    world only sells to them per purchase, is absent.
+
+    Every flow is walked and measured either way: the two facts decide whether
+    a pair is proposed, never what is measured about it.
 
     The movements are decomposed by amount before anything is measured, so no
     statistic here ever spans a mixture. The whole is described only where the
@@ -341,8 +350,9 @@ def rhythm_hypotheses(core: ProjectionCore) -> list:
     out: list[RhythmHypothesis] = []
     for (merchant, direction), (flow, movements) in _flows_by_merchant(core).items():
         prior = _prior_of(core, movements)
+        kind = str(prior.get("counterparty_kind", ""))
         billing = str(prior.get("billing", ""))
-        if billing not in LICENSING:
+        if kind not in LICENSED_KINDS or billing not in LICENSING:
             continue
         period = str(prior.get("billing_period", ""))
         components = tuple(_component(flow, movements, indexes)
