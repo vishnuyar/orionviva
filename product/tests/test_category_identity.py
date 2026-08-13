@@ -15,6 +15,7 @@ re-merge and un-merge between runs. A recorded alias is auditable, stable, and
 reversed by appending.
 """
 
+import re
 from decimal import Decimal
 
 from viva.ingest import RawStore, ReadResult, StatementFacts, TxnFact, capture_and_ingest
@@ -113,11 +114,22 @@ def test_enrichment_is_shown_the_labels_that_already_exist():
     """The other end of the sprawl. Enrichment mints one free-text subcategory
     per merchant, hundreds of times, so its prompt is handed the labels that
     already exist rather than merely *asked* for consistency."""
-    from merchantcore.enrich import build_enrichment_prompt
+    from merchantcore.enrich import PROMPTS, build_enrichment_prompt
+    from vivacore import promptstore
     prompt, version = build_enrichment_prompt(
         {"corner cafe": "CORNER CAFE"}, ["coffee shop", "warehouse club"])
     assert "coffee shop" in prompt and "warehouse club" in prompt
     assert "REUSE" in prompt
-    assert version.startswith("enrich-v5")
+    # Which prompt is in force is the manifest's to say, so no version is
+    # named here. What is checked is that the version stamped resolves to the
+    # text this prompt was built from, and that the labels above are shown by
+    # that text.
+    stamped = version.split("+")[0]
+    body = promptstore.load(PROMPTS, stamped)
+    # Composing fills the placeholders and collapses the doubled braces that
+    # protect the reply's own shape; everything else in the file survives.
+    fixed = [chunk.replace("{{", "{").replace("}}", "}")
+             for chunk in re.split(r"\{\w+\}", body)]
+    assert all(chunk in prompt for chunk in fixed)
     bare, _ = build_enrichment_prompt({"corner cafe": "CORNER CAFE"})
     assert "none yet" in bare, "an empty vault must not print an empty bracket"

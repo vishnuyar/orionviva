@@ -157,6 +157,19 @@ def test_every_kind_a_set_can_be_narrowed_to_has_a_reviewed_sentence():
         assert persona.moment(key, **{slot: "something"}).strip()
 
 
+def test_every_billing_period_the_catalog_can_name_has_a_reviewed_sentence():
+    """The prior's usual period is stated in the pack's words, one sentence per
+    period the closed vocabulary holds. A period with no sentence would raise
+    at the moment a question is built; it fails here instead. The other way
+    round is dead voice, the same way an orphan phrasing is."""
+    from merchantcore.enrich import BILLING_PERIODS
+    from viva.questions import PRIOR_PERIOD_SAYS
+
+    assert set(PRIOR_PERIOD_SAYS) == set(BILLING_PERIODS)
+    for key in PRIOR_PERIOD_SAYS.values():
+        assert persona.say(key).strip()
+
+
 def test_a_slot_the_intent_fills_with_a_rendered_thing_declares_that_type():
     """The other half of the contract: the DECLARATION has to be true.
 

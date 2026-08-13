@@ -77,7 +77,7 @@ def _write_answer(vault: Vault, q, parsed, spoken: str) -> dict:
     Every branch here works from validated slot values and writes through the
     writers that already exist. Nothing reads the sentence again."""
     from .questions import (CORROBORATION, EXPECTATION, IDENTITY, INTERVIEW,
-                            MERCHANT, NATURE, TRANSFER)
+                            MERCHANT, NATURE, RHYTHM, TRANSFER)
     refs = q.refs
 
     if q.kind == IDENTITY:
@@ -122,6 +122,12 @@ def _write_answer(vault: Vault, q, parsed, spoken: str) -> dict:
             movements=refs.get("movements", ()),
             movement_key=refs.get("movement", ""),
             amount=str(q.amount), currency=q.currency)
+
+    if q.kind == RHYTHM:
+        return record_rhythm(
+            vault, refs["merchant"], refs["direction"],
+            [member.get("period", "") for member in parsed.values.get("periods", [])],
+            said=spoken, prompt_version=parsed.version)
 
     if q.kind in (CORROBORATION, EXPECTATION):
         if parsed.value("have_it") == "yes":
@@ -400,6 +406,33 @@ def answer_attribute(vault: Vault, account: str, key: str, value: str = "",
     vault.ledger.append(event)
     return {"ok": True, "account": account, "key": key,
             "value": parsed.value(key), "currency": parsed.currency(key)}
+
+
+def record_rhythm(vault: Vault, merchant: str, direction: str, periods,
+                  said: str = "", prompt_version: str = "") -> dict:
+    """Record what kind of arrangement a person holds with one counterparty,
+    one way round.
+
+    The whole answer is one ruling: the subject is the counterparty and the
+    direction, and the value carries every periodicity they confirmed. A
+    relationship holding a monthly arrangement and an annual one is one subject
+    with both, and a correction is a re-answer on that same subject.
+
+    Writes nothing when the reading landed no periodicity, and refuses in
+    Viva's voice rather than recording an empty confirmation."""
+    from .ledger.events import (SCOPE_RHYTHM, VERIFIED, periodicities_in,
+                                periodicity_value, rhythm_subject,
+                                ruling_recorded)
+    value = periodicity_value(periods)
+    if not value:
+        return {"ok": False, "why": "unanswered",
+                "message": moment("reply_unanswered")}
+    vault.ledger.append(ruling_recorded(
+        SCOPE_RHYTHM, rhythm_subject(merchant, direction), _today(),
+        by="human", grade=VERIFIED, said=said, value=value,
+        prompt_version=prompt_version))
+    return {"ok": True, "merchant": merchant, "direction": direction,
+            "periods": list(periodicities_in(value))}
 
 
 def record_ruling(vault: Vault, interp, descriptor: str = "",

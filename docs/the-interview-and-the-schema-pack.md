@@ -271,7 +271,12 @@ about a bank account was the thing its own statement had just said.
   figure it carries must appear among the numbers the person wrote, a
   non-finite value is refused, and a negative one is refused. Attribute rulings
   are kept as a **history**, so a correction does not reach backwards into an
-  earlier point on the curve.
+  earlier point on the curve. *(Amended 2026-08-12: `value` is no longer at
+  attribute scope alone — a `rhythm` ruling carries the periodicities a person
+  confirmed. The fence around it is unrelaxed and net tighter: an attribute
+  value is open, so it is guarded against a figure the words do not carry; a
+  rhythm value is a closed vocabulary, so it is guarded against any word outside
+  it, at construction. Every other scope still refuses a value outright.)*
 
 **Also built, beyond the cycle-1 list:** a pending list the person can open
 (D5 required only that pending state exist and be reachable), and the confirmed

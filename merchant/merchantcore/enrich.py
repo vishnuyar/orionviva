@@ -40,6 +40,19 @@ ENRICHMENT_VERSION = versions.active(PACKAGE, "enrich")
 MAJORS = ("expense", "asset", "liability", "income")
 KINDS = ("business", "instrument", "peer")
 
+# How a merchant charges everybody who deals with them. `standing` is one
+# agreement that keeps producing payments; `per_purchase` is one decision per
+# payment; `either` is a merchant that genuinely does both. Absent is the
+# default and the expected answer wherever the model is unsure.
+BILLING_STANDING = "standing"
+BILLING_PER_PURCHASE = "per_purchase"
+BILLING_EITHER = "either"
+BILLINGS = (BILLING_STANDING, BILLING_PER_PURCHASE, BILLING_EITHER)
+
+# How long one interval of a standing arrangement usually runs, where the
+# billing model admits one. `either` says both are ordinary for this merchant.
+BILLING_PERIODS = ("monthly", "annual", "either")
+
 # How many merchants ride in one call. Bounds the reply so that a parse failure
 # costs one chunk and the rest of the run still lands.
 DEFAULT_CHUNK_SIZE = 40
@@ -126,6 +139,7 @@ def parse_enrichment_chunk(text: str, keys, version: str) -> tuple[dict, bool]:
         kind = str(d.get("counterparty_kind", "")).strip().lower()
         if kind in KINDS:
             attrs["counterparty_kind"] = kind
+        attrs.update(clean_billing(d.get("billing"), d.get("billing_period")))
         implies = clean_implications(d.get("implies"))
         if implies:
             attrs["implies"] = implies
@@ -136,6 +150,46 @@ def parse_enrichment_chunk(text: str, keys, version: str) -> tuple[dict, bool]:
             attributes=attrs, grade="corroborated", source="model",
             version=version)
     return out, True
+
+
+def clean_billing(billing, period) -> dict:
+    """The billing attributes a reply earned, as `{}`, `{"billing": …}` or both.
+
+    A billing model outside ``BILLINGS`` is dropped and logged, and takes the
+    period with it. A period outside ``BILLING_PERIODS``, or one offered for
+    `per_purchase`, is dropped on its own and the model survives. Absent is a
+    normal answer and returns `{}`.
+
+    A fact about the merchant, identical for every customer of theirs, and
+    never a claim about any person's own arrangement."""
+    model = str(billing or "").strip().lower()
+    if not model:
+        return {}
+    if model not in BILLINGS:
+        log.warning("enrich: dropping unknown billing model %r", model)
+        return {}
+    out = {"billing": model}
+    interval = str(period or "").strip().lower()
+    if not interval:
+        return out
+    if model == BILLING_PER_PURCHASE:
+        log.warning("enrich: dropping billing period %r offered for %r",
+                    interval, model)
+    elif interval not in BILLING_PERIODS:
+        log.warning("enrich: dropping unknown billing period %r", interval)
+    else:
+        out["billing_period"] = interval
+    return out
+
+
+def enrichment_is_stale(record) -> bool:
+    """True when this record was written by a superseded enrichment prompt.
+
+    A string comparison against the version the record already carries —
+    nothing is re-derived and nothing is inferred. A record carrying no version
+    at all is not stale: nothing says which prompt wrote it."""
+    stamped = str(getattr(record, "version", "") or "").partition("+")[0]
+    return bool(stamped) and stamped != ENRICHMENT_VERSION
 
 
 def clean_implications(raw) -> list[dict]:

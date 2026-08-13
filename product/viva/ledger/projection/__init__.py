@@ -22,7 +22,7 @@ from . import (accounts as _accounts, activity as _activity,
                balances as _balances, categories as _categories,
                coverage as _coverage, merchants as _merchants,
                movements as _movements, positions as _positions,
-               rulings as _rulings, tiers as _tiers)
+               rhythm as _rhythm, rulings as _rulings, tiers as _tiers)
 from .accounts import AccountInfo, Resolution
 from .balances import BalanceAnswer
 from .core import ProjectionCore, TxnLine, UnknownAccountError
@@ -31,12 +31,14 @@ from .movements import (BY_CATEGORY, BY_DEFAULT, BY_LINK, BY_OWN_ACCOUNT,
                         MovementInfo, _NATURE_OF_MAJOR, movement_key,
                         nature_of_legs)
 from .positions import PositionRecord
+from .rhythm import RhythmComponent, RhythmHypothesis
 from .tiers import (TIER_SETTLED, TIER_STRUCTURAL, TIER_UNENRICHED,
                     TIER_UNKNOWN)
 
 __all__ = [
     "AccountInfo", "BalanceAnswer", "LedgerProjection", "MovementInfo",
-    "PositionRecord", "ProjectionCore", "Resolution", "TxnLine",
+    "PositionRecord", "ProjectionCore", "Resolution", "RhythmComponent",
+    "RhythmHypothesis", "TxnLine",
     "UnknownAccountError", "movement_key", "nature_of_legs",
     "SPENDING", "TRANSFER", "SETTLEMENT", "MIXED",
     "BY_LINK", "BY_OWN_ACCOUNT", "BY_RULING", "BY_CATEGORY", "BY_DEFAULT",
@@ -305,6 +307,21 @@ class LedgerProjection:
 
     def declined_questions(self) -> dict[str, dict]:
         return _tiers.declined_questions(self._core)
+
+    # ----------------------------------------------------------------- rhythm
+
+    def rhythm_of(self, merchant: str, direction: str) -> tuple:
+        """The periodicities confirmed for one counterparty, one way round.
+
+        Ask under the strongest key for the merchant — what `merchant_key_of`
+        returns for its movements. That key reaches a ruling recorded under any
+        spelling of the name; one of the other spellings reaches only what was
+        recorded under itself and under the brand, so a caller holding a
+        descriptor can miss an answer and be told nothing."""
+        return _rhythm.rhythm_of(self._core, merchant, direction)
+
+    def rhythm_hypotheses(self) -> list[RhythmHypothesis]:
+        return _rhythm.rhythm_hypotheses(self._core)
 
     # -------------------------------------------------------------- positions
 

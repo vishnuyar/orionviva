@@ -1,9 +1,10 @@
 """The merchant catalog — the knowledge base, unencrypted because impersonal.
 
 Holds enriched ``MerchantRecord``s keyed by normalized merchant, a pending
-queue of merchants submitted for enrichment, and the subset of that queue that
-was asked about and came back with nothing. Persists to a plain JSON file,
-which carries merchant knowledge and no personal data.
+queue of merchants submitted for enrichment, the subset of that queue that was
+asked about and came back with nothing, and the keys a newer prompt should be
+asked about again. Persists to a plain JSON file, which carries merchant
+knowledge and no personal data.
 
 ``export`` produces the privacy-linted, commercial-only snapshot a commons
 contribution is hashed from; ``merge`` imports commons priors, where a local
@@ -37,6 +38,9 @@ class Catalog:
         # Holding the example, not just the key, is what retires a non-answer
         # when new evidence arrives.
         self._unanswered: dict[str, str] = {}
+        # Keys whose record a newer prompt should be asked about again. The
+        # record stays in place and keeps answering until one replaces it.
+        self._restaged: set[str] = set()
         self._path = Path(path) if path else None
         # The seed that travels with the package, laid down first so anything
         # this installation learned or a person confirmed sits on top of it.
@@ -57,7 +61,7 @@ class Catalog:
         this is idempotent. Returns how many were newly queued."""
         n = 0
         for key, example in hints:
-            if not key or key in self._records:
+            if not key or (key in self._records and key not in self._restaged):
                 continue
             example = linted_example(example)
             if self._pending.get(key) == example:
@@ -70,6 +74,30 @@ class Catalog:
             self._unanswered.pop(key, None)
             n += 1
         return n
+
+    def restage(self, predicate, dry_run: bool = False) -> list:
+        """Return records the predicate calls stale to the pending queue.
+
+        ``predicate(record) -> bool`` decides staleness; nothing here infers
+        it. A restaged key is accepted by ``submit`` again, so the next
+        submission queues it with whatever example the caller currently holds —
+        the record itself carries none, and stays exactly as it is until a new
+        one replaces it.
+
+        ``dry_run`` returns the same keys and changes nothing: nothing queued,
+        nothing saved. The keys come back sorted."""
+        keys = sorted(k for k, r in self._records.items() if predicate(r))
+        if dry_run:
+            return keys
+        self._restaged.update(keys)
+        if keys:
+            self._save()
+        return keys
+
+    def restaged(self) -> set:
+        """Keys awaiting a re-ask. A key leaves this set when a record for it
+        is added, whether or not the new record outranked the old one."""
+        return set(self._restaged)
 
     def pending(self) -> dict:
         """Merchants worth spending a model call on right now.
@@ -115,6 +143,7 @@ class Catalog:
             self._records[record.key] = record
         self._pending.pop(record.key, None)
         self._unanswered.pop(record.key, None)
+        self._restaged.discard(record.key)
         self._save()
 
     def add_all(self, records) -> None:
@@ -162,7 +191,8 @@ class Catalog:
         self._path.write_text(json.dumps(
             {"records": {k: r.to_dict() for k, r in self._records.items()},
              "pending": self._pending,
-             "unanswered": self._unanswered}, indent=2))
+             "unanswered": self._unanswered,
+             "restaged": sorted(self._restaged)}, indent=2))
 
     def load(self) -> None:
         data = json.loads(self._path.read_text())
@@ -171,3 +201,4 @@ class Catalog:
         self._pending = dict(data.get("pending", {}))
         # A catalog written without this key loads with nothing marked.
         self._unanswered = dict(data.get("unanswered", {}))
+        self._restaged = set(data.get("restaged", []))

@@ -204,7 +204,15 @@ measure them.
   that one changed, above all — reads a `(stream, direction)` pair.
 - A stream may **split further** when its amounts are clearly bimodal. A split is
   **visible in the surface**, never silent — "one answer labels the stream" is a
-  promise to the user, and a stream that silently divided has broken it.
+  promise to the user, and a stream that silently divided has broken it. *(Built
+  in step 2, and narrower than this bullet reads: the split is a **read-side
+  decomposition by amount**, per `(merchant key, direction)` rather than per
+  stream, into at most two parts — the longest run of amounts the flow already
+  calls one amount, and the remainder. Every cadence, interval and stability
+  belongs to one part, nothing is stored, and the visibility is the sentence
+  itself: a mixture is named, each part's own count and money are stated, and
+  the person is asked which is which. The remainder may itself be a mixture; it
+  is not decomposed further.)*
 - Streams are derived (a projection over the ledger), not stored state. Rebuild on
   ingest. §5 makes this load-bearing rather than merely tidy.
 
@@ -272,6 +280,38 @@ Evidence from each new statement updates the distribution (simple Bayesian or
 weighted-score update — keep it inspectable; no opaque ML in v1). Every belief
 renders with its evidence: the "receipt" promise applied to inferences, not just
 numbers.
+
+> **What step 2 built, 2026-08-12, and how it differs from this section.** The
+> first hypothesis is not a distribution over the ten `stream_kind` labels. It is
+> one belief per `(merchant key, direction)` pair, over two inputs that each do
+> half the work: **the impersonal billing prior licenses the question** and **the
+> measured flow proposes its answer**. The prior is the first row of the table
+> above, made real — `enrich-v6` returns `billing` (`standing` · `per_purchase` ·
+> `either`) and `billing_period` (`monthly` · `annual` · `either`), validated in
+> code against a closed set and dropped when it speaks outside it, filed in the
+> catalog record's `attributes` bag as a fact about the merchant. A merchant the
+> world only ever sells to per purchase raises nothing at all; that is the
+> settled rung on this axis.
+>
+> Where the two disagree the ledger wins outright, and a measured absence of
+> rhythm is something the ledger said: above the cadence floor the prior is not
+> consulted, and movements whose spacing never settled propose `irregular`
+> rather than being told there is too little here to see a pattern. Below the
+> floor no cadence is claimed at all — only the count and what the world says
+> about the merchant. A steady rhythm the confirmable vocabulary has no word for
+> (weekly, quarterly) proposes nothing rather than rounding to a neighbour.
+>
+> A confirmation is a `rhythm`-scoped `RulingRecorded` keyed
+> `<merchant key>|<direction>` — never a rail, never a stream key, because both
+> are derived and change unattended — carrying a **set** of periodicities, so one
+> relationship holding a monthly arrangement and an annual one is one subject
+> with both and a correction is an ordinary re-answer. Step 3's *a rhythm broke*
+> must therefore ask whether a measured cadence is **among** the confirmed set,
+> never whether it equals one.
+>
+> Left open: the false-mixture rate is unmeasured on real data, and the
+> decomposition accepts two survivors it describes as one arrangement — a
+> monthly-plus-annual pair on one anchor day, and a sub-monthly interleave.
 
 ### 4.5 Forecast ledger
 

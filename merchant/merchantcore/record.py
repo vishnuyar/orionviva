@@ -19,7 +19,8 @@ class MerchantRecord:
     canonical_name: str = ""              # the merchant's own name for itself
     category: str = ""                    # PRIMARY category (one of the 16 buckets)
     subcategory: str = ""                 # the finer, model-provided value ("streaming")
-    attributes: dict = field(default_factory=dict)   # website, logo_url, mcc, description
+    attributes: dict = field(default_factory=dict)   # website, logo_url, mcc,
+                                          # description, billing, billing_period
     grade: str = "corroborated"           # verified | corroborated | unverified
     source: str = "model"                 # model | human | commons
     version: str = ""                     # taxonomy + normalizer + prompt version

@@ -2,7 +2,7 @@
   "in_force": {
     "enrich": {
       "in": "prompts",
-      "active": "enrich-v5"
+      "active": "enrich-v6"
     },
     "induce_profile": {
       "in": "prompts",
@@ -14,6 +14,7 @@
     "enrich-v3": "975285817f63435f",
     "enrich-v4": "2efcedbb7bc6570b",
     "enrich-v5": "cc200acfed53a401",
+    "enrich-v6": "dd905c12637cfa5c",
     "induce-profile-v1": "0e9e765cfdd270c4",
     "induce-profile-v2": "c6ae43456931e2c1",
     "induce-profile-v3": "b3ff11284894bd92"

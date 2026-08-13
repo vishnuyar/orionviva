@@ -91,6 +91,28 @@ A transaction's category grade is the max of the rulings that reach it: `verifie
 - ✅ **The impersonal boundary** (T9): `enrich_merchants` submits only `(normalized key, linted example)`; a test asserts no amount, account number, or date reaches the model prompt, and a peer-payment merchant is filtered out entirely.
 - ✅ **Own model calls**: `Enricher.enrich` is ONE batched, injected call → graded (`corroborated`) records carrying the taxonomy + prompt + normalizer version. `model_extractor(spec)` is the live text-only edge.
 - ✅ **Two-level taxonomy + richer attributes (enrich-v2, cat-v2).** Informed by an industry scan (Plaid's Personal Finance Categories are 16 primary + 104 detailed; Ntropy adds MCC, recurrence, custom categories — see below): the record now carries a **primary category** from **16 controlled buckets** (`merchantcore.taxonomy.PRIMARY_CATEGORIES`, the single source of truth the product's category picker also uses), a **model-provided `subcategory`** (open value, lightly normalized — "warehouse club", "streaming" — the commons converges on it), and `attributes` for **logo_url, mcc, website, description**. The product syncs `subcategory` into the `MerchantEnriched` event and exposes `projection.spending_by_subcategory` — the finer slice-and-dice axis.
+- ✅ **How a merchant bills (enrich-v6, 2026-08-12).** The record's `attributes`
+  bag gains **`billing`** (`standing` · `per_purchase` · `either`) and
+  **`billing_period`** (`monthly` · `annual` · `either`, present only where a
+  billing model admits one) — how a merchant charges everybody who deals with
+  them, not what any person arranged with them, so it passes the same T9 test
+  `category` passes. Both are validated in code against closed sets and dropped
+  with a log line when the reply speaks outside them; absent is the expected
+  answer wherever the model is unsure, and a period offered without a model goes
+  with it. The prompt asks for it in a section of its own rather than through
+  `implies`: a wrong implication writes a phantom account into a balance sheet,
+  a wrong billing model licenses a question and nothing else. No dataclass
+  change, no new event type, no change to `export` or `merge`.
+- ✅ **`Catalog.restage(predicate, dry_run=…)`.** Nothing compared a record's
+  version to the one in force, so a released prompt reached only merchants with
+  no record at all. `restage` returns version-stale records to the pending queue
+  (`enrichment_is_stale` is a string comparison against the stamped enrichment
+  version; a record carrying no version is not stale), the record keeps
+  answering until a new one replaces it, and a restaged key leaves the set when
+  any record for it arrives — so a re-ask costs one call, not one per run. The
+  dry run measures the spend before anybody authorizes it. Persisted under a
+  `restaged` key in the catalog JSON; a file written without it loads with
+  nothing marked.
 - ✅ **Sync-as-events** (T4): the product imports catalog records as `MerchantEnriched` events; categorization is retrospective (a merchant ruling fills every transaction), idempotent, and survives a **replay with merchantcore absent** — tested.
 - ✅ **Runnable on a real vault**: `python -m viva.enrich` gathers unknowns, enriches in one call, persists the catalog beside the vault (plain JSON, impersonal), and syncs. `MerchantEnriched` and `MerchantCategorized` share the catalog projection with grade precedence; a human `verified` override still wins.
 

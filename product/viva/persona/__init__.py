@@ -91,6 +91,39 @@ INTENT_FIELDS: dict[str, dict[str, str]] = {
     "nature_group_ask":            {},
     "nature_group_why":            {},
     "nature_group_why_documents":  {"documents": DOCUMENT},
+    # What kind of arrangement a counterparty is. The head and the direction
+    # are said whatever the evidence; what follows is not. A measured shape
+    # states the rhythm the records make; an unmeasured one states what the
+    # world does with that kind of business and claims no cadence.
+    "rhythm_head":                 {"count": COUNT, "example": MERCHANT,
+                                    "money": MONEY},
+    "rhythm_direction_out":        {},
+    "rhythm_direction_in":         {},
+    "rhythm_measured":             {"days": COUNT},
+    "rhythm_measured_fixed":       {},
+    # Where enough was seen and no spacing held: what the dates showed, put
+    # as a finding and asked about, with no cadence and no fallback to the
+    # prior.
+    "rhythm_irregular":            {},
+    "rhythm_irregular_ask":        {},
+    "rhythm_why_irregular":        {},
+    # The last shape, for a counterparty that is two things at once. Each
+    # part states its own count and its own money, so no figure here describes
+    # a set larger than the one it was measured over.
+    "rhythm_mixture_lead":         {},
+    "rhythm_mixture_part_repeating": {"count": COUNT, "money": MONEY},
+    "rhythm_mixture_part_varying": {"count": COUNT, "money": MONEY},
+    "rhythm_mixture_part_lone":    {"count": COUNT, "money": MONEY},
+    "rhythm_mixture_ask":          {},
+    "rhythm_why_mixture":          {},
+    "rhythm_prior_standing":       {},
+    "rhythm_prior_either":         {},
+    "rhythm_prior_period_monthly": {},
+    "rhythm_prior_period_annual":  {},
+    "rhythm_prior_period_either":  {},
+    "rhythm_ask":                  {},
+    "rhythm_why_measured":         {},
+    "rhythm_why_prior":            {},
     "corroboration":               {"name": ACCOUNT, "money": MONEY,
                                     "document": DOCUMENT},
     "corroboration_why":           {},

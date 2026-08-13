@@ -94,6 +94,16 @@ Conduits (check, ATM, wire, teller, money order) and peers (Zelle, Venmo, a pers
 
 **This is the only tier where the machinery of rulings in your own words was pointed at the right target** — and it is where the earnest-money-vs-account-opening failure lives.
 
+*Amended 2026-08-12: the ladder now runs on a second axis. Asked of a rhythm
+rather than a nature, tier 1 is a merchant the world only ever sells to per
+purchase — silence, however many times it was bought from — and tier 2 is a
+merchant one can deal with by a continuing arrangement, which earns one informed
+proposal per `(merchant key, direction)`. The impersonal knowledge that sorts
+them is the catalog's `billing` field, and it licenses the question without ever
+answering it: what the person actually arranged is theirs to say, and where the
+ledger has measured enough to have an opinion, the measurement is what the
+proposal proposes.*
+
 ---
 
 ## The confidence ladder — reuse, don't invent

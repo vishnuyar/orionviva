@@ -1,9 +1,9 @@
 """The question queue — everything Viva needs from the person, ranked.
 
-Four ask-and-learn loops — *whose account is this?*, *are these the same
-money?*, *what is this merchant?*, *is this spending or moving?* — gathered into
-one ranked list, alongside corroboration asks and the knowledge registry's unmet
-expectations.
+Five ask-and-learn loops — *whose account is this?*, *are these the same
+money?*, *what is this merchant?*, *is this spending or moving?*, *what kind of
+arrangement is this?* — gathered into one ranked list, alongside corroboration
+asks and the knowledge registry's unmet expectations.
 
 A **read-side projection**: no new event type, no ingest change. Answering routes
 to the writers that already exist, so a ruling is recorded exactly as before and
@@ -49,12 +49,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from merchantcore.enrich import BILLING_PERIODS, BILLING_STANDING
+
 from .ingest import held_items, other_holds
 from .ledger.merchants import is_shareable
-from .ledger.events import ASSERTED
+from .ledger.events import (ASSERTED, PERIOD_ANNUAL, PERIOD_IRREGULAR,
+                            PERIOD_MONTHLY, PERIOD_ONE_TIME, PERIODICITIES)
 from .ledger.projection import (BY_CATEGORY, BY_DEFAULT, SPENDING,
                                 TIER_SETTLED, TIER_STRUCTURAL,
                                 TIER_UNENRICHED, TIER_UNKNOWN)
+from .ledger.projection.rhythm import IN
 from .listen import (category_vocabulary, ruling_slots,
                      shareable_categories)
 from .persona import say
@@ -78,6 +82,7 @@ NATURE = "nature"                  # is this money spent, or moved?
 CORROBORATION = "corroboration"    # do you have the document that proves this?
 EXPECTATION = "expectation"        # a document that should exist, somewhere
 INTERVIEW = "interview"            # the next thing this account needs known
+RHYTHM = "rhythm"                  # what kind of arrangement is this?
 
 
 @dataclass
@@ -374,6 +379,136 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     return out
 
 
+# What each of the four stored words means, in the plain terms a person would
+# use for it. The meanings travel with the alternatives so none of the four is
+# offered bare, and each says only what its own word means.
+PERIODICITY_MEANINGS = {
+    PERIOD_MONTHLY: "an arrangement that comes round about every month",
+    PERIOD_ANNUAL: "an arrangement that comes round about once a year",
+    PERIOD_ONE_TIME: "a one-off — it happened once, and repeats no further",
+    PERIOD_IRREGULAR: "nothing arranged with them; the money moves as and when",
+}
+
+# What arrangement do you have with them? One relationship can hold several at
+# once — a monthly one and an annual one with the same counterparty — so the
+# slot holds several periodicities rather than one, each landing in the
+# ledger's own closed vocabulary.
+RHYTHM_SLOTS = (
+    Slot(name="periods", required=True, parts=(
+        Slot(name="period", type=ANSWER_CHOICE, choices=PERIODICITIES,
+             meanings=tuple(PERIODICITY_MEANINGS.items()), required=True),)),
+)
+
+# The sentence that states the prior's usual period, one per period the
+# catalog's closed vocabulary may name.
+PRIOR_PERIOD_SAYS = {period: f"rhythm_prior_period_{period}"
+                     for period in BILLING_PERIODS}
+
+# How one part of a mixture is described, chosen by what its own amounts were
+# measured to be. Nothing here calls a part a subscription or a purchase: what
+# is said is that these amounts repeat and those do not.
+MIXTURE_PART_SAYS = {"fixed": "rhythm_mixture_part_repeating",
+                     "variable": "rhythm_mixture_part_varying",
+                     "unknown": "rhythm_mixture_part_lone"}
+
+
+def _rhythm_questions(proj, locale: str = "") -> list[Question]:
+    """What kind of arrangement a counterparty is — one proposal per
+    `(merchant, direction)` the catalog says an arrangement is possible for.
+
+    The prior licenses the question and the measurement proposes its answer, so
+    the same mechanism serves a merchant seen once and a merchant seen fourteen
+    times, with different evidence and visibly different sentences. A
+    relationship with enough movements to have been measured is spoken of as
+    measured whether what was found was a rhythm or the absence of one; only a
+    relationship below the floor is told what the world knows instead. Where the
+    movements did not decompose into one thing there is a fourth shape, which
+    describes what it saw of each part and asks which is which, claiming no
+    cadence over the whole.
+
+    A pair somebody has already ruled on is not raised again: the answer
+    generalizes over every movement with that counterparty, past and future."""
+    out: list[Question] = []
+    for h in proj.rhythm_hypotheses():
+        if h.confirmed:
+            continue                      # settled; the ruling is what answers now
+        text = say("rhythm_head", count=render_count(h.count),
+                   example=render_merchant({"example": h.example}),
+                   money=render_money(h.amount, h.currency, locale=locale))
+        text += " " + say("rhythm_direction_in" if h.direction == IN
+                          else "rhythm_direction_out")
+        if h.mixed:
+            # Two things on one counterparty, named rather than averaged.
+            # Every figure below belongs to one part and was measured over that
+            # part alone; no cadence, interval or sameness of amount is claimed
+            # over the whole, and which part is an arrangement is what is being
+            # asked rather than asserted.
+            text += " " + say("rhythm_mixture_lead")
+            for part in h.components:
+                text += " " + say(
+                    MIXTURE_PART_SAYS[part.amount_stability],
+                    count=render_count(part.count),
+                    money=render_money(part.amount, h.currency, locale=locale))
+            text += " " + say("rhythm_mixture_ask")
+            why = say("rhythm_why_mixture")
+        elif h.measured and h.steady:
+            text += " " + say("rhythm_measured",
+                              days=render_count(h.interval_days))
+            if h.amount_stability == "fixed":
+                text += " " + say("rhythm_measured_fixed")
+            text += " " + say("rhythm_ask")
+            why = say("rhythm_why_measured")
+        elif h.measured:
+            # Enough was seen, and what it showed is that these do not come
+            # round on anything — a measurement, and one of the words a person
+            # may confirm. No interval is stated, because none held, and the
+            # sentence for having seen almost nothing is not borrowed.
+            text += " " + say("rhythm_irregular")
+            if h.amount_stability == "fixed":
+                text += " " + say("rhythm_measured_fixed")
+            text += " " + say("rhythm_irregular_ask")
+            why = say("rhythm_why_irregular")
+        else:
+            # No cadence is claimed here: below the floor nothing was
+            # measured, and the world's knowledge of the merchant is not a
+            # measurement of this relationship.
+            text += " " + say("rhythm_prior_standing"
+                              if h.billing == BILLING_STANDING
+                              else "rhythm_prior_either")
+            period_says = PRIOR_PERIOD_SAYS.get(h.billing_period)
+            if period_says:
+                text += " " + say(period_says)
+            text += " " + say("rhythm_ask")
+            why = say("rhythm_why_prior")
+        out.append(Question(
+            id=f"{RHYTHM}:{h.subject}", kind=RHYTHM, text=text, why=why,
+            # Ranked on the money this relationship has already moved; a
+            # stake is a ranking key rather than a spoken figure, and nothing
+            # here projects what it will move next.
+            amount=h.amount, currency=h.currency, count=h.count,
+            scope="pattern", slots=RHYTHM_SLOTS,
+            refs={"merchant": h.merchant, "direction": h.direction,
+                  "movements": list(h.movements), "descriptor": h.example,
+                  # The hypothesis travels as structure a lint can check:
+                  # what the world says, what the ledger measured, and what the
+                  # two together propose.
+                  "billing": h.billing, "billing_period": h.billing_period,
+                  "measured": h.measured, "steady": h.steady,
+                  "cadence": h.cadence if h.measured else "",
+                  "proposed": list(h.proposed),
+                  # And what the movements decomposed into. One entry is one
+                  # thing measured; two is a mixture, and every figure in the
+                  # sentence above is traceable to the entry it came from.
+                  "components": [
+                      {"count": part.count, "amount": str(part.amount),
+                       "amount_stability": part.amount_stability,
+                       "measured": part.measured, "steady": part.steady,
+                       "cadence": part.cadence,
+                       "movements": list(part.movements)}
+                      for part in h.components]}))
+    return out
+
+
 def _corroboration_questions(proj, locale: str = "") -> list[Question]:
     """Documents that would corroborate a ruling.
 
@@ -559,6 +694,7 @@ def open_questions(source, limit: int = DEFAULT_LIMIT, as_of: str = "",
     qs += _transfer_questions(proj, locale)
     qs += _merchant_questions(proj, locale)
     qs += _nature_questions(proj, locale)
+    qs += _rhythm_questions(proj, locale)
     qs += _corroboration_questions(proj, locale)
     qs += _expectation_questions(proj, as_of, jurisdiction, locale)
     qs += _interview_questions(proj, jurisdiction)
@@ -604,6 +740,7 @@ def find_question(source, question_id: str, as_of: str = "",
     qs += _transfer_questions(proj, locale)
     qs += _merchant_questions(proj, locale)
     qs += _nature_questions(proj, locale)
+    qs += _rhythm_questions(proj, locale)
     qs += _corroboration_questions(proj, locale)
     qs += _expectation_questions(proj, as_of, jurisdiction, locale)
     qs += _interview_questions(proj, jurisdiction)
@@ -648,6 +785,7 @@ def pending_questions(source, as_of: str = "", jurisdiction: str = "",
     qs += _transfer_questions(proj, locale)
     qs += _merchant_questions(proj, locale)
     qs += _nature_questions(proj, locale)
+    qs += _rhythm_questions(proj, locale)
     qs += _corroboration_questions(proj, locale)
     qs += _interview_questions(proj, jurisdiction)
     if as_of:

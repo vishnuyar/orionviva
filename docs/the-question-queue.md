@@ -103,7 +103,37 @@ The first real run asked two questions that have no correct answer among the opt
 
 ## Known limitation (and what the generic scoped ruling fixed)
 
-A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("anything in title-and-escrow is a capital purchase") could not be recorded as one rule — answering applies it to the movements at hand. Fixing that needs a ruling that carries its own scope, which is exactly the **generic scoped ruling** — deferred until a fifth question type (Slice 8's obligations, or Slice 11's loans) proved the shape, and since arrived as `RulingRecorded` carrying `scope` + `same_as`. Until it landed the queue re-asked about genuinely new merchants, which is honest, if slightly repetitive.
+A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("anything in title-and-escrow is a capital purchase") could not be recorded as one rule — answering applies it to the movements at hand. Fixing that needs a ruling that carries its own scope, which is exactly the **generic scoped ruling** — deferred until a fifth question type (Slice 8's obligations, or Slice 11's loans) proved the shape, and since arrived as `RulingRecorded` carrying `scope` + `same_as`. **The fifth question type arrived 2026-08-12** (rhythm, from Slice 8 rescoped); see the section below. Until it landed the queue re-asked about genuinely new merchants, which is honest, if slightly repetitive.
+
+## The fifth question type, and an eighth source (2026-08-12)
+
+The queue gained **rhythm**: *what kind of arrangement is this?*, one grouped
+proposal per `(merchant key, direction)` pair the merchant catalog says an
+arrangement is even possible for. It is the fifth question type this doc said
+the generic scoped ruling was waiting on, and it proves the shape — the answer
+is a `RulingRecorded` at a new scope, carrying a set-valued `value` and no
+`same_as`, written through the same slot machinery as every other reply. No new
+event type, and no second surface.
+
+Three things it settles about the queue itself:
+
+- **A prior may license a question the ledger cannot yet evidence.** Rule 2 said
+  a question is raised at the most general unit that is still honest; this adds
+  that a question may be raised at all on impersonal world knowledge, provided
+  the sentence that carries it claims no measurement. A merchant seen twice and
+  a merchant seen fourteen times raise the same kind of question with visibly
+  different sentences.
+- **Answering it is idempotent** — the property a nature question scoped to a
+  single movement failed at, recorded above. A rhythm ruling covers the pair the
+  question was asked about, so the ruling suppresses the question in the open
+  list and the set-aside list alike, and more of the same money does not reopen
+  it. `one_time` and `irregular` are answers, not declines: a person who says
+  there is no rhythm has settled the question permanently, so the slice needed
+  no new decline behaviour.
+- **The stake is money already measured**, never a projection about what the
+  relationship will move next. A stake is a ranking key rather than a spoken
+  figure, and a projected one would put a claim about the future into the
+  ordering with nothing saying so.
 
 ## Deferred
 

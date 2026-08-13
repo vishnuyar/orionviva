@@ -29,6 +29,8 @@ import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from .streams import IN, OUT
+
 
 # ------------------------------------------------------------------ provenance
 
@@ -388,8 +390,62 @@ SCOPE_TAG = "tag"                # the same, in the TAG vocabulary, which
 # they hold. The value is what they said it is; a document arriving later
 # raises its grade without rewriting it.
 SCOPE_ATTRIBUTE = "attribute"
+# Subject = "<merchant key>|<direction>" — what kind of arrangement a person
+# holds with one counterparty, one way round. The value carries the confirmed
+# periodicities. Never a rail and never a stream key.
+SCOPE_RHYTHM = "rhythm"
 SCOPES = (SCOPE_MOVEMENT, SCOPE_MERCHANT, SCOPE_ACCOUNT, SCOPE_CATEGORY,
-          SCOPE_TAG, SCOPE_ATTRIBUTE)
+          SCOPE_TAG, SCOPE_ATTRIBUTE, SCOPE_RHYTHM)
+
+# The directions a rhythm subject may name: the two the ledger measures.
+RHYTHM_DIRECTIONS = (IN, OUT)
+
+# What a rhythm ruling may say. Closed, and stored rather than spoken.
+# `one_time` and `irregular` are confirmations like the other two: a
+# relationship a person says has no rhythm is settled, not deferred.
+PERIOD_MONTHLY = "monthly"
+PERIOD_ANNUAL = "annual"
+PERIOD_ONE_TIME = "one_time"
+PERIOD_IRREGULAR = "irregular"
+PERIODICITIES = (PERIOD_MONTHLY, PERIOD_ANNUAL, PERIOD_ONE_TIME,
+                 PERIOD_IRREGULAR)
+
+# One relationship can hold several arrangements at once, so the value is a
+# set rather than a word, written as one string in a fixed order.
+_PERIODICITY_SEPARATOR = "+"
+
+# What separates the counterparty from the direction in a rhythm subject.
+_RHYTHM_SEPARATOR = "|"
+
+
+def rhythm_subject(merchant: str, direction: str) -> str:
+    """The subject a rhythm ruling about one counterparty, one way round, is
+    recorded under. The one definition of the format."""
+    return f"{merchant}{_RHYTHM_SEPARATOR}{direction}"
+
+
+def rhythm_parts(subject: str) -> tuple:
+    """`(merchant key, direction)` for a rhythm subject; `("", "")` for
+    anything that is not one."""
+    merchant, sep, direction = str(subject or "").partition(_RHYTHM_SEPARATOR)
+    return (merchant, direction) if sep and merchant and direction else ("", "")
+
+
+def periodicity_value(periods) -> str:
+    """The confirmed periodicities as one value, deduplicated and in the
+    vocabulary's own order, so one answer has one written form.
+
+    Words outside ``PERIODICITIES`` are kept as given: what the ledger will
+    accept is decided by the guard in `ruling_recorded`, not here."""
+    said = [str(p or "").strip() for p in periods]
+    known = [p for p in PERIODICITIES if p in said]
+    rest = sorted({p for p in said if p and p not in PERIODICITIES})
+    return _PERIODICITY_SEPARATOR.join(known + rest)
+
+
+def periodicities_in(value: str) -> tuple:
+    """Every periodicity a rhythm value carries, in the order it was written."""
+    return tuple(p for p in str(value or "").split(_PERIODICITY_SEPARATOR) if p)
 
 
 def _canonical_number(text: str) -> str:
@@ -482,21 +538,38 @@ def ruling_recorded(scope: str, subject: str, occurred_at: str,
     ruling; it is a suggestion, never a gate.
 
     A leg carries no amount — the money comes from the movement the ruling is
-    about. ``value`` is the exception and belongs to attribute scope alone:
-    what the person said one thing about an account *is*. A figure there must
-    appear in their own words, so a reading cannot supply a number the sentence
-    did not contain.
+    about. ``value`` belongs to two scopes only. Under attribute scope it is
+    what the person said one thing about an account *is*, and a figure there
+    must appear in their own words, so a reading cannot supply a number the
+    sentence did not contain. Under rhythm scope it is the periodicities they
+    confirmed, one or more of ``PERIODICITIES``, written by
+    `periodicity_value`.
 
     Raises ValueError on an unknown scope, an empty subject, a leg whose major
-    is outside ``MAJORS``, a leg carrying an ``amount``, a value outside
-    attribute scope, a value with nothing said, or a figure the words do not
-    carry."""
+    is outside ``MAJORS``, a leg carrying an ``amount``, a value outside those
+    two scopes, an attribute value with nothing said, a figure the words do not
+    carry, a rhythm subject that is not '<merchant key>|<direction>' over the
+    closed direction set, or a rhythm value carrying a word outside the closed
+    vocabulary."""
     if scope not in SCOPES:
         raise ValueError(f"scope must be one of {SCOPES}, got {scope!r}")
     if not subject:
         raise ValueError("a ruling must name its subject")
-    if value and scope != SCOPE_ATTRIBUTE:
-        raise ValueError("only an attribute ruling carries a value")
+    if value and scope not in (SCOPE_ATTRIBUTE, SCOPE_RHYTHM):
+        raise ValueError("only an attribute or a rhythm ruling carries a value")
+    if scope == SCOPE_RHYTHM:
+        if rhythm_parts(subject)[1] not in RHYTHM_DIRECTIONS:
+            raise ValueError(
+                f"a rhythm subject is '<merchant key>|<direction>' with a "
+                f"direction in {RHYTHM_DIRECTIONS}, got {subject!r} — both "
+                "halves are closed, and a subject naming anything else is one "
+                "no read could ever answer")
+        outside = [p for p in periodicities_in(value) if p not in PERIODICITIES]
+        if not value or outside:
+            raise ValueError(
+                f"a rhythm value is one or more of {PERIODICITIES}, got "
+                f"{value!r} — the vocabulary is closed, and a word outside it "
+                "is a rhythm no read could ever match")
     if scope == SCOPE_ATTRIBUTE:
         if ":" not in subject:
             raise ValueError("an attribute subject is '<account>:<key>', "

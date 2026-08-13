@@ -271,3 +271,117 @@ def test_a_line_the_english_list_cannot_read_is_not_cleared_by_its_silence():
     # The list is mute on both of these; it may not clear them.
     assert not is_shareable("スイカ 東京 JP")
     assert not is_shareable("CAFÉ MÜLLER MÜNCHEN DE")
+
+
+# --- how a merchant bills, as a fact about the merchant ---------------------
+
+def test_a_billing_model_and_its_period_land_in_the_attributes_bag():
+    """The world's knowledge of how a merchant charges, filed beside every
+    other impersonal fact about them — no new field, no new record shape."""
+    def extract(prompt):
+        assert "billing" in prompt                       # the prompt asks for it
+        return ('{"lumen tv": {"canonical_name":"Lumen TV","category":"other",'
+                '"billing":"standing","billing_period":"monthly"}}')
+    r = Enricher(extract).enrich({"lumen tv": "LUMEN TV"})["lumen tv"]
+    assert r.attributes["billing"] == "standing"
+    assert r.attributes["billing_period"] == "monthly"
+
+
+def test_a_billing_model_outside_the_closed_set_is_dropped():
+    """The model's answer is untrusted input: the vocabulary is ours, and a
+    word outside it buys silence rather than a new value nothing validates."""
+    def extract(prompt):
+        return ('{"acme": {"canonical_name":"Acme","category":"other",'
+                '"billing":"quarterly-ish","billing_period":"monthly"}}')
+    r = Enricher(extract).enrich({"acme": "ACME"})["acme"]
+    assert "billing" not in r.attributes
+    # And the period goes with it: an interval with no model behind it says a
+    # merchant bills on a cycle without saying they bill on one at all.
+    assert "billing_period" not in r.attributes
+
+
+def test_a_period_offered_for_a_per_purchase_merchant_is_dropped():
+    def extract(prompt):
+        return ('{"acme": {"canonical_name":"Acme","category":"other",'
+                '"billing":"per_purchase","billing_period":"monthly"}}')
+    r = Enricher(extract).enrich({"acme": "ACME"})["acme"]
+    assert r.attributes["billing"] == "per_purchase"
+    assert "billing_period" not in r.attributes
+
+
+def test_an_unknown_period_is_dropped_and_the_model_survives():
+    def extract(prompt):
+        return ('{"acme": {"canonical_name":"Acme","category":"other",'
+                '"billing":"standing","billing_period":"fortnightly"}}')
+    r = Enricher(extract).enrich({"acme": "ACME"})["acme"]
+    assert r.attributes["billing"] == "standing"
+    assert "billing_period" not in r.attributes
+
+
+def test_saying_nothing_about_billing_is_a_normal_answer():
+    def extract(prompt):
+        return '{"acme": {"canonical_name":"Acme","category":"other"}}'
+    r = Enricher(extract).enrich({"acme": "ACME"})["acme"]
+    assert "billing" not in r.attributes and "billing_period" not in r.attributes
+
+
+def test_the_billing_question_is_separate_from_what_a_merchant_implies():
+    """A billing model licenses a question; an implication creates an account.
+    A reply that names one must not be read as naming the other."""
+    def extract(prompt):
+        return ('{"acme": {"canonical_name":"Acme","category":"other",'
+                '"billing":"standing","implies":[]}}')
+    r = Enricher(extract).enrich({"acme": "ACME"})["acme"]
+    assert r.attributes["billing"] == "standing"
+    assert "implies" not in r.attributes
+
+
+# --- a released prompt version reaching the records it was written for ------
+
+def test_a_version_stale_record_is_restaged_and_asked_about_again(tmp_path):
+    from merchantcore.enrich import ENRICHMENT_VERSION, enrichment_is_stale
+    cat = Catalog(tmp_path / "catalog.json")
+    cat.add(MerchantRecord(key="acme", category="other",
+                           version="enrich-v1+tax-v1+merch-v2"))
+    cat.add(MerchantRecord(key="borea", category="other",
+                           version=f"{ENRICHMENT_VERSION}+tax-v1+merch-v2"))
+    # Measured first, and measuring changes nothing.
+    assert cat.restage(enrichment_is_stale, dry_run=True) == ["acme"]
+    assert not cat.restaged() and not cat.pending()
+
+    assert cat.restage(enrichment_is_stale) == ["acme"]
+    # What is already known keeps answering while it waits to be re-asked.
+    assert cat.get("acme").category == "other"
+    assert cat.submit([("acme", "ACME"), ("borea", "BOREA")]) == 1
+    assert set(cat.pending()) == {"acme"}
+
+
+def test_a_restaged_record_is_asked_about_once_not_every_run(tmp_path):
+    """A re-ask that came back is over — including where the answer did not
+    outrank what a person had already confirmed, which would otherwise buy the
+    same model call every time."""
+    from merchantcore.enrich import enrichment_is_stale
+    cat = Catalog(tmp_path / "catalog.json")
+    cat.add(MerchantRecord(key="acme", category="other", grade="verified",
+                           version="enrich-v1+tax-v1+merch-v2"))
+    cat.restage(enrichment_is_stale)
+    cat.submit([("acme", "ACME")])
+    cat.add(MerchantRecord(key="acme", category="shopping",
+                           grade="corroborated", version="enrich-v1+tax-v1"))
+    assert cat.get("acme").category == "other"          # the human ruling stands
+    assert not cat.restaged()
+    assert cat.submit([("acme", "ACME")]) == 0          # and it is not re-queued
+
+
+def test_a_record_with_no_version_is_not_stale():
+    """Nothing says which prompt wrote it, so nothing says it is superseded."""
+    from merchantcore.enrich import enrichment_is_stale
+    assert not enrichment_is_stale(MerchantRecord(key="acme", version=""))
+
+
+def test_restaging_survives_a_reload(tmp_path):
+    from merchantcore.enrich import enrichment_is_stale
+    cat = Catalog(tmp_path / "catalog.json")
+    cat.add(MerchantRecord(key="acme", category="other", version="enrich-v1"))
+    cat.restage(enrichment_is_stale)
+    assert Catalog(tmp_path / "catalog.json").restaged() == {"acme"}
