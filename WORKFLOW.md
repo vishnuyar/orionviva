@@ -1,8 +1,9 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-08-08 (the issue gate named as a
-checkpoint alongside the commit gate, relayed authorization ruled out, and who
-owns the claim a test case encodes)
+**Status:** Living · **Last updated:** 2026-08-14 (the Fact-checker added ahead
+of Checkpoint 1, amendments absorbed by reissuing the brief rather than
+annotating it, and a brief must be readable without a second document open
+beside it)
 
 OrionViva is built by a product owner who directs, and an AI that engineers.
 This file is the contract between them: the roles, the loop, and the gates.
@@ -16,6 +17,13 @@ set for that role, and this document says when each role runs.
 options with detailed viewpoints in prose, invariants touched, doors named,
 one recommendation, a scope fence, and the questions only the product owner
 can answer. Produces briefs, never code.
+
+**Fact-checker** — reads a finished brief against the code and the documents it
+cites, before the product owner does. It runs code rather than only reading it,
+and reports three columns: what the brief claims, what the cited document says,
+what the code actually does. A second table glosses every coded id the brief
+uses, so the brief can be read without a second document open beside it. It
+reports; it never approves, never fixes, never commits.
 
 **Builder** — implements an approved brief, nothing more. Follows the standing
 practices (prompts as files, no word lists, comments describe behavior, read
@@ -56,8 +64,17 @@ later as its own full-lane cycle ("design phase: issue #N").
 ## The loop (full lane)
 
 1. **Idea or bug** → Design Partner produces a brief.
+   - **1b — Fact-checker, before the brief is read:** every factual claim in it
+     reproduced against the code, every cited document checked against the code
+     too, and every coded id glossed. Its tables join the brief at checkpoint 1.
+     It reports; it never approves.
 2. **Checkpoint 1 — approve the brief.** The product owner reads the options,
-   decides, amends. Nothing is built from an unapproved brief.
+   decides, amends. Nothing is built from an unapproved brief. **Amendments
+   are absorbed, not annotated:** once the rulings are taken, the Design
+   Partner reissues the brief clean — the rulings recorded once at the top in
+   the owner's own words, every superseded sentence gone. The Builder builds
+   from the reissued document and the Verifier checks the diff against its
+   fence. There is one brief, and every sentence in it is live.
 3. Builder implements → delivers the walkthrough.
 4. Verifier (fresh context) runs → delivers the report.
    - **4b — Witness, when the claim needs real data to settle it:** an
@@ -145,14 +162,20 @@ Roles are prompts; anything that must never happen is enforced by code:
   the next). Long mixed sessions are where scope creep and diluted rules live.
 - **The Verifier always gets a fresh context** — a separate subagent, never
   the conversation that built the code.
+- **A brief stands on its own.** Coded ids — invariant numbers, ADR ids,
+  option letters, ruling numbers — carry their meaning at first mention, and a
+  past ruling is quoted rather than cited. A brief that cannot be read without
+  another document open beside it has moved its cost onto the one person whose
+  attention this process exists to protect.
 - **End of session, capture state:** TODO.md current, brief saved if the
   cycle continues, so the next session starts with bearings instead of
   archaeology.
 - **In Claude Code**, the roles are native subagents (`/agents` lists them).
-  **In Cowork**, say which phase you want — "design phase:", "build from the
-  approved brief", "verify the diff", "ship it", "tutor: explain…" — and the
-  session reads the matching role file and runs it as that role, spawning a
-  fresh subagent for verification.
+  **In Cowork**, say which phase you want — "design phase:", "fact-check the
+  brief", "build from the approved brief", "verify the diff", "ship it",
+  "tutor: explain…" — and the session reads the matching role file and runs it
+  as that role, spawning a fresh subagent for the fact-check and again for
+  verification.
 - **A test case encodes a claim about what should happen in a real financial
   life, and where that claim is not obvious the product owner makes it.** Not
   the Builder's to invent and not the Verifier's to certify. A scenario built
