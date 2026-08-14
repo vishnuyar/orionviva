@@ -229,3 +229,84 @@ def audit(package_root: str | pathlib.Path) -> list[str]:
             if other not in released:
                 out.append(f"{name} withdraws {other}, which is not released")
     return out
+
+
+def _covered_by(pattern: str) -> re.Pattern:
+    """A package-data glob compiled to a regex that matches a whole relative
+    POSIX path, as `glob` reads it recursively.
+
+    `*` and `?` match within one path segment and `**/` matches any number of
+    segments, including none. Every other character is literal, so a character
+    class matches only itself and a trailing `**` reaches one segment: both are
+    narrower than the glob they came from, so a path this rejects may in fact be
+    matched. The reverse holds only for a filename carrying those characters
+    literally, which is the one case where the two disagree the other way."""
+    parts = []
+    for piece in re.split(r"(\*\*/|\*|\?)", pattern):
+        if piece == "**/":
+            parts.append(r"(?:[^/]+/)*")
+        elif piece == "*":
+            parts.append(r"[^/]*")
+        elif piece == "?":
+            parts.append(r"[^/]")
+        else:
+            parts.append(re.escape(piece))
+    return re.compile("".join(parts) + r"\Z")
+
+
+def unshipped(package_root: str | pathlib.Path,
+              pyproject: str | pathlib.Path) -> list[str]:
+    """Every file this manifest can resolve that the packaging would leave
+    behind, one plain sentence each, in the order the files are required.
+
+    Empty means every required file is matched by the including table and by no
+    pattern in the excluding one, which is what an install needs to resolve what
+    a checkout resolves. `_index` walks the working tree, where a declared file
+    is present by construction, so this is the one question about the manifest
+    that the working tree cannot answer.
+
+    `pyproject` is the packaging file that decides what ships. Its
+    `[tool.setuptools.package-data]` patterns are read as recursive globs and
+    its `[tool.setuptools.exclude-package-data]` patterns with `fnmatch`, which
+    is how setuptools matches each of the two; the dialects differ, and a `*`
+    crosses a `/` only in the second. Both tables are keyed by package name, and
+    a `*` key applies to every package. Required are the manifest itself, every
+    versioned file the manifest resolves, and — for a version held as a
+    directory — every file it is fingerprinted from.
+
+    Raises ManifestError through :func:`_index` when the manifest is absent or
+    names a directory that is not there."""
+    # Imported here rather than at module scope: reading the packaging is a
+    # question the suite asks, not work an install does.
+    import fnmatch
+    import tomllib
+
+    root = _root(package_root)
+    pyproject = pathlib.Path(pyproject)
+    setuptools = (tomllib.loads(pyproject.read_text(encoding="utf-8"))
+                  .get("tool", {}).get("setuptools", {}))
+
+    def declared(table: str) -> list[str]:
+        patterns = setuptools.get(table, {})
+        return [g for key in (root.name, "*") for g in patterns.get(key, [])]
+
+    included = [_covered_by(g) for g in declared("package-data")]
+    excluded = declared("exclude-package-data")
+
+    # The manifest is read before anything it declares, so it ships or nothing
+    # else matters. A version held as a directory ships as the files it is
+    # hashed from: a pack missing one document is a changed pack, not a pack.
+    required = [root / MANIFEST]
+    for path in _index(package_root).values():
+        required.extend(contents(path) if path.is_dir() else [path])
+
+    out: list[str] = []
+    for path in required:
+        rel = path.relative_to(root).as_posix()
+        if any(fnmatch.fnmatchcase(rel, g) for g in excluded):
+            out.append(f"{rel} resolves here and would not ship — "
+                       f"exclude-package-data in {pyproject.name} drops it")
+        elif not any(p.match(rel) for p in included):
+            out.append(f"{rel} resolves here and would not ship — no "
+                       f"package-data pattern in {pyproject.name} covers it")
+    return out

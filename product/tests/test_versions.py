@@ -63,6 +63,13 @@ def test_every_family_in_force_resolves_to_something_on_disk():
         assert versions.path_of(PACKAGE, active).exists()
 
 
+def test_every_declared_file_is_packaged():
+    """Resolving on disk is not resolving in an install: the audit walks the
+    working tree, where every declared file is present by construction."""
+    left_behind = versions.unshipped(PACKAGE, PACKAGE.parent / "pyproject.toml")
+    assert left_behind == [], "\n".join(left_behind)
+
+
 def test_a_stamp_carries_the_version_and_its_digest():
     """`stamp` returns the active id joined to the fingerprint of its file."""
     stamp = versions.stamp(PACKAGE, "speak")
@@ -235,3 +242,178 @@ def test_the_series_is_the_whole_trailing_number(tmp_path):
     assert versions.series_of("tools-v9") == ("tools-v", 9)
     assert versions.series_of("speak-final-v6") == ("speak-final-v", 6)
     assert versions.series_of("speak-v6") == ("speak-v", 6)
+
+
+# ------------------------------------------------- what the wheel would carry
+
+
+def _packaged(root, globs, excluding=()):
+    """A pyproject beside `root` that ships `globs` from it and nothing else,
+    minus anything `excluding` names."""
+    path = root.parent / "pyproject.toml"
+    def table(name, patterns):
+        listed = ", ".join(f'"{g}"' for g in patterns)
+        return f'[tool.setuptools.{name}]\n"{root.name}" = [{listed}]\n'
+    text = table("package-data", globs)
+    if excluding:
+        text += table("exclude-package-data", excluding)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_a_declared_directory_that_does_not_ship_fails(tmp_path):
+    """A versioned file that resolves here and that no package-data pattern
+    covers is named."""
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    left = versions.unshipped(root, _packaged(root, ["versions.json"]))
+
+    assert any("a-v1.txt" in line for line in left)
+
+
+def test_the_manifest_itself_must_ship(tmp_path):
+    """It is read before anything it declares, so leaving it behind fails first
+    and takes every family with it."""
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    left = versions.unshipped(root, _packaged(root, ["prompts/*.txt"]))
+
+    assert any("versions.json" in line for line in left)
+
+
+def test_a_pattern_does_not_reach_past_a_directory_boundary(tmp_path):
+    """A package-data `*` stops at a `/`, so `*.txt` covers a file at the root of
+    the package and not one a directory down."""
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    left = versions.unshipped(root, _packaged(root, ["versions.json", "*.txt"]))
+
+    assert any("a-v1.txt" in line for line in left)
+
+
+def test_a_version_held_as_a_directory_ships_every_document_it_is_hashed_from(
+        tmp_path):
+    """A pack missing one document is a changed pack, so covering some of its
+    files is not covering the pack."""
+    root = _fake(tmp_path, "pkg")
+    pack = root / "prompts" / "a-v2"
+    pack.mkdir()
+    (pack / "tone.md").write_text("warm", encoding="utf-8")
+    (pack / "moments.json").write_text("{}", encoding="utf-8")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    left = versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts/*.txt",
+                               "prompts/*/*.json"]))
+
+    assert any("tone.md" in line for line in left)
+    assert not any("moments.json" in line for line in left)
+
+
+def test_a_fully_packaged_manifest_leaves_nothing_behind(tmp_path):
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    assert versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts/*.txt"])) == []
+
+
+def _pack(root, stem, files):
+    """A version held as a directory of documents, inside the declared folder."""
+    pack = root / "prompts" / stem
+    pack.mkdir()
+    for name, text in files.items():
+        (pack / name).write_text(text, encoding="utf-8")
+    return pack
+
+
+def test_an_excluded_file_is_not_shipped_though_a_pattern_covers_it(tmp_path):
+    """A file matched by both tables is named: covering it is not shipping it."""
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    left = versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts/*.txt"],
+                        excluding=["prompts/a-*.txt"]))
+
+    assert any("a-v1.txt" in line and "exclude-package-data" in line
+               for line in left)
+
+
+def test_an_exclusion_crosses_a_directory_boundary(tmp_path):
+    """An exclusion is matched with `fnmatch`, where a `*` crosses a `/`, so
+    `prompts/*` reaches a document inside a pack and not only beside it."""
+    root = _fake(tmp_path, "pkg")
+    _pack(root, "a-v2", {"tone.md": "warm"})
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    left = versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts/*.txt",
+                               "prompts/*/*.md"],
+                        excluding=["prompts/*"]))
+
+    assert any("a-v2/tone.md" in line for line in left)
+
+
+def test_an_exclusion_reads_a_character_class(tmp_path):
+    """`[ab]` names a set of characters to `fnmatch`, so an exclusion written
+    that way drops the file it matches."""
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    left = versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts/*.txt"],
+                        excluding=["prompts/[ab]-v1.txt"]))
+
+    assert any("a-v1.txt" in line for line in left)
+
+
+def test_a_double_star_crosses_any_number_of_directories(tmp_path):
+    """`**/` matches no segments as readily as two, so one pattern covers the
+    manifest at the root and a document two directories down."""
+    root = _fake(tmp_path, "pkg")
+    _pack(root, "a-v2", {"tone.md": "warm"})
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    assert versions.unshipped(
+        root, _packaged(root, ["**/*.json", "**/*.txt", "**/*.md"])) == []
+
+
+def test_a_question_mark_matches_one_character_and_not_a_separator(tmp_path):
+    """`?` stands for exactly one character, and never for the `/` between two
+    segments."""
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+
+    assert versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts/a-v?.txt"])) == []
+    assert any("a-v1.txt" in line for line in versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts/a-?.txt"])))
+    assert any("a-v1.txt" in line for line in versions.unshipped(
+        root, _packaged(root, ["versions.json", "prompts?a-v1.txt"])))
+
+
+def test_a_pattern_under_the_wildcard_key_applies_to_this_package(tmp_path):
+    """A `*` key stands for every package, so a pattern listed under it covers
+    the same files as one listed under the package's own name."""
+    root = _fake(tmp_path, "pkg")
+    versions._parsed.cache_clear()
+    versions._index.cache_clear()
+    path = root.parent / "pyproject.toml"
+    path.write_text('[tool.setuptools.package-data]\n'
+                    '"*" = ["versions.json", "prompts/*.txt"]\n', encoding="utf-8")
+
+    assert versions.unshipped(root, path) == []

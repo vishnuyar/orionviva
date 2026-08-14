@@ -15,10 +15,19 @@ from merchantcore.induce import INDUCTION_VERSION
 from merchantcore.taxonomy import TAXONOMY_VERSION
 
 PACKAGE = pathlib.Path(merchantcore.__file__).resolve().parent
+PYPROJECT = PACKAGE.parent / "pyproject.toml"
 
 
 def test_the_manifest_and_the_files_agree():
     assert versions.audit(PACKAGE) == []
+
+
+def test_every_declared_file_is_packaged():
+    """Every file this manifest resolves — prompts and taxonomy alike — is
+    covered by a package-data pattern, so an installed merchantcore resolves
+    every family this checkout resolves."""
+    left_behind = versions.unshipped(PACKAGE, PYPROJECT)
+    assert left_behind == [], "\n".join(left_behind)
 
 
 def test_the_versions_stamped_on_records_come_from_the_manifest():
