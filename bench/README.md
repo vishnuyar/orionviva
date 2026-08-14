@@ -63,18 +63,46 @@ viva-bench run           # administers the exam; resumable; hard budget stop
 viva-bench verify-log    # recheck the raw log's hash chain
 ```
 
-`draft-key`, `score`, and `report` are later build steps (architecture §7).
+The rest of the chain is built too:
+
+```bash
+viva-bench draft-key --from-log   # draft an answer key from extractions already
+                                  # in the run log (omit --from-log to call two
+                                  # drafter models directly)
+viva-bench freeze-key             # fold your resolved audits in, freeze, hash
+viva-bench score                  # grade the runs against the frozen keys;
+                                  # writes findings.md + scorecards.json
+```
+
+`report` is registered as an alias of `score` and **currently crashes** — it was
+never given the `--mode` flag `score` reads, so every invocation raises
+`AttributeError` before a record is read. Use `score`. Tracked as a defect.
+
+Two more things worth knowing before you trust a number this produces:
+`freeze-key` is not idempotent — running it twice folds the same resolved rows
+in again, growing the key and changing its hash — and the answer key is joined
+on model-written labels rather than on (value, page, region), which collapses
+repeated line items. See the architecture and design docs before reading a
+recall figure as a measurement.
 
 ## Layout
 
-- `vivabench/verify/` — **product embryo**: locale-aware normalization,
-  arithmetic identities, claim matching. Deterministic, Decimal-only, tested
-  hardest. Ambiguity ("1.234" without a locale; "03/04/2025" without a
-  country) is a first-class result, never a guess.
-- `vivabench/models/` — **product embryo**: the pinned, provider-agnostic
-  model access layer. Plain HTTP, two adapters, zero SDK dependencies.
+- `vivabench/` — the harness: config, corpus and page rendering, the raw-capture
+  log, the runner, the key builder, the scorer, the reporter.
+- The two **product embryos** it depends on were extracted upward and now live in
+  [`core/vivacore`](../core/README.md), shared with the product:
+  `vivacore/verify/` (locale-aware normalization, arithmetic identities, claim
+  matching — deterministic, Decimal-only, tested hardest; ambiguity like "1.234"
+  without a locale or "03/04/2025" without a country is a first-class result,
+  never a guess) and `vivacore/models/` (the pinned, provider-agnostic model
+  access layer — plain HTTP, two adapters, zero SDK dependencies).
+- `synthetic/` — a generator for a coherent invented financial life, used for
+  end-to-end product runs. Nothing in it is real; see its own README.
 - everything else — honest utility code.
 
-Private data (documents, keys, raw runs) lives in `bench-data/` at the repo
-root, which is gitignored. The repo never carries a statement or an answer
-key — at most the *hash* of a frozen key.
+Private data (real documents, real keys, raw runs) lives in `bench-data/` at the
+repo root, which is gitignored. The repo never carries a real statement or a
+real answer key — of a real key, at most the *hash* of a frozen one. The one
+committed answer key, `synthetic/answer-key.json`, is the ground truth for the
+wholly invented corpus in `synthetic/` and is committed by design: its documents
+are generated locally, so the key is the only durable half.

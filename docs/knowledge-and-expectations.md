@@ -13,7 +13,7 @@ These "rules" are not instructions for reading documents (parsers — banned, mo
 
 The gears, true everywhere forever, knowing nothing about any document type:
 
-- Every account carries an expected document cadence; gaps are computable (`check_completeness`).
+- Every account carries an expected document cadence; gaps are computable (`viva.knowledge`'s `account_cadence` mechanism — not `check_completeness`, which never consults it).
 - Every recurring flow to/from an external destination implies a counterpart account exists.
 - Every inferred entity carries a grade and a source, like any fact.
 - Expectations have states: `unmet` → `satisfied` (document arrived and linked) / `dismissed` (user said no) / `expired` — all as events.
@@ -46,20 +46,22 @@ At ingestion, the understanding model may propose expectations beyond the regist
 
 ## The flow, concretely (the two motivating examples)
 
-**Pay stub → 401(k):** extraction finds deduction "401K FIDELITY $750" → tier 1: recurring external flow ⇒ counterpart account → tier 2: retirement deduction ⇒ retirement account + quarterly statements → ledger gains an **inferred account** (grade `unverified`, source: pay stub line, cited) + an unmet expectation → dashboard coverage map, quietly: "401(k) at Fidelity — inferred from your pay stub; no statements yet" (no ping; speak-only-when-spoken-to) → statement uploaded later links, inference graduates, expectation becomes cadence.
+**Pay stub → 401(k):** extraction finds deduction "401K FIDELITY $750" → tier 1: recurring external flow ⇒ counterpart account → tier 2: retirement deduction ⇒ retirement account + quarterly statements → ledger gains an **inferred account** (grade `unverified`, source: pay stub line, cited) + an unmet expectation → a question in the ranked queue, quietly: "401(k) at Fidelity — inferred from your pay stub; no statements yet" (no ping; speak-only-when-spoken-to) → statement uploaded later links, inference graduates, expectation becomes cadence.
 
-**Mortgage → escrow analysis:** mortgage statement shows escrow line → registry ⇒ expect annual escrow analysis + 1098 → coverage map carries both with due windows → tax season's "mortgage interest?" answer can honestly say "…and your 1098 hasn't been seen yet."
+**Mortgage → escrow analysis:** mortgage statement shows escrow line → registry ⇒ expect annual escrow analysis + 1098 → the queue carries both, ranked by the money each would attest → tax season's "mortgage interest?" answer can honestly say "…and your 1098 hasn't been seen yet."
 
 **The pattern: documents are evidence that other documents exist.** The knowledge layer turns every arrival into a checklist for the rest of the financial life — job 1 (organize & consolidate) becomes *pursued*, not passively received, without nagging.
 
 ## Where it sits in the product
 
-A component between the pipeline and the ledger — the **expectations engine**: consumes newly verified facts, consults registry + personal knowledge + tier-3 suggestions, emits expectation events. `check_completeness` (toolset) reads expectation state; the dashboard coverage map renders it; Viva mentions it only when spoken to. No new agent tool needed — the twelve-verb surface holds (the scaling law survives its first test: a whole new subsystem, zero new tools).
+A component between the pipeline and the ledger — the **expectations engine** (`viva/knowledge/`): consults registry + personal knowledge + tier-3 suggestions, and derives unmet expectations **read-side on every projection** from evidence already in the ledger. There is no expectation event type. They surface as **questions in the queue**, ranked with everything else by the money the document would attest; Viva mentions them only when spoken to. No new agent tool needed — the verb surface holds (the scaling law survives its first test: a whole new subsystem, zero new tools).
+
+_**Corrected 2026-08-14.** This paragraph said the engine emits expectation events, that `check_completeness` reads expectation state, and that a dashboard coverage map renders it. None of the three is true. `check_completeness` never touches `viva.knowledge` — it reports what is *held*: documents captured, posted and awaiting review, each account's as-of date and grade, tier counts, unidentified counterparties and open holds. There is no dashboard and no separate renderer anywhere in the product; the queue is the only surface. The status line at the top of this document has been right about this since it was written; the body was never revised to match._
 
 ## Boundaries (what this layer must never become)
 
 - Never a parser: no entry may describe how to read a document.
-- Never a nag: unmet expectations are dashboard state, period (the no-interruption rule).
+- Never a nag: unmet expectations are queue state, never a push (the no-interruption rule).
 - Never silent: an inferred account is always visibly labeled as inferred with its evidence; it never quietly becomes real without linkage or confirmation.
 - Never load-bearing for money math: expectations affect completeness honesty, not balances.
 

@@ -45,7 +45,7 @@ The asymmetry is the whole point: a wrong-but-flagged answer *passes the honesty
 
 The scorer already exists (benchmark `score.py`): per-case accuracy, provenance validity, and the confidently-wrong rate. The eval harness is mostly *wiring the existing scorer to run continuously against the product's answer path* rather than one-off against raw model output. Outputs a trend line per metric; the alarm is any upward move in confidently-wrong, or a regression past a set band on the others.
 
-**The one genuinely new thing** vs. the benchmark: the benchmark grades *extraction* (document → claims); the eval harness grades *the full answer path* (question → tools → composed answer → cited figure + grade). It tests the twelve-tool agent and the composer's refusal-of-uncited-figures (T1 enforced), not just the reader. So it needs a thin harness that poses a question to the assembled system and inspects the structured answer (figure, grade, source), which only exists once there's a v0 to point at.
+**The one genuinely new thing** vs. the benchmark: the benchmark grades *extraction* (document → claims); the eval harness grades *the full answer path* (question → tools → composed answer → cited figure + grade). It tests the tool-using agent (the verbs in [agent-toolset.md](agent-toolset.md)) and the composer's refusal-of-uncited-figures (T1 enforced), not just the reader. So it needs a thin harness that poses a question to the assembled system and inspects the structured answer (figure, grade, source), which only exists once there's a v0 to point at.
 
 ## Sequencing (honest about what's buildable when)
 

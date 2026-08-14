@@ -46,6 +46,7 @@ Viva's questions are not free compositions — each kind is machinery this produ
 | The document that would prove an assertion | corroboration asks |
 | The document that must exist somewhere | the expectations engine |
 | An entity's missing attributes (rate, term, nickname) | the schema pack + the derived interview — built 2026-08-01, [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
+| What kind of arrangement a counterparty is | the rhythm read + the generic scoped ruling at a new scope — built 2026-08-12, [the-question-queue.md](the-question-queue.md). _(Added 2026-08-14; the row was missing while the question had been asked in production for two days.)_ |
 
 ## Handling "I don't know"
 

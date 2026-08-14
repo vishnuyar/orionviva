@@ -56,8 +56,8 @@ Files sit beside the code that uses them, one per version, **filename is the id*
 core/vivacore/prompts/              extract-image-p2.txt
 product/viva/prompts/               classify-v1.txt  classify-v2.txt
                                     extract-base-v1.txt  extract-card-v1.txt … 
-                                    interpret-v1.txt  interpret-v2.txt
-merchant/merchantcore/prompts/      enrich-v3.txt  (+ v1, v2 recovered)
+                                    interpret-v1.txt  interpret-v2.txt  interpret-v3.txt …
+merchant/merchantcore/prompts/      enrich-v3.txt  (+ v2; v1 never existed)
 ```
 
 Plain `.txt`. No YAML, no front-matter, no templating engine — placeholders stay Python `str.format` fields, which is what every call site already uses. **A prompt file must be readable and editable by someone who does not know Python**, because eventually that person is the user tuning their own agent.

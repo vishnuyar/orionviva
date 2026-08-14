@@ -98,7 +98,7 @@ NetWorthPoint
   lines[]        account · amount · as_of · grade · origin · what proves it
 ```
 
-`net_worth(D)` returns one point. `net_worth_series()` returns the curve.
+`net_worth(proj)` returns the latest point there is evidence for; `net_worth(proj, D)` returns the point at any date. `series(proj)` returns the whole curve.
 
 ---
 

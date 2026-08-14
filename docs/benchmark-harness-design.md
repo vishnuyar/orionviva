@@ -49,6 +49,64 @@ own terms; only the run log tells them apart. Hence `pages_truncated` and
 recorded honestly during *scoring*; this is the separate consequence for key
 *building*, where the damage is a quietly incomplete answer key.
 
+**Tracked as a defect, not a fence: the answer key joins on labels, and must
+not.** Everything in §4 above assumes a claim can be identified well enough to
+merge two drafters' readings. The built key builder identifies a claim by
+`(type, normalized label)` — `Claim.key()` — and merges with `setdefault`, so
+the *first* claim in a label bucket wins and every later one is discarded with
+no count, no warning, and no audit row. The extraction prompt manufactures the
+collision by design: it instructs the model to label every line item
+`'transaction amount'` / `'transaction date'` / `'payee'` **and** to emit every
+one of them.
+
+The first bake-off measured the consequence and this document was never
+updated: 55 of 266 buckets agreed on the Fidelity 1099, ~21%, almost all of it
+a labelling artifact. Worse than the phantom conflicts is the silent collapse.
+Executed on the repo's own synthetic statement, two drafters reading
+*perfectly and identically* produced **35 claims and a 5-entry key**; scored
+against it, a candidate that omitted **ten of eleven transactions** graded
+`accuracy 1.0, recall 1.0`. That is exactly the silent-omission failure §3
+rejected a balances-only exam to catch, and `report.py` prints the false
+guarantee into every generated findings document.
+
+The identity rule this project has already adopted is
+[extraction-and-confidence.md](extraction-and-confidence.md)'s, from the same
+bake-off: **a claim's identity is its (value, page, region); the label is an
+annotation, never a join key.** Every ingredient exists and is thrown away —
+the runner writes page, region and a page-namespaced group onto every claim,
+and nothing reads them back. Until the key builder and the scorer join on that
+identity, no accuracy, recall or coverage figure this harness produces is a
+measurement of the candidate.
+
+**Amendment (2026-08-14): steps (2) and (3) of the break are not built.** The
+key builder is cross-model agreement plus human audit of the disagreements, and
+nothing else. `vivacore.verify.arithmetic` — balance, pay-stub, brokerage and
+line-item identities, exact Decimal — is written, tested and used by the
+product, and no bench module calls it: no draft is refereed against a balance
+that must reconcile, and `verified_by="arithmetic"` is never stamped, though
+the value is enumerated in the schema. The random 20% audit sample is not
+sampled — `draft-key` writes only the disagreements to the worksheet, so the
+entries the two drafters agree on are never spot-checked, which is the one
+check that would catch two models making the same mistake. Rulings are recorded
+without reasons: the worksheet has no reason field and `KeyEntry.notes` is never
+written. Until these land, a frozen key's authority is *two models agreed*, and
+the circularity break is three steps, not four.
+
+**Amendment (2026-08-14): the built key schema is narrower than §4's list.**
+`KeyEntry` stores raw text, locale, currency, type, label and the verified-by
+flag. It has **no region**, and its `page` field is declared but never
+populated — every construction site leaves it `None`, although the runner
+records the authoritative page on every claim. There is no normalized-value
+field, and that one is deliberate and better: normalization is derived at
+compare time by `vivacore.verify.normalize` and the key records `rules_version`,
+so storing it would duplicate a versioned derivation and could go stale against
+its own ruleset. The other two are not deliberate, and they are what blocks the
+(value, page, region) identity above, source-region validity as a metric, and
+an audit queue that can put the page in front of the auditor.
+
+**Also not built: `viva-bench probe`,** specified in the 2026-07-20 amendment
+below in the present tense. No `probe` subcommand exists.
+
 ## 5 · The grading rubric (metrics)
 
 Two levels are graded separately, because they answer different questions:
@@ -76,6 +134,28 @@ produced it, and no balance reconciliation or line-item sum is consulted. So
 designed metric and understate what the real pipeline would verify. Either the
 code closes the gap or this stays stated — it must not be read as the metric §5
 specifies.
+
+**Amendment (2026-08-14): source-region validity is not built either, and
+neither is the economics bullet.** The fence above covers the system bullet;
+this covers the other two in the same section, which were left silent while it
+was written. The scorer computes accuracy, recall, strict rate,
+self-consistency, calibration/ECE and mean-spurious, and no provenance check of
+any kind: model-reported regions are captured raw by the runner and never read,
+and the answer key carries no region to check them against (§4's schema
+amendment). So *"does the place it says the figure came from actually contain
+it"* — the gate on provenance click-through — is unmeasured, and the trust
+policy cannot draw a threshold from a number that does not exist. Separately,
+**no cost or latency figure is reported at all**: the runner captures both
+faithfully, `Scorecard` has no field for either, and the reporter emits neither
+— so the two-latency-figures note above protects a reader from misreading a
+column that does not yet appear.
+
+Note also that [document-preprocessing.md](document-preprocessing.md) F4/Q22 has
+since ruled the product's region anchor should be the text layer's measured
+character boxes rather than the model's self-reported box, which changes what
+this metric should test: for a document with a text layer the honest v1 check is
+that the claimed *page* contains the value, and the box comparison waits on
+character-box extraction reaching `bench/`.
 
 ## 6 · The candidates (v1 roster)
 

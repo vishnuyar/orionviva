@@ -163,10 +163,20 @@ That one list is used twice, and the two uses are what make it worth having.
 
 **It is rule 1 of the induction prompt** — enumerated, with the instruction that
 any template using another name is discarded. **It is also the validator**, which
-refuses unknown slots, unknown shapes, a slot repeated inside one template, and a
-template with no holes at all (a template that reproduces one line exactly is an
-example, not a grammar). Prompt and validator cannot drift apart, because the
-prompt is rendered *from* the vocabulary.
+refuses unknown slots, unknown shapes, and a slot **other than `{noise}`**
+repeated inside one template — `{noise}` is exempt because a line can carry
+filler in more than one place. A fourth rule lives at parse time rather than in
+the compiler: a template with no holes at all is refused **unless some line it
+matches occurs more than once in the corpus.** A fee or a payment
+acknowledgement has no variable part, and the bank prints the identical string
+every time, so recurrence is what separates a legitimate fixed phrase from an
+example copied out of the sample. Prompt and validator cannot drift apart,
+because the prompt is rendered *from* the vocabulary and states the same
+exception. _(Corrected 2026-08-14: this said the validator refuses a slotless
+template outright, and omitted the `{noise}` exemption. The parenthetical
+rationale it gave survives verbatim as the code's own error message — the defect
+was scope, not reasoning: the rule is conditional, and the condition is the
+whole point.)_
 
 Two properties then fall out of the structure rather than being checked
 afterwards:
@@ -214,13 +224,22 @@ person's name into its literal text — `ZELLE PAYMENT FROM ARJUN {reference}` �
 which would carry that name into a file whose entire premise is that it is
 impersonal.
 
-There is a deterministic check for this, and it needs no model and no list:
-**a template literal is by definition text the bank prints on many lines.** A
-literal word occurring in exactly one descriptor of the corpus is therefore not a
-literal — it is a filler baked in. That single test catches both failures at
-once: a copied example (rule 4) and a name in the wrong place (rule 7). It runs
-before anyone reads the templates, which matters, because reading is the other
-line of defence and reading is the one people skip.
+There is a deterministic check here, and it is weaker than this section
+originally claimed. _(Corrected 2026-08-14.)_ The tempting rule — *a literal word
+occurring in exactly one descriptor is not a literal* — was **rejected in the
+building**, and rejected for a good reason: a genuine bank literal such as the
+NACHA entry description `Payroll` may occur under one originator on one
+statement, so the word-level test false-positives on real grammars. It is also
+the same family of rule this document later records as *falsified and deleted*,
+now under an explicit prohibition that no rule may key on those counts.
+
+What `narrow_templates` does instead is count **how many distinct lines each
+template matches**, and report every template matching one or none. A name baked
+into literal text lands there, because a template carrying it can only ever match
+its own line. Two limits are worth stating plainly: it is an advisory printed
+*beside* the grammar rather than a gate that runs before it, and a name baked
+into a template that still matches several lines is invisible to it. Reading
+remains the line of defence, and it is the one people skip.
 
 The consequence for the report: an induced grammar is **not automatically safe
 to paste**. It is *intended* to be impersonal, the check exists to say when it

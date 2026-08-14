@@ -1,9 +1,11 @@
 """The question queue — everything Viva needs from the person, ranked.
 
-Five ask-and-learn loops — *whose account is this?*, *are these the same
-money?*, *what is this merchant?*, *is this spending or moving?*, *what kind of
-arrangement is this?* — gathered into one ranked list, alongside corroboration
-asks and the knowledge registry's unmet expectations.
+Seven ask-and-learn loops — *whose account is this?*, *does this statement
+reconcile?*, *are these the same money?*, *what is this merchant?*, *is this
+spending or moving?*, *what kind of arrangement is this?*, *what else is true
+of this thing you own?* — gathered into one ranked list, alongside corroboration
+asks and the knowledge registry's unmet expectations. Eight builders in all,
+raising nine kinds of question: a held document raises two.
 
 A **read-side projection**: no new event type, no ingest change. Answering routes
 to the writers that already exist, so a ruling is recorded exactly as before and

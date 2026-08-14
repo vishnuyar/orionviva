@@ -2,7 +2,7 @@
 
 **Status:** Design spec — **both directions are BUILT, and Stage C's option set is superseded (2026-08-07; see the note under Stage C).** Rulings in your own words (see [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)), and the read direction: a model commits the shape of a sentence before any tool runs, and deterministic code binds and renders it. O1 was built first, ran twice against the real vault, and was replaced; `answer.py` remains the scripted test modality and the oracle. Stage C's machinery — the registry, the adapters, the planner, `viva.speak` — exists; the real-vault proving run of what replaced O1 is still owed. · **Created:** 2026-07-25 · **Origin:** Vishnu, using the debug surface to categorize: *"I am feeling a lot of deficiency and I do not want to create deterministic answers."*
 
-**Invariants touched:** **T2 / ADR-010 (a model may parse what a person *means*; it must never supply a figure or do arithmetic)** · T3 (the person's own sentence and the model's parse are captured verbatim — raw capture applies to interpretation too) · T4 (a confirmed ruling is an append-only event; we reuse the writers we have) · T6 (nothing leaves silently) · X2 (a proposal states what it would change and how sure it is) · **X3 (nothing irreversible without an explicit yes — structurally, not by prompt)** · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts).
+**Invariants touched:** **T2 / ADR-010 (a model may parse what a person *means*; it must never supply a figure or do arithmetic)** · T3 (the person's own sentence and the model's parse are captured verbatim — raw capture applies to interpretation too; **as built this is unmet**, see the done criteria) · T4 (a confirmed ruling is an append-only event; we reuse the writers we have) · T6 (nothing leaves silently) · X2 (a proposal states what it would change and how sure it is) · **X3 (nothing irreversible without an explicit yes — structurally, not by prompt)** · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts).
 
 ---
 
@@ -118,7 +118,7 @@ The prize: the surface, the CLI and later the agent all consume *one* thing, so 
 
 Now the read direction, which needs two things Stage A does not:
 
-**The toolset made explicit.** Today the projection has ~40 query methods; the agent needs a *registry* of tools — name, arguments, what it returns, and the grade + provenance it carries — which is the doc-type registry pattern applied again: **data, not code**. [agent-toolset.md](agent-toolset.md) already argues the number is about twelve and grows with *verbs, not nouns*.
+**The toolset made explicit.** Today the projection has ~40 query methods; the agent needs a *registry* of tools — name, arguments, what it returns, and the grade + provenance it carries — which is the doc-type registry pattern applied again: **data, not code**. [agent-toolset.md](agent-toolset.md) already argues the number is small and fixed — thirteen as it stands — and grows with *verbs, not nouns*.
 
 **Options for the orchestration:**
 
@@ -159,7 +159,7 @@ Budgets, payoff plans, and eventually real actions. **No new safety machinery is
 # Done criteria for Stage A (rulings in your own words)
 
 - Answering a question in your own words produces the **same event** as pressing the button would, with the same grade and reversibility.
-- The sentence and the parse are captured verbatim in the claims layer (`phase="interpret"`), so a better model can re-derive later without asking again.
+- The sentence and the parse are captured verbatim in the claims layer (`phase="interpret"`), so a better model can re-derive later without asking again. **Unmet, and tracked as a defect rather than fenced (2026-08-14):** no `interpret` phase exists; see [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) for what is and is not kept.
 - Nothing is applied without confirmation, and the confirmation states what changes and how much money it moves.
 - The interpreter never supplies a figure — asserted by a test that feeds it a sentence containing an amount and proves the amount is ignored.
 - With no model configured, the queue still works with buttons: free text is an *addition*, never a dependency.

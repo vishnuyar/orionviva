@@ -1,13 +1,15 @@
-# Agent Toolset — the twelve verbs Viva may ever use
+# Agent Toolset — the thirteen verbs Viva may ever use
 
 **Status:** Design; **the read verbs are built and a model can now call them** — the registry implements `query_ledger`, `list_movements`, `check_completeness`, `get_provenance`, `get_transparency` and `compute` in `viva/tools/`, per [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md), and the conversation loop above them exists: provider adapters (native tool-calling for every OpenAI-compatible endpoint, a text protocol for any other model), a planner that composes from tool results behind the citation gate, and `viva.speak` as the entrypoint. The remaining verbs await their machinery. · **Last updated:** 2026-08-06 · **Origin question (a stress test):** a 45-year-old with a spouse, a son, a mortgaged house, 401(k), stock portfolio, 3 bank accounts, 5 credit cards, 5 insurance policies, 2 cars, 3 loans: how many tools until Viva can answer any expected question?
 **Invariants touched:** T1 (every answer figure is a cited tool result), T2 (compute/project are deterministic; no arithmetic in the model), T4 (all writes are events), T6 (no tool touches the network), X3 (irreversibility structurally impossible — no tool can do anything irreversible)
 
 ## The scaling law
 
-**Tools scale with verbs, not with nouns.** Accounts, cards, policies, and loans are rows in the ledger; document types are entries in the corpus; household members are tags in the taxonomy. A toolset that grew per account-type would be the per-institution-parser mistake reborn one layer up. The stress-test persona — a genuinely complex household — needs exactly **twelve tools**, and adding a rental property, another child, or a fourth loan adds zero more.
+**Tools scale with verbs, not with nouns.** Accounts, cards, policies, and loans are rows in the ledger; document types are entries in the corpus; household members are tags in the taxonomy. A toolset that grew per account-type would be the per-institution-parser mistake reborn one layer up. The stress-test persona — a genuinely complex household — needs exactly **thirteen tools** — twelve until the workhorse split of 2026-08-04, see the amendment below — and adding a rental property, another child, or a fourth loan adds zero more.
 
-## The twelve
+_**Corrected 2026-08-14.** Six sentences in this file said twelve while its own section headings summed to thirteen. The split registered `list_movements` as a verb in its own right and the *Reading the ledger* heading went from (4) to (5); the prose totals did not follow, and five other documents had copied the number. Note the two counts this file carries and keep them apart: **thirteen** is the design-intent verb set, seven of whose members exist in no code at all, and **six** is what the registry holds — that one is derived by running the code and has never drifted._
+
+## The thirteen
 
 ### Reading the ledger (5)
 
@@ -17,7 +19,7 @@
 | `list_obligations(horizon)` | Forward-looking: bills due, minimum payments, premiums, renewal dates. "What's due in the next two weeks?" |
 | `find_patterns(kind)` | Recurring charges, subscription creep, fee drift, anomalies — deterministic pattern detection over the ledger, not model musing. |
 | `list_movements(filter, window)` | The rows behind a total, behind a mandatory narrowing filter — the workhorse's other half, split out so a total never drags its transactions along. |
-| `check_completeness()` | Coverage map: which statements are missing, how current each account is. "Is my picture up to date?" — and the honesty input for every other answer ("...but May brokerage is missing"). |
+| `check_completeness()` | Coverage map: how current each account is, what is captured, posted or awaiting review, and which counterparties are unidentified. _(It does **not** report which statements are missing — that is the expectations engine's job, and it reaches a person only as a queue question. Corrected 2026-08-14.)_ "Is my picture up to date?" — and the honesty input for every other answer ("...but May brokerage is missing"). |
 
 ### Reading the documents (1)
 
@@ -52,7 +54,7 @@
 ## The forbidden list (what makes it safe to hand over your finances)
 
 - **No tool moves money or talks to any institution.** Phase 3 "actions" will be *drafts* presented for explicit yes — and even then executed by the human or a separately-gated mechanism, never by this toolset.
-- **No tool touches the network.** All twelve operate on local state (ledger, document store, memory, logs). The only network egress in the entire system is the model call itself and the 32-byte anchor — both outside the toolset.
+- **No tool touches the network.** All thirteen operate on local state (ledger, document store, memory, logs). The only network egress in the entire system is the model call itself and the 32-byte anchor — both outside the toolset. _(Noted 2026-08-14: the anchor is decided and **unbuilt** — no chain head has ever been anchored. See ADR-004's amendment. Today the model call is the only egress there is.)_
 - **Writes are events, only through the three memory verbs.** Append-only, attributed, reversible by compensating event. "Nothing irreversible without your explicit yes" is thereby *structural* — there is no tool with which Viva could be tricked (or prompt-injected, B2) into doing damage.
 - **Every figure in every answer is a tool result with a record ID.** An answer containing a number with no ID fails composition — refused before the user sees it (T1 enforced in code, not prompt).
 
@@ -69,7 +71,7 @@
 
 ## Consequences
 
-- The agent runtime is now specifiable: one planner (the conversation model), twelve typed tools, a composer that refuses uncited figures. Tool *schemas* become part of the v0 architecture doc.
+- The agent runtime is now specifiable: one planner (the conversation model), thirteen typed tools, a composer that refuses uncited figures. Tool *schemas* become part of the v0 architecture doc.
 - `query_ledger`'s query language (safe, structured — not raw SQL from a model) is a design task of its own; it is the data model's public face (A1/A7 now joined).
 - `project`'s formula library is verify/-grade code: deterministic, ferociously tested, assumptions-explicit.
 - `search_documents` needs the document store to index verified extractions *and* raw text — a requirement flowing back into the pipeline design.
@@ -203,8 +205,10 @@ halves are closed in the 2026-08-05 amendment below._
 > cannot be spoken as spending. ADR-010 is untouched: no model checks a model.
 >
 > **A refusal is a reviewed pack sentence chosen by machine tag** — no
-> composition, no call, no binding. The twelve verbs are unchanged; six are
-> registered; the descriptions file is `tools-v7`.
+> composition, no call, no binding. The thirteen verbs are unchanged; six are
+> registered; the descriptions file was `tools-v7` at this point (`tools-v8`
+> since the 2026-08-09/-10 cycles recorded in
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)).
 >
 > Recorded and not fixed: whether a slot can be filled at all is still not
 > computed from the registry before a call is made, which is where the refused

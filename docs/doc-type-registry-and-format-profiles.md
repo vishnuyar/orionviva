@@ -80,8 +80,16 @@ fields.
   retained, addressable versions (`prompt_library.resolve`, frozen-hash test);
   each read records its prompt version *per phase* (`ReadRecorded.phase`), so a
   read is reproducible and its profile version is known. ⏳ The *surgical* re-read
-  (re-read only docs on an outdated version) is not yet built — `reingest` is
-  still whole-vault; the per-doc version capture that unblocks it now exists.
+  — re-read only the documents whose recorded profile version is behind the one
+  in force — is not yet built. What is missing is the **selection**, not the
+  narrowing: `reingest --only <doc_type>` confines a run to one document family
+  and `--dry-run` prices it before a cent is spent, so a prompt change to one
+  family is already affordable to test. But nothing compares a document's stored
+  `prompt_version` against `in_force` — `reingest` reads that field only to
+  recover a missing doc type — so choosing which documents are stale is still
+  the operator's job. The per-doc version capture that unblocks it exists.
+  _(Corrected 2026-08-14: this said `reingest` is "still whole-vault", which
+  stopped being true when `--only` landed.)_
 
 ## Notes for future slices (read these when you build them)
 

@@ -45,8 +45,8 @@ MIXED = "mixed"
 # How a nature was decided, strongest first. Carried on the movement so a figure
 # can explain itself and the surface can say why something was excluded.
 BY_LINK = "linked"                   # rung 1: a live TransferLinked (decisive)
-BY_OWN_ACCOUNT = "own_account"       # rung 3: names an account you hold
 BY_RULING = "ruling"                 # rung 2: a ruling said so
+BY_OWN_ACCOUNT = "own_account"       # rung 3: names an account you hold
 BY_CATEGORY = "category_hint"        # rung 4: what the counterparty implies
 BY_DEFAULT = "default"               # rung 5: nothing said otherwise
 
@@ -70,8 +70,10 @@ class MovementInfo:
     provenance: Provenance
     linked: bool = False
     # Derived, with the rung that decided it. `provisional` means the nature
-    # rests only on a suggested implication, so the figure is counted and its
-    # uncertainty is reported alongside.
+    # rests only on a *suggested* implication: the suggestion is applied, so a
+    # movement it moves off `spending` is EXCLUDED from the spending aggregates
+    # and its amount is what `provisional_spending` reports — money removed on
+    # weak evidence, not money counted with a caveat.
     nature: str = SPENDING
     nature_reason: str = BY_DEFAULT
     provisional: bool = False
@@ -235,7 +237,7 @@ def decide_nature(core: ProjectionCore, m: MovementInfo) -> None:
                            account you hold, so a card payment whose
                            counterpart statement was never ingested is
                            still not spending.
-    4. category hint     — what the counterparty implies; counted, and
+    4. category hint     — what the counterparty implies; applied, and
                            marked provisional unless the implication is
                            `forced`.
     5. default           — spending.

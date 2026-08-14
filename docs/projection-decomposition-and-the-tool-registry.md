@@ -17,7 +17,7 @@ Your third observation is the key to both: **most of these methods are not tools
 
 ## 2. What already exists
 
-- **`docs/agent-toolset.md`** — the twelve verbs, decided at design level, with the forbidden list (no network, no writes outside the three memory verbs, every figure cited). It deferred the registry to Slice 9 — *"formalizing ~40 projection methods before then would be abstraction ahead of evidence."* The evidence has now arrived: the file is unwieldy and the verbs are stable. Its two named open questions (`query_ledger`'s shape; whether `find_patterns` / `list_obligations` are true tools) are D3 and D2 here.
+- **`docs/agent-toolset.md`** — the verbs Viva may ever use, decided at design level, with the forbidden list (no network, no writes outside the three memory verbs, every figure cited). It deferred the registry to Slice 9 — *"formalizing ~40 projection methods before then would be abstraction ahead of evidence."* The evidence has now arrived: the file is unwieldy and the verbs are stable. Its two named open questions (`query_ledger`'s shape; whether `find_patterns` / `list_obligations` are true tools) are D3 and D2 here.
 - **`answer.py`** — the deterministic answer path. Its `Answer` dataclass (text, amount, grade, provenance, coverage, caveats, machine-tagged refusal) is the embryo of the tool-result envelope. Nothing about it needs inventing; it needs generalizing (D5).
 - **The `Ledger` facade** keeps one live projection so reads never re-replay the encrypted log. Any decomposition must preserve that: one fold, shared caches, no per-call replays (the standing performance practice).
 - **What exists nowhere:** the invocation modality — how a model call becomes a tool call and back. That is D4, the genuinely new decision in this brief.
@@ -253,7 +253,7 @@ grade.
 rows; `list_movements` returns the individual rows and refuses a call that
 names none of account, category, merchant, tag or window. Six tools are
 registered, and the descriptions file was `tools-v2` at this point; it is
-`tools-v6` since the names-and-dates cycle below.
+`tools-v8` since the cycles below.
 
 **What a result costs became a design constraint rather than an afterthought.**
 A tool result is resent in full on every model call for the rest of the turn,
@@ -684,7 +684,13 @@ structured field rather than prose, because a sentence appended to an answer
 cannot be compared between two answers and cannot become the scope clause of a
 claim shown to a counterparty. It is not in the model-facing payload; the run
 places its sentences the way it places caveats, so the disclosure is a property
-of the machine rather than an instruction a planner can fail.
+of the machine rather than an instruction a planner can fail. `pack-v8` carries
+the nine sentences the boundary places — one for a figure over some of the
+accounts a person holds, one for each way a filter narrows a set, and one for
+what a figure measures and leaves out — and `tools-v8` teaches the reads that
+populate it. _(Version ids added 2026-08-14: this section named none, which left
+`pack-v7` as the highest pack this document mentioned while `pack-v9` was in
+force.)_
 
 The three reads that populate it hold the knowledge already: balances knows a
 per-account figure is one of many, the spending read knows what its filters

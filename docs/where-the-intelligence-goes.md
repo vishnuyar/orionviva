@@ -156,9 +156,9 @@ document → classify → extract → verify → post                    [unchan
   │  merchantcore ENRICH   — batched · impersonal · cached · versioned │
   │  in :  normalized merchant + one linted example                    │
   │  out:  category, subcategory                                       │
-  │      + nature_of_counterparty: business | instrument | peer        │
-  │      + implies: [ { relationship, major, on_inflow, on_outflow,    │
-  │                     account_shape, confidence, documents } ]       │
+  │      + counterparty_kind: business | instrument | peer             │
+  │      + implies: [ { relationship, major, on, account_group,        │
+  │                     compound, confidence, documents } ]            │
   └────────────────────────────────────────────────────────────────────┘
                                             ↓
                         MerchantEnriched  (event — exists already)
@@ -178,7 +178,7 @@ document → classify → extract → verify → post                    [unchan
 
 That is the answer to *"send it to a model call saying I have this, what could it be"* — **yes, but once per merchant category rather than once per person per transaction.** Same intelligence, ~1000× less of it, and it becomes an asset instead of a cost.
 
-`nature_of_counterparty` also **replaces `_CONDUIT_MARKERS`**: whether "check" names an instrument rather than a business is exactly the kind of universal a model should tell us and a keyword list should not.
+`counterparty_kind` also **replaces `_CONDUIT_MARKERS`**: whether "check" names an instrument rather than a business is exactly the kind of universal a model should tell us and a keyword list should not.
 
 ---
 
@@ -267,7 +267,7 @@ It decides whether the rest is worth doing, and it is also the **before** half o
 `MerchantRecord` already carries a free `attributes` dict, and `MerchantEnriched` already syncs it into the ledger — so **no new event type and no schema migration.** Two fields go in:
 
 - `counterparty_kind`: `business | instrument | peer`. This **replaces `_CONDUIT_MARKERS`** — whether "check" names an instrument rather than a business is a universal a model should tell us and a keyword list should not.
-- `implies`: a list of `{relationship, major, on_inflow, on_outflow, account_shape, confidence, documents}`. Empty for the vast majority — **a supermarket implies nothing**, and saying so must be the easy, default answer.
+- `implies`: a list of `{relationship, major, on, account_group, compound, confidence, documents}`, where `on` is one of `inflow | outflow | both` rather than a pair of flags, and `compound` marks a payment that is normally several things at once. Empty for the vast majority — **a supermarket implies nothing**, and saying so must be the easy, default answer. _(Field names corrected 2026-08-14: this section and the diagram above said `on_inflow`/`on_outflow`, `account_shape` and `nature_of_counterparty`; the code, the active `enrich-v6` prompt and all four consumers have always said `on`, `account_group` and `counterparty_kind`, and this document's own build report at the end already used the right names. The stale names were the dangerous kind: `clean_implications` silently defaults `on` to `"both"` and drops an unknown `account_group` to `""`, so a new prompt written from the old diagram would degrade data without failing.)_
 
 New prompt `enrich-v3` in the versioned library (append-only; `enrich-v2` retained). The **new ruin case for the eval** is *inventing structure where none exists*: a model that decides a coffee shop implies a loan would create phantom accounts across an entire vault. That failure gets the same treatment as an invented split — disqualifying, never averaged.
 

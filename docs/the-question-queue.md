@@ -1,6 +1,6 @@
 # The Question Queue
 
-**Status:** BUILT (`product/viva/questions.py`, `python -m viva.ask`) · **Last updated:** 2026-08-08 (two claims amended from a real sitting: answering is not idempotent for movement-scoped nature questions, and the closed category vocabulary is closed in one direction only — the second now half-repaired, near-duplicates excepted) · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
+**Status:** BUILT (`product/viva/questions.py`, `python -m viva.ask`) · **Last updated:** 2026-08-14 (two claims were amended from a real sitting on 2026-08-08: answering was not idempotent for movement-scoped nature questions — **repaired since, and verified**, see *Scope — the build* — and the closed category vocabulary is closed in one direction only, half-repaired, near-duplicates excepted) · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
 
 **Invariants touched:** T1 (a question carries the evidence it rests on) · T2 (questions are raised deterministically — a model never decides *whether* to ask) · **T4 (an answer is an append-only ruling event; we reuse the writers we already have)** · X2 (an unanswered question leaves the figure visibly incomplete, never silently resolved) · principle 5 (**serve, don't overwhelm** — the failure mode is asking about everything) · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts). Extends [verification-findings-and-correction.md](verification-findings-and-correction.md)'s Rung 2 ("the human, asked well") from one document to the whole vault.
 
@@ -76,6 +76,7 @@ Slice 9 (Viva) will re-voice these through the persona; the *content* — figure
 - A `python -m viva.questions` CLI — the ranked list against a real vault, the way `debug.vault` works today.
 - The surface: one **"what Viva needs from you"** panel, ranked, replacing the four disconnected review cards (the existing endpoints answer them unchanged).
 - Answering is idempotent by construction: a ruling changes state, so the question disappears from the next projection. _**Falsified in part 2026-08-08**, by an audit of a real sitting: it holds for questions scoped to a merchant, and it does **not** hold for a nature question scoped to a single movement whose counterparty is instrument- or peer-shaped. Those are built from the movement's tier alone, the tier never consults rulings, and the question therefore returns however many times it is answered — the ruling attaches, the state changes, and the queue does not notice. The queue cannot be driven to empty. See [issue #12](https://github.com/vishnuyar/orionviva/issues/12), which files the counter this surfaces through; the counter is correct and this is the thing underneath it._
+  _**Repaired since, and verified 2026-08-14.** The nature builder no longer asks about a movement whose nature something stronger already decided: before the tier is consulted at all, it drops anything whose `nature_reason` is not a category hint or the plain default, so a movement-scoped ruling suppresses its own question at every tier. The tier still never consults rulings — the fix went one layer up, which is why a reader checking `tiers.py` alone will conclude the falsification stands. Verified by driving both halves of the original sitting to genuinely empty: two peer-shaped movements, two instrument-shaped ones, answered through the same door a person uses, queue total zero and the old question ids unresolvable. **One limit survives and is the thing to watch:** the filter reads the *derivation*, not "this was answered". A ruling recorded at a scope the nature derivation does not consult — a category-scoped rule, the one promised below — would suppress nothing and would reintroduce exactly this failure._
 
 ## Done criteria / tests
 
@@ -96,6 +97,8 @@ Three decisions the build forced, all resolved toward the reversible option:
 - **Merchant-scope nature rides the existing attributes bag.** `merchant_enriched(attributes={"nature": …})` — no new event type and no new field, so the write side stayed untouched. The nature derivation's rung 3 now reads a ruling from the movement overlay *or* the merchant catalog, which is what makes one answer settle a counterparty past and future. Peer descriptors are excluded from merchant-scope rulings (`is_shareable`) and stay per-movement, per the local-categorization decision.
 
 Built: `Question` + `open_questions()` in `product/viva/questions.py` (held documents → transfer suggestions → unknown merchants → weak-nature merchants, ranked by amount with a stable id per subject); `rule_merchant_nature` writer; `python -m viva.ask` (read-only CLI); `/api/questions` + `/api/rule-nature`. Tests: `test_questions.py` (9) covering ranking, tail summary, both scopes, one-ruling-settles-and-stops-asking, id stability, and that the event vocabulary is unchanged. Full suite 303 green.
+
+> _**Fenced 2026-08-14.** Two clauses above are this slice's, at its date, and are no longer true. **The two endpoints went with the 2026-08-06 web deletion** — there is no HTTP surface anywhere in the product now, and the queue is reached from `viva.ask`. And `viva.ask` is **not** a read-only CLI: `--list` prints the queue and writes nothing, which is what it has always done, but without it each question is asked in turn and the answer is recorded through `viva/engine.py`'s one door. The figures have moved too: `test_questions.py` is 14 tests and the product suite is 1049 green._
 
 ## Known limitation: questions it should not ask (added 2026-07-25)
 
@@ -130,7 +133,7 @@ Three things it settles about the queue itself:
   a merchant seen fourteen times raise the same kind of question with visibly
   different sentences.
 - **Answering it is idempotent** — the property a nature question scoped to a
-  single movement failed at, recorded above. A rhythm ruling covers the pair the
+  single movement failed at until it was repaired, recorded above. A rhythm ruling covers the pair the
   question was asked about, so the ruling suppresses the question in the open
   list and the set-aside list alike, and more of the same money does not reopen
   it. `one_time` and `irregular` are answers, not declines: a person who says

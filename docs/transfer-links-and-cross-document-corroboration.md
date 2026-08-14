@@ -23,10 +23,10 @@
 Each leg must stay attached to its own statement, because **per-statement reconciliation still has to hold** — we cannot merge two statements' transactions into one balanced posting-set without breaking the gate that makes any of it trustworthy. So a transfer is an **overlay**:
 
 - A **`TransferLinked`** event references the two movement keys, and carries the link's own **grade** and **evidence** (which signals fired). It is a graded *fact about a relationship*, exactly as the data model says (a transfer link is a graded fact with its own confidence and evidence).
-- The two Uncategorized counter-legs are **recategorized** (a `CorrectionApplied`-style event) from `Expenses:Uncategorized` / `Income:Uncategorized` into a shared **`Transfers`** category. Aggregates exclude `Transfers`.
+- The legs are **not** recategorized, and there is no `Transfers` category. _(Corrected 2026-08-14: this bullet described a `CorrectionApplied`-style event into a shared `Transfers` category, which was never built and which the 2026-07-25 amendment below had already superseded without retracting it.)_ Exclusion is derived on the read side: a live link makes `decide_nature` mark both movements `transfer` with reason `linked`, and every aggregate is on `counts_as_spending`, which tests shape **and** nature. A category label was tried and could not carry the rule — see [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
 - **Reversible:** unlink is another event. Nothing is overwritten (T4); the full history stays replayable.
 
-The projection gains a small candidate **index** (movements bucketed by amount and date) so matching is cheap, not O(n²) — the "watch performance" practice applied from the start.
+The candidate **index** (movements bucketed by amount and date) was never built. _(Corrected 2026-08-14.)_ `_candidates` is a plain nested scan over unlinked sources × unlinked destinations, and the "watch performance" practice was not applied here. Measured rather than assumed: at the reference vault's ~1,000 movements the scan costs roughly 20 ms, and it stays under a second to about 8,000 movements — seven-plus years of statements at this vault's rate. Two things dominate it long before then: `proj.movements()` runs `decide_nature` per movement on the line above, and `link_transfers` is called per posted document inside a pipeline whose per-document cost includes a model call measured in seconds. So the index is headroom nobody needed to buy; build it if a vault reaches five figures of movements. This note is the record that the cost is known rather than unexamined.
 
 ## Detection — bipartite matching, calibrated against false positives
 
@@ -93,9 +93,11 @@ Core built and tested (`ingest/transfers.py`, projection transfer overlay,
   magnitudes **uniquely sum** to the gap (subset-sum, gated by uniqueness). A gap
   with no decisive counterpart is **not** closed — it holds for a human (tested).
 - ✅ **Detection over an existing vault** — `sweep()` (stitch gaps → corroborate
-  conflict-holds → link transfers) runs on web startup and via
-  `python -m viva.rescan`, so statements ingested *before* transfer detection
-  existed get linked without a re-upload. Idempotent.
+  conflict-holds → link transfers) runs via `python -m viva.rescan` and from
+  `rebuild`, so statements ingested *before* transfer detection existed get
+  linked without a re-upload. Idempotent. _(Corrected 2026-08-14: this said "runs
+  on web startup"; the web surface was deleted 2026-08-06 and `sweep()` has no
+  startup caller now.)_
 - ✅ **Matcher tuned for real data** — date window 5 days; the strong hint
   recognizes a token that belongs to one of the two accounts and to **no other
   account the person holds**. The holder's name is deliberately not a token
@@ -109,8 +111,11 @@ Core built and tested (`ingest/transfers.py`, projection transfer overlay,
   `transfer_review` drops candidates/suggestions whose money is already linked,
   so confirming one suggestion removes that movement from all the others. Each
   suggestion is an independent per-source decision.
-- ✅ **Surfaces** — `debug.vault` and the web overview/review show transfers,
-  suggestions, and transfers-excluded spending; confirm/reject endpoints wired.
+- ✅ **Surfaces** — `debug.vault` shows transfers, suggestions, and
+  transfers-excluded spending; confirm and reject are `engine.confirm_transfer`
+  and `engine.reject_transfer`. _(Corrected 2026-08-14: the web overview/review
+  and the "endpoints wired" clause went with the 2026-08-06 deletion — there is
+  no HTTP surface in the product at all now.)_
   `sweep()` reports net links/suggestions by diffing the projection (the nested
   corroboration scan is counted honestly).
 
@@ -246,8 +251,8 @@ the vault because that month's statement was never ingested.
 
 **Implementation:**
 - A **movement key** (`doc_id` + within-document fingerprint) as the stable referent for links, surviving reingest.
-- A candidate **matcher** over an amount/date index: exact amount + date proximity + opposite direction + description hints + both-own-accounts → a graded match.
-- A **`TransferLinked`** overlay event (two movement keys + grade + evidence) and recategorization of both counter-legs into **`Transfers`**; aggregates exclude `Transfers`.
+- A candidate **matcher**: a direct scan for exact amount + same currency + date proximity + opposite direction, then description hints + both-own-accounts → a graded match. _(No amount/date index; see the measured note above.)_
+- A **`TransferLinked`** overlay event (two movement keys + grade + evidence) as the only write. Exclusion is read-side: the link sets the movement's derived **nature** to `transfer`, and every aggregate excludes non-`spending` natures. _(No recategorization event, no `Transfers` category — corrected 2026-08-14.)_
 - A **decisiveness gate**: decisive → auto-link (`corroborated`); ambiguous → a **Finding** (`suggested`) → confirm as `verified`; the ruling is **learned** so matching future transfers auto-link.
 - A **cross-document corroboration rung** in diagnosis: when a statement's gap equals a decisive unmatched counterparty movement, **supply the missing leg** (provenance → the counterparty document; grade `corroborated`; record the primary read as incomplete), closing the gap without a model call. Gated by decisiveness; heals both ingest orders.
 - **Own-account membership** learning: ingested accounts auto-member; a named-but-unseen destination asks once and learns. v1 auto-links only when both legs are ingested own accounts.
