@@ -208,7 +208,10 @@ halves are closed in the 2026-08-05 amendment below._
 > composition, no call, no binding. The thirteen verbs are unchanged; six are
 > registered; the descriptions file was `tools-v7` at this point (`tools-v8`
 > since the 2026-08-09/-10 cycles recorded in
-> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)).
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md),
+> and **`tools-v9` since 2026-08-15**, which teaches that an account someone
+> owes on is measured as `owed` rather than as `balance` — see
+> [net-worth.md](net-worth.md)).
 >
 > Recorded and not fixed: whether a slot can be filled at all is still not
 > computed from the registry before a call is made, which is where the refused

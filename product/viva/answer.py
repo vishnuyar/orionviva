@@ -109,12 +109,18 @@ def answer_balance(source, account: str, as_of: str | None = None) -> Answer:
         caveats.append("Computed from transactions; no closing statement has "
                        "confirmed this figure yet.")
 
-    # A liability's balance is money owed, not held, and is reported as a
-    # positive magnitude.
+    # A liability's balance is money owed, held as the bill prints it: positive
+    # where the person owes, and negative where the account owes them because
+    # it was paid past its balance. The sign chooses which sentence is written;
+    # the amount is written as it stands.
     as_of = f" as of {ba.dated}" if ba.dated else ""
     if info.kind == LIABILITY:
-        text = (f"You owe {_money(abs(ba.amount), ba.currency)} on {name}"
-                f"{as_of} ({ba.grade}).")
+        if ba.amount < 0:
+            text = (f"{name} owes you {_money(-ba.amount, ba.currency)}"
+                    f"{as_of} ({ba.grade}).")
+        else:
+            text = (f"You owe {_money(ba.amount, ba.currency)} on {name}"
+                    f"{as_of} ({ba.grade}).")
     else:
         text = (f"Your {name} balance is {_money(ba.amount, ba.currency)}"
                 f"{as_of} ({ba.grade}).")

@@ -33,9 +33,17 @@ SPENDING = "spending"
 # attributed to a source of income.
 INCOME = "income"
 
-# What is held or owed at a moment: an account's balance, a holding's measured
-# value, one line of a net-worth point. A stock, never a flow.
+# What is held at a moment: an account's balance, a holding's measured value,
+# one line of a net-worth point on the side of what is owned. Never what is
+# owed, which is `owed`. A stock, never a flow.
 BALANCE = "balance"
+
+# What is owed at a moment on an account someone is owed on: a card, a loan.
+# Carried as the bill prints it — positive when you owe, negative when they owe
+# you — so an overpaid card is a negative amount of debt and says so. A
+# liability's magnitude is always this and never `balance`. A stock, never a
+# flow.
+OWED = "owed"
 
 # What is held less what is owed, at a moment, across everything in scope.
 NET_WORTH = "net_worth"
@@ -84,13 +92,13 @@ def ratio_of(kind: str) -> str:
 
 # What may be compared with something of its own kind. `TIME` is not among
 # them: it measures no magnitude, so nothing is a proportion of it.
-COMPARABLE = (SPENDING, INCOME, BALANCE, NET_WORTH, GROSS_FLOW, NET_MOVEMENT,
-              MOVEMENT, COUNT)
+COMPARABLE = (SPENDING, INCOME, BALANCE, OWED, NET_WORTH, GROSS_FLOW,
+              NET_MOVEMENT, MOVEMENT, COUNT)
 
 RATIOS = tuple(ratio_of(kind) for kind in COMPARABLE)
 
-KINDS = (SPENDING, INCOME, BALANCE, NET_WORTH, GROSS_FLOW, NET_MOVEMENT,
-         MOVEMENT, COUNT, RATIO, TIME) + RATIOS
+KINDS = (SPENDING, INCOME, BALANCE, OWED, NET_WORTH, GROSS_FLOW,
+         NET_MOVEMENT, MOVEMENT, COUNT, RATIO, TIME) + RATIOS
 
 
 def is_ratio(name: str) -> bool:
@@ -104,7 +112,7 @@ def is_ratio(name: str) -> bool:
 # is what is left — and that one arrangement is the whole of the rule. A flow
 # added to a stock, a stock taken out of a flow, two different flows and two
 # different stocks all come to a quantity with no name here, and are refused.
-STOCKS = (BALANCE, NET_WORTH)
+STOCKS = (BALANCE, OWED, NET_WORTH)
 FLOWS = (SPENDING, INCOME, GROSS_FLOW, NET_MOVEMENT, MOVEMENT)
 
 # What a figure says when nothing has established what it measures — the result

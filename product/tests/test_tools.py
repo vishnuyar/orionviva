@@ -257,7 +257,8 @@ def test_balances_match_the_projection_and_carry_grades(proj, registry):
     assert chk["grade"] == CORROBORATED
     # The card has no closing statement, so the composite is only as strong
     # as its weakest part.
-    assert figures["Signature Card — balance"]["grade"] == UNVERIFIED
+    # A card measures what is owed, and it is written and declared as that.
+    assert figures["Signature Card — owed"]["grade"] == UNVERIFIED
     assert result.grade == UNVERIFIED
     assert "doc-jan" in result.record_ids
     rows = {r["record_id"]: r for r in result.data["balances"]}
@@ -673,6 +674,57 @@ def test_no_tool_can_emit_a_figure_that_does_not_say_what_it_measures():
         assert fig["quantity"] in quantity.MEASURES, (
             f"{what!r} declares {fig['quantity']!r}, which says nothing about "
             "what the number is of")
+
+
+def test_no_read_states_what_is_owed_as_what_is_held():
+    """The rule over every read there is, rather than over the emitters that
+    were written with it in mind.
+
+    A liability's magnitude is always what is owed and never what is held.
+    Checked here as a property of the figures: over a vault holding accounts of
+    both sides, any figure standing at a moment — a balance, a debt, a line of
+    a net-worth point — whose records name only accounts someone is owed on
+    declares `owed`. A figure naming both sides is a total over them and is not
+    what this rule is about, and a movement is a flow rather than something
+    standing at a moment."""
+    registry, proj = _probe_vault()
+    infos = proj.account_infos()
+    owed_on = {i.account for i in infos if i.kind == "liability"}
+    accounts = {i.account for i in infos}
+    assert owed_on and accounts - owed_on, (
+        "a vault with only one side cannot tell the two apart")
+
+    movement = next(m.key for m in proj.movements())
+    from_the_vault = {
+        "list_movements": [{"filters": {"account": a}} for a in sorted(accounts)],
+        "get_provenance": [{"record_id": r} for r in
+                           sorted(accounts | {"doc-one", movement})],
+    }
+    calls = []
+    for schema in registry.schemas():
+        name = schema["name"]
+        for args in from_the_vault.get(name,
+                                       _enumerated_args(schema["parameters"])):
+            calls.append((name, args))
+
+    seen = 0
+    for name, args in calls:
+        result = registry.call(name, args)
+        if not result.ok:
+            continue
+        for fig in result.figures:
+            named = {r for r in fig["record_ids"] if r in accounts}
+            if not named or not named <= owed_on:
+                continue
+            if fig["quantity"] not in quantity.STOCKS:
+                continue
+            seen += 1
+            assert fig["quantity"] == quantity.OWED, (
+                f"{name} states {fig['what']!r} as {fig['quantity']!r}, and it "
+                "is a magnitude of what is owed")
+    assert seen >= 3, (
+        "no read here emitted what is owed on an account, so this proves "
+        "nothing")
 
 
 def test_every_quantity_the_vocabulary_holds_can_be_asked_for():
@@ -1454,6 +1506,78 @@ def test_only_a_flow_taken_out_of_a_stock_is_still_that_stock(registry):
             f"{refused.figures[0]['value']} of "
             f"{refused.figures[0]['quantity']}")
         assert refused.refusal == "mixed_quantities", expression
+
+
+def _held_and_owed():
+    """A vault holding one account of each side: money held, and money owed on
+    a card, both attested by a statement."""
+    evs = [
+        account_opened("chk", "depository", "Everyday Checking", "USD",
+                       "2026-01-01"),
+        account_opened("card", "liability", "Signature Card", "USD",
+                       "2026-01-01"),
+        document_captured("doc-one", "one.pdf", 10, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("chk", "5000.00", "2026-01-01", _p("doc-one")),
+        closing_balance_observed("chk", "5000.00", "2026-01-31",
+                                 _p("doc-one", 6)),
+        opening_balance_observed("card", "0.00", "2026-01-01", _p("doc-one")),
+        simple_transaction("card", "1000.00", "COUNTERPARTY ONE", "2026-01-08",
+                           provenance=_p("doc-one")),
+        closing_balance_observed("card", "1000.00", "2026-01-31",
+                                 _p("doc-one", 7)),
+    ]
+    return default_registry(LedgerProjection(evs))
+
+
+def test_what_is_owed_does_not_add_to_what_is_held():
+    """The arithmetic this vocabulary exists for. Both figures are real, both
+    are corroborated, and a sum of them is a number about nothing: what is held
+    on one account and what is owed on another are opposite claims, and adding
+    them reads as a total the person has while overstating it by every debt in
+    it. It refuses, and the refusal names both kinds so the model can see what
+    it put together."""
+    reg = _held_and_owed()
+    book = _one_figure(reg, "query_ledger", {"entity": "balances"})
+    held = next(f["id"] for f in book.values() if "Everyday Checking" in f["what"])
+    owed = next(f["id"] for f in book.values() if "Signature Card" in f["what"])
+    assert book[owed]["quantity"] == quantity.OWED
+    for expression in ("held + owed", "owed + held", "held - owed"):
+        refused = reg.call("compute", {"expression": expression,
+                                       "inputs": {"held": held, "owed": owed}},
+                           figures=book)
+        assert not refused.ok, (
+            f"{expression} came back as {refused.figures[0]['value']} of "
+            f"{refused.figures[0]['quantity']}")
+        assert refused.refusal == "mixed_quantities", expression
+        assert quantity.BALANCE in refused.text and quantity.OWED in refused.text
+    both = reg.call("compute", {"expression": "a + b",
+                                "inputs": {"a": owed, "b": owed}},
+                    figures=book)
+    assert both.ok and both.figures[0]["quantity"] == quantity.OWED, (
+        "two debts add to a debt")
+
+
+def test_a_net_worth_cannot_be_assembled_out_of_its_two_sides():
+    """The instruction never to build a net worth by hand becomes a property of
+    the machine. The two sides of a point measure different things, so
+    subtracting one from the other refuses and the model is left with the read
+    that is complete on its own and says what it left out."""
+    reg = _held_and_owed()
+    book = _one_figure(reg, "query_ledger", {"entity": "aggregate",
+                                             "metric": "net_worth"})
+    of = {f["what"]: f["id"] for f in book.values()}
+    assets = next(i for w, i in of.items() if w.startswith("assets in"))
+    liabilities = next(i for w, i in of.items() if w.startswith("liabilities in"))
+    assert book[assets]["quantity"] == quantity.BALANCE
+    assert book[liabilities]["quantity"] == quantity.OWED
+    refused = reg.call("compute", {"expression": "a - l",
+                                   "inputs": {"a": assets, "l": liabilities}},
+                       figures=book)
+    assert not refused.ok and refused.refusal == "mixed_quantities"
+    stated = next(f for f in book.values() if f["what"].startswith("net in"))
+    assert stated["quantity"] == quantity.NET_WORTH
+    assert Decimal(stated["value"]) == Decimal("4000.00")
 
 
 def test_splitting_a_quantity_leaves_it_the_quantity_it_was(registry):
@@ -2468,8 +2592,11 @@ def test_a_supposition_does_not_wear_off_after_one_hop(registry):
     book = _one_figure(registry, "query_ledger", {"entity": "balances"})
     balance = next(f["id"] for f in book.values()
                    if "Everyday Checking" in f["what"])
+    # A second figure of the same kind as the first: what is held on one
+    # account adds to what is held on another, and this test is about what the
+    # supposition does to the result rather than about which kinds combine.
     other = next(f["id"] for f in book.values()
-                 if "Signature Card" in f["what"])
+                 if "Brokerage" in f["what"])
     first = registry.call("compute",
                           {"expression": "have - trip",
                            "inputs": {"have": balance,

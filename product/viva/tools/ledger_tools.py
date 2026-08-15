@@ -42,7 +42,8 @@ from .envelope import (ACTIVITY, BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT,
                        refusal, weakest)
 from .registry import Registry, ToolSpec
 
-REAL_KINDS = ("depository", "liability", "investment")
+LIABILITY = "liability"
+REAL_KINDS = ("depository", LIABILITY, "investment")
 
 # How many journal entries one read returns: the most recent, and fewer than a
 # movement read returns rows.
@@ -99,6 +100,12 @@ TOOL = "query_ledger"
 
 def _real_accounts(proj) -> list:
     return [i for i in proj.account_infos() if i.kind in REAL_KINDS]
+
+
+def _measure_of(kind: str) -> str:
+    """What an account's magnitude measures: a liability's is what is owed, and
+    anything else's is what is held. There is no third case."""
+    return quantity.OWED if kind == LIABILITY else quantity.BALANCE
 
 
 def _currencies(proj) -> set:
@@ -400,8 +407,12 @@ def _query_balances(proj, filters: dict) -> ToolResult:
     # One account's balance is one account's balance, whatever it is asked for:
     # it covers one of the accounts held, and it says so where the whole of
     # them is more than one. The count covers as many as this read ranged over.
-    figures = [figure(r["value"], f"{r['name'] or r['record_id']} — balance",
-                      quantity=quantity.BALANCE,
+    # An account someone is owed on measures what is owed rather than what is
+    # held, and both the word it is written under and the kind it declares say
+    # so.
+    figures = [figure(r["value"],
+                      f"{r['name'] or r['record_id']} — {_measure_of(r['kind'])}",
+                      quantity=_measure_of(r["kind"]),
                       grade=r["grade"], dated=r["dated"], currency=r["currency"],
                       record_ids=[r["record_id"]]
                       + ([r["provenance"]["doc_id"]]
@@ -937,13 +948,19 @@ def _grades_in(value) -> list:
 
 PARTS = ("net", "assets", "liabilities")
 
+# What each part of a net-worth point measures. The two sides are not the same
+# kind of thing as each other: one totals what is held and the other what is
+# owed, so neither can be spoken as the other and neither adds to the other.
+_PART_MEASURES = {"net": quantity.NET_WORTH, "assets": quantity.BALANCE,
+                  "liabilities": quantity.OWED}
+
 
 def _side_of(account: str, kind: str = "") -> str:
     """Which part of a net-worth point an account belongs to, or "" when
     nothing says. A ledger kind decides where one is defined; otherwise the
     root of the path does."""
     if kind:
-        return "liabilities" if kind == "liability" else "assets"
+        return "liabilities" if kind == LIABILITY else "assets"
     if account.startswith(networth.LIABILITY_ROOT):
         return "liabilities"
     if account.startswith(networth.ASSET_ROOT):
@@ -1004,6 +1021,21 @@ def _not_counted(point: dict) -> tuple[dict, bool]:
     return out, placed
 
 
+def _emitted_line(line: dict) -> str:
+    """One net-worth line as a figure states it: a liability in the owed
+    convention, anything else as the point holds it."""
+    amount = Decimal(str(line.get("amount", "0")))
+    return str(-amount if line.get("kind", "") == LIABILITY else amount)
+
+
+def _line_word(line: dict) -> str:
+    """How one net-worth line is written for the model to read: what is owed
+    says so, and what is held says which point it is a part of."""
+    if line.get("kind", "") == LIABILITY:
+        return f"{line['account']} — {quantity.OWED}"
+    return f"{line['account']} — its part of net worth"
+
+
 def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult:
     # With no day asked for, the day it is asked on. A balance carries forward,
     # so the total is good now; `net_worth` on its own would date the point by
@@ -1037,8 +1069,7 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
             # asked for one from being filled with the other.
             missing = left_out[part]
             figures.append(figure(row[part], f"{part} in {currency}",
-                                  quantity=(quantity.NET_WORTH if part == "net"
-                                            else quantity.BALANCE),
+                                  quantity=_PART_MEASURES[part],
                                   grade=weakest(_grades_in(data)),
                                   dated=as_of, currency=currency,
                                   record_ids=record_ids,
@@ -1047,8 +1078,13 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
                                              and placed),
                                       unmeasured=missing,
                                       unposted=unposted)))
-    figures += [figure(line["amount"], f"{line['account']} — its part of net worth",
-                       quantity=quantity.BALANCE,
+    # A line of the point is emitted under what it measures, not under the sign
+    # the point holds it in: an account someone is owed on comes out as the
+    # debt the bill prints, the same figure the balances read gives for it, and
+    # what is held comes out as its contribution. The line inside the point
+    # keeps its signed contribution, which is what every subtotal is built from.
+    figures += [figure(_emitted_line(line), _line_word(line),
+                       quantity=_measure_of(line.get("kind", "")),
                        grade=line.get("grade", ""), dated=line.get("as_of", ""),
                        currency=line.get("currency", ""),
                        record_ids=[line["account"]])
@@ -1229,10 +1265,11 @@ def get_provenance(proj, args: dict) -> ToolResult:
     if proj.seen_account(rid):
         ba = proj.balance(rid)
         ids = [rid] + ([ba.provenance.doc_id] if ba.provenance.doc_id else [])
+        measures = _measure_of(proj.account_info(rid).kind)
         return ToolResult(
             tool="get_provenance", ok=True, grade=ba.grade, dated=ba.dated,
-            figures=[figure(proj.account_value(rid), f"{rid} — balance",
-                            quantity=quantity.BALANCE,
+            figures=[figure(proj.account_value(rid), f"{rid} — {measures}",
+                            quantity=measures,
                             grade=ba.grade, dated=ba.dated,
                             currency=ba.currency, record_ids=ids)],
             identifiers=_identifiers(proj, [rid]),

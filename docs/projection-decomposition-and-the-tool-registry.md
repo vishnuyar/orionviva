@@ -253,7 +253,7 @@ grade.
 rows; `list_movements` returns the individual rows and refuses a call that
 names none of account, category, merchant, tag or window. Six tools are
 registered, and the descriptions file was `tools-v2` at this point; it is
-`tools-v8` since the cycles below.
+`tools-v9` since the cycles below.
 
 **What a result costs became a design constraint rather than an afterthought.**
 A tool result is resent in full on every model call for the rest of the turn,

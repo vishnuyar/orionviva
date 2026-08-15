@@ -22,7 +22,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v8"
+      "active": "tools-v9"
     },
     "classify": {
       "in": "prompts",
@@ -50,7 +50,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v5"
+      "active": "speak-shape-v6"
     },
     "shape_committed": {
       "in": "prompts",
@@ -117,6 +117,7 @@
     "speak-shape-v3": "86cdfecaf82680e9",
     "speak-shape-v4": "b1414ddd20442800",
     "speak-shape-v5": "9f6ca8be25194302",
+    "speak-shape-v6": "8727443fdd90f027",
     "speak-v1": "8f65a0d62c9f73cb",
     "speak-v10": "7bbe5d04dda5875f",
     "speak-v2": "f2154bf11552432d",
@@ -132,6 +133,7 @@
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",
     "tools-v7": "161d75442c9398df",
-    "tools-v8": "c2afd103226bed82"
+    "tools-v8": "c2afd103226bed82",
+    "tools-v9": "f8ed04b80e5f5a36"
   }
 }

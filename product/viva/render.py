@@ -67,7 +67,7 @@ TYPES = (MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
 # magnitude, and which is therefore written as one.
 QUANTITY_OF_TYPE: dict[str, frozenset] = {
     MONEY: frozenset({quantity.SPENDING, quantity.INCOME, quantity.BALANCE,
-                      quantity.NET_WORTH, quantity.GROSS_FLOW,
+                      quantity.OWED, quantity.NET_WORTH, quantity.GROSS_FLOW,
                       quantity.NET_MOVEMENT, quantity.MOVEMENT}),
     COUNT: frozenset({quantity.COUNT}),
     RATE: frozenset({quantity.RATIO}) | frozenset(quantity.RATIOS),

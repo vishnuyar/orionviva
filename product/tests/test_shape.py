@@ -501,6 +501,127 @@ def test_the_figure_the_hole_asked_about_is_spoken(registry):
     assert result.text.startswith("You spent USD 400.00.")
 
 
+# ------------------------------------- an account someone is owed on
+
+def _card_events(closing, txns):
+    """A vault holding money and a card someone owes on, whose figure is what
+    is owed as the bill prints it: positive where the person owes, negative
+    where the card owes them."""
+    p = Provenance("doc-card", 1, "r")
+    evs = _events() + [
+        account_opened("card", "liability", "Signature Card", "USD",
+                       "2026-01-01", institution="Meridian Cards"),
+        document_captured("doc-card", "card.pdf", 100, "card_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed("card", "0.00", "2026-01-01", p),
+    ]
+    for date, description, amount in txns:
+        evs.append(simple_transaction("card", amount, description, date,
+                                      provenance=p))
+    evs.append(closing_balance_observed("card", closing, "2026-01-31",
+                                        Provenance("doc-card", 6, "r")))
+    return default_registry(LedgerProjection(evs))
+
+
+OWING = [("2026-01-08", "CITY GYM", "1000.00")]
+OVERPAID = OWING + [("2026-01-20", "PAYMENT RECEIVED", "-1050.00")]
+
+CARD_BALANCES = ("query_ledger", {"entity": "balances",
+                                  "filters": {"account": "card"}})
+
+
+def _both_ways(first, second, read, bind):
+    """A planner that shapes for both of the things the question might turn out
+    to be about, reads, and then commits the shorter shape that keeps the one
+    that applied."""
+    reshaped = []
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": first}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
+            return {"tool": read[0], "args": read[1]}
+        if not reshaped:
+            reshaped.append(True)
+            return {"shape": second}
+        return {"bindings": bind(context["results"])}
+    return planner
+
+
+OWES = ("You owe {debt} on {which}.",
+        [("debt", "money", "owed"), ("which", "account")])
+HOLDS = ("Your {holding} balance is {amount}.",
+         [("holding", "account"), ("amount", "money", "balance")])
+
+
+def _the_card(results):
+    """The account a read spoke about, by the handle its identifiers use."""
+    return next(i["id"] for result in results
+                for i in (result.get("identifiers") or [])
+                if i["label"] == "card")
+
+
+def _spoken_about_the_card(events):
+    """One turn about an account the person may hold or may owe on, shaped both
+    ways before the read and narrowed to the clause that applied."""
+    return run("what's my card balance?",
+               _both_ways(_shape(OWES, HOLDS), _shape(OWES), CARD_BALANCES,
+                          bind=lambda r: {
+                              "debt": {"figure": _named(r, "Signature Card")},
+                              "which": {"entity": _the_card(r)}}),
+               events)
+
+
+def test_a_card_someone_owes_on_is_spoken_as_what_is_owed():
+    """A turn in the order a turn runs. The shape is authored before anything
+    is read, so it carries a clause for each of the two things an account can
+    turn out to be; the read says which; the second shape drops the clause that
+    did not apply, which is a narrowing and needs no rewording.
+
+    The figure is the one the bill prints, and the sentence around it says what
+    it is."""
+    result = _spoken_about_the_card(_card_events("1000.00", OWING))
+    assert result.answered, result.detail
+    assert result.text.startswith(
+        f"You owe {render.money(Decimal('1000.00'), 'USD')} on ")
+    assert "balance is" not in result.text
+
+
+def test_an_overpaid_cards_sign_survives_into_what_is_spoken():
+    """What is checked here is the sign and nothing more.
+
+    A card paid past its balance owes the person, and its magnitude is negative
+    in the owed convention. The figure carries that sign the whole way, so the
+    amount reaching the person is written as a negative and the debt clause is
+    not filled with a positive one.
+
+    The wording is not fixed and this test does not claim it is: the live path
+    says "You owe -USD 50.00 on ...", which is a credit spoken as a negative
+    debt. That is an open defect, recorded rather than tested away — the shape
+    is authored before the read, and which clauses a live model writes is not
+    something anything here can establish."""
+    result = _spoken_about_the_card(_card_events("-50.00", OVERPAID))
+    assert result.answered, result.detail
+    written = render.money(Decimal("-50.00"), "USD")
+    assert written in result.text and written.startswith("-")
+    assert f"owe {render.money(Decimal('50.00'), 'USD')}" not in result.text
+
+
+def test_what_is_owed_cannot_fill_a_hole_that_asked_for_what_is_held():
+    """The clause today's wrong sentence was built out of. The shape asks for a
+    balance, the read comes back with a debt, and the check that has run all
+    along now has something to catch: no answer rather than a confident one
+    under the wrong word."""
+    result = run("what's my card balance?",
+                 _script(_shape(HOLDS), CARD_BALANCES,
+                         bind=lambda r: {
+                             "amount": {"figure": _named(r, "Signature Card")},
+                             "holding": {"entity": _the_card(r)}}),
+                 _card_events("1000.00", OWING))
+    assert not result.answered and result.refusal == "wrong_quantity"
+
+
 def test_a_magnitude_nothing_measured_can_fill_no_hole(registry):
     """Arithmetic over literals alone produces a number nobody has said the
     meaning of. There is no hole it belongs in, because there is no hole that
@@ -771,7 +892,7 @@ def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(several):
     read — and the run places the boundary anyway, out of what the read
     declared. Nothing here asks a planner to remember."""
     shape = _shape(("You currently owe {total}.",
-                    [("total", "money", "balance")]))
+                    [("total", "money", "owed")]))
     result = run("what do I owe?",
                  _script(shape, ("query_ledger", {"entity": "balances"}),
                          bind=lambda r: {
@@ -834,7 +955,7 @@ def test_a_boundary_is_said_once_however_many_figures_say_it(several):
     """The same discipline a caveat is held to. Two figures over the same set
     are one boundary between them, not two sentences a person reads twice."""
     shape = _shape(("You hold {a} and owe {b}.",
-                    [("a", "money", "balance"), ("b", "money", "balance")]))
+                    [("a", "money", "balance"), ("b", "money", "owed")]))
     result = run("where do I stand?",
                  _script(shape, ("query_ledger", {"entity": "balances"}),
                          bind=lambda r: {
@@ -893,7 +1014,7 @@ def test_a_boundary_is_not_said_three_times_for_one_set_of_gaps():
     ]))
     shape = _shape(("Net {n}, held {a}, owed {l}.",
                     [("n", "money", "net_worth"), ("a", "money", "balance"),
-                     ("l", "money", "balance")]))
+                     ("l", "money", "owed")]))
     result = run("where do I stand?",
                  _script(shape,
                          ("query_ledger", {"entity": "aggregate",

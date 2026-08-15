@@ -38,6 +38,41 @@ def test_answerable_balance_is_corroborated_with_source():
     assert a.provenance and a.provenance[0].doc_id == "d1"
 
 
+def _card(closing, txns, account="acct:card", ref="Signature Card"):
+    """One account someone is owed on, whose balance is money owed as the bill
+    prints it: positive where the person owes, negative where it owes them."""
+    evs = [account_opened(account, "liability", ref, "USD", "2026-01-01",
+                          provenance=Provenance("d1")),
+           opening_balance_observed(account, "0.00", "2026-01-01",
+                                    Provenance("d1", 1))]
+    for date, description, amount in txns:
+        evs.append(simple_transaction(account, amount, description, date,
+                                      provenance=Provenance("d1", 2)))
+    evs.append(closing_balance_observed(account, closing, "2026-01-31",
+                                        Provenance("d1", 6)))
+    return evs
+
+
+def test_a_card_owed_on_is_spoken_as_the_debt_it_is():
+    evs = _card("1000.00", [("2026-01-08", "Gym", Decimal("1000.00"))])
+    a = answer_balance(evs, "acct:card")
+    assert a.answered and a.amount == Decimal("1000.00")
+    assert a.text.startswith("You owe USD 1000.00 on Signature Card")
+
+
+def test_an_overpaid_card_is_spoken_as_owing_the_person_and_never_as_a_debt():
+    """A card paid past its balance owes the person. Its magnitude is negative
+    in the owed convention, and that sign is the whole of the difference
+    between a credit and a debt — so it is said in the sentence rather than
+    taken off the number."""
+    evs = _card("-50.00", [("2026-01-08", "Gym", Decimal("1000.00")),
+                           ("2026-01-20", "Payment", Decimal("-1050.00"))])
+    a = answer_balance(evs, "acct:card")
+    assert a.answered and a.amount == Decimal("-50.00")
+    assert a.text.startswith("Signature Card owes you USD 50.00")
+    assert "You owe" not in a.text
+
+
 def test_unknown_account_is_refused_not_faked():
     evs = _checking("acct:chase", "Chase Checking", "USD", "1000.00", JAN, "1457.58")
     a = answer_balance(evs, "acct:savings")
