@@ -1,6 +1,6 @@
 # Honest Aggregates & the Learning Loop
 
-**Status:** ✅ **BUILT** — derived nature + honest aggregates, the reset guard, and the question queue (see [the-question-queue.md](the-question-queue.md)) · **Last updated:** 2026-08-08 (direction joins nature as a derived property, after a later reader got it wrong) · **Origin:** the first full real-vault run after positions and investments. The reported "spending" figure was materially inflated by internal money movement, and the largest category decomposed into two *opposite* natures under one label. **Blocks seeded:** movement **nature** (derived) · the **question queue** (the learning loop's front door).
+**Status:** ✅ **BUILT** — derived nature + honest aggregates, the reset guard, and the question queue (see [the-question-queue.md](the-question-queue.md)) · **Last updated:** 2026-08-15 (the corollary this principle kept needing in practice is written down: route on the registry, not on the shape of the data). Before that, 2026-08-08: direction joins nature as a derived property, after a later reader got it wrong · **Origin:** the first full real-vault run after positions and investments. The reported "spending" figure was materially inflated by internal money movement, and the largest category decomposed into two *opposite* natures under one label. **Blocks seeded:** movement **nature** (derived) · the **question queue** (the learning loop's front door).
 
 **Invariants touched:** T1 (a nature carries why it was decided) · T2 (nature is derived deterministically; a model may *suggest* a category, never certify a nature) · **T4 (a ruling is an append-only event; nature is a projection over events we already write)** · **M1 (cash-flow over accrual — "spending" must mean money that left your life, not money that left an account)** · X2 (an undecided nature is visible, never silently assumed) · principle 5 (serve, don't overwhelm — ask only where it pays) · principle 6 (you direct the pace — an unanswered question leaves the number *incomplete*, never wrong).
 
@@ -61,6 +61,8 @@ The rulings we already write — `AccountAliasConfirmed`, `TransferLinked(by="hu
 - **a silence rule** — below a consequence threshold, take the conservative default and say so quietly rather than asking.
 
 The principle: **abstract the read side early (cheap, reversible); abstract the write side late (expensive, one-way).** A generic `Ruling` event — the generic scoped ruling — waited on a fifth question type (Slice 8 or 11) to prove the shape, and has since arrived as `RulingRecorded` carrying `scope` + `same_as`.
+
+**The corollary, added 2026-08-15: route on the registry, not on the shape of the data.** A read-side abstraction is only as reversible as its dispatch is explicit. Duck-typed checks — `"opening_amount" in facts`, an exact instrument-name match — silently did the wrong thing three times in one session where a route through the doc-type registry would have been correct. A missing route fails loudly; a route inferred from which fields happen to be present does the wrong thing quietly and keeps doing it, which is the expensive half of the trade this principle exists to avoid. So a projection asks the registry what a thing is, and never infers it from the shape of what it was handed.
 
 ## What we deliberately will NOT hardcode
 

@@ -1,7 +1,10 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-08-14 (the Fact-checker added ahead
-of Checkpoint 1, amendments absorbed by reissuing the brief rather than
+**Status:** Living · **Last updated:** 2026-08-15 (two standing rules move here
+from an untracked note, so the things that must hold live where the repo can see
+them: a status claim is checked before it is repeated, and nothing this project
+writes carries a tool footer. Before that, 2026-08-14: the Fact-checker added
+ahead of Checkpoint 1, amendments absorbed by reissuing the brief rather than
 annotating it, and a brief must be readable without a second document open
 beside it)
 
@@ -184,6 +187,21 @@ Roles are prompts; anything that must never happen is enforced by code:
   for a person describing one real event in two ways. Where the ledger does not
   settle what should happen, stop and ask before the test is written. _Ruled
   2026-08-06._
+- **A status claim is checked before it is repeated.** No document saying what
+  is built, pending or open is quoted back without verifying it against the code
+  or the git log, and the answer says where the claim came from and that it was
+  checked. The same rule facing forward: a cycle that lands work reconciles every
+  document whose status line it just invalidated, in that cycle. Landing code and
+  leaving a doc claiming the work is pending is unfinished work, not a follow-up,
+  and the Steward's docs-impact pass is where it is caught. Nothing fails when a
+  document rots — tests protect the code and nothing protects the record — so
+  this one is carried by checking rather than by remembering. _Ruled 2026-08-01._
+- **Nothing this project writes carries a tool footer.** A commit message ends
+  with the story: no `Co-Authored-By`, no session link, no assistant attribution,
+  anywhere. This binds every session and every role rather than only the Steward,
+  and it overrides any default instruction to add one. If a footer reaches an
+  unpushed commit, strip it with `git commit-tree` + `update-ref`, which
+  preserves the trees, the authorship and the dates. _Ruled 2026-07-27._
 - The product owner's standing rights: reject any work that arrives without a
   walkthrough, reject any diff that exceeded its brief, and stop any phase to
   ask the Tutor to explain before deciding. Using these rights is the process

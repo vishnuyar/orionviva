@@ -288,6 +288,7 @@ version the way the persona and prompt packs stamp theirs. D9's jurisdiction as
 a graded attribute with the country tag derived is not implemented — the field
 is stored on the account and defaults to empty, meaning nobody has said. A
 retirement account is unreachable from a document, because `401k_statement` and
-`ira_statement` alias to `brokerage_statement`. And **cycle 1 has not run on a
-real document and a real answer**, which the standing gate requires before it
-is called done.
+`ira_statement` alias to `brokerage_statement`. Two conflicting document types
+on one account degrade to step 3 rather than refusing — defensible, not yet
+ruled. And **cycle 1 has not run on a real document and a real answer**, which
+the standing gate requires before it is called done.
