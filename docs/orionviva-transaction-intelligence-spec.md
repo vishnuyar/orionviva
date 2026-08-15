@@ -247,11 +247,23 @@ Every stream carries an explicit belief: a distribution over `stream_kind` ∈
 
 **`stream_kind` feeds the existing movement-nature derivation** rather than
 sitting beside it. `honest-aggregates-and-the-learning-loop.md` defines the
-precedence — link → own-account → human ruling → category hint → default — and a
-stream kind enters that ladder as evidence at the category-hint level, below a
-human ruling. It does not become a second, competing answer to "is this
-spending?". Two systems describing the same fact and an aggregate listening to
-only one is the bug that doc was written about.
+precedence — link → human ruling → own-account → what the counterparty implies →
+default — and a stream kind enters that ladder as evidence at the implication
+level, below a human ruling. It does not become a second, competing answer to
+"is this spending?". Two systems describing the same fact and an aggregate
+listening to only one is the bug that doc was written about.
+
+_**Corrected 2026-08-15**, and it is two corrections in one line. This said
+"link → own-account → human ruling → category hint → default", citing a document
+that no longer says that: the two middle rungs are the other way round — a
+person's ruling outranks the own-account heuristic, because that heuristic
+matches raw account tokens with no distinctiveness filter and a loose heuristic
+must not silently discard an owner's explicit answer — and the fourth rung reads
+no category or subcategory **label** at all. It reads an `implies` entry on the
+counterparty's enrichment record, filtered by direction, which is what a stream
+kind now has to enter beside. The primary document was corrected 2026-08-14;
+this line repeated the old order and attributed it there, which is the more
+expensive kind of stale sentence, because it looks sourced._
 
 Priors are seeded **from transaction one** — do not wait for frequency. Every row
 below carries an explicit strength, and **every row is a claim about the world

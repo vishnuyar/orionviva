@@ -37,6 +37,19 @@ The product ships B as the default multi-device fabric, offers A for purists, ho
 
 One credential, three jobs, all standard: unlocks the local keystore on installed apps; authenticates to the relay (which authorizes ciphertext sync but can read nothing); and in the browser, derives/unwraps the client-side decryption keys. Recovery remains the storage doc's dual-wrap scheme — the relay must be useless to an attacker who fully compromises it, which also means the relay can never reset what matters. "Forgot passkey" recovers from the user's own recovery phrase, not from us — a support-cost truth to accept early.
 
+**Amendment (2026-08-15) — the recovery phrase this leans on does not exist
+yet.** Everything above is design for a fabric that is itself unbuilt, so
+nothing here is a claim about shipped behaviour — but one sentence borrows a
+mechanism from another document as though it were in hand, and it is not. The
+storage doc's dual wrap is a requirement, not a built scheme: the product
+derives one key from one passphrase, with no keychain wrap and no recovery
+phrase anywhere in the tree. **Today a lost passphrase is a lost vault.** So the
+"forgot passkey" story above has nothing to recover *from* until a cycle builds
+the second wrap, and this document inherits that gap rather than closing it.
+Recovery is deferred, not delivered — which is worth stating here in particular,
+because a design that assumes the relay can never reset what matters is only
+humane if the person holds something the relay cannot.
+
 ## Consequences
 
 - The sync fabric (encrypted envelopes, append-only merge) gets designed in the architecture phase — still built later, but the event schema must assume multiple writers from day one.

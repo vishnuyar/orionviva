@@ -13,6 +13,9 @@ The versioned envelope every sealed record in a vault is written under:
 
 Nothing here reads the passphrase from disk or config: it comes from the caller,
 which reads it from an env var or an interactive prompt.
+
+The passphrase is the only way in: there is no second wrap of this key and no
+recovery phrase, so a lost passphrase is a lost vault.
 """
 
 from __future__ import annotations

@@ -11,7 +11,7 @@ Trust is the whole product, so we classify each threat by whether its worst case
 
 | Adversary | Can reach | Cannot reach (by design) | Worst case | Class |
 |---|---|---|---|---|
-| **Device thief** (stolen/lost laptop or phone) | Ciphertext at rest | Plaintext — DB, blobs, log all encrypted (ADR-005); key wrapped by OS keychain + passphrase (storage doc) | Nothing usable without the key | **Bad day** (was ruin; encryption converts it) |
+| **Device thief** (stolen/lost laptop or phone) | Ciphertext at rest | Plaintext — DB, blobs, log all encrypted (ADR-005); the key is derived from the owner's passphrase and never stored _(corrected 2026-08-15: this said "key wrapped by OS keychain + passphrase". There is no keychain wrap — see the note under this table)_ | Nothing usable without the key | **Bad day** (was ruin; encryption converts it) |
 | **Malware / another process as the user** | Whatever the running app can read while unlocked | Data at rest when the app is locked; anything requiring the passphrase | Live-session exfiltration | **Ruin-adjacent** — the hardest residual (see below) |
 | **Cloud model provider** (under ADR-001) | The document content sent for extraction, under the user's own key + ZDR terms | Anything not sent; the ledger; keys; history | Provider retains/leaks a sent document | **Bad day→ruin** depending on provider; mitigated by ZDR, local models, future attested inference (Q12) |
 | **Subpoena / legal compulsion of *us*** | The website and public code | User data — we hold none (ADR-006, no hosted backend) | Nothing to hand over | **Bad day** (structurally defanged) |
@@ -21,6 +21,17 @@ Trust is the whole product, so we classify each threat by whether its worst case
 | **Network attacker** (MITM) | TLS-protected traffic | Plaintext (TLS); at-rest data | Traffic analysis | **Bad day** |
 | **The user themselves** (error: wrong file, fat-finger correction) | Their own ledger | Irreversibility — all writes are events, reversible (T4, X3) | A mistaken correction | **Bad day** — append-only log makes it undoable |
 | **Future us** (feature creep adding telemetry, a hosted tier) | Everything, if principles erode | — | Silent principle violation | **Ruin** — the promise inventory (ADR-008) and invariants are the guard |
+
+**Note on key custody (2026-08-15).** The dual wrap this table cited — the key
+wrapped once by the OS keychain and once by an offline recovery phrase — is a
+requirement in the storage doc and in ADR-005, and it is **not built**. One key
+is derived from one passphrase with scrypt, and nothing else unwraps it. Against
+the device thief the row still holds, and is if anything stronger: nothing on the
+stolen device unlocks the vault, because no wrap sits there to be attacked. The
+cost lands on the owner instead, and it belongs in a threat model rather than
+only in a storage doc — **today a lost passphrase is a lost vault**, an
+unrecoverable loss of the person's own data with no adversary in it at all.
+Recovery is deferred, not delivered.
 
 ## The two residual hard problems (named honestly)
 

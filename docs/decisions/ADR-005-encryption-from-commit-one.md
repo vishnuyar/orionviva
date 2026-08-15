@@ -24,6 +24,18 @@ No plaintext phase, ever — including development, including test fixtures deri
 
 Development ergonomics must be solved honestly (test keys, fixtures from synthetic documents) rather than by "temporarily" disabling encryption. Key custody design (the storage doc, B3) is the companion decision — this ADR makes lost-key = lost-data real, so the dual-wrap recovery scheme graduates from sketch to requirement.
 
+**Amendment (2026-08-15) — the requirement stands and is unmet.** The sentence
+above graduated the dual wrap from sketch to requirement, and no cycle since has
+built it. What ships derives one key from one passphrase with scrypt under the
+versioned envelope this ADR decided; there is no keychain wrap, no recovery
+phrase, and no keychain dependency in the tree. The decision above is not
+withdrawn and nothing here reverses it — the encryption posture is met in full,
+and the *custody* half of it is outstanding. What that costs a person today is
+stated plainly rather than left to be inferred: **a lost passphrase is a lost
+vault**, which is exactly the lost-key = lost-data outcome this ADR made real
+and then relied on the companion scheme to soften. Recovery is deferred, not
+delivered, and this record says so until a cycle closes it.
+
 ## Would reverse this
 
 Nothing. Algorithm choices rotate freely under the envelope; the posture does not.

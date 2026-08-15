@@ -26,6 +26,24 @@ If a shared OrionViva-ecosystem ledger ever exists (Phase 4's political choice),
 
 Event schema design becomes a sticky decision that deserves care (the discovery map, A-track). Anchoring runs as a quiet periodic job; failures queue and retry (anchoring lag is recorded, never hidden). The log doubles as the audit substrate for memory and corrections (the storage doc open question — one history, many projections).
 
+**Amendment (2026-08-15) — the log is built; the anchoring is not, and the gap
+this ADR called permanent is being taken.** Half of the decision above ships in
+full: every state change is an event, each record embeds the previous record's
+hash, current state is a rebuildable projection, and the chain verifies without
+the encryption key. The other half has never run. **No chain head has ever been
+anchored** — there is no OpenTimestamps call, no RFC 3161 call, no periodic job,
+no anchor lag to record, and no code that reaches either destination.
+
+What that costs is exactly what the *Alternatives considered* section rejected
+"local chain now, anchor later" for: history before the first anchor is forever
+self-attested, and the gap is not repairable afterwards, because an anchor
+placed later proves only that the head existed *then*. Every day the log grows
+unanchored lengthens the stretch a future reader must take on trust. This
+amendment does not reverse the decision or soften it — the destinations, the
+two-independent-clocks reasoning and the 32-byte-head privacy argument all
+stand. It records that the requirement is unmet, so a reader of this ADR stops
+inferring a proof the vault cannot produce.
+
 ## Would reverse this
 
 Nothing reverses append-only + day-one anchoring; destinations may be added or (if one collapses) retired, with the transition itself logged and anchored.

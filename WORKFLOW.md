@@ -1,6 +1,9 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-08-15 (two standing rules move here
+**Status:** Living · **Last updated:** 2026-08-15 (the status-claim rule widens
+to any claim a cycle makes false, and the Steward's ritual gains the standing
+question *what did this cycle make untrue?*, whose answer goes in the commit
+message. Earlier the same day, two standing rules move here
 from an untracked note, so the things that must hold live where the repo can see
 them: a status claim is checked before it is repeated, and nothing this project
 writes carries a tool footer. Before that, 2026-08-14: the Fact-checker added
@@ -51,7 +54,8 @@ Steward reads. Changes nothing, fixes nothing, never commits.
 
 **Steward** — the ship-time rituals once verified work is accepted: comment
 style pass, reading-guide and docs impact pass, TODO update, the paranoia
-grep, and a drafted commit message with no tool footers. Then it stops.
+grep, the standing question *what did this cycle make untrue?*, and a drafted
+commit message with no tool footers. Then it stops.
 
 **Tutor** — explains any part of the system at any depth, changing nothing.
 The role to reach for whenever the code has outrun understanding — which is a
@@ -196,6 +200,27 @@ Roles are prompts; anything that must never happen is enforced by code:
   and the Steward's docs-impact pass is where it is caught. Nothing fails when a
   document rots — tests protect the code and nothing protects the record — so
   this one is carried by checking rather than by remembering. _Ruled 2026-08-01._
+- **The same rule, widened: a cycle that makes any claim false corrects it, in
+  that cycle.** The rule above faces status lines. This one reaches **any
+  claim** — a requirement, a mechanism, a promise, a described behaviour. When
+  code meets a design document, decides the document is wrong and does something
+  better, the reasoning travels back to the document that was wrong, and not
+  only into a docstring one line from the code that won. That is why it needs
+  saying separately: a docstring explaining why the code differs looks exactly
+  like a comment describing behaviour, which the style pass wants, and nothing
+  about it announces that a document three directories away says the opposite.
+  So the Steward's ritual carries a standing question, answered in every commit
+  message where the answer is not "nothing":
+
+  > **What did this cycle make untrue?**
+
+  Not which status lines — what claims, requirements, mechanisms and promises,
+  **including a thing the cycle did not build that a document says is built**,
+  which is the case no pass over a diff can find. The question is unenforceable
+  and "nothing" is always available; it is written down anyway, because the one
+  shortfall this project noticed and consciously deferred was recorded in a
+  commit message for want of anywhere else to put it, and asking every time
+  beats waiting for someone to think of it. _Ruled 2026-08-15._
 - **Nothing this project writes carries a tool footer.** A commit message ends
   with the story: no `Co-Authored-By`, no session link, no assistant attribution,
   anywhere. This binds every session and every role rather than only the Steward,

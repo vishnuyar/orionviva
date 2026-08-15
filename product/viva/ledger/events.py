@@ -666,7 +666,10 @@ def position_observed(account_id: str, instrument: str, units: Decimal | str,
     no money, so it never touches a balance, and only realized cash flows post.
 
     Append-only: the next period emits a NEW measurement for the same
-    instrument, and the projection reads the latest by as-of date.
+    instrument, and every measurement is kept. A read takes one snapshot — the
+    measurements carried on the latest statement date at or before the date
+    asked about — rather than each instrument's own latest value, so an
+    instrument the newest statement does not list is no longer held.
     ``valuation_class`` is ``measured`` here — a statement value at its date.
     The unrealized gain (market_value − cost_basis) is derived on the read side,
     never a ledger fact. ``cost_basis`` is absent when the statement omits it."""

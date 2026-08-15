@@ -35,8 +35,19 @@ That dissolves the problem rather than answering it. There is no *the* net worth
 | account kind | the measurement | why this and not something else |
 |---|---|---|
 | depository, liability (card) | the **observed closing balance** | the issuer attests it; summing our own postings would be *our* arithmetic over a possibly incomplete run |
-| investment | `Σ(market_value)` of each holding's latest observation ≤ `D`, plus the account's cash | a holding is a dated measurement (positions and investments, M1) |
+| investment | `Σ(market_value)` over **one snapshot** — the holdings measured on the latest statement at or before `D` — plus the account's cash | a holding is a dated measurement (positions and investments, M1) |
 | asserted (`Assets:` / `Liabilities:` from a ruling) | **cost at the ruling's date** | what you paid, never what it is now worth |
+
+_**Corrected 2026-08-15.** The investment row said `Σ(market_value)` of **each
+holding's** latest observation ≤ `D`, which is a composition across instruments,
+and the code deliberately does not do that. It takes the newest observation date
+at or before `D` and sums only the measurements carried on it. The difference is
+not academic: composing per-instrument latest values double-counts a stale
+snapshot, because an instrument that appeared on an older statement and is
+absent from the newer one keeps contributing its old value forever. One snapshot
+answers both halves at once — an earlier point on the curve still uses the
+statement that was current then, and a holding the newest statement no longer
+lists is no longer held._
 
 **The side is decided by the account's KIND, never by the sign of its balance.** The registry is explicit: a `liability` account's balance is *money owed*, stored as a **positive** magnitude, because that is the figure printed on the bill. So a liability's contribution is `-balance` — negated rather than absolute-valued, which keeps the real edge case honest: an overpaid card owes *you*, its owed figure is negative, and `abs()` would book that credit as another debt.
 
@@ -125,7 +136,7 @@ Market **valuation** of asserted assets (a car's worth today — needs a source 
 
 - A vault with one checking statement returns a curve with one point, `complete = True`.
 - Adding a card statement dated later adds a point; the earlier point is **unchanged**.
-- An investment account contributes `Σ(market_value)` at the latest observation ≤ `D`, and a *later* observation does not alter an earlier point.
+- An investment account contributes `Σ(market_value)` over the holdings of the latest statement at or before `D`, and a *later* observation does not alter an earlier point. _(Corrected 2026-08-15: this read "at the latest observation ≤ `D`" per instrument — see the note under the table above. The snapshot is the unit, not the instrument.)_
 - An account whose first statement is after `D` contributes nothing to that point — no zero, no guess.
 - An asserted car appears at cost, badged `asserted`, from its ruling date onward.
 - A `reliable_balance = False` liability keeps `complete = False` and appears in `missing` with its corroborating document named.

@@ -1,6 +1,6 @@
 # Local-First Storage & Crypto
 
-**Status:** Implemented — encrypted vault, hash-chained event log, scrypt + AES-256-GCM · **Last updated:** 2026-07-19
+**Status:** Implemented in part — encrypted vault, hash-chained event log, scrypt + AES-256-GCM. **Key custody is not built:** one key, derived from one passphrase, with no keychain wrap and no recovery phrase, so **today a lost passphrase is a lost vault** (recorded 2026-08-15 — see *Key custody* below) · **Last updated:** 2026-08-15
 
 ## Requirements (derived from principles)
 
@@ -18,6 +18,18 @@ Data at rest encrypted, keys held by the user; a stolen laptop or copied disk yi
 ## Key custody
 
 The hard part is not encryption, it's recovery. A single user key with no recovery = one lost laptop is ruin (violates the Taleb constraint from the *other* side). Working scheme: DB key wrapped twice — once by OS keychain (daily convenience) and once by a passphrase/recovery phrase the user stores offline (recovery). No cloud escrow by default. Optional user-arranged escrow (e.g., printed phrase, family member) is the user's call, not the product's.
+
+**Amendment (2026-08-15) — the scheme above is the requirement, and it is not
+built.** What ships derives one key from one passphrase with scrypt and stores
+no wrap of any kind. There is no keychain wrap, no recovery phrase, and no
+keychain dependency anywhere in the tree; the passphrase reaches the code from
+an environment variable or an interactive prompt and is never written down by
+the product. **So today a lost passphrase is a lost vault** — precisely the "one
+lost laptop is ruin" outcome the paragraph above names as the reason the scheme
+exists. Recovery is therefore *deferred*, not delivered, and the requirement is
+not withdrawn: the second wrap and the recovery phrase are still the design, and
+until a cycle builds them the record says the gap out loud rather than
+describing a custody story a person could rely on and lose everything to.
 
 ## Tamper-evidence without a chain
 

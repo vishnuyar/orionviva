@@ -1,6 +1,6 @@
 # Positions & Investments
 
-**Status:** BUILT (both stages) · **Last updated:** 2026-07-24 · **Block seeded:** Asset (valuation class) / Position (instrument + units + cost basis, dated).
+**Status:** BUILT (both stages) · **Last updated:** 2026-08-15 (the holdings composition corrected in three places: one snapshot, not each instrument's latest) · **Block seeded:** Asset (valuation class) / Position (instrument + units + cost basis, dated).
 
 **Invariants touched:** T1 (every position value points to the statement region it was read from) · T2 (the reconciliation identity is deterministic `Decimal` arithmetic, never the model's mental math) · T3 (raw capture — the brokerage PDF is stored, so a richer position profile later re-reads it, no re-upload) · **T4 (a holding is an append-only *measurement* event; a revaluation is a new measurement, never an edit of the old one)** · **M1 (cash-flow over accrual — the ledger posts only realized cash events; unrealized gain is a derived presentation view, never a ledger fact)** · I5 (instrument and currency are data, no US-market assumptions) · **the valuation-class invariant (a measured value is always surfaced with its as-of date and class; a stale price is never dressed as "current" — the "never bluff a number" wall applied to prices) · X2 (unrealized gain is shown as an as-of-date estimate, its uncertainty visible)** · the grade ladder (a statement-attested position is `measured`+`verified`-of-source; a derived or stale figure is graded down, never silently).
 
@@ -39,7 +39,7 @@ The **internal tally (1)** remains the one hard gate — it is read-validation (
 
 ## New primitives (each the smallest that works)
 
-**`INVESTMENT` account kind.** A third kind beside `DEPOSITORY` and `LIABILITY`: an asset that holds *cash + positions*. Its account "value" is a **composition**, not a single posted balance — cash (from postings) plus the sum of its latest position measurements. Display is kind-aware, like the card's "owed."
+**`INVESTMENT` account kind.** A third kind beside `DEPOSITORY` and `LIABILITY`: an asset that holds *cash + positions*. Its account "value" is a **composition**, not a single posted balance — cash (from postings) plus the sum of its latest position measurements. Display is kind-aware, like the card's "owed." _(Corrected 2026-08-15: the sum is over **one snapshot** — the measurements carried on the account's latest statement — not over each instrument's own latest measurement. See the note under `PositionObserved` below.)_
 
 **`PositionObserved` event.** The Position primitive as data:
 
@@ -57,7 +57,9 @@ PositionObserved(
   provenance)            # → the statement region (T1)
 ```
 
-It is append-only: next quarter's statement emits a *new* `PositionObserved` for the same instrument; the projection reads the latest as-of. Nothing is edited (T4).
+It is append-only: next quarter's statement emits a *new* `PositionObserved` for the same instrument, and every measurement is kept. Nothing is edited (T4).
+
+_**Corrected 2026-08-15, and this is the sentence the rest of the record copied.** This read "the projection reads the latest as-of", per instrument, and a read does not compose that way. It takes the newest statement date at or before the date asked about and sums only the measurements carried on it. The difference is not academic: composing per-instrument latest values double-counts a stale snapshot, because an instrument that appeared on an older statement and is absent from the newer one keeps contributing its old value forever. A brokerage statement states everything the account holds on its date, so one snapshot answers both halves at once — an earlier point on a curve still uses the statement that was current then, and a holding the newest statement no longer lists is no longer held. The projection does keep a latest-per-instrument view beside the full history; it is not what a holdings figure or a net-worth point reads._
 
 **Valuation class.** `measured` (a statement value at its date) · `valued` (mark-to-market from a live price feed — deferred) · `estimated` (a guess — deferred). **Positions and investments emit only `measured`.** The invariant is the point: a position value is surfaced as "AAPL \$18,400 **as of Mar 31**," never "AAPL \$18,400" — a stale measured price must never read as current. Every future asset (property, vehicles, a price feed's `valued`, an `estimated` guess) inherits this discipline.
 
@@ -109,7 +111,7 @@ Cost basis: a single graded figure per position, captured when the statement sho
 - A real brokerage statement reconciles on `Σ market_value + cash = total` and posts; a misread position (units or value) fails the internal tally and is **held with a localized Finding**, never guessed.
 - A `PositionObserved` carries units + market_value + currency + `as_of` + `class=measured` + grade + provenance; the answer/surface shows a holding as "as of {date}," never "current."
 - Cost basis is stored when the statement shows it and absent (not invented) when it doesn't.
-- The account's composed value = cash + Σ latest measured positions; registering a *synthetic* investment type via a profile row alone routes to the brokerage parser/identity (the divergent-profile proof holds).
+- The account's composed value = cash + Σ measured positions on its latest statement _(corrected 2026-08-15 from "Σ latest measured positions" — the snapshot is the unit, not the instrument)_; registering a *synthetic* investment type via a profile row alone routes to the brokerage parser/identity (the divergent-profile proof holds).
 
 **Stage 2 (flow):** _(all green)_
 - The cash flow reconciles (`opening + Σ activity = closing`) and recognizes dividend + realized capital gain as income, a fee as an expense, and buys/sells as invested-capital moves; a statement whose activity doesn't reconcile the cash is **held**.
