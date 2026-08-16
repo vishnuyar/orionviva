@@ -21,9 +21,11 @@ from viva.ledger.hints import enrichment_hints
 from viva.ledger.streams import build_streams
 
 
-def M(d, amount, desc, **kw):
+def M(d, amount, desc, kind="depository", **kw):
+    """A movement on a depository account unless `kind` says otherwise; the
+    kind is what decides which way its money went."""
     return types.SimpleNamespace(date=d, amount=Decimal(amount), account="chk",
-                                 description=desc, **kw)
+                                 kind=kind, description=desc, **kw)
 
 
 GRAMMAR = Profile("northbank", "depository", "v1", [
@@ -39,7 +41,8 @@ GRAMMAR = Profile("northbank", "depository", "v1", [
 
 
 def _hints(movements, grammar=GRAMMAR):
-    return enrichment_hints(build_streams(movements, lambda m: grammar))
+    return enrichment_hints(build_streams(movements, lambda m: grammar,
+                                          lambda m: m.kind))
 
 
 # --- what becomes one -------------------------------------------------------
@@ -125,7 +128,8 @@ def test_a_business_on_a_peer_rail_is_not_a_person_and_still_does_not_cross():
     enrichment coverage on a line where the model was right, and never a
     name."""
     mv = [M("2026-01-29", "2116.13", "ZELLE PAYMENT FROM BRIGHTFORD LABS INC 191346536")]
-    (stream,) = build_streams(mv, lambda m: GRAMMAR)
+    (stream,) = build_streams(mv, lambda m: GRAMMAR,
+                              lambda m: m.kind)
     assert not stream.is_person and stream.brand == "BRIGHTFORD LABS INC"
     assert _hints(mv) == {}
 
@@ -187,7 +191,8 @@ def test_with_no_grammar_the_conservative_list_still_guards_a_peer_payment():
         Template("VENMO PAYMENT TO {brand} INC"),
         Template("VENMO PAYMENT TO {counterparty}")])
     org = [M("2026-01-22", "-90.00", "VENMO PAYMENT TO ACMEWORKS INC")]
-    (stream,) = build_streams(org, lambda m: g)
+    (stream,) = build_streams(org, lambda m: g,
+                              lambda m: m.kind)
     assert not stream.is_person and stream.brand == "ACMEWORKS"
     # It is still not sent: no published format on this line says a business is
     # on the other side of it. The list and the gate agree here, for different
@@ -251,7 +256,8 @@ def test_a_clean_brand_does_not_carry_a_party_across_in_a_context_slot():
     send the name anyway."""
     mv = [M("2026-02-02", "600.00",
             "PEER CREDIT FROM NORTHBANK CU PAYMENT FROM JORDAN REF A1B2C3")]
-    (stream,) = build_streams(mv, lambda m: GRAMMAR)
+    (stream,) = build_streams(mv, lambda m: GRAMMAR,
+                              lambda m: m.kind)
     assert stream.brand == "NORTHBANK CU"
     assert stream.agreed()["purpose"] == "JORDAN"
     assert _hints(mv) == {}
@@ -267,7 +273,8 @@ def test_a_format_one_line_proves_does_not_certify_its_sibling():
             "CARD PURCHASE 01/05 GOLDEN FORK BISTRO PLANO TX"),
           M("2026-02-05", "-38.00",
             "CARD PURCHASE 02/05 GOLDEN FORK BISTRO PLANO TX CARD 0000")]
-    (stream,) = build_streams(mv, lambda m: GRAMMAR)
+    (stream,) = build_streams(mv, lambda m: GRAMMAR,
+                              lambda m: m.kind)
     assert stream.channel == "card" and stream.n == 2
     assert _hints(mv) == {}
 
@@ -282,7 +289,8 @@ def test_one_uncorroborated_stream_withholds_the_hint_it_shares():
     unproven = M("2026-02-05", "-38.00",
                  "CARD PURCHASE 02/05 GOLDEN FORK BISTRO PLANO TX CARD 0000")
     unproven.account = "sav"        # another account, so no rail is substituted
-    streams = build_streams([proven, unproven], lambda m: GRAMMAR)
+    streams = build_streams([proven, unproven], lambda m: GRAMMAR,
+                            lambda m: m.kind)
     assert len(streams) == 2
     assert enrichment_hints(streams) == {}
 

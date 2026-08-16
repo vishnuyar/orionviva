@@ -45,7 +45,8 @@ def test_only_impersonal_hints_cross_the_boundary(tmp_path):
         seen["prompt"] = prompt
         return '{"amzn mktp us": {"canonical_name":"Amazon","category":"shopping"}}'
 
-    enrich_merchants(ledger, cat, extract)
+    enrich_merchants(ledger, cat, extract,
+                     kind_for=lambda m: m.kind)
     # The peer-payment merchant was filtered out — never submitted or enriched.
     assert not any("venmo" in k for k in cat.records())
     assert not any("venmo" in k for k in cat.pending())
@@ -62,7 +63,8 @@ def test_enrichment_syncs_as_events_and_categorizes_retrospectively(tmp_path):
     def extract(prompt):
         return '{"amzn mktp us": {"canonical_name":"Amazon","category":"shopping"}}'
 
-    res = enrich_merchants(ledger, cat, extract)
+    res = enrich_merchants(ledger, cat, extract,
+                     kind_for=lambda m: m.kind)
     assert res["synced"] == 1
     proj = ledger.projection()
     # BOTH Amazon transactions categorized from the one synced merchant record.
@@ -76,7 +78,8 @@ def test_enrichment_syncs_as_events_and_categorizes_retrospectively(tmp_path):
 def test_human_override_beats_the_synced_enrichment(tmp_path):
     ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00")], tmp_path)
     cat = Catalog()
-    enrich_merchants(ledger, cat, lambda p: '{"amzn mktp us":{"category":"shopping"}}')
+    enrich_merchants(ledger, cat, lambda p: '{"amzn mktp us":{"category":"shopping"}}',
+                     kind_for=lambda m: m.kind)
     amazon = next(m for m in ledger.projection().movements() if "RA30Z" in m.description)
     assign_category(ledger, amazon.key, "groceries")      # per-transaction override
     proj = ledger.projection()
@@ -95,7 +98,8 @@ def test_subcategory_enables_a_finer_slice(tmp_path):
                 '"spotify usa": {"category":"entertainment","subcategory":"streaming"},'
                 '"amc theatres": {"category":"entertainment","subcategory":"movies"}}')
 
-    enrich_merchants(ledger, cat, extract)
+    enrich_merchants(ledger, cat, extract,
+                     kind_for=lambda m: m.kind)
     proj = ledger.projection()
     # Primary category groups all three under entertainment...
     assert proj.spending_by_category() == {"entertainment": Decimal("55.00")}
@@ -128,7 +132,8 @@ def test_a_subcategory_summary_keeps_its_parent_and_names_the_remainder(tmp_path
                 '"amc theatres": {"category":"entertainment","subcategory":"movies"},'
                 '"corner newsagent": {"category":"entertainment"}}')
 
-    enrich_merchants(ledger, cat, extract)
+    enrich_merchants(ledger, cat, extract,
+                     kind_for=lambda m: m.kind)
     proj = ledger.projection()
     tree = proj.spending_by_category_then_subcategory()
 
@@ -153,7 +158,8 @@ def test_the_category_report_shows_each_subcategory_under_its_parent(tmp_path):
     enrich_merchants(ledger, cat, lambda prompt: (
         '{"netflix com": {"category":"entertainment","subcategory":"streaming"},'
         '"amc theatres": {"category":"entertainment","subcategory":"movies"},'
-        '"corner newsagent": {"category":"entertainment"}}'))
+        '"corner newsagent": {"category":"entertainment"}}'),
+                     kind_for=lambda m: m.kind)
 
     text = report(ledger.projection())
     assert "what each subcategory is worth, under its category" in text
@@ -181,7 +187,8 @@ def test_a_category_with_no_name_is_unnamed_in_both_views(tmp_path):
     ledger = _card([("2026-01-05", "NETFLIX.COM", "15.00"),
                     ("2026-01-09", "CORNER NEWSAGENT", "5.00")], tmp_path)
     enrich_merchants(ledger, Catalog(), lambda prompt: (
-        '{"netflix com": {"category":"entertainment","subcategory":"streaming"}}'))
+        '{"netflix com": {"category":"entertainment","subcategory":"streaming"}}'),
+                     kind_for=lambda m: m.kind)
     rule_merchant_nature(ledger, "CORNER NEWSAGENT", "spending")
 
     proj = ledger.projection()
@@ -208,7 +215,8 @@ def test_the_uncategorized_caveat_states_what_is_actually_unnamed(tmp_path):
                     ("2026-01-09", "CORNER NEWSAGENT", "5.00"),
                     ("2026-01-10", "UNKNOWN SHOP", "3.00")], tmp_path)
     enrich_merchants(ledger, Catalog(), lambda prompt: (
-        '{"netflix com": {"category":"entertainment","subcategory":"streaming"}}'))
+        '{"netflix com": {"category":"entertainment","subcategory":"streaming"}}'),
+                     kind_for=lambda m: m.kind)
     rule_merchant_nature(ledger, "CORNER NEWSAGENT", "spending")
     proj = ledger.projection()
 
@@ -230,9 +238,11 @@ def test_sync_is_idempotent(tmp_path):
     ledger = _card([("2026-01-05", "AMZN MKTP US*RA30Z3BP0", "50.00")], tmp_path)
     cat = Catalog()
     ext = lambda p: '{"amzn mktp us":{"category":"shopping"}}'
-    enrich_merchants(ledger, cat, ext)
+    enrich_merchants(ledger, cat, ext,
+                     kind_for=lambda m: m.kind)
     n_events = len(list(ledger.events()))
-    enrich_merchants(ledger, cat, ext)                    # again, nothing new
+    enrich_merchants(ledger, cat, ext,
+                     kind_for=lambda m: m.kind)                    # again, nothing new
     assert len(list(ledger.events())) == n_events         # no duplicate events
 
 
@@ -327,7 +337,8 @@ def test_a_record_about_a_merchant_this_vault_never_paid_is_not_synced(tmp_path)
 
     res = enrich_merchants(ledger, cat, lambda p: (
         '{"alpha shop ltd": {"canonical_name":"Alpha","category":"shopping",'
-        '"subcategory":"book shop"}}'))
+        '"subcategory":"book shop"}}'),
+                     kind_for=lambda m: m.kind)
     assert res["synced"] == 1, "this vault's own merchant, and only it"
     known = ledger.projection().merchant_categories()
     assert "alpha shop ltd" in known
@@ -339,7 +350,8 @@ def test_the_run_says_how_many_labels_it_minted(tmp_path):
     ledger = _card([("2026-01-05", "ALPHA SHOP LTD", "50.00")], tmp_path)
     res = enrich_merchants(ledger, Catalog(), lambda p: (
         '{"alpha shop ltd": {"canonical_name":"Alpha","category":"shopping",'
-        '"subcategory":"a label no list holds"}}'))
+        '"subcategory":"a label no list holds"}}'),
+                     kind_for=lambda m: m.kind)
     assert res["minted"] == 1
 
 
@@ -360,11 +372,13 @@ def test_how_many_merchants_ride_in_one_call_is_the_callers_to_set(tmp_path):
         return json.dumps({key: {"canonical_name": key.title(),
                                  "category": "shopping"}})
 
-    enrich_merchants(ledger, Catalog(), extract, chunk_size=1)
+    enrich_merchants(ledger, Catalog(), extract, chunk_size=1,
+                     kind_for=lambda m: m.kind)
     assert len(calls) == 3, "one merchant to a call is one call to a merchant"
 
     calls.clear()
-    enrich_merchants(ledger, Catalog(), extract)
+    enrich_merchants(ledger, Catalog(), extract,
+                     kind_for=lambda m: m.kind)
     assert len(calls) == 1, "and the default is unchanged for anyone who "\
         "does not set it"
 

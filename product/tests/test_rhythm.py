@@ -50,11 +50,27 @@ def _resolver(grammar=GRAMMAR):
     return lambda rows: resolve_keys(rows, profile_for=lambda i, k: grammar)
 
 
+# The two accounts these fixtures post to, and the kind of each. A purchase on
+# the card account posts positive, because what is owed grew.
+ACCOUNT_KINDS = {"chk": "depository", "card": "liability"}
+
+
 def _events(txns, currency="USD"):
-    evs = [account_opened("chk", "depository", "Checking", currency,
-                          "2026-01-01", institution="northbank")]
-    evs += [simple_transaction("chk", amount, description, when)
-            for when, description, amount in txns]
+    """The ledger a fixture describes: the accounts it posts to, then its
+    movements.
+
+    A txn is `(when, description, amount)`, or `(when, description, amount,
+    account)` to put it on an account other than `chk`. Only the accounts a
+    fixture actually uses are opened."""
+    used = ["chk"] + [a for a in ("card",)
+                      if any(len(t) > 3 and t[3] == a for t in txns)]
+    evs = [account_opened(account, ACCOUNT_KINDS[account],
+                          account.title(), currency, "2026-01-01",
+                          institution="northbank") for account in used]
+    for when, description, amount, *rest in txns:
+        account = rest[0] if rest else "chk"
+        evs.append(simple_transaction(account, amount, description, when,
+                                      kind=ACCOUNT_KINDS[account]))
     return evs
 
 
@@ -415,6 +431,7 @@ def _flow_over(proj, movement_keys, direction) -> Flow:
                 occurrences=[Occurrence(date=_as_date(held[k].date),
                                         amount=held[k].amount,
                                         account=held[k].account,
+                                        kind=held[k].kind,
                                         description=held[k].description)
                              for k in movement_keys])
 
@@ -536,6 +553,34 @@ def test_money_out_and_money_back_are_two_arrangements():
     proj = _proj(both, extra=[_prior(BRAND, "standing")])
     subjects = {q["refs"]["direction"] for q in _rhythm_questions(proj)}
     assert subjects == {"in", "out"}
+
+
+def _half_on_a_card(months=12):
+    """One subscription, the first half paid from checking and the second half
+    on a card, where the same charge posts positive because what is owed grew."""
+    half = months // 2
+    return ([(f"2026-{month:02d}-05", "LUMEN STREAMING", "-14.99")
+             for month in range(1, half + 1)]
+            + [(f"2026-{month:02d}-05", "LUMEN STREAMING", "14.99", "card")
+               for month in range(half + 1, months + 1)])
+
+
+def test_a_merchant_paid_from_two_account_kinds_is_one_arrangement():
+    """One subscription is one relationship, whichever account paid it.
+
+    Six months from checking and six on a card form one outflow of twelve,
+    measured monthly, under the subject it would have had if checking had paid
+    every month — one total over the whole relationship, and one sentence
+    describing it."""
+    proj = _proj(_half_on_a_card(), extra=[_prior(BRAND, "standing")])
+    (h,) = proj.rhythm_hypotheses()
+    assert h.direction == "out" and h.subject == f"{BRAND}|out"
+    assert h.count == 12 and h.amount == Decimal("179.88")
+    assert h.measured and h.cadence == "monthly"
+    (q,) = _rhythm_questions(proj)
+    assert q["refs"]["direction"] == "out"
+    assert len(q["refs"]["movements"]) == 12
+    assert say("rhythm_direction_out") in q["text"]
 
 
 def test_confirming_one_direction_leaves_the_other_asked(tmp_path):
@@ -777,7 +822,8 @@ def test_a_person_shaped_stream_reaches_no_prompt_no_catalog_and_no_question():
              "-40.00") for month in range(1, 5)]
     proj = _proj(txns, resolver=lambda rows: resolve_keys(
         rows, profile_for=lambda i, k: grammar))
-    streams = build_streams(proj.movements(), lambda m: grammar)
+    streams = build_streams(proj.movements(), lambda m: grammar,
+                            lambda m: m.kind)
     assert any(s.is_person for s in streams)
     assert enrichment_hints(streams) == {}
     assert _rhythm_questions(proj) == []

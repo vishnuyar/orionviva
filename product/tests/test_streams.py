@@ -24,6 +24,8 @@ import types
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from merchantcore.descriptor import linted_example, split_ach_heads, word_owners
 from merchantcore.profile import Profile, Template
 from merchantcore.resolve import resolve_descriptor
@@ -31,17 +33,30 @@ from viva.ledger.streams import (ACTIVITY, COUNTERPARTY, IN, INTERNAL, MIXED,
                                  OUT, build_streams)
 
 
-def M(d, amount, desc, account="chk"):
+def M(d, amount, desc, account="chk", kind="depository"):
     """A movement in the shape the LEDGER actually emits.
 
     `MovementInfo.date` is an ISO **string**, not a `date` — every other
     projection compares them lexically. An earlier version of these fixtures used
     `date` objects, so the whole suite passed against a shape the system never
     produces and the first real vault raised `str - str`. Fixtures follow the
-    real type; that is what makes them regression tests rather than wishes."""
+    real type; that is what makes them regression tests rather than wishes.
+
+    `kind` is the account's kind, which is what decides which way the money
+    went. A card fixture passes `account="card", kind="liability"`, where the
+    same purchase posts positive."""
     return types.SimpleNamespace(date=d.isoformat() if isinstance(d, date) else d,
-                                 amount=Decimal(amount),
+                                 amount=Decimal(amount), kind=kind,
                                  account=account, description=desc)
+
+
+def streams_of(movements, profile_for=None, kind_for=None):
+    """`build_streams` over these fixtures, reading each movement's own kind.
+
+    The kind is required and every fixture carries one, so a test that does not
+    care which account a movement is on says nothing and gets a depository."""
+    return build_streams(movements, profile_for,
+                         kind_for or (lambda m: m.kind))
 
 
 def _life():
@@ -74,11 +89,11 @@ def test_ingest_order_never_changes_a_belief():
     cached by last-seen — breaks this quietly, so it is asserted rather than
     argued."""
     mv = _life()
-    base = [s.to_dict() for s in build_streams(mv)]
+    base = [s.to_dict() for s in streams_of(mv)]
     for seed in (1, 7, 42, 99):
         shuffled = mv[:]
         random.Random(seed).shuffle(shuffled)
-        assert [s.to_dict() for s in build_streams(shuffled)] == base
+        assert [s.to_dict() for s in streams_of(shuffled)] == base
 
 
 def test_a_drip_user_and_a_bulk_user_converge():
@@ -86,11 +101,11 @@ def test_a_drip_user_and_a_bulk_user_converge():
     and must not be *wrong*, only less certain. By the time the sets match, the
     conclusions must too."""
     mv = sorted(_life(), key=lambda m: m.date)
-    early = build_streams(mv[:6])
+    early = streams_of(mv[:6])
     assert all(f.cadence_class in ("unknown", "irregular")           # honest
                for s in early for f in s.flows)
-    assert [s.to_dict() for s in build_streams(mv)] == \
-           [s.to_dict() for s in build_streams(list(reversed(mv)))]
+    assert [s.to_dict() for s in streams_of(mv)] == \
+           [s.to_dict() for s in streams_of(list(reversed(mv)))]
 
 
 # --- the key ----------------------------------------------------------------
@@ -102,7 +117,7 @@ def test_one_counterparty_on_two_rails_is_two_streams():
     mv = [M(date(2026, 1, 5), "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA"),
           M(date(2026, 2, 5), "-9.99", "CARD PURCHASE 02/05 CLOUDSTORE WA"),
           M(date(2026, 1, 20), "-250.00", "Cloudstore Invoice PPD ID: 7788")]
-    channels = {s.channel for s in build_streams(mv)}
+    channels = {s.channel for s in streams_of(mv)}
     assert channels == {"card", "ach"}
 
 
@@ -121,7 +136,7 @@ def test_a_merchant_with_one_proven_channel_does_not_split_across_templates():
     mv = [M("2026-01-05", "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA"),
           M("2026-02-05", "-9.99", "RECURRING PAYMENT CLOUDSTORE"),
           M("2026-03-05", "9.99", "REFUND CLOUDSTORE")]
-    (s,) = build_streams(mv, lambda m: prof)
+    (s,) = streams_of(mv, lambda m: prof)
     assert s.channel == "card" and s.n == 3
 
 
@@ -135,7 +150,7 @@ def test_an_atm_withdrawal_and_a_cheque_still_separate():
                     Template("CHEQUE {reference} {brand}")])
     mv = [M("2026-01-05", "-100.00", "ATM WITHDRAWAL 01/05 OAKRIDGE PLANO"),
           M("2026-02-05", "-250.00", "CHEQUE AB1234 OAKRIDGE")]
-    streams = build_streams(mv, lambda m: prof)
+    streams = streams_of(mv, lambda m: prof)
     assert {s.counterparty for s in streams} == {"oakridge"}     # one counterparty
     assert len(streams) == 2                                     # two rails
     assert all(s.channel.startswith("tmpl:") for s in streams)
@@ -186,9 +201,9 @@ def test_a_stream_key_never_drops_the_party():
     prints around one."""
     for pattern, one, two in _party_lines():
         prof = Profile("nb", "dep", "v1", [Template(pattern)])
-        streams = build_streams([M("2026-01-05", "-10.00", one),
-                                 M("2026-02-05", "-10.00", two)],
-                                lambda m: prof)
+        streams = streams_of([M("2026-01-05", "-10.00", one),
+                              M("2026-02-05", "-10.00", two)],
+                             lambda m: prof)
         assert len({s.counterparty for s in streams}) == 2, pattern
 
 
@@ -236,7 +251,7 @@ def test_over_cleaning_a_brand_is_worse_than_under_cleaning_it():
           M("2026-02-05", "-9.99", "CARD PURCHASE 02/05 CLOUDSTORE WA"),
           M("2026-01-09", "-42.10", "CARD PURCHASE 01/09 GOLDEN FORK BISTRO TX"),
           M("2026-02-09", "-42.10", "CARD PURCHASE 02/09 GOLDEN FORK BISTRO TX")]
-    names = {s.counterparty for s in build_streams(mv)}
+    names = {s.counterparty for s in streams_of(mv)}
     assert len(names) == 2                       # still distinct, if inelegant
 
 
@@ -260,7 +275,7 @@ def test_a_steady_outflow_keeps_its_rhythm_when_money_comes_back():
     """The outflow reports monthly and fixed while the inflows, whose dates
     interleave with it at no rhythm, report irregular and variable. The stream
     is recurring because one of its directions is."""
-    (s,) = build_streams(_two_way())
+    (s,) = streams_of(_two_way())
     assert s.direction_mix == "both" and s.n == 9
     assert s.flow(OUT).cadence_class == "monthly"
     assert s.flow(OUT).amount_stability == "fixed"
@@ -275,7 +290,7 @@ def test_one_relationship_stays_one_stream():
     one counterparty on one rail is one relationship — a refund belongs to the
     merchant that took the payment — so the split is in what is measured, not in
     what is counted."""
-    streams = build_streams(_two_way())
+    streams = streams_of(_two_way())
     assert len(streams) == 1 and len(streams[0].flows) == 2
 
 
@@ -283,7 +298,7 @@ def test_no_rhythm_is_offered_across_two_directions():
     """Every rhythm statistic is on the flow and absent from the stream, so a
     figure averaged over both directions is not merely unused — it cannot be
     read at all."""
-    (s,) = build_streams(_two_way())
+    (s,) = streams_of(_two_way())
     for name in ("cadence_class", "amount_stability", "amount_cv",
                  "interval_is_steady", "median_interval_days",
                  "day_of_month_is_stable"):
@@ -291,10 +306,37 @@ def test_no_rhythm_is_offered_across_two_directions():
         assert all(hasattr(f, name) for f in s.flows), name
 
 
+def test_a_card_purchase_reads_as_money_out():
+    """Direction is read from the account's kind, not from the posted sign.
+
+    A purchase on a liability account posts positive — what is owed grew — and
+    the money still left, so a subscription paid on a card is an outflow with
+    its rhythm measured over that outflow, and no inflow anywhere in the
+    stream."""
+    card = [M(date(2026, month, 5), "9.99",
+              f"CARD PURCHASE 0{month}/05 CLOUDSTORE WA",
+              account="card", kind="liability") for month in range(1, 7)]
+    (s,) = streams_of(card)
+    assert s.direction_mix == OUT
+    assert s.flow(IN) is None
+    assert s.flow(OUT).n == 6 and s.flow(OUT).cadence_class == "monthly"
+
+
+def test_a_stream_cannot_be_built_without_the_account_kind():
+    """Which way money went is unanswerable from the posted amount alone, so a
+    caller that supplies no kind is refused rather than served a direction read
+    off the sign."""
+    mv = [M(date(2026, 1, 5), "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA")]
+    with pytest.raises(ValueError):
+        build_streams(mv)
+    with pytest.raises(ValueError):
+        build_streams(mv, kind_for=lambda m: "")
+
+
 # --- what a stream is allowed to say ---------------------------------------
 
 def test_cadence_and_stability_are_measured_not_asked_for():
-    streams = {s.counterparty: s for s in build_streams(_life())}
+    streams = {s.counterparty: s for s in streams_of(_life())}
     utility = streams["utilityco bill pay"].flow(OUT)
     payroll = streams["cedarline holdings payroll"].flow(IN)
     assert utility.cadence_class == "monthly" and utility.amount_stability == "variable"
@@ -304,7 +346,7 @@ def test_cadence_and_stability_are_measured_not_asked_for():
 def test_below_the_floor_it_says_unknown_rather_than_guessing():
     mv = [M(date(2026, 1, 5), "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA"),
           M(date(2026, 2, 5), "-9.99", "CARD PURCHASE 02/05 CLOUDSTORE WA")]
-    (s,) = build_streams(mv)
+    (s,) = streams_of(mv)
     # Two observations is one interval, and one interval is not a rhythm.
     assert s.n == 2 and s.flow(OUT).cadence_class == "unknown" and not s.recurring
 
@@ -317,7 +359,7 @@ def test_dates_arrive_as_iso_strings_and_intervals_still_work():
     mv = [M("2026-01-05", "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA"),
           M("2026-02-05", "-9.99", "CARD PURCHASE 02/05 CLOUDSTORE WA"),
           M("2026-03-05", "-9.99", "CARD PURCHASE 03/05 CLOUDSTORE WA")]
-    (s,) = build_streams(mv)
+    (s,) = streams_of(mv)
     assert s.flow(OUT).median_interval_days == 29.5
     assert s.flow(OUT).cadence_class == "monthly"
 
@@ -327,13 +369,13 @@ def test_a_movement_with_an_unreadable_date_is_skipped_not_defaulted():
           M("", "-9.99", "CARD PURCHASE CLOUDSTORE WA"),
           M("2026-02-05", "-9.99", "CARD PURCHASE 02/05 CLOUDSTORE WA"),
           M("2026-03-05", "-9.99", "CARD PURCHASE 03/05 CLOUDSTORE WA")]
-    (s,) = build_streams(mv)
+    (s,) = streams_of(mv)
     # Defaulting it to today would not add noise — it would make the cadence wrong.
     assert s.n == 3 and s.flow(OUT).cadence_class == "monthly"
 
 
 def test_a_single_amount_has_no_variation_and_says_so():
-    (s,) = build_streams([M(date(2026, 1, 5), "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA")])
+    (s,) = streams_of([M(date(2026, 1, 5), "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA")])
     # 0.0 would read as "perfectly fixed"; it means "nothing to compare".
     assert s.flow(OUT).amount_cv is None
     assert s.flow(OUT).amount_stability == "unknown"
@@ -342,7 +384,7 @@ def test_a_single_amount_has_no_variation_and_says_so():
 def test_a_day_of_month_anchor_survives_weekend_drift():
     mv = [M(date(2026, m, d), "-2400.00", "RENT OAKRIDGE PROPERTY MGMT")
           for m, d in ((1, 1), (2, 2), (3, 1), (4, 3), (5, 1))]
-    (s,) = build_streams(mv)
+    (s,) = streams_of(mv)
     assert s.flow(OUT).day_of_month_is_stable
     assert s.flow(OUT).cadence_class == "monthly"
 
@@ -362,9 +404,9 @@ def test_money_that_never_left_your_life_is_marked_not_measured():
     ruled.linked = True
     activity = M("2026-01-12", "8774.75", "You Sold Short-term loss: $548.74")
     ordinary = M("2026-01-13", "-15.49", "GOLDEN FORK BISTRO PLANO TX")
-    streams = build_streams([card_payment, ruled, activity, ordinary],
-                            kind_for=lambda m: "investment"
-                            if m is activity else "depository")
+    streams = streams_of([card_payment, ruled, activity, ordinary],
+                         kind_for=lambda m: "investment"
+                         if m is activity else "depository")
     roles = {s.counterparty: s.role for s in streams}
     assert roles["payment to card ending in"] == INTERNAL
     assert roles["transfer to savings"] == INTERNAL
@@ -385,7 +427,7 @@ def test_a_partly_linked_counterparty_is_ONE_stream_reported_as_mixed():
     a = M("2026-01-10", "-250.00", "ACME SERVICES")
     a.linked = True
     b = M("2026-01-20", "-40.00", "ACME SERVICES")
-    (st,) = build_streams([a, b])
+    (st,) = streams_of([a, b])
     assert st.role == MIXED and st.linked_share == 0.5
 
 
@@ -397,7 +439,7 @@ def test_role_never_consults_a_spending_judgement():
     a party. Only a live transfer link proves the other side is yours."""
     m = M("2026-01-01", "-4395.38", "LONGCREEK-SERVIC ACH PMT PPD ID: 1000000004")
     m.nature = "transfer"            # deliberately set, and deliberately ignored
-    (st,) = build_streams([m])
+    (st,) = streams_of([m])
     assert st.role == COUNTERPARTY
 
 
@@ -420,12 +462,12 @@ def test_a_single_word_merchant_behind_a_bank_prefix_is_NOT_recovered():
     literal template text and the merchant becomes `{brand}`."""
     mv = [M("2026-01-05", "-9.99", "CARD PURCHASE 01/05 CLOUDSTORE WA"),
           M("2026-02-05", "-4.99", "CARD PURCHASE 02/05 STREAMCO CA")]
-    assert len(build_streams(mv)) == 1              # merged, and we know why
+    assert len(streams_of(mv)) == 1                 # merged, and we know why
     # A multi-word merchant survives, which is why a real vault still shows
     # many distinct card streams rather than one.
     mv2 = [M("2026-01-09", "-42.10", "CARD PURCHASE 01/09 GOLDEN FORK BISTRO TX"),
            M("2026-01-11", "-63.00", "CARD PURCHASE 01/11 NORTHGATE FUEL CO TX")]
-    assert len(build_streams(mv2)) == 2
+    assert len(streams_of(mv2)) == 2
 
 
 # --- the boundary -----------------------------------------------------------

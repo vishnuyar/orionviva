@@ -201,9 +201,11 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
     the ledger stays self-contained.
 
     ``profile_for(movement)`` supplies the induced grammar for the movement's
-    (institution × kind) or None; ``kind_for(movement)`` the account kind. Both
-    are optional — without them the resolution falls back through the published
-    rules and the normalizer, and no account kind is filtered out.
+    (institution × kind) or None, and is optional — without it the resolution
+    falls back through the published rules and the normalizer.
+    ``kind_for(movement)`` gives the account kind and is required: it decides
+    which way a movement's money went and which kinds name a party at all.
+    Raises ValueError without it.
 
     ``chunk_size`` bounds how many merchants ride in one model call; None takes
     the package's own default.
@@ -217,17 +219,21 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
 
     from merchantcore.profile import is_inducible
 
+    if kind_for is None:
+        raise ValueError(
+            "enrich_merchants needs kind_for: the account kind decides which "
+            "movements name a party and which way their money went"
+        )
     proj = ledger.projection()
     # Only account kinds whose descriptors name a counterparty — the same
     # allowlist the grammar uses. An investment activity line names a security,
     # and an unmodelled kind is held back until it is added to the allowlist.
-    movements = proj.movements()
-    if kind_for is not None:
-        movements = [m for m in movements if is_inducible(kind_for(m))]
-        held_back = len(proj.movements()) - len(movements)
-        if held_back:
-            log.info("merchants: %d movement(s) held back — their account kind "
-                     "names no party", held_back)
+    every = proj.movements()
+    movements = [m for m in every if is_inducible(kind_for(m))]
+    held_back = len(every) - len(movements)
+    if held_back:
+        log.info("merchants: %d movement(s) held back — their account kind "
+                 "names no party", held_back)
     streams = build_streams(movements, profile_for, kind_for)
     offered = enrichment_hints(streams)
     submitted = catalog.submit((h.key, h.example()) for h in offered.values())

@@ -68,7 +68,7 @@ def test_the_write_side_and_the_read_side_compute_the_same_key():
 
     proj = _proj()
     m = _movement(proj)
-    stream = build_streams([m], lambda _m: GRAMMAR)[0]
+    stream = build_streams([m], lambda _m: GRAMMAR, lambda _m: _m.kind)[0]
     assert stream.counterparty == proj.merchant_key_of(m) == BRAND_KEY
 
 

@@ -46,7 +46,8 @@ def _seed_vault(directory):
                      lambda p: ('{"amzn mktp us":{"category":"shopping"},'
                                 '"netflix com":{"category":"entertainment",'
                                 '"subcategory":"streaming"},'
-                                '"costco whse":{"category":"groceries"}}'))
+                                '"costco whse":{"category":"groceries"}}'),
+                     kind_for=lambda m: m.kind)
     costco = next(m for m in vault.ledger.projection().movements()
                   if "COSTCO" in m.description)
     assign_category(vault.ledger, costco.key, "groceries", by="human")

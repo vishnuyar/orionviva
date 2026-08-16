@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from .. import streams
 from ..events import (MAJOR_ASSET, MAJOR_EXPENSE, MAJOR_INCOME,
                       MAJOR_LIABILITY, SCOPE_MOVEMENT, Provenance)
 from . import accounts as accounts_view
@@ -308,7 +309,7 @@ def money_effect(m: MovementInfo) -> Decimal:
     The account's kind decides the sign, not the posting's. A liability
     records a charge positive — what is owed grew — so its sign is read the
     other way up; every other kind reads as recorded."""
-    return -m.amount if m.kind == "liability" else m.amount
+    return streams.money_effect(m.kind, m.amount)
 
 
 def counts_as_spending(m: MovementInfo) -> bool:

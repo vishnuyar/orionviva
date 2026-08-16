@@ -246,7 +246,7 @@ def _flows_by_merchant(core: ProjectionCore) -> dict:
         if not key or when is None:
             continue
         occurrence = Occurrence(date=when, amount=m.amount, account=m.account,
-                                description=m.description)
+                                kind=m.kind, description=m.description)
         groups.setdefault((key, occurrence.direction), []).append((occurrence, m))
     out = {}
     for pair, rows in groups.items():

@@ -202,6 +202,18 @@ measure them.
   refund against a purchase — so a stream holds a **flow** per direction and no
   rhythm statistic spans two directions. Anything reading a rhythm — a noticing
   that one changed, above all — reads a `(stream, direction)` pair.
+- **A direction is decided by the account's kind, never by the posted sign.** A
+  posted amount is signed by its effect on the balance the *document* prints, so
+  on a card a purchase is positive — what is owed grew — and the sign says
+  nothing about which way the person's money went. One derivation answers this,
+  `money_effect(kind, amount)`, and a movement whose account kind is unknown
+  raises rather than being read off its sign. It does not answer *every* read
+  yet: as of 2026-08-16 the merchants projection's `implication_of` still picks
+  an implication by the posted sign — known, scheduled as its own cycle with a
+  structural guard against the next one. Without this the same
+  arrangement splits by which account paid it: a subscription charged to a card
+  is filed as money arriving, and one relationship becomes two rhythms with half
+  the movements each.
 - A stream may **split further** when its amounts are clearly bimodal. A split is
   **visible in the surface**, never silent — "one answer labels the stream" is a
   promise to the user, and a stream that silently divided has broken it. *(Built

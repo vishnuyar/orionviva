@@ -72,8 +72,26 @@ STEADY_INTERVAL_RATIO = 0.25
 # changes price once a year is still fixed; a utility is not.
 FIXED_AMOUNT_CV = 0.05
 
-# Which way the money went, from the sign of a movement. A flow is one of these.
+# Which way the money went. A flow is one of these.
 IN, OUT = "in", "out"
+
+
+def money_effect(kind: str, amount: Decimal) -> Decimal:
+    """The amount as it moved the person's money: positive in, negative out.
+
+    The account's kind decides the sign, not the posting's. A liability records
+    a charge positive — what is owed grew — so its sign is read the other way
+    up; every other kind reads as recorded.
+
+    Raises ValueError on an empty kind: the posted amount alone cannot say
+    which way money went, and on a liability it says the opposite."""
+    if not (kind or "").strip():
+        raise ValueError(
+            "which way a movement's money went is decided by its account's "
+            "kind, and no kind was given; a posted sign alone reads a "
+            "liability backwards"
+        )
+    return -amount if kind == "liability" else amount
 
 
 def _as_date(value):
@@ -93,16 +111,21 @@ def _as_date(value):
 
 @dataclass
 class Occurrence:
-    """One movement's place in a stream: the date, amount, account and
-    description its features are computed from."""
+    """One movement's place in a stream: the date, amount, account, account
+    kind and description its features are computed from.
+
+    ``kind`` is the account's kind, and it has no default: it is what decides
+    ``direction``, which the posted amount cannot answer on its own."""
     date: date
     amount: Decimal
     account: str
+    kind: str
     description: str
 
     @property
     def direction(self) -> str:
-        return IN if self.amount > 0 else OUT
+        """`in` or `out`, from the account's kind and the posted amount."""
+        return IN if money_effect(self.kind, self.amount) > 0 else OUT
 
 
 @dataclass
@@ -399,8 +422,11 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
     `description`. `profile_for(movement) -> Profile | None` supplies the induced
     grammar for the movement's (institution × kind), or None where none has been
     induced — which is every bank today and must stay a working case.
-    `kind_for(movement) -> str` gives the account kind, so an investment
-    account's own activity lines are marked rather than read as counterparties.
+    `kind_for(movement) -> str` gives the account kind. It is required: the
+    kind decides which way a movement's money went, and it marks an investment
+    account's own activity lines rather than reading them as counterparties.
+    Raises ValueError when it is missing, and when it yields an empty kind for
+    a movement, rather than falling back to the posted sign.
 
     Two passes, because a rail is a fact about a counterparty rather than about
     a line: the first resolves every descriptor and notes which rails each
@@ -410,6 +436,12 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
 
     Ingest order is never consulted and no state survives the call, so the
     result depends only on the set of movements passed in."""
+    if kind_for is None:
+        raise ValueError(
+            "build_streams needs kind_for: which way a movement's money went "
+            "is decided by its account's kind, and a posted sign alone reads "
+            "a liability backwards"
+        )
     movements = list(movements)
     # The ACH name/description split needs the statement as a whole, so it is
     # computed once here over every descriptor rather than per line.
@@ -436,7 +468,13 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
 
     streams: dict = {}
     for m, res, counterparty, when in resolved:
-        role = movement_role(m, kind_for(m) if kind_for else None)
+        kind = kind_for(m)
+        if not (kind or "").strip():
+            raise ValueError(
+                f"no account kind for a movement on {m.account!r}: which way "
+                "its money went cannot be read from the posted amount alone"
+            )
+        role = movement_role(m, kind)
         rail = rail_of(res, proven.get((counterparty, m.account), ()))
         st = streams.get((counterparty, rail))
         if st is None:
@@ -446,7 +484,7 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
                         refused=res.refused)
             streams[st.key] = st
         st.occurrences.append(Occurrence(date=when, amount=m.amount,
-                                         account=m.account,
+                                         account=m.account, kind=kind,
                                          description=m.description))
         st.roles.append(role)
         for slot, value in res.shareable().items():
