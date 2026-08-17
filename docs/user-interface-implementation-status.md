@@ -16,7 +16,7 @@ planned.
 | Architecture slice | Status | What is true now |
 |---|---|---|
 | Slice 0: surface contract and parity machinery | **Complete** | Versioned Python surface contracts, capability registry, deterministic fixture gate, capability coverage, import boundaries, impact gate, and CI wiring are implemented and tested. |
-| Slice 1: installable shell and demo vault | **Partial** | The React shell detects the scaffolded Tauri host, presents a directory/passphrase open-vault form, and reads live surfaces with fixture fallback. Reproducible target-sidecar packaging and Tauri build wiring now exist; installer artifacts, signing/update metadata, native picker, and packaged lifecycle validation remain. |
+| Slice 1: installable shell and demo vault | **Partial** | The React shell detects the scaffolded Tauri host, presents a directory/passphrase open-vault form with native folder selection when available, and reads live surfaces with fixture fallback. Reproducible target-sidecar packaging and Tauri build wiring now exist; installer artifacts, signing/update metadata, and packaged lifecycle validation remain. |
 | Slice 2: document journey | **Partial** | Document list/detail states and lifecycle presentation exist, and live document reads can now reach the desktop through the bridge. Drag/drop, processing jobs, restart recovery, and outbound records are not wired. |
 | Slice 3: financial picture | **Partial** | The desktop can map live overview/account reads from an opened vault when a host transport is injected. Full financial surface coverage, formatting parity, and host packaging remain incomplete. |
 | Slice 4: review and learning | **Partial** | The desktop can receive a live review queue from an opened vault when a host transport is injected. Queue answer/decline/confirm actions and post-action refreshes are not connected. |
@@ -34,8 +34,10 @@ documents, and review. The React desktop detects the host transport through
 `window.orionVivaBridge` and retains a deterministic fixture fallback. The
 TypeScript client defines the host request contract, and the Tauri bootstrap
 injects it through `bridge_request`. Target-specific sidecar packaging now has
-a pinned PyInstaller spec, target naming, and CI wiring; installer validation
-and signing remain before this is a distributable desktop app.
+a pinned PyInstaller spec, target naming, and CI wiring. The Tauri host adds a
+least-privilege native folder picker while manual path entry remains available.
+Installer validation and signing remain before this is a distributable desktop
+app.
 
 ## Implemented Evidence
 
@@ -129,8 +131,8 @@ criteria for live surface integration:
 
 Slice 1 therefore remains **Partial** because Tauri compilation, installer
 creation, signing, and packaged lifecycle validation are not complete. The
-next implementation slice is the packaged host plus job registry, cancellation,
-and restart recovery.
+native folder picker now exists as an optional host capability with
+manual-entry fallback.
 
 ## Native Host Acceptance Audit
 
@@ -144,12 +146,12 @@ an installed or signed desktop application:
 | Frontend bridge injection | Implemented for a Tauri runtime; `desktop/src/tauri-host.ts` injects `window.orionVivaBridge` through `bridge_request`, with browser fixture fallback. It is not yet proven in a packaged app. |
 | JSON-lines request/response adapter | Implemented across the Python sidecar and Rust host process-I/O path, with the TypeScript contract on top. Runtime/native build validation remains outstanding. |
 | Packaged sidecar resources and distribution metadata | Sidecar packaging implemented; `scripts/build_desktop_sidecar.py` stages target-named executables from a pinned PyInstaller spec, and CI builds before `tauri build`. Installer manifest, signing configuration, update endpoint, and update recovery flow remain. |
-| Native vault directory selection | Not present; the React form accepts a directory string, but the host provides no native picker or platform-path validation. |
+| Native vault directory selection | Implemented as an optional Tauri dialog capability; `Choose folder` populates the manual path, cancellation preserves it, picker errors are bounded, and browser preview keeps manual entry without exposing native controls. |
 | Offline startup and failure recovery | Partial; browser fallback, bounded bridge errors, stale-child cleanup, explicit restart, graceful shutdown, and lifecycle contract tests exist. Packaged offline startup, automatic user-facing recovery, and diagnostic export remain unverified or absent. |
 
-The exact remaining gap is the final packaged desktop lifecycle: Rust/Tauri
-compilation, installer creation and signing, update metadata, native directory
-selection, and startup/shutdown/recovery validation. The React, Rust adapter,
+The exact remaining gap is packaged lifecycle validation: Rust/Tauri
+compilation, installer creation and signing, update metadata, and
+startup/shutdown/recovery validation. The React, Rust adapter,
 Python bridge, and target-sidecar build boundaries now exist, but they do not
 yet constitute a signed distributable desktop application.
 
@@ -164,10 +166,12 @@ yet constitute a signed distributable desktop application.
 - Sidecar packaging: **passed** in an isolated Python 3.13 environment after
   installing the pinned and product runtime dependencies; the frozen binary
   launched and returned a bounded invalid-request frame.
-- Desktop focused tests on the current tree: **37 passed**.
+- Desktop focused tests on the current tree: **42 passed**.
 - Desktop production build on the current tree: **passed**.
 - JSON metadata validation, Python syntax compilation, packaging contract
   inspection, and `git diff --check`: **passed**.
+- Native directory-picker audit: **15 passed**; plugin permission, nullable
+  cancellation, frontend fallback, and bounded error contracts are covered.
 - Rust/Tauri compilation and installer generation remain unverified because
   `cargo` is not installed in this workspace.
 - Branch has not been pushed.

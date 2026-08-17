@@ -95,6 +95,18 @@ describe("bridge client boundary", () => {
     ]);
   });
 
+  it("exposes the native folder-picker capability without routing it through the sidecar", async () => {
+    const pickVaultDirectory = async () => "/chosen/local-vault";
+    const transport = {
+      request: async <T>() => ({ protocol: "1.0", request_id: "req", ok: true, result: {} as T }),
+      pickVaultDirectory,
+    };
+
+    const client = createHostBridgeClient(transport);
+
+    await expect(client.pickVaultDirectory?.()).resolves.toBe("/chosen/local-vault");
+  });
+
   it("reports a bounded host error without exposing the bridge response", async () => {
     const transport = {
       request: async <T>() => ({

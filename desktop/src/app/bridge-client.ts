@@ -25,6 +25,7 @@ export type BridgeRequest = {
 
 export type BridgeTransport = {
   request: <T>(frame: BridgeRequest) => Promise<BridgeResponse<T>>;
+  pickVaultDirectory?: () => Promise<string | null>;
 };
 
 declare global {
@@ -35,6 +36,7 @@ declare global {
 
 export type BridgeClient = {
   openVault: (vaultDirectory: string, passphrase: string) => Promise<void>;
+  pickVaultDirectory?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;
   readReview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
@@ -78,6 +80,9 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     openVault: async (vaultDirectory, passphrase) => {
       await request("bridge.open_vault", { vault_directory: vaultDirectory, passphrase });
     },
+    ...(transport.pickVaultDirectory
+      ? { pickVaultDirectory: transport.pickVaultDirectory }
+      : {}),
     readOverview: (parameters) => read("overview", parameters),
     readDocuments: () => read("documents"),
     readReview: (parameters) => read("review", parameters),

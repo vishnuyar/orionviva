@@ -83,6 +83,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .vault-open-form label { display: grid; gap: 4px; color: #7e897f; font-size: 10px; font-weight: 700; }
 .vault-open-form input { width: 100%; padding: 8px 9px; color: #31473d; background: #fffef9; border: 1px solid #d7e2d6; border-radius: 7px; font-size: 11px; }
 .vault-open-form input:focus { outline: 2px solid #b8ceb8; outline-offset: 1px; }
+.vault-directory-control { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.vault-picker-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 9px; color: #536e5f; background: #edf2eb; border: 1px solid #d7e2d6; border-radius: 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.vault-picker-button:hover { background: #e4ece2; }
+.vault-picker-button:focus-visible { outline: 2px solid #b8ceb8; outline-offset: 1px; }
+.vault-picker-button:disabled { cursor: wait; opacity: .65; }
 .vault-open-button { justify-content: center; width: 100%; margin-top: 2px; }
 .vault-open-button:disabled { cursor: wait; opacity: .65; }
 .vault-host-note { display: block; margin-top: 9px; color: #8b968e; font-size: 10px; line-height: 1.45; }

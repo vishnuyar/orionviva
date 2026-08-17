@@ -1,3 +1,4 @@
+import { open } from "@tauri-apps/plugin-dialog";
 import type { BridgeRequest, BridgeResponse, BridgeTransport } from "./app/bridge-client";
 
 type TauriInternals = {
@@ -27,6 +28,14 @@ export function installTauriBridge(): boolean {
         }),
       });
       return JSON.parse(response) as BridgeResponse<T>;
+    },
+    pickVaultDirectory: async () => {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Choose an OrionViva vault",
+      });
+      return typeof selected === "string" ? selected : null;
     },
   };
   window.orionVivaBridge = transport;

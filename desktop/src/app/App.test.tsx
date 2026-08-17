@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
 describe("minimal shell", () => {
@@ -140,6 +140,81 @@ describe("minimal shell", () => {
 
     expect(getByText(/Preview mode. A desktop host bridge will enable local vault opening/i)).toBeInTheDocument();
     expect(queryByPlaceholderText("/path/to/vault")).not.toBeInTheDocument();
+  });
+
+  it("keeps manual directory entry as the browser fallback", () => {
+    const { getByText, queryByLabelText, queryByRole } = render(<App />);
+
+    expect(getByText(/Preview mode. A desktop host bridge will enable local vault opening/i)).toBeInTheDocument();
+    expect(queryByRole("button", { name: /choose folder/i })).not.toBeInTheDocument();
+    expect(queryByLabelText("Vault directory")).not.toBeInTheDocument();
+  });
+
+  it("asks the native host to choose a vault directory and copies the selection into the manual field", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    const pickVaultDirectory = vi.fn(async () => "/chosen/local-vault");
+    window.orionVivaBridge = {
+      request: async <T,>() => ({ protocol: "1.0", request_id: "req", ok: true, result: {} as T }),
+      pickVaultDirectory,
+    };
+
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+
+      await user.click(getByRole("button", { name: /choose folder/i }));
+
+      expect(pickVaultDirectory).toHaveBeenCalledTimes(1);
+      expect(getByLabelText("Vault directory")).toHaveValue("/chosen/local-vault");
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("treats a cancelled native picker as a no-op and keeps the manual path", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    const pickVaultDirectory = vi.fn(async () => null);
+    window.orionVivaBridge = {
+      request: async <T,>() => ({ protocol: "1.0", request_id: "req", ok: true, result: {} as T }),
+      pickVaultDirectory,
+    };
+
+    try {
+      const { getByLabelText, getByRole, queryByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/manual/vault");
+
+      await user.click(getByRole("button", { name: /choose folder/i }));
+
+      expect(pickVaultDirectory).toHaveBeenCalledTimes(1);
+      expect(getByLabelText("Vault directory")).toHaveValue("/manual/vault");
+      expect(queryByRole("status")).toBeNull();
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("keeps picker failures bounded and leaves manual entry available", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    const hostFailure = "dialog failed while reading /private/vault";
+    window.orionVivaBridge = {
+      request: async <T,>() => ({ protocol: "1.0", request_id: "req", ok: true, result: {} as T }),
+      pickVaultDirectory: async () => { throw new Error(hostFailure); },
+    };
+
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/manual/vault");
+
+      await user.click(getByRole("button", { name: /choose folder/i }));
+
+      expect(getByRole("status")).toHaveTextContent(/folder picker could not be opened/i);
+      expect(getByRole("status")).not.toHaveTextContent(hostFailure);
+      expect(getByLabelText("Vault directory")).toHaveValue("/manual/vault");
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
   });
 
   it("opens a local vault through the injected host bridge", async () => {

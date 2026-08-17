@@ -293,6 +293,7 @@ fn bridge_shutdown(state: State<'_, BridgeState>) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(BridgeState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             bridge_request,

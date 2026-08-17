@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleHelp,
   FilePlus2,
+  FolderOpen,
   LockKeyhole,
   Menu,
   ShieldCheck,
@@ -30,6 +31,7 @@ export function App() {
   const [hostBridge] = useState<BridgeClient | null>(() => hasHostBridge() ? createDetectedBridgeClient() : null);
   const [vaultDirectory, setVaultDirectory] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [pickingVaultDirectory, setPickingVaultDirectory] = useState(false);
   const [openingVault, setOpeningVault] = useState(false);
   const [destination, setDestination] = useState<Destination>("overview");
   const [notice, setNotice] = useState<string | null>(null);
@@ -94,6 +96,24 @@ export function App() {
     }
   }
 
+  async function pickVaultDirectory() {
+    if (!hostBridge?.pickVaultDirectory || pickingVaultDirectory || openingVault) {
+      return;
+    }
+    setPickingVaultDirectory(true);
+    setNotice(null);
+    try {
+      const selected = await hostBridge.pickVaultDirectory();
+      if (selected) {
+        setVaultDirectory(selected);
+      }
+    } catch {
+      setNotice("The folder picker could not be opened. Enter the vault path manually.");
+    } finally {
+      setPickingVaultDirectory(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <aside className={mobileNav ? "sidebar sidebar-open" : "sidebar"}>
@@ -127,12 +147,25 @@ export function App() {
             <form className="vault-open-form" onSubmit={openVault}>
               <label>
                 Vault directory
-                <input
-                  value={vaultDirectory}
-                  onChange={(event) => setVaultDirectory(event.target.value)}
-                  placeholder="/path/to/vault"
-                  autoComplete="off"
-                />
+                <span className="vault-directory-control">
+                  <input
+                    value={vaultDirectory}
+                    onChange={(event) => setVaultDirectory(event.target.value)}
+                    placeholder="/path/to/vault"
+                    autoComplete="off"
+                  />
+                  {hostBridge.pickVaultDirectory && (
+                    <button
+                      className="vault-picker-button"
+                      type="button"
+                      onClick={pickVaultDirectory}
+                      disabled={pickingVaultDirectory || openingVault}
+                    >
+                      <FolderOpen size={14} />
+                      {pickingVaultDirectory ? "Choosing..." : "Choose folder"}
+                    </button>
+                  )}
+                </span>
               </label>
               <label>
                 Passphrase
@@ -144,7 +177,7 @@ export function App() {
                   autoComplete="current-password"
                 />
               </label>
-              <button className="secondary-button vault-open-button" type="submit" disabled={openingVault}>
+              <button className="secondary-button vault-open-button" type="submit" disabled={openingVault || pickingVaultDirectory}>
                 {openingVault ? "Opening vault..." : "Open local vault"}
               </button>
             </form>
