@@ -121,9 +121,9 @@ criteria for live surface integration:
 
 | Acceptance criterion | Current state |
 |---|---|
-| Read models are produced from an explicitly opened vault | Implemented at the Python sidecar boundary; `bridge.open_vault` creates the provider and enables overview, documents, and review reads. The packaged native host lifecycle is still missing. |
+| Read models are produced from an explicitly opened vault | Implemented at the Python sidecar boundary; `bridge.open_vault` creates the provider and enables overview, documents, and review reads. The packaged native host lifecycle is not yet validated here. |
 | Surface operations are typed and allowlisted | Implemented at the transport boundary; the typed React client can send `bridge.open_vault` and `viva.surface.read` through an injected host transport, and the React open-vault form invokes `bridge.open_vault` when that host exists. |
-| Long-running work reports honest progress and terminal states | Partial; reads emit started/completed/failed events, but there is no job registry, cancellation, or restart recovery. |
+| Long-running work reports honest progress and terminal states | Partial; reads emit started/completed/failed events, and the host now exposes bounded restart/shutdown recovery, but there is no job registry or cancellation. |
 | The desktop consumes the live bridge while retaining deterministic fixtures | Implemented as a React/Tauri host seam; the unlock form calls `window.orionVivaBridge` when Tauri internals are present and fixtures remain the browser fallback. A target sidecar has been built and smoke-tested locally; the full packaged Tauri application remains unbuilt here. |
 | Failures remain bounded at the bridge boundary | Implemented for malformed requests and handler exceptions; vault lifecycle failures still need a typed contract. |
 
@@ -140,12 +140,12 @@ an installed or signed desktop application:
 | Native-host requirement | Current state |
 |---|---|
 | Tauri application and configuration | Scaffolded; `desktop/src-tauri` declares the Tauri app, capabilities, sidecar name, and `bridge_request` command. No Rust/Tauri build has been run in this workspace. |
-| Sidecar process launch and lifecycle ownership | Development path implemented; Rust owns a JSON-lines child process and filters progress frames. There is no packaged target binary, restart policy, graceful shutdown hook, or lifecycle test. |
+| Sidecar process launch and lifecycle ownership | Implemented in the Rust host; it owns one JSON-lines child, detects stale exits, reaps it on shutdown, exposes explicit restart/shutdown commands, and cleans up on app exit. Packaged Tauri runtime validation remains outstanding. |
 | Frontend bridge injection | Implemented for a Tauri runtime; `desktop/src/tauri-host.ts` injects `window.orionVivaBridge` through `bridge_request`, with browser fixture fallback. It is not yet proven in a packaged app. |
 | JSON-lines request/response adapter | Implemented across the Python sidecar and Rust host process-I/O path, with the TypeScript contract on top. Runtime/native build validation remains outstanding. |
 | Packaged sidecar resources and distribution metadata | Sidecar packaging implemented; `scripts/build_desktop_sidecar.py` stages target-named executables from a pinned PyInstaller spec, and CI builds before `tauri build`. Installer manifest, signing configuration, update endpoint, and update recovery flow remain. |
 | Native vault directory selection | Not present; the React form accepts a directory string, but the host provides no native picker or platform-path validation. |
-| Offline startup and failure recovery | Partial code path only; browser fallback and bridge errors are handled, but packaged offline startup, child-process crash restart, graceful shutdown, stale-process cleanup, and diagnostic export are unverified or absent. |
+| Offline startup and failure recovery | Partial; browser fallback, bounded bridge errors, stale-child cleanup, explicit restart, graceful shutdown, and lifecycle contract tests exist. Packaged offline startup, automatic user-facing recovery, and diagnostic export remain unverified or absent. |
 
 The exact remaining gap is the final packaged desktop lifecycle: Rust/Tauri
 compilation, installer creation and signing, update metadata, native directory
@@ -159,17 +159,15 @@ yet constitute a signed distributable desktop application.
   3.12 runtime.
 - Last recorded surface contract check: **passed**.
 - Last recorded surface impact check: **passed**.
-- Desktop bridge scaffold syntax check: **passed**; focused bridge tests are
-  awaiting the supported Python 3.11+ runtime in CI.
-- Provider-read and progress-event syntax check: **passed**; focused bridge
-  tests are awaiting the supported Python 3.11+ runtime in CI.
+- Desktop bridge, provider-read, progress-event, native-host, packaging, and
+  lifecycle suite: **47 passed** in the isolated Python 3.13 environment.
 - Sidecar packaging: **passed** in an isolated Python 3.13 environment after
   installing the pinned and product runtime dependencies; the frozen binary
   launched and returned a bounded invalid-request frame.
 - Desktop focused tests on the current tree: **37 passed**.
 - Desktop production build on the current tree: **passed**.
-- JSON, Python syntax, packaging contract checks, and `git diff --check`:
-  **passed**.
+- JSON metadata validation, Python syntax compilation, packaging contract
+  inspection, and `git diff --check`: **passed**.
 - Rust/Tauri compilation and installer generation remain unverified because
   `cargo` is not installed in this workspace.
 - Branch has not been pushed.
