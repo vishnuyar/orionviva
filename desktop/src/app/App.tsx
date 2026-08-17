@@ -11,7 +11,8 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { demoState, destinations, nextDestination, type Destination, type DemoState } from "./model";
+import { destinations, nextDestination, type Destination, type DemoState } from "./model";
+import { readSurface, syntheticSurfaceData } from "./data";
 
 const pageCopy: Record<Destination, { title: string; intro: string }> = {
   overview: { title: "Your financial picture", intro: "A quiet view of what is known, what is pending, and what still needs a human decision." },
@@ -23,12 +24,13 @@ const pageCopy: Record<Destination, { title: string; intro: string }> = {
 };
 
 export function App() {
+  const surface = readSurface(syntheticSurfaceData);
   const [destination, setDestination] = useState<Destination>("overview");
-  const [demo] = useState<DemoState>(demoState);
+  const [demo] = useState<DemoState>(surface);
   const [notice, setNotice] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
-  const [selectedDocument, setSelectedDocument] = useState(demoState.documents[0].name);
-  const [selectedQueue, setSelectedQueue] = useState(demoState.queue[0].label);
+  const [selectedDocument, setSelectedDocument] = useState(surface.documents[0].name);
+  const [selectedQueue, setSelectedQueue] = useState(surface.queue[0].label);
 
   function navigate(next: Destination) {
     setDestination((current) => nextDestination(current, next));

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { demoState, destinations, nextDestination } from "./model";
 import { corpusCoverageLabel, syntheticCorpus } from "./synthetic";
+import { readSurface, syntheticSurfaceData } from "./data";
 
 describe("minimal shell model", () => {
   it("covers every first-slice destination", () => {
@@ -62,5 +63,15 @@ describe("minimal shell model", () => {
   it("does not reinterpret navigation state", () => {
     expect(nextDestination("overview", "review")).toBe("review");
     expect(nextDestination("review", "review")).toBe("review");
+  });
+
+  it("provides one typed snapshot boundary for the shell", () => {
+    const snapshot = readSurface(syntheticSurfaceData);
+    expect(syntheticSurfaceData.id).toBe("synthetic-demo");
+    expect(syntheticSurfaceData.label).toBe("Synthetic local corpus");
+    expect(snapshot).toBe(readSurface(syntheticSurfaceData));
+    expect(snapshot.documents.length).toBeGreaterThan(0);
+    expect(snapshot.accounts.length).toBeGreaterThan(0);
+    expect(snapshot.recent.every((item) => item.provenance.length > 0)).toBe(true);
   });
 });
