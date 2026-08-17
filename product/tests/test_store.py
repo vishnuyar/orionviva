@@ -8,6 +8,10 @@ from viva.crypto import CryptoError
 from viva.ledger import (EventStore, account_opened, opening_balance_observed,
                          simple_transaction)
 
+# The vault is this file's subject, so it pays the real scrypt cost rather than
+# the cheap one the rest of the suite mints under (tests/conftest.py).
+pytestmark = pytest.mark.production_kdf
+
 PW = "a strong test passphrase"
 
 

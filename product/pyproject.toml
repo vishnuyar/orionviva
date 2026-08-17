@@ -27,6 +27,10 @@ include = ["viva*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Vaults are minted at a cheap scrypt cost suite-wide (see tests/conftest.py).
+# This marker opts a file back out and pays the real, interactive-login-grade
+# cost, for the tests whose subject is the vault itself.
+markers = ["production_kdf: mint vaults at the production scrypt cost parameters"]
 
 # Prompts are DATA and must ship with the wheel. A packaging slip here is
 # invisible in a checkout and fatal in an install: `resolve()` would raise on a

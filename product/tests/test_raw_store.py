@@ -7,6 +7,10 @@ import pytest
 from viva.crypto import CryptoError
 from viva.ingest import RawStore
 
+# The vault is this file's subject, so it pays the real scrypt cost rather than
+# the cheap one the rest of the suite mints under (tests/conftest.py).
+pytestmark = pytest.mark.production_kdf
+
 PW = "raw store passphrase"
 
 
