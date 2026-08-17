@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoState, destinations, nextDestination } from "./model";
+import { corpusCoverageLabel, syntheticCorpus } from "./synthetic";
 
 describe("minimal shell model", () => {
   it("covers every first-slice destination", () => {
@@ -21,6 +22,15 @@ describe("minimal shell model", () => {
     expect(demoState.queue.map((item) => item.type)).toEqual(["Document review", "Merchant", "Transfer"]);
     expect(demoState.recent.map((item) => item.tone)).toEqual(["inflow", "outflow", "neutral"]);
     expect(demoState.trustNotes).toHaveLength(3);
+  });
+
+  it("projects the four-year synthetic corpus without inventing backend facts", () => {
+    expect(syntheticCorpus.documentCount).toBe(176);
+    expect(syntheticCorpus.range).toEqual({ from: "2022-08-01", to: "2026-07-31" });
+    expect(syntheticCorpus.accountFamilies).toHaveLength(5);
+    expect(syntheticCorpus.documents.at(-1)?.pages).toBe("2 pages");
+    expect(corpusCoverageLabel(syntheticCorpus)).toContain("176 synthetic documents");
+    expect(demoState.corpusSource).toContain("Synthetic local corpus");
   });
 
   it("does not reinterpret navigation state", () => {

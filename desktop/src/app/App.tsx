@@ -175,7 +175,7 @@ function Overview({ state, onNavigate }: { state: DemoState; onNavigate: (destin
           <div className="coverage-track">
             <span />
           </div>
-          <p>The surface is useful, but it does not pretend the vault is complete.</p>
+          <p>{state.corpusCoverage}. The surface is useful, but it does not pretend the vault is complete.</p>
           <button className="text-button" onClick={() => onNavigate("documents")}>
             See document status <ArrowUpRight size={14} />
           </button>
@@ -268,6 +268,10 @@ function Overview({ state, onNavigate }: { state: DemoState; onNavigate: (destin
           <strong>Nothing is silently inferred.</strong>
           <span>Every figure carries its date, scope, and evidence. Uncertainty stays visible.</span>
         </div>
+      </div>
+      <div className="corpus-note">
+        <span>{state.corpusSource}</span>
+        <span>Range {state.currentThrough} · no live vault connected</span>
       </div>
     </>
   );

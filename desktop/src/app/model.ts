@@ -1,3 +1,5 @@
+import { corpusCoverageLabel, syntheticCorpus } from "./synthetic";
+
 export type Destination = "overview" | "accounts" | "activity" | "documents" | "review" | "trust";
 
 export type FigureGrade = "verified" | "corroborated" | "unverified" | "conflicted";
@@ -18,6 +20,8 @@ export type FigureView = {
 export type DemoState = {
   currentThrough: string;
   coverage: string;
+  corpusCoverage: string;
+  corpusSource: string;
   netWorth: FigureView;
   accounts: Array<{ name: string; kind: string; display: string; grade: FigureGrade; note: string; asOf: string }>;
   queue: Array<{ label: string; detail: string; status: string; action: string; type: string; evidence: string }>;
@@ -28,8 +32,10 @@ export type DemoState = {
 };
 
 export const demoState: DemoState = {
-  currentThrough: "June 30, 2026",
-  coverage: "2 accounts · 91% of the period attested",
+  currentThrough: "July 31, 2026",
+  coverage: "5 account families · 48 months represented",
+  corpusCoverage: corpusCoverageLabel(syntheticCorpus),
+  corpusSource: "Synthetic local corpus · generated from the merchant catalog",
   netWorth: {
     id: "demo-net-worth",
     display: "$48,240.18",
@@ -38,13 +44,16 @@ export const demoState: DemoState = {
     measure: "balance",
     grade: "corroborated",
     gradeLabel: "Corroborated",
-    asOf: "June 30, 2026",
-    coverage: "Checking and savings statements, Jan–Jun 2026",
+    asOf: "July 31, 2026",
+    coverage: "Synthetic checking and savings statements, Aug 2022–Jul 2026",
     caveats: ["One May statement page is still held for review."],
   },
   accounts: [
-    { name: "Everyday checking", kind: "Depository · balance", display: "$8,240.18", grade: "verified", note: "Cash flow and balance current", asOf: "June 30, 2026" },
-    { name: "Long view savings", kind: "Depository · balance", display: "$40,000.00", grade: "corroborated", note: "Statement-backed, no liabilities", asOf: "June 30, 2026" },
+    { name: "Everyday checking", kind: "Depository · balance", display: "$8,240.18", grade: "verified", note: "Synthetic statement series current", asOf: "July 31, 2026" },
+    { name: "Long view savings", kind: "Depository · balance", display: "$40,000.00", grade: "corroborated", note: "Synthetic quarterly statements", asOf: "July 31, 2026" },
+    { name: "Chase Sapphire", kind: "Credit card · owed", display: "$1,842.77", grade: "verified", note: "Monthly statement series", asOf: "July 31, 2026" },
+    { name: "Citi Double Cash", kind: "Credit card · owed", display: "$620.14", grade: "verified", note: "Monthly statement series", asOf: "July 31, 2026" },
+    { name: "Taxable Brokerage", kind: "Brokerage · balance", display: "$18,137.09", grade: "corroborated", note: "Quarterly statements with holdings", asOf: "July 31, 2026" },
   ],
   queue: [
     { label: "Held statement page", detail: "May brokerage page is still waiting for a human check.", status: "Held", action: "Open document", type: "Document review", evidence: "Brokerage statement, page 4" },
@@ -58,12 +67,12 @@ export const demoState: DemoState = {
   ],
   reviewCount: 2,
   documents: [
-    { name: "everyday-checking-june.pdf", state: "Verified", detail: "Captured Jun 30 · 8 pages", source: "Local upload", pages: "8 pages" },
-    { name: "savings-may.pdf", state: "Held", detail: "Captured Jun 30 · page 4 needs review", source: "Local upload", pages: "6 pages" },
-    { name: "brokerage-may.pdf", state: "Pending", detail: "Imported locally · waiting on a page-level check", source: "Scanner import", pages: "12 pages" },
+    { name: "silverline-checking-2026-07.pdf", state: "Verified", detail: "Synthetic corpus · 2026-07-01 to 2026-07-31", source: "Generated locally", pages: "1 page" },
+    { name: "north-river-savings-2026-05-to-2026-07.pdf", state: "Held", detail: "Synthetic corpus · quarterly statement awaiting review", source: "Generated locally", pages: "1 page" },
+    { name: "fidelity-brokerage-2026-05-to-2026-07.pdf", state: "Pending", detail: "Synthetic corpus · holdings page available for review", source: "Generated locally", pages: "2 pages" },
   ],
   trustNotes: [
-    { title: "Local by default", detail: "This demo never leaves the device and does not simulate network calls." },
+    { title: "Local by default", detail: "This synthetic corpus is generated and inspected on this device; it makes no network calls." },
     { title: "No silent inference", detail: "Uncertainty stays visible in the figure and the queue." },
     { title: "Anchoring status", detail: "The ledger is hash-chained in the full product; this preview only mirrors the contract." },
   ],

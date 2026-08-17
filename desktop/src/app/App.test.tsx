@@ -8,7 +8,7 @@ describe("minimal shell", () => {
     const { getByRole, getByText } = render(<App />);
     expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
     expect(getByText("$48,240.18")).toBeInTheDocument();
-    expect(getByText("Corroborated · June 30, 2026")).toBeInTheDocument();
+    expect(getByText("Corroborated · July 31, 2026")).toBeInTheDocument();
   });
 
   it("moves through shell destinations without leaving the page", async () => {
@@ -17,7 +17,7 @@ describe("minimal shell", () => {
     await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
     expect(getByRole("heading", { name: "Documents" })).toBeInTheDocument();
     expect(getByText("Capture before reading")).toBeInTheDocument();
-    expect(getByRole("heading", { name: "everyday-checking-june.pdf" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).toBeInTheDocument();
   });
 
   it("acknowledges document capture as local-only", async () => {
@@ -39,9 +39,9 @@ describe("minimal shell", () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = render(<App />);
     await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    await user.click(getByRole("button", { name: /brokerage-may\.pdf/i }));
-    expect(getByText("Scanner import")).toBeInTheDocument();
-    expect(getByText("12 pages")).toBeInTheDocument();
+    await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
+    expect(getByText("Generated locally")).toBeInTheDocument();
+    expect(getByText("2 pages")).toBeInTheDocument();
   });
 
   it("shows the selected queue item inside review", async () => {
@@ -58,12 +58,12 @@ describe("minimal shell", () => {
     const { getByRole } = render(<App />);
 
     await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-    await user.click(getByRole("button", { name: /brokerage-may\.pdf/i }));
-    expect(getByRole("heading", { name: "brokerage-may.pdf" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
+    expect(getByRole("heading", { name: "fidelity-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
 
     await user.click(getByRole("button", { name: /overview.*your picture/i }));
     await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-    expect(getByRole("heading", { name: "brokerage-may.pdf" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "fidelity-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
     expect(getByRole("button", { name: /open page review/i })).toBeInTheDocument();
   });
 
