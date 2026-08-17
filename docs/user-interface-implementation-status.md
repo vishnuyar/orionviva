@@ -16,20 +16,26 @@ planned.
 | Architecture slice | Status | What is true now |
 |---|---|---|
 | Slice 0: surface contract and parity machinery | **Complete** | Versioned Python surface contracts, capability registry, deterministic fixture gate, capability coverage, import boundaries, impact gate, and CI wiring are implemented and tested. |
-| Slice 1: installable shell and demo vault | **Partial** | A desktop React/Vite shell and synthetic demo corpus exist. There is no Tauri installer, packaged Python sidecar, typed IPC bridge, or real-vault unlock flow. |
-| Slice 2: document journey | **Partial** | Document list/detail states, lifecycle states, evidence navigation, and synthetic statement data exist. Drag/drop, processing jobs, restart recovery, and outbound records are not wired. |
-| Slice 3: financial picture | **Partial** | Synthetic overview/read-model projections and evidence-aware cards exist. They are not yet served from a live `viva.surface` bridge and do not cover the full architecture fixture matrix. |
-| Slice 4: review and learning | **Partial** | Review-oriented surface states and backend contract coverage exist. Queue reads and answer/decline/confirm actions are not connected to the desktop UI. |
+| Slice 1: installable shell and demo vault | **Partial** | The React shell detects the scaffolded Tauri host, presents a directory/passphrase open-vault form, and reads live surfaces with fixture fallback. Reproducible target-sidecar packaging and Tauri build wiring now exist; installer artifacts, signing/update metadata, native picker, and packaged lifecycle validation remain. |
+| Slice 2: document journey | **Partial** | Document list/detail states and lifecycle presentation exist, and live document reads can now reach the desktop through the bridge. Drag/drop, processing jobs, restart recovery, and outbound records are not wired. |
+| Slice 3: financial picture | **Partial** | The desktop can map live overview/account reads from an opened vault when a host transport is injected. Full financial surface coverage, formatting parity, and host packaging remain incomplete. |
+| Slice 4: review and learning | **Partial** | The desktop can receive a live review queue from an opened vault when a host transport is injected. Queue answer/decline/confirm actions and post-action refreshes are not connected. |
 | Slice 5: ask Viva | **Not started in the UI** | Backend ask/speak capabilities exist, but there is no desktop conversation surface or live turn/read integration. |
 | Slice 6: activity and organization | **Partial** | Cross-document evidence and transaction-oriented surface groundwork exist. Filters, corrections, categories, tags, transfer actions, and live totals are not complete. |
 | Slice 7: trust and maintenance | **Not started** | Capability dispositions classify maintenance and trust destinations, but there is no trust/maintenance UI, outbound history, or build identity view. |
 | Slice 8: distribution and capture comfort | **Not started** | No signed installer, watched folder, Windows packaging, update recovery, or diagnostic export flow is implemented. |
 
 **Current UI/backend boundary:** the desktop currently consumes synthetic
-fixtures and local read-model adapters. It does not yet consume the Python
-surface contracts through `desktop_bridge` or a typed IPC transport. Therefore
-the UI can demonstrate presentation states, but it cannot yet utilize all
-implemented backend actions end to end.
+fixtures and local read-model adapters through an explicit bridge-client
+seam. `product/viva/desktop_bridge` now provides a versioned JSON-lines
+transport boundary with handshake validation, an allowlisted dispatcher, an
+explicit `bridge.open_vault` lifecycle, and opened-vault reads for overview,
+documents, and review. The React desktop detects the host transport through
+`window.orionVivaBridge` and retains a deterministic fixture fallback. The
+TypeScript client defines the host request contract, and the Tauri bootstrap
+injects it through `bridge_request`. Target-specific sidecar packaging now has
+a pinned PyInstaller spec, target naming, and CI wiring; installer validation
+and signing remain before this is a distributable desktop app.
 
 ## Implemented Evidence
 
@@ -57,6 +63,19 @@ The implementation was committed in `9cc8d7a`:
 The current desktop includes:
 
 - a React/Vite application shell;
+- an explicit desktop bridge-client seam with a fixture-backed default;
+- a transport-only Python bridge scaffold with version handshake, JSON-lines
+  framing, allowlisted dispatch, and a live capability-registry read;
+- an injected vault-surface provider contract with typed read results and
+  started/completed/failed progress events;
+- a concrete opened-vault provider for overview, document, and review reads;
+- a runnable JSON-lines sidecar with explicit vault-open lifecycle;
+- a typed desktop host transport client with live-read mapping, an exposed
+  vault-open call, and fixture fallback;
+- a guarded user-facing vault directory/passphrase form that invokes the
+  typed open-vault call when a host transport is present;
+- a Tauri host scaffold with development sidecar fallback and target-specific
+  PyInstaller packaging automation;
 - synthetic four-year statement data;
 - overview and account-oriented read models;
 - explicit document lifecycle states;
@@ -65,8 +84,10 @@ The current desktop includes:
 - surface graph regression coverage;
 - focused desktop tests and a production build.
 
-These are valuable presentation slices, but they are fixtures and adapters,
-not proof of live backend integration.
+These are valuable presentation slices. The opened-vault bridge is a real
+backend adapter when invoked through a host transport, while the browser/Vite
+path remains fixture-backed. Native packaging is automated, but installer and
+signed-release validation are still outstanding.
 
 ### Backend capabilities available for future wiring
 
@@ -79,30 +100,78 @@ ordinary UI navigation.
 
 ## Remaining Work To Reach Backend/UI Parity
 
-1. Build `product/viva/desktop_bridge` with a version handshake, allowlisted
-   handlers, framed request/response transport, and job progress.
-2. Replace the desktop synthetic data source with a typed bridge client while
-   retaining fixtures for deterministic UI tests.
-3. Implement Slice 1's installable shell, sidecar packaging, offline startup,
+1. Compile the Tauri host and validate the packaged shell, offline startup,
    demo-vault reset, and real-vault create/unlock lifecycle.
-4. Wire document ingest, rescan, progress, held/parked states, and outbound
+2. Add installer manifests/signing and validate target-specific distribution.
+3. Wire document ingest, rescan, progress, held/parked states, and outbound
    accounting into the document journey.
-5. Wire review queue reads and answer, decline, proposal, and confirmation
+4. Wire review queue reads and answer, decline, proposal, and confirmation
    actions with post-action refreshes.
-6. Add the shared overview, evidence drawer, activity, and transaction detail
+5. Add the shared overview, evidence drawer, activity, and transaction detail
    components against live surface read models.
-7. Add the conversation surface for `viva.ask` and `viva.speak`, including
+6. Add the conversation surface for `viva.ask` and `viva.speak`, including
    cited turns, refusal states, and protection against document-driven writes.
-8. Implement trust and maintenance views, then packaging, update recovery,
+7. Implement trust and maintenance views, then update recovery,
    watched-folder capture, and diagnostic export.
+
+## Vault-Backed Read And Job Progress Audit
+
+The current bridge checkpoint does not yet meet the architecture acceptance
+criteria for live surface integration:
+
+| Acceptance criterion | Current state |
+|---|---|
+| Read models are produced from an explicitly opened vault | Implemented at the Python sidecar boundary; `bridge.open_vault` creates the provider and enables overview, documents, and review reads. The packaged native host lifecycle is still missing. |
+| Surface operations are typed and allowlisted | Implemented at the transport boundary; the typed React client can send `bridge.open_vault` and `viva.surface.read` through an injected host transport, and the React open-vault form invokes `bridge.open_vault` when that host exists. |
+| Long-running work reports honest progress and terminal states | Partial; reads emit started/completed/failed events, but there is no job registry, cancellation, or restart recovery. |
+| The desktop consumes the live bridge while retaining deterministic fixtures | Implemented as a React/Tauri host seam; the unlock form calls `window.orionVivaBridge` when Tauri internals are present and fixtures remain the browser fallback. A target sidecar has been built and smoke-tested locally; the full packaged Tauri application remains unbuilt here. |
+| Failures remain bounded at the bridge boundary | Implemented for malformed requests and handler exceptions; vault lifecycle failures still need a typed contract. |
+
+Slice 1 therefore remains **Partial** because Tauri compilation, installer
+creation, signing, and packaged lifecycle validation are not complete. The
+next implementation slice is the packaged host plus job registry, cancellation,
+and restart recovery.
+
+## Native Host Acceptance Audit
+
+The repository now contains a native desktop host scaffold, but it is not yet
+an installed or signed desktop application:
+
+| Native-host requirement | Current state |
+|---|---|
+| Tauri application and configuration | Scaffolded; `desktop/src-tauri` declares the Tauri app, capabilities, sidecar name, and `bridge_request` command. No Rust/Tauri build has been run in this workspace. |
+| Sidecar process launch and lifecycle ownership | Development path implemented; Rust owns a JSON-lines child process and filters progress frames. There is no packaged target binary, restart policy, graceful shutdown hook, or lifecycle test. |
+| Frontend bridge injection | Implemented for a Tauri runtime; `desktop/src/tauri-host.ts` injects `window.orionVivaBridge` through `bridge_request`, with browser fixture fallback. It is not yet proven in a packaged app. |
+| JSON-lines request/response adapter | Implemented across the Python sidecar and Rust host process-I/O path, with the TypeScript contract on top. Runtime/native build validation remains outstanding. |
+| Packaged sidecar resources and distribution metadata | Sidecar packaging implemented; `scripts/build_desktop_sidecar.py` stages target-named executables from a pinned PyInstaller spec, and CI builds before `tauri build`. Installer manifest, signing configuration, update endpoint, and update recovery flow remain. |
+| Native vault directory selection | Not present; the React form accepts a directory string, but the host provides no native picker or platform-path validation. |
+| Offline startup and failure recovery | Partial code path only; browser fallback and bridge errors are handled, but packaged offline startup, child-process crash restart, graceful shutdown, stale-process cleanup, and diagnostic export are unverified or absent. |
+
+The exact remaining gap is the final packaged desktop lifecycle: Rust/Tauri
+compilation, installer creation and signing, update metadata, native directory
+selection, and startup/shutdown/recovery validation. The React, Rust adapter,
+Python bridge, and target-sidecar build boundaries now exist, but they do not
+yet constitute a signed distributable desktop application.
 
 ## Verification Snapshot
 
-- Python surface suite: **40 passed** under the supported Python 3.12 runtime.
-- Surface contract check: **passed**.
-- Surface impact check: **passed**.
-- Desktop focused tests: **21 passed**.
-- Desktop production build: **passed**.
+- Last recorded Python surface suite: **40 passed** under the supported Python
+  3.12 runtime.
+- Last recorded surface contract check: **passed**.
+- Last recorded surface impact check: **passed**.
+- Desktop bridge scaffold syntax check: **passed**; focused bridge tests are
+  awaiting the supported Python 3.11+ runtime in CI.
+- Provider-read and progress-event syntax check: **passed**; focused bridge
+  tests are awaiting the supported Python 3.11+ runtime in CI.
+- Sidecar packaging: **passed** in an isolated Python 3.13 environment after
+  installing the pinned and product runtime dependencies; the frozen binary
+  launched and returned a bounded invalid-request frame.
+- Desktop focused tests on the current tree: **37 passed**.
+- Desktop production build on the current tree: **passed**.
+- JSON, Python syntax, packaging contract checks, and `git diff --check`:
+  **passed**.
+- Rust/Tauri compilation and installer generation remain unverified because
+  `cargo` is not installed in this workspace.
 - Branch has not been pushed.
 
 ## Update Rule

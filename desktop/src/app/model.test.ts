@@ -65,11 +65,11 @@ describe("minimal shell model", () => {
     expect(nextDestination("review", "review")).toBe("review");
   });
 
-  it("provides one typed snapshot boundary for the shell", () => {
-    const snapshot = readSurface(syntheticSurfaceData);
+  it("provides one typed snapshot boundary for the shell", async () => {
+    const snapshot = await readSurface(syntheticSurfaceData);
     expect(syntheticSurfaceData.id).toBe("synthetic-demo");
     expect(syntheticSurfaceData.label).toBe("Synthetic local corpus");
-    expect(snapshot).toBe(readSurface(syntheticSurfaceData));
+    expect(snapshot).toBe(await readSurface(syntheticSurfaceData));
     expect(snapshot.documents.length).toBeGreaterThan(0);
     expect(snapshot.accounts.length).toBeGreaterThan(0);
     expect(snapshot.recent.every((item) => item.provenance.length > 0)).toBe(true);

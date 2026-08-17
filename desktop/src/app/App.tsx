@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -11,8 +11,9 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { destinations, nextDestination, type Destination, type DemoState } from "./model";
-import { readSurface, syntheticSurfaceData } from "./data";
+import { demoState, destinations, nextDestination, type Destination, type DemoState } from "./model";
+import { createBridgeReadySource, readSurface, syntheticSurfaceData } from "./data";
+import { createDetectedBridgeClient, hasHostBridge, type BridgeClient } from "./bridge-client";
 
 const pageCopy: Record<Destination, { title: string; intro: string }> = {
   overview: { title: "Your financial picture", intro: "A quiet view of what is known, what is pending, and what still needs a human decision." },
@@ -24,13 +25,36 @@ const pageCopy: Record<Destination, { title: string; intro: string }> = {
 };
 
 export function App() {
-  const surface = readSurface(syntheticSurfaceData);
+  const [vaultSource, setVaultSource] = useState(syntheticSurfaceData);
+  const [surface, setSurface] = useState<DemoState>(demoState);
+  const [hostBridge] = useState<BridgeClient | null>(() => hasHostBridge() ? createDetectedBridgeClient() : null);
+  const [vaultDirectory, setVaultDirectory] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [openingVault, setOpeningVault] = useState(false);
   const [destination, setDestination] = useState<Destination>("overview");
-  const [demo] = useState<DemoState>(surface);
   const [notice, setNotice] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(surface.documents[0].name);
   const [selectedQueue, setSelectedQueue] = useState(surface.queue[0].label);
+
+  useEffect(() => {
+    let alive = true;
+    readSurface(vaultSource).then((nextSurface) => {
+      if (!alive) {
+        return;
+      }
+      setSurface(nextSurface);
+      setSelectedDocument(nextSurface.documents[0]?.name ?? "");
+      setSelectedQueue(nextSurface.queue[0]?.label ?? "");
+    }).catch(() => {
+      if (alive) {
+        setNotice("The local vault opened, but its surface data could not be loaded.");
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [vaultSource]);
 
   function navigate(next: Destination) {
     setDestination((current) => nextDestination(current, next));
@@ -40,6 +64,34 @@ export function App() {
   function addDocument() {
     setNotice("Document capture is ready for the local bridge. Nothing has left this device.");
     setDestination("documents");
+  }
+
+  function resetDemoVault() {
+    setVaultSource(syntheticSurfaceData);
+    setDestination("overview");
+    setNotice("Demo vault reset to the checked-in fixture snapshot.");
+  }
+
+  async function openVault(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!hostBridge || !vaultDirectory.trim() || !passphrase) {
+      setNotice("Enter a vault directory and passphrase to open a local vault.");
+      return;
+    }
+    setOpeningVault(true);
+    setNotice(null);
+    try {
+      await hostBridge.openVault(vaultDirectory.trim(), passphrase);
+      setPassphrase("");
+      setVaultSource(createBridgeReadySource(hostBridge));
+      setDestination("overview");
+      setNotice("Local vault opened. Surface data is now coming from the bridge.");
+    } catch {
+      setPassphrase("");
+      setNotice("The local vault could not be opened. Check the directory and passphrase, then try again.");
+    } finally {
+      setOpeningVault(false);
+    }
   }
 
   return (
@@ -61,6 +113,46 @@ export function App() {
           Preview build
         </div>
 
+        <div className="vault-source-card">
+          <div className="vault-source-topline">
+            <span>Vault source</span>
+            <button className="text-button" onClick={resetDemoVault}>
+              Reset demo vault
+            </button>
+          </div>
+          <strong>{vaultSource.label}</strong>
+          <span className="vault-source-boundary">{vaultSource.boundary === "fixture" ? "Fixture boundary" : "Bridge-ready boundary"}</span>
+          <p>{vaultSource.description}</p>
+          {hostBridge ? (
+            <form className="vault-open-form" onSubmit={openVault}>
+              <label>
+                Vault directory
+                <input
+                  value={vaultDirectory}
+                  onChange={(event) => setVaultDirectory(event.target.value)}
+                  placeholder="/path/to/vault"
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Passphrase
+                <input
+                  type="password"
+                  value={passphrase}
+                  onChange={(event) => setPassphrase(event.target.value)}
+                  placeholder="Enter passphrase"
+                  autoComplete="current-password"
+                />
+              </label>
+              <button className="secondary-button vault-open-button" type="submit" disabled={openingVault}>
+                {openingVault ? "Opening vault..." : "Open local vault"}
+              </button>
+            </form>
+          ) : (
+            <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>
+          )}
+        </div>
+
         <nav aria-label="Main navigation">
           <div className="nav-label">Navigate</div>
           {destinations.map((item) => (
@@ -69,7 +161,7 @@ export function App() {
                 <strong>{item.label}</strong>
                 <small>{item.eyebrow}</small>
               </span>
-              {item.id === "review" && <span className="nav-count">{demo.reviewCount}</span>}
+              {item.id === "review" && <span className="nav-count">{surface.reviewCount}</span>}
             </button>
           ))}
         </nav>
@@ -115,22 +207,24 @@ export function App() {
               <div className="kicker">{pageCopy[destination].intro}</div>
               <h1>{pageCopy[destination].title}</h1>
             </div>
-            <button className="primary-button" onClick={addDocument}>
-              <FilePlus2 size={17} />
-              Add document
-            </button>
+            <div className="page-actions">
+              <button className="primary-button" onClick={addDocument}>
+                <FilePlus2 size={17} />
+                Add document
+              </button>
+            </div>
           </div>
 
-          {destination === "overview" && <Overview state={demo} onNavigate={navigate} />}
-          {destination === "accounts" && <Accounts state={demo} />}
+          {destination === "overview" && <Overview state={surface} onNavigate={navigate} />}
+          {destination === "accounts" && <Accounts state={surface} />}
           {destination === "documents" && (
-            <Documents state={demo} selectedDocument={selectedDocument} onSelectDocument={setSelectedDocument} />
+            <Documents state={surface} selectedDocument={selectedDocument} onSelectDocument={setSelectedDocument} />
           )}
           {destination === "review" && (
-            <Review state={demo} selectedQueue={selectedQueue} onSelectQueue={setSelectedQueue} onNavigate={navigate} />
+            <Review state={surface} selectedQueue={selectedQueue} onSelectQueue={setSelectedQueue} onNavigate={navigate} />
           )}
-          {destination === "activity" && <Activity state={demo} onNavigate={navigate} />}
-          {destination === "trust" && <Trust state={demo} />}
+          {destination === "activity" && <Activity state={surface} onNavigate={navigate} />}
+          {destination === "trust" && <Trust state={surface} />}
         </div>
       </main>
     </div>
@@ -273,7 +367,7 @@ function Overview({ state, onNavigate }: { state: DemoState; onNavigate: (destin
       </div>
       <div className="corpus-note">
         <span>{state.corpusSource}</span>
-        <span>Range {state.currentThrough} · no live vault connected</span>
+        <span>Range {state.currentThrough} · bridge boundary ready, no live vault connected</span>
       </div>
     </>
   );

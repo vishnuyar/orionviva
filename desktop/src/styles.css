@@ -68,6 +68,24 @@ button { font: inherit; color: inherit; cursor: pointer; }
   letter-spacing: .03em;
   text-transform: uppercase;
 }
+.vault-source-card {
+  margin: 0 10px 24px;
+  padding: 14px 14px 13px;
+  border: 1px solid #d9e3d8;
+  border-radius: 14px;
+  background: rgba(248, 250, 245, 0.82);
+}
+.vault-source-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: #8d9891; font-size: 10px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+.vault-source-card strong { display: block; color: #31473d; font-size: 12px; font-weight: 700; }
+.vault-source-boundary { display: inline-block; margin-top: 4px; padding: 3px 7px; border-radius: 999px; background: #eef4ec; color: #607464; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.vault-source-card p { margin: 6px 0 0; color: #7e897f; font-size: 11px; line-height: 1.45; }
+.vault-open-form { display: grid; gap: 8px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #dce6db; }
+.vault-open-form label { display: grid; gap: 4px; color: #7e897f; font-size: 10px; font-weight: 700; }
+.vault-open-form input { width: 100%; padding: 8px 9px; color: #31473d; background: #fffef9; border: 1px solid #d7e2d6; border-radius: 7px; font-size: 11px; }
+.vault-open-form input:focus { outline: 2px solid #b8ceb8; outline-offset: 1px; }
+.vault-open-button { justify-content: center; width: 100%; margin-top: 2px; }
+.vault-open-button:disabled { cursor: wait; opacity: .65; }
+.vault-host-note { display: block; margin-top: 9px; color: #8b968e; font-size: 10px; line-height: 1.45; }
 .status-dot, .mini-dot { width: 6px; height: 6px; display: inline-block; border-radius: 50%; background: #74a57e; }
 .nav-label, .section-kicker, .kicker { color: #95a199; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .nav-label { margin: 0 11px 9px; }
@@ -167,6 +185,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .notice-close { margin-left: auto; padding: 0; border: 0; background: transparent; color: #71917a; }
 .content-wrap { max-width: 1160px; margin: 0 auto; padding: 54px 5.4vw 80px; }
 .page-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 34px; }
+.page-actions { display: flex; align-items: center; gap: 10px; }
 .kicker { max-width: 560px; margin-bottom: 11px; letter-spacing: .02em; text-transform: none; font-size: 12px; font-weight: 500; color: #7f8a83; line-height: 1.5; }
 h1, h2 { margin: 0; color: #263b32; font-family: "Playfair Display", Georgia, serif; font-weight: 600; letter-spacing: -.04em; }
 h1 { font-size: clamp(31px, 4vw, 46px); line-height: 1.05; }

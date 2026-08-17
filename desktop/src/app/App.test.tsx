@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
@@ -9,6 +9,8 @@ describe("minimal shell", () => {
     expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
     expect(getByText("$48,240.18")).toBeInTheDocument();
     expect(getByText("Corroborated · July 31, 2026")).toBeInTheDocument();
+    expect(getByText("Synthetic local corpus")).toBeInTheDocument();
+    expect(getByText("Fixture boundary")).toBeInTheDocument();
   });
 
   it("moves through shell destinations without leaving the page", async () => {
@@ -25,6 +27,18 @@ describe("minimal shell", () => {
     const { getByRole } = render(<App />);
     await user.click(getByRole("button", { name: /add document/i }));
     expect(getByRole("status")).toHaveTextContent("Nothing has left this device.");
+  });
+
+  it("shows the demo vault boundary and can reset it", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText } = render(<App />);
+
+    expect(getByText("Synthetic local corpus")).toBeInTheDocument();
+    expect(getByText("Offline demo vault seeded from checked-in fixtures.")).toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: /reset demo vault/i }));
+    expect(getByRole("status")).toHaveTextContent("Demo vault reset to the checked-in fixture snapshot.");
+    expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
   });
 
   it("keeps review count visible as a pending state", async () => {
@@ -114,5 +128,122 @@ describe("minimal shell", () => {
     expect(getByText("Local by default", { selector: "strong" })).toBeInTheDocument();
     expect(getByText("No silent inference", { selector: "strong" })).toBeInTheDocument();
     expect(getByText("Anchoring status", { selector: "strong" })).toBeInTheDocument();
+  });
+
+  it("states the bridge boundary without claiming a live vault", () => {
+    const { getByText } = render(<App />);
+    expect(getByText(/bridge boundary ready, no live vault connected/i)).toBeInTheDocument();
+  });
+
+  it("keeps fixture preview usable when no host bridge is injected", () => {
+    const { getByText, queryByPlaceholderText } = render(<App />);
+
+    expect(getByText(/Preview mode. A desktop host bridge will enable local vault opening/i)).toBeInTheDocument();
+    expect(queryByPlaceholderText("/path/to/vault")).not.toBeInTheDocument();
+  });
+
+  it("opens a local vault through the injected host bridge", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    window.orionVivaBridge = {
+      request: async <T,>({ operation }: { requestId: string; operation: string; payload: Record<string, unknown> }) => ({
+        protocol: "1.0",
+        request_id: "req",
+        ok: true,
+        result: (operation === "bridge.open_vault"
+          ? { state: "opened" }
+          : { surface: "overview", job_id: "job-1", data: { as_of: "August 1, 2026" } }) as T,
+      }),
+    };
+
+    try {
+      const { getByLabelText, getByRole, getByText } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/vault");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByRole("button", { name: "Open local vault" }));
+
+      expect(getByText("Local vault opened. Surface data is now coming from the bridge.")).toBeInTheDocument();
+      expect(getByText("Bridge-facing surface adapter")).toBeInTheDocument();
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("validates the vault-open form before calling the host", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    let calls = 0;
+    window.orionVivaBridge = {
+      request: async <T,>() => {
+        calls += 1;
+        return { protocol: "1.0", request_id: "req", ok: true, result: { state: "opened" } as T };
+      },
+    };
+
+    try {
+      const { getByRole, getByText } = render(<App />);
+      await user.click(getByRole("button", { name: "Open local vault" }));
+
+      expect(getByText("Enter a vault directory and passphrase to open a local vault.")).toBeInTheDocument();
+      expect(calls).toBe(0);
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("shows an opening state while the host request is pending", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    let resolveRequest: (() => void) | undefined;
+    window.orionVivaBridge = {
+      request: <T,>() => new Promise<{ protocol: string; request_id: string; ok: boolean; result: T }>((resolve) => {
+        resolveRequest = () => resolve({
+          protocol: "1.0",
+          request_id: "req",
+          ok: true,
+          result: {} as T,
+        });
+      }),
+    };
+
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/vault");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByRole("button", { name: "Open local vault" }));
+
+      expect(getByRole("button", { name: "Opening vault..." })).toBeDisabled();
+      resolveRequest?.();
+      await waitFor(() => expect(getByRole("button", { name: "Open local vault" })).toBeEnabled());
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("shows a bounded open error and clears the passphrase", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    const secret = "correct horse battery staple";
+    window.orionVivaBridge = {
+      request: async <T,>() => ({
+        protocol: "1.0",
+        request_id: "req",
+        ok: false,
+        error: { code: "vault_open_failed", message: "internal details must not reach the UI" },
+      } as { protocol: string; request_id: string; ok: boolean; error: { code: string; message: string }; result?: T }),
+    };
+
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/vault");
+      await user.type(getByLabelText("Passphrase"), secret);
+      await user.click(getByRole("button", { name: "Open local vault" }));
+
+      expect(getByRole("status")).toHaveTextContent("The local vault could not be opened.");
+      expect(getByRole("status")).not.toHaveTextContent(secret);
+      expect(getByLabelText("Passphrase")).toHaveValue("");
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
   });
 });
