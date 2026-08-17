@@ -134,6 +134,12 @@ export const demoState: DemoState = {
       { documentName: "chase-card-2026-07.pdf", label: "Chase Sapphire card statement", relation: "same_period", page: "page 1" },
       { documentName: "citi-card-2026-07.pdf", label: "Citi Double Cash card statement", relation: "same_period", page: "page 1" },
     ] },
+    { name: "chase-card-2026-07.pdf", state: "Verified", phase: "verified", phaseLabel: "Verified read", detail: "Synthetic corpus · 2026-07-01 to 2026-07-31", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · Chase card statement · page 1", evidenceLinks: [
+      { documentName: "silverline-checking-2026-07.pdf", label: "Everyday Checking statement", relation: "same_period", page: "page 1" },
+    ] },
+    { name: "citi-card-2026-07.pdf", state: "Verified", phase: "verified", phaseLabel: "Verified read", detail: "Synthetic corpus · 2026-07-01 to 2026-07-31", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · Citi card statement · page 1", evidenceLinks: [
+      { documentName: "silverline-checking-2026-07.pdf", label: "Everyday Checking statement", relation: "same_period", page: "page 1" },
+    ] },
     { name: "north-river-savings-2026-05-to-2026-07.pdf", state: "Held", phase: "held", phaseLabel: "Held for review", detail: "Synthetic corpus · quarterly statement awaiting review", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · savings statement · page 1", evidenceLinks: [
       { documentName: "silverline-checking-2026-07.pdf", label: "Everyday Checking statement", relation: "same_account", page: "page 1" },
       { documentName: "fidelity-brokerage-2026-05-to-2026-07.pdf", label: "Taxable Brokerage statement", relation: "corroborates", page: "pages 1–2" },

@@ -19,15 +19,15 @@ describe("minimal shell model", () => {
 
   it("keeps the demo surface aligned with the current document and review slices", () => {
     expect(demoState.reviewCount).toBe(2);
-    expect(demoState.documents.map((doc) => doc.state)).toEqual(["Verified", "Held", "Pending"]);
+    expect(demoState.documents.map((doc) => doc.state)).toEqual(["Verified", "Verified", "Verified", "Held", "Pending"]);
     expect(demoState.queue.map((item) => item.type)).toEqual(["Document review", "Merchant", "Transfer"]);
     expect(demoState.recent.map((item) => item.tone)).toEqual(["inflow", "outflow", "neutral"]);
     expect(demoState.trustNotes).toHaveLength(3);
   });
 
   it("keeps capture, reading, and verification as separate document phases", () => {
-    expect(demoState.documents.map((doc) => doc.phase)).toEqual(["verified", "held", "queued"]);
-    expect(demoState.documents.map((doc) => doc.phaseLabel)).toEqual(["Verified read", "Held for review", "Queued for reading"]);
+    expect(demoState.documents.map((doc) => doc.phase)).toEqual(["verified", "verified", "verified", "held", "queued"]);
+    expect(demoState.documents.map((doc) => doc.phaseLabel)).toEqual(["Verified read", "Verified read", "Verified read", "Held for review", "Queued for reading"]);
     expect(demoState.documents.every((doc) => doc.provenance.includes("Synthetic PDF"))).toBe(true);
   });
 
@@ -73,5 +73,17 @@ describe("minimal shell model", () => {
     expect(snapshot.documents.length).toBeGreaterThan(0);
     expect(snapshot.accounts.length).toBeGreaterThan(0);
     expect(snapshot.recent.every((item) => item.provenance.length > 0)).toBe(true);
+  });
+
+  it("keeps the complete surface graph referentially intact", () => {
+    const documentNames = new Set(demoState.documents.map((doc) => doc.name));
+    const ids = [
+      ...demoState.accounts.map((account) => account.id),
+      ...demoState.recent.map((item) => item.id),
+      ...demoState.queue.map((item) => item.id),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(demoState.documents.every((doc) => doc.evidenceLinks.every((link) => documentNames.has(link.documentName)))).toBe(true);
+    expect(destinations.map((item) => item.id)).toHaveLength(new Set(destinations.map((item) => item.id)).size);
   });
 });
