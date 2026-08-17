@@ -104,6 +104,22 @@ the tag alone. Nothing is composed at the moment of refusing, so a refused turn
 costs no model call and binds nothing. Where a refusal does carry holes, **code
 fills them from the run's own record** — for the reason in §3.
 
+_**Amended 2026-08-17 — a refused turn may now say two reviewed sentences, and
+nothing above changes.** Where the delivery established nothing, or the turn
+spent its whole budget of calls, the verdict in the pack's words for the
+runner's own tag is followed by the cause, in the pack's words for the machine
+tag of the read that stopped last. Both were written before the turn and chosen
+by a tag alone, so the ordering is untouched and a refused turn still costs no
+model call. The causes that may be spoken are a closed set of seven read tags in
+`viva/tools/envelope.py`, held to `pack-v11`'s sentences at build time, and not
+one of those sentences has a slot: the reads' own texts quote the value the
+caller supplied, and the caller is a model this project has recorded inventing
+filter values when refused, so a hole there would tell a person that a category
+they never named is absent from their records. The interim cost recorded under
+_Alternatives_ narrows accordingly — a refusal still offers nothing the run
+could have told them instead, which is what `docs/the-suggestions-channel.md`
+exists to restore, but it is no longer one sentence and no more._
+
 **8. The question direction obeys the same rule, mirrored.** A question declares
 typed slots and the model fills those; deterministic code decides what was said
 and what to write. **A model writes no digits, in either direction.** Model

@@ -140,6 +140,35 @@ def test_every_way_a_turn_can_refuse_has_a_reviewed_sentence():
             f"the sentence for {tag!r} says the machine's tag out loud")
 
 
+def test_every_refusal_whose_cause_may_be_spoken_has_a_reviewed_sentence():
+    """The cause of a turn's failure is chosen by the tag of the read that
+    stopped, so a speakable tag with no sentence in the pack is a turn that
+    would raise where it should have explained, and a sentence no speakable tag
+    can reach is dead voice. Neither reaches a person: it fails here.
+
+    And not one of these sentences takes a slot. A read is called with values a
+    caller chose, so a cause with a hole in it could put a word the person never
+    said in front of them as a fact about their own records."""
+    from viva.tools.envelope import SPEAKABLE_REFUSALS
+    from viva.tools.runner import DIAGNOSIS_MOMENT
+
+    declared = {k for k in persona.MOMENT_FIELDS
+                if k.startswith(DIAGNOSIS_MOMENT)}
+    wanted = {DIAGNOSIS_MOMENT + tag for tag in SPEAKABLE_REFUSALS}
+    assert declared == wanted, (
+        f"only-in-pack={sorted(declared - wanted)}, "
+        f"only-in-code={sorted(wanted - declared)}")
+    for tag in SPEAKABLE_REFUSALS:
+        key = DIAGNOSIS_MOMENT + tag
+        assert persona.MOMENT_FIELDS[key] == frozenset(), (
+            f"the sentence for {tag!r} has a slot, and a caller's value could "
+            "be placed in it")
+        said = persona.moment(key)
+        assert said.strip(), tag
+        assert tag not in said, (
+            f"the sentence for {tag!r} says the machine's tag out loud")
+
+
 def test_every_kind_a_set_can_be_narrowed_to_has_a_reviewed_sentence():
     """A figure says what set it was taken over, and a kind of thing with no
     sentence in the pack is a boundary the machine holds and cannot say. It

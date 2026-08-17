@@ -53,6 +53,13 @@ And when there is no answer at all, the ordering holds there too. A refusal is
 a reviewed sentence in the pack, one per machine tag, written before the turn
 that needed it and chosen by the tag alone. Nothing is composed at the moment
 of refusing, so a refused turn costs no model call and binds nothing.
+
+A turn that ends with nothing says the cause as well as the verdict, where a
+read can account for it. The read that stopped last says why in its own machine
+tag, and where that tag is one whose cause may be spoken the pack holds a second
+reviewed sentence for it, placed after the verdict. It is the same rule one call
+frame lower down: the words are chosen by a tag and exist in the repo before the
+turn begins, and no value a read was called with is ever in them.
 """
 
 from __future__ import annotations
@@ -68,7 +75,7 @@ from .compute import numbers_said
 from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_MERCHANT,
                        BY_PERIOD, BY_SINCE, BY_SUBCATEGORY, BY_TAG, BY_UNTIL,
                        ENTITY_ACCOUNT, ENTITY_MARKS, EXACT, HYPOTHETICAL,
-                       MONEY_KINDS, ToolResult, weakest)
+                       MONEY_KINDS, SPEAKABLE_REFUSALS, ToolResult, weakest)
 from .registry import PACKAGE, PROMPTS, Registry
 from .shape import Shape
 
@@ -111,6 +118,11 @@ class RunResult:
     figures: list = field(default_factory=list)
     grade: str = ""
     refusal: str = ""
+    # The tag of the read whose own account of stopping was spoken, empty when
+    # none was. Machine words for the log, the debug reader and the tests, never
+    # for the person, exactly as `detail` is. Empty means no cause was spoken —
+    # not that no read refused.
+    diagnosis: str = ""
     # What went wrong, in the machine's own words, naming the hole or the
     # reference. It reaches the log and the tests, never the person.
     detail: str = ""
@@ -133,7 +145,8 @@ class RunResult:
     def to_dict(self) -> dict:
         return {"answered": self.answered, "text": self.text,
                 "figures": list(self.figures), "grade": self.grade,
-                "refusal": self.refusal, "detail": self.detail,
+                "refusal": self.refusal, "diagnosis": self.diagnosis,
+                "detail": self.detail,
                 "transcript": list(self.transcript), "calls": self.calls,
                 "shape": dict(self.shape), "bindings": dict(self.bindings),
                 "written": dict(self.written), "gaps": list(self.gaps)}
@@ -259,8 +272,11 @@ REFUSAL_TAGS = (
     "nothing_established", "uncited_figure",
 )
 
-# How a tag finds its sentence in the pack.
+# How a tag finds its sentence in the pack. A turn's own tag finds the verdict;
+# a read's tag finds the cause, in a namespace of its own so that neither set of
+# sentences can be reached by the other's tag.
 REFUSAL_MOMENT = "refusal_"
+DIAGNOSIS_MOMENT = "diagnosis_"
 
 # The pseudo-tools a turn proceeds by. Neither is registered; neither executes
 # anything. One opens the turn and one ends it.
@@ -269,17 +285,43 @@ FINAL_TOOL = "deliver_answer"
 
 
 def _refused(reason: str, detail: str, transcript: list, calls: int,
-             shape=None) -> RunResult:
+             shape=None, diagnosis: str = "") -> RunResult:
     """A turn with nothing to say, and the reviewed sentence that says so.
 
     The sentence is chosen by the tag, from the pack, and is held to the same
     ordering an answer is: nothing composes words at the moment of refusing.
     `detail` stays in the result for the log and the tests and never reaches
-    the person."""
-    return RunResult(answered=False, refusal=reason,
-                     text=moment(REFUSAL_MOMENT + reason),
+    the person.
+
+    `diagnosis` is a read's own tag, from `_diagnosed`, and it adds a second
+    reviewed sentence saying why that read stopped. It is chosen the same way
+    the first one is, one call frame lower down; the verdict is said first and
+    is unchanged by it."""
+    said = [moment(REFUSAL_MOMENT + reason)]
+    if diagnosis:
+        said.append(moment(DIAGNOSIS_MOMENT + diagnosis))
+    return RunResult(answered=False, refusal=reason, text=" ".join(said),
+                     diagnosis=diagnosis,
                      detail=detail, transcript=transcript, calls=calls,
                      shape=shape.to_dict() if shape is not None else {})
+
+
+def _diagnosed(transcript: list, tools) -> str:
+    """The tag of the read that accounts for this turn having nothing, or "".
+
+    The candidate is the last entry in the transcript a registered tool
+    produced: the runner's own notes to the planner are not tool results and
+    are passed over, and a turn whose last read succeeded has no read refusal
+    that is still the reason. It is spoken only where that candidate is itself a
+    refusal and its tag is one whose cause may be spoken. Nothing here reads a
+    result's words, its payload or what constructed it."""
+    for result in reversed(transcript):
+        if result.tool not in tools:
+            continue
+        if result.ok or result.refusal not in SPEAKABLE_REFUSALS:
+            return ""
+        return result.refusal
+    return ""
 
 
 def _noted(tool: str, ok: bool, text: str) -> ToolResult:
@@ -348,7 +390,8 @@ def run(question: str, planner, registry: Registry,
                     "authored before its data, never after it.",
                     [t.to_dict() for t in transcript], len(transcript))
                 continue
-            result = _gate(step, transcript, ground, shape, locale)
+            result = _gate(step, transcript, ground, shape, locale,
+                           tools=registry.names())
         elif "tool" in step:
             if shape is None:
                 result = _refused(
@@ -364,7 +407,8 @@ def run(question: str, planner, registry: Registry,
                     "call_budget_exhausted",
                     f"No answer after {max_calls} tool calls; refusing rather "
                     "than answering without grounds.",
-                    [t.to_dict() for t in transcript], len(transcript), shape)
+                    [t.to_dict() for t in transcript], len(transcript), shape,
+                    diagnosis=_diagnosed(transcript, registry.names()))
                 continue
             called = registry.call(step["tool"], step.get("args"),
                                    figures=ground.book, question=question)
@@ -865,8 +909,13 @@ def _written_out(parts) -> str:
 
 
 def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
-          locale: str) -> RunResult:
-    """The checks on a delivery, over the structure and never the sentence."""
+          locale: str, *, tools) -> RunResult:
+    """The checks on a delivery, over the structure and never the sentence.
+
+    `tools` names the registered tools, which is what decides whether an entry
+    in the transcript is a read that can account for a turn that established
+    nothing. It has no default: a caller that omitted it would drop the cause
+    silently, and the turn would look like it had none to give."""
     dicts = [t.to_dict() for t in transcript]
     bindings = step.get("bindings")
     if not isinstance(bindings, dict):
@@ -909,7 +958,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         return _refused("nothing_established",
                         "Every clause of the answer rests on something this "
                         "run could not establish.", dicts, len(transcript),
-                        shape)
+                        shape, diagnosis=_diagnosed(transcript, tools))
 
     # Only what survived asserts anything, so only what survived is answerable
     # for its records and its caveats. The holes are walked in the order the

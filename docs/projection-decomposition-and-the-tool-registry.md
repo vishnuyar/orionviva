@@ -806,3 +806,63 @@ own group, still mints an entity, and is still refused as a filter — so an
 answer can name a counterparty the follow-up bounces. Unchanged by this cycle
 and needing its own, because whether such a label joins the residual is a
 decision rather than a repair._
+
+---
+
+_Amended 2026-08-17 (the read's own account of why it could not answer). **A
+refusal is a reviewed pack sentence chosen by machine tag, and that now holds
+one call frame lower down.** A turn that reached its delivery with nothing, or
+spent its whole budget of calls, says the verdict and then the cause: the
+verdict in the pack's words for the runner's own tag, unchanged, then the cause
+in the pack's words for the tag of the read that stopped. `pack-v11` carries
+those seven sentences and `pack-v10`'s moments otherwise verbatim; `pack-v10`
+was in force until this cycle._
+
+_**Which causes may be spoken is a closed set, and it lives with the envelope
+rather than at the refusal sites.** A read declares nothing new: `envelope.py`
+holds `SPEAKABLE_REFUSALS`, and the pack's sentences and that set are held to
+each other at build time, the way the runner's own tags and their sentences
+already are. No tool file gained person-facing prose._
+
+_**What admits a tag to that set.** A cause is speakable when it concerns the
+reach between the question and the records — what the records hold, how they
+can be narrowed, whether anything was named to narrow by — and when its whole
+account survives having every value the caller supplied stripped out of it. Two
+kinds of tag fail the second half. One whose stripped account is only about the
+form of the call is an instruction to whoever called the read, and a person
+reading it would be reading the product's own vocabulary. One whose account
+depends on what its payload happens to contain is not a declaration but a bag,
+and no single sentence can be true of two different causes — which is why the
+multi-fault tag that aggregates several faults under one name is not in the set,
+however vault-facing the faults inside it might have been. Clearing both halves
+is a gate and not an entitlement: a tag that clears them still earns no sentence
+unless what is left, once the caller's values are gone, tells a person something
+the verdict did not already tell them, and that is why `not_a_balance_account`
+is out._
+
+_**No sentence has a slot, and that is the point rather than a saving.** The
+reads' own texts quote the value they were called with, and the caller is a
+model this project has recorded inventing filter values when refused, so
+speaking one would tell a person that a category they never named does not
+exist in their records. A vague true cause beats a precise invented one._
+
+_**Which read, and when: the last entry a registered tool produced, and only if
+it refused.** Eligibility routes on registry membership, so the runner's own
+note about a shape and a step naming no registered tool are passed over rather
+than recognised, and nothing reads a result's words, its payload or what
+constructed it. A turn whose last read succeeded says the verdict alone: a cause
+that stopped being the reason is true and not the answer, which is the shape of
+failure this refuses. Whether the strict rule covers a useful share of the turns
+that produced it is a question for the record of a real run, not for the suite._
+
+_**Only two verdicts defer**, and both mean the delivery offered nothing:
+`nothing_established` and `call_budget_exhausted`. A broken protocol has nothing
+to do with what a read said, and every binding-gate fault means the run did
+establish things and reached wrongly — replacing that confession with a hint
+about narrowing would be the reverse of this product's argument._
+
+_**`RunResult` gains `diagnosis`**, carrying the read's tag into `to_dict`, into
+the recorded verdict of every speak event and into the debug reader's per-turn
+line, so the next sweep can count which read refusal most often ends a turn.
+Its meaning is fixed and permanent: **empty means no cause was spoken, not that
+no read refused.**_

@@ -317,6 +317,20 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "refusal_wrong_quantity":        frozenset(),
     "refusal_nothing_established":   frozenset(),
     "refusal_uncited_figure":        frozenset(),
+    # And why the turn had nothing, where a read that stopped can
+    # account for it. The verdict above is chosen by the turn's own tag
+    # and this is chosen by the read's, so the words a person hears are
+    # reviewed before the turn begins either way. Not one of them takes a
+    # slot: a read is called with values a caller chose, and a cause that
+    # could place one would put a word the person never said in front of
+    # them as a fact about their records.
+    "diagnosis_too_broad":           frozenset(),
+    "diagnosis_filter_unsupported":  frozenset(),
+    "diagnosis_unknown_account":     frozenset(),
+    "diagnosis_unknown_category":    frozenset(),
+    "diagnosis_unknown_tag":         frozenset(),
+    "diagnosis_unknown_merchant":    frozenset(),
+    "diagnosis_unknown_currency":    frozenset(),
 }
 
 

@@ -89,6 +89,7 @@ def summary(exchanges: list) -> dict:
     return {"question": last.get("question", ""),
             "answered": bool(verdict.get("answered")),
             "refusal": verdict.get("refusal", ""),
+            "diagnosis": verdict.get("diagnosis", ""),
             "tool_calls": verdict.get("calls", 0),
             "model_calls": len(exchanges),
             "input_tokens": sum(int(e.body.get("input_tokens") or 0)
@@ -219,7 +220,9 @@ def main() -> None:
                   for reason, n in sorted(counted["reasons"].items()))) + "\n")
         for i, key in enumerate(order, 1):
             s = summary(found[key])
-            state = "answered" if s["answered"] else f"REFUSED {s['refusal']}"
+            state = "answered" if s["answered"] else (
+                f"REFUSED {s['refusal']}"
+                + (f" / {s['diagnosis']}" if s["diagnosis"] else ""))
             print(f"  [{i:>2}] {found[key][0].occurred_at}  {key}")
             print(f"       q: {cut(s['question'], 90)}")
             print(f"       {state} — {s['tool_calls']} tool call(s), "
@@ -239,7 +242,8 @@ def main() -> None:
     print(f"turn {args[0]}  ({key})  {exchanges[0].occurred_at}")
     print(f"question: {s['question']}")
     print(f"verdict:  {'answered' if s['answered'] else 'REFUSED ' + s['refusal']}"
-          f" after {s['tool_calls']} tool call(s)")
+          + (f" / {s['diagnosis']}" if s["diagnosis"] else "")
+          + f" after {s['tool_calls']} tool call(s)")
     first = payload(exchanges[0])
     print(f"prompts:  {first.get('prompt_versions')}  "
           f"model={first.get('resolved_model')}")

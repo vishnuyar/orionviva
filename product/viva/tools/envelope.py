@@ -240,6 +240,32 @@ SELECTED_KINDS = (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD, BY_SINCE,
 # The one member that takes two days rather than one.
 _TWO_ENDED = (BY_PERIOD,)
 
+# The refusals a person may be told the cause of. A read that stops says why in
+# a machine tag, and for a tag in this set the pack holds one reviewed sentence
+# saying the same thing to a person.
+#
+# What admits a tag, for whoever adds the next one: the cause concerns the reach
+# between the question and the records — what the records hold, how they can be
+# narrowed, whether anything was named to narrow by — and its whole account
+# survives having every value the caller supplied stripped out of it. A tag whose
+# stripped account is only about the form of the call is an instruction to
+# whoever called the read; one whose account depends on what its payload happens
+# to contain is a bag rather than a declaration, and a single sentence cannot be
+# true of two different causes. Both stay out.
+#
+# Clearing that is a gate and not an entitlement. A tag that clears it still
+# earns no sentence unless what is left, once the caller's values are gone, tells
+# a person something the verdict did not already tell them.
+#
+# The set is closed and it grows by editing it here. Membership is the whole of
+# what makes a cause speakable: nothing reads the refusal's words, its payload or
+# what constructed it. A tag in the set with no sentence in the pack, and a
+# sentence no tag in the set can reach, are both build failures.
+SPEAKABLE_REFUSALS = frozenset({
+    "too_broad", "filter_unsupported", "unknown_account", "unknown_category",
+    "unknown_tag", "unknown_merchant", "unknown_currency",
+})
+
 # Why something a figure claims to measure is not in it. The two differ in
 # whether anything can be named that would close the gap, which is why they are
 # told apart rather than merged: a figure that was refused a number knows what

@@ -2661,7 +2661,7 @@ def test_an_answers_grade_ignores_activity_and_hypothetical_figures(registry):
     both = _shape(("{a} and {b}.", [("a", "count", "count"),
                                     ("b", "count", "count")]))
     spoken = _gate({"bindings": {"a": {"figure": "f1"}, "b": {"figure": "f2"}}},
-                   [], ground, both, "")
+                   [], ground, both, "", tools=())
     assert spoken.answered, spoken.detail
     assert spoken.grade == CORROBORATED
 
@@ -4720,3 +4720,161 @@ def test_nature_is_not_a_filter_any_read_offers(proj, registry):
     rows = ledger_tools.list_movements(
         proj, {"filters": {"account": "chk", "nature": "spending"}})
     assert rows.refusal == "filter_unsupported"
+
+
+# ------------------------- the read's own account of why the turn had nothing
+
+
+def _turn(*steps):
+    """A planner that takes the given steps in order, one per call.
+
+    Every step the runner asks for consumes one — a shape, a read, or the
+    delivery that ends the turn — so a test says the trajectory it means rather
+    than counting what has come back."""
+    remaining = iter(steps)
+
+    def planner(context):
+        return next(remaining)
+    return planner
+
+
+_SPENT = _shape(("You spent {total}.", [("total", "money", "spending")]))
+_ALSO_HELD = _shape(("You spent {total}.", [("total", "money", "spending")]),
+                    ("You hold {balance}.", [("balance", "money", "balance")]))
+
+# A read refused for a category the vault does not hold, and one that succeeds.
+_UNHELD_CATEGORY = {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending",
+                             "filters": {"category": "Zzz"}}}
+_A_READ_THAT_WORKS = {"tool": "query_ledger", "args": {"entity": "balances"}}
+_DELIVER_NOTHING = {"bindings": {}}
+
+
+def test_a_turn_that_established_nothing_says_why_the_last_read_stopped(registry):
+    """The verdict in the pack's words for the turn's tag, then the cause in the
+    pack's words for the read's. Both were reviewed before the turn began, and
+    the value the read was called with is in neither."""
+    from viva.persona import moment
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, _DELIVER_NOTHING),
+                 registry)
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == "unknown_category"
+    assert result.text == (moment("refusal_nothing_established") + " "
+                           + moment("diagnosis_unknown_category"))
+    assert "Zzz" not in result.text
+    assert result.to_dict()["diagnosis"] == "unknown_category"
+
+
+def test_a_turn_that_spent_its_budget_says_why_the_last_read_stopped(registry):
+    """The same failure told slower: the calls ran out on reads that refused,
+    and which of them refused is the best account of the turn."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, _UNHELD_CATEGORY),
+                 registry, max_calls=2)
+    assert result.refusal == "call_budget_exhausted"
+    assert result.diagnosis == "unknown_category"
+
+
+def test_a_cause_is_not_spoken_where_a_later_read_succeeded(registry):
+    """The turn's trouble lies where the reads cannot explain it, so the
+    verdict stands alone rather than quoting a complaint that has stopped being
+    the reason."""
+    from viva.persona import moment
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, _A_READ_THAT_WORKS,
+                       _DELIVER_NOTHING),
+                 registry)
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == ""
+    assert result.text == moment("refusal_nothing_established")
+
+
+def test_a_cause_is_not_spoken_where_the_last_read_refused_the_call_itself(
+        registry):
+    """A read that refused the arguments it was handed is talking to whoever
+    called it. Its tag is not one whose cause may be spoken, and the refusal
+    before it is not reached back for."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY,
+                       {"tool": "query_ledger",
+                        "args": {"entity": "balances", "unknown_field": "x"}},
+                       _DELIVER_NOTHING),
+                 registry)
+    assert result.transcript[-1]["refusal"] == "invalid_arguments"
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == ""
+
+
+def test_a_cause_is_not_spoken_where_one_tag_stands_for_several_faults(
+        registry):
+    """A read that finds more than one fault in the filters it was handed
+    gathers them under a single tag, and that tag says nothing about which
+    faults are inside it. Two malformed window edges are entirely about the
+    form of the call — nothing was looked for in the records at all — so the
+    turn says the verdict and nothing more.
+
+    The field is what is asserted, not any sentence: a tag that is not spoken
+    has no sentence to compare against, and this holds whatever words the pack
+    happens to carry."""
+    from viva.tools.envelope import SPEAKABLE_REFUSALS
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT},
+                       {"tool": "query_ledger",
+                        "args": {"entity": "aggregate", "metric": "spending",
+                                 "filters": {"window": {"from": "last month",
+                                                        "to": "yesterday"}}}},
+                       _DELIVER_NOTHING),
+                 registry)
+    problems = result.transcript[-1]["data"]["filter_problems"]
+    assert len(problems) > 1 and not set(problems) & SPEAKABLE_REFUSALS
+    assert result.transcript[-1]["refusal"] not in SPEAKABLE_REFUSALS
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == ""
+
+
+def test_a_note_the_runner_wrote_to_the_planner_is_never_a_cause(registry):
+    """Eligibility is registry membership: the runner's own note about a shape
+    is not a read, so it is passed over rather than spoken and rather than
+    hiding the read behind it."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY,
+                       {"shape": _ALSO_HELD}, _DELIVER_NOTHING),
+                 registry)
+    last = result.transcript[-1]
+    assert last["tool"] == "commit_shape" and last["refusal"] == "bad_shape"
+    assert result.diagnosis == "unknown_category"
+
+
+def test_a_call_no_registered_tool_answered_is_never_a_cause(registry):
+    """The same rule for a step naming a tool that does not exist: the refusal
+    is the registry's, not a read's, so it is passed over."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY,
+                       {"tool": "no_such_read", "args": {}}, _DELIVER_NOTHING),
+                 registry)
+    assert result.transcript[-1]["refusal"] == "unknown_tool"
+    assert result.diagnosis == "unknown_category"
+
+
+@pytest.mark.parametrize("step, tag", [
+    ({"bindings": {"total": {"figure": "f99"}}}, "unknown_figure"),
+    ({"bindings": {"nowhere": {"figure": "f1"}}}, "unshaped_binding"),
+    ({"bindings": "not an object"}, "bad_delivery"),
+    ({"neither": "shape nor read nor delivery"}, "bad_plan"),
+])
+def test_a_turn_that_faulted_at_its_own_delivery_borrows_no_reads_account(
+        registry, step, tag):
+    """A delivery that reached wrongly, and a step that was never a turn, are
+    the machine catching itself. Those verdicts stand alone: whatever the reads
+    did, none of their accounts is borrowed over the top of one."""
+    from viva.persona import moment
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, step), registry)
+    assert result.refusal == tag
+    assert result.diagnosis == ""
+    assert result.text == moment("refusal_" + tag)

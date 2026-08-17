@@ -577,6 +577,10 @@ class Session:
                        "bindings": turn.result.bindings,
                        "verdict": {"answered": turn.result.answered,
                                    "refusal": turn.result.refusal,
+                                   # The read whose account of stopping was
+                                   # spoken; empty means no cause was spoken,
+                                   # not that no read refused.
+                                   "diagnosis": turn.result.diagnosis,
                                    "calls": turn.result.calls}}
             self._ledger.append(read_recorded(
                 doc_id=f"speak:{self._session_id}:{n}:{i}",
