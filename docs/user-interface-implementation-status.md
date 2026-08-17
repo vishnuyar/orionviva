@@ -16,14 +16,14 @@ planned.
 | Architecture slice | Status | What is true now |
 |---|---|---|
 | Slice 0: surface contract and parity machinery | **Complete** | Versioned Python surface contracts, capability registry, deterministic fixture gate, capability coverage, import boundaries, impact gate, and CI wiring are implemented and tested. |
-| Slice 1: installable shell and demo vault | **Partial** | The React shell detects the scaffolded Tauri host, presents a directory/passphrase open-vault form with native folder selection when available, and reads live surfaces with fixture fallback. Reproducible target-sidecar packaging and Tauri build wiring now exist; installer artifacts, signing/update metadata, and packaged lifecycle validation remain. |
+| Slice 1: installable shell and demo vault | **Partial** | The React shell detects the scaffolded Tauri host, presents a directory/passphrase open-vault form with native folder selection when available, and reads live surfaces with fixture fallback. Reproducible target-sidecar packaging, Tauri build commands, and CI build ordering now exist; installer artifacts, signing/update metadata, and packaged lifecycle validation remain. |
 | Slice 2: document journey | **Partial** | Document list/detail states and lifecycle presentation exist, and live document reads can now reach the desktop through the bridge. Drag/drop, processing jobs, restart recovery, and outbound records are not wired. |
 | Slice 3: financial picture | **Partial** | The desktop can map live overview/account reads from an opened vault when a host transport is injected. Full financial surface coverage, formatting parity, and host packaging remain incomplete. |
 | Slice 4: review and learning | **Partial** | The desktop can receive a live review queue from an opened vault when a host transport is injected. Queue answer/decline/confirm actions and post-action refreshes are not connected. |
 | Slice 5: ask Viva | **Not started in the UI** | Backend ask/speak capabilities exist, but there is no desktop conversation surface or live turn/read integration. |
 | Slice 6: activity and organization | **Partial** | Cross-document evidence and transaction-oriented surface groundwork exist. Filters, corrections, categories, tags, transfer actions, and live totals are not complete. |
 | Slice 7: trust and maintenance | **Not started** | Capability dispositions classify maintenance and trust destinations, but there is no trust/maintenance UI, outbound history, or build identity view. |
-| Slice 8: distribution and capture comfort | **Not started** | No signed installer, watched folder, Windows packaging, update recovery, or diagnostic export flow is implemented. |
+| Slice 8: distribution and capture comfort | **Partial** | Target-aware release workflow, updater metadata hooks, installer bundle targets, and signing-secret validation are implemented. Signed installer publication, update recovery, watched-folder capture, and diagnostic export remain unverified or incomplete. |
 
 **Current UI/backend boundary:** the desktop currently consumes synthetic
 fixtures and local read-model adapters through an explicit bridge-client
@@ -34,10 +34,11 @@ documents, and review. The React desktop detects the host transport through
 `window.orionVivaBridge` and retains a deterministic fixture fallback. The
 TypeScript client defines the host request contract, and the Tauri bootstrap
 injects it through `bridge_request`. Target-specific sidecar packaging now has
-a pinned PyInstaller spec, target naming, and CI wiring. The Tauri host adds a
+a pinned PyInstaller spec, target naming, desktop build commands, and CI wiring
+that stages the sidecar before `tauri build`. The Tauri host adds a
 least-privilege native folder picker while manual path entry remains available.
-Installer validation and signing remain before this is a distributable desktop
-app.
+Installer validation, signing, update metadata, and packaged lifecycle
+validation remain before this is a distributable desktop app.
 
 ## Implemented Evidence
 
@@ -76,8 +77,14 @@ The current desktop includes:
   vault-open call, and fixture fallback;
 - a guarded user-facing vault directory/passphrase form that invokes the
   typed open-vault call when a host transport is present;
-- a Tauri host scaffold with development sidecar fallback and target-specific
-  PyInstaller packaging automation;
+- a Tauri host scaffold with development sidecar fallback, target-specific
+  PyInstaller packaging automation, and native build scripts;
+- a release target manifest and release-preparation validator that synchronize
+  desktop versions, stage per-target sidecars, validate updater/signing inputs,
+  and generate the Tauri release override;
+- a tag/manual-dispatch GitHub release workflow covering Linux, Windows x64,
+  and Intel/Apple Silicon macOS targets without exposing signing secrets to
+  pull-request jobs;
 - synthetic four-year statement data;
 - overview and account-oriented read models;
 - explicit document lifecycle states;
@@ -88,8 +95,9 @@ The current desktop includes:
 
 These are valuable presentation slices. The opened-vault bridge is a real
 backend adapter when invoked through a host transport, while the browser/Vite
-path remains fixture-backed. Native packaging is automated, but installer and
-signed-release validation are still outstanding.
+path remains fixture-backed. Native packaging and release orchestration are
+automated, but installer publication, signing credentials, and packaged runtime
+validation remain outstanding.
 
 ### Backend capabilities available for future wiring
 
@@ -102,9 +110,12 @@ ordinary UI navigation.
 
 ## Remaining Work To Reach Backend/UI Parity
 
-1. Compile the Tauri host and validate the packaged shell, offline startup,
-   demo-vault reset, and real-vault create/unlock lifecycle.
-2. Add installer manifests/signing and validate target-specific distribution.
+1. On Cargo-capable target runners, compile the Tauri host and validate the
+   packaged shell, offline startup, demo-vault reset, and real-vault
+   create/unlock lifecycle.
+2. Run the release workflow with real platform signing credentials, publish
+   installer/updater artifacts, and validate target-specific distribution and
+   update recovery.
 3. Wire document ingest, rescan, progress, held/parked states, and outbound
    accounting into the document journey.
 4. Wire review queue reads and answer, decline, proposal, and confirmation
@@ -126,13 +137,15 @@ criteria for live surface integration:
 | Read models are produced from an explicitly opened vault | Implemented at the Python sidecar boundary; `bridge.open_vault` creates the provider and enables overview, documents, and review reads. The packaged native host lifecycle is not yet validated here. |
 | Surface operations are typed and allowlisted | Implemented at the transport boundary; the typed React client can send `bridge.open_vault` and `viva.surface.read` through an injected host transport, and the React open-vault form invokes `bridge.open_vault` when that host exists. |
 | Long-running work reports honest progress and terminal states | Partial; reads emit started/completed/failed events, and the host now exposes bounded restart/shutdown recovery, but there is no job registry or cancellation. |
-| The desktop consumes the live bridge while retaining deterministic fixtures | Implemented as a React/Tauri host seam; the unlock form calls `window.orionVivaBridge` when Tauri internals are present and fixtures remain the browser fallback. A target sidecar has been built and smoke-tested locally; the full packaged Tauri application remains unbuilt here. |
+| The desktop consumes the live bridge while retaining deterministic fixtures | Implemented as a React/Tauri host seam; the unlock form calls `window.orionVivaBridge` when Tauri internals are present and fixtures remain the browser fallback. A target sidecar has been built and smoke-tested locally; the full packaged Tauri application remains unbuilt here because Cargo is unavailable. |
 | Failures remain bounded at the bridge boundary | Implemented for malformed requests and handler exceptions; vault lifecycle failures still need a typed contract. |
 
 Slice 1 therefore remains **Partial** because Tauri compilation, installer
-creation, signing, and packaged lifecycle validation are not complete. The
-native folder picker now exists as an optional host capability with
-manual-entry fallback.
+creation, signing, update metadata, and packaged lifecycle validation are not
+complete. The repository has the build automation, but local validation is
+blocked by missing Cargo/Rust tooling and release validation additionally
+requires target runners and signing credentials. The native folder picker now
+exists as an optional host capability with manual-entry fallback.
 
 ## Native Host Acceptance Audit
 
@@ -145,13 +158,14 @@ an installed or signed desktop application:
 | Sidecar process launch and lifecycle ownership | Implemented in the Rust host; it owns one JSON-lines child, detects stale exits, reaps it on shutdown, exposes explicit restart/shutdown commands, and cleans up on app exit. Packaged Tauri runtime validation remains outstanding. |
 | Frontend bridge injection | Implemented for a Tauri runtime; `desktop/src/tauri-host.ts` injects `window.orionVivaBridge` through `bridge_request`, with browser fixture fallback. It is not yet proven in a packaged app. |
 | JSON-lines request/response adapter | Implemented across the Python sidecar and Rust host process-I/O path, with the TypeScript contract on top. Runtime/native build validation remains outstanding. |
-| Packaged sidecar resources and distribution metadata | Sidecar packaging implemented; `scripts/build_desktop_sidecar.py` stages target-named executables from a pinned PyInstaller spec, and CI builds before `tauri build`. Installer manifest, signing configuration, update endpoint, and update recovery flow remain. |
+| Packaged sidecar resources and distribution metadata | Sidecar packaging implemented; `scripts/build_desktop_sidecar.py` stages target-named executables from a pinned PyInstaller spec, and CI builds before `tauri build`. Tauri bundle metadata and external-binary wiring are present. Platform installer artifacts, signing configuration/credentials, update endpoint, and update recovery flow remain. |
 | Native vault directory selection | Implemented as an optional Tauri dialog capability; `Choose folder` populates the manual path, cancellation preserves it, picker errors are bounded, and browser preview keeps manual entry without exposing native controls. |
 | Offline startup and failure recovery | Partial; browser fallback, bounded bridge errors, stale-child cleanup, explicit restart, graceful shutdown, and lifecycle contract tests exist. Packaged offline startup, automatic user-facing recovery, and diagnostic export remain unverified or absent. |
 
-The exact remaining gap is packaged lifecycle validation: Rust/Tauri
-compilation, installer creation and signing, update metadata, and
-startup/shutdown/recovery validation. The React, Rust adapter,
+The exact remaining gap is release-level packaged lifecycle validation:
+Rust/Tauri compilation on Cargo-capable target runners, installer creation,
+signing and update metadata with release credentials, and startup/shutdown/
+recovery validation against the resulting artifacts. The React, Rust adapter,
 Python bridge, and target-sidecar build boundaries now exist, but they do not
 yet constitute a signed distributable desktop application.
 
@@ -168,12 +182,16 @@ yet constitute a signed distributable desktop application.
   launched and returned a bounded invalid-request frame.
 - Desktop focused tests on the current tree: **42 passed**.
 - Desktop production build on the current tree: **passed**.
-- JSON metadata validation, Python syntax compilation, packaging contract
-  inspection, and `git diff --check`: **passed**.
+- JSON metadata validation, Python syntax compilation, packaging/release
+  contract inspection, and `git diff --check`: **passed**.
 - Native directory-picker audit: **15 passed**; plugin permission, nullable
   cancellation, frontend fallback, and bounded error contracts are covered.
 - Rust/Tauri compilation and installer generation remain unverified because
-  `cargo` is not installed in this workspace.
+  `cargo`, `rustc`, and `rustfmt` are not installed in this workspace; these
+  checks belong on Cargo-capable target runners.
+- Signed installer, update metadata, and update-recovery validation remain
+  externally blocked until platform signing credentials and release/update
+  configuration are available.
 - Branch has not been pushed.
 
 ## Update Rule

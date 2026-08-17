@@ -34,6 +34,9 @@ jobs:
   package:
     needs: prepare
     environment: native-release
+    # release-targets.json is the source of truth for this matrix:
+    # aarch64-apple-darwin, x86_64-apple-darwin, x86_64-pc-windows-msvc,
+    # and x86_64-unknown-linux-gnu.
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
