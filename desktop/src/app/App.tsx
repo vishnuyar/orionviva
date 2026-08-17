@@ -27,6 +27,8 @@ export function App() {
   const [demo] = useState<DemoState>(demoState);
   const [notice, setNotice] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState(demoState.documents[0].name);
+  const [selectedQueue, setSelectedQueue] = useState(demoState.queue[0].label);
 
   function navigate(next: Destination) {
     setDestination((current) => nextDestination(current, next));
@@ -119,8 +121,12 @@ export function App() {
 
           {destination === "overview" && <Overview state={demo} onNavigate={navigate} />}
           {destination === "accounts" && <Accounts state={demo} />}
-          {destination === "documents" && <Documents state={demo} />}
-          {destination === "review" && <Review state={demo} onNavigate={navigate} />}
+          {destination === "documents" && (
+            <Documents state={demo} selectedDocument={selectedDocument} onSelectDocument={setSelectedDocument} />
+          )}
+          {destination === "review" && (
+            <Review state={demo} selectedQueue={selectedQueue} onSelectQueue={setSelectedQueue} onNavigate={navigate} />
+          )}
           {destination === "activity" && <Activity state={demo} onNavigate={navigate} />}
           {destination === "trust" && <Trust state={demo} />}
         </div>
@@ -293,7 +299,17 @@ function Accounts({ state }: { state: DemoState }) {
   );
 }
 
-function Documents({ state }: { state: DemoState }) {
+function Documents({
+  state,
+  selectedDocument,
+  onSelectDocument,
+}: {
+  state: DemoState;
+  selectedDocument: string;
+  onSelectDocument: (name: string) => void;
+}) {
+  const activeDocument = state.documents.find((doc) => doc.name === selectedDocument) ?? state.documents[0];
+
   return (
     <section className="feature-panel">
       <div className="feature-icon">
@@ -301,23 +317,63 @@ function Documents({ state }: { state: DemoState }) {
       </div>
       <h2>Capture before reading</h2>
       <p>Originals are saved privately first. This preview has no reader or network connection, so processing waits honestly.</p>
-      <div className="document-list">
-        {state.documents.map((doc) => (
-          <div className="detail-row" key={doc.name}>
+      <div className="detail-split">
+        <div className="document-list">
+          {state.documents.map((doc) => (
+            <button
+              className={selectedDocument === doc.name ? "detail-row detail-row-button active" : "detail-row detail-row-button"}
+              key={doc.name}
+              onClick={() => onSelectDocument(doc.name)}
+            >
+              <div>
+                <strong>{doc.name}</strong>
+                <span>
+                  {doc.detail} · {doc.source}
+                </span>
+              </div>
+              <span className={`state-pill ${doc.state.toLowerCase()}`}>{doc.state}</span>
+            </button>
+          ))}
+        </div>
+        <aside className="detail-panel">
+          <div className="detail-panel-label">Selected document</div>
+          <h3>{activeDocument.name}</h3>
+          <p>{activeDocument.detail}</p>
+          <div className="detail-panel-grid">
             <div>
-              <strong>{doc.name}</strong>
-              <span>{doc.detail}</span>
+              <span>Source</span>
+              <strong>{activeDocument.source}</strong>
             </div>
-            <span className={`state-pill ${doc.state.toLowerCase()}`}>{doc.state}</span>
+            <div>
+              <span>Length</span>
+              <strong>{activeDocument.pages}</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>{activeDocument.state}</strong>
+            </div>
           </div>
-        ))}
+          <button className="secondary-button">Open page review</button>
+        </aside>
       </div>
       <button className="secondary-button">Choose a local file</button>
     </section>
   );
 }
 
-function Review({ state, onNavigate }: { state: DemoState; onNavigate: (destination: Destination) => void }) {
+function Review({
+  state,
+  selectedQueue,
+  onSelectQueue,
+  onNavigate,
+}: {
+  state: DemoState;
+  selectedQueue: string;
+  onSelectQueue: (label: string) => void;
+  onNavigate: (destination: Destination) => void;
+}) {
+  const activeQueue = state.queue.find((item) => item.label === selectedQueue) ?? state.queue[0];
+
   return (
     <section className="feature-panel review-panel">
       <div className="feature-icon">
@@ -325,13 +381,48 @@ function Review({ state, onNavigate }: { state: DemoState; onNavigate: (destinat
       </div>
       <h2>{state.reviewCount} questions are waiting</h2>
       <p>Review is where the product asks for your judgment. A proposal will always wait for an explicit yes.</p>
-      <div className="question-card">
-        <span className="question-tag">Needs you</span>
-        <strong>Can you identify the held May statement page?</strong>
-        <span>It may close the remaining coverage gap in your picture.</span>
-        <button className="secondary-button" onClick={() => onNavigate("documents")}>
-          Open document review <ArrowUpRight size={15} />
-        </button>
+      <div className="detail-split">
+        <div className="queue-list queue-list-compact">
+          {state.queue.map((item) => (
+            <button
+              className={selectedQueue === item.label ? "queue-row queue-row-button active" : "queue-row queue-row-button"}
+              key={item.label}
+              onClick={() => onSelectQueue(item.label)}
+            >
+              <div className="queue-rank">{state.queue.indexOf(item) + 1}</div>
+              <div className="queue-copy">
+                <div className="queue-title">
+                  <strong>{item.label}</strong>
+                  <span>{item.status}</span>
+                </div>
+                <p>{item.detail}</p>
+              </div>
+              <span className="queue-action">{item.action}</span>
+            </button>
+          ))}
+        </div>
+        <aside className="detail-panel">
+          <div className="detail-panel-label">Selected question</div>
+          <h3>{activeQueue.label}</h3>
+          <p>{activeQueue.detail}</p>
+          <div className="detail-panel-grid">
+            <div>
+              <span>Type</span>
+              <strong>{activeQueue.type}</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>{activeQueue.status}</strong>
+            </div>
+            <div>
+              <span>Evidence</span>
+              <strong>{activeQueue.evidence}</strong>
+            </div>
+          </div>
+          <button className="secondary-button" onClick={() => onNavigate("documents")}>
+            Open document review <ArrowUpRight size={15} />
+          </button>
+        </aside>
       </div>
     </section>
   );

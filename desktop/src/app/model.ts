@@ -20,10 +20,10 @@ export type DemoState = {
   coverage: string;
   netWorth: FigureView;
   accounts: Array<{ name: string; kind: string; display: string; grade: FigureGrade; note: string; asOf: string }>;
-  queue: Array<{ label: string; detail: string; status: string; action: string }>;
+  queue: Array<{ label: string; detail: string; status: string; action: string; type: string; evidence: string }>;
   recent: Array<{ label: string; display: string; detail: string; tone: "inflow" | "outflow" | "neutral" }>;
   reviewCount: number;
-  documents: Array<{ name: string; state: string; detail: string }>;
+  documents: Array<{ name: string; state: string; detail: string; source: string; pages: string }>;
   trustNotes: Array<{ title: string; detail: string }>;
 };
 
@@ -47,9 +47,9 @@ export const demoState: DemoState = {
     { name: "Long view savings", kind: "Depository · balance", display: "$40,000.00", grade: "corroborated", note: "Statement-backed, no liabilities", asOf: "June 30, 2026" },
   ],
   queue: [
-    { label: "Held statement page", detail: "May brokerage page is still waiting for a human check.", status: "Held", action: "Open document" },
-    { label: "Merchant category", detail: "A grocery transaction needs a category decision.", status: "Needs you", action: "Answer now" },
-    { label: "Transfer confirmation", detail: "A same-day transfer pair is ready to confirm.", status: "Proposal", action: "Review proposal" },
+    { label: "Held statement page", detail: "May brokerage page is still waiting for a human check.", status: "Held", action: "Open document", type: "Document review", evidence: "Brokerage statement, page 4" },
+    { label: "Merchant category", detail: "A grocery transaction needs a category decision.", status: "Needs you", action: "Answer now", type: "Merchant", evidence: "Card purchase on Jun 24" },
+    { label: "Transfer confirmation", detail: "A same-day transfer pair is ready to confirm.", status: "Proposal", action: "Review proposal", type: "Transfer", evidence: "Two ledger entries, same day" },
   ],
   recent: [
     { label: "Paycheck", display: "+$4,800.00", detail: "Jun 28 · Everyday checking", tone: "inflow" },
@@ -58,9 +58,9 @@ export const demoState: DemoState = {
   ],
   reviewCount: 2,
   documents: [
-    { name: "everyday-checking-june.pdf", state: "Verified", detail: "Captured Jun 30 · 8 pages" },
-    { name: "savings-may.pdf", state: "Held", detail: "Captured Jun 30 · page 4 needs review" },
-    { name: "brokerage-may.pdf", state: "Pending", detail: "Imported locally · waiting on a page-level check" },
+    { name: "everyday-checking-june.pdf", state: "Verified", detail: "Captured Jun 30 · 8 pages", source: "Local upload", pages: "8 pages" },
+    { name: "savings-may.pdf", state: "Held", detail: "Captured Jun 30 · page 4 needs review", source: "Local upload", pages: "6 pages" },
+    { name: "brokerage-may.pdf", state: "Pending", detail: "Imported locally · waiting on a page-level check", source: "Scanner import", pages: "12 pages" },
   ],
   trustNotes: [
     { title: "Local by default", detail: "This demo never leaves the device and does not simulate network calls." },
