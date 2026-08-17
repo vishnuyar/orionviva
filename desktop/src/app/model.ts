@@ -19,10 +19,12 @@ export type DemoState = {
   currentThrough: string;
   coverage: string;
   netWorth: FigureView;
-  accounts: Array<{ name: string; kind: string; display: string; grade: FigureGrade; note: string }>;
+  accounts: Array<{ name: string; kind: string; display: string; grade: FigureGrade; note: string; asOf: string }>;
+  queue: Array<{ label: string; detail: string; status: string; action: string }>;
   recent: Array<{ label: string; display: string; detail: string; tone: "inflow" | "outflow" | "neutral" }>;
   reviewCount: number;
   documents: Array<{ name: string; state: string; detail: string }>;
+  trustNotes: Array<{ title: string; detail: string }>;
 };
 
 export const demoState: DemoState = {
@@ -41,8 +43,13 @@ export const demoState: DemoState = {
     caveats: ["One May statement page is still held for review."],
   },
   accounts: [
-    { name: "Everyday checking", kind: "Depository · balance", display: "$8,240.18", grade: "verified", note: "Current through Jun 30" },
-    { name: "Long view savings", kind: "Depository · balance", display: "$40,000.00", grade: "corroborated", note: "Current through Jun 30" },
+    { name: "Everyday checking", kind: "Depository · balance", display: "$8,240.18", grade: "verified", note: "Cash flow and balance current", asOf: "June 30, 2026" },
+    { name: "Long view savings", kind: "Depository · balance", display: "$40,000.00", grade: "corroborated", note: "Statement-backed, no liabilities", asOf: "June 30, 2026" },
+  ],
+  queue: [
+    { label: "Held statement page", detail: "May brokerage page is still waiting for a human check.", status: "Held", action: "Open document" },
+    { label: "Merchant category", detail: "A grocery transaction needs a category decision.", status: "Needs you", action: "Answer now" },
+    { label: "Transfer confirmation", detail: "A same-day transfer pair is ready to confirm.", status: "Proposal", action: "Review proposal" },
   ],
   recent: [
     { label: "Paycheck", display: "+$4,800.00", detail: "Jun 28 · Everyday checking", tone: "inflow" },
@@ -53,6 +60,12 @@ export const demoState: DemoState = {
   documents: [
     { name: "everyday-checking-june.pdf", state: "Verified", detail: "Captured Jun 30 · 8 pages" },
     { name: "savings-may.pdf", state: "Held", detail: "Captured Jun 30 · page 4 needs review" },
+    { name: "brokerage-may.pdf", state: "Pending", detail: "Imported locally · waiting on a page-level check" },
+  ],
+  trustNotes: [
+    { title: "Local by default", detail: "This demo never leaves the device and does not simulate network calls." },
+    { title: "No silent inference", detail: "Uncertainty stays visible in the figure and the queue." },
+    { title: "Anchoring status", detail: "The ledger is hash-chained in the full product; this preview only mirrors the contract." },
   ],
 };
 
