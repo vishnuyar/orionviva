@@ -32,8 +32,7 @@ from decimal import Decimal
 from .. import quantity, render
 from ..ledger import networth
 from ..ledger.identity import masked
-from ..ledger.projection import (MIXED, SETTLEMENT, SPENDING, TRANSFER,
-                                 UnknownAccountError)
+from ..ledger.projection import UnknownAccountError
 from ..ledger.projection.categories import subcategory_group_key
 from ..ledger.projection import movements as movements_view
 from .envelope import (ACTIVITY, BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY,
@@ -72,6 +71,12 @@ MAX_FOLDS = 3
 # are — and what it hid rides a caveat, like everything else a read leaves out.
 MAX_LABELS = 40
 
+# What a spending group is called when the movements in it name no
+# counterparty — a description that is blank, or blank once its spaces come
+# off. Every descriptor reaches a merchant key in lower case, so no real
+# counterparty normalises onto this label.
+UNNAMED_MERCHANT = "Unnamed"
+
 QUERY_LEDGER_PARAMS = {
     "type": "object",
     "properties": {
@@ -91,8 +96,6 @@ QUERY_LEDGER_PARAMS = {
                 "category": {"type": "string"},
                 "tag": {"type": "string"},
                 "merchant": {"type": "string"},
-                "nature": {"type": "string",
-                           "enum": [SPENDING, TRANSFER, SETTLEMENT, MIXED]},
                 "currency": {"type": "string"},
                 "window": {"type": "object",
                            "properties": {"from": {"type": "string"},
@@ -194,49 +197,80 @@ def _known(values, cap: int = 40) -> list:
     return out[:cap] + [f"... and {len(out) - cap} more"]
 
 
+# The machine tag a refusal carries when more than one filter is wrong. Each
+# fault's own tag travels in the payload, under `filter_problems`.
+MANY_BAD_FILTERS = "invalid_filters"
+
+
 def _check_filters(proj, filters: dict) -> ToolResult | None:
-    """Refuse any filter value the vault does not hold; None when all pass."""
+    """Refuse any filter value the vault does not hold; None when all pass.
+
+    Names every fault the call carries, not the first one found. One fault
+    comes back under its own machine tag; several come back under
+    MANY_BAD_FILTERS, with every fault's tag listed in `filter_problems`, the
+    texts joined, and each fault's known-values payload merged in."""
+    faults: list[tuple[str, str, dict]] = []
     if "account" in filters:
         held = set(proj.accounts())
         if filters["account"] not in held:
-            return refusal(
-                TOOL, "unknown_account",
+            faults.append((
+                "unknown_account",
                 f"I don't have an account '{filters['account']}' on file.",
-                known_accounts=_known(i.account for i in _real_accounts(proj)))
+                {"known_accounts": _known(i.account
+                                          for i in _real_accounts(proj))}))
     if "category" in filters:
         known = set(proj.known_categories()) | {"Uncategorized"}
         if proj.canonical_category(filters["category"]) not in known:
-            return refusal(
-                TOOL, "unknown_category",
+            faults.append((
+                "unknown_category",
                 f"No category '{filters['category']}' exists in this vault.",
-                known_categories=_known(known))
+                {"known_categories": _known(known)}))
     if "tag" in filters:
         known = set(proj.known_tags())
         if proj.canonical_tag(filters["tag"]) not in known:
-            return refusal(TOOL, "unknown_tag",
-                           f"No tag '{filters['tag']}' exists in this vault.",
-                           known_tags=_known(known))
+            faults.append((
+                "unknown_tag",
+                f"No tag '{filters['tag']}' exists in this vault.",
+                {"known_tags": _known(known)}))
     if "merchant" in filters:
-        known = ({proj.merchant_key_of(m) for m in proj.movements()}
-                 | set(proj.merchant_categories()))
+        # A key that is blank, or blank once stripped, is not a counterparty
+        # this vault holds, so narrowing to it refuses like any other value the
+        # vault does not hold.
+        known = {key for key
+                 in ({proj.merchant_key_of(m) for m in proj.movements()}
+                     | set(proj.merchant_categories()))
+                 if str(key or "").strip()}
         if filters["merchant"] not in known:
-            return refusal(TOOL, "unknown_merchant",
-                           f"No counterparty '{filters['merchant']}' is on "
-                           "file under that key.",
-                           known_merchants=_known(known))
+            faults.append((
+                "unknown_merchant",
+                f"No counterparty '{filters['merchant']}' is on file under "
+                "that key.",
+                {"known_merchants": _known(known)}))
     if "currency" in filters:
         held = _currencies(proj)
         if filters["currency"] not in held:
-            return refusal(TOOL, "unknown_currency",
-                           f"No account holds '{filters['currency']}'.",
-                           known_currencies=_known(held))
+            faults.append((
+                "unknown_currency",
+                f"No account holds '{filters['currency']}'.",
+                {"known_currencies": _known(held)}))
     window = filters.get("window", {})
     for edge in ("from", "to"):
         if edge in window and not _is_iso_date(window[edge]):
-            return refusal(TOOL, "bad_date",
-                           f"window.{edge} must be an ISO date (YYYY-MM-DD), "
-                           f"got '{window[edge]}'.")
-    return None
+            faults.append((
+                "bad_date",
+                f"window.{edge} must be an ISO date (YYYY-MM-DD), got "
+                f"'{window[edge]}'.",
+                {}))
+    if not faults:
+        return None
+    if len(faults) == 1:
+        reason, text, extra = faults[0]
+        return refusal(TOOL, reason, text, **extra)
+    data: dict = {"filter_problems": [reason for reason, _, _ in faults]}
+    for _, _, extra in faults:
+        data.update(extra)
+    return refusal(TOOL, MANY_BAD_FILTERS,
+                   "; ".join(text for _, text, _ in faults), **data)
 
 
 def _in_window(date: str, window: dict) -> bool:
@@ -246,8 +280,6 @@ def _in_window(date: str, window: dict) -> bool:
 
 def _movement_passes(proj, m, filters: dict) -> bool:
     if "account" in filters and m.account != filters["account"]:
-        return False
-    if "nature" in filters and m.nature != filters["nature"]:
         return False
     if "currency" in filters and m.currency != filters["currency"]:
         return False
@@ -557,9 +589,8 @@ ROW_FIELDS = ("record_id", "account", "date", "description", "effect",
 
 LIST_TOOL = "list_movements"
 
-# The filters that narrow a detailed read; at least one is required. `nature`
-# and `currency` are not among them, because either usually matches most of the
-# ledger.
+# The filters that narrow a detailed read; at least one is required.
+# `currency` is not among them, because it usually matches most of the ledger.
 NARROWING = ("account", "category", "merchant", "tag", "window")
 
 
@@ -706,7 +737,11 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
             if spelled:
                 spellings.setdefault((key, identity), set()).add(spelled)
         elif group_by == "merchant":
-            key = proj.merchant_key_of(m) or m.description
+            # Stripped rather than merely truthy: a description of nothing but
+            # spaces names no counterparty either, and both land on the same
+            # named group.
+            key = (str(proj.merchant_key_of(m) or m.description or "").strip()
+                   or UNNAMED_MERCHANT)
         elif group_by == "account":
             key = m.account
         else:
@@ -719,13 +754,14 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
     return out, extras
 
 
-# How each filter narrows a set. A filter absent here still narrows the read —
-# it is part of what the read is not whole about — but there is no way of
-# writing what it named, so it names nothing rather than naming something else.
-# `window` is not here because one filter yields three different narrowings
-# depending on which of its edges are given.
+# How each filter narrows a set, so an answer can state what it ranged over.
+# Every filter a read honours has an entry here. `window` is the one absence:
+# one filter yields three different narrowings depending on which of its edges
+# are given, so it is named where the narrowing is assembled rather than by a
+# single entry here.
 _FILTER_NAMES = {"account": BY_ACCOUNT, "category": BY_CATEGORY,
-                 "merchant": BY_MERCHANT}
+                 "merchant": BY_MERCHANT, "tag": BY_TAG,
+                 "currency": BY_CURRENCY}
 
 # And how each grouping cuts a set. Every grouping the schema offers names the
 # slice each of its figures covers, including the three the vault holds no
@@ -908,8 +944,13 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
     # it. So the pair stays a group key, and what the answer can say about it is
     # what its figure's boundary says it was cut by — the scope of that number,
     # which makes no promise to be a name anything accepts back.
+    #
+    # The residual group is the same case by another route: its name belongs to
+    # no counterparty, so it is minted as no entity either.
     grouped_entities = (_categories(named) if group_by == "category"
-                        else _merchants(named) if group_by == "merchant"
+                        else _merchants(k for k in named
+                                        if k != UNNAMED_MERCHANT)
+                        if group_by == "merchant"
                         else [])
     return ToolResult(
         tool=TOOL, ok=True, data=data, figures=figures,
@@ -1138,8 +1179,9 @@ _VOCABULARIES = {
     # number about something else.
     "subcategory": lambda proj: proj.known_subcategory_pairs(),
     "tag": lambda proj: proj.known_tags(),
-    "merchant": lambda proj: sorted({proj.merchant_key_of(m) or m.description
-                                     for m in proj.movements()} - {""}),
+    "merchant": lambda proj: sorted(
+        {str(proj.merchant_key_of(m) or m.description or "").strip()
+         for m in proj.movements()} - {""}),
     "account": lambda proj: sorted(i.account for i in _real_accounts(proj)),
     "currency": lambda proj: sorted(_currencies(proj)),
 }
@@ -1193,12 +1235,12 @@ def _vocabulary(proj, group_by: str) -> ToolResult:
 # wrong question when the set was never narrowed.
 _SUPPORTED_FILTERS = {
     "balances": {"account", "currency"},
-    "transactions": {"account", "category", "tag", "merchant", "nature",
-                     "currency", "window"},
-    "list_movements": {"account", "category", "tag", "merchant", "nature",
-                       "currency", "window"},
+    "transactions": {"account", "category", "tag", "merchant", "currency",
+                     "window"},
+    "list_movements": {"account", "category", "tag", "merchant", "currency",
+                       "window"},
     "holdings": {"account", "currency"},
-    "aggregate:spending": {"account", "category", "tag", "merchant", "nature",
+    "aggregate:spending": {"account", "category", "tag", "merchant",
                            "currency", "window"},
     "aggregate:income": {"currency"},
     "aggregate:net_worth": set(),

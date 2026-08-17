@@ -104,6 +104,36 @@ def _validate(schema: dict, args: dict, path: str = "") -> list[str]:
     return problems
 
 
+def _without_empties(schema: dict, args: dict) -> dict:
+    """`args` with every optional field that arrived blank left out.
+
+    An empty string is a box left alone rather than a value to match on, so a
+    field carrying one is treated as a field that was not sent.
+
+    Three limits, each the line the validator already draws. Only fields the
+    schema names, so an open map of caller-chosen keys is never reached into
+    and a misspelled field still refuses by name. Only optional fields, so a
+    required field sent empty is still a fault. And an object emptied by this
+    rule is itself empty, so a window with no edges, and then the filters that
+    held only it, drop together."""
+    if "properties" not in schema:
+        return args               # an open object: a map of caller-named keys
+    props = schema["properties"]
+    required = set(schema.get("required", []))
+    out: dict = {}
+    for key, value in args.items():
+        spec = props.get(key)
+        if spec is None:
+            out[key] = value      # unknown to the schema: the validator's word
+            continue
+        if spec.get("type") == "object" and isinstance(value, dict):
+            value = _without_empties(spec, value)
+        if key not in required and isinstance(value, (str, dict)) and not value:
+            continue
+        out[key] = value
+    return out
+
+
 class Registry:
     """The tools a planner may call, presented as data and called by name."""
 
@@ -151,6 +181,7 @@ class Registry:
         if not isinstance(args, dict):
             return refusal(name, "bad_arguments",
                            "Arguments must be an object of named fields.")
+        args = _without_empties(spec.params, args)
         problems = _validate(spec.params, args)
         if problems:
             return refusal(name, "invalid_arguments",

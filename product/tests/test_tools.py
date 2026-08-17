@@ -282,11 +282,7 @@ def test_unknown_category_refusal_names_the_vocabulary(registry):
     assert "groceries" in result.data["known_categories"]
 
 
-def test_transactions_filter_by_nature_window_and_tag(proj, registry):
-    spending = registry.call("query_ledger",
-                             {"entity": "transactions",
-                              "filters": {"nature": "spending"}})
-    assert spending.ok and spending.data["count"] == 2   # card payment linked out
+def test_transactions_filter_by_window_and_tag(proj, registry):
     tagged = registry.call("query_ledger", {"entity": "transactions",
                                             "filters": {"tag": "pantry"}})
     assert tagged.data["count"] == 1
@@ -2739,13 +2735,12 @@ def test_a_window_outside_what_is_attested_covers_nothing_and_says_which(registr
 
 
 def test_a_filter_that_matches_nothing_still_reports_its_coverage(registry):
-    """A category, tag, merchant or nature filter selects rows; it does not
-    decide what the vault holds. A zero inside an attested period is money not
-    spent, never evidence not held, and the two sentences are not
-    interchangeable."""
+    """A category, tag or merchant filter selects rows; it does not decide what
+    the vault holds. A zero inside an attested period is money not spent, never
+    evidence not held, and the two sentences are not interchangeable."""
     result = registry.call("query_ledger", {
         "entity": "aggregate", "metric": "spending",
-        "filters": {"account": "chk", "nature": "transfer",
+        "filters": {"account": "chk", "merchant": "payment received",
                     "window": {"from": "2026-01-01", "to": "2026-01-31"}}})
     assert result.ok
     assert result.covers == [{"account": "chk", "from": "2026-01-01",
@@ -4396,3 +4391,332 @@ def test_how_many_labels_a_vault_holds_is_not_how_many_its_spending_uses():
     counted = next(f for f in held.figures)
     assert counted["what"] == "subcategory labels held"
     assert not [f for f in spent.figures if f["what"] == counted["what"]]
+
+
+# --------------------------------------------- a blank box is not a filter
+
+
+def test_the_call_that_spent_a_whole_turn_now_reads_the_ledger_once(registry):
+    """A call whose every optional box carries an empty string.
+
+    The one field named in the refusal is `nature`, which is not a filter; no
+    empty box is a fault. With that field dropped the same call reads the
+    ledger and returns the grouping it asked for."""
+    blob = {"entity": "aggregate", "metric": "spending",
+            "group_by": "subcategory", "as_of": "",
+            "filters": {"account": "", "category": "", "tag": "",
+                        "merchant": "", "nature": "mixed", "currency": "",
+                        "window": {"from": "", "to": ""}}}
+    as_sent = registry.call("query_ledger", blob)
+    assert not as_sent.ok and "filters.nature" in as_sent.text
+    # Every other box in it was empty, and none of them is a problem any more.
+    assert "filters.account" not in as_sent.text
+    assert "as_of" not in as_sent.text
+
+    blob["filters"].pop("nature")
+    result = registry.call("query_ledger", blob)
+    assert result.ok, result.text
+    assert result.data["group_by"] == "subcategory"
+    assert result.data["count"], "the read reached movements, not an empty set"
+
+
+def test_an_empty_optional_box_narrows_nothing_and_is_said_to_narrow_nothing(
+        registry):
+    """The rule reaches the whole form, not the filters alone: an empty window
+    edge, the empty window that is left, and the empty filters that held only
+    it all go, and so does an empty `as_of`, which is neither a filter nor a
+    date. What comes back is the read nobody narrowed."""
+    whole = registry.call("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending"})
+    blanks = registry.call("query_ledger", {
+        "entity": "aggregate", "metric": "spending", "as_of": "",
+        "filters": {"account": "", "window": {"from": "", "to": ""}}})
+    assert blanks.ok, blanks.text
+    assert blanks.data == whole.data
+    for f in blanks.figures:
+        assert f["boundary"].get("selected", []) == []
+
+
+def test_a_required_box_sent_empty_is_still_a_real_error(registry):
+    """A required field is not made absent by being blank: the call is still
+    missing the one thing it had to carry, and still refuses."""
+    bare = registry.call("query_ledger", {"entity": ""})
+    assert not bare.ok and "balances" in bare.text
+    empty_expression = registry.call("compute", {"expression": "",
+                                                 "inputs": {}})
+    assert not empty_expression.ok
+    assert empty_expression.refusal != "invalid_arguments", (
+        "an empty required field was dropped and read as a missing one")
+
+
+def test_an_open_map_of_caller_named_keys_is_never_reached_into(registry):
+    """Where a schema names no fields, the keys are the caller's own and none
+    of them is emptied. An operand bound to nothing refuses in the words of the
+    tool that owns the expression."""
+    result = registry.call("compute", {"expression": "a", "inputs": {"a": ""}})
+    assert not result.ok and result.refusal == "bad_input"
+    assert "'a'" in result.text
+
+
+def test_a_misspelled_filter_still_refuses_however_empty_it_arrived(registry):
+    """Only fields the form names are emptied. A field the form does not name
+    still refuses by name however it arrived — dropping it silently would be a
+    filter accepted and ignored."""
+    result = registry.call("query_ledger", {"entity": "transactions",
+                                            "filters": {"merchnat": ""}})
+    assert not result.ok and "merchnat" in result.text
+
+
+def test_a_filter_refusal_names_every_problem_it_can_see(registry):
+    """A call that got several filter values wrong is told all of them at
+    once, each fault tagged, and what the vault holds instead is named for
+    each."""
+    result = registry.call("query_ledger", {
+        "entity": "transactions",
+        "filters": {"account": "no-such-account", "category": "unicorns",
+                    "tag": "nowhere", "merchant": "nobody",
+                    "currency": "XTS",
+                    "window": {"from": "soon", "to": "later"}}})
+    assert not result.ok and result.refusal == ledger_tools.MANY_BAD_FILTERS
+    assert result.data["filter_problems"] == [
+        "unknown_account", "unknown_category", "unknown_tag",
+        "unknown_merchant", "unknown_currency", "bad_date", "bad_date"]
+    for named in ("no-such-account", "unicorns", "nowhere", "nobody", "XTS",
+                  "soon", "later"):
+        assert named in result.text
+    # And what it holds instead is named for each one, as it always was.
+    assert {"known_accounts", "known_categories", "known_tags",
+            "known_merchants", "known_currencies"} <= set(result.data)
+
+
+def test_one_bad_filter_still_refuses_by_its_own_name(registry):
+    """A single fault keeps its own machine tag rather than the many-fault
+    one."""
+    result = registry.call("query_ledger", {"entity": "transactions",
+                                            "filters": {"tag": "nowhere"}})
+    assert not result.ok and result.refusal == "unknown_tag"
+    assert "pantry" in result.data["known_tags"]
+
+
+# --------------------------------------- a counterparty with no name at all
+
+
+@pytest.mark.parametrize("descriptor", ["", "   "])
+def test_a_movement_naming_no_counterparty_is_named_under_every_grouping(
+        descriptor):
+    """A movement whose description is blank — or blank once its spaces come
+    off — names no counterparty, and lands in a named group under every
+    spending grouping.
+
+    Both shapes of blank are covered: an empty key, which is refused where a
+    figure's scope is written, and a whitespace-only one, which is not empty
+    and so is refused nowhere. Neither reaches an answer as a group name, a
+    figure's scope or an identifier, and neither is dropped from the
+    grouping."""
+    proj = LedgerProjection(_spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()),
+        ("2026-01-06", descriptor, "-90.00", "", ())))
+    for group_by in ledger_tools._GROUP_NAMES:
+        result = ledger_tools.query_ledger(
+            proj, {"entity": "aggregate", "metric": "spending",
+                   "group_by": group_by})
+        assert result.ok, (group_by, result.text)
+        for key in result.data["by_group"]:
+            assert key.strip(), (group_by, repr(key))
+        for f in result.figures:
+            cut = f["boundary"].get("cut") or {}
+            assert cut.get("value", "x").strip(), (group_by, f["what"])
+        for item in result.identifiers or []:
+            assert str(item.get("example", "x")).strip(), (group_by, item)
+    by_merchant = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "merchant"})
+    assert by_merchant.data["by_group"] == {
+        "greenfield market": "40.00",
+        ledger_tools.UNNAMED_MERCHANT: "90.00"}
+    assert by_merchant.data["total"] == "130.00"
+
+
+@pytest.mark.parametrize("descriptor", ["", "   "])
+def test_the_groups_of_a_spending_read_add_up_to_the_total_it_states(
+        descriptor):
+    """The named groups plus the tail are the total, to the cent, with a
+    movement naming no counterparty among them.
+
+    The tail is where a group too small to be named goes, so both halves are
+    added back before the sum is compared with the headline."""
+    movements = [(f"2026-01-{day:02d}", f"MERCHANT {day}", "-10.00", "", ())
+                 for day in range(1, 13)]
+    movements.append(("2026-01-20", descriptor, "-500.00", "", ()))
+    proj = LedgerProjection(_spending_events(*movements))
+    result = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "merchant"})
+    assert result.ok, result.text
+    # The cap is engaged and the unnamed group ranks inside it, which is the
+    # only arrangement that reaches the code that writes a group's scope: a
+    # small one rides the tail and would pass a weaker test untouched.
+    assert result.data["groups"]["named"] == ledger_tools.MAX_GROUPS
+    assert result.data["by_group"][ledger_tools.UNNAMED_MERCHANT] == "500.00"
+
+    named = sum(Decimal(v) for v in result.data["by_group"].values())
+    tail = next(c for c in result.caveats if "smaller group" in c)
+    hidden = Decimal(tail.split("worth ")[1].split()[1].replace(",", ""))
+    assert named + hidden == Decimal(result.data["total"])
+    assert result.data["groups"]["total"] == len(movements)
+
+
+def test_no_figure_claims_the_whole_of_a_spending_read_it_only_part_covers():
+    """Under a partitioning grouping, a figure whose boundary says `whole` is
+    the whole: its value is the read's own total, or its count.
+
+    `whole` says the set the figure was taken over and the quantity it declares
+    are the same thing, so a movement naming no counterparty may not be missing
+    from the groups any figure claims to cover."""
+    proj = LedgerProjection(_spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()),
+        ("2026-01-06", "  ", "-90.00", "", ())))
+    total = Decimal("130.00")
+    for group_by in ledger_tools._PARTITIONING:
+        result = ledger_tools.query_ledger(
+            proj, {"entity": "aggregate", "metric": "spending",
+                   "group_by": group_by})
+        assert result.ok, (group_by, result.text)
+        assert Decimal(result.data["total"]) == total
+        for f in result.figures:
+            if not f["boundary"].get("whole"):
+                continue
+            assert Decimal(f["value"]) in (total, Decimal(result.data["count"]))
+
+
+def test_the_unnamed_group_is_a_scope_and_never_a_name_to_ask_again_with():
+    """The residual label names a group and no entity, so nothing offers it
+    back as a counterparty to ask about — and sent as a merchant filter it
+    refuses, like any other value the vault does not hold."""
+    proj = LedgerProjection(_spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()),
+        ("2026-01-06", "", "-90.00", "", ())))
+    result = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "merchant"})
+    assert ledger_tools.UNNAMED_MERCHANT in result.data["by_group"]
+    assert ledger_tools.UNNAMED_MERCHANT not in [
+        item.get("example") for item in result.identifiers]
+    # And the label the read chose is one no descriptor can normalise into, so
+    # it can never sit on top of a counterparty someone really paid.
+    refused = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "filters": {"merchant": ledger_tools.UNNAMED_MERCHANT}})
+    assert not refused.ok and refused.refusal == "unknown_merchant"
+
+
+@pytest.mark.parametrize("descriptor", ["", "   "])
+def test_the_counterparty_vocabulary_never_counts_nobody(descriptor):
+    """The counterparty vocabulary — the labels the vault holds, which is a
+    different question from any breakdown — lists and counts no blank label,
+    whether it is empty or only spaces."""
+    proj = LedgerProjection(_spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()),
+        ("2026-01-06", descriptor, "-90.00", "", ())))
+    held = ledger_tools.query_ledger(proj, {"entity": "vocabulary",
+                                            "group_by": "merchant"})
+    assert held.ok, held.text
+    assert held.data["labels"] == ["greenfield market"]
+    assert held.data["count"] == 1
+    assert all(label.strip() for label in held.data["labels"])
+
+
+def test_a_blank_counterparty_is_not_one_this_vault_holds():
+    """A blank merchant filter refuses like any other counterparty the vault
+    does not hold, rather than selecting the movements whose description says
+    nothing.
+
+    Called past the registry, where an empty box never reaches a tool: this is
+    the second guard, and the one that answers a key made only of spaces."""
+    proj = LedgerProjection(_spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()),
+        ("2026-01-06", "", "-90.00", "", ())))
+    for blank in ("", "   "):
+        result = ledger_tools.query_ledger(
+            proj, {"entity": "aggregate", "metric": "spending",
+                   "filters": {"merchant": blank}})
+        assert not result.ok and result.refusal == "unknown_merchant"
+        assert all(key.strip() for key in result.data["known_merchants"])
+
+
+# ------------------------------ what a narrowing says, and what may narrow
+
+
+def test_a_read_narrowed_by_tag_says_so_under_the_answer(registry):
+    """A read narrowed to a tag places the sentence saying so under the
+    answer, not only in a payload a model may skip."""
+    from viva import persona
+
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    result = run("what did I spend on pantry things?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending",
+                                           "filters": {"tag": "pantry"}}),
+                         bind=lambda r: {
+                             "total": {"figure": _fig(r, "total spending")}}),
+                 registry)
+    assert result.answered, result.detail
+    assert persona.moment("boundary_selected_tag",
+                          tag=render.label("pantry")) in result.text
+
+
+def test_a_read_narrowed_by_currency_says_so_under_the_answer(registry):
+    """The same claim for the other filter that narrowed and stated nothing."""
+    from viva import persona
+
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    result = run("what did I spend in dollars?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending",
+                                           "filters": {"currency": "USD"}}),
+                         bind=lambda r: {
+                             "total": {"figure": _fig(r, "total spending")}}),
+                 registry)
+    assert result.answered, result.detail
+    assert persona.moment("boundary_selected_currency",
+                          currency=render.label("USD")) in result.text
+
+
+def test_every_filter_a_read_honours_can_be_said_in_the_answer():
+    """Every filter some read honours can be said in an answer, and the form
+    offers exactly the filters the reads honour.
+
+    A set narrowed in a way no sentence can state is the same fault as a filter
+    accepted and silently dropped. `window` is the one filter absent from the
+    writing table on purpose: it yields three different narrowings depending on
+    which of its edges are given, and names them where the narrowing is
+    assembled."""
+    honoured = set().union(*ledger_tools._SUPPORTED_FILTERS.values())
+    offered = set(ledger_tools.QUERY_LEDGER_PARAMS["properties"]["filters"]
+                  ["properties"])
+    sayable = set(ledger_tools._FILTER_NAMES) | {"window"}
+    assert honoured <= sayable, sorted(honoured - sayable)
+    assert offered == honoured, (sorted(offered - honoured),
+                                 sorted(honoured - offered))
+
+
+def test_nature_is_not_a_filter_any_read_offers(proj, registry):
+    """`nature` is not a filter: the form refuses it as an unknown field, and
+    each of the three reads that once honoured it refuses it as unsupported."""
+    refused = registry.call("query_ledger", {"entity": "transactions",
+                                             "filters": {"nature": "spending"}})
+    assert not refused.ok and "filters.nature" in refused.text
+    # And past the form, for a caller that never read it: each of the three
+    # reads that honoured it says it does not.
+    summary = ledger_tools.query_ledger(
+        proj, {"entity": "transactions", "filters": {"nature": "spending"}})
+    assert summary.refusal == "filter_unsupported"
+    spending = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "filters": {"nature": "spending"}})
+    assert spending.refusal == "filter_unsupported"
+    rows = ledger_tools.list_movements(
+        proj, {"filters": {"account": "chk", "nature": "spending"}})
+    assert rows.refusal == "filter_unsupported"

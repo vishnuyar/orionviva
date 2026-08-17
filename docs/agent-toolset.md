@@ -211,8 +211,9 @@ halves are closed in the 2026-08-05 amendment below._
 > [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md),
 > `tools-v9` since 2026-08-15, which teaches that an account someone
 > owes on is measured as `owed` rather than as `balance` — see
-> [net-worth.md](net-worth.md) — and **`tools-v10` since 2026-08-16**, which
-> teaches the `vocabulary` mode below).
+> [net-worth.md](net-worth.md) — **`tools-v10` since 2026-08-16**, which
+> teaches the `vocabulary` mode below, and **`tools-v11` since 2026-08-17**,
+> which stops offering `nature` as a filter).
 >
 > Recorded and not fixed: whether a slot can be filled at all is still not
 > computed from the registry before a call is made, which is where the refused
@@ -297,3 +298,27 @@ halves are closed in the 2026-08-05 amendment below._
 > is not what a count of the vault's own labels is. Shipped knowingly, with its
 > own cycle owed. It remains the missing input to capability honesty rather than
 > its implementation: nothing yet computes from the registry what is askable._
+
+> _Amended 2026-08-17 (a blank is not a filter). **The read verbs lose a
+> filter, and it is a capability being removed rather than a field being
+> tidied.** `nature` is no longer accepted by the transactions summary, the
+> spending aggregate or `list_movements`, and it is gone from the tool
+> descriptions with them, so **"show me my transfers" is not askable** — no
+> other verb offers it. The reasoning and the terms of its return are in
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md):
+> a filter whose effect an answer cannot state narrows a set in a way nobody
+> can review, which is the fault the refusal of an ignored filter already
+> guards against, so the narrowing stops until a reviewed sentence exists to
+> carry it. What is withdrawn is the *filter*. A movement's derived nature is
+> untouched — it still decides what counts as spending, and it still comes back
+> on every row a listing returns._
+>
+> _**A status claim on the entries above, corrected rather than restated.** The
+> `vocabulary` mode and the list-shaped answer are built and tested, and until
+> this cycle no live model had reached either. Four ordinary questions put to a
+> real vault on 2026-08-16 — two of them exactly the questions those
+> capabilities were built to answer — were all refused before a tool ran, on an
+> argument-passing fault one level below both. The wall this file recorded
+> coming down had a second one behind it. That one is down as of this cycle and
+> no live run has yet gone through it, so read every capability above as proven
+> mechanically and unexercised._

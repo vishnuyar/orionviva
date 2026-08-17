@@ -750,3 +750,59 @@ labels this vault holds under any of the six groupings, and how many, which is
 a different number from how many groups its spending falls into; and
 `pack-v10` carries the seven sentences that go with all of it. `speak-final-v10`,
 `speak-shape-v6`, `tools-v9` and `pack-v9` were in force until this cycle._
+
+---
+
+_Amended 2026-08-17 (a blank is not a filter). **An empty optional field means
+the field was not sent**, decided once in `Registry.call` and so true of every
+tool at once. A JSON schema says what a field may hold and cannot say that a
+field must be left out rather than sent empty, so a caller that fills in every
+box it is shown was asking the vault which account is named `''` — four
+consecutive questions against a real vault came back refused, one having spent
+a whole turn's budget of calls peeling empty boxes without reading the ledger
+once. The rule keeps the two lines the validator already drew: only fields the
+schema names, so an open map of caller-chosen keys is untouched and a
+misspelled filter still refuses by name, and only optional ones, so a required
+field sent empty is still a fault._
+
+_**A filter refusal now names every fault it can see**, under the machine tag
+`invalid_filters` when there is more than one, the way the registry's own
+validator has always answered. One fault still comes back under its own tag._
+
+_**The *not covered* line above closes.** Narrowing by a tag and by a currency
+each place a sentence now — two entries in the table that maps a filter to a
+boundary entry, using wording `pack-v10` already carried — and narrowing by
+nature cannot happen, because `nature` is **withdrawn as a filter**. Not given
+a sentence: withdrawn, from the filter-support table for all three reads, from
+`QUERY_LEDGER_PARAMS`, and from the movement test underneath. The rule that a
+filter an entity would ignore is refused rather than accepted-and-dropped,
+read one step on: a set narrowed in a way no sentence can state is the same
+fault, so the narrowing stops rather than the disclosure being invented. Every
+filter a read honours can now be said in an answer, and a test holds the form
+and the writing table to each other. This removes a capability — **`show me my
+transfers` is no longer askable**, and nothing else offers it; it returns in
+its own cycle with a wording authored to carry it. The `nature?` field in D3's
+sketch above is a design option from before the tool existed and was never
+built as written; what shipped is the filter list in `tools-v11`, which is the
+descriptions file in force._
+
+_**A spending group whose movements name no counterparty is named rather than
+dropped.** Four of the five spending groupings already guarded their key;
+merchant did not, so a blank description reached `bounded()`, which refuses to
+record a set narrowed to something unnamed — an exception out through a
+boundary whose module says a call never raises — and a whitespace-only one,
+which is truthy, passed that guard and reached a person as a line with a real
+amount and no name. Both now land in one named residual, so the grouping still
+reconciles with the total and count the same read states. Dropping them
+instead would have left a figure claiming to be the whole of the spending while
+covering part of it, which is the failure the boundary exists to prevent. The
+residual label is minted as no entity, for the reason a subcategory pair is
+not: it is the scope of a number, never a handle a follow-up accepts. The blank
+key also leaves the held-merchant set and the counterparty vocabulary, so
+`merchant: ""` refuses and a count of counterparties never counts nobody._
+
+_Recorded and not fixed: a description of nothing but punctuation is still its
+own group, still mints an entity, and is still refused as a filter — so an
+answer can name a counterparty the follow-up bounces. Unchanged by this cycle
+and needing its own, because whether such a label joins the residual is a
+decision rather than a repair._
