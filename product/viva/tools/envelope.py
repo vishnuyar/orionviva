@@ -295,9 +295,11 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
 
     ``whole`` is the load-bearing word: True says the set and the quantity are
     the same thing, and there is nothing further to say. False says they are
-    not, and the rest says how they differ. A total of one category is a real
-    figure and it is not every movement its quantity names, so it is not whole
-    however exactly it was arrived at.
+    not, and whatever else is passed says how they differ — which may be
+    nothing, since a figure can be a member of the set it was taken from
+    without any filter having narrowed that set. A total of one category is a
+    real figure and it is not every movement its quantity names, so it is not
+    whole however exactly it was arrived at.
 
     ``counted`` of ``held`` accounts is one of N: a per-account balance stated
     where a total was asked for is a true figure over the wrong set.

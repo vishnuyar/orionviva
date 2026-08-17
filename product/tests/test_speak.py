@@ -261,7 +261,8 @@ def test_native_planner_produces_a_cited_answer(registry):
     # and the grade travelled with the figure the tool emitted.
     assert result.grade == "corroborated"
     assert result.text == ("Your checking holds USD 600.00, and that figure is "
-                           "corroborated against the statement.")
+                           "corroborated against the statement. That counts "
+                           "only what is on Everyday Checking.")
     # The system prompt opened the conversation and the question followed it.
     first = script.seen[0]["messages"]
     assert first[0]["role"] == "system" and "Viva" in first[0]["content"]
@@ -529,7 +530,8 @@ def test_text_planner_produces_a_cited_answer(registry):
     script = TextScript(steps)
     result = run("what is my checking balance?", TextPlanner(script), registry)
     assert result.answered and result.grade == "corroborated"
-    assert result.text == "Your checking holds USD 600.00, corroborated."
+    assert result.text == ("Your checking holds USD 600.00, corroborated. That "
+                           "counts only what is on Everyday Checking.")
     # Each step's prompt carries the voice, the schemas on the table at that
     # point, and the results so far.
     assert "Viva" in script.prompts[0]

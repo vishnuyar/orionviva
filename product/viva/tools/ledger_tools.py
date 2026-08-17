@@ -27,6 +27,7 @@ live projection it was built over.
 
 from __future__ import annotations
 
+import calendar
 from decimal import Decimal
 
 from .. import quantity, render
@@ -431,6 +432,10 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                                i.account for i in _real_accounts(proj)))
     if "currency" in filters:
         infos = [i for i in infos if i.currency == filters["currency"]]
+    # What narrowed this read. Whether a figure is whole is read off this same
+    # list, so the two cannot disagree: `bounded` refuses a figure that claims
+    # to cover everything while also naming what it leaves out.
+    narrowed = _narrowed_to(proj, filters)
     rows, record_ids = [], []
     for info in infos:
         ba = proj.balance(info.account)
@@ -457,14 +462,18 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                       record_ids=[r["record_id"]]
                       + ([r["provenance"]["doc_id"]]
                          if r["provenance"].get("doc_id") else []),
-                      boundary=bounded(whole=holds == 1, counted=1, held=holds))
+                      boundary=bounded(whole=not narrowed and holds == 1,
+                                       counted=1, held=holds,
+                                       selected=narrowed))
                for r in rows]
     figures.append(figure(len(rows), "accounts holding a balance",
                           quantity=quantity.COUNT,
                           grade=weakest(r["grade"] for r in rows),
                           record_ids=sorted({r["record_id"] for r in rows}),
-                          boundary=bounded(whole=len(rows) == holds,
-                                           counted=len(rows), held=holds)))
+                          boundary=bounded(
+                              whole=not narrowed and len(rows) == holds,
+                              counted=len(rows), held=holds,
+                              selected=narrowed)))
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
         identifiers=_identifiers(proj, (r["record_id"] for r in rows)),
@@ -525,34 +534,53 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
         if r["doc_id"]:
             month_docs.setdefault(month, set()).add(r["doc_id"])
     grade = weakest(r["grade"] for r in rows)
+    # What these figures were taken over. Whole is read off the same list the
+    # narrowing is written from, because `bounded` refuses a figure that
+    # declares it covers everything and also names what narrowed it.
+    narrowed = _narrowed_to(proj, filters)
+    whole = not narrowed
     figures = [
         figure(len(rows), "movements matching the filters",
-               quantity=quantity.COUNT, grade=grade, record_ids=record_ids),
+               quantity=quantity.COUNT, grade=grade, record_ids=record_ids,
+               boundary=bounded(whole=whole, selected=narrowed)),
         # Summed by which way the money went, which is read off the account's
         # kind rather than off the posting's sign.
         figure(money_in, "money in over these movements",
                quantity=quantity.GROSS_FLOW, grade=grade,
-               currency=currency, record_ids=record_ids),
+               currency=currency, record_ids=record_ids,
+               boundary=bounded(whole=whole, selected=narrowed)),
         figure(money_out, "money out over these movements",
                quantity=quantity.GROSS_FLOW, grade=grade,
-               currency=currency, record_ids=record_ids),
+               currency=currency, record_ids=record_ids,
+               boundary=bounded(whole=whole, selected=narrowed)),
         figure(money_in - money_out, "net movement over this set",
                quantity=quantity.NET_MOVEMENT, grade=grade,
-               currency=currency, record_ids=record_ids),
+               currency=currency, record_ids=record_ids,
+               boundary=bounded(whole=whole, selected=narrowed)),
         # The divisor a per-month average over this set is computed with.
         # Arithmetic takes figure ids, so a count that lives only in the
         # payload cannot be divided by.
         figure(len(by_month), "months these movements span",
-               quantity=quantity.COUNT, grade=grade, record_ids=record_ids),
+               quantity=quantity.COUNT, grade=grade, record_ids=record_ids,
+               boundary=bounded(whole=whole, selected=narrowed)),
     ]
+    # Two groupings over the same movements: a figure per account and a figure
+    # per month. Each names its own slice, and declares itself whole only where
+    # nothing narrowed the read and that grouping produced one group.
     figures += [figure(v, f"net movement on {k}",
                        quantity=quantity.NET_MOVEMENT, grade=grade,
-                       currency=currency, record_ids=[k])
+                       currency=currency, record_ids=[k],
+                       boundary=bounded(whole=whole and len(by_account) == 1,
+                                        selected=narrowed,
+                                        cut={"kind": BY_ACCOUNT, "value": k}))
                 for k, v in sorted(by_account.items())]
     figures += [figure(v, f"net movement in {k}",
                        quantity=quantity.NET_MOVEMENT, grade=grade,
                        currency=currency,
-                       record_ids=sorted(month_docs.get(k, ())))
+                       record_ids=sorted(month_docs.get(k, ())),
+                       boundary=bounded(whole=whole and len(by_month) == 1,
+                                        selected=narrowed,
+                                        cut=_calendar_month(k)))
                 for k, v in sorted(by_month.items())]
     return ToolResult(
         tool=TOOL, ok=True,
@@ -625,16 +653,42 @@ def list_movements(proj, args: dict) -> ToolResult:
     record_ids = sorted({r["doc_id"] for r in shown if r["doc_id"]}
                         | {r["record_id"] for r in shown})
     covers, caveats = _attested_coverage(proj, filters)
+    # A row is one movement, which is the whole of what the quantity `movement`
+    # ranges over, and a member of the set rather than a slice of it — so it
+    # declares whole and names no slice. Declaring whole is not the same as an
+    # absent boundary, which means no read has said.
     figures = [figure(r["effect"], f"{r['description']} on {r['date']}",
                       quantity=quantity.MOVEMENT,
                       grade=r["grade"], dated=r["date"], currency=r["currency"],
                       record_ids=[r["record_id"]]
-                      + ([r["doc_id"]] if r["doc_id"] else []))
+                      + ([r["doc_id"]] if r["doc_id"] else []),
+                      boundary=bounded(whole=True))
                for r in shown]
+    # How many movements matched, over the whole matching set rather than the
+    # part inside the cap, standing on the documents those movements came on
+    # and the accounts they sit on. It is the only figure of this read that
+    # records what narrowed it.
+    narrowed = _narrowed_to(proj, filters)
+    counted_on = sorted({r["doc_id"] for r in rows if r["doc_id"]}
+                        | {r["account"] for r in rows})
+    if not rows:
+        # A count of nothing stands on the accounts the read ranged over,
+        # which are what make the zero attested rather than unobserved.
+        counted_on = sorted(i.account for i in _scope(proj, filters))
+    figures.append(figure(total, "movements matching the filters",
+                          quantity=quantity.COUNT,
+                          grade=weakest(r["grade"] for r in rows),
+                          record_ids=counted_on,
+                          boundary=bounded(whole=not narrowed,
+                                           selected=narrowed)))
     # A capped result says so in the sentence the tool itself writes: how many
     # of how many were shown, and which filters would reach the rest.
     coverage = f"Showing {len(shown)} of {total} matching movement(s)."
     if total > len(shown):
+        # A capped list discloses the cap to a person as a caveat. The half
+        # naming which filters would reach the rest is instruction to the
+        # caller and stays in the coverage line.
+        caveats = caveats + [coverage]
         coverage += (" Narrow by " + ", ".join(NARROWING)
                      + " to see the rest.")
     return ToolResult(
@@ -660,17 +714,32 @@ def _query_holdings(proj, filters: dict) -> ToolResult:
                         | {r["record_id"] for r in rows})
     caveats = ["Each holding is a dated measurement from a statement, never "
                "a current price."]
+    # A holding is a member of what this read ranged over rather than a slice
+    # of it, so no figure here names a slice; each records what narrowed the
+    # read it was taken over.
+    #
+    # One instrument's value is never the whole of what a balance measures —
+    # the rest is the other instruments beside it and the cash this read cannot
+    # see — so a per-holding figure declares itself not whole on every vault,
+    # however few rows came back. That places no sentence, and is not the
+    # silence of a read that declared nothing.
+    narrowed = _narrowed_to(proj, filters)
     figures = [figure(r["market_value"], f"{r['instrument']} — measured value",
                       quantity=quantity.BALANCE,
                       grade=r["grade"], dated=r["as_of"], currency=r["currency"],
                       record_ids=[r["record_id"]]
                       + ([r["provenance"]["doc_id"]]
-                         if r["provenance"].get("doc_id") else []))
+                         if r["provenance"].get("doc_id") else []),
+                      boundary=bounded(whole=False, selected=narrowed))
                for r in rows]
+    # A different quantity from the values above it: how many holdings this
+    # read measured, which over an unnarrowed read is every one there is.
     figures.append(figure(len(rows), "measured holdings",
                           quantity=quantity.COUNT,
                           grade=weakest(r["grade"] for r in rows),
-                          record_ids=sorted({r["record_id"] for r in rows})))
+                          record_ids=sorted({r["record_id"] for r in rows}),
+                          boundary=bounded(whole=not narrowed,
+                                           selected=narrowed)))
     return ToolResult(
         tool=TOOL, ok=True, data={"holdings": rows, "count": len(rows)},
         figures=figures, identifiers=_identifiers(
@@ -802,6 +871,24 @@ def _narrowed_to(proj, filters: dict) -> list:
     elif end:
         out.append({"kind": BY_UNTIL, "value": end})
     return out
+
+
+def _calendar_month(month: str) -> dict | None:
+    """The slice a month-shaped group covers, as a period spanning the calendar
+    month's own first and last day — not the days something moved in it.
+
+    `month` is a group name taken from a stored date, which nothing upstream
+    promises is a date. Returns None where it is not shaped `YYYY-MM` or names
+    a month no calendar has; the figure then carries no slice. Never raises."""
+    try:
+        if not (len(month) == 7 and month[4] == "-"):
+            return None
+        year, index = int(month[:4]), int(month[5:7])
+        last = calendar.monthrange(year, index)[1]
+    except (TypeError, ValueError):
+        return None
+    return {"kind": BY_PERIOD, "value": f"{month}-01",
+            "to": f"{month}-{last:02d}"}
 
 
 def _largest_groups(grouped: dict) -> tuple[dict, dict]:
@@ -971,10 +1058,25 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
     sources = sorted(a for a in proj.accounts()
                      if a.startswith("Income:") and a != "Income:Uncategorized")
     line_grades = [ln.grade for a in sources for ln in proj.transactions(a)]
+    # This read cuts by currency, so each figure names the currency its income
+    # is in, and declares itself whole only where nothing narrowed the read and
+    # there is one currency to be in.
+    #
+    # A slice is named in the vault's own vocabulary, so the key must be one of
+    # the currencies the vault holds — the set a `currency` filter is validated
+    # against. Income can be attributed under a key no account declares; such a
+    # figure carries no slice, and a block of rows over the read then refuses
+    # rather than listing a currency nobody holds.
+    known = _currencies(proj)
+    narrowed = _narrowed_to(proj, filters)
+    whole = not narrowed and len(by_currency) == 1
     figures = [figure(v, f"attributed income in {k}, over everything ingested",
                       quantity=quantity.INCOME,
                       grade=weakest(line_grades), currency=k,
-                      record_ids=sources)
+                      record_ids=sources,
+                      boundary=bounded(whole=whole, selected=narrowed,
+                                       cut=({"kind": BY_CURRENCY, "value": k}
+                                            if k in known else None)))
                for k, v in sorted(by_currency.items())]
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,

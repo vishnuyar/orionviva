@@ -203,6 +203,16 @@ narrower than what closed — the question must contain the value whole, and the
 clause drops when it does not — but a hedge written around such a hole is the
 old shape at one remove, and it is where the prose residual above is widest._
 
+_**Amended again 2026-08-17 — a block asks one more thing of the read it names.**
+The 2026-08-16 rule stands: a line per figure that read took over a named slice.
+Added to it, a read whose figures name slices of **more than one kind** fills no
+block and the binding refuses under the existing wrong-kind tag, because one
+read may cut the same set several ways at once — a figure per account and a
+figure per month over the same movements — and a line per slice would state the
+same money once for each way it cuts. The guard reads the declared kinds and is
+keyed to no read and no tool. Which grouping a list of such a read should
+enumerate is undecided, and the guard is where that decision lands._
+
 **Viability is per-model, and the model in force was on the wrong side of it.**
 The blind-authoring assumption was phrased as "a capable model", and that phrase
 was doing quiet work nobody had costed. On the two-model run, one model emitted

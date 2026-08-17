@@ -742,7 +742,22 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
 
     A read that names no slice fills nothing. That is a binding naming the
     wrong sort of read rather than a gap: the hole was bound, and to something
-    that has no rows in it."""
+    that has no rows in it.
+
+    A read whose figures name slices of more than one kind fills nothing
+    either. One read may cut the same set several ways at once — a figure per
+    account and a figure per month over the same movements — and a line per
+    slice would state the same money once for each way it cuts. The refusal is
+    on the declared kinds, not on which read or tool produced them."""
+    kinds = {cut["kind"] for cut in
+             ((ground.book[fid].get("boundary") or {}).get("cut")
+              for fid in rows) if cut}
+    if len(kinds) > 1:
+        return None, "wrong_kind", (
+            f"The hole {slot.name!r} wants rows, and that read cuts the same "
+            "set more than one way at once — by " + ", by ".join(sorted(kinds))
+            + ". A line per slice would state the same money once for each of "
+            "them.")
     lines, cited = [], []
     for fid in rows:
         fig = ground.book[fid]
@@ -814,8 +829,9 @@ def _boundary(fig: dict, *, cut: bool = True) -> tuple[list, list]:
     is compared whole; accounts left out are returned as a list for the caller
     to gather across every figure the answer stated.
 
-    Both empty where the set is everything the figure claims to measure, and
-    where no read declared a boundary at all.
+    Both empty where the set is everything the figure claims to measure, where
+    no read declared a boundary at all, and where a figure declares it is not
+    whole without naming anything it was narrowed to.
 
     ``cut`` is whether the slice THIS figure was taken over is among the
     statements. It is, wherever the figure is stated as a number in a sentence.

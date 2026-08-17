@@ -318,7 +318,8 @@ def test_a_reshape_that_adds_a_claim_is_refused_and_the_turn_goes_on(registry):
 
     result = run("balance?", planner, registry)
     assert result.answered, result.detail
-    assert result.text == "Your balance is USD 600.00."
+    assert result.text == ("Your balance is USD 600.00. That counts only what "
+                           "is on Everyday Checking.")
     refused = [r for r in result.transcript if r["tool"] == "commit_shape"]
     assert [r["ok"] for r in refused] == [True, False]
     assert "only drop clauses" in refused[-1]["text"]
@@ -1189,8 +1190,26 @@ def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(several):
 
 def test_a_figure_whose_set_is_everything_it_measures_places_nothing(registry):
     """The statement fires only where there is a set worth stating. This vault
-    holds one account, so its balance is every balance there is, and the answer
-    is the sentence the shape declared and nothing else."""
+    holds one account and the read was asked for all of them, so its balance is
+    every balance there is, and the answer is the sentence the shape declared
+    and nothing else."""
+    result = run("balance?",
+                 _script(_shape(("Your balance is {total}.",
+                                 [("total", "money", "balance")])),
+                         ("query_ledger", {"entity": "balances"}),
+                         bind=lambda r: {"total": {"figure": "f1"}}),
+                 registry)
+    assert result.answered, result.detail
+    assert result.text == "Your balance is USD 600.00."
+
+
+def test_a_balance_read_narrowed_to_one_account_says_which_account(registry):
+    """The same vault and question, narrowed to one account. One account of one
+    is still a set somebody chose, so the answer names it.
+
+    A vault of one account is also where the boundary constructor refuses a
+    read whose whole and whose narrowing are computed from different filters:
+    a figure covering everything cannot also name what narrowed it."""
     result = run("balance?",
                  _script(_shape(("Your balance is {total}.",
                                  [("total", "money", "balance")])),
@@ -1198,7 +1217,8 @@ def test_a_figure_whose_set_is_everything_it_measures_places_nothing(registry):
                          bind=lambda r: {"total": {"figure": "f1"}}),
                  registry)
     assert result.answered, result.detail
-    assert result.text == "Your balance is USD 600.00."
+    assert result.text == ("Your balance is USD 600.00. That counts only what "
+                           "is on Everyday Checking.")
 
 
 def test_an_incomplete_total_cannot_be_stated_without_its_gap(several):
@@ -1610,6 +1630,21 @@ def test_a_read_that_named_no_slice_has_no_rows_in_it():
     naming the wrong sort of read rather than a hole nothing could fill."""
     result = run("list my accounts",
                  _script(_shape(*_LIST), BALANCES, bind=_bind_the_read),
+                 _wide(4))
+    assert not result.answered
+    assert result.refusal == "wrong_kind", result.detail
+
+
+def test_a_read_that_cuts_two_ways_at_once_has_no_list_in_it():
+    """A block is one line per slice a read named, so a read naming slices of
+    two kinds at once — a figure per account and a figure per month over the
+    same movements — fills no block: a line per slice would state the same
+    money once for each way the read cuts. The refusal is on the declared
+    kinds, not on which read or tool produced them."""
+    result = run("list what moved",
+                 _script(_shape(*_LIST),
+                         ("query_ledger", {"entity": "transactions"}),
+                         bind=_bind_the_read),
                  _wide(4))
     assert not result.answered
     assert result.refusal == "wrong_kind", result.detail

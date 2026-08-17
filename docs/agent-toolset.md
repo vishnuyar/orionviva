@@ -322,3 +322,15 @@ halves are closed in the 2026-08-05 amendment below._
 > coming down had a second one behind it. That one is down as of this cycle and
 > no live run has yet gone through it, so read every capability above as proven
 > mechanically and unexercised._
+>
+> _Amended 2026-08-17 again (the reads that say no scope). **`list_movements`
+> gains one count figure** over the whole matching set, beside the row figures
+> it already returned, because it is the only figure of that read that can
+> record what narrowed it — every other one is a single complete movement. It
+> arrives as a capability as well as a disclosure: *how many payments went to
+> that counterparty* is answerable with a number from the detailed read. The
+> split above is unchanged — `query_ledger` still returns no rows — and the
+> descriptions file is still `tools-v11`, so nothing tells a model the count is
+> there before it calls. What the cap left out is also now a caveat, so a list
+> showing fifty of three hundred says so to a person and not only to its
+> caller._

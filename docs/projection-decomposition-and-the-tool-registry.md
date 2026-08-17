@@ -769,18 +769,31 @@ _**A filter refusal now names every fault it can see**, under the machine tag
 `invalid_filters` when there is more than one, the way the registry's own
 validator has always answered. One fault still comes back under its own tag._
 
-_**The *not covered* line above closes.** Narrowing by a tag and by a currency
-each place a sentence now — two entries in the table that maps a filter to a
-boundary entry, using wording `pack-v10` already carried — and narrowing by
-nature cannot happen, because `nature` is **withdrawn as a filter**. Not given
-a sentence: withdrawn, from the filter-support table for all three reads, from
-`QUERY_LEDGER_PARAMS`, and from the movement test underneath. The rule that a
-filter an entity would ignore is refused rather than accepted-and-dropped,
-read one step on: a set narrowed in a way no sentence can state is the same
-fault, so the narrowing stops rather than the disclosure being invented. Every
-filter a read honours can now be said in an answer, and a test holds the form
-and the writing table to each other. This removes a capability — **`show me my
-transfers` is no longer askable**, and nothing else offers it; it returns in
+_**The *not covered* line above closes for the reads that record a boundary at
+all.** Narrowing by a tag and by a currency each place a sentence now — two
+entries in the table that maps a filter to a boundary entry, using wording
+`pack-v10` already carried — and narrowing by nature cannot happen, because
+`nature` is **withdrawn as a filter**. Not given a sentence: withdrawn, from
+the filter-support table for all three reads, from `QUERY_LEDGER_PARAMS`, and
+from the movement test underneath. The rule that a filter an entity would
+ignore is refused rather than accepted-and-dropped, read one step on: a set
+narrowed in a way no sentence can state is the same fault, so the narrowing
+stops rather than the disclosure being invented. **What it does not close is
+four reads that populate no boundary at all** — the transactions and holdings
+entities of `query_ledger`, its income metric, and `list_movements`, which
+honour six, two, one and six filters — so nothing any of them narrows by can be
+said in an answer, there being no boundary for a sentence to be placed from; and
+a fifth, the balances read, records account counts and never records what it was
+narrowed to, so filtering it by currency is unsayable too. This paragraph as
+first written claimed the general form — that every filter a read honours can
+now be said in an answer — which was **generalised from two wired lines on the
+spending read and was false the day it was committed**. What stood beside it as
+holding it does not: that test compares three sets of names — the filters the
+reads honour, the filters the form offers, the filters the writing table can
+word — and never asks a read whether it records anything. The general claim is
+closed, and the generalisation named as the fault it was, in this day's later
+amendment below. This removes a capability — **`show me my transfers` is no
+longer askable**, and nothing else offers it; it returns in
 its own cycle with a wording authored to carry it. The `nature?` field in D3's
 sketch above is a design option from before the tool existed and was never
 built as written; what shipped is the filter list in `tools-v11`, which is the
@@ -890,3 +903,133 @@ list into the clause holding its `rows` hole, so a list nothing can fill takes
 its own introduction away with it; `speak-repairs-v2` carries the nineteenth
 repair, `hole_the_clause`. `speak-shape-v7` and `speak-repairs-v1` were in force
 until this cycle._
+
+---
+
+_Amended 2026-08-17 (the reads that say no scope). **A read that narrows a set
+records what it narrowed it to, and a test asks the read rather than the
+table.** That is the general form of what the earlier amendment of this day got
+wrong, and it now holds without an exemption list: the transactions read, the
+holdings read, the income metric, `list_movements` and the balances read all
+record what narrowed them, and
+`test_every_filter_a_read_honours_can_be_said_in_the_answer` holds every read to
+it by calling each one with each filter it honours, on more than one shape of
+vault, and reading the figures that come back. **Where it is not yet proved,
+said plainly rather than generalised over:** the vaults it calls are ones where
+every filter names something the vault holds, and there is one case below —
+income narrowed by a currency on a vault of several — that comes back with no
+figures at all, so the rule has nothing there to be true of. That case is named
+open, not covered by the claim._
+
+_**The claim corrected, and how it was made.** The earlier amendment said every
+filter a read honours can now be said in an answer. It was generalised from two
+wired lines on the spending read, and it was false when written: four reads —
+the transactions and holdings entities of `query_ledger`, its income metric, and
+`list_movements` — populated no boundary at all, and the balances read recorded
+account counts without ever recording what narrowed it. What was offered beside
+the claim as holding it compares three sets of names, never calls a read, and
+could not have seen any of it; it is renamed to what it does, and the name that
+asserts the claim now belongs to the behavioural test. Two tests must not both
+bear a name asserting the same claim, and only one of them can fail when the
+claim stops being true._
+
+_**A read that groups cuts as many ways as it groups.** The transactions read
+cuts twice in one read, a figure per account and a figure per month over the
+same movements, and each figure now names which slice it is — a month's slice
+being the **calendar month**, first day to last, because the cut names the
+group and the group is the month; written from the first and last day something
+actually moved it would be a fact about the data rather than about the grouping,
+and two vaults' January would be different periods. A figure is the whole of
+what its quantity ranges over only where nothing narrowed the read and that
+grouping produced the one group._
+
+_**A block of rows over a read that cuts more than one way is refused.** The
+block is built from every figure of a read that named a slice, so a read
+declaring slices in two vocabularies would state the same money once for each
+way it cuts, under a claim of delivery. The guard compares the declared cut
+kinds and is keyed to no read and no tool; it reuses the existing wrong-kind
+refusal, which already has a reviewed sentence. Nothing regresses — a block over
+that read refused before this, for the poorer reason that it had named no slice
+at all. The day it is decided which grouping a list enumerates, the guard is
+where that lands._
+
+_**A row is a member of a set and never a slice of one.** A listed movement
+declares **whole** — one movement is all of what the quantity `movement`
+measures — and names no slice, because naming one would need a way of narrowing
+a set to a single movement and there is none. So that read records what narrowed
+it on **one count figure over the whole matching set**, which is also what makes
+*how many payments went to that counterparty* answerable with a number. What the
+row cap left out moves into a caveat as well as the coverage line, so a list
+showing fifty of three hundred tells a person and not only its caller; the half
+naming which filters would reach the rest is instruction to the caller and stays
+there._
+
+_**Holdings and income.** A holding is a member of what the holdings read
+ranged over rather than a slice of it, so its figures name no slice and each
+carries what a filter chose. A member of a set is also never the whole of what
+a balance measures: what is held beside one instrument is the other instruments
+and the cash this read cannot see, so a per-holding figure declares it is not
+whole on every vault, however few rows came back and whether or not anything
+narrowed the read. Declaring one whole would be worse than recording nothing —
+a whole figure places no scope sentence, so the claim would delete every clause
+the answer around it carried, which is the inversion this cycle exists to
+remove. Not whole is still a declaration, and it costs a person nothing to
+read. The count beside them is a different quantity, how many holdings were
+measured, and over a read nothing narrowed that is all of them._
+
+_The income metric does cut, by currency, so each of its figures names the
+currency it is the income in and declares the whole only where nothing narrowed
+the read and there is the one currency to be in. A slice is named in the vault's
+own vocabulary, and an income bucket carries no currency of its own: where the
+accounts declare more than one, the read groups everything under a key that
+names no currency anybody holds, and such a figure carries no slice rather than
+putting a person's income under a currency they hold nothing in. So the
+consequence worth naming is a conditional one — a block of rows over the income
+read, which refused before because that read named no slice, builds **where the
+vault's currencies are known to it**, one line per currency, and refuses as it
+did before where they are not._
+
+_**The balances read's `whole` and its `selected` are one question.** It gained
+what narrowed it, and in the same change both places that computed "whole" from
+account counts alone gained the requirement that nothing narrowed the read.
+Separately they contradict: a one-account vault, or one where every account is
+in the currency asked for, would build a figure claiming to cover everything
+while naming what it leaves out, which the boundary constructor refuses — an
+exception out of a read and through a registry whose module states that a call
+never raises. Wherever a read decides wholeness from what narrowed it, the two
+are now read off one list rather than off the filters twice; and where a figure
+is a member of the set rather than the set, it is not whole whatever the
+filters said._
+
+_**Open, and named rather than discovered later: `compute` carries no
+boundary.** A total computed from two bounded operands comes out unbounded, so
+arithmetic is where a scope declaration is still lost. It is not the same rule
+as inheriting a grade — two operands taken over different sets produce a result
+over neither — and it is its own decision rather than a wiring gap._
+
+_**Open beside it: income narrowed by a currency can record its narrowing
+nowhere.** On a vault whose accounts declare more than one currency, the income
+read groups under a key that matches no currency a `currency` filter may name,
+so narrowing it by a currency the vault does hold comes back `ok` with no
+figures at all — and a read that emits no figure records what narrowed it in no
+figure. That much is a read saying too little. The second symptom on the same
+vault is not: the placeholder key is also what the figure declares as its
+currency, so an unnarrowed income read renders `? 500.00` to a person. The
+cause of both is upstream of the tools, in how an income bucket with no
+currency of its own is attributed. Deferred rather than repaired here, so the
+scope check meets it as a known thing._
+
+_**Open, and older than this cycle: a date is checked structurally, in ASCII
+only by accident.** `_is_iso_date` tests its digits with `str.isdigit`, and the
+month parse this cycle added tests its own with `int`; both accept non-ASCII
+decimal digits, and `int` accepts a leading sign as well. So a stored key of
+Arabic-Indic digits passes as a calendar month and a person could read a scope
+sentence built from a string nothing validated. It is **I2's** business —
+normalization is locale-aware, versioned and deterministic — rather than this
+read's, since the same acceptance sits under every date the tools compare.
+Named here because the month parse is where it now shows._
+
+_**No version id is claimed by this cycle.** The ten narrowing sentences are
+already in the pack in force, the block guard's refusal has a reviewed sentence
+already, and the cap sentence is computed text of the kind the spending read
+already writes beside its own cap. Nothing model-facing changed._
