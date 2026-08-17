@@ -11,6 +11,7 @@ CLAUDE.md
 docs/TODO.md
 docs/phases.md
 .claude/agents/chronicler.md
+.claude/agents/director.md
 briefs/
 
 # Throwaway commit scripts. They carry a deny-list of real names spelled out in
