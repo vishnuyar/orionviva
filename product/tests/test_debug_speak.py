@@ -16,26 +16,29 @@ trajectory that never happened.
 
 import json
 
-from viva.debug.speak import summary, thread_lines, turns
+from viva.debug.speak import shapes, summary, thread_lines, turns
 from viva.ledger.events import read_recorded
 
 
 def _exchange(session: str, turn: int, index: int, *, question: str = "q",
               request: dict | None = None, response: dict | None = None,
               verdict: dict | None = None, tokens: tuple = (10, 2),
-              cost: float = 0.01):
+              cost: float = 0.01, authored_shape: bool = False,
+              defect: str = "", parse_ok: bool = True):
     return read_recorded(
         doc_id=f"speak:{session}:{turn}:{index}",
         model="a-model", prompt_version="speak-v4", input_mode="native-tools",
         response_text=json.dumps({
             "question": question,
+            "authored_shape": authored_shape,
+            "defect": defect,
             "request": request or {"messages": []},
             "response": response or {},
             "verdict": verdict or {"answered": False, "refusal": "",
                                    "calls": 0}}),
         cost_usd=cost, input_tokens=tokens[0], output_tokens=tokens[1],
-        parse_ok=True, parse_error=None, occurred_at="2026-08-04",
-        phase="speak")
+        parse_ok=parse_ok, parse_error=defect or None,
+        occurred_at="2026-08-04", phase="speak")
 
 
 def test_only_speak_captures_are_read():
@@ -113,3 +116,41 @@ def test_a_long_payload_says_what_it_hid():
     text = "\n".join(thread_lines(
         turns([_exchange("s1", 1, 1, request=request)])["s1:1"]))
     assert "..." in text and "+4600 chars" in text
+
+
+# ------------------------------------------------- shapes authored and refused
+
+
+def test_shapes_authored_and_refused_are_counted_with_the_reason():
+    """Every exchange that authored a shape is counted, those the check
+    refused are counted again, and each refusal is counted under the repair it
+    named — across sessions, not within one turn."""
+    events = [
+        _exchange("s1", 1, 1, authored_shape=True, defect="drop_the_quantity",
+                  parse_ok=False),
+        _exchange("s1", 1, 2, authored_shape=True),
+        _exchange("s1", 1, 3),
+        _exchange("s2", 1, 1, authored_shape=True, defect="drop_the_quantity",
+                  parse_ok=False),
+        _exchange("s2", 1, 2, authored_shape=True, defect="hole_the_number",
+                  parse_ok=False),
+    ]
+    assert shapes(events) == {"authored": 4, "rejected": 3,
+                              "reasons": {"drop_the_quantity": 2,
+                                          "hole_the_number": 1}}
+
+
+def test_a_reply_that_was_not_a_shape_at_all_is_not_counted_as_one():
+    """A malformed reply that never tried to author a sentence counts as
+    neither authored nor rejected."""
+    events = [_exchange("s1", 1, 1, defect="protocol", parse_ok=False),
+              _exchange("s1", 1, 2, authored_shape=True)]
+    assert shapes(events) == {"authored": 1, "rejected": 0, "reasons": {}}
+
+
+def test_a_document_read_is_not_a_shape():
+    events = [read_recorded(doc_id="abc123", model="m", prompt_version="p",
+                            input_mode="pdf", response_text="{}", cost_usd=0.0,
+                            input_tokens=0, output_tokens=0, parse_ok=False,
+                            parse_error="unreadable", occurred_at="2026-08-04")]
+    assert shapes(events) == {"authored": 0, "rejected": 0, "reasons": {}}

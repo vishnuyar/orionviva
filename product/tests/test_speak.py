@@ -61,6 +61,8 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-shape-v5": "9f6ca8be25194302",
     "speak-final-v10": "0c7373aad33dd23e",
     "speak-shape-v6": "8727443fdd90f027",
+    "speak-retry-v3": "ec6b6369a6c02300",
+    "speak-repairs-v1": "40e6f50289ce7171",
 }
 
 
@@ -209,6 +211,23 @@ def test_every_version_the_module_speaks_under_is_pinned():
         "FROZEN_SPEAK_PROMPTS in the same commit that releases the text")
 
 
+def test_every_repair_a_check_can_name_has_reviewed_words():
+    """Every tag in `REPAIRS` has non-empty words in the repairs file and the
+    file names no tag that is not in `REPAIRS`; the retry template carries both
+    fields it is formatted with."""
+    from viva.speak import RETRY_VERSION, _repairs
+    from viva.tools.shape import REPAIRS
+
+    words = _repairs()
+    assert set(words) == set(REPAIRS)
+    assert all(phrase.strip() for phrase in words.values())
+    # The correction is the defect and the repair, and nothing is appended to
+    # either: what a model is told about a reply it must send again is one
+    # reviewed template with two fields.
+    template = promptstore.load(PROMPTS, RETRY_VERSION)
+    assert "{problem}" in template and "{repair}" in template
+
+
 # ------------------------------------------------------------ native planner
 
 def test_native_planner_produces_a_cited_answer(registry):
@@ -312,6 +331,131 @@ def test_native_final_mixed_with_tool_calls_is_corrected(registry):
     corrections = [m for m in second if m.get("role") == "tool"
                    and "could not be used" in m.get("content", "")]
     assert len(corrections) == 2
+
+
+def _grade_hole_shape_call(call_id="c0"):
+    """A shape a model plausibly sends and the check refuses: a hole holding a
+    grade, declaring that the grade measures a count."""
+    return _shape_call(("You have {many}, and that count is {trust}.",
+                        [("many", "count", "count"),
+                         ("trust", "grade", "count")]), call_id=call_id)
+
+
+def _corrections_seen(messages):
+    return [m.get("content") or "" for m in messages
+            if "could not be used" in (m.get("content") or "")]
+
+
+def test_a_refused_shape_is_told_which_field_to_take_out(registry):
+    """A shape refused for a stray quantity is corrected with the words for
+    `drop_the_quantity` and not with the protocol advice, and the exchange is
+    recorded as a sentence authored and refused."""
+    from viva.speak import _repairs
+    from viva.tools.shape import DROP_THE_QUANTITY, PROTOCOL
+
+    script = ChatScript([
+        _turn([_grade_hole_shape_call()]),
+        _turn([_shape_call(("All settled.", []), call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+    ])
+    planner = NativePlanner(script)
+    result = run("how many subcategories do i have?", planner, registry)
+    assert result.answered
+
+    said = _corrections_seen(script.seen[1]["messages"])
+    assert len(said) == 1
+    assert _repairs()[DROP_THE_QUANTITY] in said[0]
+    assert _repairs()[PROTOCOL] not in said[0]
+    # And the exchange is on the record as a sentence authored and refused.
+    assert [(e.authored_shape, e.parse_ok) for e in planner.exchanges] == [
+        (True, False), (True, True), (False, True)]
+    assert planner.exchanges[0].defect == DROP_THE_QUANTITY
+
+
+def test_a_reply_that_broke_the_protocol_is_told_about_the_protocol(registry):
+    """A reply that was not a tool call at all is corrected with the protocol
+    words, and authors no shape."""
+    from viva.speak import _repairs
+    from viva.tools.shape import PROTOCOL
+
+    script = ChatScript([_turn(text="Your balance looks fine to me."),
+                         _turn(text="Really, it is fine.")])
+    planner = NativePlanner(script)
+    run("balance?", planner, registry)
+
+    said = _corrections_seen(script.seen[1]["messages"])
+    assert said and _repairs()[PROTOCOL] in said[0]
+    assert [e.defect for e in planner.exchanges] == [PROTOCOL, PROTOCOL]
+    assert not any(e.authored_shape for e in planner.exchanges)
+
+
+def test_the_text_protocol_names_the_same_repair(registry):
+    """The text protocol corrects the same defect with the same repair as the
+    native path, and records the same defect tag."""
+    from viva.speak import _repairs
+    from viva.tools.shape import DROP_THE_QUANTITY, PROTOCOL
+
+    steps = [
+        _shape_block(("You have {many}, and that count is {trust}.",
+                      [("many", "count", "count"), ("trust", "grade", "count")])),
+        _shape_block(("All settled.", [])),
+        _bind_block({}),
+    ]
+    script = TextScript(steps)
+    planner = TextPlanner(script)
+    assert run("how many?", planner, registry).answered
+    assert _repairs()[DROP_THE_QUANTITY] in script.prompts[1]
+    assert _repairs()[PROTOCOL] not in script.prompts[1]
+    assert planner.exchanges[0].authored_shape
+    assert planner.exchanges[0].defect == DROP_THE_QUANTITY
+
+
+def test_a_delivery_the_gate_could_not_read_is_told_about_the_delivery(
+        registry):
+    """A delivery whose bindings are missing, or name more than one thing, is
+    corrected with the repair for that defect rather than with the protocol
+    words."""
+    from viva.speak import _repairs
+    from viva.tools.shape import BIND_EACH_HOLE, BIND_ONE_THING, PROTOCOL
+
+    for defect, args in ((BIND_EACH_HOLE, {}),
+                         (BIND_ONE_THING,
+                          {"bindings": {"total": {"figure": "f1",
+                                                  "entity": "chk"}}})):
+        script = ChatScript([
+            _turn([_shape_call(("Your balance is {total}.",
+                                [("total", "money", "balance")]))]),
+            _turn([_call(FINAL_TOOL, args, call_id="c1")]),
+            _turn([_call(FINAL_TOOL, args, call_id="c2")]),
+        ])
+        planner = NativePlanner(script)
+        run("balance?", planner, registry)
+        said = _corrections_seen(script.seen[2]["messages"])
+        assert said and _repairs()[defect] in said[-1], defect
+        assert _repairs()[PROTOCOL] not in said[-1], defect
+        assert planner.exchanges[1].defect == defect
+
+
+def test_a_hole_that_named_the_wrong_quantity_is_told_to_change_it(registry):
+    """A hole whose quantity its kind cannot be of is corrected with
+    `choose_the_quantity`, never with `name_the_quantity`. The form makes this
+    rarer and cannot make it impossible: nothing at the provider holds a model
+    to the form."""
+    from viva.speak import _repairs
+    from viva.tools.shape import CHOOSE_THE_QUANTITY, NAME_THE_QUANTITY
+
+    script = ChatScript([
+        _turn([_shape_call(("You have {many}.", [("many", "count", "spending")]),
+                           call_id="c0")]),
+        _turn([_shape_call(("All settled.", []), call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+    ])
+    planner = NativePlanner(script)
+    assert run("how many?", planner, registry).answered
+    said = _corrections_seen(script.seen[1]["messages"])
+    assert _repairs()[CHOOSE_THE_QUANTITY] in said[0]
+    assert _repairs()[NAME_THE_QUANTITY] not in said[0]
+    assert planner.exchanges[0].defect == CHOOSE_THE_QUANTITY
 
 
 def test_native_transport_failure_refuses_model_unreachable(registry):
@@ -431,6 +575,37 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
                                                      "type": "money",
                                                      "quantity": "balance"}]
     assert kept["bindings"] == {"balance": {"figure": "f1"}}
+
+
+def test_the_capture_says_which_exchange_authored_a_sentence_and_what_broke(
+        registry):
+    """Each recorded exchange carries whether it was authoring the turn's
+    sentence and, when it could not be used, the repair it was asked for —
+    beside the `parse_ok` the capture already held."""
+    from viva.tools.shape import DROP_THE_QUANTITY
+
+    class LedgerLog:
+        def __init__(self):
+            self.events = []
+
+        def append(self, event):
+            self.events.append(event)
+
+    log = LedgerLog()
+    script = ChatScript([
+        _turn([_grade_hole_shape_call()]),
+        _turn([_shape_call(("All settled.", []), call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+    ])
+    session = Session(registry, lambda prior: NativePlanner(script, prior),
+                      ledger=log, model="pinned-model", session_id="s-test",
+                      today=lambda: "2026-02-06")
+    assert session.ask("how many subcategories do i have?").result.answered
+
+    kept = [json.loads(e.body["response_text"]) for e in log.events]
+    assert [k["authored_shape"] for k in kept] == [True, True, False]
+    assert [k["defect"] for k in kept] == [DROP_THE_QUANTITY, "", ""]
+    assert [e.body["parse_ok"] for e in log.events] == [False, True, True]
 
 
 def test_a_turns_cost_is_the_sum_of_its_exchanges(registry):

@@ -1,6 +1,6 @@
 # Prompts as Files
 
-**Status:** ✅ **BUILT 2026-07-25** — P1 = (a), read-only package data · **Amended 2026-08-06** with *Where a version is declared* (the manifest) · **Amended 2026-08-13** (a manifest family may pin data that is not a prompt) · **Created:** 2026-07-25 · **Origin:** Vishnu: *"move all the prompts and versions out of code — I had mentioned this previously, it still drifted. Prompt versions have gone up but the previous versions are buried in code."*
+**Status:** ✅ **BUILT 2026-07-25** — P1 = (a), read-only package data · **Amended 2026-08-06** with *Where a version is declared* (the manifest) · **Amended 2026-08-13** (a manifest family may pin data that is not a prompt) · **Amended 2026-08-16** (a version file may be a keyed table of phrases rather than one prompt) · **Created:** 2026-07-25 · **Origin:** Vishnu: *"move all the prompts and versions out of code — I had mentioned this previously, it still drifted. Prompt versions have gone up but the previous versions are buried in code."*
 
 **Invariants touched:** **T8 (a recorded `prompt_version` must resolve to the exact text that produced it)** · T3 (raw capture is worthless if the instructions behind it are unrecoverable) · I5 (code universal, specifics are data — a prompt is the most specific data there is) · X1 (a contributor's toolchain is never a user's problem).
 
@@ -179,7 +179,7 @@ The reason that decided it is none of those. Auto-resolution puts a new prompt i
 
 One `versions.json` per package (`product/viva/`, `merchant/merchantcore/`), shipped as package data, read through `vivacore.versions`. Per package, not per repo, because the three ship as independently installable wheels (T9).
 
-- **`released`** — every version file, by its own file stem, against `sha256[:16]` of its bytes. A directory-shaped version (a persona pack) hashes its files by name in sorted order, hidden files excluded. This is now the *only* pin table; the four test-file copies read from it.
+- **`released`** — every version file, by its own file stem, against `sha256[:16]` of its bytes. A directory-shaped version (a persona pack) hashes its files by name in sorted order, hidden files excluded. This is now the *only* pin table; the four test-file copies read from it. **Corrected 2026-08-16:** four of five do — `test_prompt_library.py`, `test_tools.py`, `test_persona_pack.py` and `test_interview.py` derive their frozen maps from `released`, and `FROZEN_SPEAK_PROMPTS` in `test_speak.py` is a literal dict kept by hand, so releasing a speak prompt means writing its digest in two places. Found by doing it twice in one cycle; it is one comprehension away from the others.
 - **`in_force`** — the families that have one active pointer, and the directory each lives in. Nothing else declares a version id, and a test fails on any quoted id that reappears in a module. **Extended 2026-08-13:** a family need not be a prompt. `merchantcore`'s `taxonomy` family points at `data/`, where `cat-v3.json` holds the shipped subcategory vocabulary, and `TAXONOMY_VERSION` is read from the manifest rather than written as a literal. The argument is the same one that made prompts files: the version is stamped into every enriched record, so it must resolve to one artifact's bytes forever, and a tuple edited in place changes what every future record anchors to with nothing recording that it changed. The `released` pin, the audit and the literal lint all applied unchanged.
 - **`withdrawn`** — per version, not per family, mapping a version to why it is not in force. Per family would have been a mute button: mark one version held and every later one lands unnoticed. Keyed to the version, holding `v2` back leaves `v3` raising the same complaint as before.
 - **`versions.audit`** — the promotion lint. A version file nobody pinned, a released file edited or deleted, a family pointing at nothing released, or a newer version sitting unpromoted with no reason all fail the suite. Its friction is real and accepted: a draft prompt on disk reds the build until it is promoted or marked.
@@ -191,6 +191,30 @@ Nothing was promoted. Every id in force after is the id in force before.
 - **`core/vivacore` has no manifest.** Its `PROMPT_VERSION = "p2"` and the `p2`/`t1`/`ti1` map remain literals, and those five prompt files are pinned nowhere. This is the same hole as TODO's *the bench records prompt versions that do not resolve*: `t1` and `ti1` do not name single files at all, so a manifest cannot key them until that is settled.
 - **Event stamps still carry a bare id.** `QuestionDeclined` records `pack-v3`, not `pack-v3@62a56a4b`. `versions.stamp()` exists and is tested, which makes the fix cheap — but it changes recorded payloads, so it is its own cycle and the owed TODO item stands.
 - **The literal test is textual.** It catches a quoted id; an id built by concatenation or an f-string passes it and is caught nowhere.
+
+# A version file need not be one prompt
+
+**Amended 2026-08-16.** `speak-repairs-v1.txt` is a **keyed table**: one
+`tag: words` line per entry, split on the first colon, holding the eighteen
+repairs a malformed reply can be asked to make. The check that finds a defect
+names a tag; the words for it are read from the file and placed into the retry
+prompt's `{repair}` field. No entry is sent on its own, and the table's own
+text is never `.format`ed.
+
+This is the same extension as `taxonomy` → `cat-v3.json`, one step further in:
+that was a manifest family pinning data, this is a *prompt* family whose file
+holds many reviewed phrases instead of one. Everything the discipline asks for
+applies unchanged — a new file for a new id, a pin in `released`, a pointer in
+`in_force`, and the literal lint — because the reason is unchanged: a recorded
+`prompt_version` must resolve to the exact words a model was told (T8), and a
+model told one of eighteen phrases was told a version's bytes as surely as a
+model told all of them.
+
+A table adds one obligation a single prompt does not have. **Its set of tags is
+an interface**, shared with the code that names them, so adding, removing or
+renaming a tag is a new version file even when no phrase changes. What holds it
+is a test that the tags the code can name and the tags the file answers are the
+same set, with no phrase empty.
 
 ## The rule this leaves standing
 

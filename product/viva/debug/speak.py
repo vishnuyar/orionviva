@@ -13,10 +13,12 @@ Usage (from product/, which auto-loads ./.env):
     PYTHONPATH=../core:../merchant:. python3 -m viva.debug.speak 3 --raw
 
 With no argument it lists every recorded turn with its question, verdict, tool
-calls, model calls, tokens and cost. Given a turn's number it prints the whole
-trajectory: each tool call with its arguments, each result with its size and
-whether it was an answer or a refusal, and the reply that ended the turn.
-`--raw` prints the stored payloads verbatim instead.
+calls, model calls, tokens and cost, under a count of how many sentences were
+authored, how many of those the shape check refused, and what it asked to be
+changed. Given a turn's number it prints the whole trajectory: each tool call
+with its arguments, each result with its size and whether it was an answer or a
+refusal, and the reply that ended the turn. `--raw` prints the stored payloads
+verbatim instead.
 
 A turn is identified by the doc_id `speak:<session>:<turn>:<exchange>`, and
 exchanges are ordered numerically — a turn that spent ten model calls must not
@@ -95,6 +97,29 @@ def summary(exchanges: list) -> dict:
                                  for e in exchanges),
             "cost_usd": sum(float(e.body.get("cost_usd") or 0)
                             for e in exchanges)}
+
+
+def shapes(events) -> dict:
+    """How often a sentence was authored, how often the authoring was refused,
+    and what the refusals asked to be changed.
+
+    Returns ``{"authored": int, "rejected": int, "reasons": {tag: count}}``,
+    over every recorded exchange rather than one turn. Counts only exchanges
+    that tried to author a shape; a reply refused for anything else is not
+    one."""
+    authored = rejected = 0
+    reasons: dict = collections.Counter()
+    for exchanges in turns(events).values():
+        for event in exchanges:
+            if not payload(event).get("authored_shape"):
+                continue
+            authored += 1
+            if event.body.get("parse_ok"):
+                continue
+            rejected += 1
+            reasons[payload(event).get("defect")
+                    or event.body.get("parse_error") or ""] += 1
+    return {"authored": authored, "rejected": rejected, "reasons": dict(reasons)}
 
 
 def _call_lines(message: dict, indent: str) -> list[str]:
@@ -178,13 +203,20 @@ def main() -> None:
     raw = "--raw" in sys.argv[1:]
 
     vault = Vault.open(vault_dir, passphrase)
-    found = turns(vault.events())
+    events = list(vault.events())
+    found = turns(events)
     if not found:
         raise SystemExit("No speak exchanges recorded in this vault.")
     order = list(found)
 
     if not args:
-        print(f"{len(order)} recorded turn(s); pass a number to dump one.\n")
+        counted = shapes(events)
+        print(f"{len(order)} recorded turn(s); pass a number to dump one.")
+        print(f"shapes: {counted['authored']} authored, "
+              f"{counted['rejected']} rejected"
+              + ("" if not counted["reasons"] else " — " + ", ".join(
+                  f"{reason} x{n}"
+                  for reason, n in sorted(counted["reasons"].items()))) + "\n")
         for i, key in enumerate(order, 1):
             s = summary(found[key])
             state = "answered" if s["answered"] else f"REFUSED {s['refusal']}"

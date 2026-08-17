@@ -49,14 +49,87 @@ _HOLE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 # figure owes, so nothing asks for one through a hole.
 SLOT_TYPES = tuple(t for t in TYPES if t not in (PROSE, CAVEAT))
 
+# Which kinds of hole hold a magnitude and which hold something else: exactly
+# the kinds the pairing table gives a vocabulary of quantities to, and all the
+# rest. Derived from that table rather than listed again, so the form a model
+# fills in and the check that reads it back cannot describe different rules.
+MAGNITUDE_TYPES = tuple(t for t in SLOT_TYPES if QUANTITY_OF_TYPE.get(t))
+PLAIN_TYPES = tuple(t for t in SLOT_TYPES if t not in MAGNITUDE_TYPES)
+
+
+def quantities_of(kind: str) -> tuple:
+    """What a hole of this kind may say its number is of, sorted.
+
+    The pairing table as the check reads it, and the only place anything else
+    may read it from. Empty for a kind that holds no magnitude."""
+    return tuple(sorted(QUANTITY_OF_TYPE.get(kind, ())))
+
 # How much shape one turn may commit to. A ceiling rather than a rule about
 # style: a shape is resent on every remaining call of the turn.
 MAX_CLAUSES = 12
 MAX_CLAUSE_CHARS = 400
 
+# What to do about a reply that could not be used, as a machine tag. A check
+# names the repair; the words a model is told for each one live in a reviewed
+# file, so the same defect always asks for the same change. Two defects that
+# read alike carry two tags wherever the change they call for differs — a hole
+# that named no quantity is told to name one, and a hole that named the wrong
+# one is told which it may choose from.
+SEND_A_SHAPE = "send_a_shape"
+SHAPE_THE_CLAUSE = "shape_the_clause"
+SHAPE_THE_SLOTS = "shape_the_slots"
+WORD_THE_QUANTITY = "word_the_quantity"
+WORD_THE_CLAUSE = "word_the_clause"
+SHORTEN_THE_CLAUSE = "shorten_the_clause"
+HOLE_THE_NUMBER = "hole_the_number"
+PLACE_EACH_HOLE_ONCE = "place_each_hole_once"
+RENAME_THE_HOLE = "rename_the_hole"
+MATCH_THE_HOLES = "match_the_holes"
+CHOOSE_A_KIND = "choose_a_kind"
+NAME_THE_QUANTITY = "name_the_quantity"
+CHOOSE_THE_QUANTITY = "choose_the_quantity"
+DROP_THE_QUANTITY = "drop_the_quantity"
+FEWER_CLAUSES = "fewer_clauses"
+# A delivery, which fills the holes a taken shape left, rather than a shape.
+BIND_EACH_HOLE = "bind_each_hole"
+BIND_ONE_THING = "bind_one_thing"
+# A reply that was not a well-formed step at all, whatever it was carrying.
+PROTOCOL = "protocol"
+
+REPAIRS = (SEND_A_SHAPE, SHAPE_THE_CLAUSE, SHAPE_THE_SLOTS,
+           WORD_THE_QUANTITY, WORD_THE_CLAUSE,
+           SHORTEN_THE_CLAUSE, HOLE_THE_NUMBER, PLACE_EACH_HOLE_ONCE,
+           RENAME_THE_HOLE, MATCH_THE_HOLES, CHOOSE_A_KIND, NAME_THE_QUANTITY,
+           CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY, FEWER_CLAUSES,
+           BIND_EACH_HOLE, BIND_ONE_THING, PROTOCOL)
+
+
+class Problem(str):
+    """What was wrong, and what to do about it.
+
+    Reads as the sentence naming the defect wherever a problem was one string,
+    and carries beside it, on ``repair``, the tag of the change that answers
+    it. The tag is one of ``REPAIRS``.
+
+    A problem that names no repair is one about the protocol itself — a reply
+    that was not a usable step at all — which is what the default says."""
+
+    def __new__(cls, wrong: str, repair: str = PROTOCOL):
+        problem = super().__new__(cls, wrong)
+        problem.repair = repair
+        return problem
+
 
 class BadShape(ValueError):
-    """A shape that cannot be spoken, named at the point it was built."""
+    """A shape that cannot be spoken, named at the point it was built.
+
+    Keeps the problem it was raised with, so a reader turning a model's shape
+    into something to say back has the repair as well as the defect."""
+
+    def __init__(self, problem):
+        super().__init__(str(problem))
+        self.problem = (problem if isinstance(problem, Problem)
+                        else Problem(problem))
 
 
 @dataclass(frozen=True)
@@ -93,45 +166,62 @@ class Clause:
 
     def __post_init__(self):
         if not str(self.text).strip():
-            raise BadShape("a clause with no words says nothing")
+            raise BadShape(Problem("a clause with no words says nothing",
+                                   WORD_THE_CLAUSE))
         if len(self.text) > MAX_CLAUSE_CHARS:
-            raise BadShape(
+            raise BadShape(Problem(
                 f"a clause runs to {len(self.text)} characters, past the "
-                f"{MAX_CLAUSE_CHARS} one clause may take")
+                f"{MAX_CLAUSE_CHARS} one clause may take",
+                SHORTEN_THE_CLAUSE))
         digits = [c for c in self.text if c.isdigit()]
         if digits:
-            raise BadShape(
+            raise BadShape(Problem(
                 f"the clause {self.text!r} writes a digit in its own words — "
                 "every magnitude, day and count reaches a person through a "
-                "hole, so that the machine is what writes it")
+                "hole, so that the machine is what writes it",
+                HOLE_THE_NUMBER))
         placed = _HOLE.findall(self.text)
         if len(placed) != len(set(placed)):
-            raise BadShape(f"the clause {self.text!r} places the same hole twice")
+            raise BadShape(Problem(
+                f"the clause {self.text!r} places the same hole twice",
+                PLACE_EACH_HOLE_ONCE))
         declared = [s.name for s in self.slots]
         if len(declared) != len(set(declared)):
-            raise BadShape("two holes in one clause share a name")
+            raise BadShape(Problem("two holes in one clause share a name",
+                                   RENAME_THE_HOLE))
         if set(placed) != set(declared):
-            raise BadShape(
+            raise BadShape(Problem(
                 f"the clause {self.text!r} places {sorted(set(placed))} and "
                 f"declares {sorted(set(declared))} — a hole with no declaration "
                 "says nothing about what fills it, and a declaration with no "
-                "hole fills nothing")
+                "hole fills nothing",
+                MATCH_THE_HOLES))
         for slot in self.slots:
             if slot.type not in SLOT_TYPES:
-                raise BadShape(
+                raise BadShape(Problem(
                     f"the hole {slot.name!r} declares {slot.type!r}, which is "
-                    f"not a kind of thing this holds: {', '.join(SLOT_TYPES)}")
-            wanted = QUANTITY_OF_TYPE.get(slot.type, frozenset())
-            if wanted and slot.quantity not in wanted:
-                raise BadShape(
+                    f"not a kind of thing this holds: {', '.join(SLOT_TYPES)}",
+                    CHOOSE_A_KIND))
+            wanted = quantities_of(slot.type)
+            if wanted and not slot.quantity:
+                raise BadShape(Problem(
                     f"the hole {slot.name!r} holds a magnitude and does not say "
                     "what the magnitude is of; a number whose meaning nothing "
                     "states is one anything can be put into. It must be one of "
-                    + ", ".join(sorted(wanted)))
+                    + ", ".join(wanted),
+                    NAME_THE_QUANTITY))
+            if wanted and slot.quantity not in wanted:
+                raise BadShape(Problem(
+                    f"the hole {slot.name!r} holds {slot.type} and says it "
+                    f"measures {slot.quantity!r}, which is not something a "
+                    f"{slot.type} hole can be of. It must be one of "
+                    + ", ".join(wanted),
+                    CHOOSE_THE_QUANTITY))
             if slot.quantity and not wanted:
-                raise BadShape(
+                raise BadShape(Problem(
                     f"the hole {slot.name!r} holds {slot.type}, which measures "
-                    f"nothing, and says it is {slot.quantity!r}")
+                    f"nothing, and says it is {slot.quantity!r}",
+                    DROP_THE_QUANTITY))
 
     def written(self, filled: dict) -> str:
         """The clause as words, every hole replaced by what the renderer wrote
@@ -155,16 +245,19 @@ class Shape:
 
     def __post_init__(self):
         if not self.clauses:
-            raise BadShape("a shape with no clauses is not an answer")
+            raise BadShape(Problem("a shape with no clauses is not an answer",
+                                   SEND_A_SHAPE))
         if len(self.clauses) > MAX_CLAUSES:
-            raise BadShape(
+            raise BadShape(Problem(
                 f"a shape of {len(self.clauses)} clauses is past the "
-                f"{MAX_CLAUSES} one answer may take")
+                f"{MAX_CLAUSES} one answer may take",
+                FEWER_CLAUSES))
         names = [s.name for c in self.clauses for s in c.slots]
         if len(names) != len(set(names)):
-            raise BadShape(
+            raise BadShape(Problem(
                 "two holes in this shape share a name; a binding names one "
-                "hole, so a name used twice would fill two claims at once")
+                "hole, so a name used twice would fill two claims at once",
+                RENAME_THE_HOLE))
 
     @property
     def slots(self) -> dict:
@@ -178,43 +271,56 @@ class Shape:
 def read_shape(raw) -> tuple:
     """A shape from what a model sent, or the problem with it.
 
-    Returns ``(shape, "")`` or ``(None, problem)``. Never raises: a malformed
-    shape is something to say back to the model, not an exception to carry."""
+    Returns ``(shape, "")`` or ``(None, problem)``, where the problem reads as
+    the defect and carries the repair that answers it. Never raises: a
+    malformed shape is something to say back to the model, not an exception to
+    carry."""
     if not isinstance(raw, dict):
-        return None, "a shape is an object carrying 'clauses'"
+        return None, Problem("a shape is an object carrying 'clauses'",
+                             SEND_A_SHAPE)
     clauses = raw.get("clauses")
     if not isinstance(clauses, list) or not clauses:
-        return None, "'clauses' must be a non-empty list of clauses"
+        return None, Problem("'clauses' must be a non-empty list of clauses",
+                             SEND_A_SHAPE)
     built = []
     for entry in clauses:
         if not isinstance(entry, dict):
-            return None, "each clause is an object with 'text' and 'slots'"
+            return None, Problem(
+                "each clause is an object with 'text' and 'slots'",
+                SHAPE_THE_CLAUSE)
         text = entry.get("text")
         if not isinstance(text, str):
-            return None, "each clause needs a 'text' string"
+            return None, Problem("each clause needs a 'text' string",
+                                 SHAPE_THE_CLAUSE)
         slots = entry.get("slots") or []
         if not isinstance(slots, list):
-            return None, "'slots' must be a list of {name, type} objects"
+            return None, Problem(
+                "'slots' must be a list of {name, type} objects",
+                SHAPE_THE_SLOTS)
         declared = []
         for slot in slots:
             if not isinstance(slot, dict):
-                return None, "each slot is an object with 'name' and 'type'"
+                return None, Problem(
+                    "each slot is an object with 'name' and 'type'",
+                    SHAPE_THE_SLOTS)
             name, kind = slot.get("name"), slot.get("type")
             if not isinstance(name, str) or not isinstance(kind, str):
-                return None, "each slot needs a 'name' and a 'type', both strings"
+                return None, Problem(
+                    "each slot needs a 'name' and a 'type', both strings",
+                    SHAPE_THE_SLOTS)
             measures = slot.get("quantity") or ""
             if not isinstance(measures, str):
-                return None, ("a slot's 'quantity' is what its number "
-                              "measures, as one word")
+                return None, Problem("a slot's 'quantity' is what its number "
+                                     "measures, as one word", WORD_THE_QUANTITY)
             declared.append(Slot(name=name, type=kind, quantity=measures))
         try:
             built.append(Clause(text=text, slots=tuple(declared)))
         except BadShape as bad:
-            return None, str(bad)
+            return None, bad.problem
     try:
         return Shape(clauses=tuple(built)), ""
     except BadShape as bad:
-        return None, str(bad)
+        return None, bad.problem
 
 
 def weakens(before: Shape, after: Shape) -> bool:

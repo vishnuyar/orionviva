@@ -21,9 +21,9 @@ the table is decided by the runner rather than by either planner:
 is read, and ``deliver_answer``, through which each of that sentence's holes is
 bound to something the reads established. Neither is registered — neither
 executes anything; one opens a turn and one ends it. A malformed reply gets
-exactly one correction naming the problem, then the turn refuses with a machine
-tag. A transport failure refuses as ``model_unreachable``. Nothing raises to
-the person.
+exactly one correction, naming the defect and the one change that answers it,
+then the turn refuses with a machine tag. A transport failure refuses as
+``model_unreachable``. Nothing raises to the person.
 
 One shape of last word exists besides an ordinary answer. When the call budget
 runs out, the runner asks once more with only the terminator on the table, so a
@@ -54,20 +54,55 @@ from vivacore import promptstore, versions
 from .tools.registry import PACKAGE, PROMPTS
 from .tools.runner import (DEFAULT_MAX_CALLS, FINAL_TOOL, SHAPE_TOOL,
                            RunResult, run)
-from .quantity import KINDS as QUANTITY_KINDS
-from .tools.shape import SLOT_TYPES, read_shape
+from .tools.shape import (BIND_EACH_HOLE, BIND_ONE_THING, MAGNITUDE_TYPES,
+                          PLAIN_TYPES, PROTOCOL, Problem, quantities_of,
+                          read_shape)
 
 SPEAK_VERSION = versions.active(PACKAGE, "speak")
 FINAL_VERSION = versions.active(PACKAGE, "speak_final")
 SHAPE_VERSION = versions.active(PACKAGE, "speak_shape")
 PROTOCOL_VERSION = versions.active(PACKAGE, "speak_protocol")
 RETRY_VERSION = versions.active(PACKAGE, "speak_retry")
+REPAIRS_VERSION = versions.active(PACKAGE, "speak_repairs")
 CLOSING_VERSION = versions.active(PACKAGE, "speak_closing")
 
-# The shape: clauses of words with typed holes, and nothing else. The type
-# enum is the vocabulary itself, so a hole kind the code does not know cannot
-# be described to a model — and the same for what a hole says its number
-# measures, which is the other half of a magnitude's declaration.
+# The alternatives a hole is described to a model as: one per kind that holds a
+# magnitude, each pinned to that kind and requiring a quantity out of the ones
+# that kind may be of, plus one for the kinds that hold no magnitude, which has
+# no quantity field at all. Every enum is read from the check that reads the
+# shape back, so a combination the form offers is a combination the check takes.
+#
+# `additionalProperties` is what makes a hole match one alternative and not
+# two: without it on the plain hole, a hole carrying a quantity satisfies that
+# alternative as well as its own, and an alternation satisfied twice is
+# satisfied by nothing.
+def _magnitude_hole(kind: str) -> dict:
+    return {
+        "type": "object",
+        "properties": {"name": {"type": "string"},
+                       "type": {"type": "string", "enum": [kind]},
+                       "quantity": {"type": "string",
+                                    "enum": list(quantities_of(kind))}},
+        "required": ["name", "type", "quantity"],
+        "additionalProperties": False,
+    }
+
+
+_PLAIN_HOLE = {
+    "type": "object",
+    "properties": {"name": {"type": "string"},
+                   "type": {"type": "string", "enum": list(PLAIN_TYPES)}},
+    "required": ["name", "type"],
+    "additionalProperties": False,
+}
+
+HOLE_ALTERNATIVES = [_magnitude_hole(kind) for kind in MAGNITUDE_TYPES]
+HOLE_ALTERNATIVES.append(_PLAIN_HOLE)
+
+# The shape: clauses of words with typed holes, and nothing else. The enums are
+# the vocabulary itself, so a hole kind the code does not know cannot be
+# described to a model — and the same for what a hole says its number measures,
+# which is the other half of a magnitude's declaration.
 SHAPE_PARAMS = {
     "type": "object",
     "properties": {
@@ -79,15 +114,7 @@ SHAPE_PARAMS = {
                     "text": {"type": "string"},
                     "slots": {
                         "type": "array",
-                        "items": {"type": "object",
-                                  "properties": {
-                                      "name": {"type": "string"},
-                                      "type": {"type": "string",
-                                               "enum": list(SLOT_TYPES)},
-                                      "quantity": {
-                                          "type": "string",
-                                          "enum": list(QUANTITY_KINDS)}},
-                                  "required": ["name", "type"]}},
+                        "items": {"oneOf": HOLE_ALTERNATIVES}},
                 },
                 "required": ["text", "slots"]}},
     },
@@ -141,8 +168,27 @@ def _table(context: dict) -> list:
     return list(context.get("tools") or []) + [_shape_schema(), _final_schema()]
 
 
+def _repairs() -> dict:
+    """Each repair a malformed reply can be asked to make, by its tag.
+
+    One line per repair in the versioned file: the tag, then the words. The
+    check that finds a defect names the repair; the words for it are reviewed
+    here, so the same defect always asks for the same change."""
+    found = {}
+    for line in promptstore.load(PROMPTS, REPAIRS_VERSION).splitlines():
+        tag, mark, words = line.partition(":")
+        if mark and words.strip():
+            found[tag.strip()] = words.strip()
+    return found
+
+
 def _correction(problem: str) -> str:
-    return promptstore.load(PROMPTS, RETRY_VERSION).format(problem=problem)
+    """What the model is told about a reply that could not be used: the defect,
+    and the one change that answers it. Advice about the protocol is the repair
+    for a reply that broke the protocol, and appears for nothing else."""
+    repair = _repairs().get(getattr(problem, "repair", PROTOCOL), "")
+    return promptstore.load(PROMPTS, RETRY_VERSION).format(
+        problem=problem, repair=repair)
 
 
 def _shape_step(args: dict) -> tuple[dict | None, str]:
@@ -158,12 +204,13 @@ def _shape_step(args: dict) -> tuple[dict | None, str]:
 def _final_step(args: dict) -> tuple[dict | None, str]:
     """The runner step a delivery means, or the problem with it."""
     if not isinstance(args, dict) or not isinstance(args.get("bindings"), dict):
-        return None, (f"{FINAL_TOOL} needs a 'bindings' object naming each hole "
-                      "in the shape")
+        return None, Problem(f"{FINAL_TOOL} needs a 'bindings' object naming "
+                             "each hole in the shape", BIND_EACH_HOLE)
     for name, reference in args["bindings"].items():
         if not isinstance(reference, dict) or len(reference) != 1:
-            return None, (f"the binding for {name!r} must name exactly one "
-                          "thing, as {\"figure\": \"f1\"}")
+            return None, Problem(f"the binding for {name!r} must name exactly "
+                                 "one thing, as {\"figure\": \"f1\"}",
+                                 BIND_ONE_THING)
     return {"bindings": args["bindings"]}, ""
 
 
@@ -181,6 +228,12 @@ class Exchange:
     resolved_model: str = ""
     parse_ok: bool = True
     parse_error: str = ""
+    # Whether this reply tried to author the turn's sentence, and — when a
+    # reply could not be used — the machine's name for the change it was asked
+    # to make, one of `shape.REPAIRS`. With `parse_ok` they are what a count of
+    # shapes authored and refused, and of why, is made of.
+    authored_shape: bool = False
+    defect: str = ""
 
 
 class NativePlanner:
@@ -200,6 +253,8 @@ class NativePlanner:
         self._queued: list[tuple[str, str, dict]] = []   # (call id, name, args)
         self._awaiting: str | None = None
         self._started = False
+        # Whether the reply last read tried to commit a shape, however it went.
+        self._authoring = False
         self.exchanges: list[Exchange] = []
 
     def _start(self, context: dict) -> None:
@@ -251,10 +306,12 @@ class NativePlanner:
             self._messages.append(turn.message)
 
             step, problem = self._read(turn)
+            exchange.authored_shape = self._authoring
             if step is not None:
                 return step
             exchange.parse_ok = False
-            exchange.parse_error = problem
+            exchange.parse_error = str(problem)
+            exchange.defect = getattr(problem, "repair", PROTOCOL)
             corrections += 1
             if corrections > MAX_CORRECTIONS:
                 return {"refusal": "unparseable",
@@ -265,9 +322,10 @@ class NativePlanner:
 
     def _read(self, turn) -> tuple[dict | None, str]:
         """The runner step a model reply means, or the problem with it."""
+        self._authoring = False
         if not turn.tool_calls:
-            return None, ("the reply was text, but a turn proceeds only by a "
-                          "tool call or deliver_answer")
+            return None, Problem("the reply was text, but a turn proceeds only "
+                                 "by a tool call or deliver_answer")
         parsed: list[tuple[str, str, dict]] = []
         for call in turn.tool_calls:
             fn = (call or {}).get("function") or {}
@@ -275,17 +333,20 @@ class NativePlanner:
             try:
                 args = json.loads(fn.get("arguments") or "{}")
             except json.JSONDecodeError as e:
-                return None, f"the arguments for '{name}' are not valid JSON ({e})"
+                return None, Problem(
+                    f"the arguments for '{name}' are not valid JSON ({e})")
             if not isinstance(args, dict):
-                return None, f"the arguments for '{name}' must be an object"
+                return None, Problem(
+                    f"the arguments for '{name}' must be an object")
             parsed.append((str((call or {}).get("id") or ""), name, args))
         names = [name for _, name, _ in parsed]
         for terminator in (SHAPE_TOOL, FINAL_TOOL):
             if terminator in names and len(parsed) > 1:
-                return None, (f"{terminator} must be the only call in its "
-                              "reply — a turn commits its shape, then reads, "
-                              "then delivers")
+                return None, Problem(f"{terminator} must be the only call in "
+                                     "its reply — a turn commits its shape, "
+                                     "then reads, then delivers")
         if names == [SHAPE_TOOL]:
+            self._authoring = True
             step, problem = _shape_step(parsed[0][2])
             if step is not None:
                 # The runner answers a committed shape with whether it took it,
@@ -341,8 +402,10 @@ class TextPlanner:
     def __init__(self, adapter, prior_turns=()):
         self._adapter = adapter
         self._prior = list(prior_turns)
-        self._problem = ""
+        self._problem = None
         self._corrections = 0
+        # Whether the reply last read tried to commit a shape, however it went.
+        self._authoring = False
         self.exchanges: list[Exchange] = []
 
     def _prompt(self, context: dict, notes=(), tools=None) -> str:
@@ -350,7 +413,7 @@ class TextPlanner:
         tools = _table(context) if tools is None else list(tools)
         conversation = [{"question": q, "viva": a} for q, a in self._prior]
         notes = list(notes)
-        if self._problem:
+        if self._problem is not None:
             notes.append(_correction(self._problem))
         if context.get("final_call"):
             notes.append(promptstore.load(PROMPTS, CLOSING_VERSION))
@@ -384,14 +447,16 @@ class TextPlanner:
             self.exchanges.append(exchange)
 
             step, problem = self._read(result.text)
+            exchange.authored_shape = self._authoring
             if step is not None:
                 # A usable step ends the malformed streak: the correction
                 # budget is per step, exactly as it is for the native path.
-                self._problem = ""
+                self._problem = None
                 self._corrections = 0
                 return step
             exchange.parse_ok = False
-            exchange.parse_error = problem
+            exchange.parse_error = str(problem)
+            exchange.defect = getattr(problem, "repair", PROTOCOL)
             self._corrections += 1
             if self._corrections > MAX_CORRECTIONS:
                 return {"refusal": "unparseable",
@@ -401,27 +466,29 @@ class TextPlanner:
             self._problem = problem
 
     def _read(self, text: str) -> tuple[dict | None, str]:
+        self._authoring = False
         blocks = _FENCED.findall(text or "")
         if len(blocks) > 1:
             # The protocol demands exactly one fenced block; more than one is
             # a malformed step rather than a choice between them.
-            return None, (f"the reply carried {len(blocks)} fenced JSON "
-                          "blocks, and it must carry exactly one")
+            return None, Problem(f"the reply carried {len(blocks)} fenced JSON "
+                                 "blocks, and it must carry exactly one")
         raw = blocks[0] if blocks else (text or "").strip()
         try:
             step = json.loads(raw)
         except json.JSONDecodeError:
-            return None, "the reply carried no parseable JSON block"
+            return None, Problem("the reply carried no parseable JSON block")
         if not isinstance(step, dict):
-            return None, "the JSON block must be an object"
+            return None, Problem("the JSON block must be an object")
         if "tool" not in step:
-            return None, ("the JSON block names no 'tool'; every reply calls "
-                          "exactly one of the tools you were given")
+            return None, Problem("the JSON block names no 'tool'; every reply "
+                                 "calls exactly one of the tools you were given")
         args = step.get("args") or {}
         if not isinstance(args, dict):
-            return None, "'args' must be an object"
+            return None, Problem("'args' must be an object")
         name = str(step["tool"])
         if name == SHAPE_TOOL:
+            self._authoring = True
             return _shape_step(args)
         if name == FINAL_TOOL:
             return _final_step(args)
@@ -498,6 +565,10 @@ class Session:
                        "modality": ex.modality,
                        "resolved_model": ex.resolved_model,
                        "question": turn.question,
+                       # Which exchange authored a sentence, and what a reply
+                       # that could not be used was asked to change.
+                       "authored_shape": ex.authored_shape,
+                       "defect": ex.defect,
                        "request": ex.request, "response": ex.response,
                        # What was said, as the structure it was. A sentence can
                        # then be shown standing on what it stood on, and the

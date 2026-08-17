@@ -255,6 +255,23 @@ to restore it.
 - **The eval gains subjects it did not have:** shapes authored and rejected, holes
   that could not be filled, clauses dropped, and the rate at which the quantity
   check refuses. A check that never refuses is not checking.
+
+  **Amended 2026-08-16 — half of that is now measured, and not in the eval.**
+  Two of the four subjects exist: `viva.debug.speak` counts shapes authored and
+  shapes rejected over every recorded exchange, and breaks the second down by
+  the repair the check named — which includes both ways the quantity check
+  refuses, a hole that measures nothing carrying a quantity and a hole that
+  names one its kind cannot be of. It prints them at the head of its listing.
+  **The other two are still counted by nothing**: holes that could not be
+  filled, and clauses dropped.
+
+  The consequence is not discharged, because a debug reader is not the eval.
+  The numbers exist only when a person opens the vault and runs the command;
+  nothing watches them, nothing fails on them, and no change is measured
+  against them between one release and the next. What was bought is that a
+  question lost this way can now be counted after the fact instead of
+  reconstructed from a person's memory of losing it. Moving them into the
+  eval harness remains owed.
 - **A pack's stamp still carries no digest** (`"pack-v5"`, not
   `pack-v5@aefde3a9`), while §9 now records a typed template. A typed shape is a
   stronger artifact than a whitelisted one and deserves a stronger pin; that work

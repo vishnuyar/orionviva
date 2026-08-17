@@ -21,8 +21,11 @@ from viva.ledger import (LedgerProjection, Provenance, account_opened,
 from viva.ledger.events import document_captured
 from viva.persona import INTENT_FIELDS, moment
 from viva.tools import default_registry, run
-from viva.tools.shape import (MAX_CLAUSES, SLOT_TYPES, BadShape, Clause, Shape,
-                              Slot, read_shape, weakens)
+from viva.tools import shape as shape_module
+from viva.tools.shape import (CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY,
+                              MAGNITUDE_TYPES, MAX_CLAUSES, NAME_THE_QUANTITY,
+                              PLAIN_TYPES, REPAIRS, SLOT_TYPES, BadShape,
+                              Clause, Shape, Slot, read_shape, weakens)
 
 
 def _events():
@@ -660,6 +663,182 @@ def test_a_hole_holding_no_magnitude_may_not_claim_one():
          "slots": [{"name": "which", "type": "account",
                     "quantity": "balance"}]}]})
     assert shape is None and problem
+
+
+def _hole(kind, measures=""):
+    """One clause holding one hole of `kind`, as a model sends it."""
+    slot = {"name": "it", "type": kind}
+    if measures:
+        slot["quantity"] = measures
+    return {"clauses": [{"text": "It is {it}.", "slots": [slot]}]}
+
+
+def _offered_holes():
+    """Each alternative the form offers for one hole, by the kind it is for."""
+    from viva.speak import SHAPE_PARAMS
+
+    holes = (SHAPE_PARAMS["properties"]["clauses"]["items"]
+             ["properties"]["slots"]["items"])
+    offered = {}
+    for alternative in holes["oneOf"]:
+        for kind in alternative["properties"]["type"]["enum"]:
+            assert kind not in offered, f"{kind} is offered twice"
+            offered[kind] = alternative
+    return offered
+
+
+def test_the_form_a_model_fills_in_and_the_check_reading_it_back_agree():
+    """The form a model fills in and the check reading it back describe one
+    rule, compared here kind by kind and quantity by quantity.
+
+    A hole is offered as a magnitude, which must say what its number is of and
+    may say only what that kind of number can be of, or as anything else, which
+    has no field to say it in. Asserted over the whole vocabulary, not a
+    sample: what the form tells a model of a kind is exactly what the check
+    accepts for it."""
+    offered = _offered_holes()
+
+    # Every kind a hole may declare, and only those: the two kinds the runner
+    # places itself are not a model's to ask for.
+    assert set(offered) == set(SLOT_TYPES)
+    assert render.CAVEAT not in offered and render.PROSE not in offered
+    carrying = {k for k, form in offered.items()
+                if "quantity" in form["properties"]}
+    assert carrying == set(MAGNITUDE_TYPES)
+    assert set(offered) - carrying == set(PLAIN_TYPES)
+
+    for kind, form in offered.items():
+        carries = kind in carrying
+        # What the form says this kind may declare, and what the check takes,
+        # over the whole vocabulary — not a sample of it.
+        told = set(form["properties"].get("quantity", {}).get("enum", ()))
+        taken = {measures for measures in quantity.KINDS
+                 if read_shape(_hole(kind, measures))[0] is not None}
+        assert told == taken, kind
+        assert told == set(shape_module.quantities_of(kind)), kind
+
+        # And whether the field may be there at all, which is the same claim
+        # made by the presence of the field and by `required`.
+        assert bool(taken) == carries, kind
+        assert ("quantity" in form["required"]) == carries, kind
+        assert (read_shape(_hole(kind))[0] is not None) != carries, kind
+
+        # A hole matches one alternative and not two. Without this, a hole
+        # carrying a quantity satisfies the plain form as well as its own, and
+        # an alternation satisfied twice is satisfied by nothing.
+        assert form["additionalProperties"] is False, kind
+
+
+def test_the_form_offers_no_pairing_the_check_would_refuse():
+    """The same agreement, counted rather than compared: every
+    kind-and-quantity pair the form allows is one the check accepts, and the
+    form offers at least one pair."""
+    offered = _offered_holes()
+    refused = [(kind, measures)
+               for kind, form in offered.items()
+               for measures in form["properties"].get("quantity", {})
+               .get("enum", ())
+               if read_shape(_hole(kind, measures))[0] is None]
+    assert refused == []
+    # And the form is not empty of them either: a form offering nothing would
+    # pass the line above and describe a hole no model could fill.
+    pairs = sum(len(form["properties"].get("quantity", {}).get("enum", ()))
+                for form in offered.values())
+    assert pairs == sum(len(shape_module.quantities_of(kind))
+                        for kind in SLOT_TYPES) > 0
+
+
+def test_the_form_asks_for_the_kinds_of_value_the_reader_insists_on():
+    """The other axis of the same agreement: a clause's words, a hole's name
+    and a hole's quantity are described to a model as text, and the reader
+    refuses each of them written as a number.
+
+    Each pair below is the form's claim and the reader's answer to a value that
+    contradicts it, so neither side can drift alone."""
+    from viva.speak import SHAPE_PARAMS
+
+    clause = SHAPE_PARAMS["properties"]["clauses"]["items"]
+    assert clause["properties"]["text"]["type"] == "string"
+    assert "text" in clause["required"]
+    assert read_shape({"clauses": [{"text": 7, "slots": []}]})[0] is None
+
+    for kind, form in _offered_holes().items():
+        assert form["properties"]["name"]["type"] == "string", kind
+        assert "name" in form["required"], kind
+        assert form["properties"]["type"]["type"] == "string", kind
+        if "quantity" in form["properties"]:
+            assert form["properties"]["quantity"]["type"] == "string", kind
+
+    # And the reader refuses each of those values written as a number, so what
+    # the form asks for is what it takes.
+    measures = shape_module.quantities_of(render.MONEY)[0]
+    for slot in ({"name": 7, "type": render.MONEY, "quantity": measures},
+                 {"type": render.MONEY, "quantity": measures},
+                 {"name": "it", "type": 7, "quantity": measures},
+                 {"name": "it", "type": render.MONEY, "quantity": 7}):
+        assert read_shape(
+            {"clauses": [{"text": "It is {it}.", "slots": [slot]}]})[0] is None
+
+
+def test_a_hole_that_measures_nothing_is_told_to_take_the_field_out():
+    """A hole of a kind that measures nothing, carrying a quantity, is refused
+    with the repair `drop_the_quantity` — for every such kind."""
+    for kind in PLAIN_TYPES:
+        shape, problem = read_shape(_hole(kind, sorted(quantity.KINDS)[0]))
+        assert shape is None and problem.repair == DROP_THE_QUANTITY, kind
+
+
+def test_a_hole_naming_no_quantity_and_one_naming_the_wrong_one_differ():
+    """Two defects that read alike carry different repairs. A hole that sent
+    no quantity is told to name one; a hole that sent a quantity its kind
+    cannot be of is told to change it, and the defect names both what was sent
+    and what may be sent instead."""
+    for kind in MAGNITUDE_TYPES:
+        allowed = shape_module.quantities_of(kind)
+        missing = read_shape(_hole(kind))[1]
+        assert missing.repair == NAME_THE_QUANTITY, kind
+
+        wrong = next((m for m in quantity.KINDS if m not in allowed), "")
+        if not wrong:
+            continue                 # a kind that may be of anything at all
+        said = read_shape(_hole(kind, wrong))[1]
+        assert said.repair == CHOOSE_THE_QUANTITY, kind
+        # The defect names what was sent and what may be sent instead, so the
+        # repair has something to point at.
+        assert wrong in said and allowed[0] in said
+
+
+def test_every_way_a_shape_can_be_refused_says_what_to_change():
+    """Every defect the reader can find names a repair out of the closed
+    list — no refusal reaches a model without one."""
+    long_clause = "x" * (400 + 1)
+    for bad in (None, "clauses", {}, {"clauses": []}, {"clauses": [1]},
+                {"clauses": [{"slots": []}]},
+                {"clauses": [{"text": "hi", "slots": "none"}]},
+                {"clauses": [{"text": "hi {x}", "slots": [1]}]},
+                {"clauses": [{"text": "hi {x}", "slots": [{"name": "x"}]}]},
+                {"clauses": [{"text": "hi {x}",
+                              "slots": [{"name": "x", "type": "grade",
+                                         "quantity": 7}]}]},
+                {"clauses": [{"text": "you spent 400", "slots": []}]},
+                {"clauses": [{"text": "   ", "slots": []}]},
+                {"clauses": [{"text": long_clause, "slots": []}]},
+                {"clauses": [{"text": "{x} and {x}",
+                              "slots": [{"name": "x", "type": "grade"}]}]},
+                {"clauses": [{"text": "nothing placed",
+                              "slots": [{"name": "x", "type": "grade"}]}]},
+                {"clauses": [{"text": "{x}",
+                              "slots": [{"name": "x", "type": "nonsense"}]}]},
+                {"clauses": [{"text": "{x}",
+                              "slots": [{"name": "x", "type": "money"}]}]},
+                {"clauses": [{"text": "{x}",
+                              "slots": [{"name": "x", "type": "grade",
+                                         "quantity": "count"}]}]},
+                {"clauses": [{"text": "a clause.", "slots": []}]
+                            * (MAX_CLAUSES + 1)}):
+        shape, problem = read_shape(bad)
+        assert shape is None, bad
+        assert problem.repair in REPAIRS, (bad, problem)
 
 
 def test_a_stretch_of_time_the_person_named_is_not_written_as_an_amount(registry):
