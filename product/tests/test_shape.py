@@ -9,6 +9,7 @@ established, a hole nothing can fill costs its clause and not the turn, and a
 caveat a result wrote about its own number cannot be quietly dropped.
 """
 
+import string
 from decimal import Decimal
 
 import pytest
@@ -23,6 +24,7 @@ from viva.persona import INTENT_FIELDS, moment
 from viva.tools import default_registry, run
 from viva.tools import shape as shape_module
 from viva.tools.shape import (CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY,
+                              FEWER_CLAUSES, HOLE_THE_CLAUSE, HOLE_THE_NUMBER,
                               MAGNITUDE_TYPES, MAX_CLAUSES, NAME_THE_QUANTITY,
                               PLAIN_TYPES, REPAIRS, SLOT_TYPES, BadShape,
                               Clause, Shape, Slot, read_shape, weakens)
@@ -71,6 +73,14 @@ def _script(shape, *calls, bind=None):
 
 BALANCES = ("query_ledger", {"entity": "balances", "filters": {"account": "chk"}})
 
+# A turn that answers having read nothing. Every clause rests on something the
+# run established, and a run that made no read has established one thing only:
+# the value the person put into their own question.
+_ASKED = "was it 40?"
+_ASKED_SHAPE = (("You asked about {yours}.",
+                 [("yours", "supposed", "spending")]),)
+_ASKED_BINDING = {"yours": {"supposed": "40"}}
+
 
 # --------------------------------------------------------------- the grammar
 
@@ -87,15 +97,23 @@ def test_no_words_in_a_shape_may_carry_a_digit(text):
     through a hole. It is a character class over one field: nothing here reads
     the sentence, guesses at meaning, or keeps a list of words — so there is
     nothing to widen and nothing to keep up to date."""
-    with pytest.raises(BadShape):
+    with pytest.raises(BadShape) as raised:
         Clause(text=text)
+    assert raised.value.problem.repair == HOLE_THE_NUMBER, (
+        "a clause writing a digit is told to hole the number, whatever else "
+        "is also wrong with it")
 
 
 def test_a_clause_with_no_digits_is_fine_however_it_is_worded():
-    """And the other half: prose is not being policed. Any sentence at all is
-    acceptable so long as every magnitude in it is a hole."""
-    clause = Clause(text="You spent a great deal more than usual, frankly.")
-    assert clause.written({}) == "You spent a great deal more than usual, frankly."
+    """And the other half: prose is not being policed. Any words at all are
+    acceptable around a hole, so long as every magnitude among them is that
+    hole."""
+    clause = Clause(text="You spent a great deal more than usual, frankly: "
+                         "{total}.",
+                    slots=(Slot(name="total", type=render.MONEY,
+                                quantity=quantity.SPENDING),))
+    assert clause.written({"total": "USD 40.00"}) == (
+        "You spent a great deal more than usual, frankly: USD 40.00.")
 
 
 def test_a_hole_and_its_declaration_must_agree():
@@ -110,6 +128,47 @@ def test_a_hole_and_its_declaration_must_agree():
     with pytest.raises(BadShape):
         Clause(text="You have {total}.",
                slots=(Slot(name="other", type=render.MONEY),))
+
+
+def test_a_clause_with_no_hole_does_not_come_into_being():
+    """Words alone are not a clause. A clause with no hole rests on nothing the
+    run established, which is also why it can never be dropped: no binding can
+    go missing from it, so it is spoken whatever the reads found."""
+    with pytest.raises(BadShape) as raised:
+        Clause(text="All settled.")
+    assert raised.value.problem.repair == HOLE_THE_CLAUSE
+    with pytest.raises(BadShape):
+        Clause(text="All settled.", slots=())
+
+
+def test_the_reader_inherits_the_rule_rather_than_repeating_it():
+    """One check, not two. What the reader says about a clause a model sent
+    with no hole is the constructor's own problem, word for word, so there is
+    no second statement of the rule that could come to disagree with it."""
+    raised = None
+    try:
+        Clause(text="All settled.")
+    except BadShape as bad:
+        raised = bad.problem
+    shape, problem = read_shape({"clauses": [{"text": "All settled.",
+                                              "slots": []}]})
+    assert shape is None
+    assert str(problem) == str(raised)
+    assert problem.repair == raised.repair == HOLE_THE_CLAUSE
+
+
+def test_a_denial_written_beside_a_figure_cannot_be_authored():
+    """The shape this rule is bought for: one clause carrying a figure, and one
+    clause saying in the model's own words that the figure could not be
+    established. The second rests on nothing, so nothing could ever drop it,
+    and it is spoken beside the very number it denies. It does not come into
+    being — the machine's own gap sentence is what says this, and it is placed
+    only where a hole went unfilled."""
+    with pytest.raises(BadShape) as raised:
+        _shape(("You spent {total}.", [("total", "money", "spending")]),
+               ("I could not establish that figure from the records "
+                "available to me here.", []))
+    assert raised.value.problem.repair == HOLE_THE_CLAUSE
 
 
 def test_a_hole_declares_a_kind_of_thing_in_the_world():
@@ -132,8 +191,12 @@ def test_two_holes_in_one_shape_may_not_share_a_name():
 def test_a_shape_of_nothing_is_not_an_answer():
     with pytest.raises(BadShape):
         Shape(clauses=())
-    with pytest.raises(BadShape):
-        _shape(*[("A clause.", [])] * (MAX_CLAUSES + 1))
+    with pytest.raises(BadShape) as raised:
+        _shape(*[(f"A clause about {{{name}}}.", [(name, "account")])
+                 for name in string.ascii_lowercase[:MAX_CLAUSES + 1]])
+    assert raised.value.problem.repair == FEWER_CLAUSES, (
+        "a shape past the ceiling is told to say it in fewer clauses, and the "
+        "clauses it is counting are ordinary ones")
 
 
 def test_a_malformed_shape_is_something_to_say_back_never_an_exception():
@@ -176,10 +239,10 @@ def test_the_shape_is_committed_before_anything_is_read(registry):
     def planner(context):
         seen.append((context["shaped"], bool(context["tools"])))
         if not context["shaped"]:
-            return {"shape": _shape(("All settled.", []))}
-        return {"bindings": {}}
+            return {"shape": _shape(*_ASKED_SHAPE)}
+        return {"bindings": _ASKED_BINDING}
 
-    assert run("?", planner, registry).answered
+    assert run(_ASKED, planner, registry).answered
     assert seen[0] == (False, False), (
         "a read was on the table before the sentence was authored")
     assert seen[1] == (True, True)
@@ -204,12 +267,13 @@ def test_a_shape_offered_after_a_read_is_refused():
     the ordering does not rest on a planner being offered the right menu."""
     from viva.tools.runner import _Ground, _committable
 
+    fine = _shape(("Fine, as of {when}.", [("when", "date")]))
     empty = _Ground()
-    assert _committable(None, _shape(("Fine.", [])), empty) == ""
+    assert _committable(None, fine, empty) == ""
 
     holding = _Ground()
     holding.book["f1"] = {"id": "f1"}
-    assert _committable(None, _shape(("Fine.", [])), holding)
+    assert _committable(None, fine, holding)
 
 
 def test_a_second_shape_may_only_take_claims_away():
@@ -225,8 +289,10 @@ def test_a_second_shape_may_only_take_claims_away():
                                  ("As of {d}.", [("d", "date")])))
     # Added, reworded, and re-ordered: none of the three.
     held = ("You hold {a}.", [("a", "money", "balance")])
-    assert not weakens(first, _shape(held, ("And more.", [])))
-    assert not weakens(first, _shape(("You hold plenty.", [])))
+    assert not weakens(first, _shape(held, ("And {b} more.",
+                                            [("b", "money", "balance")])))
+    assert not weakens(first, _shape(("You hold plenty of {a}.",
+                                      [("a", "money", "balance")])))
     assert not weakens(first, _shape(("It is {g}.", [("g", "grade")]), held))
 
 
@@ -235,7 +301,8 @@ def test_a_reshape_that_adds_a_claim_is_refused_and_the_turn_goes_on(registry):
     the model is told why rather than the turn dying."""
     first = _shape(("Your balance is {total}.", [("total", "money", "balance")]))
     wider = _shape(("Your balance is {total}.", [("total", "money", "balance")]),
-                   ("That is unusually high.", []))
+                   ("That is unusually high, as of {when}.",
+                    [("when", "date")]))
     tries = []
 
     def planner(context):
@@ -266,9 +333,10 @@ def test_what_a_taken_shape_is_answered_with_is_a_file(registry):
     from viva.tools.registry import PACKAGE, PROMPTS
     from viva.tools.runner import COMMITTED_VERSION
 
-    result = run("balance?",
-                 _script(_shape(("All settled.", []))), registry)
-    assert result.answered
+    result = run(_ASKED,
+                 _script(_shape(*_ASKED_SHAPE),
+                         bind=lambda r: _ASKED_BINDING), registry)
+    assert result.answered, result.detail
     (taken,) = [r for r in result.transcript if r["tool"] == "commit_shape"]
     assert taken["text"] == promptstore.load(PROMPTS, COMMITTED_VERSION)
     assert COMMITTED_VERSION == versions.active(PACKAGE, "shape_committed")
@@ -281,10 +349,31 @@ def test_a_binding_naming_no_hole_is_refused(registry):
     """Totality, one way: a binding that names nothing in the shape is the
     model asserting something the sentence never had room for."""
     result = run("balance?",
-                 _script(_shape(("All settled.", [])), BALANCES,
+                 _script(_shape(("All settled, as of {when}.",
+                                 [("when", "date")])), BALANCES,
                          bind=lambda r: {"total": {"figure": "f1"}}),
                  registry)
     assert not result.answered and result.refusal == "unshaped_binding"
+
+
+def test_a_turn_that_established_nothing_can_say_so_whatever_the_shape(registry):
+    """One leg of a conjunction, and the only leg this test pins: once every
+    clause has been dropped, `spoken` is empty and the turn refuses with
+    `nothing_established` instead of speaking.
+
+    That leg holds on its own and does not depend on every clause carrying a
+    hole, so this test does not discriminate — it is here so the refusal at
+    the end of the path stays reachable. The other two legs are pinned
+    elsewhere. Every clause carries a hole is the discriminating one, and it is
+    pinned where a clause comes into being. An unfilled hole costs its
+    clause is pre-existing, and it is pinned where the gate drops one.
+    Only all three together make a turn that established nothing able to say
+    so whatever shape the model authored."""
+    shape = _shape(("All settled, as of {when}.", [("when", "date")]),
+                   ("Nothing to report on {which}.", [("which", "account")]))
+    result = run("?", _script(shape, bind=lambda results: {}), registry)
+    assert not result.answered
+    assert result.refusal == "nothing_established", result.detail
 
 
 def test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn(registry):
@@ -748,6 +837,19 @@ def test_the_form_offers_no_pairing_the_check_would_refuse():
                         for kind in SLOT_TYPES) > 0
 
 
+def test_the_form_admits_no_clause_without_a_hole():
+    """The form a model is shown asks each clause for at least one hole, and
+    the reader refuses one that arrives without any. The form is not the guard:
+    nothing at a provider holds a model to it, so both are here."""
+    from viva.speak import SHAPE_PARAMS
+
+    clause = SHAPE_PARAMS["properties"]["clauses"]["items"]
+    assert clause["properties"]["slots"]["minItems"] == 1
+    assert "slots" in clause["required"]
+    assert read_shape({"clauses": [{"text": "All settled.",
+                                    "slots": []}]})[0] is None
+
+
 def test_the_form_asks_for_the_kinds_of_value_the_reader_insists_on():
     """The other axis of the same agreement: a clause's words, a hole's name
     and a hole's quantity are described to a model as text, and the reader
@@ -834,7 +936,9 @@ def test_every_way_a_shape_can_be_refused_says_what_to_change():
                 {"clauses": [{"text": "{x}",
                               "slots": [{"name": "x", "type": "grade",
                                          "quantity": "count"}]}]},
-                {"clauses": [{"text": "a clause.", "slots": []}]
+                {"clauses": [{"text": "a clause.", "slots": []}]},
+                {"clauses": [{"text": "a clause about {x}.",
+                              "slots": [{"name": "x", "type": "grade"}]}]
                             * (MAX_CLAUSES + 1)}):
         shape, problem = read_shape(bad)
         assert shape is None, bad
@@ -1280,11 +1384,12 @@ def _wide(groups: int):
 BY_SUBCATEGORY = ("query_ledger", {"entity": "aggregate", "metric": "spending",
                                    "group_by": "subcategory"})
 
-# One clause introducing the list and one hole holding it, which is the whole
-# of what a shape says about a breakdown however long the breakdown turns out
-# to be.
-_LIST = (("Here is what you spent, by sub category:", []),
-         ("{breakdown}", [("breakdown", render.ROWS)]))
+# One clause whose words introduce the list and whose hole holds it, which is
+# the whole of what a shape says about a breakdown however long the breakdown
+# turns out to be. The two are one clause, so a list nothing can fill takes its
+# own introduction away with it.
+_LIST = (("Here is what you spent, by sub category:{breakdown}",
+          [("breakdown", render.ROWS)]),)
 
 
 def _rows_of(text: str) -> list:
@@ -1316,6 +1421,53 @@ def test_a_shape_that_names_no_row_count_answers_whatever_the_count_turns_out_to
     # And the same shape said nothing about how many there would be: its words
     # are the words, and every line came from the machine.
     assert shape.to_dict() == _shape(*_LIST).to_dict()
+
+
+def test_the_block_begins_on_its_own_line_under_the_words_that_introduce_it():
+    """The introducing words and the hole holding the list are one clause, so
+    the block is written where the hole is — at the end of those words. It
+    opens on a line of its own, so a person reads the introduction and then the
+    lines under it, rather than the first line beside the colon."""
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
+                 _wide(4))
+    assert result.answered, result.detail
+    lines = result.text.splitlines()
+    assert lines[0] == "Here is what you spent, by sub category:"
+    assert len(_rows_of(result.text)) == 4
+
+
+# The same answer in two clauses rather than one: an introducer carrying a
+# hole of its own, and a clause that is nothing but the list.
+_SPLIT_LIST = (("Here is what you spent, by sub category, against the {yours} "
+                "you named:", [("yours", "supposed", "spending")]),
+               ("{breakdown}", [("breakdown", render.ROWS)]))
+
+
+def test_a_split_introducer_leaves_a_blank_line_above_the_block():
+    """What the split form renders, pinned rather than fixed.
+
+    `speak-shape-v8` teaches the merged form, where the introducing words and
+    the hole holding the list are one clause. The split form is still legal —
+    the introducer carries a hole of its own, so it is a clause, and a clause
+    may be nothing but a hole. What it renders is this: the break the block
+    opens with travels with the block itself, and the runner already puts a
+    break between two clauses, so the two meet and the list sits under a blank
+    line.
+
+    That blank line is the accepted cost of writing the break where the block
+    is written rather than where clauses are joined. It is recorded here so it
+    is not rediscovered as a surprise."""
+    result = run("was it 40, by sub category?",
+                 _script(_shape(*_SPLIT_LIST), BY_SUBCATEGORY,
+                         bind=lambda r: {"yours": {"supposed": "40"},
+                                         "breakdown": {"read": r[-1]["id"]}}),
+                 _wide(3))
+    assert result.answered, result.detail
+    lines = result.text.splitlines()
+    assert lines[0].endswith("you named:")
+    assert lines[1] == ""
+    assert len(_rows_of(result.text)) == 3
 
 
 def test_a_list_of_one_is_still_a_list():

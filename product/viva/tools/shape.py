@@ -5,7 +5,7 @@ typed holes in it. A hole names what kind of thing in the world fills it —
 an amount, a day, an account, a counterparty — and nothing more. What fills it
 is decided later, by code, out of the ledger of things the run established.
 
-Two properties carry this module, and they are the whole of its safety:
+The properties that carry this module are the whole of its safety:
 
 **The shape is authored before the data exists.** A shape is committed while
 the run holds nothing, so a claim cannot be tailored to the number that turned
@@ -25,6 +25,13 @@ parts. So a hole wanting an amount, a count or a proportion names what it is
 asking for, out of the same closed vocabulary the tools declare into, and the
 comparison is between two declarations rather than a reading of the words
 around the hole.
+
+**Every clause carries at least one hole.** A clause with none rests on nothing
+the run established: it cannot go unfilled, so it cannot be dropped, and it
+cites no figure, owes no caveat, places no statement of where a claim ends and
+adds nothing to the answer's grade. Words that hedge, qualify or introduce are
+therefore the machine's to place on a condition rather than a model's to write
+before it has read.
 
 The clause is the unit, rather than one string with sentence boundaries in it,
 because degradation is per clause: a hole nothing can fill costs its clause and
@@ -80,6 +87,7 @@ SHAPE_THE_CLAUSE = "shape_the_clause"
 SHAPE_THE_SLOTS = "shape_the_slots"
 WORD_THE_QUANTITY = "word_the_quantity"
 WORD_THE_CLAUSE = "word_the_clause"
+HOLE_THE_CLAUSE = "hole_the_clause"
 SHORTEN_THE_CLAUSE = "shorten_the_clause"
 HOLE_THE_NUMBER = "hole_the_number"
 PLACE_EACH_HOLE_ONCE = "place_each_hole_once"
@@ -97,7 +105,7 @@ BIND_ONE_THING = "bind_one_thing"
 PROTOCOL = "protocol"
 
 REPAIRS = (SEND_A_SHAPE, SHAPE_THE_CLAUSE, SHAPE_THE_SLOTS,
-           WORD_THE_QUANTITY, WORD_THE_CLAUSE,
+           WORD_THE_QUANTITY, WORD_THE_CLAUSE, HOLE_THE_CLAUSE,
            SHORTEN_THE_CLAUSE, HOLE_THE_NUMBER, PLACE_EACH_HOLE_ONCE,
            RENAME_THE_HOLE, MATCH_THE_HOLES, CHOOSE_A_KIND, NAME_THE_QUANTITY,
            CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY, FEWER_CLAUSES,
@@ -157,9 +165,10 @@ class Slot:
 class Clause:
     """One run of words with its holes declared beside it.
 
-    Built strictly: a clause whose text carries a digit, or whose holes and
-    declarations disagree, does not come into being. Every later check can
-    therefore assume it is looking at something sayable."""
+    Built strictly: a clause whose text carries a digit, whose holes and
+    declarations disagree, or which places no hole at all, does not come into
+    being. Every later check can therefore assume it is looking at something
+    sayable, and something a missing binding can drop."""
 
     text: str
     slots: tuple = ()
@@ -222,6 +231,15 @@ class Clause:
                     f"the hole {slot.name!r} holds {slot.type}, which measures "
                     f"nothing, and says it is {slot.quantity!r}",
                     DROP_THE_QUANTITY))
+        # Last of the clause's checks, so a clause wrong in a more particular
+        # way is told about that instead.
+        if not self.slots:
+            raise BadShape(Problem(
+                f"the clause {self.text!r} places no hole, so nothing in it "
+                "rests on anything this run established: it can never go "
+                "unfilled and so can never be dropped, and it states no figure "
+                "to answer for",
+                HOLE_THE_CLAUSE))
 
     def written(self, filled: dict) -> str:
         """The clause as words, every hole replaced by what the renderer wrote

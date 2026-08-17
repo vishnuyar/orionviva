@@ -866,3 +866,27 @@ the recorded verdict of every speak event and into the debug reader's per-turn
 line, so the next sweep can count which read refusal most often ends a turn.
 Its meaning is fixed and permanent: **empty means no cause was spoken, not that
 no read refused.**_
+
+---
+
+_Amended 2026-08-17 (every clause carries a hole). **The structure listed under
+*So a model writes no digits* was one check short.** A clause comes into being
+only if it places at least one hole, refused by the same constructor that
+rejects a digit — so the reader of what a model sends inherits the rule rather
+than restating it, and there is no second code path that could come to disagree
+with the first. A clause with no hole could not go unfilled and so could never
+be dropped, cited no figure, owed no caveat, placed no statement of where its
+claim ended and added nothing to the grade: model prose that nothing in the run
+examined. Two false claims reached a person through that gap, one of them a
+sentence the persona pack already places on a condition, written unconditionally
+beside the very figure it denied._
+
+_**What is closed and what is not.** Every clause can now drop, every asserting
+clause answers for its records, its caveats, its scope and its grade, and a turn
+that established nothing refuses rather than speaking. The words a model writes
+*around* a hole are still read by nobody — ADR-013's residual, narrowed and
+standing. `speak-shape-v8` teaches the rule and merges the words introducing a
+list into the clause holding its `rows` hole, so a list nothing can fill takes
+its own introduction away with it; `speak-repairs-v2` carries the nineteenth
+repair, `hole_the_clause`. `speak-shape-v7` and `speak-repairs-v1` were in force
+until this cycle._

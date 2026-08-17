@@ -102,7 +102,9 @@ HOLE_ALTERNATIVES.append(_PLAIN_HOLE)
 # The shape: clauses of words with typed holes, and nothing else. The enums are
 # the vocabulary itself, so a hole kind the code does not know cannot be
 # described to a model — and the same for what a hole says its number measures,
-# which is the other half of a magnitude's declaration.
+# which is the other half of a magnitude's declaration. Each clause's holes are
+# at least one, as the form: what refuses a clause with none is the constructor
+# that builds it, and this describes the same thing where a model can read it.
 SHAPE_PARAMS = {
     "type": "object",
     "properties": {
@@ -114,6 +116,7 @@ SHAPE_PARAMS = {
                     "text": {"type": "string"},
                     "slots": {
                         "type": "array",
+                        "minItems": 1,
                         "items": {"oneOf": HOLE_ALTERNATIVES}},
                 },
                 "required": ["text", "slots"]}},

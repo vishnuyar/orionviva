@@ -335,11 +335,13 @@ def label(name) -> Label:
 def rows(lines, *, grade: str = "") -> Rows:
     """Every figure of one read, one to a line, each beside the slice it covers.
 
-    A block, not a sentence. How many lines there are is not knowable when the
-    answer is shaped — the person may hold three subcategories or thirty — so
-    nothing above ever writes a line, and nothing here knows what the lines are
-    about: `lines` is pairs of things this module already wrote, a name and the
-    magnitude taken over it.
+    A block, not a sentence, and it opens on a line of its own: the words that
+    introduce it sit in the same clause, ahead of the hole, so the first line
+    starts under them rather than beside them. How many lines there are is not
+    knowable when the answer is shaped — the person may hold three subcategories
+    or thirty — so nothing above ever writes a line, and nothing here knows what
+    the lines are about: `lines` is pairs of things this module already wrote, a
+    name and the magnitude taken over it.
 
     The grade goes once, above, and is worded as being about the set. It is one
     grade computed over the whole read and stamped on every figure in it, so a
@@ -354,7 +356,7 @@ def rows(lines, *, grade: str = "") -> Rows:
                for name, amount in lines]
     if grade:
         written.insert(0, moment("rows_stood_behind", grade=grade))
-    return Rows("\n".join(written))
+    return Rows("\n" + "\n".join(written))
 
 
 def caveat(sentence) -> Caveat:

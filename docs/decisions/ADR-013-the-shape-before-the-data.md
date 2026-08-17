@@ -180,6 +180,29 @@ knowingly: a pre-written template library would have no such gap and would also
 be unable to answer a question nobody anticipated. **The road back is named in
 §11.**
 
+_**Amended 2026-08-17 — the residual narrows in one respect and stands in every
+other.** What closes: a clause comes into being only if it places at least one
+hole, so there is no longer a clause with no hole for prose to be *around*.
+Every clause is droppable, every asserting clause answers for its records, its
+caveats, its statement of where its claim ends and the answer's grade, and a
+turn whose clauses all rest on something the run could not establish refuses
+rather than speaking. The instance the 2026-08-16 amendment named — "the
+unreviewed prose is the one clause introducing the list however many rows
+follow" — is closed with it: the introducing words and the `rows` hole are one
+clause, so a list nothing can fill takes its own introduction away rather than
+leaving a person a colon with nothing under it. What stands: the residual
+itself, unchanged. The words a model writes **around** a hole are read by nobody
+before a person reads them, and a figure that is right can still be described
+falsely by them. A hole makes a clause conditional on something the run
+established; it says nothing about whether the words are true of it._
+
+_And one kind of hole rests on the person rather than on a read: a `supposed`
+hole holds a value the person put into their own question, cites no record and
+carries no grade, so a clause that no read touched can still be spoken. It is
+narrower than what closed — the question must contain the value whole, and the
+clause drops when it does not — but a hedge written around such a hole is the
+old shape at one remove, and it is where the prose residual above is widest._
+
 **Viability is per-model, and the model in force was on the wrong side of it.**
 The blind-authoring assumption was phrased as "a capable model", and that phrase
 was doing quiet work nobody had costed. On the two-model run, one model emitted

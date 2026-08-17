@@ -22,7 +22,8 @@ from viva.tools import default_registry, ledger_tools, run, weakest
 from viva.tools.envelope import ToolResult, figure
 from viva.tools.registry import (PACKAGE as _PACKAGE, PROMPTS, Registry,
                                  ToolSpec, descriptions)
-from viva.tools.shape import BadShape, Clause, Shape, Slot
+from viva.tools.shape import (HOLE_THE_NUMBER, BadShape, Clause, Shape,
+                              Slot)
 from vivacore import promptstore
 from vivacore import versions as _manifest
 
@@ -2451,7 +2452,8 @@ def test_a_financial_figure_standing_on_no_record_is_refused(registry):
 
 def test_figure_ids_are_unique_across_tools_and_restart_each_turn(registry):
     seen = []
-    shape = _shape(("Noted.", []))
+    shape = _shape(("Your balance is {total}.",
+                    [("total", "money", "balance")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2463,7 +2465,7 @@ def test_figure_ids_are_unique_across_tools_and_restart_each_turn(registry):
             return {"tool": "check_completeness", "args": {}}
         seen.extend(f["id"] for r in context["results"]
                     for f in r["figures"])
-        return {"bindings": {}}
+        return {"bindings": {"total": {"figure": "f1"}}}
 
     first = run("what do you hold?", planner, registry)
     assert first.answered
@@ -2674,8 +2676,9 @@ def test_a_number_no_tool_returned_is_refused(registry):
 
     Both halves are here: a shape that spells one out does not come into being,
     and a run whose planner tries it never reaches a read."""
-    with pytest.raises(BadShape):
+    with pytest.raises(BadShape) as raised:
         _shape(("Your balance is about 9999.99.", []))
+    assert raised.value.problem.repair == HOLE_THE_NUMBER
 
     def planner(context):
         if not context["shaped"]:
@@ -2822,7 +2825,7 @@ def test_the_call_budget_ends_in_one_closing_attempt_then_refuses(registry):
     than die beside it. If that closing reply reaches for a tool anyway, the
     turn refuses — and the planner is not asked again."""
     closings = []
-    shape = _shape(("Noted.", []))
+    shape = _shape(("Noted, as of {when}.", [("when", "date")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2853,7 +2856,10 @@ def test_an_answer_delivered_on_the_closing_call_passes_the_gate_normally(regist
 
 def test_every_planner_context_says_how_many_calls_remain(registry):
     seen = []
-    shape = _shape(("Noted.", []))
+    # A turn that reads and then answers on the one thing a run establishes
+    # without reading: the value the person put into their own question.
+    shape = _shape(("You asked about {yours}.",
+                    [("yours", "supposed", "spending")]))
 
     def planner(context):
         seen.append(context["calls_remaining"])
@@ -2861,8 +2867,8 @@ def test_every_planner_context_says_how_many_calls_remain(registry):
             return {"shape": shape}
         if len(seen) < 3:
             return {"tool": "check_completeness", "args": {}}
-        return {"bindings": {}}
-    assert run("?", planner, registry, max_calls=4).answered
+        return {"bindings": {"yours": {"supposed": "40"}}}
+    assert run("was it 40?", planner, registry, max_calls=4).answered
     assert seen == [4, 3, 2]
 
 

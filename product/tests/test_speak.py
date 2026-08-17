@@ -65,6 +65,8 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-repairs-v1": "40e6f50289ce7171",
     "speak-shape-v7": "e3f7b55e22261a12",
     "speak-final-v11": "4f3b44d44b932585",
+    "speak-shape-v8": "834245339f59345e",
+    "speak-repairs-v2": "0cbfcb3aa63a0739",
 }
 
 
@@ -99,6 +101,14 @@ def _shape_block(*clauses):
         "args": {"clauses": [
             {"text": text, "slots": [_slot(*slot) for slot in slots]}
             for text, slots in clauses]}}) + "\n```"
+
+
+# What a turn says when it has read nothing. Every clause rests on something
+# the run established, and a run that made no read has established one thing:
+# the value the person put into their own question.
+ASKED = "was it 40?"
+ASKED_CLAUSE = ("You asked about {yours}.", [("yours", "supposed", "spending")])
+ASKED_BINDINGS = {"yours": {"supposed": "40"}}
 
 
 def _bind_block(bindings):
@@ -269,11 +279,13 @@ def test_native_planner_produces_a_cited_answer(registry):
 
 def test_native_planner_threads_the_result_back_as_a_tool_message(registry):
     script = ChatScript([
-        _turn([_shape_call(("All settled.", []))]),
+        _turn([_shape_call(("Your balance is {total}.",
+                            [("total", "money", "balance")]))]),
         _turn([_call("query_ledger", {"entity": "balances",
                                       "filters": {"account": "chk"}},
                      call_id="call-77")]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {"total": {"figure": "f1"}}},
+                     call_id="c2")]),
     ])
     run("balance?", NativePlanner(script), registry)
     second = script.seen[2]["messages"]
@@ -304,11 +316,11 @@ def test_native_prose_without_a_step_gets_one_correction_then_refuses(registry):
 
 def test_native_malformed_arguments_are_corrected_as_the_calls_result(registry):
     script = ChatScript([
-        _turn([_shape_call(("I could not read the ledger this time.", []))]),
+        _turn([_shape_call(ASKED_CLAUSE)]),
         _turn(raw_arguments="{not json"),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
-    result = run("balance?", NativePlanner(script), registry)
+    result = run(ASKED, NativePlanner(script), registry)
     assert result.answered
     # The bad call got the correction as its own tool result, keeping the
     # message protocol well-formed.
@@ -322,12 +334,12 @@ def test_native_final_mixed_with_tool_calls_is_corrected(registry):
     a read with the delivery is not a choice between them; it is a step that
     cannot be run, and it costs a correction."""
     script = ChatScript([
-        _turn([_shape_call(("Nothing to report.", []))]),
+        _turn([_shape_call(ASKED_CLAUSE)]),
         _turn([_call("query_ledger", {"entity": "balances", "filters": {}}),
                _call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c3")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c3")]),
     ])
-    result = run("balance?", NativePlanner(script), registry)
+    result = run(ASKED, NativePlanner(script), registry)
     assert result.answered and result.calls == 1
     second = script.seen[2]["messages"]
     corrections = [m for m in second if m.get("role") == "tool"
@@ -357,12 +369,12 @@ def test_a_refused_shape_is_told_which_field_to_take_out(registry):
 
     script = ChatScript([
         _turn([_grade_hole_shape_call()]),
-        _turn([_shape_call(("All settled.", []), call_id="c1")]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_shape_call(ASKED_CLAUSE, call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
     planner = NativePlanner(script)
-    result = run("how many subcategories do i have?", planner, registry)
-    assert result.answered
+    result = run(ASKED, planner, registry)
+    assert result.answered, result.detail
 
     said = _corrections_seen(script.seen[1]["messages"])
     assert len(said) == 1
@@ -372,6 +384,44 @@ def test_a_refused_shape_is_told_which_field_to_take_out(registry):
     assert [(e.authored_shape, e.parse_ok) for e in planner.exchanges] == [
         (True, False), (True, True), (False, True)]
     assert planner.exchanges[0].defect == DROP_THE_QUANTITY
+
+
+def _denial_beside_a_figure_call(call_id="c0"):
+    """A two-clause shape: one clause carrying a figure, and beside it a clause
+    saying in the model's own words that the figure could not be established.
+    The second declares no hole, so nothing could ever have dropped it."""
+    return _shape_call(("You spent {total}.", [("total", "money", "spending")]),
+                       ("I could not establish that figure from the records "
+                        "available to me here.", []),
+                       call_id=call_id)
+
+
+def test_a_shape_whose_clause_rests_on_nothing_is_told_to_put_a_hole_in_it(
+        registry):
+    """The correction a model gets for a clause that rests on nothing. A clause
+    declaring no hole draws the words for `hole_the_clause` and not the
+    protocol advice, and the exchange is recorded as a sentence authored and
+    refused — so the defect is countable, not merely absent."""
+    from viva.speak import _repairs
+    from viva.tools.shape import HOLE_THE_CLAUSE, PROTOCOL
+
+    script = ChatScript([
+        _turn([_denial_beside_a_figure_call()]),
+        _turn([_shape_call(ASKED_CLAUSE, call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
+    ])
+    planner = NativePlanner(script)
+    result = run(ASKED, planner, registry)
+    assert result.answered, result.detail
+
+    said = _corrections_seen(script.seen[1]["messages"])
+    assert len(said) == 1
+    assert _repairs()[HOLE_THE_CLAUSE] in said[0]
+    assert _repairs()[PROTOCOL] not in said[0]
+    # And the exchange is on the record as a sentence authored and refused.
+    assert [(e.authored_shape, e.parse_ok) for e in planner.exchanges] == [
+        (True, False), (True, True), (False, True)]
+    assert planner.exchanges[0].defect == HOLE_THE_CLAUSE
 
 
 def test_a_reply_that_broke_the_protocol_is_told_about_the_protocol(registry):
@@ -400,12 +450,12 @@ def test_the_text_protocol_names_the_same_repair(registry):
     steps = [
         _shape_block(("You have {many}, and that count is {trust}.",
                       [("many", "count", "count"), ("trust", "grade", "count")])),
-        _shape_block(("All settled.", [])),
-        _bind_block({}),
+        _shape_block(ASKED_CLAUSE),
+        _bind_block(ASKED_BINDINGS),
     ]
     script = TextScript(steps)
     planner = TextPlanner(script)
-    assert run("how many?", planner, registry).answered
+    assert run(ASKED, planner, registry).answered
     assert _repairs()[DROP_THE_QUANTITY] in script.prompts[1]
     assert _repairs()[PROTOCOL] not in script.prompts[1]
     assert planner.exchanges[0].authored_shape
@@ -449,11 +499,11 @@ def test_a_hole_that_named_the_wrong_quantity_is_told_to_change_it(registry):
     script = ChatScript([
         _turn([_shape_call(("You have {many}.", [("many", "count", "spending")]),
                            call_id="c0")]),
-        _turn([_shape_call(("All settled.", []), call_id="c1")]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_shape_call(ASKED_CLAUSE, call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
     planner = NativePlanner(script)
-    assert run("how many?", planner, registry).answered
+    assert run(ASKED, planner, registry).answered
     said = _corrections_seen(script.seen[1]["messages"])
     assert _repairs()[CHOOSE_THE_QUANTITY] in said[0]
     assert _repairs()[NAME_THE_QUANTITY] not in said[0]
@@ -596,13 +646,13 @@ def test_the_capture_says_which_exchange_authored_a_sentence_and_what_broke(
     log = LedgerLog()
     script = ChatScript([
         _turn([_grade_hole_shape_call()]),
-        _turn([_shape_call(("All settled.", []), call_id="c1")]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_shape_call(ASKED_CLAUSE, call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
     session = Session(registry, lambda prior: NativePlanner(script, prior),
                       ledger=log, model="pinned-model", session_id="s-test",
                       today=lambda: "2026-02-06")
-    assert session.ask("how many subcategories do i have?").result.answered
+    assert session.ask(ASKED).result.answered
 
     kept = [json.loads(e.body["response_text"]) for e in log.events]
     assert [k["authored_shape"] for k in kept] == [True, True, False]
@@ -639,14 +689,14 @@ def test_text_planner_grants_its_correction_per_step_not_per_run(registry):
 
 def test_text_planner_corrects_a_reply_with_two_fenced_blocks(registry):
     steps = [
-        _shape_block(("Nothing to report.", [])),
+        _shape_block(ASKED_CLAUSE),
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {}}}\n```\nfor example, and then really:\n'
-        + _bind_block({}),
-        _bind_block({}),
+        + _bind_block(ASKED_BINDINGS),
+        _bind_block(ASKED_BINDINGS),
     ]
     script = TextScript(steps)
-    result = run("balance?", TextPlanner(script), registry)
+    result = run(ASKED, TextPlanner(script), registry)
     # Neither block ran — the ambiguous reply was corrected, not guessed at.
     assert result.answered and result.calls == 1
     assert "exactly one" in script.prompts[2]
@@ -796,12 +846,13 @@ def test_the_closing_call_takes_the_reads_off_the_table(registry):
     """At exhaustion the model is not asked nicely to stop reading — the reads
     are gone, and the only thing it can do is speak."""
     script = ChatScript([
-        _turn([_shape_call(("I could not finish that.", []))]),
+        _turn([_shape_call(ASKED_CLAUSE)]),
         _turn([_call("check_completeness", {})]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
-    result = run("balance?", NativePlanner(script), registry, max_calls=2)
-    assert result.answered and result.text == "I could not finish that."
+    result = run(ASKED, NativePlanner(script), registry, max_calls=2)
+    assert result.answered
+    assert result.text == "You asked about 40.00 (your figure)."
     offered = {t["name"] for t in script.seen[-1]["tools"]}
     assert offered == {FINAL_TOOL}
     # The call it made and could not be given is answered, not left dangling —
@@ -817,20 +868,20 @@ def test_the_model_is_told_how_many_calls_it_has_left(registry):
     """The runner computing a budget nobody is shown is not a budget. Both
     modalities must put it where the model actually reads."""
     script = ChatScript([
-        _turn([_shape_call(("All settled.", []))]),
+        _turn([_shape_call(ASKED_CLAUSE)]),
         _turn([_call("check_completeness", {})]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
-    run("balance?", NativePlanner(script), registry, max_calls=4)
+    run(ASKED, NativePlanner(script), registry, max_calls=4)
     threaded = [m for m in script.seen[-1]["messages"] if m["role"] == "tool"]
     assert json.loads(threaded[-1]["content"])["calls_remaining"] == 2
 
     text = TextScript([
-        _shape_block(("All settled.", [])),
+        _shape_block(ASKED_CLAUSE),
         '```json\n{"tool": "check_completeness", "args": {}}\n```',
-        _bind_block({}),
+        _bind_block(ASKED_BINDINGS),
     ])
-    run("balance?", TextPlanner(text), registry, max_calls=4)
+    run(ASKED, TextPlanner(text), registry, max_calls=4)
     assert "Tool calls left in this turn: 4" in text.prompts[0]
     assert "Tool calls left in this turn: 3" in text.prompts[1]
     assert "Tool calls left in this turn: 2" in text.prompts[2]
@@ -842,10 +893,10 @@ def test_the_voice_does_not_promise_a_field_that_is_not_always_there(registry):
     every context holds tells the model to read a field that is not there, and
     an instruction that is false where it is first read is worse than absent."""
     script = ChatScript([
-        _turn([_shape_call(("All settled.", []))]),
-        _turn([_call(FINAL_TOOL, {"bindings": {}}, call_id="c2")]),
+        _turn([_shape_call(ASKED_CLAUSE)]),
+        _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
-    run("balance?", NativePlanner(script), registry)
+    run(ASKED, NativePlanner(script), registry)
     assert "calls_remaining" not in json.dumps(script.seen[0]["messages"])
     assert "calls_remaining" not in promptstore.load(PROMPTS, SPEAK_VERSION)
 
@@ -858,8 +909,9 @@ def test_the_text_protocol_teaches_the_shape_the_code_actually_accepts(registry)
     rendering the terminator into its tools list as another. There is now one
     reply shape — a named call with its arguments — so what the list says and
     what the protocol asks for cannot drift apart."""
-    text = TextScript([_shape_block(("All settled.", [])), _bind_block({})])
-    run("balance?", TextPlanner(text), registry)
+    text = TextScript([_shape_block(ASKED_CLAUSE),
+                       _bind_block(ASKED_BINDINGS)])
+    run(ASKED, TextPlanner(text), registry)
     for taught in text.prompts:
         assert '{{"tool": "<tool name>", "args": {{}}}}' not in taught
         assert '{"tool": "<tool name>", "args": {}}' in taught
@@ -1063,7 +1115,8 @@ def test_the_recorded_request_is_what_was_sent_not_what_came_later(
     adapter, sent = _wire_adapter(monkeypatch, [
         _Response(_chat_payload(
             {"role": "assistant", "content": None,
-             "tool_calls": [_shape_call(("All settled.", []))]})),
+             "tool_calls": [_shape_call(("Your balance is {total}.",
+                                         [("total", "money", "balance")]))]})),
         _Response(_chat_payload(
             {"role": "assistant", "content": None,
              "tool_calls": [_call("query_ledger",
@@ -1072,7 +1125,8 @@ def test_the_recorded_request_is_what_was_sent_not_what_came_later(
                                   call_id="c1")]})),
         _Response(_chat_payload(
             {"role": "assistant", "content": None,
-             "tool_calls": [_call(FINAL_TOOL, {"bindings": {}},
+             "tool_calls": [_call(FINAL_TOOL,
+                                  {"bindings": {"total": {"figure": "f1"}}},
                                   call_id="c2")]})),
     ])
     planner = NativePlanner(adapter)

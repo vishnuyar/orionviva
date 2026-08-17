@@ -18,7 +18,7 @@
     },
     "speak_repairs": {
       "in": "prompts",
-      "active": "speak-repairs-v1"
+      "active": "speak-repairs-v2"
     },
     "speak_closing": {
       "in": "prompts",
@@ -54,7 +54,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v7"
+      "active": "speak-shape-v8"
     },
     "shape_committed": {
       "in": "prompts",
@@ -118,6 +118,7 @@
     "speak-refusal-v1": "126880ba51c64e1f",
     "speak-refusal-v2": "0936b83589585cdf",
     "speak-repairs-v1": "40e6f50289ce7171",
+    "speak-repairs-v2": "0cbfcb3aa63a0739",
     "speak-retry-v1": "9224620b7b861c8c",
     "speak-retry-v2": "fc0ed5d5b85f4e4f",
     "speak-retry-v3": "ec6b6369a6c02300",
@@ -128,6 +129,7 @@
     "speak-shape-v5": "9f6ca8be25194302",
     "speak-shape-v6": "8727443fdd90f027",
     "speak-shape-v7": "e3f7b55e22261a12",
+    "speak-shape-v8": "834245339f59345e",
     "speak-v1": "8f65a0d62c9f73cb",
     "speak-v10": "7bbe5d04dda5875f",
     "speak-v2": "f2154bf11552432d",
