@@ -3,6 +3,72 @@
 **Status:** Living · **Last updated:** 2026-08-08 (three paragraphs of the built half amended in place: the citation gate is deleted, the web surface is deleted, and the real-vault runs answered what the built half said was not yet true) · **Approach:** data-first; every slice seeds a reusable **lego block**, and the trust signal (grade + provenance + bitemporality) rides all of them from v0 to the endgame.
 **Invariants touched:** the whole set — this is the ordered path by which T1–T9, I1–I6, M1, X1–X3 get built.
 
+## Slice 0 parity audit — 2026-08-17
+
+This is a follow-up audit against `docs/user-interface-architecture-and-delivery.md`.
+It records the open Slice 0 work; it does not claim that the slice is complete.
+
+**Acceptance criteria**
+
+- `viva.surface` exposes protocol/version, figure, panel, action, capability,
+  and synthetic-fixture contracts.
+- Every current user-facing and command capability has a surface destination or
+  an explicit developer-only, internal, or deferred disposition with a reason.
+- Representative contracts validate, regeneration is deterministic, and a
+  deliberate contract drift fails.
+- Import boundaries protect the product, surface, bridge, and desktop layers.
+- Gates A, C, and D exist and are runnable in CI: contract drift, capability
+  coverage, and interface-impact declaration.
+
+**Current state and gaps**
+
+- Present: `viva.surface.protocol` and common figure/panel/action models, plus
+  protocol/model tests.
+- In progress but unverified: an uncommitted
+  `viva.surface.capabilities` module and registry now exist in the shared
+  checkout. It exposes compatibility names consumed by the coverage test and
+  includes fixture ids on surfaced capabilities.
+- Missing: a checked-in generated schema/fixture contract and a gate that
+  proves the registry and command inventory remain synchronized with it.
+- Missing: synthetic Python surface fixtures and a versioned generated
+  `surface-v1` schema/response artifact.
+- Missing: `scripts/check_surface_contract.py` (Gate A), an import-boundary
+  test, and `scripts/check_surface_impact.py` (Gate D).
+- Missing: CI wiring for the Slice 0 gates; `.github/workflows/` currently has
+  only the DCO workflow.
+- Compatibility note: the package requires Python 3.11+, while the local
+  default interpreter is Python 3.10.5; integration checks must use the
+  declared supported runtime.
+
+**Development/testing integration conflicts**
+
+- The capability test now imports against the registry API, but it cannot be
+  treated as a CI gate until a supported runtime with pytest is available and
+  the registry is checked against the complete command inventory.
+- Existing desktop fixtures are synthetic UI data, not generated Python
+  surface fixtures; treating them as parity evidence would bypass Gate A.
+- A registry must classify backend commands that are intentionally not UI
+  features; exposing every command as a destination would violate progressive
+  disclosure and the architecture's developer-only/internal/deferred rules.
+- The desktop currently has no bridge consumer, so Gates B, E, and F should
+  remain deferred to the installable-shell slice rather than added as empty
+  machinery.
+
+**Recommended integration checks**
+
+- Run the surface contract, capability coverage, import-boundary, and impact
+  checks under Python 3.11+.
+- Regenerate schema and fixtures twice and compare byte-for-byte output.
+- Mutate a field, closed vocabulary value, protocol version, and capability
+  disposition in temporary copies; each must fail for the intended reason.
+- Inventory all `product/viva` command entry points and assert every one is
+  classified exactly once.
+- Verify dependency direction: product core/engine does not import surface or
+  desktop; surface does not import React/Tauri; bridge and desktop consume the
+  contract only.
+- Run the existing product suite after the gates pass, then confirm the branch
+  remains free of generated frontend output changes.
+
 This doc has two halves, and the split is the point.
 
 **What is built** is described by **capability**, not by the slice that produced it. A slice is a unit of *planning*; once the work exists, the code and its design doc are the record, and a label like "5.6" only tells a reader where in a queue it once sat. Reading the built half should answer *what does this product do today*, and nothing else.
