@@ -1,12 +1,13 @@
 # OrionViva — Implementation Roadmap
 
-**Status:** Living · **Last updated:** 2026-08-08 (three paragraphs of the built half amended in place: the citation gate is deleted, the web surface is deleted, and the real-vault runs answered what the built half said was not yet true) · **Approach:** data-first; every slice seeds a reusable **lego block**, and the trust signal (grade + provenance + bitemporality) rides all of them from v0 to the endgame.
+**Status:** Living · **Last updated:** 2026-08-17 (UI implementation status is tracked in [user-interface-implementation-status.md](user-interface-implementation-status.md); Slice 0 parity machinery is complete) · **Approach:** data-first; every slice seeds a reusable **lego block**, and the trust signal (grade + provenance + bitemporality) rides all of them from v0 to the endgame.
 **Invariants touched:** the whole set — this is the ordered path by which T1–T9, I1–I6, M1, X1–X3 get built.
 
-## Slice 0 parity audit — 2026-08-17
+## Slice 0 parity audit — complete 2026-08-17
 
 This is a follow-up audit against `docs/user-interface-architecture-and-delivery.md`.
-It records the open Slice 0 work; it does not claim that the slice is complete.
+The implementation is committed in `9cc8d7a`; the current UI status is tracked
+in [user-interface-implementation-status.md](user-interface-implementation-status.md).
 
 **Acceptance criteria**
 
@@ -20,31 +21,29 @@ It records the open Slice 0 work; it does not claim that the slice is complete.
 - Gates A, C, and D exist and are runnable in CI: contract drift, capability
   coverage, and interface-impact declaration.
 
-**Current state and gaps**
+**Current state and remaining boundary**
 
 - Present: `viva.surface.protocol` and common figure/panel/action models, plus
   protocol/model tests.
-- In progress but unverified: an uncommitted
-  `viva.surface.capabilities` module and registry now exist in the shared
-  checkout. It exposes compatibility names consumed by the coverage test and
-  includes fixture ids on surfaced capabilities.
-- Missing: a checked-in generated schema/fixture contract and a gate that
-  proves the registry and command inventory remain synchronized with it.
-- Missing: synthetic Python surface fixtures and a versioned generated
-  `surface-v1` schema/response artifact.
-- Missing: `scripts/check_surface_contract.py` (Gate A), an import-boundary
-  test, and `scripts/check_surface_impact.py` (Gate D).
-- Missing: CI wiring for the Slice 0 gates; `.github/workflows/` currently has
-  only the DCO workflow.
+- Present and verified: `viva.surface.capabilities` inventories the backend
+  command set and gives each capability a surface or explicit non-surface
+  disposition.
+- Present and verified: a checked-in deterministic `surface-v1` fixture and
+  contract drift gate.
+- Present and verified: synthetic Python surface contract tests, capability
+  coverage, import-boundary tests, and the backend-impact gate.
+- Present and verified: CI wiring for the Slice 0 gates in
+  `.github/workflows/quality.yml`.
+- Remaining by design: Gates B, E, and F and the desktop bridge are deferred to
+  Slice 1 because no live desktop transport exists yet.
 - Compatibility note: the package requires Python 3.11+, while the local
   default interpreter is Python 3.10.5; integration checks must use the
   declared supported runtime.
 
-**Development/testing integration conflicts**
+**Development/testing integration notes**
 
-- The capability test now imports against the registry API, but it cannot be
-  treated as a CI gate until a supported runtime with pytest is available and
-  the registry is checked against the complete command inventory.
+- The capability test imports the registry API and runs as a CI gate under the
+  declared supported Python runtime.
 - Existing desktop fixtures are synthetic UI data, not generated Python
   surface fixtures; treating them as parity evidence would bypass Gate A.
 - A registry must classify backend commands that are intentionally not UI
