@@ -289,7 +289,7 @@ function Accounts({ state }: { state: DemoState }) {
             <div>
               <strong>{account.name}</strong>
               <span>
-                {account.kind} · {account.note}
+                {account.kind} · {account.measure} · {account.gradeLabel} · {account.note}
               </span>
             </div>
             <div className="detail-figure">
@@ -430,6 +430,10 @@ function Review({
               <span>Evidence</span>
               <strong>{activeQueue.evidence}</strong>
             </div>
+            <div>
+              <span>Outcome</span>
+              <strong>{activeQueue.outcome}</strong>
+            </div>
           </div>
           <button className="secondary-button" onClick={() => onNavigate("documents")}>
             Open document review <ArrowUpRight size={15} />
@@ -454,7 +458,8 @@ function Activity({ state, onNavigate }: { state: DemoState; onNavigate: (destin
             <div className={`signal-icon ${item.tone}`}>{item.tone === "inflow" ? "↑" : item.tone === "outflow" ? "↓" : "!"}</div>
             <div>
               <strong>{item.label}</strong>
-              <span>{item.detail}</span>
+                <span>{item.detail}</span>
+                <small>{item.measure} · {item.provenance}</small>
             </div>
             <strong className={`signal-value ${item.tone}`}>{item.display}</strong>
           </div>

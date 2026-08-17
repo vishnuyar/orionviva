@@ -53,6 +53,7 @@ describe("minimal shell", () => {
     await user.click(getByRole("button", { name: /merchant category/i }));
     expect(getByText("Merchant")).toBeInTheDocument();
     expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
+    expect(getByText("proposal")).toBeInTheDocument();
   });
 
   it("keeps the selected document when navigation moves away and back", async () => {

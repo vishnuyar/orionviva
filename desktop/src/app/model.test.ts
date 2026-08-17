@@ -30,6 +30,15 @@ describe("minimal shell model", () => {
     expect(demoState.documents.every((doc) => doc.provenance.includes("Synthetic PDF"))).toBe(true);
   });
 
+  it("uses backend-shaped read models for each financial surface", () => {
+    expect(demoState.accounts.every((account) => account.exactValue === account.exactValue.trim())).toBe(true);
+    expect(demoState.accounts.map((account) => account.measure)).toEqual(["balance", "balance", "owed", "owed", "balance"]);
+    expect(demoState.accounts.every((account) => ["ready", "partial"].includes(account.state))).toBe(true);
+    expect(demoState.recent.map((item) => item.measure)).toEqual(["income", "spending", "spending"]);
+    expect(demoState.recent.every((item) => item.provenance.length > 0)).toBe(true);
+    expect(demoState.queue.map((item) => item.outcome)).toEqual(["waiting", "proposal", "proposal"]);
+  });
+
   it("projects the four-year synthetic corpus without inventing backend facts", () => {
     expect(syntheticCorpus.documentCount).toBe(176);
     expect(syntheticCorpus.range).toEqual({ from: "2022-08-01", to: "2026-07-31" });
