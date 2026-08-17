@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App } from "./App";
@@ -51,5 +51,54 @@ describe("minimal shell", () => {
     await user.click(getByRole("button", { name: /merchant category/i }));
     expect(getByText("Merchant")).toBeInTheDocument();
     expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
+  });
+
+  it("keeps the selected document when navigation moves away and back", async () => {
+    const user = userEvent.setup();
+    const { getByRole } = render(<App />);
+
+    await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+    await user.click(getByRole("button", { name: /brokerage-may\.pdf/i }));
+    expect(getByRole("heading", { name: "brokerage-may.pdf" })).toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: /overview.*your picture/i }));
+    await user.click(getByRole("button", { name: /documents.*what supports it/i }));
+    expect(getByRole("heading", { name: "brokerage-may.pdf" })).toBeInTheDocument();
+    expect(getByRole("button", { name: /open page review/i })).toBeInTheDocument();
+  });
+
+  it("keeps the selected review question when navigation moves away and back", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText } = render(<App />);
+
+    await user.click(getByRole("button", { name: /review.*what needs you2/i }));
+    await user.click(getByRole("button", { name: /merchant category/i }));
+    expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: /trust.*how it works/i }));
+    await user.click(getByRole("button", { name: /review.*what needs you2/i }));
+    expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
+    expect(getByRole("button", { name: /open document review/i })).toBeInTheDocument();
+  });
+
+  it("lets the local capture notice be dismissed", async () => {
+    const { getByRole, queryByRole } = render(<App />);
+
+    fireEvent.click(getByRole("button", { name: /add document/i }));
+    expect(getByRole("status")).toHaveTextContent("Nothing has left this device.");
+
+    fireEvent.click(getByRole("button", { name: /dismiss notice/i }));
+    expect(queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("renders the trust surface as explicit local guarantees", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText } = render(<App />);
+
+    await user.click(getByRole("button", { name: /trust.*how it works/i }));
+    expect(getByRole("heading", { name: "Trust" })).toBeInTheDocument();
+    expect(getByText("Local by default", { selector: "strong" })).toBeInTheDocument();
+    expect(getByText("No silent inference", { selector: "strong" })).toBeInTheDocument();
+    expect(getByText("Anchoring status", { selector: "strong" })).toBeInTheDocument();
   });
 });

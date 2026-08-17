@@ -51,6 +51,8 @@ class StatementSpec:
     notes: list[str]
     holdings: list[list[str]] | None = None
     merchants: list[str] | None = None
+    family: str = ""
+    family: str = ""
 
 
 def build_styles():
@@ -172,6 +174,7 @@ def manifest_for(specs: Iterable[StatementSpec]) -> dict:
         docs.append({
             "file": spec.file_name,
             "type": spec.kind,
+            "family": spec.family,
             "institution": spec.institution,
             "account": spec.account,
             "period": spec.period.replace(" - ", " to "),
@@ -190,8 +193,7 @@ def _month_period(year: int, month: int) -> str:
     if month == 12:
         end = date(year, 12, 31)
     else:
-        end = date(year, month + 1, 1).replace(day=1)  # type: ignore[call-arg]
-        end = end.fromordinal(end.toordinal() - 1)  # previous day
+        end = date(year, month + 1, 1) - date.resolution
     return f"{start.isoformat()} - {end.isoformat()}"
 
 
