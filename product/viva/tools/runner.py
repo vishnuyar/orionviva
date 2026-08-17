@@ -39,6 +39,20 @@ claims to measure; where it is not, the run says so beside the number, out of
 the reads' own declarations. A boundary is a property of the claim, so it is
 placed by the machine rather than left to whoever wrote the sentence around it.
 
+How well what was said is stood behind is placed the same way, third of the
+three. One reviewed sentence states the weakest grade among every money figure
+the answer stated, lines of a block included, and it is a whole sentence per
+word on the ladder rather than a frame with the word dropped in, so nowhere
+does a model's prose wrap a machine's word. It is said only where the answer
+stated a money figure as a number in a sentence: an answer whose money figures
+are all lines of one block has heard this already, above the block, and a
+second sentence under it would be the same claim twice. Where both are present
+the block's set sits inside the answer's, so the sentence beneath a block is
+never stronger than the line above it. It lands after the boundaries and before
+the limits: a word about strength heard before the extent of a claim has been
+stated invites reading it as covering more than it does. Where nothing stated
+carries a grade, nothing is said.
+
 The quantity check is what stops a true number from being spoken as an untrue
 claim — a gross sum of postings offered where the sentence says spending, a
 count of documents offered where it says a proportion. It is code comparing the
@@ -70,7 +84,7 @@ from decimal import Decimal, InvalidOperation
 from vivacore import promptstore, versions
 
 from .. import render
-from ..persona import moment
+from ..persona import STOOD_BEHIND_MOMENT, moment
 from .compute import numbers_said
 from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_MERCHANT,
                        BY_PERIOD, BY_SINCE, BY_SUBCATEGORY, BY_TAG, BY_UNTIL,
@@ -265,7 +279,7 @@ REFUSAL_TAGS = (
     "bad_delivery", "unshaped_binding", "bad_binding",
     # a hole was filled from outside this run's ledger
     "unknown_figure", "unknown_entity", "unknown_period", "unknown_reading",
-    "unfounded_date", "unfounded_stipulation", "ungraded_figure", "wrong_kind",
+    "unfounded_date", "unfounded_stipulation", "wrong_kind",
     # a real figure was offered for a hole asking about something else
     "wrong_quantity",
     # the answer as a whole could not be stood behind
@@ -459,8 +473,7 @@ BINDING_KEYS = ("figure", "entity", "period", "date", "supposed", "read")
 # absent: a figure this run read and a value the person supposed both belong in
 # a money, count or rate hole, and the key is what tells them apart.
 SOLE_BINDING = {render.DATE: "date", render.PERIOD: "period",
-                render.GRADE: "figure", render.ROWS: "read",
-                render.SUPPOSED: "supposed",
+                render.ROWS: "read", render.SUPPOSED: "supposed",
                 render.ACCOUNT: "entity", render.MERCHANT: "entity",
                 render.CATEGORY: "entity", render.DOCUMENT: "entity"}
 
@@ -630,14 +643,6 @@ def _figure_bound(slot, fig: dict, locale: str):
     value = _decimal(fig["value"])
     money_like = bool(fig["currency"]) or fig["kind"] == HYPOTHETICAL
 
-    if slot.type == render.GRADE:
-        if not fig["grade"]:
-            return None, "ungraded_figure", (
-                f"The hole {slot.name!r} asks how well {fig['what']!r} is stood "
-                "behind, and it carries no grade — nothing has checked it, and "
-                "saying a word here would invent one.")
-        return render.grade(fig["grade"]), "", ""
-
     # Two declarations, compared. The tool that emitted the figure declared what
     # it measured; the shape declared what its sentence is asking for; both are
     # members of one closed list. Nothing here reads the words around the hole
@@ -781,8 +786,8 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
         return None, "wrong_kind", (
             f"The hole {slot.name!r} wants rows, and that read named no slice "
             "of anything — there is nothing in it to write one line per.")
-    grade = weakest(f["grade"] for f in cited if f["kind"] in MONEY_KINDS)
-    return render.rows(lines, grade=render.grade(grade) if grade else ""), "", ""
+    return render.rows(lines, grade=weakest(
+        f["grade"] for f in cited if f["kind"] in MONEY_KINDS)), "", ""
 
 
 # How a magnitude is written where no hole above it said which shape to take.
@@ -980,9 +985,8 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # for its records and its caveats. The holes are walked in the order the
     # sentence places them, which is the order a person reads it in.
     #
-    # One figure can fill more than one hole: an amount in one clause and, in
-    # another, how well that same amount is stood behind. It is one figure and
-    # it is cited once.
+    # One figure can fill more than one hole — the same balance named in two
+    # clauses of one answer. It is one figure and it is cited once.
     said = [s.name for c in spoken for s in c.slots]
     cited, seen, in_rows, as_numbers = [], set(), set(), set()
     for name in said:
@@ -1036,11 +1040,32 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # about, and what the claim does not cover is read against that.
     boundary = _boundaries(cited, ground, in_rows)
 
+    # How well what the answer stated is stood behind: the weakest grade among
+    # every money figure it stated, lines of a block included, said in the
+    # pack's one whole sentence for that word. It is the answer's own grade, so
+    # what a person hears and what the result carries are one word.
+    #
+    # Whether it is said turns on whether any of those figures was stated as a
+    # number in a sentence. Where every one of them is a line of a block, the
+    # block has already stated this grade above itself. Where one was, the
+    # block's figures are inside the set this speaks for, so this sentence can
+    # only be weaker than or equal to the line above the block and the two can
+    # never disagree.
+    #
+    # It lands after the boundaries and before the limits: a word about strength
+    # heard before the extent of the claim has been stated invites reading it as
+    # covering more than it does.
+    graded = [f for f in cited if f["kind"] in MONEY_KINDS]
+    stood_behind = weakest(f["grade"] for f in graded)
+    stated_in_a_sentence = any(f["id"] in as_numbers for f in graded)
+
     parts = [(clause.written(written),
               any(isinstance(written[s.name], render.Rows)
                   for s in clause.slots))
              for clause in spoken]
     parts += [(line, False) for line in boundary]
+    if stood_behind and stated_in_a_sentence:
+        parts.append((moment(STOOD_BEHIND_MOMENT + stood_behind), False))
     if owed:
         parts.append((moment("answer_limits", limits=render.caveat(
             " ".join(ground.caveats[cid] for cid in owed))), False))
@@ -1052,7 +1077,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     return RunResult(
         answered=True, text=_written_out(parts),
         figures=[dict(f) for f in cited],
-        grade=weakest(f["grade"] for f in cited if f["kind"] in MONEY_KINDS),
+        grade=stood_behind,
         transcript=dicts, calls=len(transcript),
         shape=shape.to_dict(),
         bindings={n: references[n] for n in said},

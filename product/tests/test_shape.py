@@ -20,7 +20,8 @@ from viva.ledger import (LedgerProjection, Provenance, account_opened,
                          closing_balance_observed, opening_balance_observed,
                          simple_transaction)
 from viva.ledger.events import document_captured
-from viva.persona import INTENT_FIELDS, moment
+from viva.persona import (INTENT_FIELDS, ROWS_STOOD_BEHIND_MOMENT,
+                          STOOD_BEHIND_MOMENT, moment)
 from viva.tools import default_registry, run
 from viva.tools import shape as shape_module
 from viva.tools.shape import (CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY,
@@ -281,11 +282,11 @@ def test_a_second_shape_may_only_take_claims_away():
     clause may then be dropped — but a clause written after its data is exactly
     what the order exists to prevent, so nothing may be added or reworded."""
     first = _shape(("You hold {a}.", [("a", "money", "balance")]),
-                   ("It is {g}.", [("g", "grade")]),
+                   ("It covers {g}.", [("g", "period")]),
                    ("As of {d}.", [("d", "date")]))
     assert weakens(first, first)
     assert weakens(first, _shape(("You hold {a}.", [("a", "money", "balance")])))
-    assert weakens(first, _shape(("It is {g}.", [("g", "grade")]),
+    assert weakens(first, _shape(("It covers {g}.", [("g", "period")]),
                                  ("As of {d}.", [("d", "date")])))
     # Added, reworded, and re-ordered: none of the three.
     held = ("You hold {a}.", [("a", "money", "balance")])
@@ -293,7 +294,7 @@ def test_a_second_shape_may_only_take_claims_away():
                                             [("b", "money", "balance")])))
     assert not weakens(first, _shape(("You hold plenty of {a}.",
                                       [("a", "money", "balance")])))
-    assert not weakens(first, _shape(("It is {g}.", [("g", "grade")]), held))
+    assert not weakens(first, _shape(("It covers {g}.", [("g", "period")]), held))
 
 
 def test_a_reshape_that_adds_a_claim_is_refused_and_the_turn_goes_on(registry):
@@ -319,7 +320,8 @@ def test_a_reshape_that_adds_a_claim_is_refused_and_the_turn_goes_on(registry):
     result = run("balance?", planner, registry)
     assert result.answered, result.detail
     assert result.text == ("Your balance is USD 600.00. That counts only what "
-                           "is on Everyday Checking.")
+                           "is on Everyday Checking. "
+                           + moment(STOOD_BEHIND_MOMENT + result.grade))
     refused = [r for r in result.transcript if r["tool"] == "commit_shape"]
     assert [r["ok"] for r in refused] == [True, False]
     assert "only drop clauses" in refused[-1]["text"]
@@ -1200,7 +1202,8 @@ def test_a_figure_whose_set_is_everything_it_measures_places_nothing(registry):
                          bind=lambda r: {"total": {"figure": "f1"}}),
                  registry)
     assert result.answered, result.detail
-    assert result.text == "Your balance is USD 600.00."
+    assert result.text == ("Your balance is USD 600.00. "
+                           + moment(STOOD_BEHIND_MOMENT + result.grade))
 
 
 def test_a_balance_read_narrowed_to_one_account_says_which_account(registry):
@@ -1218,7 +1221,8 @@ def test_a_balance_read_narrowed_to_one_account_says_which_account(registry):
                  registry)
     assert result.answered, result.detail
     assert result.text == ("Your balance is USD 600.00. That counts only what "
-                           "is on Everyday Checking.")
+                           "is on Everyday Checking. "
+                           + moment(STOOD_BEHIND_MOMENT + result.grade))
 
 
 def test_an_incomplete_total_cannot_be_stated_without_its_gap(several):
@@ -1290,6 +1294,133 @@ def test_a_figures_boundary_comes_before_what_it_does_not_cover(several):
                                        category=render.category("transport")))
     limits = result.text.find(moment("answer_limits", limits="").split("{")[0])
     assert 0 < boundary < limits
+
+
+# ------------------------------------------- how well what was said is stood
+#                                                                      behind
+
+
+def test_an_answer_states_how_well_the_figures_it_stated_are_stood_behind(
+        registry):
+    """An answer that stated a graded money figure carries the pack's sentence
+    for that grade in its text, once.
+
+    Asserted on the text a person is handed rather than on the grade the result
+    carries: the grade travelling out on the result is bookkeeping, and a run
+    in which only that were true would be a run in which nobody was told."""
+    result = run("balance?",
+                 _script(_shape(("Your balance is {total}.",
+                                 [("total", "money", "balance")])),
+                         BALANCES,
+                         bind=lambda r: {"total": {"figure": "f1"}}),
+                 registry)
+    assert result.answered, result.detail
+    assert result.grade
+    said = moment(STOOD_BEHIND_MOMENT + result.grade)
+    assert said in result.text, result.text
+    assert result.text.count(said) == 1
+
+
+def test_the_grade_is_one_whole_reviewed_line_per_word_on_the_ladder(registry):
+    """No frame with a machine's word dropped into it, anywhere. The ladder's
+    word itself is not what a person reads: the sentence for that word is, and
+    it exists in the pack before the turn begins."""
+    from viva.tools.envelope import STRENGTH
+
+    said = {grade: moment(STOOD_BEHIND_MOMENT + grade) for grade in STRENGTH}
+    assert len(set(said.values())) == len(STRENGTH), (
+        "two grades sharing one sentence would map two strengths to one word")
+    for grade, sentence in said.items():
+        assert sentence.strip() and "{" not in sentence, grade
+
+
+def test_a_grade_is_said_after_the_extent_of_a_claim_and_before_its_limits(
+        several):
+    """Scope, then strength, then what it does not cover. A word about how well
+    a figure is stood behind, heard before the extent of the claim has been
+    stated, invites reading it as covering more than it does."""
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    result = run("what did I spend on transport?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending",
+                                           "group_by": "category"}),
+                         bind=lambda r: {
+                             "total": {"figure": _figure_id(
+                                 r, "spending — category 'transport'")}}),
+                 several)
+    assert result.answered, result.detail
+    boundary = result.text.find(moment("boundary_selected_category",
+                                       category=render.category("transport")))
+    stood = result.text.find(moment(STOOD_BEHIND_MOMENT + result.grade))
+    limits = result.text.find(moment("answer_limits", limits="").split("{")[0])
+    assert 0 < boundary < stood < limits, result.text
+
+
+def test_an_answer_stating_nothing_graded_says_nothing_about_being_stood_behind(
+        registry):
+    """A count of the agent's own paperwork carries no grade, so there is no
+    strength to state and none is claimed. The same rule a block already
+    follows: where nothing carries a grade, nothing is said."""
+    from viva.tools.envelope import STRENGTH
+
+    result = run("how much have you got on file?",
+                 _script(_shape(("I am holding {many} document(s).",
+                                 [("many", "count", "count")])),
+                         ("check_completeness", {}),
+                         bind=lambda r: {"many": {"figure": "f1"}}),
+                 registry)
+    assert result.answered, result.detail
+    assert result.grade == ""
+    assert all(moment(STOOD_BEHIND_MOMENT + grade) not in result.text
+               for grade in STRENGTH), result.text
+
+
+def test_a_refusal_says_nothing_about_how_well_anything_is_stood_behind(
+        registry):
+    """A turn with nothing to say states no strength. There is no set of stated
+    figures for a grade to be about."""
+    from viva.tools.envelope import STRENGTH
+
+    result = run("balance?",
+                 _script(_shape(("Your balance is {total}.",
+                                 [("total", "money", "balance")])),
+                         BALANCES,
+                         bind=lambda r: {"total": {"figure": "f99"}}),
+                 registry)
+    assert not result.answered
+    assert all(moment(STOOD_BEHIND_MOMENT + grade) not in result.text
+               for grade in STRENGTH), result.text
+
+
+def test_a_figure_stated_as_a_number_is_graded_though_a_block_also_holds_it():
+    """The other half of the same rule. A figure named in a sentence of its own
+    has said nothing about how well it is stood behind, so the answer says it —
+    however many blocks that figure also appears in."""
+    shape = _shape(("You spent {slice_}.", [("slice_", "money", "spending")]))
+    result = run("what did I spend on that?",
+                 _script(shape, BY_SUBCATEGORY,
+                         bind=lambda r: {"slice_": {"figure": _figure_id(
+                             r, "subcategory 'everything / slice 00'")}}),
+                 _wide(4))
+    assert result.answered, result.detail
+    assert moment(STOOD_BEHIND_MOMENT + result.grade) in result.text
+
+
+def test_no_hole_can_ask_how_well_a_figure_is_stood_behind():
+    """The hole is retired, not merely unused. A grade is a property of a
+    figure that the machine holds, so it is placed by the machine and there is
+    nothing for a shape to reserve a place for — nor any renderer that would
+    write the ladder's word into a sentence."""
+    from viva.tools.shape import CHOOSE_A_KIND
+
+    assert "grade" not in SLOT_TYPES
+    assert "grade" not in render.TYPES and "grade" not in render.RENDERED
+    assert not hasattr(render, "grade")
+    _shape_, problem = read_shape(
+        {"clauses": [{"text": "That figure is {trust}.",
+                      "slots": [{"name": "trust", "type": "grade"}]}]})
+    assert _shape_ is None and problem.repair == CHOOSE_A_KIND
 
 
 def test_a_boundary_is_not_said_three_times_for_one_set_of_gaps():
@@ -1549,18 +1680,131 @@ def test_the_reads_own_tail_sentence_lands_under_the_rows():
 def test_the_set_is_graded_once_above_the_block_and_never_per_row():
     """One grade is computed over a whole read and stamped on every figure it
     emits, so a word beside each row would read as a claim about that row when
-    it is a claim about the read. It is stated once, above, worded as being
-    about the set."""
+    it is a claim about the read. It is stated once, above, in the reviewed
+    sentence that says that word of a list.
+
+    Once, and not twice: where every money figure the answer stated is a line
+    of this block, the block has said the whole of it and nothing repeats it
+    underneath."""
+    from viva.tools.envelope import STRENGTH
+
     result = run("what did I spend, by sub category?",
                  _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
                  _wide(4))
     assert result.answered, result.detail
-    said = moment("rows_stood_behind", grade=render.grade(result.grade))
+    said = moment(ROWS_STOOD_BEHIND_MOMENT + result.grade)
     assert result.text.count(said) == 1
     assert result.text.index(said) < min(result.text.index(row)
                                          for row in _rows_of(result.text))
     for row in _rows_of(result.text):
         assert result.grade not in row, row
+    assert all(moment(STOOD_BEHIND_MOMENT + grade) not in result.text
+               for grade in STRENGTH), result.text
+
+
+def _mixed_strength():
+    """A vault where a breakdown of the spending and the balance it sits under
+    are stood behind differently: the movements are recorded with nothing
+    checking them, while the closing balance a statement printed agrees with
+    what they add up to."""
+    from viva.ledger.events import merchant_enriched
+    p = Provenance("doc-jan", 1, "r")
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           opening_balance_observed("chk", "10000.00", "2026-01-01", p)]
+    spent = 0
+    for n in range(3):
+        who = f"COUNTERPARTY {n:02d}"
+        spent += 10 + n
+        evs.append(simple_transaction("chk", f"-{10 + n}.00", who,
+                                      f"2026-01-{5 + n:02d}", provenance=p,
+                                      account_grade="unverified"))
+        evs.append(merchant_enriched(who.lower(), "everything",
+                                     subcategory=f"slice {n:02d}",
+                                     occurred_at="2026-02-02"))
+    evs.append(closing_balance_observed(
+        "chk", f"{10000 - spent}.00", "2026-01-31",
+        Provenance("doc-jan", 6, "r")))
+    return default_registry(LedgerProjection(evs))
+
+
+_BLOCK_AND_A_NUMBER = (("Here is what you spent, by sub category:{breakdown}",
+                        [("breakdown", render.ROWS)]),
+                       ("Your balance is {total}.",
+                        [("total", "money", "balance")]))
+
+
+def _bind_the_read_and_the_balance(results):
+    reads = [r for r in results if r["tool"] != "commit_shape"]
+    return {"breakdown": {"read": reads[0]["id"]},
+            "total": {"figure": _figure_id(reads[1:], "— balance")}}
+
+
+def test_an_answer_stating_a_number_beside_a_block_grades_both_together():
+    """A block says how well its own read is stood behind; the answer says how
+    well everything it stated is, the block's lines counted in. So the set the
+    trailing sentence speaks for contains the set the line above the block
+    speaks for, and a person reading down the answer reads one set inside
+    another rather than two they must tell apart."""
+    from viva.tools.envelope import STRENGTH
+
+    result = run("what did I spend, by sub category, and what is my balance?",
+                 _script(_shape(*_BLOCK_AND_A_NUMBER), BY_SUBCATEGORY, BALANCES,
+                         bind=_bind_the_read_and_the_balance),
+                 _mixed_strength())
+    assert result.answered, result.detail
+    rows = _rows_of(result.text)
+    assert rows
+    of_the_block = {f["grade"] for f in result.figures
+                    if any(f["what"].endswith(row.split(" — ")[0] + "'")
+                           for row in rows)}
+    assert len(of_the_block) == 1
+    block = moment(ROWS_STOOD_BEHIND_MOMENT + of_the_block.pop())
+    answer = moment(STOOD_BEHIND_MOMENT + result.grade)
+    assert result.text.count(block) == 1 and result.text.count(answer) == 1
+    assert result.text.index(block) < result.text.index(answer), result.text
+    # The balance is stood behind better than the movements are, and it is the
+    # weaker of the two that the answer as a whole is spoken as.
+    stated = {f["what"]: f["grade"] for f in result.figures}
+    assert len(set(stated.values())) > 1, stated
+    assert result.grade == max(stated.values(), key=STRENGTH.index)
+
+
+def test_an_answer_is_never_stood_behind_more_strongly_than_a_block_it_carries():
+    """Every figure a block wrote a line for is among the figures the answer's
+    own word is computed over, and that word is the weakest of them. The
+    weakest of a set that contains another set can never be stronger than the
+    weakest of what it contains — so the sentence beneath a block cannot claim
+    more than the line above it, whatever the two reads turned out to hold."""
+    from viva.tools.envelope import MONEY_KINDS, STRENGTH, weakest
+
+    result = run("what did I spend, by sub category, and what is my balance?",
+                 _script(_shape(*_BLOCK_AND_A_NUMBER), BY_SUBCATEGORY, BALANCES,
+                         bind=_bind_the_read_and_the_balance),
+                 _mixed_strength())
+    assert result.answered, result.detail
+    rows = _rows_of(result.text)
+    of_the_block = [f for f in result.figures
+                    if any(f["what"].endswith(row.split(" — ")[0] + "'")
+                           for row in rows)]
+    assert len(of_the_block) == len(rows)
+    # Every line the block wrote is a figure the answer's word was computed
+    # over: the answer states the weakest of what it cites, and it cites these.
+    assert result.grade == weakest(f["grade"] for f in result.figures
+                                   if f["kind"] in MONEY_KINDS)
+    assert STRENGTH.index(result.grade) >= max(
+        STRENGTH.index(f["grade"]) for f in of_the_block), result.text
+    # The lemma the assertions above rest on, over every pair of words the two
+    # sets could carry: the ladder runs strongest first, so a larger place on
+    # it is a weaker claim. It is a property of `weakest` and says nothing on
+    # its own about what the runner computes the answer's word over; the
+    # assertions above are what carry that half.
+    for block in STRENGTH:
+        for other in STRENGTH:
+            assert (STRENGTH.index(weakest([block, other]))
+                    >= STRENGTH.index(block)), (block, other)
 
 
 def test_a_row_names_its_own_slice_and_no_scope_clause_repeats_it():

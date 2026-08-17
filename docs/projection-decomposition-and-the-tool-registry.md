@@ -231,7 +231,7 @@ whole run. An answer cites ids; it does not restate values. A number no tool
 emitted has no id to cite, so an invention has nothing to stand on rather than
 merely failing a check afterwards. Four kinds exist, and only two are claims
 about the person's money: `financial` and `computed` carry a grade, while
-`activity` (what the agent itself did, standing on the ledger events that
+`activity` (what the agent itself did or holds on record, standing on whatever
 recorded it) and `hypothetical` (a value resting on the person's own premise)
 carry none. A grade is inherited from a figure's operands. Ruled with it: since
 arithmetic is deterministic, a sum of corroborated figures is corroborated —
@@ -464,9 +464,11 @@ third consequence — computing from the registry whether a slot *can* be filled
 before a call is made — is unbuilt. `{document}` is the proof: it is a declared
 type, taught to the model and placed by three question phrasings, and no tool
 emits one. That is where the 67% of spend on refusals was supposed to go. Also
-unbuilt: `{tag}`, twelve of thirteen slot types having shipped. **And none of
-this has run against real data** — the acceptance runs above tested the
-machinery it replaces.
+unbuilt: `{tag}`, twelve of thirteen slot types having shipped. _(The count is
+of that day. `rows` and `supposed` were added afterwards and `grade` was retired
+on 2026-08-17; eleven types are declared today and `{tag}` is still not one of
+them.)_ **And none of this has run against real data** — the acceptance runs
+above tested the machinery it replaces.
 
 **What the real vault then said (2026-08-08).** It has run now, three times: two
 local models side by side, and a read-only audit of a live sitting.
@@ -558,7 +560,9 @@ times. An identity now belongs to the thing rather than to the occurrence.
 Separately the citation footer cited one entry per *hole* rather than per
 figure, and displayed each figure's words keyed by figure id, so a figure
 filling both an amount hole and a grade hole appeared twice and showed whichever
-hole was read last — the total's amount never reached the footer at all. The
+hole was read last — the total's amount never reached the footer at all. _(That
+pairing is no longer expressible: the grade hole was retired on 2026-08-17, in
+the closing amendment. The footer defect itself was real and is fixed.)_ The
 footer is the surface that makes an answer checkable without re-checking it, so
 a footer that silently shows a grade where the sentence said an amount is worse
 than a duplicated line.
@@ -1033,3 +1037,100 @@ _**No version id is claimed by this cycle.** The ten narrowing sentences are
 already in the pack in force, the block guard's refusal has a reviewed sentence
 already, and the cap sentence is computed text of the kind the spending read
 already writes beside its own cap. Nothing model-facing changed._
+
+---
+
+_Amended 2026-08-17 (a grade is placed, not asked for). **How well an answer is
+stood behind is the third property of a figure the machine holds, and now the
+third it places.** Caveats went that way on 2026-08-09 and a figure's scope the
+day after; a grade had the identical shape and had not. Until this cycle the
+answer-level grade — the weakest among every money figure an answer stated — was
+computed, travelled out on the result, reached the transcript and the developer's
+console, and **was in no sentence a person read**. The only route by which a
+strength word reached anybody was a `grade` hole a model had to author before it
+had read anything, so whether uncertainty was visible at all was a bet a model
+made in ignorance. That is what the three instances share, and it is the sentence
+a fourth reader should find before reinventing the question: **a property of a
+figure that the machine holds is placed by the machine, never asked for through a
+hole.**_
+
+_**What replaced it.** `grade` is no longer a type a hole may declare. Its branch
+in the binding gate, its entry in the table pairing a hole's type to the one kind
+of reference it may hold, and the renderer that wrote the ladder's word are all
+deleted, and with them the `ungraded_figure` refusal and the phrase that named a
+missing grade as a gap; the tag vocabulary drops to nineteen. The runner states
+the grade of what the answer stated in **one whole reviewed sentence per word on
+the ladder** — never a frame with a machine's word dropped into a model's, which
+is what three of the four grade-wording defects the sweep found were made of. It
+lands after the boundary sentences and before the caveats: scope, then strength,
+then what the claim does not cover, because a confidence word heard before a
+claim's extent invites reading it as wider than it is. Where nothing stated
+carries a grade, nothing is said._
+
+_**The computation set and the placement condition are two questions, and
+separating them is what makes the two sentences safe to read together.** The
+answer's word is computed over **every** money figure it stated, lines of a block
+included; the sentence is placed only where at least one of them was stated as a
+number in a sentence rather than only as a line of a block. Both facts come off
+the binding registry — which slot type a reference filled — and neither reads the
+shape of a payload. The earlier reasoning that a block "has already said its own
+grade, the same rule as scope" is **reversed**: two scopes are two facts, but a
+set's grade and its superset's grade **compose**. Excluding the block's lines
+produced two adjacent sentences over disjoint sets that a person could read as
+disagreeing, and the dangerous direction — a strong trailing line under a weak
+block — was unreachable by any fixture in the repo, so wording alone would have
+left it live and untested. Nested rather than disjoint, the outer sentence is
+weaker than or equal to the inner by construction, and the word a person hears is
+the word `result.grade` carries._
+
+_**And four counts of the agent's own paperwork stopped being claims about
+money.** `check_completeness` emitted documents held, documents posted, documents
+awaiting review and counterparties with no category yet as financial figures with
+no grade — the exact shape `ungraded_figure` existed to refuse, so whether a
+person got a correct count or a refusal turned on whether a model had reserved a
+place for a grade that did not exist. All four now declare `activity`, and the
+words describing that kind widen from what the agent *did* to what it did or
+holds on record. The test that sorts a count is the durable one: **what would a
+wrong number here move?** If it moves a figure about the person's money the count
+is financial and carries a grade; if it moves only the account the agent gives of
+its own records, it is activity and carries none. `months these movements span`
+is the divisor of a monthly average and stays financial by that test; `documents
+awaiting review` moves nothing, because the money consequence of an unposted
+document is already carried on every money figure's own boundary. Two
+consequences: an empty vault can say it holds nothing, where a financial zero
+citing no record refused the whole answer; and a document count can no longer be
+divided into a spending total, which the arithmetic refuses as a number that
+would be a claim of neither kind._
+
+_**The tier summary leaves the completeness payload and the figure is renamed.**
+One result carried two counts of counterparties awaiting attention over different
+sets — the tier read skips instruments, peers and unshareable descriptors and
+falls back to a raw descriptor, while the completeness read counts every
+counterparty with no category and skips movements with no merchant key — so each
+can exceed the other and both are correct. A model reading two irreconcilable
+numbers in one payload is a defect whichever is right, so only one reaches it
+now, and *counterparties not yet identified* becomes *counterparties with no
+category yet*, which is what it counts. **This reconciles the presentation and
+not the measurements**; what the queue owes is its own question._
+
+_**What stays open**, narrowed rather than closed: nothing stops a model typing
+the word "verified" into the literal text of its own clause. Nothing reads those
+words, by design and permanently — a forbidden-word list is a standing anti-goal.
+Two things narrow it. The clause is authored before any read, so such a model is
+betting on a grade it has not seen; and the machine's own sentence is now in the
+same answer to contradict it when the bet was wrong. Beside it, `figure()` still
+accepts a money-kind figure with no grade. No emitter produces one, and now that
+the answer's sentence claims something of "every figure in it", the fix when it
+comes is structural at the emitter rather than a check at the speaking end._
+
+_**Five families moved.** `speak-shape-v9` drops the grade from the types a hole
+may declare; `speak-final-v12` drops it from what a figure reference may fill;
+`speak-v11` rewrites the paragraph that taught the hole to mirror the caveat
+paragraph beneath it, keeping what a model still needs a grade *for*, which is
+judging whether to state a figure at all; `pack-v12` carries two families of four
+reviewed lines, one naming the answer and one naming the list, each paired
+against the ladder in both directions, and drops the refusal sentence for an
+ungraded figure and the phrase for a missing grade; `tools-v12` stops saying
+`check_completeness` counts "how many counterparties are still unidentified".
+`speak-shape-v8`, `speak-final-v11`, `speak-v10`, `pack-v11` and `tools-v11` were
+in force until this cycle._

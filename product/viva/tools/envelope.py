@@ -10,9 +10,11 @@ exist, and the tool that emits one decides which it is:
 - ``financial`` — a claim about the person's money. It stands on documents and
   accounts, it carries a grade, and it is the only kind a counterparty could
   ever be asked to rely on.
-- ``activity`` — a number about the agent's own behaviour, standing on the
-  ledger events that recorded it. Being wrong about it costs nothing but
-  candour, so it carries no grade.
+- ``activity`` — a number about what the agent itself did or holds on record:
+  its own actions, and its own account of its own paperwork. It stands on
+  whatever recorded it — the ledger events for an action, the documents
+  themselves for a count of them. A wrong one moves nothing about the person's
+  money, so it costs candour and nothing else, and it carries no grade.
 - ``computed`` — arithmetic over other figures. It stands on the records of the
   operands that actually determined it and carries the weakest grade among
   them, and being a claim about money it is refused outright when it stands on
@@ -75,8 +77,8 @@ COMPUTED = "computed"
 HYPOTHETICAL = "hypothetical"
 
 # The kinds that carry a grade. `figure` clears the grade of any other kind, so
-# a figure resting on ledger events or on the person's own premise cannot pick
-# one up through composition.
+# a figure resting on the agent's own record-keeping or on the person's own
+# premise cannot pick one up through composition.
 GRADED_KINDS = (FINANCIAL, COMPUTED)
 
 # The kinds that make a claim about the person's money, and therefore the ones
@@ -109,10 +111,12 @@ PAYLOAD_TARGET = 5000
 MODEL_FACING_FIGURE = ("id", "value", "currency", "quantity", "kind", "grade",
                        "dated", "exactness", "what")
 
-# Weakest-last, so composition takes the maximum index present. `conflicted`
-# sits below `unverified`: a figure that disagrees with its own evidence is
-# worse than one nothing has checked.
-_STRENGTH = (VERIFIED, CORROBORATED, UNVERIFIED, CONFLICTED)
+# Every grade a figure may carry, weakest-last, so composition takes the maximum
+# index present. `conflicted` sits below `unverified`: a figure that disagrees
+# with its own evidence is worse than one nothing has checked. It is the closed
+# vocabulary a run says how well its answer is stood behind out of, so what says
+# each of them in words is held to this list at build time.
+STRENGTH = (VERIFIED, CORROBORATED, UNVERIFIED, CONFLICTED)
 
 # How the arithmetic behind a figure came out. A number read off a record
 # terminated by construction, so `EXACT` is what a figure carries unless a
@@ -125,10 +129,10 @@ _EXACTNESS = (EXACT, ROUNDED)
 
 def weakest(grades) -> str:
     """The weakest grade present, by the ladder's order; "" when none given."""
-    present = [g for g in grades if g in _STRENGTH]
+    present = [g for g in grades if g in STRENGTH]
     if not present:
         return ""
-    return _STRENGTH[max(_STRENGTH.index(g) for g in present)]
+    return STRENGTH[max(STRENGTH.index(g) for g in present)]
 
 
 def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
@@ -163,9 +167,9 @@ def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
         raise TypeError("a figure's boundary is what `bounded` returned; a "
                         "mapping built anywhere else has passed none of the "
                         "checks that make one true")
-    if grade and grade not in _STRENGTH:
+    if grade and grade not in STRENGTH:
         raise ValueError(f"grade {grade!r} is not on the ladder: "
-                         + ", ".join(_STRENGTH))
+                         + ", ".join(STRENGTH))
     if exactness not in _EXACTNESS:
         raise ValueError(f"exactness {exactness!r} says nothing about how the "
                          "arithmetic came out: " + ", ".join(_EXACTNESS))

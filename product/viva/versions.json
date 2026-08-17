@@ -2,11 +2,11 @@
   "in_force": {
     "speak": {
       "in": "prompts",
-      "active": "speak-v10"
+      "active": "speak-v11"
     },
     "speak_final": {
       "in": "prompts",
-      "active": "speak-final-v11"
+      "active": "speak-final-v12"
     },
     "speak_protocol": {
       "in": "prompts",
@@ -26,7 +26,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v11"
+      "active": "tools-v12"
     },
     "classify": {
       "in": "prompts",
@@ -42,7 +42,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v11"
+      "active": "pack-v12"
     },
     "schema_pack": {
       "in": "schemas",
@@ -54,7 +54,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v8"
+      "active": "speak-shape-v9"
     },
     "shape_committed": {
       "in": "prompts",
@@ -83,6 +83,7 @@
     "pack-v1": "16c9bf533d3d4e31",
     "pack-v10": "87eba5fff1fd5fc5",
     "pack-v11": "7471eab0aededb29",
+    "pack-v12": "104c77379c2cbd5f",
     "pack-v2": "7e8f38e3db15c2f9",
     "pack-v3": "62a56a4b9b7c1b5e",
     "pack-v4": "ab13c947b9ee4086",
@@ -98,6 +99,7 @@
     "speak-final-v1": "8e14a31d4ccd20e8",
     "speak-final-v10": "0c7373aad33dd23e",
     "speak-final-v11": "4f3b44d44b932585",
+    "speak-final-v12": "a7915d70695b4b4f",
     "speak-final-v2": "d746425703084d91",
     "speak-final-v3": "19506ea8954a63c5",
     "speak-final-v4": "2cac1de408a24750",
@@ -130,8 +132,10 @@
     "speak-shape-v6": "8727443fdd90f027",
     "speak-shape-v7": "e3f7b55e22261a12",
     "speak-shape-v8": "834245339f59345e",
+    "speak-shape-v9": "326ab1790a3a40ee",
     "speak-v1": "8f65a0d62c9f73cb",
     "speak-v10": "7bbe5d04dda5875f",
+    "speak-v11": "84c0ff0b9959fd85",
     "speak-v2": "f2154bf11552432d",
     "speak-v3": "c898f122b4069899",
     "speak-v4": "aed70cdb9970d43b",
@@ -143,6 +147,7 @@
     "tools-v1": "484999eebb3697a4",
     "tools-v10": "19f816684098f058",
     "tools-v11": "85684b079dfc0723",
+    "tools-v12": "f0b37107e4aeff5f",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",

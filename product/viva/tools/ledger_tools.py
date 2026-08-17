@@ -1436,9 +1436,6 @@ def check_completeness(proj, args: dict) -> ToolResult:
         accounts.append({"account": info.account, "name": info.name,
                          "kind": info.kind, "dated": ba.dated,
                          "grade": ba.grade})
-    tiers = {k: {"count": v["count"], "amount": str(v["amount"]),
-                 "merchants": v["merchants"]}
-             for k, v in sorted(proj.tier_summary().items())}
     unidentified = len(proj.uncategorized_merchants())
     holds = [{"doc_id": b.get("doc_id", ""), "reason": b.get("reason", "")}
              for b in proj.open_holds()]
@@ -1447,18 +1444,21 @@ def check_completeness(proj, args: dict) -> ToolResult:
         caveats.append(f"{len(holds)} document(s) are held awaiting review "
                        "and are not in any figure.")
     if unidentified:
-        caveats.append(f"{unidentified} counterparty(ies) are not yet "
-                       "identified, so their categories are unknown.")
+        caveats.append(f"{unidentified} counterparty(ies) have no category "
+                       "yet.")
     all_docs = sorted(captured)
+    # Four counts of this agent's own paperwork, not of the person's money: a
+    # wrong one moves the account the agent gives of its records and no figure
+    # about what they hold, so each is activity and carries no grade.
     figures = [
         figure(len(captured), "documents held", quantity=quantity.COUNT,
-               record_ids=all_docs),
+               kind=ACTIVITY, record_ids=all_docs),
         figure(len(captured) - len(held), "documents posted to the ledger",
-               quantity=quantity.COUNT, record_ids=all_docs),
+               quantity=quantity.COUNT, kind=ACTIVITY, record_ids=all_docs),
         figure(len(held), "documents awaiting review", quantity=quantity.COUNT,
-               record_ids=all_docs),
-        figure(unidentified, "counterparties not yet identified",
-               quantity=quantity.COUNT, record_ids=all_docs),
+               kind=ACTIVITY, record_ids=all_docs),
+        figure(unidentified, "counterparties with no category yet",
+               quantity=quantity.COUNT, kind=ACTIVITY, record_ids=all_docs),
     ]
     # A day, which is a point in time and not a magnitude: it fills no hole
     # that asks for an amount, a count or a proportion.
@@ -1473,7 +1473,7 @@ def check_completeness(proj, args: dict) -> ToolResult:
         identifiers=_identifiers(proj, (a["account"] for a in accounts)),
         data={"documents_held": len(captured), "posted": len(captured) - len(held),
               "awaiting": len(held), "awaiting_types": awaiting_types,
-              "holds": holds, "accounts": accounts, "tiers": tiers,
+              "holds": holds, "accounts": accounts,
               "unidentified_counterparties": unidentified},
         record_ids=sorted(captured),
         caveats=caveats,

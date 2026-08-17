@@ -19,6 +19,7 @@ from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
                                 question_declined, read_recorded,
                                 statement_held)
 from viva.ledger.projection import movement_key
+from viva.persona import STOOD_BEHIND_MOMENT, moment
 from viva.tools import default_registry, ledger_tools, run, weakest
 from viva.tools.envelope import ToolResult, figure
 from viva.tools.registry import (PACKAGE as _PACKAGE, PROMPTS, Registry,
@@ -462,6 +463,75 @@ def test_completeness_counts_the_held_document(registry):
     assert result.data["holds"][0]["doc_id"] == "doc-held"
     assert any(a["account"] == "chk" and a["grade"] == CORROBORATED
                for a in result.data["accounts"])
+
+
+def test_the_counts_of_what_the_agent_holds_on_file_are_not_claims_about_money(
+        registry):
+    """Sorted by what a wrong number here would move. Documents held, posted
+    and awaiting review, and counterparties with no category yet, all move the
+    account the agent gives of its own paperwork and no figure about what the
+    person holds — so each is activity and carries no grade, and nothing can
+    lend one through composition.
+
+    The account dates in the same read are the other side of the test: a wrong
+    one moves what a balance is good as of, so they stay financial and keep
+    their grades."""
+    result = registry.call("check_completeness", {})
+    counted = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+    assert len(counted) == 4
+    for fig in counted:
+        assert fig["kind"] == "activity", fig["what"]
+        assert fig["grade"] == "", fig["what"]
+    dated = [f for f in result.figures if f["quantity"] == quantity.TIME]
+    assert dated and all(f["kind"] == "financial" and f["grade"] for f in dated)
+
+
+def test_a_count_of_the_agents_paperwork_cannot_be_mixed_into_a_money_figure(
+        registry):
+    """What the kind buys. Arithmetic refuses to combine a claim about the
+    agent with a claim about the person's money, because the result would be a
+    claim of neither kind — so a document count can no longer be divided into a
+    spending total."""
+    result = run(
+        "how much per document?",
+        _script(_shape(("That is {each} each.", [("each", "money", "balance")])),
+                ("check_completeness", {}),
+                ("query_ledger", {"entity": "balances"}),
+                ("compute", {"expression": "held / docs",
+                             "inputs": {"held": "f6", "docs": "f1"}}),
+                bind=lambda results: {"each": {"figure": "f99"}}),
+        registry)
+    assert not result.answered
+    mixed = next(r for r in result.transcript if r["tool"] == "compute")
+    assert not mixed["ok"] and mixed["refusal"] == "mixed_kinds"
+
+
+def test_an_empty_vault_can_say_it_holds_nothing():
+    """A count of nothing is a true thing to say. As the agent's account of its
+    own paperwork it stands on the documents it counted and cites none, which
+    is sayable; a financial figure of zero citing no record would be a claim
+    about money standing on nothing, and the whole answer would be refused."""
+    empty = default_registry(LedgerProjection([]))
+    result = run("what have you got?",
+                 _script(_shape(("I am holding {many} document(s).",
+                                 [("many", "count", "count")])),
+                         ("check_completeness", {}),
+                         bind=lambda r: {"many": {"figure": "f1"}}),
+                 empty)
+    assert result.answered, result.detail
+    assert result.text.startswith("I am holding 0 document(s).")
+
+
+def test_the_completeness_read_offers_one_account_of_what_is_unidentified(
+        registry):
+    """Two reads measure counterparties awaiting attention over different sets,
+    both correctly. Only one of them reaches a model from here, so there is no
+    pair of irreconcilable numbers in one payload for it to choose between, and
+    the figure it can speak is named for the set it actually counts."""
+    result = registry.call("check_completeness", {})
+    assert "tiers" not in result.data
+    named = [f["what"] for f in result.figures]
+    assert "counterparties with no category yet" in named
 
 
 def test_provenance_states_say_what_actually_happened(registry):
@@ -1255,7 +1325,8 @@ def test_an_approximate_value_never_reaches_the_person_bare(registry):
         _shape(("You spend {weekly} a week.", [("weekly", "money", "balance")])),
         lambda results: {"weekly": {"figure": _fig(results, "result of")}})
     assert spoken.answered, spoken.detail
-    assert spoken.text == "You spend about USD 85.71 a week."
+    assert spoken.text == ("You spend about USD 85.71 a week. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     # The figure itself is unchanged; only what was written from it is hedged.
     assert spoken.figures[0]["value"] == "85.71"
     assert spoken.figures[0]["exactness"] == "rounded"
@@ -1277,7 +1348,8 @@ def test_an_approximate_number_of_things_never_reaches_the_person_bare(
         expression="a * 5 / 7", read=("transactions", None),
         over="movements matching the filters")
     assert spoken.answered, spoken.detail
-    assert spoken.text == "You make this many a week: about 3."
+    assert spoken.text == ("You make this many a week: about 3. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     assert spoken.figures[0]["value"] == "2.85714"
     assert spoken.figures[0]["exactness"] == "rounded"
 
@@ -1294,7 +1366,8 @@ def test_an_approximate_proportion_never_reaches_the_person_bare(registry):
         expression="a / a / 7")
     assert spoken.answered, spoken.detail
     # One seventh, carried as the quotient and written per hundred.
-    assert spoken.text == "That is about 14.2857% of it."
+    assert spoken.text == ("That is about 14.2857% of it. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     assert spoken.figures[0]["exactness"] == "rounded"
 
 
@@ -2444,9 +2517,9 @@ def test_a_financial_figure_standing_on_no_record_is_refused(registry):
     result = run(
         "how much?",
         _script(_shape(("That makes {total}.", [("total", "count", "count")])),
-                ("check_completeness", {}),
+                ("query_ledger", {"entity": "balances"}),
                 ("compute", {"expression": "n + 424242",
-                             "inputs": {"n": "f1"}}),
+                             "inputs": {"n": "f4"}}),
                 bind=lambda results: {
                     "total": {"figure": _fig(results, "result of")}}),
         registry)
@@ -3054,7 +3127,8 @@ def test_an_answer_may_name_the_account_it_is_about(registry):
                              "balance": {"figure": _fig(results, "balance")}}),
                  numbered)
     assert spoken.answered, spoken.detail
-    assert spoken.text == "Everyday Checking holds USD 600.00."
+    assert spoken.text == ("Everyday Checking holds USD 600.00. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     # And the run of digits inside that name never reaches the person on its
     # own, because nothing but the renderer ever writes the name.
     assert "4417" not in spoken.text
@@ -3195,7 +3269,8 @@ def test_an_account_two_reads_spoke_about_is_not_its_own_twin(registry):
                              "balance": {"figure": _fig(results, "balance")}}),
                  numbered)
     assert spoken.answered, spoken.detail
-    assert spoken.text == "Everyday Checking holds USD 600.00.", (
+    assert spoken.text == ("Everyday Checking holds USD 600.00. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade)), (
         "a second read of one account made it collide with itself")
     assert "4417" not in spoken.text
 

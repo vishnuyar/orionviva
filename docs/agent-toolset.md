@@ -212,8 +212,10 @@ halves are closed in the 2026-08-05 amendment below._
 > `tools-v9` since 2026-08-15, which teaches that an account someone
 > owes on is measured as `owed` rather than as `balance` — see
 > [net-worth.md](net-worth.md) — **`tools-v10` since 2026-08-16**, which
-> teaches the `vocabulary` mode below, and **`tools-v11` since 2026-08-17**,
-> which stops offering `nature` as a filter).
+> teaches the `vocabulary` mode below, `tools-v11` since 2026-08-17, which
+> stops offering `nature` as a filter, and **`tools-v12` later the same day**,
+> which renames what `check_completeness` counts: counterparties with no
+> category yet, rather than counterparties still unidentified).
 >
 > Recorded and not fixed: whether a slot can be filled at all is still not
 > computed from the registry before a call is made, which is where the refused
@@ -294,8 +296,10 @@ halves are closed in the 2026-08-05 amendment below._
 >
 > **What it cannot do yet is answer for itself.** That count carries no grade
 > and no `record_ids`, so *"why do you say five?"* comes back with nothing, and
-> it is declared `ACTIVITY` — a number about the agent's own behaviour — which
-> is not what a count of the vault's own labels is. Shipped knowingly, with its
+> it is declared `ACTIVITY` — a number about what the agent did or holds on
+> record — which is not what a count of the vault's own labels is. (That
+> definition widened on 2026-08-17 and this item is untouched by the widening:
+> the question here is the person's ledger, not the agent's paperwork.) Shipped knowingly, with its
 > own cycle owed. It remains the missing input to capability honesty rather than
 > its implementation: nothing yet computes from the registry what is askable._
 
@@ -330,7 +334,28 @@ halves are closed in the 2026-08-05 amendment below._
 > arrives as a capability as well as a disclosure: *how many payments went to
 > that counterparty* is answerable with a number from the detailed read. The
 > split above is unchanged — `query_ledger` still returns no rows — and the
-> descriptions file is still `tools-v11`, so nothing tells a model the count is
-> there before it calls. What the cap left out is also now a caveat, so a list
-> showing fifty of three hundred says so to a person and not only to its
-> caller._
+> descriptions file gained nothing about the count, so nothing tells a model it
+> is there before it calls. (`tools-v12`, later the same day, changes one
+> sentence about `check_completeness` and nothing else.) What the cap left out
+> is also now a caveat, so a list showing fifty of three hundred says so to a
+> person and not only to its caller._
+
+> _Amended 2026-08-17 once more (a grade is placed, not asked for).
+> **`check_completeness` answers for the agent's paperwork, not for the
+> person's money.** Its four counts — documents held, documents posted,
+> documents awaiting review, and counterparties with no category yet — were
+> financial figures carrying no grade, which is the one shape the run refuses
+> outright, so a truthful count could reach a person only by luck. All four
+> declare `activity` now, sorted by *what would a wrong number here move?*: they
+> move the account the agent gives of its own records and no figure about what
+> the person holds. An empty vault can therefore say it holds nothing, and a
+> document count can no longer be divided into a money total. The **tier summary
+> leaves the payload**: it carried a second, differently-measured count of
+> counterparties awaiting attention that no figure could speak, so a model read
+> two irreconcilable numbers in one result and could act on either.
+> `tools-v12` renames the figure to what it counts. The per-account date figures
+> are unchanged — they stay financial and keep their grades, and after this
+> cycle they fill no hole at all, which is how a day still reaches the run's
+> ledger. See the closing amendment of
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)
+> for the half of that cycle this file does not hold._

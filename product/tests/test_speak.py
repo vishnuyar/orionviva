@@ -67,6 +67,9 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-final-v11": "4f3b44d44b932585",
     "speak-shape-v8": "834245339f59345e",
     "speak-repairs-v2": "0cbfcb3aa63a0739",
+    "speak-v11": "84c0ff0b9959fd85",
+    "speak-shape-v9": "326ab1790a3a40ee",
+    "speak-final-v12": "a7915d70695b4b4f",
 }
 
 
@@ -244,25 +247,22 @@ def test_every_repair_a_check_can_name_has_reviewed_words():
 
 def test_native_planner_produces_a_cited_answer(registry):
     script = ChatScript([
-        _turn([_shape_call(("Your checking holds {balance}, and that figure is "
-                            "{trust} against the statement.",
-                            [("balance", "money", "balance"),
-                             ("trust", "grade")]))]),
+        _turn([_shape_call(("Your checking holds {balance}.",
+                            [("balance", "money", "balance")]))]),
         _turn([_call("query_ledger", {"entity": "balances",
                                       "filters": {"account": "chk"}},
                      call_id="c1")]),
-        _turn([_call(FINAL_TOOL, {"bindings": {"balance": {"figure": "f1"},
-                                               "trust": {"figure": "f1"}}},
+        _turn([_call(FINAL_TOOL, {"bindings": {"balance": {"figure": "f1"}}},
                      call_id="c2")]),
     ])
     result = run("what is my checking balance?", NativePlanner(script), registry)
     assert result.answered and result.calls == 2
     # The grade is the ledger's, not the model's: the answer referred to an id,
-    # and the grade travelled with the figure the tool emitted.
+    # the grade travelled with the figure the tool emitted, and the run said it.
     assert result.grade == "corroborated"
-    assert result.text == ("Your checking holds USD 600.00, and that figure is "
-                           "corroborated against the statement. That counts "
-                           "only what is on Everyday Checking.")
+    assert result.text == ("Your checking holds USD 600.00. That counts only "
+                           "what is on Everyday Checking. "
+                           + persona.moment("stood_behind_corroborated"))
     # The system prompt opened the conversation and the question followed it.
     first = script.seen[0]["messages"]
     assert first[0]["role"] == "system" and "Viva" in first[0]["content"]
@@ -348,12 +348,12 @@ def test_native_final_mixed_with_tool_calls_is_corrected(registry):
     assert len(corrections) == 2
 
 
-def _grade_hole_shape_call(call_id="c0"):
+def _stray_quantity_shape_call(call_id="c0"):
     """A shape a model plausibly sends and the check refuses: a hole holding a
-    grade, declaring that the grade measures a count."""
-    return _shape_call(("You have {many}, and that count is {trust}.",
+    day, declaring that the day measures a count."""
+    return _shape_call(("You have {many}, as of {when}.",
                         [("many", "count", "count"),
-                         ("trust", "grade", "count")]), call_id=call_id)
+                         ("when", "date", "count")]), call_id=call_id)
 
 
 def _corrections_seen(messages):
@@ -369,7 +369,7 @@ def test_a_refused_shape_is_told_which_field_to_take_out(registry):
     from viva.tools.shape import DROP_THE_QUANTITY, PROTOCOL
 
     script = ChatScript([
-        _turn([_grade_hole_shape_call()]),
+        _turn([_stray_quantity_shape_call()]),
         _turn([_shape_call(ASKED_CLAUSE, call_id="c1")]),
         _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
@@ -449,8 +449,8 @@ def test_the_text_protocol_names_the_same_repair(registry):
     from viva.tools.shape import DROP_THE_QUANTITY, PROTOCOL
 
     steps = [
-        _shape_block(("You have {many}, and that count is {trust}.",
-                      [("many", "count", "count"), ("trust", "grade", "count")])),
+        _shape_block(("You have {many}, as of {when}.",
+                      [("many", "count", "count"), ("when", "date", "count")])),
         _shape_block(ASKED_CLAUSE),
         _bind_block(ASKED_BINDINGS),
     ]
@@ -521,17 +521,18 @@ def test_native_transport_failure_refuses_model_unreachable(registry):
 
 def test_text_planner_produces_a_cited_answer(registry):
     steps = [
-        _shape_block(("Your checking holds {balance}, {trust}.",
-                      [("balance", "money", "balance"), ("trust", "grade")])),
+        _shape_block(("Your checking holds {balance}.",
+                      [("balance", "money", "balance")])),
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {"account": "chk"}}}\n```',
-        _bind_block({"balance": {"figure": "f1"}, "trust": {"figure": "f1"}}),
+        _bind_block({"balance": {"figure": "f1"}}),
     ]
     script = TextScript(steps)
     result = run("what is my checking balance?", TextPlanner(script), registry)
     assert result.answered and result.grade == "corroborated"
-    assert result.text == ("Your checking holds USD 600.00, corroborated. That "
-                           "counts only what is on Everyday Checking.")
+    assert result.text == ("Your checking holds USD 600.00. That counts only "
+                           "what is on Everyday Checking. "
+                           + persona.moment("stood_behind_corroborated"))
     # Each step's prompt carries the voice, the schemas on the table at that
     # point, and the results so far.
     assert "Viva" in script.prompts[0]
@@ -647,7 +648,7 @@ def test_the_capture_says_which_exchange_authored_a_sentence_and_what_broke(
 
     log = LedgerLog()
     script = ChatScript([
-        _turn([_grade_hole_shape_call()]),
+        _turn([_stray_quantity_shape_call()]),
         _turn([_shape_call(ASKED_CLAUSE, call_id="c1")]),
         _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
     ])
@@ -1035,18 +1036,18 @@ def test_the_footer_shows_each_figure_the_way_the_sentence_showed_it(
 
 def test_a_figure_two_holes_refer_to_stands_under_the_sentence_once(
         registry, capsys):
-    """A sentence that states an amount and then says how well that same amount
-    is stood behind refers to one figure twice. It is one figure: it is cited
-    once, and the footer shows both the words it was written as — an amount and
-    a grade — rather than whichever hole happened to be read last."""
+    """An answer that states one amount in two of its clauses refers to one
+    figure twice. It is one figure: it is cited once, and the footer carries
+    what each hole was written as rather than whichever hole happened to be
+    read last."""
     from viva.speak import Turn, _print_turn
     from viva.tools.shape import Clause, Shape, Slot
 
     shape = Shape(clauses=(
         Clause(text="Your balance is {total}.",
                slots=(Slot("total", "money", "balance"),)),
-        Clause(text="That figure is {how_well}.",
-               slots=(Slot("how_well", "grade"),)),
+        Clause(text="Nothing has moved since, so it stands at {again}.",
+               slots=(Slot("again", "money", "balance"),)),
     ))
 
     def planner(context):
@@ -1055,7 +1056,7 @@ def test_a_figure_two_holes_refer_to_stands_under_the_sentence_once(
         if not [r for r in context["results"] if r["tool"] != SHAPE_TOOL]:
             return {"tool": "query_ledger", "args": {"entity": "balances"}}
         return {"bindings": {"total": {"figure": "f1"},
-                             "how_well": {"figure": "f1"}}}
+                             "again": {"figure": "f1"}}}
 
     result = run("what is my balance?", planner, registry, locale="en-US")
     assert result.answered, result.detail
@@ -1069,7 +1070,7 @@ def test_a_figure_two_holes_refer_to_stands_under_the_sentence_once(
     assert result.written["total"] in footer[0], (
         "the amount the sentence stated is missing from the line that is "
         "supposed to make it checkable")
-    assert result.written["how_well"] in footer[0]
+    assert result.written["again"] in footer[0]
 
 
 # ----------------------------------------------- the adapter, over the wire

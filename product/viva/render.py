@@ -47,14 +47,13 @@ ACCOUNT = "account"      # an account, by whichever of its names is shown
 MERCHANT = "merchant"    # a counterparty, as the ledger knows it
 CATEGORY = "category"    # what money is, as a label
 DOCUMENT = "document"    # a kind of document, never one particular record
-GRADE = "grade"          # how well a figure is stood behind
 ROWS = "rows"            # every figure of one read, each beside what it covers
 CAVEAT = "caveat"        # what a result said its own number does not cover
 SUPPOSED = "supposed"    # a value the person themselves put into this turn
 PROSE = "prose"          # reviewed words from a pack, placed whole
 
 TYPES = (MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
-         DOCUMENT, GRADE, ROWS, CAVEAT, SUPPOSED, PROSE)
+         DOCUMENT, ROWS, CAVEAT, SUPPOSED, PROSE)
 
 # Which quantities a hole of each type may ask for. A type says what shape a
 # number takes and a quantity says what it is of, and the pairing is not free:
@@ -143,10 +142,6 @@ class Category(_Written):
 
 
 class Document(_Written):
-    __slots__ = ()
-
-
-class Grade(_Written):
     __slots__ = ()
 
 
@@ -313,11 +308,6 @@ def document(name) -> Document:
     return Document(str(name or "").strip())
 
 
-def grade(word) -> Grade:
-    """How well a figure is stood behind, in the ladder's own word."""
-    return Grade(str(word or "").strip())
-
-
 def label(name) -> Label:
     """A name the vault holds for a slice of itself, written as it is held.
 
@@ -343,19 +333,25 @@ def rows(lines, *, grade: str = "") -> Rows:
     the lines are about: `lines` is pairs of things this module already wrote, a
     name and the magnitude taken over it.
 
-    The grade goes once, above, and is worded as being about the set. It is one
-    grade computed over the whole read and stamped on every figure in it, so a
-    word repeated per line would read as a claim about that line when it is a
-    claim about the read. Where nothing carries a grade, nothing is said.
+    `grade` is a word on the ladder, and how well the set is stood behind goes
+    once, above, in the one reviewed sentence that says that word of a list —
+    never a frame with the word dropped into it. It is one grade computed over
+    the whole read and stamped on every figure in it, so a word repeated per
+    line would read as a claim about that line when it is a claim about the
+    read. Where nothing carries a grade, nothing is said.
+
+    The sentence names the list as what it is about. An answer holding this
+    block may state its own grade beneath it, over a set these figures are part
+    of, and a person needs to see which of the two each sentence covers.
 
     The words around the two halves of a line are the pack's, like every other
     thing Viva says."""
-    from .persona import moment
+    from .persona import ROWS_STOOD_BEHIND_MOMENT, moment
 
     written = [moment("rows_line", name=name, amount=amount)
                for name, amount in lines]
     if grade:
-        written.insert(0, moment("rows_stood_behind", grade=grade))
+        written.insert(0, moment(ROWS_STOOD_BEHIND_MOMENT + grade))
     return Rows("\n" + "\n".join(written))
 
 
@@ -415,6 +411,5 @@ def _grouped(digits: str, separator: str) -> str:
 RENDERED: dict[str, type] = {
     MONEY: Money, COUNT: Count, RATE: Rate, DATE: Date, PERIOD: Period,
     ACCOUNT: Account, MERCHANT: Merchant, CATEGORY: Category,
-    DOCUMENT: Document, GRADE: Grade, ROWS: Rows, CAVEAT: Caveat,
-    SUPPOSED: Supposed,
+    DOCUMENT: Document, ROWS: Rows, CAVEAT: Caveat, SUPPOSED: Supposed,
 }

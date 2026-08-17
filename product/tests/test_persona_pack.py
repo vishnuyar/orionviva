@@ -140,6 +140,89 @@ def test_every_way_a_turn_can_refuse_has_a_reviewed_sentence():
             f"the sentence for {tag!r} says the machine's tag out loud")
 
 
+def test_every_way_a_turn_can_refuse_is_raised_somewhere_in_the_source():
+    """Every tag in `REFUSAL_TAGS` appears as a literal somewhere a turn ends.
+
+    Pairing tags to sentences says every declared tag can be spoken; it says
+    nothing about whether anything still raises one. A tag no code reaches is a
+    reviewed sentence no person can ever hear, and it costs a reader of the
+    vocabulary the belief that the list describes the machine.
+
+    Read from the source of the two modules that end a turn, by the same AST
+    walk `test_no_prompt_text_lives_in_code` uses: every string constant except
+    the ones inside the declaration itself. Nothing here reads meaning — a tag
+    is present as a literal or it is not."""
+    import ast
+
+    from viva.tools.runner import REFUSAL_TAGS
+
+    package = pathlib.Path(persona.__file__).resolve().parent.parent
+    raised = set()
+    for path in (package / "tools" / "runner.py", package / "speak.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        declaring = {id(node) for assign in ast.walk(tree)
+                     if isinstance(assign, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == "REFUSAL_TAGS"
+                             for t in assign.targets)
+                     for node in ast.walk(assign.value)}
+        docstrings = {id(ast.get_docstring(n, clean=False))
+                      for n in ast.walk(tree)
+                      if isinstance(n, (ast.Module, ast.ClassDef,
+                                        ast.FunctionDef, ast.AsyncFunctionDef))}
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and id(node) not in declaring
+                    and id(node.value) not in docstrings):
+                raised.add(node.value)
+
+    unreachable = sorted(tag for tag in REFUSAL_TAGS if tag not in raised)
+    assert not unreachable, (
+        f"{unreachable} can no longer end a turn: nothing raises the tag, so "
+        "its reviewed sentence is dead voice. Remove the tag and its sentence "
+        "together, in the same change that removed the branch.")
+
+
+def test_every_grade_a_figure_can_carry_has_a_reviewed_sentence():
+    """How well a set of figures is stood behind is said in one whole reviewed
+    line per word on the ladder, chosen by that word — never a frame with the
+    machine's word dropped into it, which is the shape that lets a model's
+    prose wrap a machine's claim. A grade with no sentence would raise at the
+    moment an answer was assembled; it fails here instead, and a sentence no
+    grade can reach is dead voice the same way an orphan phrasing is.
+
+    Two sets are stated and each has its own family: what a whole answer rests
+    on, and what a block of rows rests on. Both are paired against the ladder in
+    both directions, so neither family can lose a word or keep a spare one."""
+    from viva.persona import ROWS_STOOD_BEHIND_MOMENT, STOOD_BEHIND_MOMENT
+    from viva.tools.envelope import STRENGTH
+
+    families = (STOOD_BEHIND_MOMENT, ROWS_STOOD_BEHIND_MOMENT)
+    everything = set()
+    for prefix in families:
+        declared = {k for k in persona.MOMENT_FIELDS if k.startswith(prefix)}
+        wanted = {prefix + grade for grade in STRENGTH}
+        assert declared == wanted, (
+            f"{prefix}: only-in-pack={sorted(declared - wanted)}, "
+            f"only-in-ladder={sorted(wanted - declared)}")
+        said = set()
+        for grade in STRENGTH:
+            key = prefix + grade
+            assert persona.MOMENT_FIELDS[key] == frozenset(), (
+                f"the sentence for {key!r} has a slot, so it is a frame with a "
+                "word dropped in rather than a line somebody reviewed")
+            sentence = persona.moment(key)
+            assert sentence.strip()
+            said.add(sentence)
+        assert len(said) == len(STRENGTH), (
+            f"{prefix}: two grades share one sentence, so what a person hears "
+            "no longer maps one-to-one to what the ledger holds")
+        everything |= said
+    assert len(everything) == len(families) * len(STRENGTH), (
+        "an answer's sentence and a block's are the same words, so a person "
+        "reading both cannot tell which figures each one is about")
+
+
 def test_every_refusal_whose_cause_may_be_spoken_has_a_reviewed_sentence():
     """The cause of a turn's failure is chosen by the tag of the read that
     stopped, so a speakable tag with no sentence in the pack is a turn that

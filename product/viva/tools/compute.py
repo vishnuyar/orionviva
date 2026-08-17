@@ -52,8 +52,8 @@ expression over nothing but literals produces a number that cannot be spoken.
 
 Three things the arithmetic refuses: combining unlike quantities, adding across
 currencies since nothing here converts between them, and mixing a claim about
-the person's money with a claim about the agent's own behaviour. A currency
-clash is a property of the expression rather than of the call — binding a
+the person's money with a claim about the agent's own doings or records. A
+currency clash is a property of the expression rather than of the call — binding a
 figure the expression never names decides nothing about it.
 """
 

@@ -213,6 +213,31 @@ same money once for each way it cuts. The guard reads the declared kinds and is
 keyed to no read and no tool. Which grouping a list of such a read should
 enumerate is undecided, and the guard is where that decision lands._
 
+_**Amended once more 2026-08-17 — a shape can no longer ask how well a figure is
+stood behind, and §4's list of what is checked loses a line.** `grade` is not a
+type a hole may declare. A shape is authored before anything is read, so a
+`grade` hole asked a model to reserve a place for a word it could not know would
+exist, and every move left when it did not was bad: bind something else and pass
+the type check, reword and be refused by the ordering rule, or leave it unbound
+and lose the clause together with any correct figure it also stated. This is the
+same argument that retired the caveat hole on 2026-08-09 and placed a figure's
+scope the day after, and it generalises: **a property of a figure that the
+machine holds is placed by the machine, never asked for through a hole.** The
+runner now states the grade of what the answer stated, in one whole reviewed
+`pack-v12` sentence per word on the ladder, after the boundary sentences and
+before the caveats; `speak-shape-v9` teaches the shorter grammar. Nothing about
+the ordering changes — the sentence is chosen by a word the machine computed,
+exactly as a refusal is chosen by a tag, and no clause and no binding is
+involved. The `ungraded_figure` tag and its reviewed sentence go with the hole,
+since nothing can raise it any more; the vocabulary of §7 stands at nineteen
+tags._
+
+_It also widens one residual by a hair and closes nothing. The prose a model
+writes **around** a hole is still read by nobody, so a model may still type the
+word "verified" into a clause of its own — but it is now betting against a
+machine-placed sentence in the same answer, which will contradict it when the
+bet was wrong._
+
 **Viability is per-model, and the model in force was on the wrong side of it.**
 The blind-authoring assumption was phrased as "a capable model", and that phrase
 was doing quiet work nobody had costed. On the two-model run, one model emitted

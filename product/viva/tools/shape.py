@@ -53,7 +53,10 @@ _HOLE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 # The types a hole in an answer may declare. Reviewed pack prose is not among
 # them: it nests one reviewed template inside another and is never a hole for
 # words nobody reviewed. Neither is a caveat: the runner places what a stated
-# figure owes, so nothing asks for one through a hole.
+# figure owes, so nothing asks for one through a hole. How well a figure is
+# stood behind is not a kind of thing at all here, for the same reason — the
+# runner holds the grade and states it, so there is nothing for a hole to ask
+# for and nothing for a renderer to write.
 SLOT_TYPES = tuple(t for t in TYPES if t not in (PROSE, CAVEAT))
 
 # Which kinds of hole hold a magnitude and which hold something else: exactly
