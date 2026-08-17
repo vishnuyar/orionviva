@@ -46,6 +46,17 @@ describe("minimal shell", () => {
     expect(getByText("Synthetic PDF · brokerage statement · pages 1–2")).toBeInTheDocument();
   });
 
+  it("navigates from a document to related evidence without losing provenance", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText } = render(<App />);
+    await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
+    await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
+    await user.click(getByRole("button", { name: /north river savings statement/i }));
+    expect(getByRole("heading", { name: "north-river-savings-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
+    expect(getByText("Synthetic PDF · savings statement · page 1")).toBeInTheDocument();
+    expect(getByRole("button", { name: /Taxable Brokerage statementcorroborates.*pages 1–2/i })).toBeInTheDocument();
+  });
+
   it("shows the selected queue item inside review", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = render(<App />);

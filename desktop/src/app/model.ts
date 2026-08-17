@@ -21,6 +21,13 @@ export type FigureView = {
 
 export type DocumentPhase = "captured" | "queued" | "held" | "read_ready" | "verified" | "unresolved";
 
+export type EvidenceLink = {
+  documentName: string;
+  label: string;
+  relation: "same_period" | "same_account" | "settles_question" | "corroborates";
+  page: string;
+};
+
 export type SurfaceDocument = {
   name: string;
   state: string;
@@ -30,6 +37,7 @@ export type SurfaceDocument = {
   source: string;
   pages: string;
   provenance: string;
+  evidenceLinks: EvidenceLink[];
 };
 
 export type AccountView = {
@@ -122,9 +130,17 @@ export const demoState: DemoState = {
   ],
   reviewCount: 2,
   documents: [
-    { name: "silverline-checking-2026-07.pdf", state: "Verified", phase: "verified", phaseLabel: "Verified read", detail: "Synthetic corpus · 2026-07-01 to 2026-07-31", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · checking statement · page 1" },
-    { name: "north-river-savings-2026-05-to-2026-07.pdf", state: "Held", phase: "held", phaseLabel: "Held for review", detail: "Synthetic corpus · quarterly statement awaiting review", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · savings statement · page 1" },
-    { name: "fidelity-brokerage-2026-05-to-2026-07.pdf", state: "Pending", phase: "queued", phaseLabel: "Queued for reading", detail: "Synthetic corpus · holdings page available for review", source: "Generated locally", pages: "2 pages", provenance: "Synthetic PDF · brokerage statement · pages 1–2" },
+    { name: "silverline-checking-2026-07.pdf", state: "Verified", phase: "verified", phaseLabel: "Verified read", detail: "Synthetic corpus · 2026-07-01 to 2026-07-31", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · checking statement · page 1", evidenceLinks: [
+      { documentName: "chase-card-2026-07.pdf", label: "Chase Sapphire card statement", relation: "same_period", page: "page 1" },
+      { documentName: "citi-card-2026-07.pdf", label: "Citi Double Cash card statement", relation: "same_period", page: "page 1" },
+    ] },
+    { name: "north-river-savings-2026-05-to-2026-07.pdf", state: "Held", phase: "held", phaseLabel: "Held for review", detail: "Synthetic corpus · quarterly statement awaiting review", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · savings statement · page 1", evidenceLinks: [
+      { documentName: "silverline-checking-2026-07.pdf", label: "Everyday Checking statement", relation: "same_account", page: "page 1" },
+      { documentName: "fidelity-brokerage-2026-05-to-2026-07.pdf", label: "Taxable Brokerage statement", relation: "corroborates", page: "pages 1–2" },
+    ] },
+    { name: "fidelity-brokerage-2026-05-to-2026-07.pdf", state: "Pending", phase: "queued", phaseLabel: "Queued for reading", detail: "Synthetic corpus · holdings page available for review", source: "Generated locally", pages: "2 pages", provenance: "Synthetic PDF · brokerage statement · pages 1–2", evidenceLinks: [
+      { documentName: "north-river-savings-2026-05-to-2026-07.pdf", label: "North River Savings statement", relation: "corroborates", page: "page 1" },
+    ] },
   ],
   trustNotes: [
     { title: "Local by default", detail: "This synthetic corpus is generated and inspected on this device; it makes no network calls." },

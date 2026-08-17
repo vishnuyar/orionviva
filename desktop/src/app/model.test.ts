@@ -39,6 +39,17 @@ describe("minimal shell model", () => {
     expect(demoState.queue.map((item) => item.outcome)).toEqual(["waiting", "proposal", "proposal"]);
   });
 
+  it("keeps evidence links explicit and navigable by document identity", () => {
+    const brokerage = demoState.documents.find((doc) => doc.name.startsWith("fidelity-brokerage"));
+    expect(brokerage?.evidenceLinks).toHaveLength(1);
+    expect(brokerage?.evidenceLinks[0]).toMatchObject({
+      documentName: "north-river-savings-2026-05-to-2026-07.pdf",
+      relation: "corroborates",
+      page: "page 1",
+    });
+    expect(demoState.documents.every((doc) => doc.evidenceLinks.every((link) => link.documentName !== doc.name))).toBe(true);
+  });
+
   it("projects the four-year synthetic corpus without inventing backend facts", () => {
     expect(syntheticCorpus.documentCount).toBe(176);
     expect(syntheticCorpus.range).toEqual({ from: "2022-08-01", to: "2026-07-31" });

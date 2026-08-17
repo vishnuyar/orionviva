@@ -365,6 +365,19 @@ function Documents({
             <span>Provenance</span>
             <strong>{activeDocument.provenance}</strong>
           </div>
+          <div className="related-evidence">
+            <div className="detail-panel-label">Related evidence</div>
+            {activeDocument.evidenceLinks.map((link) => (
+              <button
+                className="text-button related-evidence-button"
+                key={link.documentName}
+                onClick={() => onSelectDocument(link.documentName)}
+              >
+                <span>{link.label}</span>
+                <small>{link.relation.replace("_", " ")} · {link.page}</small>
+              </button>
+            ))}
+          </div>
           <button className="secondary-button">Open page review</button>
         </aside>
       </div>
