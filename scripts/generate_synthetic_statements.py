@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Iterable
 
@@ -184,24 +185,50 @@ def manifest_for(specs: Iterable[StatementSpec]) -> dict:
     }
 
 
-def specs_from_catalog(catalog: dict[str, dict]) -> list[StatementSpec]:
-    return [
+def _month_period(year: int, month: int) -> str:
+    start = date(year, month, 1)
+    if month == 12:
+        end = date(year, 12, 31)
+    else:
+        end = date(year, month + 1, 1).replace(day=1)  # type: ignore[call-arg]
+        end = end.fromordinal(end.toordinal() - 1)  # previous day
+    return f"{start.isoformat()} - {end.isoformat()}"
+
+
+def _money(value: float) -> str:
+    return f"${value:,.2f}"
+
+
+def specs_from_catalog(catalog: dict[str, dict], years: int = 4) -> list[StatementSpec]:
+    years_list = list(range(2023, 2023 + years))
+    specs: list[StatementSpec] = []
+    for offset, year in enumerate(years_list):
+        bank_open = 6200.00 + offset * 1090.15
+        bank_close = bank_open + 3800.73 + offset * 110.12
+        sav_open = 40000.00 + offset * 2200.00
+        sav_close = sav_open + 200.00 + offset * 80.00
+        brk_open = 64210.44 + offset * 5400.00
+        brk_close = brk_open + 4783.66 + offset * 350.00
+        cc_open = 1842.77 + offset * 190.00
+        cc_close = cc_open + 272.86 + offset * 65.00
+
+        specs.extend([
         StatementSpec(
-            file_name="north-river-checking-june-2026.pdf",
+            file_name=f"north-river-checking-june-{year}.pdf",
             kind="bank_statement",
             institution="Silverline Bank",
             account="Everyday Checking",
             statement_title="Checking Account Statement",
-            period="2026-06-01 - 2026-06-30",
-            opening="$8,240.18",
-            closing="$12,420.91",
+            period=_month_period(year, 6),
+            opening=_money(bank_open),
+            closing=_money(bank_close),
             transactions=[
-                ("2026-06-30", "Direct Deposit", "+4,800.00", "Payroll deposit from employer"),
-                ("2026-06-28", merchant_name(catalog, "patel brothers"), "-86.42", "Grocery purchase"),
-                ("2026-06-27", merchant_name(catalog, "venmo"), "-145.00", "Peer transfer"),
-                ("2026-06-24", merchant_name(catalog, "wal mart"), "-154.83", "Household supplies"),
-                ("2026-06-22", merchant_name(catalog, "schoolcafe"), "-42.50", "School lunch payment"),
-                ("2026-06-18", merchant_name(catalog, "amzn mktp us"), "-118.79", "Household and office order"),
+                (f"{year}-06-30", "Direct Deposit", "+4,800.00", "Payroll deposit from employer"),
+                (f"{year}-06-28", merchant_name(catalog, "patel brothers"), "-86.42", "Grocery purchase"),
+                (f"{year}-06-27", merchant_name(catalog, "venmo"), "-145.00", "Peer transfer"),
+                (f"{year}-06-24", merchant_name(catalog, "wal mart"), "-154.83", "Household supplies"),
+                (f"{year}-06-22", merchant_name(catalog, "schoolcafe"), "-42.50", "School lunch payment"),
+                (f"{year}-06-18", merchant_name(catalog, "amzn mktp us"), "-118.79", "Household and office order"),
             ],
             notes=[
                 "Memo: synthetic merchants are drawn from the merchant catalog for UI and parsing exercises.",
@@ -210,18 +237,18 @@ def specs_from_catalog(catalog: dict[str, dict]) -> list[StatementSpec]:
             merchants=["Patel Brothers", "Venmo", "Walmart", "SchoolCafe", "Amazon Marketplace"],
         ),
         StatementSpec(
-            file_name="north-river-savings-june-2026.pdf",
+            file_name=f"north-river-savings-june-{year}.pdf",
             kind="bank_statement",
             institution="Silverline Bank",
             account="North River Savings",
             statement_title="Savings Account Statement",
-            period="2026-06-01 - 2026-06-30",
-            opening="$40,000.00",
-            closing="$40,000.00",
+            period=_month_period(year, 6),
+            opening=_money(sav_open),
+            closing=_money(sav_close),
             transactions=[
-                ("2026-06-15", "Interest", "+12.11", "Monthly interest credit"),
-                ("2026-06-03", "Transfer from checking", "+1,500.00", "Automated savings transfer"),
-                ("2026-06-01", "Opening balance", "+40,000.00", "Beginning of period balance"),
+                (f"{year}-06-15", "Interest", "+12.11", "Monthly interest credit"),
+                (f"{year}-06-03", "Transfer from checking", "+1,500.00", "Automated savings transfer"),
+                (f"{year}-06-01", "Opening balance", _money(sav_open), "Beginning of period balance"),
             ],
             notes=[
                 "Interest is represented as a standard bank credit.",
@@ -230,78 +257,78 @@ def specs_from_catalog(catalog: dict[str, dict]) -> list[StatementSpec]:
             merchants=[],
         ),
         StatementSpec(
-            file_name="retail-banking-may-2026.pdf",
+            file_name=f"retail-banking-may-{year}.pdf",
             kind="bank_statement",
             institution="Silverline Bank",
             account="Everyday Checking",
             statement_title="Bank Statement",
-            period="2026-05-01 - 2026-05-31",
-            opening="$5,976.02",
-            closing="$8,240.18",
+            period=_month_period(year, 5),
+            opening=_money(5976.02 + offset * 1080.00),
+            closing=_money(bank_open),
             transactions=[
-                ("2026-05-31", "Payroll Deposit", "+4,600.00", "Employer payroll credit"),
-                ("2026-05-29", merchant_name(catalog, "patel brothers"), "-74.11", "Groceries"),
-                ("2026-05-23", merchant_name(catalog, "wal mart"), "-131.02", "Household goods"),
-                ("2026-05-18", merchant_name(catalog, "venmo"), "-95.00", "Transfer to friend"),
-                ("2026-05-11", merchant_name(catalog, "amzn mktp us"), "-88.44", "Online purchase"),
-                ("2026-05-04", merchant_name(catalog, "schoolcafe"), "-38.00", "Lunch account top-up"),
+                (f"{year}-05-31", "Payroll Deposit", "+4,600.00", "Employer payroll credit"),
+                (f"{year}-05-29", merchant_name(catalog, "patel brothers"), "-74.11", "Groceries"),
+                (f"{year}-05-23", merchant_name(catalog, "wal mart"), "-131.02", "Household goods"),
+                (f"{year}-05-18", merchant_name(catalog, "venmo"), "-95.00", "Transfer to friend"),
+                (f"{year}-05-11", merchant_name(catalog, "amzn mktp us"), "-88.44", "Online purchase"),
+                (f"{year}-05-04", merchant_name(catalog, "schoolcafe"), "-38.00", "Lunch account top-up"),
             ],
             notes=["Useful for testing mixed transaction categories and recurring cash flow."],
             merchants=["Patel Brothers", "Walmart", "Venmo", "Amazon Marketplace", "SchoolCafe"],
         ),
         StatementSpec(
-            file_name="fidelity-brokerage-may-2026.pdf",
+            file_name=f"fidelity-brokerage-may-{year}.pdf",
             kind="brokerage_statement",
             institution="Fidelity Investments",
             account="Taxable Brokerage",
             statement_title="Brokerage Statement",
-            period="2026-05-01 - 2026-05-31",
-            opening="$64,210.44",
-            closing="$68,994.10",
+            period=_month_period(year, 5),
+            opening=_money(brk_open),
+            closing=_money(brk_close),
             transactions=[
-                ("2026-05-02", merchant_name(catalog, "fid bkg svc llc"), "-2,500.00", "Cash contribution to brokerage"),
-                ("2026-05-12", merchant_name(catalog, "amzn mktp us"), "-224.19", "Discretionary purchase"),
-                ("2026-05-19", merchant_name(catalog, "tesla supercharger u"), "-58.30", "Travel expense reclassed to spending"),
-                ("2026-05-28", "Dividend", "+96.45", "Qualified dividend reinvested"),
+                (f"{year}-05-02", merchant_name(catalog, "fid bkg svc llc"), "-2,500.00", "Cash contribution to brokerage"),
+                (f"{year}-05-12", merchant_name(catalog, "amzn mktp us"), "-224.19", "Discretionary purchase"),
+                (f"{year}-05-19", merchant_name(catalog, "tesla supercharger u"), "-58.30", "Travel expense reclassed to spending"),
+                (f"{year}-05-28", "Dividend", "+96.45", "Qualified dividend reinvested"),
             ],
             notes=["Holdings are summarized on the next page to exercise investment statement layouts."],
-            holdings=[["Security", "Shares", "Price", "Market Value"], ["VTI", "120.000", "$210.12", "$25,214.40"], ["AAPL", "48.000", "$198.44", "$9,525.12"], ["VXUS", "95.000", "$57.28", "$5,441.60"], ["Cash", "-", "-", "$28,812.98"]],
+            holdings=[["Security", "Shares", "Price", "Market Value"], ["VTI", f"{120 + offset * 1.5:.3f}", _money(210.12 + offset * 2.15), _money(25214.40 + offset * 625.70)], ["AAPL", f"{48 + offset * 2:.3f}", _money(198.44 + offset * 2.33), _money(9525.12 + offset * 540.25)], ["VXUS", "95.000", _money(57.28 + offset * 0.73), _money(5441.60 + offset * 89.10)], ["Cash", "-", "-", _money(28812.98 + offset * 1510.00)]],
             merchants=["Fidelity Brokerage Services", "Amazon Marketplace", "Tesla Supercharger", "Venmo"],
         ),
         StatementSpec(
-            file_name="fidelity-brokerage-june-2026.pdf",
+            file_name=f"fidelity-brokerage-june-{year}.pdf",
             kind="brokerage_statement",
             institution="Fidelity Investments",
             account="Taxable Brokerage",
             statement_title="Brokerage Statement",
-            period="2026-06-01 - 2026-06-30",
-            opening="$68,994.10",
-            closing="$71,802.55",
+            period=_month_period(year, 6),
+            opening=_money(brk_close),
+            closing=_money(brk_close + 2808.45 + offset * 320.00),
             transactions=[
-                ("2026-06-04", merchant_name(catalog, "fid bkg svc llc"), "+3,000.00", "Brokerage cash inflow"),
-                ("2026-06-11", "SPY", "+14.22", "Unrealized gain on market movement"),
-                ("2026-06-17", "AAPL", "+22.88", "Appreciation in equity positions"),
-                ("2026-06-26", merchant_name(catalog, "venmo"), "-300.00", "Transfer to checking"),
+                (f"{year}-06-04", merchant_name(catalog, "fid bkg svc llc"), "+3,000.00", "Brokerage cash inflow"),
+                (f"{year}-06-11", "SPY", "+14.22", "Unrealized gain on market movement"),
+                (f"{year}-06-17", "AAPL", "+22.88", "Appreciation in equity positions"),
+                (f"{year}-06-26", merchant_name(catalog, "venmo"), "-300.00", "Transfer to checking"),
             ],
             notes=["Holdings are summarized on the next page to exercise investment statement layouts."],
-            holdings=[["Security", "Shares", "Price", "Market Value"], ["VTI", "121.500", "$212.40", "$25,820.10"], ["AAPL", "50.000", "$201.33", "$10,066.50"], ["VXUS", "95.000", "$58.01", "$5,510.95"], ["Cash", "-", "-", "$30,405.00"]],
+            holdings=[["Security", "Shares", "Price", "Market Value"], ["VTI", f"{121.5 + offset * 1.5:.3f}", _money(212.40 + offset * 2.15), _money(25820.10 + offset * 625.70)], ["AAPL", f"{50 + offset * 2:.3f}", _money(201.33 + offset * 2.33), _money(10066.50 + offset * 540.25)], ["VXUS", "95.000", _money(58.01 + offset * 0.73), _money(5510.95 + offset * 89.10)], ["Cash", "-", "-", _money(30405.00 + offset * 1510.00)]],
             merchants=["Fidelity Brokerage Services", "Venmo"],
         ),
         StatementSpec(
-            file_name="chase-card-june-2026.pdf",
+            file_name=f"chase-card-june-{year}.pdf",
             kind="credit_card_statement",
             institution="Chase",
             account="Chase Sapphire",
             statement_title="Credit Card Statement",
-            period="2026-06-01 - 2026-06-30",
-            opening="$1,842.77",
-            closing="$2,115.63",
+            period=_month_period(year, 6),
+            opening=_money(cc_open),
+            closing=_money(cc_close),
             transactions=[
-                ("2026-06-28", merchant_name(catalog, "patel brothers"), "-86.42", "Groceries"),
-                ("2026-06-24", merchant_name(catalog, "wal mart"), "-64.17", "General merchandise"),
-                ("2026-06-19", merchant_name(catalog, "tesla supercharger u"), "-31.80", "Charging"),
-                ("2026-06-14", merchant_name(catalog, "amzn mktp us"), "-144.55", "Shopping"),
-                ("2026-06-10", merchant_name(catalog, "payment to chase card ending in"), "+1,200.00", "Payment received from checking"),
+                (f"{year}-06-28", merchant_name(catalog, "patel brothers"), "-86.42", "Groceries"),
+                (f"{year}-06-24", merchant_name(catalog, "wal mart"), "-64.17", "General merchandise"),
+                (f"{year}-06-19", merchant_name(catalog, "tesla supercharger u"), "-31.80", "Charging"),
+                (f"{year}-06-14", merchant_name(catalog, "amzn mktp us"), "-144.55", "Shopping"),
+                (f"{year}-06-10", merchant_name(catalog, "payment to chase card ending in"), "+1,200.00", "Payment received from checking"),
             ],
             notes=[
                 "Card payment and purchase activity reference merchants present in the merchant catalog.",
@@ -310,20 +337,20 @@ def specs_from_catalog(catalog: dict[str, dict]) -> list[StatementSpec]:
             merchants=["Patel Brothers", "Walmart", "Tesla Supercharger", "Amazon Marketplace", "Chase"],
         ),
         StatementSpec(
-            file_name="citi-card-june-2026.pdf",
+            file_name=f"citi-card-june-{year}.pdf",
             kind="credit_card_statement",
             institution="Citi",
             account="Citi Double Cash",
             statement_title="Credit Card Statement",
-            period="2026-06-01 - 2026-06-30",
-            opening="$620.14",
-            closing="$884.02",
+            period=_month_period(year, 6),
+            opening=_money(620.14 + offset * 175.00),
+            closing=_money(cc_close + 150.00 + offset * 40.00),
             transactions=[
-                ("2026-06-29", merchant_name(catalog, "newrez shellpoin ach"), "-1,250.00", "Mortgage payment from bank account"),
-                ("2026-06-21", merchant_name(catalog, "kumon learning"), "-180.00", "Monthly tutoring"),
-                ("2026-06-16", merchant_name(catalog, "schoolcafe"), "-57.60", "School meals"),
-                ("2026-06-11", merchant_name(catalog, "imprintp2 ach"), "-42.12", "Subscription charge"),
-                ("2026-06-07", merchant_name(catalog, "citi card online"), "+900.00", "Card payment"),
+                (f"{year}-06-29", merchant_name(catalog, "newrez shellpoin ach"), "-1,250.00", "Mortgage payment from bank account"),
+                (f"{year}-06-21", merchant_name(catalog, "kumon learning"), "-180.00", "Monthly tutoring"),
+                (f"{year}-06-16", merchant_name(catalog, "schoolcafe"), "-57.60", "School meals"),
+                (f"{year}-06-11", merchant_name(catalog, "imprintp2 ach"), "-42.12", "Subscription charge"),
+                (f"{year}-06-07", merchant_name(catalog, "citi card online"), "+900.00", "Card payment"),
             ],
             notes=[
                 "This card statement includes loan-payment and housing-related merchants for categorization tests.",
@@ -331,7 +358,8 @@ def specs_from_catalog(catalog: dict[str, dict]) -> list[StatementSpec]:
             ],
             merchants=["Newrez", "Kumon", "SchoolCafe", "Imprint", "Citi"],
         ),
-    ]
+        ])
+    return specs
 
 
 def main(out_dir: Path = DEFAULT_OUT) -> None:
@@ -342,7 +370,7 @@ def main(out_dir: Path = DEFAULT_OUT) -> None:
     for pdf in out_dir.glob("*.pdf"):
         pdf.unlink()
     styles = build_styles()
-    specs = specs_from_catalog(catalog)
+    specs = specs_from_catalog(catalog, years=4)
     for spec in specs:
         pdf = out_dir / spec.file_name
         build_statement_pdf(pdf, spec, styles)

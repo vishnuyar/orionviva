@@ -12,20 +12,15 @@ def test_synthetic_statement_generator_creates_manifest_and_pdfs(tmp_path):
     generated = Path("/Users/vishnu/orionviva-surface/output/pdf/synthetic_statements")
 
     pdfs = sorted(p.name for p in generated.glob("*.pdf"))
-    assert pdfs == [
-        "chase-card-june-2026.pdf",
-        "citi-card-june-2026.pdf",
-        "fidelity-brokerage-june-2026.pdf",
-        "fidelity-brokerage-may-2026.pdf",
-        "north-river-checking-june-2026.pdf",
-        "north-river-savings-june-2026.pdf",
-        "retail-banking-may-2026.pdf",
-    ]
+    assert len(pdfs) == 28
+    assert "north-river-checking-june-2023.pdf" in pdfs
+    assert "chase-card-june-2026.pdf" in pdfs
+    assert "fidelity-brokerage-june-2025.pdf" in pdfs
 
     manifest = json.loads((generated / "manifest.json").read_text())
     assert manifest["purpose"].startswith("synthetic statement set")
-    assert len(manifest["documents"]) == 7
+    assert len(manifest["documents"]) == 28
     files = {doc["file"] for doc in manifest["documents"]}
-    assert "fidelity-brokerage-june-2026.pdf" in files
+    assert "fidelity-brokerage-june-2024.pdf" in files
     assert any("Amazon Marketplace" in doc["merchants"] for doc in manifest["documents"])
     assert any("Newrez" in doc["merchants"] for doc in manifest["documents"])
