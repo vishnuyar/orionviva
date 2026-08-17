@@ -24,6 +24,12 @@ describe("minimal shell model", () => {
     expect(demoState.trustNotes).toHaveLength(3);
   });
 
+  it("keeps capture, reading, and verification as separate document phases", () => {
+    expect(demoState.documents.map((doc) => doc.phase)).toEqual(["verified", "held", "queued"]);
+    expect(demoState.documents.map((doc) => doc.phaseLabel)).toEqual(["Verified read", "Held for review", "Queued for reading"]);
+    expect(demoState.documents.every((doc) => doc.provenance.includes("Synthetic PDF"))).toBe(true);
+  });
+
   it("projects the four-year synthetic corpus without inventing backend facts", () => {
     expect(syntheticCorpus.documentCount).toBe(176);
     expect(syntheticCorpus.range).toEqual({ from: "2022-08-01", to: "2026-07-31" });

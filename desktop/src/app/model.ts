@@ -17,6 +17,19 @@ export type FigureView = {
   caveats: string[];
 };
 
+export type DocumentPhase = "captured" | "queued" | "held" | "read_ready" | "verified" | "unresolved";
+
+export type SurfaceDocument = {
+  name: string;
+  state: string;
+  phase: DocumentPhase;
+  phaseLabel: string;
+  detail: string;
+  source: string;
+  pages: string;
+  provenance: string;
+};
+
 export type DemoState = {
   currentThrough: string;
   coverage: string;
@@ -27,7 +40,7 @@ export type DemoState = {
   queue: Array<{ label: string; detail: string; status: string; action: string; type: string; evidence: string }>;
   recent: Array<{ label: string; display: string; detail: string; tone: "inflow" | "outflow" | "neutral" }>;
   reviewCount: number;
-  documents: Array<{ name: string; state: string; detail: string; source: string; pages: string }>;
+  documents: SurfaceDocument[];
   trustNotes: Array<{ title: string; detail: string }>;
 };
 
@@ -67,9 +80,9 @@ export const demoState: DemoState = {
   ],
   reviewCount: 2,
   documents: [
-    { name: "silverline-checking-2026-07.pdf", state: "Verified", detail: "Synthetic corpus · 2026-07-01 to 2026-07-31", source: "Generated locally", pages: "1 page" },
-    { name: "north-river-savings-2026-05-to-2026-07.pdf", state: "Held", detail: "Synthetic corpus · quarterly statement awaiting review", source: "Generated locally", pages: "1 page" },
-    { name: "fidelity-brokerage-2026-05-to-2026-07.pdf", state: "Pending", detail: "Synthetic corpus · holdings page available for review", source: "Generated locally", pages: "2 pages" },
+    { name: "silverline-checking-2026-07.pdf", state: "Verified", phase: "verified", phaseLabel: "Verified read", detail: "Synthetic corpus · 2026-07-01 to 2026-07-31", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · checking statement · page 1" },
+    { name: "north-river-savings-2026-05-to-2026-07.pdf", state: "Held", phase: "held", phaseLabel: "Held for review", detail: "Synthetic corpus · quarterly statement awaiting review", source: "Generated locally", pages: "1 page", provenance: "Synthetic PDF · savings statement · page 1" },
+    { name: "fidelity-brokerage-2026-05-to-2026-07.pdf", state: "Pending", phase: "queued", phaseLabel: "Queued for reading", detail: "Synthetic corpus · holdings page available for review", source: "Generated locally", pages: "2 pages", provenance: "Synthetic PDF · brokerage statement · pages 1–2" },
   ],
   trustNotes: [
     { title: "Local by default", detail: "This synthetic corpus is generated and inspected on this device; it makes no network calls." },

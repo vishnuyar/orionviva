@@ -356,6 +356,14 @@ function Documents({
               <span>Status</span>
               <strong>{activeDocument.state}</strong>
             </div>
+            <div>
+              <span>Lifecycle</span>
+              <strong>{activeDocument.phaseLabel}</strong>
+            </div>
+          </div>
+          <div className="document-provenance">
+            <span>Provenance</span>
+            <strong>{activeDocument.provenance}</strong>
           </div>
           <button className="secondary-button">Open page review</button>
         </aside>

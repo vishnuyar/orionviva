@@ -42,6 +42,8 @@ describe("minimal shell", () => {
     await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
     expect(getByText("Generated locally")).toBeInTheDocument();
     expect(getByText("2 pages")).toBeInTheDocument();
+    expect(getByText("Queued for reading")).toBeInTheDocument();
+    expect(getByText("Synthetic PDF · brokerage statement · pages 1–2")).toBeInTheDocument();
   });
 
   it("shows the selected queue item inside review", async () => {
