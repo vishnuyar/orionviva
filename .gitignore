@@ -95,6 +95,9 @@ desktop/dist/
 desktop/*.js
 desktop/*.d.ts
 desktop/*.tsbuildinfo
+desktop/src-tauri/binaries/
+desktop/src-tauri/target/
+desktop/src-tauri/tauri.release.generated.json
 
 # The Cowork device bridge cannot delete files; deletions are parked here for manual removal.
 _to_delete/
