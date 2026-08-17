@@ -63,6 +63,8 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-shape-v6": "8727443fdd90f027",
     "speak-retry-v3": "ec6b6369a6c02300",
     "speak-repairs-v1": "40e6f50289ce7171",
+    "speak-shape-v7": "e3f7b55e22261a12",
+    "speak-final-v11": "4f3b44d44b932585",
 }
 
 

@@ -209,11 +209,91 @@ halves are closed in the 2026-08-05 amendment below._
 > registered; the descriptions file was `tools-v7` at this point (`tools-v8`
 > since the 2026-08-09/-10 cycles recorded in
 > [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md),
-> and **`tools-v9` since 2026-08-15**, which teaches that an account someone
+> `tools-v9` since 2026-08-15, which teaches that an account someone
 > owes on is measured as `owed` rather than as `balance` — see
-> [net-worth.md](net-worth.md)).
+> [net-worth.md](net-worth.md) — and **`tools-v10` since 2026-08-16**, which
+> teaches the `vocabulary` mode below).
 >
 > Recorded and not fixed: whether a slot can be filled at all is still not
 > computed from the registry before a call is made, which is where the refused
 > spend was supposed to go. `{document}` is a declared slot type that no tool
 > emits. And none of this has met real data — the Witness runs next._
+
+> _Amended 2026-08-16, after a verb inventory taken by running the code rather
+> than by reading this file. **Six registered, one shippable, one half-built,
+> one blocked on data, four unbuilt — and two that may not be verbs at all.**
+> The status of each of the thirteen, as of today:_
+>
+> | Verb | Status | What exists underneath | What is stopping it |
+> |---|---|---|---|
+> | `query_ledger` | registered | — | — |
+> | `list_movements` | registered | — | — |
+> | `check_completeness` | registered | — | — |
+> | `compute` | registered | — | — |
+> | `get_provenance` | registered | — | — |
+> | `get_transparency` | registered | — | — |
+> | `find_patterns` | machinery built, not exposed as a tool | `rhythm_hypotheses` on the projection and `build_streams` in `viva/ledger/streams.py` — cadence, interval days, amount stability, steady/confirmed — with one CLI report over them (`streams_report`) and three other consumers (`questions`, `ingest/categorize`, `agent/observe`) | Nothing structural. Per the settled open question above it begins as a named projection through `query_ledger`, not as a verb |
+> | `list_obligations` | half-built | Rhythm gives a cadence and a last occurrence per stream | Nothing anywhere computes a next-expected date or amount. A design question — how sure a rhythm must be before a bill is called *due* — rather than missing machinery |
+> | `search_documents` | blocked at the data layer | Originals stored content-addressed | No text index of any kind. What is captured per document is the **model's response** text, not the document's own. This is the requirement this file already says flows back into the pipeline design |
+> | `project` | nothing exists | — | Greenfield, and it must be verify-grade code. No amortization, compounding or payoff arithmetic anywhere in the tree |
+> | `recall` | nothing exists | — | No memory events, no preference or goal storage |
+> | `remember` | nothing exists | — | Also a write verb — see below |
+> | `correct` | writers exist; the verb contradicts a ruling | Every ruling and categorization writer works today | The 2026-07-25 amendment says the write direction *"needs no tools at all: it produces a Proposal that deterministic writers apply after confirmation"* |
+>
+> **Two inconsistencies this surfaced, recorded rather than resolved.**
+>
+> First, `remember` and `correct` are write verbs in a document amended to say
+> the write direction takes no tools. Either the amendment narrows the thirteen
+> to eleven read verbs, or those two are something other than tools. **Unruled;
+> it is a decision, not a tidy-up**, and the count stays thirteen here until it
+> is taken.
+>
+> Second, **four of the seven unbuilt verbs are list-shaped.**
+> `find_patterns` returns N patterns, `list_obligations` returns N bills,
+> `search_documents` returns N passages, and `recall` returns N remembered
+> things. The other three are not: `project` returns one scenario, and
+> `remember` and `correct` each name a single target — which is the same fact
+> as the inconsistency above, since those two are the write verbs. When this
+> inventory was taken **Viva could speak a list of nothing** — a shape is a
+> fixed set of clauses authored before any read, and a binding names exactly
+> one thing — so the answer path's inability to say more than one row of a kind
+> was not a property of any one question but a wall standing in front of four
+> of the seven remaining verbs.
+>
+> **That wall came down the same day.** A binding may now name a whole read
+> rather than one thing in it, and the machine writes a line per figure that
+> read took over a named slice, so how many rows there are never reaches the
+> model. The renderer knows nothing about spending — it reads a figure's own
+> declaration of what it measures and what slice it covers — so patterns, bills,
+> passages and remembered things are speakable as lists on the day those verbs
+> exist. What stands in front of the four is now the four.
+> See `briefs/the-shape-does-not-know-how-many-rows-it-has.md`.
+>
+> **One candidate that was not a fourteenth verb, and is now a mode of the
+> first.** When this inventory was taken **no tool returned the vault's own
+> vocabulary as a set.** Fragments of it leaked out of reads — a spending
+> breakdown names the ten largest groups, a movement listing carries each row's
+> category and subcategory — and a refusal names the known values for the five
+> things that *are* filters (account, category, tag, merchant, currency). None
+> of those is the whole list, and the gap was sharpest for subcategories, which
+> are not a filter at all: there is no `unknown_subcategory` refusal, so that
+> vocabulary was reachable through no refusal either. `known_categories`,
+> `known_subcategories` and `known_tags` sat on the projection, exposed by no
+> registered tool.
+>
+> **They are exposed now**, as `query_ledger` with `entity: "vocabulary"` and a
+> `group_by`: what labels this vault holds under any of its six groupings, and
+> how many. A mode rather than a fourteenth verb, on the scaling law — pressure
+> to add a tool is a signal that an existing verb is incomplete — and not on the
+> 2026-08-01 decision above, which names `find_patterns` and `list_obligations`
+> and settles only those two. A subcategory is counted under the category it
+> slices, the same unit a breakdown groups by, so the count and the list cannot
+> disagree. The count is also a different number from how many groups a person's
+> *spending* falls into, which is the confusion the mode exists to end.
+>
+> **What it cannot do yet is answer for itself.** That count carries no grade
+> and no `record_ids`, so *"why do you say five?"* comes back with nothing, and
+> it is declared `ACTIVITY` — a number about the agent's own behaviour — which
+> is not what a count of the vault's own labels is. Shipped knowingly, with its
+> own cycle owed. It remains the missing input to capability honesty rather than
+> its implementation: nothing yet computes from the registry what is askable._

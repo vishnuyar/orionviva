@@ -224,9 +224,18 @@ BY_MERCHANT = ENTITY_MERCHANT
 BY_PERIOD = "period"          # both edges of a span, as two days
 BY_SINCE = "since"            # one edge: the day it runs from
 BY_UNTIL = "until"            # one edge: the day it runs to
+# Three the vault names and holds no entity for. A subcategory is stored as a
+# pair, because two categories may each hold a "Fees"; a tag overlaps its
+# neighbours; a currency is not a thing anyone holds. Saying which of them a
+# figure was taken over is a statement of scope, and a scope makes no promise
+# to be a filter — a person handing one back is refused, and the refusal names
+# what is filterable.
+BY_SUBCATEGORY = "subcategory"
+BY_TAG = "tag"
+BY_CURRENCY = "currency"
 
 SELECTED_KINDS = (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD, BY_SINCE,
-                  BY_UNTIL)
+                  BY_UNTIL, BY_SUBCATEGORY, BY_TAG, BY_CURRENCY)
 
 # The one member that takes two days rather than one.
 _TWO_ENDED = (BY_PERIOD,)
@@ -254,7 +263,7 @@ class Boundary(dict):
 
 
 def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
-            unmeasured=(), unposted: int = 0) -> Boundary:
+            cut=None, unmeasured=(), unposted: int = 0) -> Boundary:
     """What one figure was taken over, and whether that set is everything the
     quantity it declares would range over.
 
@@ -268,10 +277,26 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
     where a total was asked for is a true figure over the wrong set.
     ``selected`` names how the set was narrowed, each entry a member of
     ``SELECTED_KINDS`` with the thing it was narrowed to — ``value``, plus
-    ``to`` for the members that take two days. ``unmeasured`` names what the
-    figure claims to measure and does not include, each with why it is out and
-    the document that would settle it — which a gap of a reason that has one
-    must carry, and a gap of a reason that has none may not be asked for.
+    ``to`` for the members that take two days. ``cut`` names the one slice of
+    that set THIS figure was taken over, in the same vocabulary and under the
+    same checks: a read grouped into ten totals narrows once and cuts ten ways,
+    and which cut a figure is is a property of the figure rather than of the
+    read. It is told apart from ``selected`` because it is the one part of a
+    boundary that is already said when the figure is written beside its own
+    name, and saying it twice would be the same claim made twice.
+
+    A cut is the only entry a whole figure may still carry, because it is the
+    only one that is not a way of falling short. It says WHICH slice the figure
+    is; ``whole`` says whether that slice is everything the quantity ranges
+    over. The one group of a grouping that partitions is both — it is the
+    groceries group and it is all of the spending — and a block of rows needs
+    its name whichever it is. Nothing is said about it either way: a whole
+    figure states no boundary at all.
+
+    ``unmeasured`` names what the figure claims to measure and does not
+    include, each with why it is out and the document that would settle it —
+    which a gap of a reason that has one must carry, and a gap of a reason that
+    has none may not be asked for.
     ``unposted`` counts documents read and not posted: they are a gap of the
     same standing that no account can name, because such a document may be
     about an account that does not exist yet, so it is counted rather than
@@ -284,10 +309,17 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
     if counts["counted"] < 0 or counts["counted"] > counts["held"]:
         raise ValueError(f"a figure covering {counts['counted']} of "
                          f"{counts['held']} covers more than there is")
-    chosen = [{"kind": str(item["kind"]), "value": str(item["value"]),
-               "to": str(item.get("to", ""))}
-              for item in selected]
-    for item in chosen:
+
+    def named(item) -> dict:
+        return {"kind": str(item["kind"]), "value": str(item["value"]),
+                "to": str(item.get("to", ""))}
+
+    chosen = [named(item) for item in selected]
+    slice_of = named(cut) if cut else None
+    # One vocabulary and one set of checks, whichever half of the boundary the
+    # entry belongs to: a cut is narrowing said of one figure rather than of the
+    # read, so nothing about how it must be written is different.
+    for item in chosen + ([slice_of] if slice_of else []):
         if item["kind"] not in SELECTED_KINDS:
             raise ValueError(f"a set is not narrowed by {item['kind']!r}: "
                              + ", ".join(SELECTED_KINDS))
@@ -330,6 +362,8 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
         out["accounts"] = counts
     if chosen:
         out["selected"] = chosen
+    if slice_of:
+        out["cut"] = slice_of
     if left_out:
         out["unmeasured"] = left_out
     if int(unposted):
@@ -381,6 +415,13 @@ class ToolResult:
     tool: str                                   # the verb that produced this
     ok: bool                                    # False is a refusal, not an error
     data: object = None                         # JSON-safe payload
+    # The identity this read was given by the run that made it, stamped in call
+    # order. A read is a thing an answer can refer to, and not only a source of
+    # things: a hole whose filling is a block of rows names the read the rows
+    # came from, because how many rows there are is not knowable when the hole
+    # is authored. Empty until the run stamps it, and empty on a refusal, which
+    # established nothing to refer to.
+    id: str = ""
     # Every number this result asserts, each addressable by id. A number the
     # model may say is a number some tool emitted here; anything living only in
     # `data` is machinery, not a claim.
@@ -410,7 +451,8 @@ class ToolResult:
         """What the model is shown, which is less than this result holds. A
         figure's `record_ids` stay behind — an answer cites the figure by id and
         the runner resolves the records — and only their count travels."""
-        return {"tool": self.tool, "ok": self.ok, "data": self.data,
+        return {"tool": self.tool, "ok": self.ok, "id": self.id,
+                "data": self.data,
                 "figures": [_stated(f) for f in self.figures],
                 "identifiers": [_named(i) for i in self.identifiers],
                 "grade": self.grade, "dated": self.dated,

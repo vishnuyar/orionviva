@@ -253,7 +253,7 @@ grade.
 rows; `list_movements` returns the individual rows and refuses a call that
 names none of account, category, merchant, tag or window. Six tools are
 registered, and the descriptions file was `tools-v2` at this point; it is
-`tools-v9` since the cycles below.
+`tools-v10` since the cycles below.
 
 **What a result costs became a design constraint rather than an afterthought.**
 A tool result is resent in full on every model call for the rest of the turn,
@@ -710,3 +710,43 @@ that does not exist yet — it is counted rather than named.
 places no sentence, because naming one needs a written form none of them has.
 What would settle a gap travels as data and is not spoken, since those words
 live where the gap is computed rather than in a reviewed pack.
+
+---
+
+_Amended 2026-08-16 (the shape does not know how many rows it has). A
+boundary gains a second half. Beside how the read was narrowed, a figure now
+carries a **`cut`** — the one slice THIS figure was taken over — because a read
+narrows once and cuts into as many groups as it has, and which cut a figure is
+is a property of the figure. Every grouping the schema offers names its slices
+now, including the three the vault holds no entity for: a subcategory pair, a
+tag and a currency are each written as the label the vault holds them under,
+which is a statement of that figure's scope and makes no promise to be a handle
+a follow-up accepts. That is what let a group key with no entity be spoken at
+all. A cut is also the one boundary entry a whole figure may carry, since
+naming which slice a figure is is not a way of falling short of anything._
+
+_The *not covered* line above keeps its verdict and loses its reason.
+Narrowing by a **tag or a currency still places no sentence**, but no longer
+because none of them has a written form: `pack-v10` carries a sentence for
+each, in the narrowing voice, and the table that maps a filter to a boundary
+entry is simply still account, category and merchant. The gap is a wiring one
+now rather than a design one, and it is named rather than closed. Nature has
+neither._
+
+_The run's ledger gains a member. Alongside figures, the accounts and
+counterparties a read spoke about, the days it carries, the spans it attests and
+the caveats it wrote, it now holds **readings** — so the enumeration under *So a
+model writes no digits* above is one short from this cycle on. A read is a thing
+an answer can refer to and not only a bag of things it establishes, which is
+what a `rows` hole binds to: how many figures a read will hold is not knowable
+when the sentence holding them is authored._
+
+_Four families moved with it. `speak-shape-v7` teaches the `rows` hole, whose
+filling is a block the machine writes a line of per figure, so how many rows
+there are never reaches the model; `speak-final-v11` teaches the sixth kind of
+reference, `{"read": "rN"}`, which names a whole reading rather than one thing
+in it; `tools-v10` teaches the `vocabulary` mode of `query_ledger` — what
+labels this vault holds under any of the six groupings, and how many, which is
+a different number from how many groups its spending falls into; and
+`pack-v10` carries the seven sentences that go with all of it. `speak-final-v10`,
+`speak-shape-v6`, `tools-v9` and `pack-v9` were in force until this cycle._

@@ -48,12 +48,13 @@ MERCHANT = "merchant"    # a counterparty, as the ledger knows it
 CATEGORY = "category"    # what money is, as a label
 DOCUMENT = "document"    # a kind of document, never one particular record
 GRADE = "grade"          # how well a figure is stood behind
+ROWS = "rows"            # every figure of one read, each beside what it covers
 CAVEAT = "caveat"        # what a result said its own number does not cover
 SUPPOSED = "supposed"    # a value the person themselves put into this turn
 PROSE = "prose"          # reviewed words from a pack, placed whole
 
 TYPES = (MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
-         DOCUMENT, GRADE, CAVEAT, SUPPOSED, PROSE)
+         DOCUMENT, GRADE, ROWS, CAVEAT, SUPPOSED, PROSE)
 
 # Which quantities a hole of each type may ask for. A type says what shape a
 # number takes and a quantity says what it is of, and the pairing is not free:
@@ -73,6 +74,20 @@ QUANTITY_OF_TYPE: dict[str, frozenset] = {
     RATE: frozenset({quantity.RATIO}) | frozenset(quantity.RATIOS),
     SUPPOSED: frozenset(quantity.KINDS),
 }
+
+# The same pairing read the other way: what a number MEANS decides what shape
+# it takes. A hole says which of the two it wants and a figure need not, so
+# anywhere a magnitude is written with no hole above it — a row of a block — the
+# figure's own declaration is what picks the renderer.
+#
+# `SUPPOSED` is left out: it is not a shape a figure takes but a mark on a value
+# the person put into their own turn, and it may be of anything, so including it
+# would make every quantity ambiguous.
+MAGNITUDE_OF_TYPE = {kind: measures for kind, measures in QUANTITY_OF_TYPE.items()
+                     if kind != SUPPOSED}
+TYPE_OF_QUANTITY: dict[str, str] = {
+    measure: kind for kind, measures in MAGNITUDE_OF_TYPE.items()
+    for measure in measures}
 
 # Money is written to the minor unit, and a figure is quantized before it is
 # grouped so that the digits shown are the digits rounded.
@@ -132,6 +147,14 @@ class Document(_Written):
 
 
 class Grade(_Written):
+    __slots__ = ()
+
+
+class Rows(_Written):
+    __slots__ = ()
+
+
+class Label(_Written):
     __slots__ = ()
 
 
@@ -295,6 +318,45 @@ def grade(word) -> Grade:
     return Grade(str(word or "").strip())
 
 
+def label(name) -> Label:
+    """A name the vault holds for a slice of itself, written as it is held.
+
+    Not every slice of a ledger is a thing that can be asked about. A
+    subcategory is stored as a pair, because two categories may each hold a
+    "Fees"; a tag overlaps its neighbours; a currency code is not a thing anyone
+    holds. None of the three is an entity, so none can be referred to — and all
+    three are still what a figure beside them is a figure OF. This writes that
+    name, as a statement of scope and never as a handle: a person handed one
+    back as a filter would be refused, and the refusal names what is
+    filterable."""
+    return Label(str(name or "").strip())
+
+
+def rows(lines, *, grade: str = "") -> Rows:
+    """Every figure of one read, one to a line, each beside the slice it covers.
+
+    A block, not a sentence. How many lines there are is not knowable when the
+    answer is shaped — the person may hold three subcategories or thirty — so
+    nothing above ever writes a line, and nothing here knows what the lines are
+    about: `lines` is pairs of things this module already wrote, a name and the
+    magnitude taken over it.
+
+    The grade goes once, above, and is worded as being about the set. It is one
+    grade computed over the whole read and stamped on every figure in it, so a
+    word repeated per line would read as a claim about that line when it is a
+    claim about the read. Where nothing carries a grade, nothing is said.
+
+    The words around the two halves of a line are the pack's, like every other
+    thing Viva says."""
+    from .persona import moment
+
+    written = [moment("rows_line", name=name, amount=amount)
+               for name, amount in lines]
+    if grade:
+        written.insert(0, moment("rows_stood_behind", grade=grade))
+    return Rows("\n".join(written))
+
+
 def caveat(sentence) -> Caveat:
     """What a result said its own number does not cover, in the tool's own
     words. Verbatim: a caveat re-worded is a caveat weakened."""
@@ -345,8 +407,12 @@ def _grouped(digits: str, separator: str) -> str:
 # so a slot asking for a rendered thing cannot be handed something that was
 # never rendered. `prose` has no entry deliberately: reviewed pack words nest
 # inside reviewed pack words, and are never a hole for text nobody reviewed.
+# `label` has none for a different reason: it is not a kind of thing a hole may
+# hold. A name the vault holds for a slice of itself is written where the
+# machine places one, and there is nothing to refer to it by.
 RENDERED: dict[str, type] = {
     MONEY: Money, COUNT: Count, RATE: Rate, DATE: Date, PERIOD: Period,
     ACCOUNT: Account, MERCHANT: Merchant, CATEGORY: Category,
-    DOCUMENT: Document, GRADE: Grade, CAVEAT: Caveat, SUPPOSED: Supposed,
+    DOCUMENT: Document, GRADE: Grade, ROWS: Rows, CAVEAT: Caveat,
+    SUPPOSED: Supposed,
 }

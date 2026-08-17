@@ -65,9 +65,10 @@ from vivacore import promptstore, versions
 from .. import render
 from ..persona import moment
 from .compute import numbers_said
-from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD,
-                       BY_SINCE, BY_UNTIL, ENTITY_ACCOUNT, ENTITY_MARKS, EXACT,
-                       HYPOTHETICAL, MONEY_KINDS, ToolResult, weakest)
+from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_MERCHANT,
+                       BY_PERIOD, BY_SINCE, BY_SUBCATEGORY, BY_TAG, BY_UNTIL,
+                       ENTITY_ACCOUNT, ENTITY_MARKS, EXACT, HYPOTHETICAL,
+                       MONEY_KINDS, ToolResult, weakest)
 from .registry import PACKAGE, PROMPTS, Registry
 from .shape import Shape
 
@@ -166,6 +167,13 @@ class _Ground:
     entities: dict = field(default_factory=dict)  # entity id -> entity
     periods: dict = field(default_factory=dict)   # period id -> span
     caveats: dict = field(default_factory=dict)   # caveat id -> sentence
+    # Each read this run made, in call order, as the figures it emitted. A read
+    # is a thing in its own right and not only a bag of things, because how many
+    # figures it will hold is not knowable when a sentence is authored. Unlike
+    # the others this is an occurrence rather than a thing: two identical reads
+    # are two readings, since a person shown a block of rows is being shown one
+    # particular reading of their ledger.
+    readings: dict = field(default_factory=dict)  # reading id -> figure ids
     dates: set = field(default_factory=set)       # ISO days some result carries
     # Which caveats stand behind each figure, so an answer that states a
     # number has to state what the number does not cover.
@@ -199,12 +207,14 @@ class _Ground:
                                      "from": span["from"], "to": span["to"]}
         if _is_iso_date(result.dated):
             self.dates.add(result.dated)
+        result.id = f"r{len(self.readings) + 1}"
         for fig in result.figures:
             fig["id"] = f"f{len(self.book) + 1}"
             self.book[fig["id"]] = fig
             self.owed[fig["id"]] = tuple(caveat_ids)
             if _is_iso_date(fig.get("dated")):
                 self.dates.add(str(fig["dated"]))
+        self.readings[result.id] = [fig["id"] for fig in result.figures]
         for index, named in enumerate(result.identifiers or []):
             item = (named if isinstance(named, dict)
                     else {"kind": ENTITY_ACCOUNT, "name": str(named)})
@@ -241,7 +251,8 @@ REFUSAL_TAGS = (
     # the delivery was not a delivery
     "bad_delivery", "unshaped_binding", "bad_binding",
     # a hole was filled from outside this run's ledger
-    "unknown_figure", "unknown_entity", "unknown_period", "unfounded_date", "unfounded_stipulation", "ungraded_figure", "wrong_kind",
+    "unknown_figure", "unknown_entity", "unknown_period", "unknown_reading",
+    "unfounded_date", "unfounded_stipulation", "ungraded_figure", "wrong_kind",
     # a real figure was offered for a hole asking about something else
     "wrong_quantity",
     # the answer as a whole could not be stood behind
@@ -396,7 +407,7 @@ def _committable(current, proposed: Shape, ground: _Ground) -> str:
 # these and nothing else, so there is no field a value could arrive in. A
 # caveat is not among them: this module places what a stated figure owes, so
 # there is no hole for one to fill and nothing to refer to it by.
-BINDING_KEYS = ("figure", "entity", "period", "date", "supposed")
+BINDING_KEYS = ("figure", "entity", "period", "date", "supposed", "read")
 
 # The one kind of reference a hole of each type can hold. Where a type admits
 # exactly one, the type has already said what a bare value refers to, and a
@@ -404,7 +415,7 @@ BINDING_KEYS = ("figure", "entity", "period", "date", "supposed")
 # absent: a figure this run read and a value the person supposed both belong in
 # a money, count or rate hole, and the key is what tells them apart.
 SOLE_BINDING = {render.DATE: "date", render.PERIOD: "period",
-                render.GRADE: "figure",
+                render.GRADE: "figure", render.ROWS: "read",
                 render.SUPPOSED: "supposed",
                 render.ACCOUNT: "entity", render.MERCHANT: "entity",
                 render.CATEGORY: "entity", render.DOCUMENT: "entity"}
@@ -483,6 +494,18 @@ def _bound(slot, reference, ground: _Ground, locale: str):
                 f"The hole {slot.name!r} wants {slot.type}, and a period is a "
                 "span a document answers for, never a magnitude.")
         return render.period(span["from"], span["to"]), "", ""
+
+    if key == "read":
+        rows = ground.readings.get(str(value))
+        if rows is None:
+            return None, "unknown_reading", (
+                f"The answer refers to a read {str(value)!r} this turn never "
+                "made.")
+        if slot.type != render.ROWS:
+            return None, "wrong_kind", (
+                f"The hole {slot.name!r} wants {slot.type}, and a read is every "
+                "figure of one reading at once.")
+        return _rows_bound(slot, rows, ground, locale)
 
     if key == "date":
         if slot.type != render.DATE:
@@ -638,6 +661,80 @@ SELECTED_TERMS = {
                lambda item, ground: render.date(item["value"])),
     BY_UNTIL: ("boundary_selected_until", "day",
                lambda item, ground: render.date(item["value"])),
+    # The three the vault holds no thing for. Each is written as the label it is
+    # held under, which says what a figure's scope is and offers nothing to ask
+    # a follow-up with.
+    BY_SUBCATEGORY: ("boundary_selected_subcategory", "subcategory",
+                     lambda item, ground: render.label(item["value"])),
+    BY_TAG: ("boundary_selected_tag", "tag",
+             lambda item, ground: render.label(item["value"])),
+    BY_CURRENCY: ("boundary_selected_currency", "currency",
+                  lambda item, ground: render.label(item["value"])),
+}
+
+
+def _named_slice(item: dict, ground: _Ground):
+    """What one cut of a set is written as: the thing it was cut to, in
+    whichever form that kind of thing is written in. The same writer the
+    sentence about a boundary uses, so a slice named beside a number and a
+    slice named in a scope clause are never written two ways."""
+    return SELECTED_TERMS[item["kind"]][2](item, ground)
+
+
+def _rows_bound(slot, rows, ground: _Ground, locale: str):
+    """One read's figures as a block, each beside the slice it covers.
+
+    Generic on purpose, and the whole point of the hole. Nothing here knows
+    what spending is: a row is any figure whose boundary names the cut it was
+    taken over, its name is that cut written by its own kind, and its magnitude
+    is written by the shape its declared quantity takes. So the day a read
+    returns patterns or bills instead of totals, they are speakable without
+    this being touched.
+
+    The grade is the weakest among the figures that make a claim about money,
+    stated once above the block. It is one grade computed over the whole read
+    and stamped on each of its figures, so per-row it would read as a claim
+    about that row when it is a claim about the read.
+
+    A read that names no slice fills nothing. That is a binding naming the
+    wrong sort of read rather than a gap: the hole was bound, and to something
+    that has no rows in it."""
+    lines, cited = [], []
+    for fid in rows:
+        fig = ground.book[fid]
+        cut = (fig.get("boundary") or {}).get("cut")
+        if not cut:
+            continue
+        kind = render.TYPE_OF_QUANTITY.get(fig["quantity"], "")
+        value = _decimal(fig["value"])
+        if not kind or value is None:
+            # A block is every figure of this read that named a slice, and a
+            # line quietly left out would make it a false claim about its own
+            # completeness. So a figure that cannot be written costs the block
+            # rather than itself.
+            return None, "wrong_kind", (
+                f"The hole {slot.name!r} wants rows, and {fig['what']!r} is a "
+                "slice of that read holding no magnitude anything can write.")
+        written = _MAGNITUDE_WRITERS[kind](value, fig, locale)
+        lines.append((_named_slice(cut, ground), _hedged(written, fig, kind)))
+        cited.append(fig)
+    if not lines:
+        return None, "wrong_kind", (
+            f"The hole {slot.name!r} wants rows, and that read named no slice "
+            "of anything — there is nothing in it to write one line per.")
+    grade = weakest(f["grade"] for f in cited if f["kind"] in MONEY_KINDS)
+    return render.rows(lines, grade=render.grade(grade) if grade else ""), "", ""
+
+
+# How a magnitude is written where no hole above it said which shape to take.
+# One entry per kind that holds one, keyed the same way `APPROX_TERMS` is, so a
+# new shape of magnitude arriving with nowhere to be written is a build failure
+# rather than a row silently dropped.
+_MAGNITUDE_WRITERS = {
+    render.MONEY: lambda value, fig, locale: render.money(
+        value, fig["currency"], locale=locale),
+    render.COUNT: lambda value, fig, locale: render.count(value),
+    render.RATE: lambda value, fig, locale: render.rate(value, locale=locale),
 }
 
 
@@ -666,7 +763,7 @@ def _accounts_written(paths, ground: _Ground) -> render.Account:
     return render.accounts([_known_account(path, ground) for path in paths])
 
 
-def _boundary(fig: dict) -> tuple[list, list]:
+def _boundary(fig: dict, *, cut: bool = True) -> tuple[list, list]:
     """Where one figure's claim ends, as ``(statements, accounts left out)``.
 
     The two halves merge differently. A statement about how a set was narrowed
@@ -675,6 +772,12 @@ def _boundary(fig: dict) -> tuple[list, list]:
 
     Both empty where the set is everything the figure claims to measure, and
     where no read declared a boundary at all.
+
+    ``cut`` is whether the slice THIS figure was taken over is among the
+    statements. It is, wherever the figure is stated as a number in a sentence.
+    It is not where the figure is a line of a block, because there the slice is
+    already written beside the number as the line's own name, and a scope clause
+    repeating it would be the same claim made twice.
 
     What would settle a gap stays on the figure and is not said."""
     bound = fig.get("boundary") or {}
@@ -687,6 +790,9 @@ def _boundary(fig: dict) -> tuple[list, list]:
                      {"counted": counts["counted"], "held": counts["held"]}))
     for item in bound.get("selected") or []:
         said.append((SELECTED_TERMS[item["kind"]][0], dict(item)))
+    if cut and bound.get("cut"):
+        said.append((SELECTED_TERMS[bound["cut"]["kind"]][0],
+                     dict(bound["cut"])))
     if bound.get("unposted"):
         # A gap no account names is still said. It is a number of documents,
         # because a document read and not posted may be about an account that
@@ -707,17 +813,22 @@ def _said(statement, ground: _Ground) -> str:
     return moment(key, **{name: written(fields, ground)})
 
 
-def _boundaries(cited, ground: _Ground) -> list:
+def _boundaries(cited, ground: _Ground, in_rows=()) -> list:
     """Where the whole answer's claims end, once each.
 
     Statements about narrowing are gathered in the order the figures were
     stated and said once however many figures make the same one. What the
     answer leaves out is one set across every figure it stated, said in a
-    single sentence however many figures carry overlapping gaps."""
+    single sentence however many figures carry overlapping gaps.
+
+    ``in_rows`` names the figures the answer stated as lines of a block rather
+    than as numbers in a sentence. Those have already said which slice they
+    cover; what the read as a whole was narrowed to is still said, once, the
+    same as for any other figure."""
     statements: list = []
     left_out: list = []
     for fig in cited:
-        said, gaps = _boundary(fig)
+        said, gaps = _boundary(fig, cut=fig["id"] not in in_rows)
         for statement in said:
             if statement not in statements:
                 statements.append(statement)
@@ -732,6 +843,25 @@ def _boundaries(cited, ground: _Ground) -> list:
 
 
 # ------------------------------------------------------------------- the gate
+
+
+def _written_out(parts) -> str:
+    """The whole answer as one piece of text, out of what each part wrote and
+    whether that part is a block of lines.
+
+    Sentences run on, the way sentences do. A block does not: it is a line per
+    thing, so what sits either side of one begins on its own line. The read's
+    own tail sentence therefore lands under the last row rather than beside it,
+    which is what a person reading a list of ten needs it to do."""
+    out, blocked = "", False
+    for piece, block in parts:
+        if not str(piece).strip():
+            continue
+        if out:
+            out += "\n" if block or blocked else " "
+        out += str(piece)
+        blocked = block
+    return out.strip()
 
 
 def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
@@ -789,15 +919,32 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # another, how well that same amount is stood behind. It is one figure and
     # it is cited once.
     said = [s.name for c in spoken for s in c.slots]
-    cited, seen = [], set()
+    cited, seen, in_rows, as_numbers = [], set(), set(), set()
     for name in said:
         reference = references[name]
-        if "figure" in reference:
-            fid = str(reference["figure"])
+        as_rows = "read" in reference
+        # A block of rows states every figure it wrote a line for, and those are
+        # answerable exactly as a figure named in a sentence is: for their
+        # records, for their caveats and for the answer's grade. The figures of
+        # that read it wrote no line for — the read's own total and its count —
+        # are not stated and are not cited.
+        if as_rows:
+            stated = [fid for fid in ground.readings[str(reference["read"])]
+                      if (ground.book[fid].get("boundary") or {}).get("cut")]
+        elif "figure" in reference:
+            stated = [str(reference["figure"])]
+        else:
+            continue
+        for fid in stated:
+            (in_rows if as_rows else as_numbers).add(fid)
             if fid in seen:
                 continue
             seen.add(fid)
             cited.append(ground.book[fid])
+    # A figure stated as a number of its own says its own scope in that
+    # sentence, however many blocks it also appears in; one stated only as a
+    # line has already said it, as the line's name.
+    in_rows -= as_numbers
 
     for fig in cited:
         # A money figure with no record behind it is refused. The other kinds
@@ -822,21 +969,23 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # And where the answer's claims end, in the order the figures were stated.
     # It goes ahead of the limits: a boundary says what the claim is a claim
     # about, and what the claim does not cover is read against that.
-    boundary = _boundaries(cited, ground)
+    boundary = _boundaries(cited, ground, in_rows)
 
-    text = " ".join(c.written(written) for c in spoken)
-    if boundary:
-        text += " " + " ".join(boundary)
+    parts = [(clause.written(written),
+              any(isinstance(written[s.name], render.Rows)
+                  for s in clause.slots))
+             for clause in spoken]
+    parts += [(line, False) for line in boundary]
     if owed:
-        text += " " + moment("answer_limits", limits=render.caveat(
-            " ".join(ground.caveats[cid] for cid in owed)))
+        parts.append((moment("answer_limits", limits=render.caveat(
+            " ".join(ground.caveats[cid] for cid in owed))), False))
     for kind in dropped:
         # A clause nothing could fill is a disclosed gap, never a zero and
         # never a silence. What is missing is named by its kind, in the pack's
         # own words.
-        text += " " + moment("answer_gap", what=moment(f"gap_{kind}"))
+        parts.append((moment("answer_gap", what=moment(f"gap_{kind}")), False))
     return RunResult(
-        answered=True, text=text.strip(),
+        answered=True, text=_written_out(parts),
         figures=[dict(f) for f in cited],
         grade=weakest(f["grade"] for f in cited if f["kind"] in MONEY_KINDS),
         transcript=dicts, calls=len(transcript),

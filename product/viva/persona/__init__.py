@@ -263,10 +263,24 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "boundary_selected_period":    frozenset({"period"}),
     "boundary_selected_since":     frozenset({"day"}),
     "boundary_selected_until":     frozenset({"day"}),
+    # The three slices the vault holds no thing for. Each says what a figure
+    # was taken over and offers no name to ask a follow-up with, which is the
+    # honest form of a scope the read itself would refuse as a filter.
+    "boundary_selected_subcategory": frozenset({"subcategory"}),
+    "boundary_selected_tag":         frozenset({"tag"}),
+    "boundary_selected_currency":    frozenset({"currency"}),
     "boundary_unmeasured":         frozenset({"account"}),
     # A gap no account can name: a document read and not posted may be about an
     # account that does not exist yet, so it is said as a number of documents.
     "boundary_unposted":           frozenset({"count"}),
+    # A block of rows: how many lines there are is not knowable when the
+    # sentence holding them is authored, so the machine writes every one of them
+    # and the model writes no words at any. The grade goes once, above, worded
+    # as being about the set — one grade is computed over a whole read and
+    # stamped on each of its figures, so a word per line would read as a claim
+    # about that line when it is a claim about the read.
+    "rows_stood_behind":        frozenset({"grade"}),
+    "rows_line":                frozenset({"name", "amount"}),
     "gap_money":                frozenset(),
     "gap_count":                frozenset(),
     "gap_rate":                 frozenset(),
@@ -277,6 +291,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "gap_category":             frozenset(),
     "gap_document":             frozenset(),
     "gap_grade":                frozenset(),
+    "gap_rows":                 frozenset(),
     "gap_supposed":             frozenset(),
     # And when there is no answer at all. One reviewed sentence per way a turn
     # can fail, chosen by the machine's own tag: nothing composes a refusal at
@@ -294,6 +309,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "refusal_unknown_figure":        frozenset(),
     "refusal_unknown_entity":        frozenset(),
     "refusal_unknown_period":        frozenset(),
+    "refusal_unknown_reading":       frozenset(),
     "refusal_unfounded_date":        frozenset(),
     "refusal_unfounded_stipulation": frozenset(),
     "refusal_ungraded_figure":       frozenset(),

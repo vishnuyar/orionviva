@@ -512,16 +512,22 @@ user milestone. Figures and sources use the shared components from Overview.
 **Done when:** every turn re-reads current state; text and spoken output agree;
 refusal and gap states are explicit; document injection cannot grant a write.
 
-**Blocked on, and it must be ruled before this slice is briefed:** Viva cannot
-speak a list. An answer shape is a fixed set of clauses authored before any read
-and a binding names exactly one thing, so no turn can say more than one row of a
-kind — which stands in front of four of the seven unbuilt read verbs
-(`find_patterns`, `list_obligations`, `search_documents`, `recall`). See
-`briefs/the-shape-does-not-know-how-many-rows-it-has.md`. The likely resolution
-is that Review, Activity and Documents read list-shaped projections through
-`viva.surface` directly, and only the *conversation* is shape-bound — but that is
-a ruling this document does not take. Until it is taken, no destination should
-be designed on the assumption that a Viva turn can enumerate.
+**Was blocked on Viva being unable to speak a list; unblocked 2026-08-16.** An
+answer shape is a fixed set of clauses authored before any read and a binding
+named exactly one thing, so no turn could say more than one row of a kind —
+which stood in front of four of the seven unbuilt read verbs (`find_patterns`,
+`list_obligations`, `search_documents`, `recall`). A binding may now name a
+whole read, and the machine writes a line per figure that read took over a named
+slice, so **a conversation turn can enumerate**, in text, today. What it writes
+is the minimum a text answer needs — a name and an amount per line, the set's
+grade once above, the read's own tail sentence below — and it decides nothing
+about what a breakdown looks like on a screen.
+
+**What that leaves open, and it is still not ruled here:** whether Review,
+Activity and Documents read list-shaped projections through `viva.surface`
+directly, or through the conversation's own block. The question was never really
+about capability; it is about which of the two is the source of a list a person
+sees, and this document does not take it.
 
 ### Slice 6 — activity and organization
 

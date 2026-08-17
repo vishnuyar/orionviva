@@ -146,6 +146,47 @@ def known_subcategories(core: ProjectionCore) -> list[str]:
     return sorted(out - {""})
 
 
+# What a category holds that no subcategory names. Not a subcategory: it is the
+# remainder of one, so a breakdown gives it a line and the vocabulary does not
+# count it.
+UNASSIGNED = "unassigned"
+
+
+def subcategory_group_key(category: str, subcategory: str) -> str:
+    """One subcategory, under the category it slices.
+
+    A subcategory alone is not a vocabulary: "fees" says nothing about which
+    category it cuts, and two categories may each hold one. So its identity is
+    the pair, and this is the one place the pair is spelled — a breakdown's
+    group key and a vocabulary's label are the same string because they are
+    written by the same function, rather than by two that have to agree."""
+    sub = (subcategory or "").strip()
+    return f"{category} / {sub or UNASSIGNED}"
+
+
+def known_subcategory_pairs(core: ProjectionCore) -> list[str]:
+    """Every subcategory this vault holds, each under the category it slices.
+
+    The unit a breakdown counts in, which is what makes the two comparable: how
+    many a person HAS and how many their spending falls into are different
+    numbers for real reasons, and neither of those reasons is that the two were
+    counting different kinds of thing.
+
+    What a category holds that no subcategory names is not among them. It is a
+    remainder rather than a label, so it has a line in a breakdown and nothing
+    to count here."""
+    out = set()
+    for row in (list(core._merchant_categories.values())
+                + list(core._categories.values())):
+        sub = canonical_subcategory(core, (row.get("subcategory") or "").strip())
+        if not sub:
+            continue
+        category = (canonical_category(core, (row.get("category") or "").strip())
+                    or "Uncategorized")
+        out.add(subcategory_group_key(category, sub))
+    return sorted(out)
+
+
 def subcategory_merges(core: ProjectionCore) -> dict[str, list[str]]:
     """The subcategory spellings this vault holds that now count as one label.
 

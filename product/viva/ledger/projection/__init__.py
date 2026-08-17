@@ -254,6 +254,9 @@ class LedgerProjection:
     def known_subcategories(self) -> list[str]:
         return _categories.known_subcategories(self._core)
 
+    def known_subcategory_pairs(self) -> list[str]:
+        return _categories.known_subcategory_pairs(self._core)
+
     def subcategory_spelling(self, m: MovementInfo) -> tuple[str, str]:
         return _categories.subcategory_spelling(self._core, m)
 

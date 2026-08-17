@@ -12,10 +12,11 @@ from viva.ledger import (LedgerProjection, Provenance, account_opened,
                          opening_balance_observed, simple_transaction,
                          transfer_linked)
 from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
-                                agent_acted, document_captured,
-                                merchant_enriched, movement_tagged,
-                                position_observed, question_declined,
-                                read_recorded, statement_held)
+                                agent_acted, category_assigned,
+                                document_captured, merchant_enriched,
+                                movement_tagged, position_observed,
+                                question_declined, read_recorded,
+                                statement_held)
 from viva.ledger.projection import movement_key
 from viva.tools import default_registry, ledger_tools, run, weakest
 from viva.tools.envelope import ToolResult, figure
@@ -3498,13 +3499,21 @@ def test_a_group_among_several_is_a_slice_and_says_which(proj):
     assert len(groups) == 2
     for f in groups:
         assert f["boundary"]["whole"] is False
-        assert [item["kind"] for item in f["boundary"]["selected"]] == ["category"]
+        # Which part it is is the figure's own cut, told apart from how the
+        # read was narrowed: this read was narrowed by nothing, and each of its
+        # two figures is still a part.
+        assert "selected" not in f["boundary"]
+        assert f["boundary"]["cut"]["kind"] == "category"
 
 
 def test_the_only_group_of_a_partitioning_grouping_is_the_whole(proj):
     """And where a grouping puts every counted movement in exactly one group
     and there is only that group, the group IS all of it — so nothing is
-    stated, because there is no set worth stating."""
+    stated, because there is no set worth stating.
+
+    It still says which group it is. Being the whole and being the groceries
+    group are two different facts, and a breakdown of one group is still a
+    breakdown whose one row has a name."""
     evs = _spending_events(
         ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()),
         ("2026-01-06", "GREENFIELD MARKET", "-60.00", "groceries", ()))
@@ -3515,7 +3524,14 @@ def test_the_only_group_of_a_partitioning_grouping_is_the_whole(proj):
                  if f["what"].startswith("spending — category"))
     total = next(f for f in result.figures if "total spending" in f["what"])
     assert group["value"] == total["value"]
-    assert group["boundary"] == {"whole": True}
+    assert group["boundary"] == {"whole": True,
+                                 "cut": {"kind": "category",
+                                         "value": "groceries"}}
+    # And nothing is said about it, which is the point: a whole figure states
+    # no boundary, cut or otherwise.
+    from viva.tools.runner import _boundary
+
+    assert _boundary(group) == ([], [])
 
 
 def test_a_tag_group_is_never_the_whole_however_few_tags_there_are():
@@ -3534,13 +3550,20 @@ def test_a_tag_group_is_never_the_whole_however_few_tags_there_are():
                   if f["what"].startswith("spending — tag"))
     total = next(f for f in result.figures if "total spending" in f["what"])
     assert Decimal(tagged["value"]) < Decimal(total["value"])
-    assert tagged["boundary"] == {"whole": False}
+    assert tagged["boundary"] == {"whole": False,
+                                  "cut": {"kind": "tag", "value": "pantry"}}
 
 
-def test_a_grouping_the_vault_names_nothing_for_selects_nothing():
-    """A subcategory pair is a group key and not a thing the vault holds, so
-    the figure says it is not the whole and names no thing it was narrowed to,
-    rather than naming something else."""
+def test_a_grouping_the_vault_names_nothing_for_still_names_its_slice():
+    """A subcategory pair is a group key and not a thing the vault holds. What
+    it can still be is the scope of the number beside it — which slice of the
+    read that figure was taken over — and that is what its boundary says.
+
+    The two are different promises and the difference is the whole of why this
+    is safe. An entity is a handle: an answer refers to one, and a person may
+    hand it back. A cut is a statement about one figure, and hands back
+    nothing — the read refuses this same string as a filter, and it is not
+    offered as one."""
     evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
                           "2026-01-01"),
            document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
@@ -3565,7 +3588,19 @@ def test_a_grouping_the_vault_names_nothing_for_selects_nothing():
                if f["what"].startswith("spending — subcategory")]
     assert len(grouped) > 1
     for f in grouped:
-        assert f["boundary"] == {"whole": False}
+        assert f["boundary"] == {
+            "whole": False,
+            "cut": {"kind": "subcategory",
+                    "value": f["what"].split("'")[1]}}
+    # And the name in that cut is still not a filter, which is why it is a
+    # scope and not an entity.
+    for f in grouped:
+        follow_up = ledger_tools.query_ledger(
+            LedgerProjection(evs),
+            {"entity": "aggregate", "metric": "spending",
+             "filters": {"category": f["boundary"]["cut"]["value"]}})
+        assert not follow_up.ok and follow_up.refusal == "unknown_category"
+    assert not [i for i in result.identifiers if i["kind"] == "category"]
 
 
 def test_a_subcategory_read_says_which_spellings_it_counted_as_one():
@@ -3871,7 +3906,20 @@ def test_a_set_is_narrowed_only_in_a_way_the_vocabulary_names():
     figure that reaches a person with a boundary nobody can read."""
     from viva.tools.envelope import bounded
     with pytest.raises(ValueError, match="is not narrowed by"):
-        bounded(whole=False, selected=[{"kind": "tag", "value": "pantry"}])
+        bounded(whole=False, selected=[{"kind": "colour", "value": "green"}])
+    # And the same vocabulary, and the same checks, for the slice one figure
+    # was taken over rather than the narrowing of the read it came from.
+    with pytest.raises(ValueError, match="is not narrowed by"):
+        bounded(whole=False, cut={"kind": "colour", "value": "green"})
+    with pytest.raises(ValueError,
+                       match="says nothing about what it was narrowed to"):
+        bounded(whole=False, cut={"kind": "tag", "value": ""})
+    # A cut is the one entry a whole figure may still carry, because naming
+    # which slice a figure is is not a way of falling short of anything.
+    assert bounded(whole=True, cut={"kind": "tag", "value": "pantry"}) == {
+        "whole": True, "cut": {"kind": "tag", "value": "pantry"}}
+    with pytest.raises(ValueError, match="cannot also name what it leaves out"):
+        bounded(whole=True, selected=[{"kind": "tag", "value": "pantry"}])
     with pytest.raises(ValueError,
                        match="says nothing about what it was narrowed to"):
         bounded(whole=False, selected=[{"kind": "category", "value": ""}])
@@ -4162,3 +4210,189 @@ def test_a_boundary_says_how_many_documents_are_read_and_not_posted():
     net = next(f for f in result.figures if f["what"].startswith("net in"))
     # Counted in the record, so the sentence has something to say.
     assert net["boundary"] == {"whole": False, "unposted": 2}
+
+
+# ------------------------------------------------- the vault's own vocabulary
+
+
+def test_every_grouping_offered_names_the_kind_of_slice_it_cuts_by():
+    """A grouping a person can ask for and the read has no way of naming the
+    slices of is a breakdown whose rows cannot say what they are about. The
+    enum and the naming table are held to each other here, so a grouping added
+    without one fails at build time rather than as a nameless row."""
+    offered = set(ledger_tools.QUERY_LEDGER_PARAMS["properties"]
+                  ["group_by"]["enum"])
+    assert set(ledger_tools._GROUP_NAMES) == offered, (
+        f"only-in-table={sorted(set(ledger_tools._GROUP_NAMES) - offered)}, "
+        f"only-in-schema={sorted(offered - set(ledger_tools._GROUP_NAMES))}")
+    from viva.tools.envelope import SELECTED_KINDS
+
+    assert set(ledger_tools._GROUP_NAMES.values()) <= set(SELECTED_KINDS)
+
+
+def test_a_spending_read_names_the_slice_of_every_group_under_every_grouping():
+    """The property that makes the row renderer generic: whichever way a
+    breakdown is cut, each of its group figures says which cut it is. So the
+    thing that writes rows never has to know what it is looking at."""
+    evs = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries",
+         ("pantry", "weekly")),
+        ("2026-01-06", "CITY TRANSIT", "-60.00", "transport", ()))
+    proj = LedgerProjection(evs)
+    # Read through a window, so no grouping's single group is the whole of the
+    # read: a vault holds one currency, and a currency group of an unnarrowed
+    # read genuinely IS everything, which is a different fact and has its own
+    # test.
+    window = {"window": {"from": "2026-01-01", "to": "2026-01-31"}}
+    seen = set()
+    for group_by, kind in ledger_tools._GROUP_NAMES.items():
+        result = ledger_tools.query_ledger(
+            proj, {"entity": "aggregate", "metric": "spending",
+                   "group_by": group_by, "filters": window})
+        assert result.ok, result.text
+        grouped = [f for f in result.figures
+                   if f["what"].startswith(f"spending — {group_by} ")]
+        assert grouped, group_by
+        seen.add(group_by)
+        for fig in grouped:
+            cut = fig["boundary"].get("cut") or {}
+            assert cut.get("kind") == kind, (group_by, fig["what"])
+            assert cut["value"] == fig["what"].split("'")[1]
+            # And the narrowing of the read is a separate statement, still
+            # made, so the two halves of a boundary do not stand in for each
+            # other.
+            assert [item["kind"] for item in fig["boundary"]["selected"]] \
+                == ["period"]
+        # The read's own total and count are not a slice of anything.
+        for fig in result.figures:
+            if fig not in grouped:
+                assert "cut" not in fig["boundary"], fig["what"]
+    assert seen == set(ledger_tools._GROUP_NAMES)
+
+
+def test_every_vocabulary_a_read_can_group_by_is_one_it_can_also_size():
+    """A grouping is a vocabulary, so every grouping offered can be asked what
+    labels it holds. A member with no way of being read is a question with no
+    answer; the other way round is a mode nothing reaches."""
+    offered = set(ledger_tools.QUERY_LEDGER_PARAMS["properties"]
+                  ["group_by"]["enum"])
+    assert set(ledger_tools._VOCABULARIES) == offered
+
+    registry, proj = _probe_vault()
+    for group_by in sorted(offered):
+        result = registry.call("query_ledger", {"entity": "vocabulary",
+                                                "group_by": group_by})
+        assert result.ok, (group_by, result.text)
+        assert result.data["vocabulary"] == group_by
+        assert result.data["count"] == len(result.data["labels"])
+        stated = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+        assert len(stated) == 1 and stated[0]["value"] == str(
+            result.data["count"])
+        assert not stated[0]["currency"], (
+            "a number of labels is not an amount of anything")
+
+
+def test_a_subcategory_vocabulary_counts_what_a_breakdown_groups_by():
+    """The two questions differ for real reasons, and counting different kinds
+    of thing is not one of them.
+
+    A subcategory's identity in this vault is the pair, because two categories
+    may each hold a "fees". Counting bare spellings would answer "how many do I
+    have" with a number about something else — and would do it invisibly, since
+    a person only sees the disagreement when they ask for the list too.
+
+    The vault below holds exactly that collision.
+    """
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01",
+                                    _p("doc-jan")),
+           simple_transaction("chk", "-40.00", "ALPHA BANK", "2026-01-05",
+                              provenance=_p("doc-jan")),
+           simple_transaction("chk", "-60.00", "BETA GROCER", "2026-01-06",
+                              provenance=_p("doc-jan")),
+           simple_transaction("chk", "-20.00", "CITY RAIL", "2026-01-07",
+                              provenance=_p("doc-jan")),
+           closing_balance_observed("chk", "880.00", "2026-01-31",
+                                    _p("doc-jan", 6)),
+           merchant_enriched("alpha bank", "banking", subcategory="fees",
+                             occurred_at="2026-02-02"),
+           merchant_enriched("beta grocer", "groceries", subcategory="fees",
+                             occurred_at="2026-02-02"),
+           merchant_enriched("city rail", "transport", subcategory="rail",
+                             occurred_at="2026-02-02")]
+    proj = LedgerProjection(evs)
+    held = ledger_tools.query_ledger(
+        proj, {"entity": "vocabulary", "group_by": "subcategory"})
+    spent = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "subcategory"})
+    assert len(set(proj.known_subcategories())) == 2, (
+        "this vault does not hold one label under two categories, so it cannot "
+        "tell a count of labels from a count of subcategories")
+    assert held.data["count"] == 3
+    # Spelled by one function, so the two cannot drift into disagreeing about
+    # what a subcategory is called.
+    assert set(held.data["labels"]) == set(spent.data["by_group"])
+
+
+def test_a_vocabulary_read_needs_to_be_told_which_vocabulary():
+    registry, _proj = _probe_vault()
+    result = registry.call("query_ledger", {"entity": "vocabulary"})
+    assert not result.ok and result.refusal == "missing_group_by"
+    for name in ledger_tools._VOCABULARIES:
+        assert name in result.text
+
+
+def test_how_many_labels_a_vault_holds_is_not_how_many_its_spending_uses():
+    """The second question the origin asked, and why it needed a read of its
+    own. A breakdown counts the labels this person's SPENDING falls into; the
+    vocabulary counts the labels they have. They diverge for real reasons — a
+    label carried only by money that is not spending is one of them — and
+    answering the first question with the second is a real number about one
+    thing put in a sentence about another.
+
+    The vault below holds a sub category used by a transfer, which no spending
+    breakdown will ever name."""
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           account_opened("sav", "depository", "Savings", "USD", "2026-01-01"),
+           document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           opening_balance_observed("chk", "1000.00", "2026-01-01",
+                                    _p("doc-jan")),
+           simple_transaction("chk", "-40.00", "GREENFIELD MARKET",
+                              "2026-01-05", provenance=_p("doc-jan")),
+           simple_transaction("chk", "-100.00", "OWN SAVINGS SWEEP",
+                              "2026-01-07", provenance=_p("doc-jan")),
+           closing_balance_observed("chk", "860.00", "2026-01-31",
+                                    _p("doc-jan", 6)),
+           merchant_enriched("greenfield market", "groceries",
+                             subcategory="supermarket",
+                             occurred_at="2026-02-02"),
+           merchant_enriched("own savings sweep", "transfers",
+                             subcategory="internal",
+                             occurred_at="2026-02-02"),
+           category_assigned(
+               movement_key("doc-jan", "chk", "2026-01-07", Decimal("-100.00"),
+                            "OWN SAVINGS SWEEP", 0),
+               "OWN SAVINGS SWEEP", "transfers", VERIFIED, "2026-02-03",
+               nature="transfer")]
+    proj = LedgerProjection(evs)
+    held = ledger_tools.query_ledger(
+        proj, {"entity": "vocabulary", "group_by": "subcategory"})
+    spent = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "group_by": "subcategory"})
+    assert held.ok and spent.ok
+    assert set(held.data["labels"]) == {"transfers / internal",
+                                        "groceries / supermarket"}
+    assert held.data["count"] > spent.data["groups"]["total"], (
+        "this vault does not separate the two questions, so it proves nothing")
+    # And the two numbers are told apart by what each says it is, not by which
+    # sentence they happen to land in.
+    counted = next(f for f in held.figures)
+    assert counted["what"] == "subcategory labels held"
+    assert not [f for f in spent.figures if f["what"] == counted["what"]]

@@ -34,12 +34,13 @@ from ..ledger import networth
 from ..ledger.identity import masked
 from ..ledger.projection import (MIXED, SETTLEMENT, SPENDING, TRANSFER,
                                  UnknownAccountError)
+from ..ledger.projection.categories import subcategory_group_key
 from ..ledger.projection import movements as movements_view
-from .envelope import (ACTIVITY, BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT,
-                       BY_PERIOD, BY_SINCE, BY_UNTIL, ENTITY_ACCOUNT,
-                       ENTITY_CATEGORY, ENTITY_MERCHANT, GAP_REFUSED,
-                       GAP_UNOBSERVED, ToolResult, bounded, entity, figure,
-                       refusal, weakest)
+from .envelope import (ACTIVITY, BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY,
+                       BY_MERCHANT, BY_PERIOD, BY_SINCE, BY_SUBCATEGORY,
+                       BY_TAG, BY_UNTIL, ENTITY_ACCOUNT, ENTITY_CATEGORY,
+                       ENTITY_MERCHANT, GAP_REFUSED, GAP_UNOBSERVED,
+                       ToolResult, bounded, entity, figure, refusal, weakest)
 from .registry import Registry, ToolSpec
 
 LIABILITY = "liability"
@@ -64,12 +65,19 @@ MAX_GROUPS = 10
 # stated as a count, never dropped.
 MAX_FOLDS = 3
 
+# How many labels a read of a vocabulary names. The same reason every other cap
+# here exists: a result is resent in full on every remaining call of the turn,
+# and a vocabulary is as wide as the person's own ledger. The count is the whole
+# count either way — what the cap hides is which labels, never how many there
+# are — and what it hid rides a caveat, like everything else a read leaves out.
+MAX_LABELS = 40
+
 QUERY_LEDGER_PARAMS = {
     "type": "object",
     "properties": {
         "entity": {"type": "string",
                    "enum": ["balances", "transactions", "holdings",
-                            "aggregate"]},
+                            "aggregate", "vocabulary"]},
         "metric": {"type": "string",
                    "enum": ["spending", "income", "net_worth"]},
         "group_by": {"type": "string",
@@ -688,9 +696,9 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
             # that no subcategory names is its own group rather than a silent
             # part of the parent.
             ruling = proj.derived_category(m) or {}
-            category = ruling.get("category") or "Uncategorized"
-            sub = (ruling.get("subcategory") or "").strip()
-            key = f"{category} / {sub}" if sub else f"{category} / unassigned"
+            key = subcategory_group_key(
+                ruling.get("category") or "Uncategorized",
+                ruling.get("subcategory") or "")
             # Which spellings this read counted, per group and per punctuation
             # class, so a caveat afterwards speaks about these figures and not
             # about spellings the filters left out.
@@ -719,10 +727,16 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
 _FILTER_NAMES = {"account": BY_ACCOUNT, "category": BY_CATEGORY,
                  "merchant": BY_MERCHANT}
 
-# And how each grouping cuts a set, for the same reason: a subcategory pair, a
-# tag and a currency are group keys the vault holds no entity for.
+# And how each grouping cuts a set. Every grouping the schema offers names the
+# slice each of its figures covers, including the three the vault holds no
+# entity for: a subcategory key names a pair, a tag overlaps its neighbours and
+# a currency is not a thing anyone holds. Saying which slice a figure is a
+# figure of is a statement of that figure's scope, and a scope promises nothing
+# about being askable — none of the three becomes a name a follow-up accepts,
+# and the refusal a person meets if they try still names what is filterable.
 _GROUP_NAMES = {"category": BY_CATEGORY, "merchant": BY_MERCHANT,
-                "account": BY_ACCOUNT}
+                "account": BY_ACCOUNT, "subcategory": BY_SUBCATEGORY,
+                "tag": BY_TAG, "currency": BY_CURRENCY}
 
 # The groupings under which every counted movement lands in exactly one group.
 # Tags do not: one movement carries several of them and money carrying none
@@ -864,13 +878,16 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
                   and len(grouped) == 1)
     figures = []
     for k, v in sorted(named.items()):
-        cut = ([{"kind": _GROUP_NAMES[group_by], "value": k}]
-               if group_by in _GROUP_NAMES and not covers_all else [])
+        # Which group this is, said whether or not this group is all of the
+        # spending: a breakdown of one group is still a breakdown, and its one
+        # row still has a name. What `covers_all` decides is whether there is a
+        # boundary to state, not whether the figure knows what it is of.
+        cut = {"kind": _GROUP_NAMES[group_by], "value": k}
         figures.append(figure(v, f"spending — {group_by} '{k}'",
                               quantity=quantity.SPENDING, grade=grade,
                               currency=currency, record_ids=record_ids,
                               boundary=bounded(whole=covers_all,
-                                               selected=narrowed + cut)))
+                                               selected=narrowed, cut=cut)))
     figures.append(figure(extras["total"], f"total spending by {group_by}",
                           quantity=quantity.SPENDING,
                           grade=grade, currency=currency,
@@ -888,8 +905,9 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
     # vault holds no such category, and `_check_filters` refuses the same
     # string on the follow-up. Naming the parent instead would be worse, since
     # the figure beside it measures one slice of that parent rather than all of
-    # it. So the pair stays a group key and the answer speaks of it through the
-    # figure it is attached to.
+    # it. So the pair stays a group key, and what the answer can say about it is
+    # what its figure's boundary says it was cut by — the scope of that number,
+    # which makes no promise to be a name anything accepts back.
     grouped_entities = (_categories(named) if group_by == "category"
                         else _merchants(named) if group_by == "merchant"
                         else [])
@@ -1101,6 +1119,75 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
         text=f"Net worth as of {as_of or 'unknown'}.")
 
 
+# ------------------------------------------------------------- the vocabulary
+
+# What each vocabulary a read can group by is, as the labels the vault holds.
+# One entry per member of the `group_by` enum, so a grouping a person can ask
+# for is a vocabulary they can ask the size of, and a grouping added without
+# one fails where the tool is written rather than as a mode that answers
+# nothing.
+#
+# Accounts and currencies are read off what the vault holds rather than off a
+# learned label set: they are not vocabulary anything mints, and asking how
+# many there are is still the same question.
+_VOCABULARIES = {
+    "category": lambda proj: proj.known_categories(),
+    # Under the category each one slices, which is the unit a breakdown counts
+    # in. A bare label is a different kind of thing — two categories may each
+    # hold a "fees" — so counting those would answer this question with a
+    # number about something else.
+    "subcategory": lambda proj: proj.known_subcategory_pairs(),
+    "tag": lambda proj: proj.known_tags(),
+    "merchant": lambda proj: sorted({proj.merchant_key_of(m) or m.description
+                                     for m in proj.movements()} - {""}),
+    "account": lambda proj: sorted(i.account for i in _real_accounts(proj)),
+    "currency": lambda proj: sorted(_currencies(proj)),
+}
+
+
+def _vocabulary(proj, group_by: str) -> ToolResult:
+    """What labels this vault holds under one of its own vocabularies, and how
+    many.
+
+    A different question from any breakdown, and told apart from one on
+    purpose. Spending grouped by subcategory says how many subcategories the
+    person's SPENDING falls into; it leaves out a label used only on income,
+    one whose movements are all transfers, and one named in a ruling with
+    nothing posted against it yet. Answering "how many do I have" from that
+    count is a real number about one thing put in a sentence about another —
+    the failure the quantity vocabulary exists to prevent, one level up, at
+    which read was called."""
+    labels = [str(label) for label in _VOCABULARIES[group_by](proj)]
+    # Alphabetical, because a vocabulary has no size to rank by and two reads of
+    # one ledger must name the same labels.
+    named = sorted(labels)[:MAX_LABELS]
+    caveats = []
+    if len(named) < len(labels):
+        caveats.append(f"The first {len(named)} of {len(labels)} {group_by} "
+                       f"label(s) are named here, in alphabetical order; the "
+                       f"count is the whole count.")
+    return ToolResult(
+        tool=TOOL, ok=True,
+        data={"vocabulary": group_by, "labels": named, "count": len(labels)},
+        # A count of labels, and nothing about money. It stands on the ledger
+        # events that carry them rather than on documents, so it is the kind of
+        # figure that carries no grade — being wrong about it costs candour and
+        # nothing else.
+        figures=[figure(len(labels), f"{group_by} labels held",
+                        quantity=quantity.COUNT, kind=ACTIVITY,
+                        boundary=bounded(whole=True))],
+        # The three vocabularies the vault holds a thing for are named as
+        # things, so an answer can refer to one. The other three are the ones
+        # with no entity, and this read mints none for them either.
+        identifiers=(_identifiers(proj, named) if group_by == "account"
+                     else _merchants(named) if group_by == "merchant"
+                     else _categories(named) if group_by == "category"
+                     else []),
+        caveats=caveats,
+        coverage=f"{len(labels)} {group_by} label(s) this vault holds.",
+        text=f"The {group_by} vocabulary holds {len(labels)} label(s).")
+
+
 # Which filters each read honors. A filter an entity would ignore is refused,
 # never accepted-and-dropped: rows that are individually true still answer the
 # wrong question when the set was never narrowed.
@@ -1115,6 +1202,7 @@ _SUPPORTED_FILTERS = {
                            "currency", "window"},
     "aggregate:income": {"currency"},
     "aggregate:net_worth": set(),
+    "vocabulary": set(),
 }
 
 
@@ -1167,6 +1255,14 @@ def query_ledger(proj, args: dict, locale: str = "",
         return _query_transactions(proj, filters)
     if entity == "holdings":
         return _query_holdings(proj, filters)
+    if entity == "vocabulary":
+        group_by = args.get("group_by")
+        if not group_by:
+            return refusal(TOOL, "missing_group_by",
+                           "entity 'vocabulary' needs a group_by naming which "
+                           "vocabulary: " + ", ".join(sorted(_VOCABULARIES))
+                           + ".")
+        return _vocabulary(proj, group_by)
     # aggregate
     metric = args.get("metric")
     if not metric:

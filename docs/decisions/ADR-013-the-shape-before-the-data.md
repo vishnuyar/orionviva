@@ -124,6 +124,26 @@ planner — a native tool-calling adapter, a text-protocol adapter parsing a JSO
 block, a scripted function in a test. The mechanism runs identically for all of
 them, which is what keeps §11 a swap rather than a rewrite.
 
+**Amended 2026-08-16 — an answer may now say more than one of a thing, and none
+of the above changes.** A hole may be of type `rows`, and a binding may name a
+whole read — `{"read": "r2"}`, a sixth kind of reference — rather than one thing
+in it. The machine writes a line per figure that read took over a named slice;
+the model writes no words at any line and never learns how many there are, which
+is §3 taken further rather than loosened: a shape authored blind could not carry
+a clause per row, and the way out was the model referring to more, not writing
+more. The run's ledger of §2 accordingly holds **readings** alongside figures,
+entities, days, spans and caveats — a read is a thing an answer can refer to, and
+two identical reads are two readings, since a person shown a block is shown one
+particular reading of their ledger.
+
+It also pays part of one residual below. *A model-authored template is reviewed
+by nobody* is paid **zero times inside a block**: every line is a reviewed pack
+sentence with machine-written holes, so the unreviewed prose is the one clause
+introducing the list however many rows follow. The residual stands everywhere
+else. *Capability honesty is unbuilt* stands too, and now has its missing input:
+`query_ledger` answers what labels a vault holds under any of its groupings,
+which is the enumeration nothing could do before.
+
 ---
 
 ## What this costs, honestly — the residuals

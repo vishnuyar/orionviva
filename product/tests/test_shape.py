@@ -1250,3 +1250,308 @@ def test_a_gap_no_account_can_name_is_still_said():
     stated = next(f for f in result.figures if f["what"].startswith("net in"))
     assert stated["boundary"] == {"whole": False, "unposted": 1}
     assert moment("boundary_unposted", count=render.count(1)) in result.text
+
+
+# ------------------------------------------------- more than one of a thing
+
+
+def _wide(groups: int):
+    """A vault whose spending falls into `groups` sub categories, each worth a
+    different amount, so a breakdown of it is a list of known length."""
+    from viva.ledger.events import merchant_enriched
+    p = Provenance("doc-jan", 1, "r")
+    evs = [account_opened("chk", "depository", "Everyday Checking", "USD",
+                          "2026-01-01"),
+           document_captured("doc-jan", "jan.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           opening_balance_observed("chk", "10000.00", "2026-01-01", p)]
+    for n in range(groups):
+        who = f"COUNTERPARTY {n:02d}"
+        evs.append(simple_transaction("chk", f"-{10 + n}.00", who,
+                                      f"2026-01-{5 + n:02d}", provenance=p))
+        evs.append(merchant_enriched(who.lower(), "everything",
+                                     subcategory=f"slice {n:02d}",
+                                     occurred_at="2026-02-02"))
+    evs.append(closing_balance_observed(
+        "chk", "9000.00", "2026-01-31", Provenance("doc-jan", 6, "r")))
+    return default_registry(LedgerProjection(evs))
+
+
+BY_SUBCATEGORY = ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                                   "group_by": "subcategory"})
+
+# One clause introducing the list and one hole holding it, which is the whole
+# of what a shape says about a breakdown however long the breakdown turns out
+# to be.
+_LIST = (("Here is what you spent, by sub category:", []),
+         ("{breakdown}", [("breakdown", render.ROWS)]))
+
+
+def _rows_of(text: str) -> list:
+    """The lines of the block in an answer: everything between the clause that
+    introduced it and the sentences that follow."""
+    return [line for line in text.splitlines()
+            if line.startswith("everything / slice ")]
+
+
+def _bind_the_read(results):
+    return {"breakdown": {"read": results[-1]["id"]}}
+
+
+def test_a_shape_that_names_no_row_count_answers_whatever_the_count_turns_out_to_be():
+    """The wall this exists to remove, stated as the property that removes it.
+
+    A shape is authored before anything is read, so how many sub categories
+    this person has is not knowable when the sentence is written. One shape,
+    unchanged, is run against two vaults whose breakdowns are different lengths
+    and answers both — because the model never authored a row and never had to
+    know."""
+    shape = _shape(*_LIST)
+    for count in (3, 9):
+        result = run("list my expenditures by sub category",
+                     _script(shape, BY_SUBCATEGORY, bind=_bind_the_read),
+                     _wide(count))
+        assert result.answered, (count, result.detail)
+        assert len(_rows_of(result.text)) == count, result.text
+    # And the same shape said nothing about how many there would be: its words
+    # are the words, and every line came from the machine.
+    assert shape.to_dict() == _shape(*_LIST).to_dict()
+
+
+def test_a_list_of_one_is_still_a_list():
+    """A breakdown whose grouping yields one group is the case where that group
+    IS all of the spending — and it is still a list, with one named row.
+
+    The two facts are separate and both survive: the figure says which group it
+    is, so the block has a name to write, and the figure is the whole, so no
+    scope sentence is placed under it."""
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
+                 _wide(1))
+    assert result.answered, result.detail
+    assert len(_rows_of(result.text)) == 1
+    stated = result.figures[0]
+    assert stated["boundary"]["whole"] is True
+    # Whole, so nothing is said about where its claim ends — the row's name is
+    # not a scope clause and the answer carries neither.
+    from viva.tools.runner import SELECTED_TERMS
+    from viva.tools.envelope import BY_SUBCATEGORY as CUT
+
+    key, slot, _writes = SELECTED_TERMS[CUT]
+    assert moment(key, **{slot: render.label(
+        stated["boundary"]["cut"]["value"])}) not in result.text
+
+
+def test_a_person_sees_every_row_the_read_named():
+    """No second cap. The read names the largest ten groups and says in its own
+    words what it folded away; the block shows all ten of them rather than
+    trimming the read's own answer a second time."""
+    from viva.tools.ledger_tools import MAX_GROUPS
+
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
+                 _wide(MAX_GROUPS + 4))
+    assert result.answered, result.detail
+    assert len(_rows_of(result.text)) == MAX_GROUPS
+
+
+def test_the_reads_own_tail_sentence_lands_under_the_rows():
+    """A capped list already says it was capped, in the read's own words, and
+    the run already places what a stated figure owes. So the sentence a person
+    needs under ten rows is one nothing here had to write — it only has to land
+    under them rather than beside the last one."""
+    from viva.tools.ledger_tools import MAX_GROUPS
+
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
+                 _wide(MAX_GROUPS + 4))
+    assert result.answered, result.detail
+    lines = result.text.splitlines()
+    tail = next(i for i, line in enumerate(lines)
+                if "smaller group(s) worth" in line)
+    assert tail == len(lines) - 1, result.text
+    assert all(line.startswith("everything / slice ")
+               for line in lines[-1 - MAX_GROUPS:-1])
+
+
+def test_the_set_is_graded_once_above_the_block_and_never_per_row():
+    """One grade is computed over a whole read and stamped on every figure it
+    emits, so a word beside each row would read as a claim about that row when
+    it is a claim about the read. It is stated once, above, worded as being
+    about the set."""
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
+                 _wide(4))
+    assert result.answered, result.detail
+    said = moment("rows_stood_behind", grade=render.grade(result.grade))
+    assert result.text.count(said) == 1
+    assert result.text.index(said) < min(result.text.index(row)
+                                         for row in _rows_of(result.text))
+    for row in _rows_of(result.text):
+        assert result.grade not in row, row
+
+
+def test_a_row_names_its_own_slice_and_no_scope_clause_repeats_it():
+    """Every row is a figure taken over one slice of the read, and the slice is
+    written beside the number as the row's own name. A boundary sentence saying
+    the same thing again would be the same claim made twice — ten times over,
+    under a block of ten."""
+    from viva.tools.runner import SELECTED_TERMS
+    from viva.tools.envelope import BY_SUBCATEGORY as CUT
+
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
+                 _wide(4))
+    assert result.answered, result.detail
+    key, slot, _writes = SELECTED_TERMS[CUT]
+    for figure in result.figures:
+        cut = figure["boundary"]["cut"]
+        assert cut["kind"] == CUT
+        # Named in the block, once, as the line it is.
+        assert result.text.count(f"{cut['value']} — ") == 1
+        # And not a second time as a sentence about where that claim ends.
+        assert moment(key, **{slot: render.label(cut["value"])}) \
+            not in result.text
+
+
+def test_the_slice_a_figure_covers_is_still_said_where_the_figure_is_a_number():
+    """The other half of the same rule, so it is not read as "a cut is never
+    said". A group figure stated as a number in a sentence of its own has said
+    nothing about which slice it is, and the run places it."""
+    from viva.tools.runner import SELECTED_TERMS
+    from viva.tools.envelope import BY_SUBCATEGORY as CUT
+
+    shape = _shape(("You spent {slice_}.", [("slice_", "money", "spending")]))
+    registry = _wide(4)
+    result = run("what did I spend on that?",
+                 _script(shape, BY_SUBCATEGORY,
+                         bind=lambda r: {"slice_": {"figure": _figure_id(
+                             r, "subcategory 'everything / slice 00'")}}),
+                 registry)
+    assert result.answered, result.detail
+    key, slot, _writes = SELECTED_TERMS[CUT]
+    assert moment(key, **{slot: render.label("everything / slice 00")}) \
+        in result.text
+
+
+def test_every_row_shown_is_cited_and_answers_for_its_records():
+    """A block states its rows, so the rows are answerable exactly as a number
+    named in a sentence is: they are the answer's cited figures, they set its
+    grade, and a money figure standing on no record refuses the turn rather
+    than appearing as a line."""
+    registry = _wide(4)
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY, bind=_bind_the_read),
+                 registry)
+    assert result.answered, result.detail
+    assert len(result.figures) == 4
+    for figure in result.figures:
+        assert figure["record_ids"], figure["what"]
+    # The read's own total and count were not written as lines, so they are not
+    # things this answer stated.
+    assert not [f for f in result.figures if "total spending" in f["what"]]
+
+
+def test_a_read_that_named_no_slice_has_no_rows_in_it():
+    """A block is one line per figure taken over a named slice. A read that
+    took none has nothing to write a line per, and binding it is a delivery
+    naming the wrong sort of read rather than a hole nothing could fill."""
+    result = run("list my accounts",
+                 _script(_shape(*_LIST), BALANCES, bind=_bind_the_read),
+                 _wide(4))
+    assert not result.answered
+    assert result.refusal == "wrong_kind", result.detail
+
+
+def test_a_read_this_turn_never_made_cannot_be_shown():
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY,
+                         bind=lambda r: {"breakdown": {"read": "r9"}}),
+                 _wide(4))
+    assert not result.answered
+    assert result.refusal == "unknown_reading", result.detail
+
+
+def test_a_block_holds_a_whole_read_and_nothing_else_does():
+    """The type check in both directions: a read fills a rows hole and no
+    other, and a rows hole is filled by a read and by nothing else."""
+    for hole, reference in ((("x", render.ROWS), {"figure": "f1"}),
+                            (("x", render.ROWS), {"entity": "a1"}),
+                            (("x", render.MONEY, "spending"), {"read": "r1"}),
+                            (("x", render.COUNT, "count"), {"read": "r1"}),
+                            (("x", render.CATEGORY), {"read": "r1"})):
+        result = run("?", _script(_shape(("It is {x}.", [hole])),
+                                  BY_SUBCATEGORY,
+                                  bind=lambda r, b=reference: {"x": b}),
+                     _wide(4))
+        assert not result.answered, (hole, reference)
+        assert result.refusal == "wrong_kind", (hole, reference, result.detail)
+
+
+def test_a_block_is_named_by_the_read_rather_than_by_its_rows():
+    """A rows hole admits one kind of reference, so a delivery naming the read
+    without naming it AS a read has still said which read it means — the same
+    economy a date hole already allows. What it can never be is a list of
+    figures: every hole holds one thing."""
+    result = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY,
+                         bind=lambda r: {"breakdown": r[-1]["id"]}),
+                 _wide(4))
+    assert result.answered, result.detail
+    assert list(result.bindings["breakdown"]) == ["read"]
+
+    plural = run("what did I spend, by sub category?",
+                 _script(_shape(*_LIST), BY_SUBCATEGORY,
+                         bind=lambda r: {"breakdown": ["f1", "f2"]}),
+                 _wide(4))
+    assert not plural.answered and plural.refusal == "bad_binding"
+
+
+def test_a_block_nothing_can_fill_costs_its_clause_and_not_the_turn():
+    """A list degrades the way every other hole does."""
+    shape = _shape(("You spent {total}.", [("total", "money", "spending")]),
+                   *_LIST)
+    result = run("what did I spend, by sub category?",
+                 _script(shape, BY_SUBCATEGORY,
+                         bind=lambda r: {"total": {"figure": _figure_id(
+                             r, "total spending")}}),
+                 _wide(4))
+    assert result.answered, result.detail
+    assert result.text.startswith("You spent ")
+    assert not _rows_of(result.text)
+    assert moment("answer_gap", what=moment("gap_rows")) in result.text
+
+
+def test_what_a_number_means_decides_what_shape_it_takes():
+    """A row has no hole above it saying whether to write an amount, a count or
+    a proportion, so the figure's own declaration decides — and that is only
+    safe while one quantity belongs to one shape. Read off the same pairing
+    table the shape check reads, so the two cannot describe different rules."""
+    seen: dict = {}
+    for kind, measures in render.MAGNITUDE_OF_TYPE.items():
+        for measure in measures:
+            assert measure not in seen, (
+                f"{measure!r} is a quantity both a {kind} hole and a "
+                f"{seen.get(measure)} hole may ask for, so nothing can say "
+                "what shape a figure declaring it takes")
+            seen[measure] = kind
+    assert seen == render.TYPE_OF_QUANTITY
+    from viva.tools.runner import _MAGNITUDE_WRITERS
+
+    assert set(_MAGNITUDE_WRITERS) == set(render.MAGNITUDE_OF_TYPE)
+
+
+def test_the_delivery_instructions_teach_every_kind_of_reference():
+    """A way of referring to something that the code takes and the instructions
+    never mention is one a model will never use; one the instructions offer and
+    the code refuses is a delivery that always fails."""
+    from vivacore import promptstore
+
+    from viva.speak import FINAL_VERSION
+    from viva.tools.registry import PROMPTS
+    from viva.tools.runner import BINDING_KEYS
+
+    taught = promptstore.load(PROMPTS, FINAL_VERSION)
+    for key in BINDING_KEYS:
+        assert f'"{key}"' in taught, (
+            f"the delivery instructions never mention {key}")
