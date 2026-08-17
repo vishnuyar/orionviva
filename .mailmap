@@ -1,0 +1,12 @@
+# Canonical identity for this project's history.
+#
+# Author has committed under three addresses over the life of the repo: the
+# GitHub no-reply address, a personal address, and (for two early commits, since
+# rewritten) an employer address. Everything resolves to the no-reply address,
+# which keeps a personal inbox out of a public repo while still tying commits to
+# the GitHub account.
+#
+# git respects this in log, shortlog, blame, and `shortlog -sne`.
+
+Vishnu Yarmaneni <3436873+vishnuyar@users.noreply.github.com>
+Vishnu Yarmaneni <3436873+vishnuyar@users.noreply.github.com> <vardhanvishnu@gmail.com>
