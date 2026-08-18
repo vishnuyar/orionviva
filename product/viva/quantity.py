@@ -106,6 +106,19 @@ def is_ratio(name: str) -> bool:
     return name == RATIO or name in RATIOS
 
 
+# Which quantities assert, by their own name alone, which way the money goes.
+# Each is carried positive where its name is true of the value and negative
+# where the opposite is, so a value below zero denies the name it was measured
+# under: an overpaid card is a negative amount of what is owed, and what it
+# says is that money is held rather than owed. A hole asking for one of these
+# is a sentence asserting that direction, so a figure whose value contradicts
+# it fills no such hole.
+#
+# The set is closed and it grows by editing it here. A quantity outside it
+# asserts nothing about direction, and no value of it contradicts anything.
+ASSERTS_DIRECTION = (OWED,)
+
+
 # What is held at a moment, and what passed through over a stretch. The
 # distinction decides what putting two quantities together comes to: a flow
 # taken out of a stock is still that stock — what is held, less what was spent,

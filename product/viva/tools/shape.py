@@ -5,7 +5,7 @@ typed holes in it. A hole names what kind of thing in the world fills it —
 an amount, a day, an account, a counterparty — and nothing more. What fills it
 is decided later, by code, out of the ledger of things the run established.
 
-Two properties carry this module, and they are the whole of its safety:
+The properties that carry this module are the whole of its safety:
 
 **The shape is authored before the data exists.** A shape is committed while
 the run holds nothing, so a claim cannot be tailored to the number that turned
@@ -26,6 +26,25 @@ asking for, out of the same closed vocabulary the tools declare into, and the
 comparison is between two declarations rather than a reading of the words
 around the hole.
 
+**And it says what set the magnitude is a magnitude OF.** What a number
+measures is true of a whole ledger and of one counterparty alike, so the first
+declaration stops a number meaning something else and only a second one stops
+it being about something else. A magnitude hole therefore also names the kinds
+of slice its sentence is a claim about, or the whole of what its quantity
+ranges over, from the vocabulary the boundaries declare into. A sentence is
+about as many of them as it narrows on — one counterparty, one counterparty
+inside one span — and the figure it takes is the one whose slices are those
+same axes and no others. It is a claim about the sentence being written, made
+before anything has been read, so it cannot be tailored to a figure — the same
+footing the quantity declaration stands on.
+
+**Every clause carries at least one hole.** A clause with none rests on nothing
+the run established: it cannot go unfilled, so it cannot be dropped, and it
+cites no figure, owes no caveat, places no statement of where a claim ends and
+adds nothing to the answer's grade. Words that hedge, qualify or introduce are
+therefore the machine's to place on a condition rather than a model's to write
+before it has read.
+
 The clause is the unit, rather than one string with sentence boundaries in it,
 because degradation is per clause: a hole nothing can fill costs its clause and
 leaves the rest of the answer standing, with the gap disclosed. Sentence
@@ -37,7 +56,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..render import CAVEAT, PROSE, QUANTITY_OF_TYPE, TYPES
+from ..render import CAVEAT, PROSE, QUANTITY_OF_TYPE, TYPES, magnitudes_of
+from .envelope import SELECTED_KINDS
 
 # A hole: a name in braces. The name is how a binding refers to it; the type is
 # declared beside the text rather than inside it, so the text stays words.
@@ -46,7 +66,10 @@ _HOLE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 # The types a hole in an answer may declare. Reviewed pack prose is not among
 # them: it nests one reviewed template inside another and is never a hole for
 # words nobody reviewed. Neither is a caveat: the runner places what a stated
-# figure owes, so nothing asks for one through a hole.
+# figure owes, so nothing asks for one through a hole. How well a figure is
+# stood behind is not a kind of thing at all here, for the same reason — the
+# runner holds the grade and states it, so there is nothing for a hole to ask
+# for and nothing for a renderer to write.
 SLOT_TYPES = tuple(t for t in TYPES if t not in (PROSE, CAVEAT))
 
 # Which kinds of hole hold a magnitude and which hold something else: exactly
@@ -55,6 +78,21 @@ SLOT_TYPES = tuple(t for t in TYPES if t not in (PROSE, CAVEAT))
 # fills in and the check that reads it back cannot describe different rules.
 MAGNITUDE_TYPES = tuple(t for t in SLOT_TYPES if QUANTITY_OF_TYPE.get(t))
 PLAIN_TYPES = tuple(t for t in SLOT_TYPES if t not in MAGNITUDE_TYPES)
+
+# And which of those hold a measurement, rather than merely carrying a word for
+# what a number is of: the kinds a set can be asked about, read from the table
+# that tells the two apart. A value the person supposed is the one that carries
+# a quantity and measures nothing, so it is here and not there.
+MEASURED_TYPES = tuple(t for t in MAGNITUDE_TYPES if magnitudes_of(t))
+
+
+# What a magnitude hole may say its number is a number OF: any of the ways a
+# set can be narrowed, or the whole of what the quantity ranges over. Read from
+# the vocabulary a figure's boundary declares into rather than listed again, so
+# a hole cannot ask for a slice no figure can say it is, and a way of narrowing
+# added there is askable here without being taught twice.
+WHOLE = "whole"
+SCOPES = tuple(SELECTED_KINDS) + (WHOLE,)
 
 
 def quantities_of(kind: str) -> tuple:
@@ -80,6 +118,7 @@ SHAPE_THE_CLAUSE = "shape_the_clause"
 SHAPE_THE_SLOTS = "shape_the_slots"
 WORD_THE_QUANTITY = "word_the_quantity"
 WORD_THE_CLAUSE = "word_the_clause"
+HOLE_THE_CLAUSE = "hole_the_clause"
 SHORTEN_THE_CLAUSE = "shorten_the_clause"
 HOLE_THE_NUMBER = "hole_the_number"
 PLACE_EACH_HOLE_ONCE = "place_each_hole_once"
@@ -89,6 +128,10 @@ CHOOSE_A_KIND = "choose_a_kind"
 NAME_THE_QUANTITY = "name_the_quantity"
 CHOOSE_THE_QUANTITY = "choose_the_quantity"
 DROP_THE_QUANTITY = "drop_the_quantity"
+WORD_THE_SCOPE = "word_the_scope"
+NAME_THE_SCOPE = "name_the_scope"
+CHOOSE_THE_SCOPE = "choose_the_scope"
+DROP_THE_SCOPE = "drop_the_scope"
 FEWER_CLAUSES = "fewer_clauses"
 # A delivery, which fills the holes a taken shape left, rather than a shape.
 BIND_EACH_HOLE = "bind_each_hole"
@@ -97,10 +140,11 @@ BIND_ONE_THING = "bind_one_thing"
 PROTOCOL = "protocol"
 
 REPAIRS = (SEND_A_SHAPE, SHAPE_THE_CLAUSE, SHAPE_THE_SLOTS,
-           WORD_THE_QUANTITY, WORD_THE_CLAUSE,
+           WORD_THE_QUANTITY, WORD_THE_CLAUSE, HOLE_THE_CLAUSE,
            SHORTEN_THE_CLAUSE, HOLE_THE_NUMBER, PLACE_EACH_HOLE_ONCE,
            RENAME_THE_HOLE, MATCH_THE_HOLES, CHOOSE_A_KIND, NAME_THE_QUANTITY,
-           CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY, FEWER_CLAUSES,
+           CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY, WORD_THE_SCOPE,
+           NAME_THE_SCOPE, CHOOSE_THE_SCOPE, DROP_THE_SCOPE, FEWER_CLAUSES,
            BIND_EACH_HOLE, BIND_ONE_THING, PROTOCOL)
 
 
@@ -136,20 +180,45 @@ class BadShape(ValueError):
 class Slot:
     """One hole: the name a binding refers to it by, and what it holds.
 
-    A hole that holds a magnitude says two things, because a number has a shape
-    and a meaning and they are not the same declaration. ``type`` is the shape —
-    an amount with a currency, a whole number of things, a proportion — and
-    ``quantity`` is what the number is of. A hole holding something that is not
-    a magnitude declares no quantity, because there is nothing to measure."""
+    A hole that holds a magnitude says three things, because a number has a
+    shape, a meaning and an extent, and no two of them are the same
+    declaration. ``type`` is the shape — an amount with a currency, a whole
+    number of things, a proportion. ``quantity`` is what the number is of.
+    ``scope`` is what set it is a number over: the axes the sentence narrows
+    on, or the whole of what the quantity ranges over. A hole holding something
+    that is not a magnitude declares neither, because there is nothing to
+    measure and no set it was measured over.
+
+    The scope is a set because a sentence narrows on as many axes as it names,
+    and a claim about one counterparty is a different claim from one about that
+    counterparty inside one span. The whole is not an axis and cannot join
+    them: everything the quantity ranges over and everything inside one slice
+    of it are two answers to one question.
+
+    An axis named twice here collapses to once, and that is not the rule a
+    figure's cut is held to, because the two duplicates are not the same thing.
+    A figure's cut names an axis with the value it was taken at, so an axis
+    twice is two different values offered as one set — no single set is what
+    they describe, and it is refused. A scope names an axis and attaches no
+    value, so an axis twice names the identical set, and one of them is the
+    whole of what was said.
+
+    A value the person supposed sits between the two: it says what it is of,
+    because they may suppose about anything they can name, and it names no set,
+    because supposing a figure is not taking one over a set. A scope on it
+    would be a declaration nothing could ever consult."""
 
     name: str
     type: str
     quantity: str = ""
+    scope: frozenset = frozenset()
 
     def to_dict(self) -> dict:
         out = {"name": self.name, "type": self.type}
         if self.quantity:
             out["quantity"] = self.quantity
+        if self.scope:
+            out["scope"] = sorted(self.scope)
         return out
 
 
@@ -157,9 +226,10 @@ class Slot:
 class Clause:
     """One run of words with its holes declared beside it.
 
-    Built strictly: a clause whose text carries a digit, or whose holes and
-    declarations disagree, does not come into being. Every later check can
-    therefore assume it is looking at something sayable."""
+    Built strictly: a clause whose text carries a digit, whose holes and
+    declarations disagree, or which places no hole at all, does not come into
+    being. Every later check can therefore assume it is looking at something
+    sayable, and something a missing binding can drop."""
 
     text: str
     slots: tuple = ()
@@ -203,6 +273,12 @@ class Clause:
                     f"not a kind of thing this holds: {', '.join(SLOT_TYPES)}",
                     CHOOSE_A_KIND))
             wanted = quantities_of(slot.type)
+            # What set a number was taken over is asked of a hole that holds a
+            # measurement, which is not the same set of kinds as the holes that
+            # carry a quantity. A value the person supposed says what it is of
+            # and was measured over nothing, so there is no set for it to name
+            # and a declaration nothing can consult is not asked for.
+            measured = magnitudes_of(slot.type)
             if wanted and not slot.quantity:
                 raise BadShape(Problem(
                     f"the hole {slot.name!r} holds a magnitude and does not say "
@@ -222,6 +298,46 @@ class Clause:
                     f"the hole {slot.name!r} holds {slot.type}, which measures "
                     f"nothing, and says it is {slot.quantity!r}",
                     DROP_THE_QUANTITY))
+            if measured and not slot.scope:
+                raise BadShape(Problem(
+                    f"the hole {slot.name!r} holds a magnitude and does not "
+                    "say what set the magnitude is a magnitude of; a number "
+                    "true of one slice and a number true of everything are "
+                    "the same number under two different claims. It must name "
+                    "at least one of "
+                    + ", ".join(SCOPES),
+                    NAME_THE_SCOPE))
+            unknown = sorted(set(slot.scope) - set(SCOPES))
+            if measured and unknown:
+                raise BadShape(Problem(
+                    f"the hole {slot.name!r} says its number is over "
+                    f"{', '.join(repr(o) for o in unknown)}, which is not a "
+                    "set anything is taken over. Each must be one of "
+                    + ", ".join(SCOPES),
+                    CHOOSE_THE_SCOPE))
+            if measured and WHOLE in slot.scope and len(slot.scope) > 1:
+                raise BadShape(Problem(
+                    f"the hole {slot.name!r} says its number is over "
+                    f"{', '.join(sorted(slot.scope))} — the whole of what a "
+                    "quantity ranges over is not an axis a sentence narrows "
+                    "on, so it is what a number is over or one of the others "
+                    "is, never both",
+                    CHOOSE_THE_SCOPE))
+            if slot.scope and not measured:
+                raise BadShape(Problem(
+                    f"the hole {slot.name!r} holds {slot.type}, which measures "
+                    "nothing, and says it was measured over "
+                    + ", ".join(sorted(slot.scope)),
+                    DROP_THE_SCOPE))
+        # Last of the clause's checks, so a clause wrong in a more particular
+        # way is told about that instead.
+        if not self.slots:
+            raise BadShape(Problem(
+                f"the clause {self.text!r} places no hole, so nothing in it "
+                "rests on anything this run established: it can never go "
+                "unfilled and so can never be dropped, and it states no figure "
+                "to answer for",
+                HOLE_THE_CLAUSE))
 
     def written(self, filled: dict) -> str:
         """The clause as words, every hole replaced by what the renderer wrote
@@ -312,7 +428,14 @@ def read_shape(raw) -> tuple:
             if not isinstance(measures, str):
                 return None, Problem("a slot's 'quantity' is what its number "
                                      "measures, as one word", WORD_THE_QUANTITY)
-            declared.append(Slot(name=name, type=kind, quantity=measures))
+            over = slot.get("scope") or []
+            if (not isinstance(over, list)
+                    or not all(isinstance(o, str) for o in over)):
+                return None, Problem("a slot's 'scope' is what sets its number "
+                                     "was taken over, as a list of words",
+                                     WORD_THE_SCOPE)
+            declared.append(Slot(name=name, type=kind, quantity=measures,
+                                 scope=frozenset(over)))
         try:
             built.append(Clause(text=text, slots=tuple(declared)))
         except BadShape as bad:

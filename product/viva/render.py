@@ -47,14 +47,13 @@ ACCOUNT = "account"      # an account, by whichever of its names is shown
 MERCHANT = "merchant"    # a counterparty, as the ledger knows it
 CATEGORY = "category"    # what money is, as a label
 DOCUMENT = "document"    # a kind of document, never one particular record
-GRADE = "grade"          # how well a figure is stood behind
 ROWS = "rows"            # every figure of one read, each beside what it covers
 CAVEAT = "caveat"        # what a result said its own number does not cover
 SUPPOSED = "supposed"    # a value the person themselves put into this turn
 PROSE = "prose"          # reviewed words from a pack, placed whole
 
 TYPES = (MONEY, COUNT, RATE, DATE, PERIOD, ACCOUNT, MERCHANT, CATEGORY,
-         DOCUMENT, GRADE, ROWS, CAVEAT, SUPPOSED, PROSE)
+         DOCUMENT, ROWS, CAVEAT, SUPPOSED, PROSE)
 
 # Which quantities a hole of each type may ask for. A type says what shape a
 # number takes and a quantity says what it is of, and the pairing is not free:
@@ -88,6 +87,18 @@ MAGNITUDE_OF_TYPE = {kind: measures for kind, measures in QUANTITY_OF_TYPE.items
 TYPE_OF_QUANTITY: dict[str, str] = {
     measure: kind for kind, measures in MAGNITUDE_OF_TYPE.items()
     for measure in measures}
+
+
+def magnitudes_of(kind: str) -> frozenset:
+    """What a thing of this kind may be a magnitude of, or nothing at all.
+
+    The magnitude table as anything outside this module reads it, so a kind
+    that holds a magnitude and a kind that merely carries a quantity are told
+    apart in one place. Empty for a kind that measures nothing, and empty for a
+    value the person supposed: that says what it is of and is not a measurement
+    over any set, so nothing about the extent of one is asked of it."""
+    return MAGNITUDE_OF_TYPE.get(kind) or frozenset()
+
 
 # Money is written to the minor unit, and a figure is quantized before it is
 # grouped so that the digits shown are the digits rounded.
@@ -143,10 +154,6 @@ class Category(_Written):
 
 
 class Document(_Written):
-    __slots__ = ()
-
-
-class Grade(_Written):
     __slots__ = ()
 
 
@@ -292,11 +299,17 @@ def accounts(entities) -> Account:
 def merchant(entity) -> Merchant:
     """One counterparty, in the form this surface may show.
 
-    A merchant has an impersonal normalized key and a descriptor lifted from
-    the person's own statement, and which of the two is shown is a T9 decision.
-    This is the one function that makes it, so nothing else has to remember to.
-    A person reading their own ledger is shown what their statement said; the
-    key is what identifies it where the descriptor may not travel."""
+    A counterparty arrives here under two names — the example label carried by
+    whatever established it, and the normalized key it is filed under — and
+    this is the one function that chooses between them, so nothing else has to
+    remember to. The example is what is shown where there is one; the key is
+    what identifies the counterparty where no example travelled.
+
+    The example a read establishes is that same key, so a counterparty named in
+    a sentence is named the way a filter takes it back and the way a figure
+    beside it declares its scope. A movement's own description is a different
+    thing and is not this: it stays on the row it belongs to, which is where
+    someone reading their movements reads it."""
     fields = dict(entity or {})
     example = str(fields.get("example") or fields.get("description") or "").strip()
     return Merchant(example or str(fields.get("key") or "").strip())
@@ -311,11 +324,6 @@ def document(name) -> Document:
     """A kind of document, as this product's own registries name one. Never a
     particular record: naming an instance is closed on purpose."""
     return Document(str(name or "").strip())
-
-
-def grade(word) -> Grade:
-    """How well a figure is stood behind, in the ladder's own word."""
-    return Grade(str(word or "").strip())
 
 
 def label(name) -> Label:
@@ -335,26 +343,34 @@ def label(name) -> Label:
 def rows(lines, *, grade: str = "") -> Rows:
     """Every figure of one read, one to a line, each beside the slice it covers.
 
-    A block, not a sentence. How many lines there are is not knowable when the
-    answer is shaped — the person may hold three subcategories or thirty — so
-    nothing above ever writes a line, and nothing here knows what the lines are
-    about: `lines` is pairs of things this module already wrote, a name and the
-    magnitude taken over it.
+    A block, not a sentence, and it opens on a line of its own: the words that
+    introduce it sit in the same clause, ahead of the hole, so the first line
+    starts under them rather than beside them. How many lines there are is not
+    knowable when the answer is shaped — the person may hold three subcategories
+    or thirty — so nothing above ever writes a line, and nothing here knows what
+    the lines are about: `lines` is pairs of things this module already wrote, a
+    name and the magnitude taken over it.
 
-    The grade goes once, above, and is worded as being about the set. It is one
-    grade computed over the whole read and stamped on every figure in it, so a
-    word repeated per line would read as a claim about that line when it is a
-    claim about the read. Where nothing carries a grade, nothing is said.
+    `grade` is a word on the ladder, and how well the set is stood behind goes
+    once, above, in the one reviewed sentence that says that word of a list —
+    never a frame with the word dropped into it. It is one grade computed over
+    the whole read and stamped on every figure in it, so a word repeated per
+    line would read as a claim about that line when it is a claim about the
+    read. Where nothing carries a grade, nothing is said.
+
+    The sentence names the list as what it is about. An answer holding this
+    block may state its own grade beneath it, over a set these figures are part
+    of, and a person needs to see which of the two each sentence covers.
 
     The words around the two halves of a line are the pack's, like every other
     thing Viva says."""
-    from .persona import moment
+    from .persona import ROWS_STOOD_BEHIND_MOMENT, moment
 
     written = [moment("rows_line", name=name, amount=amount)
                for name, amount in lines]
     if grade:
-        written.insert(0, moment("rows_stood_behind", grade=grade))
-    return Rows("\n".join(written))
+        written.insert(0, moment(ROWS_STOOD_BEHIND_MOMENT + grade))
+    return Rows("\n" + "\n".join(written))
 
 
 def caveat(sentence) -> Caveat:
@@ -413,6 +429,5 @@ def _grouped(digits: str, separator: str) -> str:
 RENDERED: dict[str, type] = {
     MONEY: Money, COUNT: Count, RATE: Rate, DATE: Date, PERIOD: Period,
     ACCOUNT: Account, MERCHANT: Merchant, CATEGORY: Category,
-    DOCUMENT: Document, GRADE: Grade, ROWS: Rows, CAVEAT: Caveat,
-    SUPPOSED: Supposed,
+    DOCUMENT: Document, ROWS: Rows, CAVEAT: Caveat, SUPPOSED: Supposed,
 }

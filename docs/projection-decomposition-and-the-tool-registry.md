@@ -231,7 +231,7 @@ whole run. An answer cites ids; it does not restate values. A number no tool
 emitted has no id to cite, so an invention has nothing to stand on rather than
 merely failing a check afterwards. Four kinds exist, and only two are claims
 about the person's money: `financial` and `computed` carry a grade, while
-`activity` (what the agent itself did, standing on the ledger events that
+`activity` (what the agent itself did or holds on record, standing on whatever
 recorded it) and `hypothetical` (a value resting on the person's own premise)
 carry none. A grade is inherited from a figure's operands. Ruled with it: since
 arithmetic is deterministic, a sum of corroborated figures is corroborated —
@@ -464,9 +464,11 @@ third consequence — computing from the registry whether a slot *can* be filled
 before a call is made — is unbuilt. `{document}` is the proof: it is a declared
 type, taught to the model and placed by three question phrasings, and no tool
 emits one. That is where the 67% of spend on refusals was supposed to go. Also
-unbuilt: `{tag}`, twelve of thirteen slot types having shipped. **And none of
-this has run against real data** — the acceptance runs above tested the
-machinery it replaces.
+unbuilt: `{tag}`, twelve of thirteen slot types having shipped. _(The count is
+of that day. `rows` and `supposed` were added afterwards and `grade` was retired
+on 2026-08-17; eleven types are declared today and `{tag}` is still not one of
+them.)_ **And none of this has run against real data** — the acceptance runs
+above tested the machinery it replaces.
 
 **What the real vault then said (2026-08-08).** It has run now, three times: two
 local models side by side, and a read-only audit of a live sitting.
@@ -558,7 +560,9 @@ times. An identity now belongs to the thing rather than to the occurrence.
 Separately the citation footer cited one entry per *hole* rather than per
 figure, and displayed each figure's words keyed by figure id, so a figure
 filling both an amount hole and a grade hole appeared twice and showed whichever
-hole was read last — the total's amount never reached the footer at all. The
+hole was read last — the total's amount never reached the footer at all. _(That
+pairing is no longer expressible: the grade hole was retired on 2026-08-17, in
+the closing amendment. The footer defect itself was real and is fixed.)_ The
 footer is the surface that makes an answer checkable without re-checking it, so
 a footer that silently shows a grade where the sentence said an amount is worse
 than a duplicated line.
@@ -769,18 +773,31 @@ _**A filter refusal now names every fault it can see**, under the machine tag
 `invalid_filters` when there is more than one, the way the registry's own
 validator has always answered. One fault still comes back under its own tag._
 
-_**The *not covered* line above closes.** Narrowing by a tag and by a currency
-each place a sentence now — two entries in the table that maps a filter to a
-boundary entry, using wording `pack-v10` already carried — and narrowing by
-nature cannot happen, because `nature` is **withdrawn as a filter**. Not given
-a sentence: withdrawn, from the filter-support table for all three reads, from
-`QUERY_LEDGER_PARAMS`, and from the movement test underneath. The rule that a
-filter an entity would ignore is refused rather than accepted-and-dropped,
-read one step on: a set narrowed in a way no sentence can state is the same
-fault, so the narrowing stops rather than the disclosure being invented. Every
-filter a read honours can now be said in an answer, and a test holds the form
-and the writing table to each other. This removes a capability — **`show me my
-transfers` is no longer askable**, and nothing else offers it; it returns in
+_**The *not covered* line above closes for the reads that record a boundary at
+all.** Narrowing by a tag and by a currency each place a sentence now — two
+entries in the table that maps a filter to a boundary entry, using wording
+`pack-v10` already carried — and narrowing by nature cannot happen, because
+`nature` is **withdrawn as a filter**. Not given a sentence: withdrawn, from
+the filter-support table for all three reads, from `QUERY_LEDGER_PARAMS`, and
+from the movement test underneath. The rule that a filter an entity would
+ignore is refused rather than accepted-and-dropped, read one step on: a set
+narrowed in a way no sentence can state is the same fault, so the narrowing
+stops rather than the disclosure being invented. **What it does not close is
+four reads that populate no boundary at all** — the transactions and holdings
+entities of `query_ledger`, its income metric, and `list_movements`, which
+honour six, two, one and six filters — so nothing any of them narrows by can be
+said in an answer, there being no boundary for a sentence to be placed from; and
+a fifth, the balances read, records account counts and never records what it was
+narrowed to, so filtering it by currency is unsayable too. This paragraph as
+first written claimed the general form — that every filter a read honours can
+now be said in an answer — which was **generalised from two wired lines on the
+spending read and was false the day it was committed**. What stood beside it as
+holding it does not: that test compares three sets of names — the filters the
+reads honour, the filters the form offers, the filters the writing table can
+word — and never asks a read whether it records anything. The general claim is
+closed, and the generalisation named as the fault it was, in this day's later
+amendment below. This removes a capability — **`show me my transfers` is no
+longer askable**, and nothing else offers it; it returns in
 its own cycle with a wording authored to carry it. The `nature?` field in D3's
 sketch above is a design option from before the tool existed and was never
 built as written; what shipped is the filter list in `tools-v11`, which is the
@@ -806,3 +823,488 @@ own group, still mints an entity, and is still refused as a filter — so an
 answer can name a counterparty the follow-up bounces. Unchanged by this cycle
 and needing its own, because whether such a label joins the residual is a
 decision rather than a repair._
+
+---
+
+_Amended 2026-08-17 (the read's own account of why it could not answer). **A
+refusal is a reviewed pack sentence chosen by machine tag, and that now holds
+one call frame lower down.** A turn that reached its delivery with nothing, or
+spent its whole budget of calls, says the verdict and then the cause: the
+verdict in the pack's words for the runner's own tag, unchanged, then the cause
+in the pack's words for the tag of the read that stopped. `pack-v11` carries
+those seven sentences and `pack-v10`'s moments otherwise verbatim; `pack-v10`
+was in force until this cycle._
+
+_**Which causes may be spoken is a closed set, and it lives with the envelope
+rather than at the refusal sites.** A read declares nothing new: `envelope.py`
+holds `SPEAKABLE_REFUSALS`, and the pack's sentences and that set are held to
+each other at build time, the way the runner's own tags and their sentences
+already are. No tool file gained person-facing prose._
+
+_**What admits a tag to that set.** A cause is speakable when it concerns the
+reach between the question and the records — what the records hold, how they
+can be narrowed, whether anything was named to narrow by — and when its whole
+account survives having every value the caller supplied stripped out of it. Two
+kinds of tag fail the second half. One whose stripped account is only about the
+form of the call is an instruction to whoever called the read, and a person
+reading it would be reading the product's own vocabulary. One whose account
+depends on what its payload happens to contain is not a declaration but a bag,
+and no single sentence can be true of two different causes — which is why the
+multi-fault tag that aggregates several faults under one name is not in the set,
+however vault-facing the faults inside it might have been. Clearing both halves
+is a gate and not an entitlement: a tag that clears them still earns no sentence
+unless what is left, once the caller's values are gone, tells a person something
+the verdict did not already tell them, and that is why `not_a_balance_account`
+is out._
+
+_**No sentence has a slot, and that is the point rather than a saving.** The
+reads' own texts quote the value they were called with, and the caller is a
+model this project has recorded inventing filter values when refused, so
+speaking one would tell a person that a category they never named does not
+exist in their records. A vague true cause beats a precise invented one._
+
+_**Which read, and when: the last entry a registered tool produced, and only if
+it refused.** Eligibility routes on registry membership, so the runner's own
+note about a shape and a step naming no registered tool are passed over rather
+than recognised, and nothing reads a result's words, its payload or what
+constructed it. A turn whose last read succeeded says the verdict alone: a cause
+that stopped being the reason is true and not the answer, which is the shape of
+failure this refuses. Whether the strict rule covers a useful share of the turns
+that produced it is a question for the record of a real run, not for the suite._
+
+_**Only two verdicts defer**, and both mean the delivery offered nothing:
+`nothing_established` and `call_budget_exhausted`. A broken protocol has nothing
+to do with what a read said, and every binding-gate fault means the run did
+establish things and reached wrongly — replacing that confession with a hint
+about narrowing would be the reverse of this product's argument._
+
+_**`RunResult` gains `diagnosis`**, carrying the read's tag into `to_dict`, into
+the recorded verdict of every speak event and into the debug reader's per-turn
+line, so the next sweep can count which read refusal most often ends a turn.
+Its meaning is fixed and permanent: **empty means no cause was spoken, not that
+no read refused.**_
+
+---
+
+_Amended 2026-08-17 (every clause carries a hole). **The structure listed under
+*So a model writes no digits* was one check short.** A clause comes into being
+only if it places at least one hole, refused by the same constructor that
+rejects a digit — so the reader of what a model sends inherits the rule rather
+than restating it, and there is no second code path that could come to disagree
+with the first. A clause with no hole could not go unfilled and so could never
+be dropped, cited no figure, owed no caveat, placed no statement of where its
+claim ended and added nothing to the grade: model prose that nothing in the run
+examined. Two false claims reached a person through that gap, one of them a
+sentence the persona pack already places on a condition, written unconditionally
+beside the very figure it denied._
+
+_**What is closed and what is not.** Every clause can now drop, every asserting
+clause answers for its records, its caveats, its scope and its grade, and a turn
+that established nothing refuses rather than speaking. The words a model writes
+*around* a hole are still read by nobody — ADR-013's residual, narrowed and
+standing. `speak-shape-v8` teaches the rule and merges the words introducing a
+list into the clause holding its `rows` hole, so a list nothing can fill takes
+its own introduction away with it; `speak-repairs-v2` carries the nineteenth
+repair, `hole_the_clause`. `speak-shape-v7` and `speak-repairs-v1` were in force
+until this cycle._
+
+---
+
+_Amended 2026-08-17 (the reads that say no scope). **A read that narrows a set
+records what it narrowed it to, and a test asks the read rather than the
+table.** That is the general form of what the earlier amendment of this day got
+wrong, and it now holds without an exemption list: the transactions read, the
+holdings read, the income metric, `list_movements` and the balances read all
+record what narrowed them, and
+`test_every_filter_a_read_honours_can_be_said_in_the_answer` holds every read to
+it by calling each one with each filter it honours, on more than one shape of
+vault, and reading the figures that come back. **Where it is not yet proved,
+said plainly rather than generalised over:** the vaults it calls are ones where
+every filter names something the vault holds, and there is one case below —
+income narrowed by a currency on a vault of several — that comes back with no
+figures at all, so the rule has nothing there to be true of. That case is named
+open, not covered by the claim._
+
+_**The claim corrected, and how it was made.** The earlier amendment said every
+filter a read honours can now be said in an answer. It was generalised from two
+wired lines on the spending read, and it was false when written: four reads —
+the transactions and holdings entities of `query_ledger`, its income metric, and
+`list_movements` — populated no boundary at all, and the balances read recorded
+account counts without ever recording what narrowed it. What was offered beside
+the claim as holding it compares three sets of names, never calls a read, and
+could not have seen any of it; it is renamed to what it does, and the name that
+asserts the claim now belongs to the behavioural test. Two tests must not both
+bear a name asserting the same claim, and only one of them can fail when the
+claim stops being true._
+
+_**A read that groups cuts as many ways as it groups.** The transactions read
+cuts twice in one read, a figure per account and a figure per month over the
+same movements, and each figure now names which slice it is — a month's slice
+being the **calendar month**, first day to last, because the cut names the
+group and the group is the month; written from the first and last day something
+actually moved it would be a fact about the data rather than about the grouping,
+and two vaults' January would be different periods. A figure is the whole of
+what its quantity ranges over only where nothing narrowed the read and that
+grouping produced the one group._
+
+_**A block of rows over a read that cuts more than one way is refused.** The
+block is built from every figure of a read that named a slice, so a read
+declaring slices in two vocabularies would state the same money once for each
+way it cuts, under a claim of delivery. The guard compares the declared cut
+kinds and is keyed to no read and no tool; it reuses the existing wrong-kind
+refusal, which already has a reviewed sentence. Nothing regresses — a block over
+that read refused before this, for the poorer reason that it had named no slice
+at all. The day it is decided which grouping a list enumerates, the guard is
+where that lands._
+
+_**A row is a member of a set and never a slice of one.** A listed movement
+declares **whole** — one movement is all of what the quantity `movement`
+measures — and names no slice, because naming one would need a way of narrowing
+a set to a single movement and there is none. So that read records what narrowed
+it on **one count figure over the whole matching set**, which is also what makes
+*how many payments went to that counterparty* answerable with a number. What the
+row cap left out moves into a caveat as well as the coverage line, so a list
+showing fifty of three hundred tells a person and not only its caller; the half
+naming which filters would reach the rest is instruction to the caller and stays
+there._
+
+_**Holdings and income.** A holding is a member of what the holdings read
+ranged over rather than a slice of it, so its figures name no slice and each
+carries what a filter chose. A member of a set is also never the whole of what
+a balance measures: what is held beside one instrument is the other instruments
+and the cash this read cannot see, so a per-holding figure declares it is not
+whole on every vault, however few rows came back and whether or not anything
+narrowed the read. Declaring one whole would be worse than recording nothing —
+a whole figure places no scope sentence, so the claim would delete every clause
+the answer around it carried, which is the inversion this cycle exists to
+remove. Not whole is still a declaration, and it costs a person nothing to
+read. The count beside them is a different quantity, how many holdings were
+measured, and over a read nothing narrowed that is all of them._
+
+_The income metric does cut, by currency, so each of its figures names the
+currency it is the income in and declares the whole only where nothing narrowed
+the read and there is the one currency to be in. A slice is named in the vault's
+own vocabulary, and an income bucket carries no currency of its own: where the
+accounts declare more than one, the read groups everything under a key that
+names no currency anybody holds, and such a figure carries no slice rather than
+putting a person's income under a currency they hold nothing in. So the
+consequence worth naming is a conditional one — a block of rows over the income
+read, which refused before because that read named no slice, builds **where the
+vault's currencies are known to it**, one line per currency, and refuses as it
+did before where they are not._
+
+_**The balances read's `whole` and its `selected` are one question.** It gained
+what narrowed it, and in the same change both places that computed "whole" from
+account counts alone gained the requirement that nothing narrowed the read.
+Separately they contradict: a one-account vault, or one where every account is
+in the currency asked for, would build a figure claiming to cover everything
+while naming what it leaves out, which the boundary constructor refuses — an
+exception out of a read and through a registry whose module states that a call
+never raises. Wherever a read decides wholeness from what narrowed it, the two
+are now read off one list rather than off the filters twice; and where a figure
+is a member of the set rather than the set, it is not whole whatever the
+filters said._
+
+_**Open, and named rather than discovered later: `compute` carries no
+boundary.** A total computed from two bounded operands comes out unbounded, so
+arithmetic is where a scope declaration is still lost. It is not the same rule
+as inheriting a grade — two operands taken over different sets produce a result
+over neither — and it is its own decision rather than a wiring gap._
+
+_**Open beside it: income narrowed by a currency can record its narrowing
+nowhere.** On a vault whose accounts declare more than one currency, the income
+read groups under a key that matches no currency a `currency` filter may name,
+so narrowing it by a currency the vault does hold comes back `ok` with no
+figures at all — and a read that emits no figure records what narrowed it in no
+figure. That much is a read saying too little. The second symptom on the same
+vault is not: the placeholder key is also what the figure declares as its
+currency, so an unnarrowed income read renders `? 500.00` to a person. The
+cause of both is upstream of the tools, in how an income bucket with no
+currency of its own is attributed. Deferred rather than repaired here, so the
+scope check meets it as a known thing._
+
+_**Open, and older than this cycle: a date is checked structurally, in ASCII
+only by accident.** `_is_iso_date` tests its digits with `str.isdigit`, and the
+month parse this cycle added tests its own with `int`; both accept non-ASCII
+decimal digits, and `int` accepts a leading sign as well. So a stored key of
+Arabic-Indic digits passes as a calendar month and a person could read a scope
+sentence built from a string nothing validated. It is **I2's** business —
+normalization is locale-aware, versioned and deterministic — rather than this
+read's, since the same acceptance sits under every date the tools compare.
+Named here because the month parse is where it now shows._
+
+_**No version id is claimed by this cycle.** The ten narrowing sentences are
+already in the pack in force, the block guard's refusal has a reviewed sentence
+already, and the cap sentence is computed text of the kind the spending read
+already writes beside its own cap. Nothing model-facing changed._
+
+---
+
+_Amended 2026-08-17 (a grade is placed, not asked for). **How well an answer is
+stood behind is the third property of a figure the machine holds, and now the
+third it places.** Caveats went that way on 2026-08-09 and a figure's scope the
+day after; a grade had the identical shape and had not. Until this cycle the
+answer-level grade — the weakest among every money figure an answer stated — was
+computed, travelled out on the result, reached the transcript and the developer's
+console, and **was in no sentence a person read**. The only route by which a
+strength word reached anybody was a `grade` hole a model had to author before it
+had read anything, so whether uncertainty was visible at all was a bet a model
+made in ignorance. That is what the three instances share, and it is the sentence
+a fourth reader should find before reinventing the question: **a property of a
+figure that the machine holds is placed by the machine, never asked for through a
+hole.**_
+
+_**What replaced it.** `grade` is no longer a type a hole may declare. Its branch
+in the binding gate, its entry in the table pairing a hole's type to the one kind
+of reference it may hold, and the renderer that wrote the ladder's word are all
+deleted, and with them the `ungraded_figure` refusal and the phrase that named a
+missing grade as a gap; the tag vocabulary drops to nineteen. The runner states
+the grade of what the answer stated in **one whole reviewed sentence per word on
+the ladder** — never a frame with a machine's word dropped into a model's, which
+is what three of the four grade-wording defects the sweep found were made of. It
+lands after the boundary sentences and before the caveats: scope, then strength,
+then what the claim does not cover, because a confidence word heard before a
+claim's extent invites reading it as wider than it is. Where nothing stated
+carries a grade, nothing is said._
+
+_**The computation set and the placement condition are two questions, and
+separating them is what makes the two sentences safe to read together.** The
+answer's word is computed over **every** money figure it stated, lines of a block
+included; the sentence is placed only where at least one of them was stated as a
+number in a sentence rather than only as a line of a block. Both facts come off
+the binding registry — which slot type a reference filled — and neither reads the
+shape of a payload. The earlier reasoning that a block "has already said its own
+grade, the same rule as scope" is **reversed**: two scopes are two facts, but a
+set's grade and its superset's grade **compose**. Excluding the block's lines
+produced two adjacent sentences over disjoint sets that a person could read as
+disagreeing, and the dangerous direction — a strong trailing line under a weak
+block — was unreachable by any fixture in the repo, so wording alone would have
+left it live and untested. Nested rather than disjoint, the outer sentence is
+weaker than or equal to the inner by construction, and the word a person hears is
+the word `result.grade` carries._
+
+_**And four counts of the agent's own paperwork stopped being claims about
+money.** `check_completeness` emitted documents held, documents posted, documents
+awaiting review and counterparties with no category yet as financial figures with
+no grade — the exact shape `ungraded_figure` existed to refuse, so whether a
+person got a correct count or a refusal turned on whether a model had reserved a
+place for a grade that did not exist. All four now declare `activity`, and the
+words describing that kind widen from what the agent *did* to what it did or
+holds on record. The test that sorts a count is the durable one: **what would a
+wrong number here move?** If it moves a figure about the person's money the count
+is financial and carries a grade; if it moves only the account the agent gives of
+its own records, it is activity and carries none. `months these movements span`
+is the divisor of a monthly average and stays financial by that test; `documents
+awaiting review` moves nothing, because the money consequence of an unposted
+document is already carried on every money figure's own boundary. Two
+consequences: an empty vault can say it holds nothing, where a financial zero
+citing no record refused the whole answer; and a document count can no longer be
+divided into a spending total, which the arithmetic refuses as a number that
+would be a claim of neither kind._
+
+_**The tier summary leaves the completeness payload and the figure is renamed.**
+One result carried two counts of counterparties awaiting attention over different
+sets — the tier read skips instruments, peers and unshareable descriptors and
+falls back to a raw descriptor, while the completeness read counts every
+counterparty with no category and skips movements with no merchant key — so each
+can exceed the other and both are correct. A model reading two irreconcilable
+numbers in one payload is a defect whichever is right, so only one reaches it
+now, and *counterparties not yet identified* becomes *counterparties with no
+category yet*, which is what it counts. **This reconciles the presentation and
+not the measurements**; what the queue owes is its own question._
+
+_**What stays open**, narrowed rather than closed: nothing stops a model typing
+the word "verified" into the literal text of its own clause. Nothing reads those
+words, by design and permanently — a forbidden-word list is a standing anti-goal.
+Two things narrow it. The clause is authored before any read, so such a model is
+betting on a grade it has not seen; and the machine's own sentence is now in the
+same answer to contradict it when the bet was wrong. Beside it, `figure()` still
+accepts a money-kind figure with no grade. No emitter produces one, and now that
+the answer's sentence claims something of "every figure in it", the fix when it
+comes is structural at the emitter rather than a check at the speaking end._
+
+_**Five families moved.** `speak-shape-v9` drops the grade from the types a hole
+may declare; `speak-final-v12` drops it from what a figure reference may fill;
+`speak-v11` rewrites the paragraph that taught the hole to mirror the caveat
+paragraph beneath it, keeping what a model still needs a grade *for*, which is
+judging whether to state a figure at all; `pack-v12` carries two families of four
+reviewed lines, one naming the answer and one naming the list, each paired
+against the ladder in both directions, and drops the refusal sentence for an
+ungraded figure and the phrase for a missing grade; `tools-v12` stops saying
+`check_completeness` counts "how many counterparties are still unidentified".
+`speak-shape-v8`, `speak-final-v11`, `speak-v10`, `pack-v11` and `tools-v11` were
+in force until this cycle._
+
+---
+
+_Amended 2026-08-18 (a hole declares what its number is a number of). **A
+boundary reached the check, and not only the disclosure.** Since 2026-08-10 a
+figure has declared what set it was taken over, and until now that declaration
+was read by the sentences the run places beside a number and by nothing else: a
+total narrowed to one counterparty and a total over the whole ledger both said
+`spending`, so a real number could be spoken as a claim about something else
+with every guard on the answering path satisfied. The general form is the
+sentence to carry forward: **a figure declares what it measured and what set it
+was taken over, and a sentence is checked against both — the first stops a
+number meaning something else, and only the second stops it being about
+something else.**_
+
+_**A cut is a set of axes rather than one slice.** A figure declares every axis
+it is the intersection of — what narrowed the read it came from, plus the slice
+of what came back that it is — so a counterparty's total declares one axis and
+its groceries group declares two, and the two are told apart by what their
+emitters wrote down rather than by anything inspecting a payload. An axis is
+named once, since two values of one axis offered as one set describe no single
+set; the entries are sorted by axis in the constructor, so one set has one
+written form wherever two boundaries are compared with `==`. A read narrowed on
+the same axis it groups by therefore has no list in it, and `_line_of` says so
+directly: a figure is a line of its read where its cut set is the read's
+narrowing plus **exactly one** further axis._
+
+_**The substrate that check needed.** Every figure every read emits now declares
+a set: `check_completeness`'s counts and `get_provenance`'s figures declare the
+whole, per-account balances and net-worth per-account lines name the account
+they are of, and a net-worth part in one of several currencies names its
+currency and declares whole only on a vault holding one. **A per-holding figure
+names no slice**, because a holding is *in* an account rather than a slice of
+one and no member of the narrowing vocabulary names an instrument. `compute`
+composes the declaration instead of losing it — identical operand boundaries are
+inherited, differing ones produce a number over neither set, a literal
+contributes no set and takes none away, and a value the person supposed declares
+itself over no nameable set — which closes the open item the 2026-08-17
+amendment named. A counterparty is named by its key everywhere, so what a read
+says it spoke about and what a figure declares its slice as are one string; a
+movement's own description stays on the row a person reads. And a month group of
+a windowed read declares that month **intersected with the window**, from the
+two declarations already in the code, so a read asked for the 15th onward no
+longer labels its group with a month that starts on the 1st._
+
+_**What it costs, and every piece of it is deliberate.** A holding's value is
+unspeakable, as a row and as a number — per-instrument only; the holdings read's
+own total and its total narrowed to one account still answer — and the successor
+is chartered as its own item, *what a holding is a slice of*, after the
+reachability and wording items. A figure over two disagreeing operands can be
+stated as neither a whole nor a slice. A monthly average computed over one span
+and spoken under another refuses rather than answering, because the span a
+figure's operands were measured over is a third object nothing in this product
+computes: it is neither the coverage a document attests nor the window a read
+was asked for, and restoring the answer needs a decision about where a measured
+extent lives on a figure. Beside it, *what a count is a count of* is chartered:
+a count of things found cites only what it found, so a count of none cites
+nothing and refuses at the citation gate._
+
+_**Open, and named rather than discovered later.** The **value** of a period is
+unchecked — the vocabulary holds no entity for a span, so what the check
+compares is the axes and only the axes, and a sentence naming the wrong window
+binds a figure cut by `period` as happily as the right one. The words a model
+writes around a hole are still read by nobody, so a clause may name a slice in
+its own literal text, declare the whole, bind a real total and pass. And two
+things are now dead weight rather than mechanism: `check_completeness`'s
+per-account date figures, which can fill no hole and are kept exactly as they
+are, and the run-wide pool of days the runner still records at two sites and
+reads nowhere, now that a day is bound from a figure the same clause states._
+
+_**Four families moved.** `speak-shape-v10` teaches the scope declaration and
+the set it takes; `speak-repairs-v3` carries a line per new repair;
+`speak-final-v13` corrects what a block of rows is and states the scope sibling
+of the quantity sentence, so a model is told what will happen rather than
+reaching; `pack-v13` carries the two reviewed refusals, one for a figure taken
+over a different set and one for a figure of a different thing, since the repair
+differs — so the tag vocabulary goes from nineteen to **twenty-one**, and four
+new repairs bring those to twenty-three. `speak-shape-v9`, `speak-repairs-v2`, `speak-final-v12` and `pack-v12`
+were in force until this cycle. No tools version is claimed: nothing about what
+a read is asked for changed._
+
+_**Amended 2026-08-18 (reachability — what the model is told). A description's
+job is to say what a read returns.** These entries record what each read is
+asked for; the descriptions file records what a model is told about asking. The
+rule they are now written to is that a description names what comes back, not
+what it costs to get: a sentence steering a model away from a verb on grounds of
+tokens is a cost decision made where a capability decision belongs, and it made
+the only path to rows unreachable in ordinary words. Two consequences worth
+having in one place. A read's requirement belongs in the schema the model is
+shown rather than only in the body that refuses — the same rule that makes
+`figure()` refuse a defaulted quantity, one layer out, so a fault lands where
+the call is written rather than after a call is spent. And a filter a read
+honours but that does not narrow it is a trap unless the description says so;
+`currency` is that filter on the detailed read. `tools-v13`._
+
+_**Amended 2026-08-18 again (reachability — a new way to find a thing). A
+search is generous and a narrowing is exact, because a figure's scope may only
+name a thing the vault holds.** That sentence decides this cycle's question and
+the next ones of its shape, so it belongs beside the closed narrowing vocabulary
+it is a rule about. The question was how a person names a counterparty they can
+see and this product cannot find. The tempting answer is a `contains` filter,
+and it is the wrong one for a reason that generalises: a filter accepting a
+pattern makes the narrowing a pattern, and then a figure's boundary must either
+name the pattern — a member the closed vocabulary does not have and cannot be
+given, since no entity in the vault corresponds to it — or name the resolved
+labels, which the caller never named and the entity join has nothing coherent to
+compare against. Either way an answer becomes true of a set the person did not
+describe, disclosed only if somebody remembers to write a sentence for it.
+
+Putting the generosity in **discovery** costs none of that. A lookup returns
+labels the vault holds; the caller picks one and passes it as the exact filter
+value it always was. The matching rule can then be as generous as the evidence
+wants, because its output is a set of held labels rather than a number: a
+generous match cannot produce a wrong figure, only a longer list. The rule is
+three ordered comparisons — key equality, key prefix, whole token of the key —
+with the vault's own key function applied to both sides, so nothing here is a
+substring test, a similarity score or a list of words. The same function is now
+applied to a filter's own value, which is the same move read the other way:
+asking the vault what the caller's string keys to, and then narrowing on that
+key alone. `tools-v14`._
+
+_**Amended 2026-08-18 (the wording tail — a sentence is placed where its
+referent is).** The rule this document already carries — a property of a figure
+that the machine holds is placed by the machine, never asked for through a hole
+— was silent about **where**, and silence turned out to be a claim. Every
+statement a boundary produced was gathered from every figure the answer stated,
+deduplicated across the whole answer, and appended after the last clause, each
+one beginning with a word that points at what was just read. Pooled, that word
+pointed at nothing; deduplicated, two figures over one account each and both
+saying so became one sentence stating a count of one over an answer covering
+two. So the rule gains its second half: **placed beside the thing it is a
+property of.** A statement drawn from one figure's boundary goes under the
+clause that bound that figure, and is said once within that clause and again
+under the next clause that makes it. A three-clause answer is wordier, and that
+is the price of a word meaning something.
+
+One statement is not a figure's and never was. How many of the accounts a
+person holds an answer covers is a claim about the answer, so it is computed
+over every figure the answer stated — the distinct accounts those figures name,
+which is a set the code can list — placed once, and worded as being about the
+answer. That is the nested-rather-than-disjoint remedy, applied where two
+adjacent counts could otherwise disagree. `pack-v14`.
+
+_**Corrected within the same cycle, twice, and the second correction is the
+rule.** The paragraph above first said that a figure covering several accounts
+and naming none simply contributes nothing to the count. That is not enough:
+such a figure reached accounts the count then leaves out, so the answer states
+a shortfall it does not have — "This answer covers 1 of the 2 accounts you
+hold" over an answer that reached both. The general rule replaces it. **A
+stated figure contributes to the answer's coverage count only where it
+declares, as data, exactly which accounts it covers** — its boundary carries a
+count of accounts equal to the number of accounts it names — and any stated
+figure failing that test, including one carrying no accounts block at all
+whatever it declares about being the whole, makes the answer place no coverage
+sentence at all. Only the balances read declares accounts today, so what goes
+silent is every answer mixing a per-account balance with anything else: a
+spending total, a category total, a count, a computed figure not descended from
+a balance. That loss is taken deliberately. A false disclosure is worse than a
+missing one, and the alternative — making other reads emit an accounts block so
+a sentence can be placed — would put a count over a set nothing can list back
+in by the front door. What each read was narrowed to is still said, under the
+clause that used it._
+
+And the same cycle answered the other half of the mechanism, where a machine's
+magnitude sits inside a model's words. A quotient of two unlike kinds carries
+the vocabulary's own name for having no name, and every hole that could hold
+one writes a proportion per hundred; a number no name is true of has no unit,
+so writing it picks one, and the binding is refused instead. *How does my
+spending compare to my income* is removed by that, knowingly. A quantity whose
+own name asserts which way the money goes is declared as such in the module
+that owns the vocabulary, and a value contradicting it fills no hole asking for
+it — so a card paid past its balance no longer reaches a person as a debt of
+that size. Neither check reads a word of a clause: both compare declarations
+the code itself wrote. `speak-shape-v11`._

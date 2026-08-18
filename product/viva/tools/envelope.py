@@ -10,9 +10,11 @@ exist, and the tool that emits one decides which it is:
 - ``financial`` — a claim about the person's money. It stands on documents and
   accounts, it carries a grade, and it is the only kind a counterparty could
   ever be asked to rely on.
-- ``activity`` — a number about the agent's own behaviour, standing on the
-  ledger events that recorded it. Being wrong about it costs nothing but
-  candour, so it carries no grade.
+- ``activity`` — a number about what the agent itself did or holds on record:
+  its own actions, and its own account of its own paperwork. It stands on
+  whatever recorded it — the ledger events for an action, the documents
+  themselves for a count of them. A wrong one moves nothing about the person's
+  money, so it costs candour and nothing else, and it carries no grade.
 - ``computed`` — arithmetic over other figures. It stands on the records of the
   operands that actually determined it and carries the weakest grade among
   them, and being a claim about money it is refused outright when it stands on
@@ -75,8 +77,8 @@ COMPUTED = "computed"
 HYPOTHETICAL = "hypothetical"
 
 # The kinds that carry a grade. `figure` clears the grade of any other kind, so
-# a figure resting on ledger events or on the person's own premise cannot pick
-# one up through composition.
+# a figure resting on the agent's own record-keeping or on the person's own
+# premise cannot pick one up through composition.
 GRADED_KINDS = (FINANCIAL, COMPUTED)
 
 # The kinds that make a claim about the person's money, and therefore the ones
@@ -109,10 +111,12 @@ PAYLOAD_TARGET = 5000
 MODEL_FACING_FIGURE = ("id", "value", "currency", "quantity", "kind", "grade",
                        "dated", "exactness", "what")
 
-# Weakest-last, so composition takes the maximum index present. `conflicted`
-# sits below `unverified`: a figure that disagrees with its own evidence is
-# worse than one nothing has checked.
-_STRENGTH = (VERIFIED, CORROBORATED, UNVERIFIED, CONFLICTED)
+# Every grade a figure may carry, weakest-last, so composition takes the maximum
+# index present. `conflicted` sits below `unverified`: a figure that disagrees
+# with its own evidence is worse than one nothing has checked. It is the closed
+# vocabulary a run says how well its answer is stood behind out of, so what says
+# each of them in words is held to this list at build time.
+STRENGTH = (VERIFIED, CORROBORATED, UNVERIFIED, CONFLICTED)
 
 # How the arithmetic behind a figure came out. A number read off a record
 # terminated by construction, so `EXACT` is what a figure carries unless a
@@ -125,10 +129,10 @@ _EXACTNESS = (EXACT, ROUNDED)
 
 def weakest(grades) -> str:
     """The weakest grade present, by the ladder's order; "" when none given."""
-    present = [g for g in grades if g in _STRENGTH]
+    present = [g for g in grades if g in STRENGTH]
     if not present:
         return ""
-    return _STRENGTH[max(_STRENGTH.index(g) for g in present)]
+    return STRENGTH[max(STRENGTH.index(g) for g in present)]
 
 
 def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
@@ -163,9 +167,9 @@ def figure(value, what: str, *, quantity: str, kind: str = FINANCIAL,
         raise TypeError("a figure's boundary is what `bounded` returned; a "
                         "mapping built anywhere else has passed none of the "
                         "checks that make one true")
-    if grade and grade not in _STRENGTH:
+    if grade and grade not in STRENGTH:
         raise ValueError(f"grade {grade!r} is not on the ladder: "
-                         + ", ".join(_STRENGTH))
+                         + ", ".join(STRENGTH))
     if exactness not in _EXACTNESS:
         raise ValueError(f"exactness {exactness!r} says nothing about how the "
                          "arithmetic came out: " + ", ".join(_EXACTNESS))
@@ -240,6 +244,32 @@ SELECTED_KINDS = (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD, BY_SINCE,
 # The one member that takes two days rather than one.
 _TWO_ENDED = (BY_PERIOD,)
 
+# The refusals a person may be told the cause of. A read that stops says why in
+# a machine tag, and for a tag in this set the pack holds one reviewed sentence
+# saying the same thing to a person.
+#
+# What admits a tag, for whoever adds the next one: the cause concerns the reach
+# between the question and the records — what the records hold, how they can be
+# narrowed, whether anything was named to narrow by — and its whole account
+# survives having every value the caller supplied stripped out of it. A tag whose
+# stripped account is only about the form of the call is an instruction to
+# whoever called the read; one whose account depends on what its payload happens
+# to contain is a bag rather than a declaration, and a single sentence cannot be
+# true of two different causes. Both stay out.
+#
+# Clearing that is a gate and not an entitlement. A tag that clears it still
+# earns no sentence unless what is left, once the caller's values are gone, tells
+# a person something the verdict did not already tell them.
+#
+# The set is closed and it grows by editing it here. Membership is the whole of
+# what makes a cause speakable: nothing reads the refusal's words, its payload or
+# what constructed it. A tag in the set with no sentence in the pack, and a
+# sentence no tag in the set can reach, are both build failures.
+SPEAKABLE_REFUSALS = frozenset({
+    "too_broad", "filter_unsupported", "unknown_account", "unknown_category",
+    "unknown_tag", "unknown_merchant", "unknown_currency",
+})
+
 # Why something a figure claims to measure is not in it. The two differ in
 # whether anything can be named that would close the gap, which is why they are
 # told apart rather than merged: a figure that was refused a number knows what
@@ -263,35 +293,41 @@ class Boundary(dict):
 
 
 def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
-            cut=None, unmeasured=(), unposted: int = 0) -> Boundary:
+            cut=(), unmeasured=(), unposted: int = 0) -> Boundary:
     """What one figure was taken over, and whether that set is everything the
     quantity it declares would range over.
 
     ``whole`` is the load-bearing word: True says the set and the quantity are
     the same thing, and there is nothing further to say. False says they are
-    not, and the rest says how they differ. A total of one category is a real
-    figure and it is not every movement its quantity names, so it is not whole
-    however exactly it was arrived at.
+    not, and whatever else is passed says how they differ — which may be
+    nothing, since a figure can be a member of the set it was taken from
+    without any filter having narrowed that set. A total of one category is a
+    real figure and it is not every movement its quantity names, so it is not
+    whole however exactly it was arrived at.
 
     ``counted`` of ``held`` accounts is one of N: a per-account balance stated
     where a total was asked for is a true figure over the wrong set.
     ``selected`` names how the set was narrowed, each entry a member of
     ``SELECTED_KINDS`` with the thing it was narrowed to — ``value``, plus
-    ``to`` for the members that take two days. ``cut`` names the one slice of
-    that set THIS figure was taken over, in the same vocabulary and under the
-    same checks: a read grouped into ten totals narrows once and cuts ten ways,
-    and which cut a figure is is a property of the figure rather than of the
-    read. It is told apart from ``selected`` because it is the one part of a
-    boundary that is already said when the figure is written beside its own
-    name, and saying it twice would be the same claim made twice.
+    ``to`` for the members that take two days. ``cut`` names every slice THIS
+    figure is the intersection of, in the same vocabulary and under the same
+    checks: a read narrowed to one counterparty and grouped into ten totals
+    cuts ten ways, and each of those figures is that counterparty AND its own
+    group. A figure is the set its cuts name together, so what a sentence about
+    it may claim is decided by the whole set rather than by any one of them,
+    and a counterparty's groceries and a counterparty's total are told apart by
+    what they declare rather than by what their numbers look like.
+
+    One axis is named once. Two entries of one axis would be two narrowings of
+    the same thing offered as a set, and no single set is what they describe.
 
     A cut is the only entry a whole figure may still carry, because it is the
-    only one that is not a way of falling short. It says WHICH slice the figure
-    is; ``whole`` says whether that slice is everything the quantity ranges
-    over. The one group of a grouping that partitions is both — it is the
-    groceries group and it is all of the spending — and a block of rows needs
-    its name whichever it is. Nothing is said about it either way: a whole
-    figure states no boundary at all.
+    only one that is not a way of falling short. It says WHICH slices the
+    figure is; ``whole`` says whether those slices together are everything the
+    quantity ranges over. The one group of a grouping that partitions is both —
+    it is the groceries group and it is all of the spending — and a block of
+    rows needs its name whichever it is. Nothing is said about it either way: a
+    whole figure states no boundary at all.
 
     ``unmeasured`` names what the figure claims to measure and does not
     include, each with why it is out and the document that would settle it —
@@ -315,11 +351,11 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
                 "to": str(item.get("to", ""))}
 
     chosen = [named(item) for item in selected]
-    slice_of = named(cut) if cut else None
+    slice_of = [named(item) for item in cut]
     # One vocabulary and one set of checks, whichever half of the boundary the
     # entry belongs to: a cut is narrowing said of one figure rather than of the
     # read, so nothing about how it must be written is different.
-    for item in chosen + ([slice_of] if slice_of else []):
+    for item in chosen + slice_of:
         if item["kind"] not in SELECTED_KINDS:
             raise ValueError(f"a set is not narrowed by {item['kind']!r}: "
                              + ", ".join(SELECTED_KINDS))
@@ -333,6 +369,17 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
                              + ", and it carries the other number of them")
         if not item["to"]:
             del item["to"]
+    # After the entries are known to be well written, so a cut wrong in a more
+    # particular way is told about that instead.
+    if len({item["kind"] for item in slice_of}) != len(slice_of):
+        raise ValueError("a figure names each axis it was cut by once; twice "
+                         "is two narrowings of one thing offered as one set")
+    # One set, one written form. The axes are unique by the check above, so
+    # ordering by axis is a total order, and two figures over the same axes and
+    # values are then the same declaration however their emitters assembled
+    # them — a narrowing plus a group axis, or two filters. Whoever compares
+    # two boundaries with `==` is right without having to know that.
+    slice_of.sort(key=lambda item: item["kind"])
     left_out = [{"account": str(item["account"]),
                  "reason": str(item.get("reason", "")),
                  "settled_by": str(item.get("settled_by", ""))}
@@ -371,6 +418,49 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
     return out
 
 
+def cut_set(selected=(), *slices) -> list:
+    """Every slice one figure is the intersection of: what narrowed the read it
+    came from, and the slice of what came back this figure is.
+
+    A read narrowed to one counterparty returned that counterparty's spending,
+    and the figure that is the whole of what came back is the whole of that
+    slice, so it says so. A group of that read is the counterparty AND the
+    group, so it says both, and the two figures are then different claims
+    rather than the same one. An unnarrowed read's own total is cut by nothing.
+
+    A slice states its own axis more narrowly than the read's narrowing did, so
+    where the two name one axis the slice is what stands: a month of a read
+    asked for a span is that month.
+
+    A figure that could not name a slice it is names none at all. The slices
+    left would describe a wider set than the figure was taken over, which is
+    the claim every boundary exists to stop, so the figure declares nothing and
+    fills no hole rather than declaring something true of something else.
+
+    It takes what the read and the emitter already wrote down rather than
+    deciding anything itself, so a figure declaring the slices it is and a
+    figure declaring the narrowing it was taken under cannot describe two
+    different sets."""
+    if any(item is None for item in slices):
+        return []
+    axes = {item["kind"]: dict(item) for item in selected}
+    for item in slices:
+        axes[item["kind"]] = dict(item)
+    return list(axes.values())
+
+
+def recorded_boundary(fig: dict):
+    """The boundary a figure carries, as the type `bounded` returns, or None
+    where the figure states none.
+
+    A figure holds its boundary as a plain mapping, and every one of them was
+    built by `bounded`, since `figure` accepts nothing else. Reading one back
+    gives it that type again, so a figure taken over the same set as another
+    can be written with the boundary that other one recorded."""
+    recorded = fig.get("boundary") or {}
+    return Boundary(recorded) if recorded else None
+
+
 # What a model-facing field says when it has nothing to add. Every result is
 # resent on every remaining call of the turn, so a field carrying the ordinary
 # case on every figure is paid for many times over and tells the model nothing.
@@ -382,8 +472,8 @@ def _named(item) -> dict:
     tell it from another. What kind of thing it is travels in its id.
 
     The label is the handle the figures use — an account's ledger path, a
-    counterparty's descriptor — so a result's numbers and the things they are
-    about can be matched up. It is not what a person reads: the rest of what an
+    counterparty's key — so a result's numbers and the things they are about
+    can be matched up. It is not what a person reads: the rest of what an
     entity carries, and the choice among those forms, belongs to the renderer,
     and sending it would be paying on every remaining call of the turn for a
     choice the model does not make."""

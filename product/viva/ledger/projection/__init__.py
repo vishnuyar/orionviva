@@ -30,15 +30,15 @@ from .movements import (BY_CATEGORY, BY_DEFAULT, BY_LINK, BY_OWN_ACCOUNT,
                         BY_RULING, MIXED, SETTLEMENT, SPENDING, TRANSFER,
                         MovementInfo, _NATURE_OF_MAJOR, movement_key,
                         nature_of_legs)
-from .positions import PositionRecord
+from .positions import ComposedValue, PositionRecord
 from .rhythm import RhythmComponent, RhythmHypothesis
 from .tiers import (TIER_SETTLED, TIER_STRUCTURAL, TIER_UNENRICHED,
                     TIER_UNKNOWN)
 
 __all__ = [
-    "AccountInfo", "BalanceAnswer", "LedgerProjection", "MovementInfo",
-    "PositionRecord", "ProjectionCore", "Resolution", "RhythmComponent",
-    "RhythmHypothesis", "TxnLine",
+    "AccountInfo", "BalanceAnswer", "ComposedValue", "LedgerProjection",
+    "MovementInfo", "PositionRecord", "ProjectionCore", "Resolution",
+    "RhythmComponent", "RhythmHypothesis", "TxnLine",
     "UnknownAccountError", "movement_key", "nature_of_legs",
     "SPENDING", "TRANSFER", "SETTLEMENT", "MIXED",
     "BY_LINK", "BY_OWN_ACCOUNT", "BY_RULING", "BY_CATEGORY", "BY_DEFAULT",
@@ -334,8 +334,9 @@ class LedgerProjection:
 
     # -------------------------------------------------------------- positions
 
-    def snapshot_positions(self, st, as_of: str = "") -> dict:
-        return _positions.snapshot_positions(st, as_of)
+    def snapshot_positions(self, st, as_of: str = "",
+                           *, cash: bool = False) -> dict:
+        return _positions.snapshot_positions(st, as_of, cash=cash)
 
     def positions(self, account: str | None = None) -> list[PositionRecord]:
         return _positions.positions(self._core, account)
@@ -351,6 +352,10 @@ class LedgerProjection:
 
     def account_value(self, account: str) -> Decimal:
         return _positions.account_value(self._core, account)
+
+    def composed_values(self, account: str,
+                        as_of: str = "") -> list[ComposedValue]:
+        return _positions.composed_values(self._core, account, as_of)
 
     def unrealized_gain(self, account: str | None = None) -> Decimal | None:
         return _positions.unrealized_gain(self._core, account)

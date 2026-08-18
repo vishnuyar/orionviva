@@ -169,8 +169,56 @@ def test_a_legacy_cash_position_self_corrects_on_read(tmp_path):
 
 
 def test_a_composed_value_reports_its_oldest_as_of(tmp_path):
-    """Summing measurements of different vintages must not read as 'current': the
-    composed figure is only good as of its OLDEST part, and says the parts differ."""
+    """A value summed from measurements of different dates carries the oldest of
+    them and reports that its parts differ.
+
+    The cash here is attested in March and the securities measured in June, so
+    the value is a March figure."""
+    from viva.ledger.events import (account_opened, closing_balance_observed,
+                                    position_observed)
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    ledger.append(account_opened("acct:mixed", "investment", "Broker", "USD",
+                                 "2026-01-01"))
+    ledger.append(closing_balance_observed("acct:mixed", "1000.00", "2026-03-31"))
+    ledger.append(position_observed("acct:mixed", "VTSAX", "50", "20000.00",
+                                    "USD", "2026-06-30"))
+    proj = ledger.projection()
+    as_of, mixed = proj.holdings_as_of("acct:mixed")
+    assert mixed                                    # cash is March, VTSAX is June
+    assert as_of == "2026-03-31"                    # dated by its oldest part
+    (value,) = proj.composed_values("acct:mixed")
+    assert value.amount == Decimal("21000.00")
+    assert value.as_of == "2026-03-31" and value.mixed_vintage
+
+
+def test_nothing_this_pipeline_records_leaves_a_value_ungraded(tmp_path):
+    """A total with a term nothing attested carries no grade at all — a guard
+    against a quantity nothing measured being added to one that was. This
+    proves it is a guard rather than a live path: every measurement a statement
+    ingested here leaves behind arrives graded, so no value composed out of
+    them reaches it."""
+    ledger, res = _brokerage(
+        [("AAPL", "100", "18400.00", "12000.00"),
+         ("VTSAX", "50", "6600.00", "5000.00")],
+        cash="1000.00", total="26000.00", tmp_path=tmp_path)
+    assert res.action == "posted"
+    proj = ledger.projection()
+    seen = 0
+    for info in proj.account_infos():
+        for value in proj.composed_values(info.account):
+            seen += 1
+            assert value.grade, (
+                f"{info.account} composed a value out of a term nothing "
+                "graded, which the ingest path is not supposed to produce")
+    assert seen, "this vault composed no value, so it proves nothing"
+
+
+def test_a_holding_no_longer_held_does_not_date_the_value(tmp_path):
+    """The dates a value carries are the dates of what it is actually summed
+    out of. A second statement replaces the first snapshot entirely, so the
+    older holding is neither in the figure nor one of its vintages — and cash
+    and securities read off one statement are one vintage, which is what the
+    tally gate makes true."""
     ledger, _ = _brokerage([("AAPL", "100", "18400.00", None)],
                            cash="1000.00", total="19400.00", tmp_path=tmp_path,
                            as_of="2026-03-31")
@@ -186,8 +234,9 @@ def test_a_composed_value_reports_its_oldest_as_of(tmp_path):
     proj = ledger.projection()
     (acct,) = [i.account for i in proj.account_infos()]
     as_of, mixed = proj.holdings_as_of(acct)
-    assert mixed                                    # AAPL is Q1, VTSAX is Q2
-    assert as_of == "2026-03-31"                    # honest to the OLDEST part
+    assert not mixed                                # AAPL is not held any more
+    assert as_of == "2026-06-30"
+    assert proj.account_value(acct) == Decimal("21000.00")   # the printed total
 
 
 # --------------------------------------------------------------- the sweep ---

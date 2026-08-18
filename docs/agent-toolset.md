@@ -212,8 +212,10 @@ halves are closed in the 2026-08-05 amendment below._
 > `tools-v9` since 2026-08-15, which teaches that an account someone
 > owes on is measured as `owed` rather than as `balance` — see
 > [net-worth.md](net-worth.md) — **`tools-v10` since 2026-08-16**, which
-> teaches the `vocabulary` mode below, and **`tools-v11` since 2026-08-17**,
-> which stops offering `nature` as a filter).
+> teaches the `vocabulary` mode below, `tools-v11` since 2026-08-17, which
+> stops offering `nature` as a filter, and **`tools-v12` later the same day**,
+> which renames what `check_completeness` counts: counterparties with no
+> category yet, rather than counterparties still unidentified).
 >
 > Recorded and not fixed: whether a slot can be filled at all is still not
 > computed from the registry before a call is made, which is where the refused
@@ -294,8 +296,10 @@ halves are closed in the 2026-08-05 amendment below._
 >
 > **What it cannot do yet is answer for itself.** That count carries no grade
 > and no `record_ids`, so *"why do you say five?"* comes back with nothing, and
-> it is declared `ACTIVITY` — a number about the agent's own behaviour — which
-> is not what a count of the vault's own labels is. Shipped knowingly, with its
+> it is declared `ACTIVITY` — a number about what the agent did or holds on
+> record — which is not what a count of the vault's own labels is. (That
+> definition widened on 2026-08-17 and this item is untouched by the widening:
+> the question here is the person's ledger, not the agent's paperwork.) Shipped knowingly, with its
 > own cycle owed. It remains the missing input to capability honesty rather than
 > its implementation: nothing yet computes from the registry what is askable._
 
@@ -322,3 +326,117 @@ halves are closed in the 2026-08-05 amendment below._
 > coming down had a second one behind it. That one is down as of this cycle and
 > no live run has yet gone through it, so read every capability above as proven
 > mechanically and unexercised._
+>
+> _Amended 2026-08-17 again (the reads that say no scope). **`list_movements`
+> gains one count figure** over the whole matching set, beside the row figures
+> it already returned, because it is the only figure of that read that can
+> record what narrowed it — every other one is a single complete movement. It
+> arrives as a capability as well as a disclosure: *how many payments went to
+> that counterparty* is answerable with a number from the detailed read. The
+> split above is unchanged — `query_ledger` still returns no rows — and the
+> descriptions file gained nothing about the count, so nothing tells a model it
+> is there before it calls. (`tools-v12`, later the same day, changes one
+> sentence about `check_completeness` and nothing else.) What the cap left out
+> is also now a caveat, so a list showing fifty of three hundred says so to a
+> person and not only to its caller._
+
+> _Amended 2026-08-17 once more (a grade is placed, not asked for).
+> **`check_completeness` answers for the agent's paperwork, not for the
+> person's money.** Its four counts — documents held, documents posted,
+> documents awaiting review, and counterparties with no category yet — were
+> financial figures carrying no grade, which is the one shape the run refuses
+> outright, so a truthful count could reach a person only by luck. All four
+> declare `activity` now, sorted by *what would a wrong number here move?*: they
+> move the account the agent gives of its own records and no figure about what
+> the person holds. An empty vault can therefore say it holds nothing, and a
+> document count can no longer be divided into a money total. The **tier summary
+> leaves the payload**: it carried a second, differently-measured count of
+> counterparties awaiting attention that no figure could speak, so a model read
+> two irreconcilable numbers in one result and could act on either.
+> `tools-v12` renames the figure to what it counts. The per-account date figures
+> are unchanged — they stay financial and keep their grades, and after this
+> cycle they fill no hole at all, which is how a day still reaches the run's
+> ledger. See the closing amendment of
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)
+> for the half of that cycle this file does not hold._
+
+> _Amended 2026-08-18 (a hole declares what its number is a number of). **The
+> sentence above about the per-account date figures is now false in its last
+> clause.** They stay exactly as they are, financial and graded, and they no
+> longer put a day anywhere an answer can reach: a date is bound from the
+> `dated` of a figure the same clause states, so a figure that can fill no hole
+> can be in no clause and its day is unreachable. The run-wide pool of days is
+> written and read by nothing. That is a small, deliberate loss — every read
+> that states a balance carries its own day — and a refusal beats a day
+> belonging to a different number.
+>
+> **What the verbs gained and what they lost.** Every figure every read emits
+> now declares the set it was taken over, so `check_completeness`'s counts and
+> `get_provenance`'s figures declare the whole, a per-account balance names its
+> account, and `compute` composes its operands' declaration rather than losing
+> it. What is lost is per-instrument values from the holdings read: a holding is
+> *in* an account rather than a slice of one, and nothing a set may be narrowed
+> by names an instrument, so a per-holding figure names no set a sentence can
+> declare. That read's own total, and its total narrowed to one account, still
+> answer. `get_provenance` gains a boundary and is otherwise as broken as it
+> was. No tools version is claimed — nothing about what a read is asked for
+> changed. See the closing amendment of
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)._
+
+> _Amended 2026-08-18 (reachability — what the model is told). **The prompt
+> states what day it is.** Nothing in this product had ever told the model the
+> date, so *last month*, *this year* and *the last ninety days* were unaskable:
+> the only date parser is a structural `YYYY-MM-DD` check, and a model with no
+> today cannot compute one. `speak-v12` is `speak-v11` plus one sentence
+> carrying the date as a template field, filled where the system message is
+> built. What it does not license is stating the date to a person as a value —
+> a date reaches someone through a hole bound to a figure, and that is
+> unchanged. The residual is named rather than hidden: nothing checks a window
+> the model computed, because the vocabulary holds no entity for a span, so a
+> wrong window is **disclosed** by the sentence the machine places beside the
+> figure and is not refused.
+>
+> **`list_movements` is described by what it returns, not by what it costs.**
+> Its description told the model to prefer the summary read "with a fraction of
+> the words", beside a `query_ledger` description claiming one call of it is the
+> whole answer — one verb claiming primacy and the other conceding it, over a
+> question the person had already asked in plain words. The split above is
+> unchanged and neither verb moves: what changed is that the two are now told
+> apart by what comes back, rows or a total. Beside it, two smaller things.
+> `LIST_MOVEMENTS_PARAMS` **declares that it takes filters**, so a call naming
+> nothing is refused where the arguments are validated rather than after the
+> read has been entered; which filters are narrow enough remains the read's own
+> rule, and `currency` — honoured, and not one of them — is now named in the
+> description as the trap it was. And the two true sentences about **ids and
+> keys** gain the word that tells them apart: an id is what a binding refers
+> to, a key or a label is what a filter takes. `tools-v13`._
+
+> _Amended 2026-08-18 again (reachability — a new way to find a thing). **A
+> person can now name a counterparty and have it found.** There were two ways
+> to discover one and both were windows onto an alphabet: the largest by spend,
+> and the first page of the vocabulary read. On a ledger holding a few hundred
+> counterparties, a shop someone visits weekly could sit outside both, and the
+> descriptions then forbade the one move that would sometimes have worked. The
+> `vocabulary` mode gains one optional argument, `matching`: a name to look for.
+> It is an argument and not a fourteenth verb — *what do I hold* and *which of
+> what I hold is this* are the same question, and splitting them across a mode
+> and a verb would manufacture the ambiguity the entry above is about — so the
+> verb count is unchanged.
+>
+> **What is found is generous; what is narrowed by stays exact.** A name is
+> compared with each label three ways, in order: the label whose key is that
+> name, then the labels whose keys begin with it, then the labels carrying it as
+> a whole word. Both sides go through the vault's own key function first, so
+> every comparison is between two strings that function produced, and a run of
+> characters buried inside a word reaches nothing. What comes back is labels the
+> vault holds, which the caller then puts in a filter as the exact value it
+> always was — so no figure is ever taken over a pattern, and nothing here
+> learns a new way of narrowing. The lookup emits no figure of its own: the
+> count it returns is the whole vocabulary's size, as it was, because a count
+> of what a name reached would be a number over a set nothing can name. Beside
+> it, the counterparty filter now passes the caller's own value through the same
+> key function, so a name written in a person's capitals reaches the key their
+> statements were filed under; a name that resolves to no held key is refused as
+> it always was. And where a refusal's list of what the vault does hold is
+> truncated, its last line names the lookup rather than offering more names.
+> `tools-v14`._

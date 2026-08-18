@@ -9,11 +9,11 @@ tool emitted in this run, named by its id, or a value the **person** stipulated
 in this turn's question. A raw decimal refuses, and the refusal names the
 figures that are available.
 
-Provenance, grade and unit are consequences of the arithmetic, never of the
-call. Every value carried through the walk is a quantity — an amount, what it
-measures, the records it depends on, the weakest grade among them, whether any
-part of it was supposed, and how the arithmetic came out — and each operator
-combines those annotations for itself.
+Provenance, grade, unit and scope are consequences of the arithmetic, never of
+the call. Every value carried through the walk is a quantity — an amount, what
+it measures, the records it depends on, the weakest grade among them, what set
+it was taken over, whether any part of it was supposed, and how the arithmetic
+came out — and each operator combines those annotations for itself.
 
 What a result rests on follows the shape of the operator. Multiplying or
 dividing by a bare magnitude is a change of units: it rescales an attested
@@ -24,6 +24,17 @@ Adding or subtracting a bare magnitude injects a quantity nothing measured, so
 a total is attested only when every term is: one term standing on no record
 leaves the whole standing on none, with no grade either, and a claim about
 money that stands on nothing cannot be said at all.
+
+What set a result was taken over composes by agreement or by nothing, and
+follows the shape of the operator in the same way everything else does. Two
+operands taken over the same set give a result over that set; two taken over
+different sets give a number over neither, which says it is not everything its
+quantity ranges over and names no slice it is. A literal is not a set at all:
+scaling by one leaves the result over whatever the other operand was over, and
+adding one leaves it over neither, exactly as it leaves the total standing on
+no record. An operand no emitter declared a set for gives a result declaring
+none, and every read declares one, so nothing anybody can ask for reaches
+that.
 
 How the arithmetic came out is a separate question with no bearing on that one.
 A quotient that does not terminate is returned rather than refused, marked as
@@ -52,14 +63,15 @@ expression over nothing but literals produces a number that cannot be spoken.
 
 Three things the arithmetic refuses: combining unlike quantities, adding across
 currencies since nothing here converts between them, and mixing a claim about
-the person's money with a claim about the agent's own behaviour. A currency
-clash is a property of the expression rather than of the call — binding a
+the person's money with a claim about the agent's own doings or records. A
+currency clash is a property of the expression rather than of the call — binding a
 figure the expression never names decides nothing about it.
 """
 
 from __future__ import annotations
 
 import ast
+import copy
 import decimal
 import operator
 import re
@@ -70,7 +82,8 @@ from decimal import (Decimal, DecimalException, DivisionByZero, Inexact,
 from ..quantity import (COMPARABLE, FLOWS, RATIO, STOCKS, UNMEASURED,
                         is_ratio, ratio_of)
 from .envelope import (ACTIVITY, COMPUTED, EXACT, HYPOTHETICAL, ROUNDED,
-                       ToolResult, figure, refusal, weakest)
+                       ToolResult, bounded, figure, recorded_boundary, refusal,
+                       weakest)
 
 # Each nesting level of the expression costs one Python frame in the walk.
 # Deeper than this refuses as `bad_expression`.
@@ -111,6 +124,17 @@ STIPULATED = "stipulated"
 SCALAR = ""
 UNSTATED = "?"
 
+# What a literal carries on the boundary axis, told apart from a set an emitter
+# declared and from the silence of an emitter that declared none. It is a
+# string, so it can be neither of the two things the axis otherwise holds: a
+# `Boundary` is what an emitter declared and `None` is that nobody did, and no
+# string is ever either, so the three states stay distinguishable by identity
+# however the walk combines them. A literal is not a set: it contributes none
+# and takes none away, so each operator says for itself what a set met by one
+# comes out as. It lives inside this walk and nothing outside it is ever handed
+# one.
+NOT_A_SET = "not a set"
+
 MIXED_DIMENSIONS = "mixed_dimensions"
 MIXED_CURRENCIES = "mixed_currencies"
 MIXED_QUANTITIES = "mixed_quantities"
@@ -145,6 +169,10 @@ class _Q:
     # A literal and a value the person supposed measure nothing anybody stated,
     # which is what `UNMEASURED` says.
     quantity: str = UNMEASURED
+    # What set this was taken over: the set the emitting read declared, the
+    # literal's own state where the walk minted one, or None where an emitter
+    # declared nothing at all.
+    boundary: object = None
 
     @property
     def stated(self) -> bool:
@@ -178,6 +206,62 @@ def _summed(left: _Q, right: _Q) -> tuple:
     if left.attested and right.attested:
         return left.records | right.records, weakest([left.grade, right.grade])
     return frozenset(), ""
+
+
+def _agreeing(left, right):
+    """What set two operands that each declare one give a result over.
+
+    The same declaration on both sides gives a result over that same set, and
+    the comparison is of the whole declaration rather than of any field in it.
+    Two different ones give a number over neither, which is `whole=False`
+    naming no narrowing and no slice: not everything the quantity ranges over,
+    and no slice anybody can name."""
+    if left == right:
+        return left
+    return bounded(whole=False)
+
+
+def _over_rescaled(left: _Q, right: _Q):
+    """What set a product or a quotient was taken over. A literal here changes
+    the units and takes nothing away, so a figure scaled by one is still over
+    the set that figure was over — a twelfth of a year, a half of a pair, a
+    share written out of a hundred all keep the declaration the read made. Two
+    literals are a magnitude over no set anybody measured, and say so."""
+    if left.boundary is None or right.boundary is None:
+        return None
+    if left.boundary is NOT_A_SET and right.boundary is NOT_A_SET:
+        return bounded(whole=False)
+    if left.boundary is NOT_A_SET:
+        return right.boundary
+    if right.boundary is NOT_A_SET:
+        return left.boundary
+    return _agreeing(left.boundary, right.boundary)
+
+
+def _over_summed(left: _Q, right: _Q):
+    """What set a total was taken over. A term that is no set at all injects a
+    magnitude rather than rescaling one, so the total is over neither operand's
+    set however exactly either declared its own — the same shape as a total
+    standing on nothing where one term stands on nothing.
+
+    An operand declaring nothing gives a result declaring nothing, either way
+    the operator is shaped, because a set nobody stated composes into no claim
+    about coverage."""
+    if left.boundary is None or right.boundary is None:
+        return None
+    if left.boundary is NOT_A_SET or right.boundary is NOT_A_SET:
+        return bounded(whole=False)
+    return _agreeing(left.boundary, right.boundary)
+
+
+def _declared(over):
+    """What set a finished result states, out of what the walk carried for it.
+
+    The state a literal carries belongs to the walk: it is how an operator
+    knows a term is no set, and it is not a declaration anybody outside can
+    read. An expression of nothing but literals is a magnitude over no set
+    anybody measured, and that is what it says."""
+    return bounded(whole=False) if over is NOT_A_SET else over
 
 
 def _carried(left: _Q, right: _Q, came_out: str = EXACT) -> tuple:
@@ -327,7 +411,8 @@ def _added(left: _Q, right: _Q, step, *, subtracting: bool) -> _Q:
     records, grade = _summed(left, right)
     amount, came_out = _carefully(lambda: step(left.amount, right.amount))
     supposed, exactness = _carried(left, right, came_out)
-    return _Q(amount, dimension, records, grade, supposed, exactness, measures)
+    return _Q(amount, dimension, records, grade, supposed, exactness, measures,
+              _over_summed(left, right))
 
 
 def _multiplied(left: _Q, right: _Q) -> _Q:
@@ -343,7 +428,8 @@ def _multiplied(left: _Q, right: _Q) -> _Q:
     records, grade = _rescaled(left, right)
     amount, came_out = _carefully(lambda: left.amount * right.amount)
     supposed, exactness = _carried(left, right, came_out)
-    return _Q(amount, dimension, records, grade, supposed, exactness, measures)
+    return _Q(amount, dimension, records, grade, supposed, exactness, measures,
+              _over_rescaled(left, right))
 
 
 def _divided(left: _Q, right: _Q) -> _Q:
@@ -364,7 +450,8 @@ def _divided(left: _Q, right: _Q) -> _Q:
     records, grade = _rescaled(left, right)
     amount, came_out = _carefully(lambda: left.amount / right.amount)
     supposed, exactness = _carried(left, right, came_out)
-    return _Q(amount, dimension, records, grade, supposed, exactness, measures)
+    return _Q(amount, dimension, records, grade, supposed, exactness, measures,
+              _over_rescaled(left, right))
 
 
 def _evaluate(node: ast.AST, bound: dict, depth: int = 0) -> _Q:
@@ -394,7 +481,7 @@ def _evaluate(node: ast.AST, bound: dict, depth: int = 0) -> _Q:
             amount, came_out = _carefully(lambda: -value.amount)
             supposed, exactness = _carried(value, value, came_out)
             return _Q(amount, value.dimension, value.records, value.grade,
-                      supposed, exactness, value.quantity)
+                      supposed, exactness, value.quantity, value.boundary)
         if isinstance(node.op, ast.UAdd):
             return value
         raise ValueError("only unary + and - are supported")
@@ -407,7 +494,9 @@ def _evaluate(node: ast.AST, bound: dict, depth: int = 0) -> _Q:
             raise ValueError(
                 "only integer literals are allowed in the expression; every "
                 "decimal figure arrives through inputs as a figure id")
-        return _Q(Decimal(node.value))
+        # A literal is not a set: it carries the state that says so, rather
+        # than a set or the silence of an emitter that named none.
+        return _Q(Decimal(node.value), boundary=NOT_A_SET)
     raise ValueError(f"unsupported syntax: {type(node).__name__}")
 
 
@@ -451,9 +540,11 @@ def compute(args: dict, figures: dict, question: str = "") -> ToolResult:
             try:
                 # An amount the person named is money in whatever currency the
                 # rest of the expression is in, resting on their premise rather
-                # than on any record.
+                # than on any record. It rests on their premise rather than on
+                # any set the vault measured, so it declares itself not
+                # everything and names no slice it is.
                 bound[name] = _Q(Decimal(amount.replace(",", "")), UNSTATED,
-                                 supposed=True)
+                                 supposed=True, boundary=bounded(whole=False))
             except InvalidOperation:
                 return _bad_input(f"the stipulated value for '{name}' is not a "
                                   f"number: {amount!r}", figures)
@@ -474,7 +565,7 @@ def compute(args: dict, figures: dict, question: str = "") -> ToolResult:
                              str(fig["currency"] or SCALAR),
                              frozenset(fig["record_ids"]), fig["grade"],
                              fig["kind"] == HYPOTHETICAL, fig["exactness"],
-                             str(fig["quantity"]))
+                             str(fig["quantity"]), recorded_boundary(fig))
         except InvalidOperation:
             return _bad_input(f"figure {fid} does not hold a number: "
                               f"{fig['value']!r}", figures)
@@ -538,7 +629,11 @@ def compute(args: dict, figures: dict, question: str = "") -> ToolResult:
         quantity=result_q.quantity, kind=kind,
         grade=result_q.grade,
         currency="" if result_q.dimension == UNSTATED else result_q.dimension,
-        record_ids=record_ids, exactness=result_q.exactness)
+        record_ids=record_ids, exactness=result_q.exactness,
+        # A declaration a result inherits is its own from here on: what an
+        # operand carried is copied whole rather than shared, so nothing an
+        # emitted figure holds can be reached through the figure it came from.
+        boundary=copy.deepcopy(_declared(result_q.boundary)))
     return ToolResult(
         tool=TOOL, ok=True, figures=[result],
         data={"expression": expression,

@@ -11,8 +11,20 @@ history, not as code.** By the end of the same cycle a refusal stopped being
 composed at all: it is a reviewed sentence in the persona pack chosen by machine
 tag, binding nothing, costing no model call. That does not weaken the ruling in
 §2 — it is why the ruling was cheap to take, and it raises the bar for anything
-built here, because a suggestion would be the *only* thing on the refusal path
-that a model has any hand in.
+built here, because almost nothing on the refusal path is a model's to shape.
+
+**Corrected 2026-08-17 (the read's own account of why it could not answer).**
+"Almost" replaces "the *only* thing a model has any hand in", which the same
+refusal path has since made untrue. A turn that ends with nothing now says the
+cause as well as the verdict: where the read that stopped last carries a tag
+whose cause may be spoken, a second reviewed pack sentence follows the first,
+and which sentence that is comes from a machine tag on a call a model chose to
+make. So the line sits one step further along than this section drew it. What a
+model still has no hand in is the words: nothing is composed at the moment of
+refusing, no sentence in that set has a slot at all, and no value a read was
+called with can reach a person. A suggestion would be over the line rather than
+near it, because a suggestion carries a figure picked after every result was
+seen — so the bar this section sets stands, and stands where it always meant to.
 
 **And the real vault has since made the problem sharper.** On a local run a
 refusal was delivered to a person while the correct figure, at the top grade and

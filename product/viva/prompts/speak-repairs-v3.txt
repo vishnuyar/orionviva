@@ -1,0 +1,23 @@
+send_a_shape: Send commit_shape again with a 'clauses' list holding at least one clause.
+shape_the_clause: Send each clause as an object with a 'text' string and a 'slots' list.
+shape_the_slots: Send 'slots' as a list with one object per hole, each carrying a 'name' and a 'type' as strings.
+word_the_quantity: Send that hole's 'quantity' as one word in quotes, chosen from the ones its kind lists.
+word_the_clause: Give that clause words to say, or leave it out of the shape.
+hole_the_clause: Place a hole in that clause for the thing it turns on and declare it beside the words, or leave the clause out of the shape.
+shorten_the_clause: Say it in a shorter clause, or split it into two clauses.
+hole_the_number: Take the digits out of the words and place a hole where the number belongs; the machine writes every figure.
+place_each_hole_once: Place each hole once in the clause's text; a second mention needs a second hole with a name of its own.
+rename_the_hole: Give each hole a name no other hole in the shape uses.
+match_the_holes: Declare one slot for every hole the text places, and place one hole for every slot declared.
+choose_a_kind: Declare that hole as one of the kinds the 'type' field lists, and nothing else.
+name_the_quantity: Add a 'quantity' to that hole saying what its number is of, chosen from the ones its kind lists.
+choose_the_quantity: Change that hole's 'quantity' to one of the ones its kind lists; what it says now is not something that kind of number can be of.
+drop_the_quantity: Send that hole again with no 'quantity' field at all; only a hole holding a number says what its number is of.
+word_the_scope: Send that hole's 'scope' as a list of words in quotes, each chosen from the sets its kind lists.
+name_the_scope: Add a 'scope' to that hole naming every axis its sentence narrows on, chosen from the ones it lists, and at least one of them.
+choose_the_scope: Change that hole's 'scope' to axes it lists; what it says now is not a set anything is taken over, and 'whole' is never named beside another.
+drop_the_scope: Send that hole again with no 'scope' field at all; only a hole holding a number says what set its number was taken over.
+fewer_clauses: Say the answer in fewer clauses.
+bind_each_hole: Send deliver_answer again with a 'bindings' object naming every hole the shape placed.
+bind_one_thing: Bind each hole to exactly one thing, as a single named reference.
+protocol: Reply again, correctly formed: exactly one call, to exactly one of the tools you have been given, with that tool's own arguments.

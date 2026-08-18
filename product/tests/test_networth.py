@@ -184,11 +184,11 @@ def test_holdings_use_the_measurement_current_at_that_date(vault):
             market_value=value, currency="USD", occurred_at=as_of,
             grade=CORROBORATED))
     proj = ledger.projection()
-    def holdings(date):
+    def value(date):
         return sum(ln.amount for ln in net_worth(proj, date).lines
-                   if ln.kind == "holdings")
-    assert holdings("2026-03-31") == Decimal("10000.00")
-    assert holdings("2026-06-30") == Decimal("13000.00")
+                   if ln.account == account)
+    assert value("2026-03-31") == Decimal("10000.00")
+    assert value("2026-06-30") == Decimal("13000.00")
 
 
 # --- the honesty properties --------------------------------------------------
@@ -416,8 +416,9 @@ def test_one_instrument_written_two_ways_is_not_held_twice(tmp_path):
     ledger.append(position_observed(acct, "BND - VANGUARD TOTAL BOND MKT ETF",
                                     "61.000", "4462.15", "USD", "2026-03-31"))
     proj = ledger.projection()
-    holdings = [ln for ln in net_worth(proj).lines if ln.kind == "holdings"]
-    assert sum(ln.amount for ln in holdings) == Decimal("4462.15")
+    # One line for the account: its attested cash plus one snapshot of holdings.
+    (line,) = [ln for ln in net_worth(proj).lines if ln.account == acct]
+    assert line.amount == Decimal("1000") + Decimal("4462.15")
     assert len(proj.positions(acct)) == 1
 
 
@@ -446,5 +447,235 @@ def test_an_earlier_point_still_uses_the_statement_current_then(tmp_path):
     ledger.append(position_observed(acct, "SOLD-CO", "5.000", "500.00", "USD", "2026-01-31"))
     ledger.append(position_observed(acct, "VTI", "10.000", "2100.00", "USD", "2026-03-31"))
     proj = ledger.projection()
-    january = [ln for ln in net_worth(proj, "2026-02-15").lines if ln.kind == "holdings"]
+    january = [ln for ln in net_worth(proj, "2026-02-15").lines
+               if ln.account == acct]
+    # No closing was attested by this date, so the line is the holdings alone.
     assert sum(ln.amount for ln in january) == Decimal("2500.00")
+
+
+# --- one account, one value --------------------------------------------------
+
+def _investment_account(ledger, *, account="acct:b:0001", cash="1000.00",
+                        cash_date="2026-03-31", holdings=(), currency="USD"):
+    """An investment account with an attested cash balance and measured
+    holdings — the shape a brokerage statement leaves behind. Each holding is
+    `(instrument, market_value, as_of)` and may carry its own grade and
+    currency after that."""
+    from viva.ledger.events import account_opened, closing_balance_observed
+    ledger.append(account_opened(account, "investment", "Broker", currency,
+                                 "2026-01-01"))
+    if cash is not None:
+        ledger.append(closing_balance_observed(account, cash, cash_date))
+    for instrument, value, as_of, *rest in holdings:
+        grade = rest[0] if rest else CORROBORATED
+        held_in = rest[1] if len(rest) > 1 else currency
+        ledger.append(position_observed(account, instrument, "10", value,
+                                        held_in, as_of, grade=grade))
+    return account
+
+
+def _ledger(tmp_path):
+    return Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+
+
+def test_an_investment_account_contributes_one_line(tmp_path):
+    """A brokerage account is one thing a person owns, and its value is its
+    cash plus what it holds. So it arrives in a point the way a checking
+    account does — one line, one value, one date, one grade, one currency —
+    rather than as two halves a person has to add up themselves."""
+    ledger = _ledger(tmp_path)
+    acct = _investment_account(ledger, holdings=[("FUND-A", "9000.00",
+                                                  "2026-03-31")])
+    point = net_worth(ledger.projection(), "2026-03-31")
+    (line,) = point.lines
+    assert line.account == acct and line.kind == "investment"
+    assert line.amount == Decimal("10000.00")     # 1,000 cash + 9,000 held
+    assert line.as_of == "2026-03-31" and line.currency == "USD"
+    assert line.grade == CORROBORATED and not line.mixed_vintage
+
+
+def test_a_point_names_only_accounts_the_vault_holds(tmp_path):
+    """Every line of a point names an account the vault holds, and no line
+    declares itself a holdings line: holdings are not a thing a person owns
+    separately, so the securities half is named by the account that holds
+    it."""
+    ledger = _ledger(tmp_path)
+    acct = _investment_account(ledger, holdings=[("FUND-A", "9000.00",
+                                                  "2026-03-31")])
+    proj = ledger.projection()
+    point = net_worth(proj, "2026-03-31")
+    for line in point.lines:
+        assert proj.account_info(line.account).account == acct
+        assert line.kind != "holdings"
+
+
+def test_the_composed_line_is_dated_by_its_oldest_measurement(tmp_path):
+    """A sum is only as current as the stalest thing in it. Cash attested in
+    March beside securities measured in June is a March figure, and the point
+    says the parts were not measured on one day rather than averaging the two
+    dates into one nobody measured."""
+    ledger = _ledger(tmp_path)
+    _investment_account(ledger, holdings=[("FUND-A", "9000.00", "2026-06-30")])
+    (line,) = net_worth(ledger.projection(), "2026-06-30").lines
+    assert line.amount == Decimal("10000.00")
+    assert line.as_of == "2026-03-31"
+    assert line.mixed_vintage
+    assert net_worth(ledger.projection(), "2026-06-30").to_dict(
+        )["lines"][0]["mixed_vintage"]
+
+
+def test_the_weakest_grade_wins_and_the_cash_is_in_it(tmp_path):
+    """One value means one grade, inherited from what the value was computed
+    out of. Securities nothing has checked make the whole account value
+    unchecked, cash included; the same cash on its own keeps the stronger
+    grade."""
+    from viva.ledger.events import UNVERIFIED
+    ledger = _ledger(tmp_path)
+    acct = _investment_account(ledger, holdings=[("FUND-A", "9000.00",
+                                                  "2026-03-31", UNVERIFIED)])
+    (line,) = net_worth(ledger.projection(), "2026-03-31").lines
+    assert line.grade == UNVERIFIED and not line.provable
+    # The cash on its own is attested; it is the composition that lowers it.
+    cash_only = _ledger(tmp_path / "b")
+    _investment_account(cash_only, account=acct)
+    (bare,) = net_worth(cash_only.projection(), "2026-03-31").lines
+    assert bare.grade == CORROBORATED
+
+
+def test_a_value_with_a_term_nothing_graded_carries_no_grade(tmp_path):
+    """Adding a quantity nothing attested leaves a total nothing attested, and
+    no rung of the ladder is true of that — so the value carries no grade at
+    all rather than the weakest one present. A guard, not a path: see the
+    brokerage tests for the proof that nothing this pipeline records reaches
+    it."""
+    ledger = _ledger(tmp_path)
+    _investment_account(ledger, holdings=[("FUND-A", "9000.00", "2026-03-31",
+                                           "")])
+    (line,) = net_worth(ledger.projection(), "2026-03-31").lines
+    assert line.amount == Decimal("10000.00")
+    assert line.grade == "" and not line.provable
+
+
+def test_holdings_in_a_second_currency_stay_a_line_of_their_own(tmp_path):
+    """Do not sum what cannot be summed. Nothing here converts between
+    currencies, so an account holding two of them keeps one line per currency
+    rather than one number in neither."""
+    ledger = _ledger(tmp_path)
+    acct = _investment_account(
+        ledger, holdings=[("FUND-A", "9000.00", "2026-03-31"),
+                          ("FUND-B", "500.00", "2026-03-31", CORROBORATED,
+                           "INR")])
+    lines = sorted(net_worth(ledger.projection(), "2026-03-31").lines,
+                   key=lambda ln: ln.currency)
+    assert [(ln.account, ln.currency, ln.amount) for ln in lines] == [
+        (acct, "INR", Decimal("500.00")),
+        (acct, "USD", Decimal("10000.00"))]
+
+
+def test_no_part_of_an_account_is_ever_the_whole_of_what_it_measures(tmp_path):
+    """An account holding a currency its cash is not in comes back as one
+    figure per currency, and each of those is a part of the account rather than
+    the account.
+
+    `whole` says the set a figure was taken over is everything its quantity
+    ranges over, so neither part may declare it — not even on a vault of one
+    account, where the account itself would be the whole. An account that
+    composes to a single value still declares it, which is what says the rule
+    is about the parts and not about a kind of account."""
+    from viva.tools import ledger_tools
+    for name, holdings, whole in (
+            ("split", [("FUND-A", "9000.00", "2026-03-31"),
+                       ("FUND-B", "500.00", "2026-03-31", CORROBORATED,
+                        "INR")], False),
+            ("one", [("FUND-A", "9000.00", "2026-03-31")], True)):
+        vault = tmp_path / name
+        vault.mkdir()
+        ledger = _ledger(vault)
+        _investment_account(ledger, holdings=holdings)
+        result = ledger_tools.query_ledger(ledger.projection(),
+                                           {"entity": "balances"})
+        assert result.ok, result.text
+        stated = [f for f in result.figures if f["quantity"] != "count"]
+        assert len(stated) == (1 if whole else 2), name
+        for fig in stated:
+            assert fig["boundary"]["whole"] is whole, (name, fig["what"])
+
+
+def test_one_account_reads_the_same_from_every_read_that_states_it(tmp_path):
+    """The value, its date and its grade are computed in one place, so the
+    point, the balances read and the provenance read cannot describe one
+    account differently — which is what happened while each composed it for
+    itself."""
+    from viva.tools import ledger_tools
+    ledger = _ledger(tmp_path)
+    acct = _investment_account(ledger, holdings=[("FUND-A", "9000.00",
+                                                  "2026-06-30")])
+    proj = ledger.projection()
+    (line,) = net_worth(proj, "2026-06-30").lines
+    balances = ledger_tools.query_ledger(proj, {"entity": "balances",
+                                                "account": acct})
+    (balance_figure,) = [f for f in balances.figures
+                         if f["quantity"] != "count"]
+    provenance = ledger_tools.get_provenance(proj, {"record_id": acct})
+    (provenance_figure,) = provenance.figures
+    for stated in (balance_figure, provenance_figure):
+        assert stated["value"] == str(line.amount)
+        assert stated["dated"] == line.as_of
+        assert stated["grade"] == line.grade
+        assert stated["currency"] == line.currency
+
+
+def test_a_value_of_several_days_says_so_wherever_it_is_stated(tmp_path):
+    """How current a figure is is said in one sentence, on one condition,
+    whether the figure is a whole point or one account's value."""
+    from viva.tools import ledger_tools
+    ledger = _ledger(tmp_path)
+    acct = _investment_account(ledger, holdings=[("FUND-A", "9000.00",
+                                                  "2026-06-30")])
+    proj = ledger.projection()
+    balances = ledger_tools.query_ledger(proj, {"entity": "balances",
+                                                "account": acct})
+    assert balances.caveats == [ledger_tools.MIXED_VINTAGE]
+    assert (ledger_tools.get_provenance(proj, {"record_id": acct}).caveats
+            == [ledger_tools.MIXED_VINTAGE])
+    # Including the point, whose one line rests on two days of its own. A point
+    # built from lines of different dates is not the only way it happens, and
+    # the vault here holds one account.
+    point = ledger_tools.query_ledger(proj, {"entity": "aggregate",
+                                             "metric": "net_worth"})
+    assert len(point.data["point"]["lines"]) == 1
+    assert point.caveats == [ledger_tools.MIXED_VINTAGE]
+    # And the flag the composition carries is that same condition, so a read
+    # cannot disclose one thing while the line records another.
+    for value in proj.composed_values(acct):
+        assert value.mixed_vintage == ledger_tools._mixed_vintage(value.dates)
+
+
+def test_a_single_vintage_value_says_nothing_about_its_dates(tmp_path):
+    """The sentence is placed on a condition, not on every composed figure."""
+    from viva.tools import ledger_tools
+    ledger = _ledger(tmp_path)
+    acct = _investment_account(ledger, holdings=[("FUND-A", "9000.00",
+                                                  "2026-03-31")])
+    proj = ledger.projection()
+    assert ledger_tools.query_ledger(proj, {"entity": "balances",
+                                            "account": acct}).caveats == []
+    point = ledger_tools.query_ledger(proj, {"entity": "aggregate",
+                                             "metric": "net_worth"})
+    assert point.caveats == []
+    (value,) = proj.composed_values(acct)
+    assert not value.mixed_vintage
+
+
+def test_the_ladder_decides_which_grade_a_composed_value_carries(tmp_path):
+    """Weakest wins by the ladder's own order rather than by which term came
+    first: a figure that disagrees with its own evidence is weaker than one
+    nothing has checked, which is weaker than one two observations agree on.
+    A term nothing graded takes the whole sum off the ladder."""
+    from viva.ledger.events import CONFLICTED, UNVERIFIED
+    from viva.ledger.projection.positions import _composed_grade
+    assert _composed_grade([VERIFIED, CORROBORATED]) == CORROBORATED
+    assert _composed_grade([CORROBORATED, UNVERIFIED]) == UNVERIFIED
+    assert _composed_grade([UNVERIFIED, CONFLICTED]) == CONFLICTED
+    assert _composed_grade([CORROBORATED, ""]) == ""
+    assert _composed_grade([]) == ""

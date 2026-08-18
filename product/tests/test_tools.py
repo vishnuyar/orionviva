@@ -7,9 +7,10 @@ from decimal import Decimal
 import pytest
 
 from viva import quantity, render
-from viva.ledger import (LedgerProjection, Provenance, account_opened,
-                         closing_balance_observed, merchant_categorized,
-                         opening_balance_observed, simple_transaction,
+from viva.ledger import (LedgerProjection, Posting, Provenance,
+                         account_opened, closing_balance_observed,
+                         merchant_categorized, opening_balance_observed,
+                         simple_transaction, transaction_recorded,
                          transfer_linked)
 from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
                                 agent_acted, category_assigned,
@@ -18,11 +19,13 @@ from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
                                 question_declined, read_recorded,
                                 statement_held)
 from viva.ledger.projection import movement_key
+from viva.persona import STOOD_BEHIND_MOMENT, moment
 from viva.tools import default_registry, ledger_tools, run, weakest
-from viva.tools.envelope import ToolResult, figure
+from viva.tools.envelope import ToolResult, bounded, figure
 from viva.tools.registry import (PACKAGE as _PACKAGE, PROMPTS, Registry,
                                  ToolSpec, descriptions)
-from viva.tools.shape import BadShape, Clause, Shape, Slot
+from viva.tools.shape import (HOLE_THE_NUMBER, BadShape, Clause, Shape,
+                              Slot)
 from vivacore import promptstore
 from vivacore import versions as _manifest
 
@@ -53,15 +56,31 @@ def _fig(results, what):
     return _figure(results, what)["id"]
 
 
+def _slot_of(declared) -> "Slot":
+    """One hole from `(name, type)`, `(name, type, quantity)` or
+    `(name, type, quantity, scope)`.
+
+    A scope is the set of axes the sentence narrows on. One axis may be written
+    as the bare word, several as a sequence of them, so a fixture says what its
+    sentence is about and nothing else."""
+    name, kind, *rest = declared
+    measures = rest[0] if rest else ""
+    over = rest[1] if len(rest) > 1 else ()
+    return Slot(name=name, type=kind, quantity=measures,
+                scope=frozenset([over] if isinstance(over, str) and over
+                                else over))
+
+
 def _shape(*clauses):
     """A shape as a planner commits one: words with typed holes, no digits.
 
     Each clause is `(text, [(hole name, what it holds), ...])`, where a hole
-    holding a magnitude adds what that magnitude is of. Written this way
-    because every test below has to author its sentence before it has read
-    anything, which is the property the whole mechanism rests on."""
+    holding a magnitude adds what that magnitude is of and what sets it is
+    over. Written this way because every test below has to author its sentence
+    before it has read anything, which is the property the whole mechanism
+    rests on."""
     return Shape(clauses=tuple(
-        Clause(text=text, slots=tuple(Slot(*slot) for slot in slots))
+        Clause(text=text, slots=tuple(_slot_of(slot) for slot in slots))
         for text, slots in clauses))
 
 
@@ -460,6 +479,76 @@ def test_completeness_counts_the_held_document(registry):
     assert result.data["holds"][0]["doc_id"] == "doc-held"
     assert any(a["account"] == "chk" and a["grade"] == CORROBORATED
                for a in result.data["accounts"])
+
+
+def test_the_counts_of_what_the_agent_holds_on_file_are_not_claims_about_money(
+        registry):
+    """Sorted by what a wrong number here would move. Documents held, posted
+    and awaiting review, and counterparties with no category yet, all move the
+    account the agent gives of its own paperwork and no figure about what the
+    person holds — so each is activity and carries no grade, and nothing can
+    lend one through composition.
+
+    The account dates in the same read are the other side of the test: a wrong
+    one moves what a balance is good as of, so they stay financial and keep
+    their grades."""
+    result = registry.call("check_completeness", {})
+    counted = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+    assert len(counted) == 4
+    for fig in counted:
+        assert fig["kind"] == "activity", fig["what"]
+        assert fig["grade"] == "", fig["what"]
+    dated = [f for f in result.figures if f["quantity"] == quantity.TIME]
+    assert dated and all(f["kind"] == "financial" and f["grade"] for f in dated)
+
+
+def test_a_count_of_the_agents_paperwork_cannot_be_mixed_into_a_money_figure(
+        registry):
+    """What the kind buys. Arithmetic refuses to combine a claim about the
+    agent with a claim about the person's money, because the result would be a
+    claim of neither kind — so a document count can no longer be divided into a
+    spending total."""
+    result = run(
+        "how much per document?",
+        _script(_shape(("That is {each} each.",
+                       [("each", "money", "balance", "whole")])),
+                ("check_completeness", {}),
+                ("query_ledger", {"entity": "balances"}),
+                ("compute", {"expression": "held / docs",
+                             "inputs": {"held": "f6", "docs": "f1"}}),
+                bind=lambda results: {"each": {"figure": "f99"}}),
+        registry)
+    assert not result.answered
+    mixed = next(r for r in result.transcript if r["tool"] == "compute")
+    assert not mixed["ok"] and mixed["refusal"] == "mixed_kinds"
+
+
+def test_an_empty_vault_can_say_it_holds_nothing():
+    """A count of nothing is a true thing to say. As the agent's account of its
+    own paperwork it stands on the documents it counted and cites none, which
+    is sayable; a financial figure of zero citing no record would be a claim
+    about money standing on nothing, and the whole answer would be refused."""
+    empty = default_registry(LedgerProjection([]))
+    result = run("what have you got?",
+                 _script(_shape(("I am holding {many} document(s).",
+                                 [("many", "count", "count", "whole")])),
+                         ("check_completeness", {}),
+                         bind=lambda r: {"many": {"figure": "f1"}}),
+                 empty)
+    assert result.answered, result.detail
+    assert result.text.startswith("I am holding 0 document(s).")
+
+
+def test_the_completeness_read_offers_one_account_of_what_is_unidentified(
+        registry):
+    """Two reads measure counterparties awaiting attention over different sets,
+    both correctly. Only one of them reaches a model from here, so there is no
+    pair of irreconcilable numbers in one payload for it to choose between, and
+    the figure it can speak is named for the set it actually counts."""
+    result = registry.call("check_completeness", {})
+    assert "tiers" not in result.data
+    named = [f["what"] for f in result.figures]
+    assert "counterparties with no category yet" in named
 
 
 def test_provenance_states_say_what_actually_happened(registry):
@@ -879,7 +968,8 @@ def test_a_magnitude_the_expression_invented_stands_on_no_document(registry):
     assert alone.figures[0]["grade"] == ""
     assert alone.figures[0]["quantity"] == quantity.UNMEASURED
 
-    shape = _shape(("That comes to {total}.", [("total", "count", "count")]))
+    shape = _shape(("That comes to {total}.",
+                   [("total", "count", "count", "whole")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -956,10 +1046,17 @@ def test_a_magnitude_added_to_a_plain_number_takes_the_total_off_its_evidence(
 
 
 def test_a_fabricated_total_is_refused_before_it_can_be_said(registry):
-    """A computed figure is a claim about the person's money, so the gate that
-    refuses a money figure citing no record is what turns "rests on nothing"
-    into "cannot be said"."""
-    shape = _shape(("That comes to {total}.", [("total", "count", "count")]))
+    """A fabricated total cannot be said, and there are now two reasons it
+    cannot.
+
+    A magnitude nothing measured injects: it takes the documents behind the
+    count away from the number, and it takes the set away too, leaving a
+    figure over neither what it was added to nor anything else. The sentence
+    declares what set it is about, so that is the first thing found, and the
+    turn ends before the citation gate is reached. Both faults are held here:
+    the tag that fires, and the fact that the figure stands on nothing."""
+    shape = _shape(("That comes to {total}.",
+                   [("total", "count", "count", "whole")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -976,12 +1073,157 @@ def test_a_fabricated_total_is_refused_before_it_can_be_said(registry):
                                                       "result of")}}}
     run_result = run("how much?", planner, registry)
     assert not run_result.answered
-    assert run_result.refusal == "uncited_figure"
+    assert run_result.refusal == "wrong_scope"
     # The count it was built from is a real figure with real documents, which
     # is what made the fabrication look attested in the first place.
     counted = _one_figure(registry, "query_ledger", {"entity": "balances"})
     count = next(f for f in counted.values() if "accounts holding" in f["what"])
     assert count["record_ids"] and count["grade"]
+
+
+def _earning_and_spending():
+    """A vault holding one attributed income and one purchase, in one
+    currency: the pair of whole-ledger totals the commonest comparison of two
+    unlike kinds is made of."""
+    evs = [account_opened("acct-0", "depository", "Account", "USD",
+                          "2026-01-01"),
+           document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           transaction_recorded([Posting("acct-0", Decimal("500.00"), VERIFIED),
+                                 Posting("Income:Salary", Decimal("-500.00"),
+                                         VERIFIED)],
+                                "PAYROLL", "2026-01-10",
+                                provenance=_p("doc-one")),
+           transaction_recorded([Posting("acct-0", Decimal("-120.00"),
+                                         VERIFIED),
+                                 Posting("Expenses:Groceries",
+                                         Decimal("120.00"), VERIFIED)],
+                                "NORTHWIND MARKET", "2026-01-12",
+                                provenance=_p("doc-one"))]
+    return default_registry(LedgerProjection(evs))
+
+
+def _spending_over_income(shape):
+    """One turn dividing a whole-ledger spending total by a whole-ledger
+    income total and binding the quotient into `shape`'s one hole."""
+    registry = _earning_and_spending()
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending"}}
+        if len(done) == 1:
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "income"}}
+        if len(done) == 2:
+            return {"tool": "compute",
+                    "args": {"expression": "spent / earned",
+                             "inputs": {
+                                 "spent": _fig(context["results"],
+                                               "total spending"),
+                                 "earned": _fig(context["results"],
+                                                "attributed income")}}}
+        return {"bindings": {"share": {"figure": _fig(context["results"],
+                                                      "result of")}}}
+    return run("how does my spending compare to my income?", planner, registry)
+
+
+def test_a_comparison_of_two_unlike_kinds_fills_no_hole_and_is_written_nowhere():
+    """Spending over income is a real quotient of two real figures, and the
+    vocabulary's own name for it says no kind is true of the result.
+
+    A proportion is written in a unit — per hundred — so writing this one picks
+    a unit for a number that has none, and the sentence around it then means
+    whatever the words happened to say. The binding is refused instead, and
+    nothing of the quotient reaches the page.
+
+    The comparison is made over one set: both totals are whole, so the scope
+    check has nothing to catch and this is the check that fires."""
+    quotient = _spending_over_income(
+        _shape(("Your spending comes to {share} of what you earn.",
+                [("share", "rate", quantity.RATIO, "whole")])))
+    assert not quotient.answered and quotient.refusal == "wrong_kind"
+    assert "%" not in quotient.text
+
+
+def test_a_proportion_of_one_kind_of_thing_still_fills_a_proportion_hole():
+    """The other side of the same rule, so it reads as a refusal of numbers
+    with no name rather than a refusal of proportions.
+
+    A quotient of two figures measuring one kind is a proportion OF that kind,
+    the vocabulary names it, and it is written per hundred as it always was."""
+    registry = _earning_and_spending()
+    shape = _shape(("That is {share} of what you spend.",
+                    [("share", "rate", quantity.ratio_of(quantity.SPENDING),
+                      "whole")]))
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending"}}
+        if len(done) == 1:
+            total = _fig(context["results"], "total spending")
+            return {"tool": "compute",
+                    "args": {"expression": "a / a",
+                             "inputs": {"a": total}}}
+        return {"bindings": {"share": {"figure": _fig(context["results"],
+                                                      "result of")}}}
+    spoken = run("what share of my spending is that?", planner, registry)
+    assert spoken.answered, spoken.detail
+    assert "%" in spoken.text
+
+
+def test_what_refuses_a_comparison_is_the_figures_own_name_for_itself():
+    """The refusal reads two declarations and no words.
+
+    The quotient's own quantity is the bare name the vocabulary gives a
+    comparison of unlike kinds; the hole's type is the kind of thing written
+    per hundred. Neither is a sentence, and the clause's words are the same in
+    the case that is refused and the case that is not."""
+    quotient = _spending_over_income(
+        _shape(("Your spending comes to {share} of what you earn.",
+                [("share", "rate", quantity.RATIO, "whole")])))
+    assert quotient.refusal == "wrong_kind"
+    computed = [r for r in quotient.transcript if r["tool"] == "compute"]
+    assert computed and computed[0]["ok"]
+    (result,) = [f for r in computed for f in (r.get("figures") or [])]
+    assert result["quantity"] == quantity.RATIO
+
+
+def test_which_quantities_assert_a_direction_is_declared_with_the_vocabulary():
+    """The rule has one home, and it is the module that owns the words.
+
+    A quantity asserting which way the money goes is a fact about the word,
+    not about a kind of account, so it is declared beside the word and the
+    binding check reads that declaration. Adding the next one is an edit to
+    this list and to nothing else."""
+    assert quantity.OWED in quantity.ASSERTS_DIRECTION
+    assert set(quantity.ASSERTS_DIRECTION) <= set(quantity.KINDS)
+
+
+def test_a_negative_value_of_a_quantity_asserting_no_direction_still_speaks(
+        registry):
+    """What the direction rule is not: a rule about signs.
+
+    What a set of movements came to nets one way or the other, and its own
+    name asserts neither, so a negative one fills the hole asking for it and is
+    written with the sign it carries."""
+    shape = _shape(("Your accounts moved {net} over that stretch.",
+                    [("net", "money", quantity.NET_MOVEMENT, "whole")]))
+    spoken = run("what did my accounts do?",
+                 _script(shape, ("query_ledger", {"entity": "transactions"}),
+                         bind=lambda results: {
+                             "net": {"figure": _fig(results,
+                                                    "net movement over")}}),
+                 registry)
+    assert spoken.answered, spoken.detail
+    assert str(render.money(Decimal("-100.00"), "USD")) in spoken.text
 
 
 def test_scaling_a_figure_leaves_it_standing_where_it_stood(registry):
@@ -1240,6 +1482,24 @@ def _approximate_run(registry, shape, bind, expression="a / 7",
     return run("how much a week?", planner, registry)
 
 
+def _on_one_account() -> str:
+    """What a clause says beside a figure taken over one account: which
+    account it is. It is a claim about that figure, so it lands under the
+    clause that stated it."""
+    return moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[]))
+
+
+def _covering_one_of_three() -> str:
+    """And what the answer says about itself once it is assembled: how many of
+    the three accounts the fixture holds it covers. One claim about the whole
+    answer, said once and after the clauses."""
+    return moment("boundary_accounts", counted=render.count(1),
+                  held=render.count(3))
+
+
 def test_an_approximate_value_never_reaches_the_person_bare(registry):
     """A figure the arithmetic could not write exactly reaches the person
     carrying the term that says so.
@@ -1247,13 +1507,21 @@ def test_an_approximate_value_never_reaches_the_person_bare(registry):
     The shape asks for nothing of the kind and could not: it was written before
     any arithmetic happened, so hedging cannot be something the sentence
     remembered to do. The term travels with the figure, placed where the figure
-    is placed."""
+    is placed.
+
+    Dividing by a bare number changes the units and takes nothing away, so the
+    weekly share of one account's balance is still over that one account and
+    the answer says so beside it."""
     spoken = _approximate_run(
         registry,
-        _shape(("You spend {weekly} a week.", [("weekly", "money", "balance")])),
+        _shape(("You spend {weekly} a week.",
+                [("weekly", "money", "balance", "account")])),
         lambda results: {"weekly": {"figure": _fig(results, "result of")}})
     assert spoken.answered, spoken.detail
-    assert spoken.text == "You spend about USD 85.71 a week."
+    assert spoken.text == ("You spend about USD 85.71 a week. "
+                           + _on_one_account() + " "
+                           + _covering_one_of_three() + " "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     # The figure itself is unchanged; only what was written from it is hedged.
     assert spoken.figures[0]["value"] == "85.71"
     assert spoken.figures[0]["exactness"] == "rounded"
@@ -1270,12 +1538,13 @@ def test_an_approximate_number_of_things_never_reaches_the_person_bare(
     spoken = _approximate_run(
         registry,
         _shape(("You make this many a week: {weekly}.",
-                [("weekly", "count", "count")])),
+                [("weekly", "count", "count", "whole")])),
         lambda results: {"weekly": {"figure": _fig(results, "result of")}},
         expression="a * 5 / 7", read=("transactions", None),
         over="movements matching the filters")
     assert spoken.answered, spoken.detail
-    assert spoken.text == "You make this many a week: about 3."
+    assert spoken.text == ("You make this many a week: about 3. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     assert spoken.figures[0]["value"] == "2.85714"
     assert spoken.figures[0]["exactness"] == "rounded"
 
@@ -1287,13 +1556,46 @@ def test_an_approximate_proportion_never_reaches_the_person_bare(registry):
     spoken = _approximate_run(
         registry,
         _shape(("That is {share} of it.",
-                [("share", "rate", quantity.ratio_of(quantity.BALANCE))])),
+                [("share", "rate", quantity.ratio_of(quantity.BALANCE),
+                  "account")])),
         lambda results: {"share": {"figure": _fig(results, "result of")}},
         expression="a / a / 7")
     assert spoken.answered, spoken.detail
-    # One seventh, carried as the quotient and written per hundred.
-    assert spoken.text == "That is about 14.2857% of it."
+    # One seventh, carried as the quotient and written per hundred. Both
+    # operands of the share were taken over the same one account, and dividing
+    # by a bare number leaves it over that account, so the answer says which.
+    assert spoken.text == ("That is about 14.2857% of it. "
+                           + _on_one_account() + " "
+                           + _covering_one_of_three() + " "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     assert spoken.figures[0]["exactness"] == "rounded"
+
+
+def test_a_figure_over_everything_is_hedged_the_same_way(registry):
+    """The hedge belongs to the figure, not to what its sentence claims about
+    sets. A number over the whole of what it counts is written with the same
+    term when the arithmetic could not write it exactly, and the sentence
+    stating it places no scope clause, because there is no narrowing to state.
+
+    So one assertion about hedging stands where the scope vocabulary cannot
+    move it: whatever a hole declares, a rounded figure still reaches a person
+    saying it is rounded."""
+    spoken = _approximate_run(
+        registry,
+        _shape(("That is about {each} each.",
+                [("each", "count", "count", "whole")])),
+        lambda results: {"each": {"figure": _fig(results, "result of")}},
+        read=("balances", None), over="accounts holding a balance")
+    assert spoken.answered, spoken.detail
+    stated = spoken.figures[0]
+    assert stated["exactness"] == "rounded"
+    assert stated["boundary"] == {"whole": True,
+                                  "accounts": {"counted": 3, "held": 3}}
+    assert spoken.written["each"] == moment(
+        "approx_count", count=render.count(Decimal(stated["value"])))
+    # Whole, so nothing about where the claim ends is placed under it.
+    assert _on_one_account() not in spoken.text
+    assert _covering_one_of_three() not in spoken.text
 
 
 def test_only_the_value_that_was_rounded_is_hedged(registry):
@@ -1306,7 +1608,8 @@ def test_only_the_value_that_was_rounded_is_hedged(registry):
     spoken = _approximate_run(
         registry,
         _shape(("Of {held} you spend {weekly} a week.",
-                [("held", "money", "balance"), ("weekly", "money", "balance")])),
+                [("held", "money", "balance", "account"),
+                 ("weekly", "money", "balance", "account")])),
         lambda results: {"held": {"figure": _fig(results, "Everyday Checking")},
                          "weekly": {"figure": _fig(results, "result of")}})
     assert spoken.answered, spoken.detail
@@ -1641,7 +1944,8 @@ def test_a_proportion_of_one_thing_is_not_a_proportion_of_another(registry):
     description of it is not, and the answer is refused. The check compares two
     declarations, so the division has to carry one of them."""
     shape = _shape(("That is {share} of what you spend.",
-                    [("share", "rate", quantity.ratio_of(quantity.SPENDING))]))
+                    [("share", "rate", quantity.ratio_of(quantity.SPENDING),
+                      "whole")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2011,7 +2315,9 @@ def test_the_row_cap_is_the_thing_that_bounds_a_detailed_read():
     assert result.data["total"] > ledger_tools.MAX_ROWS
     assert result.data["shown"] == ledger_tools.MAX_ROWS
     assert len(result.data["movements"]) == ledger_tools.MAX_ROWS
-    assert len(result.figures) == ledger_tools.MAX_ROWS
+    # One figure per row shown, plus the one count over the whole matching set,
+    # which is what says how many the cap left out.
+    assert len(result.figures) == ledger_tools.MAX_ROWS + 1
 
 
 def test_a_summary_stands_on_the_documents_not_on_every_movement():
@@ -2045,42 +2351,113 @@ def test_a_figures_records_do_not_travel_to_the_model():
 
 # -------------------------------------------------------------- the two reads
 
-def test_a_date_a_read_asserted_may_be_said_without_declaring_it(registry):
-    """`check_completeness` emits each account's as-of date as a figure whose
-    value IS a date. A date the run's results carry may be written with no
-    declaration; a date no result carries and no period covers still cannot be
-    said at all."""
+def test_a_day_is_said_beside_the_figure_it_is_the_day_of(registry):
+    """A day is bound from the `dated` of a figure its own clause states, and
+    from nothing else.
+
+    A day is written with no declaration still: what fills a date hole is one
+    of this run's own days rather than anything the delivery wrote. What it may
+    no longer be is a day belonging to some other number of the turn — that day
+    is real, and beside a figure it is not the day of it is the opposite of the
+    answer.
+
+    So a clause that states a dated figure says its day, and the same day put
+    in a clause that states no figure is refused. `check_completeness` emits
+    each account's as-of date as a figure whose value IS a date; those figures
+    fill no hole, so they are in no clause, so their days can reach nobody. The
+    loss is taken on purpose."""
     dated = _one_figure(registry, "check_completeness", {})
     fig = next(f for f in dated.values() if "good as of" in f["what"])
     assert fig["value"] == "2026-01-31"
 
-    shape = _shape(("Its evidence runs to {when}.", [("when", "date")]))
+    alone = _shape(("Its evidence runs to {when}.", [("when", "date")]))
+    orphan = run("how current is it?",
+                 _script(alone, ("check_completeness", {}),
+                         bind=lambda results: {"when": {"date": "2026-01-31"}}),
+                 registry)
+    assert not orphan.answered and orphan.refusal == "unfounded_date"
+
+    beside = _shape(("It stood at {total} as of {when}.",
+                     [("total", "money", "balance", "account"),
+                      ("when", "date")]))
 
     def bind_to(iso):
-        return lambda results: {"when": {"date": iso}}
+        return lambda results: {"when": {"date": iso},
+                                "total": {"figure": _fig(results, "balance")}}
 
     said = run("how current is it?",
-               _script(shape, ("check_completeness", {}),
+               _script(beside, ("query_ledger",
+                                {"entity": "balances",
+                                 "filters": {"account": "chk"}}),
                        bind=bind_to("2026-01-31")), registry)
     assert said.answered, said.detail
     assert "2026-01-31" in said.text
 
     result = run("how current is it?",
-                 _script(shape, ("check_completeness", {}),
+                 _script(beside, ("query_ledger",
+                                  {"entity": "balances",
+                                   "filters": {"account": "chk"}}),
                          bind=bind_to("2019-03-04")), registry)
     assert not result.answered and result.refusal == "unfounded_date"
 
 
+def test_todays_date_cannot_be_said_beside_a_figure_months_older(registry):
+    """The day a read stamped on its own totals is not the day of every number
+    that read emitted.
+
+    The net-worth read holds its currency totals good as of the day they were
+    asked for, and dates each account's line by the evidence under it — so one
+    result carries today and a day months older, both true, of different
+    numbers. A sentence stating the older figure and saying today beside it is
+    made of two real things and says something false, and the clause is what
+    tells them apart."""
+    read = registry.call("query_ledger", {"entity": "aggregate",
+                                          "metric": "net_worth"})
+    today = next(f["dated"] for f in read.figures if "net in" in f["what"])
+    stale = next(f["dated"] for f in read.figures if "part of net worth"
+                 in f["what"])
+    assert today > stale, "the fixture no longer dates a line before its total"
+
+    shape = _shape(("That account is worth {amount}, as of {when}.",
+                    [("amount", "money", "balance", "account"),
+                     ("when", "date")]))
+
+    def bind_to(iso):
+        return lambda results: {"when": {"date": iso},
+                                "amount": {"figure": _fig(results,
+                                                          "part of net worth")}}
+
+    asked = ("query_ledger", {"entity": "aggregate", "metric": "net_worth"})
+    said = run("how much is in there?",
+               _script(shape, asked, bind=bind_to(stale)), registry)
+    assert said.answered, said.detail
+    assert stale in said.text
+
+    result = run("how much is in there?",
+                 _script(shape, asked, bind=bind_to(today)), registry)
+    assert not result.answered and result.refusal == "unfounded_date", (
+        result.detail)
+
+
 def test_a_page_of_rows_can_be_written_without_declaring_every_date(registry):
     """A detailed read returns rows, and writing a row means writing its date.
-    The read carries every one of those dates, so an answer listing them
-    declares none.
+    The read emits a figure per movement carrying that movement's own day, so
+    an answer stating those figures writes their days and declares none of
+    them.
+
+    Each day is said in the clause that states the movement it belongs to,
+    which is what makes two days in one answer two facts rather than a pair
+    that could be exchanged.
 
     Only the dates are written here. A description is a statement's own words
     and may carry digits of its own, which no read licenses; a listing answer
     that writes one is refused."""
-    shape = _shape(("They fell on {first} and {last}.",
-                    [("first", "date"), ("last", "date")]))
+    shape = _shape(("One fell on {first}, worth {first_amount}.",
+                    [("first", "date"),
+                     ("first_amount", "money", "movement", "whole")]),
+                   ("Another on {last}, worth {last_amount}.",
+                    [("last", "date"),
+                     ("last_amount", "money", "movement", "whole")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2091,10 +2468,14 @@ def test_a_page_of_rows_can_be_written_without_declaring_every_date(registry):
                     "args": {"filters": {"merchant": "greenfield market"}}}
         rows = done[0]["data"]["movements"]
         assert len(rows) > 1, "the fixture no longer returns several rows"
+        moved = [f for f in done[0]["figures"] if f.get("dated")]
         return {"bindings": {"first": {"date": rows[0]["date"]},
-                             "last": {"date": rows[-1]["date"]}}}
+                             "first_amount": {"figure": moved[0]["id"]},
+                             "last": {"date": rows[-1]["date"]},
+                             "last_amount": {"figure": moved[-1]["id"]}}}
     spoken = run("when did I shop there?", planner, registry)
     assert spoken.answered, spoken.detail
+    assert "2026-01-05" in spoken.text and "2026-01-20" in spoken.text
 
 
 def test_a_date_a_tool_echoed_from_its_own_arguments_is_not_thereby_sayable(registry):
@@ -2129,6 +2510,22 @@ def test_a_detailed_read_refuses_to_dump_the_whole_ledger(registry):
                                                      "window"}
     assert registry.call("list_movements",
                          {"filters": {"account": "chk"}}).ok
+
+
+def test_the_detailed_read_declares_in_its_schema_that_it_takes_filters(registry):
+    """A call naming no filters at all is refused where the arguments are
+    validated, not after the read has been entered.
+
+    A schema in which every field is optional says an empty call is well
+    formed, and the model reads the schema before it calls. So the requirement
+    is in the schema the model is shown, and the refusal names the field rather
+    than the read's own narrowing rule."""
+    result = registry.call("list_movements", {})
+    assert not result.ok and result.refusal == "invalid_arguments"
+    assert "filters" in result.text
+    assert "required" in ledger_tools.LIST_MOVEMENTS_PARAMS
+    schemas = {s["name"]: s for s in registry.schemas()}
+    assert schemas["list_movements"]["parameters"]["required"] == ["filters"]
 
 
 def test_a_capped_read_says_how_many_it_did_not_show(monkeypatch, registry):
@@ -2235,7 +2632,7 @@ def test_a_row_and_its_figure_say_which_way_the_money_went():
                              {"record_id": told.data["movements"][0]["record_id"]})
     assert stood_on.ok, stood_on.text
     (justified,) = stood_on.figures
-    (stated,) = told.figures
+    (stated,) = [f for f in told.figures if f["quantity"] == quantity.MOVEMENT]
     assert justified["what"] == stated["what"]
     assert justified["value"] == stated["value"] == "-500.00"
     assert "amount" not in stood_on.data["movement"]
@@ -2372,7 +2769,8 @@ def test_scripted_planner_produces_a_cited_answer(registry):
     holds nothing; the read then happens; then one reference per hole. At no
     point does anything but the renderer write a character of the figure."""
     shape = _shape(("Your {which} stands at {balance}.",
-                    [("which", "account"), ("balance", "money", "balance")]))
+                    [("which", "account"),
+                     ("balance", "money", "balance", "account")]))
     result = run(
         "what is my checking balance?",
         _script(shape,
@@ -2398,7 +2796,8 @@ def test_a_figure_id_the_run_never_produced_is_refused(registry):
     nothing."""
     result = run(
         "balance?",
-        _script(_shape(("You have {total}.", [("total", "money", "balance")])),
+        _script(_shape(("You have {total}.",
+                       [("total", "money", "balance", "whole")])),
                 ("query_ledger", {"entity": "balances"}),
                 bind=lambda results: {"total": {"figure": "f99"}}),
         registry)
@@ -2421,7 +2820,7 @@ def test_a_number_in_a_payload_but_in_no_figure_cannot_be_said(registry):
     result = run(
         "what did it cost?",
         _script(_shape(("You paid {cost} for it.",
-                        [("cost", "money", "balance")])),
+                        [("cost", "money", "balance", "whole")])),
                 ("query_ledger", {"entity": "holdings"}),
                 bind=lambda results: {"cost": {"figure": "f99"}}),
         registry)
@@ -2435,23 +2834,109 @@ def test_a_financial_figure_standing_on_no_record_is_refused(registry):
     number. It has an id, so it can be referred to — and it is refused anyway,
     because what a figure about money must stand on has not moved.
 
-    This is the one rule carried over from the mechanism this replaced, word
-    for word."""
+    The term nothing measured also takes away the set the number was over, so
+    what the sentence claims to be about is what refuses first — a figure over
+    no nameable set is not sayable at all, whatever it stands on. That the
+    figure cites nothing is held here beside it."""
     result = run(
         "how much?",
-        _script(_shape(("That makes {total}.", [("total", "count", "count")])),
-                ("check_completeness", {}),
+        _script(_shape(("That makes {total}.",
+                       [("total", "count", "count", "whole")])),
+                ("query_ledger", {"entity": "balances"}),
                 ("compute", {"expression": "n + 424242",
-                             "inputs": {"n": "f1"}}),
+                             "inputs": {"n": "f4"}}),
                 bind=lambda results: {
                     "total": {"figure": _fig(results, "result of")}}),
         registry)
-    assert not result.answered and result.refusal == "uncited_figure"
+    assert not result.answered and result.refusal == "wrong_scope"
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    fabricated = registry.call("compute", {"expression": "n + 424242",
+                                           "inputs": {"n": "f4"}},
+                               figures=book)
+    assert fabricated.ok, fabricated.text
+    assert not fabricated.figures[0]["record_ids"]
+
+
+def test_a_money_figure_citing_no_record_is_refused_at_the_citation_gate():
+    """The gate itself, held at the unit, on a figure assembled to reach it.
+
+    A figure about money whose records are empty is refused, and the answer it
+    was bound into is not said. Held here rather than through a turn because
+    the checks ahead of this one settle every route a read can take to it: what
+    a sentence claims to be about is compared first, and a figure that lost its
+    records lost the set it was over in the same step. The rule is what a later
+    emitter would meet, so it is asserted where it lives."""
+    from viva.tools import runner
+    from viva.tools.envelope import MONEY_KINDS, bounded, figure
+
+    uncited = figure("600.00", "an amount standing on nothing",
+                     quantity=quantity.BALANCE, grade=VERIFIED, currency="USD",
+                     record_ids=[], boundary=bounded(whole=True))
+    uncited["id"] = "f1"
+    assert uncited["kind"] in MONEY_KINDS, "the gate reads the figure's kind"
+
+    shape = _shape(("You hold {total}.",
+                    [("total", "money", "balance", "whole")]))
+    ground = runner._Ground(book={"f1": uncited})
+    refused = runner._gate({"bindings": {"total": {"figure": "f1"}}}, [],
+                           ground, shape, "en-US", tools=())
+    assert not refused.answered
+    assert refused.refusal == "uncited_figure", refused.detail
+    assert refused.text and "600" not in refused.text
+
+    # And the same figure with a record behind it is said, so what the gate
+    # refuses on is the records and not the figure.
+    cited = dict(uncited, record_ids=["doc-one"])
+    said = runner._gate({"bindings": {"total": {"figure": "f1"}}}, [],
+                        runner._Ground(book={"f1": cited}), shape, "en-US",
+                        tools=())
+    assert said.answered, said.detail
+
+
+def test_a_holdings_count_over_an_empty_vault_refuses_as_uncited():
+    """A count of holdings on a vault holding none ends the turn refused, end
+    to end: nothing was found, so the count stands on no record, and the gate
+    that every figure about money must cite something stops it.
+
+    This pins a defect rather than a rule. The count is emitted as a claim
+    about the person's money, and nobody has asked what a wrong number there
+    would move — a count of things found stands on the records that establish
+    there are none, which is a different account of what it rests on. Until
+    that is settled, a person asking how many holdings they have on a vault
+    with none is refused rather than told none. The item that removes it is
+    *what a count is a count of*.
+
+    The vault holds an account and a document, so what is missing is holdings
+    and nothing else; the gate is reached rather than the read refusing
+    first."""
+    evs = [account_opened("acct-one", "investment", "Account One", "USD",
+                          "2026-01-01"),
+           document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           opening_balance_observed("acct-one", "1000.00", "2026-01-01",
+                                    _p("doc-one"))]
+    empty = default_registry(LedgerProjection(evs))
+    read = empty.call("query_ledger", {"entity": "holdings"})
+    assert read.ok, read.text
+    (count,) = [f for f in read.figures if f["quantity"] == quantity.COUNT]
+    assert count["value"] == "0" and not count["record_ids"]
+
+    result = run(
+        "how many holdings do I have?",
+        _script(_shape(("You hold {many} of them.",
+                        [("many", "count", "count", "whole")])),
+                ("query_ledger", {"entity": "holdings"}),
+                bind=lambda results: {"many": {"figure": _fig(
+                    results, "measured holdings")}}),
+        empty)
+    assert not result.answered
+    assert result.refusal == "uncited_figure", result.detail
 
 
 def test_figure_ids_are_unique_across_tools_and_restart_each_turn(registry):
     seen = []
-    shape = _shape(("Noted.", []))
+    shape = _shape(("Your balance is {total}.",
+                    [("total", "money", "balance", "account")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2463,7 +2948,7 @@ def test_figure_ids_are_unique_across_tools_and_restart_each_turn(registry):
             return {"tool": "check_completeness", "args": {}}
         seen.extend(f["id"] for r in context["results"]
                     for f in r["figures"])
-        return {"bindings": {}}
+        return {"bindings": {"total": {"figure": "f1"}}}
 
     first = run("what do you hold?", planner, registry)
     assert first.answered
@@ -2550,12 +3035,18 @@ def test_something_that_is_not_a_magnitude_cannot_arrive_as_a_supposition(
 
 
 def test_a_hypothetical_figure_carries_no_grade_and_sets_none(registry):
-    """Arithmetic over a premise is answerable and is not evidence. It can be
-    spoken; it cannot make an answer look verified."""
+    """Arithmetic over a premise is not evidence, and it is not over any set
+    the vault measured either.
+
+    A value the person supposed is over no nameable set; a balance is over one
+    account. A number built from both is over neither, so there is no set a
+    sentence could declare that it answers, and every scope refuses it. The
+    figure is still emitted, carries no grade, and is still a thing the run
+    established — what it cannot be is a claim about a set."""
     shape = _shape(("Supposing the {trip} trip, {left} would be left — that "
                     "rests on your figure, not on a statement.",
                     [("trip", "supposed", "spending"),
-                     ("left", "money", "balance")]))
+                     ("left", "money", "balance", "account")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2574,10 +3065,22 @@ def test_a_hypothetical_figure_carries_no_grade_and_sets_none(registry):
                              "left": {"figure": _fig(context["results"],
                                                      "result of")}}}
     result = run("could I afford a 250 trip?", planner, registry)
-    assert result.answered, result.text
-    assert result.figures[0]["kind"] == "hypothetical"
-    assert result.figures[0]["grade"] == ""
-    assert result.grade == ""
+    assert not result.answered
+    assert result.refusal == "wrong_scope", result.detail
+    book = _one_figure(registry, "query_ledger",
+                       {"entity": "balances", "filters": {"account": "chk"}})
+    held = next(f["id"] for f in book.values()
+                if f["quantity"] == quantity.BALANCE)
+    supposed = registry.call("compute",
+                             {"expression": "have - trip",
+                              "inputs": {"have": held,
+                                         "trip": {"stipulated": "250"}}},
+                             figures=book,
+                             question="could I afford a 250 trip?")
+    assert supposed.ok, supposed.text
+    assert supposed.figures[0]["kind"] == "hypothetical"
+    assert supposed.figures[0]["grade"] == ""
+    assert supposed.figures[0]["boundary"] == {"whole": False}
 
 
 def test_a_supposition_does_not_wear_off_after_one_hop(registry):
@@ -2619,8 +3122,8 @@ def test_an_answers_grade_ignores_activity_and_hypothetical_figures(registry):
     supposed, are neither — so neither may set or soften an answer's grade."""
     shape = _shape(("I have taken {actions} action(s); your balance is "
                     "{balance}.",
-                    [("actions", "count", "count"),
-                     ("balance", "money", "balance")]))
+                    [("actions", "count", "count", "whole"),
+                     ("balance", "money", "balance", "account")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2655,13 +3158,13 @@ def test_an_answers_grade_ignores_activity_and_hypothetical_figures(registry):
     for i, (kind, grade) in enumerate([("financial", CORROBORATED),
                                        ("activity", "conflicted")], 1):
         fig = figure("1", "a thing", quantity=quantity.COUNT, kind=kind,
-                     record_ids=["r"])
+                     record_ids=["r"], boundary=bounded(whole=True))
         fig.update(id=f"f{i}", grade=grade)      # a tool that graded carelessly
         ground.book[fig["id"]] = fig
-    both = _shape(("{a} and {b}.", [("a", "count", "count"),
-                                    ("b", "count", "count")]))
+    both = _shape(("{a} and {b}.", [("a", "count", "count", "whole"),
+                                    ("b", "count", "count", "whole")]))
     spoken = _gate({"bindings": {"a": {"figure": "f1"}, "b": {"figure": "f2"}}},
-                   [], ground, both, "")
+                   [], ground, both, "", tools=())
     assert spoken.answered, spoken.detail
     assert spoken.grade == CORROBORATED
 
@@ -2674,8 +3177,9 @@ def test_a_number_no_tool_returned_is_refused(registry):
 
     Both halves are here: a shape that spells one out does not come into being,
     and a run whose planner tries it never reaches a read."""
-    with pytest.raises(BadShape):
+    with pytest.raises(BadShape) as raised:
         _shape(("Your balance is about 9999.99.", []))
+    assert raised.value.problem.repair == HOLE_THE_NUMBER
 
     def planner(context):
         if not context["shaped"]:
@@ -2760,10 +3264,13 @@ def test_an_account_with_no_statement_says_so_rather_than_guessing(registry):
 def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
     """A span a read is attested for is a thing the read established, so the
     answer may say which period it is answering for — by referring to that
-    span, never by writing its edges."""
+    span, never by writing its edges. The figure stated beside it was taken
+    over that same span, which is what makes the sentence one claim rather than
+    two."""
     window = {"from": "2026-01-05", "to": "2026-01-20"}
     shape = _shape(("Over {span} you spent {total}.",
-                    [("span", "period"), ("total", "money", "spending")]))
+                    [("span", "period"),
+                     ("total", "money", "spending", "period")]))
     result = run(
         "what did I spend then?",
         _script(shape,
@@ -2777,11 +3284,44 @@ def test_the_window_asked_for_can_be_stated_in_the_answer(registry):
     assert "2026-01-05 to 2026-01-20" in result.text
 
 
+def test_a_span_is_the_span_the_figure_beside_it_was_taken_over(registry):
+    """A period hole binds a span a figure its own clause states was measured
+    over, and not any span this run's documents answer for.
+
+    Two reads, two spans: one asked for a window and is attested for it, one
+    was asked for nothing and was taken over everything. A sentence stating the
+    second under the first says a number covers a stretch nothing measured it
+    across — the span is real, the number is real, and together they are false.
+    So the clause is what decides, and where it states no figure taken over the
+    span there is nothing for the hole to say."""
+    window = {"from": "2026-01-05", "to": "2026-01-20"}
+    shape = _shape(("Over {span} you spent {total}.",
+                    [("span", "period"),
+                     ("total", "money", "spending", "whole")]))
+    result = run(
+        "what did I spend?",
+        _script(shape,
+                ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                                  "filters": {"window": window}}),
+                ("query_ledger", {"entity": "aggregate",
+                                  "metric": "spending"}),
+                bind=lambda results: {
+                    # p1 is the first read's window; the figure is the second
+                    # read's total, taken over every day there is.
+                    "span": {"period": "p1"},
+                    "total": {"figure": [f["id"] for f in results[-1]["figures"]
+                                         if "total spending" in f["what"]][0]}}),
+        registry)
+    assert not result.answered and result.refusal == "unknown_period", (
+        result.detail)
+
+
 def test_a_period_a_read_is_attested_for_can_never_ground_a_figure(registry):
     """A period is scope — what a document answers for — and never a magnitude.
     It has its own kind, so binding one where an amount belongs is a type
     error rather than a matter of how the sentence was worded."""
-    shape = _shape(("The figure is {total}.", [("total", "money", "balance")]))
+    shape = _shape(("The figure is {total}.",
+                   [("total", "money", "balance", "whole")]))
     result = run(
         "?",
         _script(shape, ("query_ledger", {"entity": "aggregate",
@@ -2822,7 +3362,7 @@ def test_the_call_budget_ends_in_one_closing_attempt_then_refuses(registry):
     than die beside it. If that closing reply reaches for a tool anyway, the
     turn refuses — and the planner is not asked again."""
     closings = []
-    shape = _shape(("Noted.", []))
+    shape = _shape(("Noted, as of {when}.", [("when", "date")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2837,7 +3377,7 @@ def test_the_call_budget_ends_in_one_closing_attempt_then_refuses(registry):
 
 def test_an_answer_delivered_on_the_closing_call_passes_the_gate_normally(registry):
     shape = _shape(("Your checking balance is {balance}.",
-                    [("balance", "money", "balance")]))
+                    [("balance", "money", "balance", "account")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -2853,7 +3393,10 @@ def test_an_answer_delivered_on_the_closing_call_passes_the_gate_normally(regist
 
 def test_every_planner_context_says_how_many_calls_remain(registry):
     seen = []
-    shape = _shape(("Noted.", []))
+    # A turn that reads and then answers on the one thing a run establishes
+    # without reading: the value the person put into their own question.
+    shape = _shape(("You asked about {yours}.",
+                    [("yours", "supposed", "spending")]))
 
     def planner(context):
         seen.append(context["calls_remaining"])
@@ -2861,14 +3404,15 @@ def test_every_planner_context_says_how_many_calls_remain(registry):
             return {"shape": shape}
         if len(seen) < 3:
             return {"tool": "check_completeness", "args": {}}
-        return {"bindings": {}}
-    assert run("?", planner, registry, max_calls=4).answered
+        return {"bindings": {"yours": {"supposed": "40"}}}
+    assert run("was it 40?", planner, registry, max_calls=4).answered
     assert seen == [4, 3, 2]
 
 
 def test_a_refusal_result_flows_back_to_the_planner(registry):
     seen = {}
-    shape = _shape(("It stands at {balance}.", [("balance", "money", "balance")]))
+    shape = _shape(("It stands at {balance}.",
+                    [("balance", "money", "balance", "account")]))
 
     def planner(context):
         if not context["shaped"]:
@@ -3037,7 +3581,8 @@ def test_an_answer_may_name_the_account_it_is_about(registry):
     assert account["name"] == "Everyday Checking"
 
     shape = _shape(("{which} holds {balance}.",
-                    [("which", "account"), ("balance", "money", "balance")]))
+                    [("which", "account"),
+                     ("balance", "money", "balance", "whole")]))
     spoken = run("what do I have?",
                  _script(shape, ("query_ledger", {"entity": "balances"}),
                          bind=lambda results: {
@@ -3045,7 +3590,8 @@ def test_an_answer_may_name_the_account_it_is_about(registry):
                              "balance": {"figure": _fig(results, "balance")}}),
                  numbered)
     assert spoken.answered, spoken.detail
-    assert spoken.text == "Everyday Checking holds USD 600.00."
+    assert spoken.text == ("Everyday Checking holds USD 600.00. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     # And the run of digits inside that name never reaches the person on its
     # own, because nothing but the renderer ever writes the name.
     assert "4417" not in spoken.text
@@ -3073,25 +3619,34 @@ def test_two_accounts_a_person_named_the_same_are_told_apart(registry):
     """A name that names two things names neither. Where the name a person gave
     an account does not tell it from another the run also spoke about, the
     masked number goes with it — and where nothing collides, the plain name
-    stands, because a number shown for no reason is noise."""
+    stands, because a number shown for no reason is noise.
+
+    The two accounts share a description, so the figure of the one the sentence
+    names is picked by the amount this fixture gave it: a sentence naming one
+    account and stating the other's balance is refused before it can be read,
+    which is the point of the check and not of this test."""
     twins = default_registry(_twin_account_projection())
     shape = _shape(("{which} holds {balance}.",
-                    [("which", "account"), ("balance", "money", "balance")]))
+                    [("which", "account"),
+                     ("balance", "money", "balance", "account")]))
 
-    def spoken_for(reg, handle):
+    def spoken_for(reg, handle, held):
+        def bind(results):
+            figures = [f for r in results for f in r.get("figures") or []]
+            return {"which": {"entity": _entity(results, handle)},
+                    "balance": {"figure": next(f["id"] for f in figures
+                                               if f["value"] == held)}}
         return run("what do I have?",
                    _script(shape, ("query_ledger", {"entity": "balances"}),
-                           bind=lambda results: {
-                               "which": {"entity": _entity(results, handle)},
-                               "balance": {"figure": _fig(results, "balance")}}),
+                           bind=bind),
                    reg)
 
-    ambiguous = spoken_for(twins, "northgate")
+    ambiguous = spoken_for(twins, "northgate", "1000.00")
     assert ambiguous.answered, ambiguous.detail
     assert ambiguous.text.startswith("Everyday Checking ••••4417 holds")
 
     alone = spoken_for(default_registry(_numbered_account_projection()),
-                       "northgate")
+                       "northgate", "600.00")
     assert alone.answered, alone.detail
     assert alone.text.startswith("Everyday Checking holds")
 
@@ -3175,7 +3730,8 @@ def test_an_account_two_reads_spoke_about_is_not_its_own_twin(registry):
     breath because the run had counted it twice."""
     numbered = default_registry(_numbered_account_projection())
     shape = _shape(("{which} holds {balance}.",
-                    [("which", "account"), ("balance", "money", "balance")]))
+                    [("which", "account"),
+                     ("balance", "money", "balance", "whole")]))
 
     spoken = run("what do I have?",
                  _script(shape,
@@ -3186,7 +3742,8 @@ def test_an_account_two_reads_spoke_about_is_not_its_own_twin(registry):
                              "balance": {"figure": _fig(results, "balance")}}),
                  numbered)
     assert spoken.answered, spoken.detail
-    assert spoken.text == "Everyday Checking holds USD 600.00.", (
+    assert spoken.text == ("Everyday Checking holds USD 600.00. "
+                           + moment(STOOD_BEHIND_MOMENT + spoken.grade)), (
         "a second read of one account made it collide with itself")
     assert "4417" not in spoken.text
 
@@ -3404,16 +3961,20 @@ def _spending_events(*movements):
 def test_a_per_account_balance_says_it_is_one_of_the_accounts_held(proj):
     """A grade says how well a number is stood behind. It does not say how much
     of the question the number answers, and one account's balance offered where
-    a total was asked for is a true, well-graded figure over the wrong set."""
+    a total was asked for is a true, well-graded figure over the wrong set.
+
+    It says which account it is as well as how many it is one of. How many
+    there are is what stops it being read as a total; which one it is, is what
+    a sentence naming an account can be checked against."""
     held = len([i for i in proj.account_infos()
                 if i.kind in ledger_tools.REAL_KINDS])
     assert held > 1
     result = ledger_tools.query_ledger(proj, {"entity": "balances"})
-    for f in result.figures:
-        if f["quantity"] != quantity.BALANCE:
-            continue
-        assert f["boundary"] == {"whole": False,
-                                 "accounts": {"counted": 1, "held": held}}
+    # One figure per row, in the rows' own order, before the count of them.
+    for f, row in zip(result.figures, result.data["balances"]):
+        assert f["boundary"] == {
+            "whole": False, "accounts": {"counted": 1, "held": held},
+            "cut": [{"kind": "account", "value": row["record_id"]}]}
     # And the count of them covers every one this read ranged over.
     counted = next(f for f in result.figures if f["quantity"] == quantity.COUNT)
     assert counted["boundary"] == {"whole": True,
@@ -3423,14 +3984,21 @@ def test_a_per_account_balance_says_it_is_one_of_the_accounts_held(proj):
 def test_a_balance_read_narrowed_to_one_account_still_counts_what_is_held(proj):
     """The set a figure is one of is what the person holds, not what the read
     was asked for — narrowing the question does not narrow how many accounts
-    there are."""
+    there are. Beside the count it says which account was asked for, which is
+    the other half of where the claim ends and a different sentence.
+
+    One filter leaves one slice, and the count is the whole of that slice, so
+    it names it: a sentence about how many accounts one narrowing left has a
+    figure that is the whole of what it asks about."""
     held = len([i for i in proj.account_infos()
                 if i.kind in ledger_tools.REAL_KINDS])
     result = ledger_tools.query_ledger(
         proj, {"entity": "balances", "filters": {"account": "chk"}})
     counted = next(f for f in result.figures if f["quantity"] == quantity.COUNT)
-    assert counted["boundary"] == {"whole": False,
-                                   "accounts": {"counted": 1, "held": held}}
+    assert counted["boundary"] == {
+        "whole": False, "accounts": {"counted": 1, "held": held},
+        "selected": [{"kind": "account", "value": "chk"}],
+        "cut": [{"kind": "account", "value": "chk"}]}
 
 
 def test_spending_narrowed_to_a_category_says_which_category(proj):
@@ -3444,7 +4012,9 @@ def test_spending_narrowed_to_a_category_says_which_category(proj):
     assert total["boundary"] == {
         "whole": False,
         "selected": [{"kind": "category",
-                      "value": proj.canonical_category("groceries")}]}
+                      "value": proj.canonical_category("groceries")}],
+        "cut": [{"kind": "category",
+                "value": proj.canonical_category("groceries")}]}
 
 
 def test_spending_narrowed_to_a_window_says_which_days(proj):
@@ -3461,13 +4031,16 @@ def test_spending_narrowed_to_a_window_says_which_days(proj):
     assert narrowed({"from": "2026-01-01", "to": "2026-01-31"}) == {
         "whole": False,
         "selected": [{"kind": "period", "value": "2026-01-01",
-                      "to": "2026-01-31"}]}
+                      "to": "2026-01-31"}],
+        "cut": [{"kind": "period", "value": "2026-01-01", "to": "2026-01-31"}]}
     assert narrowed({"from": "2026-01-01"}) == {
         "whole": False,
-        "selected": [{"kind": "since", "value": "2026-01-01"}]}
+        "selected": [{"kind": "since", "value": "2026-01-01"}],
+        "cut": [{"kind": "since", "value": "2026-01-01"}]}
     assert narrowed({"to": "2026-01-31"}) == {
         "whole": False,
-        "selected": [{"kind": "until", "value": "2026-01-31"}]}
+        "selected": [{"kind": "until", "value": "2026-01-31"}],
+        "cut": [{"kind": "until", "value": "2026-01-31"}]}
 
 
 def test_an_ungrouped_unfiltered_spending_total_is_the_whole_of_it(proj):
@@ -3498,7 +4071,7 @@ def test_a_group_among_several_is_a_slice_and_says_which(proj):
         # read was narrowed: this read was narrowed by nothing, and each of its
         # two figures is still a part.
         assert "selected" not in f["boundary"]
-        assert f["boundary"]["cut"]["kind"] == "category"
+        assert [c["kind"] for c in f["boundary"]["cut"]] == ["category"]
 
 
 def test_the_only_group_of_a_partitioning_grouping_is_the_whole(proj):
@@ -3520,8 +4093,8 @@ def test_the_only_group_of_a_partitioning_grouping_is_the_whole(proj):
     total = next(f for f in result.figures if "total spending" in f["what"])
     assert group["value"] == total["value"]
     assert group["boundary"] == {"whole": True,
-                                 "cut": {"kind": "category",
-                                         "value": "groceries"}}
+                                 "cut": [{"kind": "category",
+                                         "value": "groceries"}]}
     # And nothing is said about it, which is the point: a whole figure states
     # no boundary, cut or otherwise.
     from viva.tools.runner import _boundary
@@ -3546,7 +4119,100 @@ def test_a_tag_group_is_never_the_whole_however_few_tags_there_are():
     total = next(f for f in result.figures if "total spending" in f["what"])
     assert Decimal(tagged["value"]) < Decimal(total["value"])
     assert tagged["boundary"] == {"whole": False,
-                                  "cut": {"kind": "tag", "value": "pantry"}}
+                                  "cut": [{"kind": "tag", "value": "pantry"}]}
+
+
+def test_what_a_spending_total_counts_is_said_only_where_it_counted_something():
+    """A caveat is a sentence about a number, so a read that produced no
+    number to talk about says nothing.
+
+    The sentence names what is left out by what it is — money settling between
+    two accounts the person holds — rather than by a label they may have been
+    shown beside a figure, so it is true of a total that contains a category
+    the vault happens to call `transfers`."""
+    evs = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()))
+    counted = ledger_tools.query_ledger(
+        LedgerProjection(evs),
+        {"entity": "aggregate", "metric": "spending"})
+    assert ledger_tools.COUNTS_WHAT_LEFT in counted.caveats
+
+    empty = ledger_tools.query_ledger(
+        LedgerProjection(evs),
+        {"entity": "aggregate", "metric": "spending",
+         "filters": {"window": {"from": "2027-01-01"}}})
+    assert empty.ok, empty.text
+    assert not any("left your life" in c for c in empty.caveats)
+
+
+def test_overlapping_tags_are_disclosed_where_the_read_found_a_tag():
+    """The condition belongs to the vault and not to the call.
+
+    Grouping by tag is a fact about how the read was asked; carrying tags is a
+    fact about the person's records. A vault with no tag has no per-tag figures
+    that could fail to sum to anything, so there is nothing to disclose."""
+    untagged = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()))
+    silent = ledger_tools.query_ledger(
+        LedgerProjection(untagged),
+        {"entity": "aggregate", "metric": "spending", "group_by": "tag"})
+    assert silent.ok, silent.text
+    assert not any("Tags overlap" in c for c in silent.caveats)
+
+    tagged = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries",
+         ("pantry",)))
+    spoken = ledger_tools.query_ledger(
+        LedgerProjection(tagged),
+        {"entity": "aggregate", "metric": "spending", "group_by": "tag"})
+    assert spoken.ok, spoken.text
+    assert any("Tags overlap" in c for c in spoken.caveats)
+
+
+def _measured_on(*days):
+    """A vault of one account per day named, each last measured on its own
+    day, so a point over them rests on as many dates as there are days."""
+    evs = [document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                             "2026-06-01")]
+    for n, day in enumerate(days):
+        evs += [account_opened(f"acct-{n}", "depository", f"Account {n}",
+                               "USD", "2026-01-01"),
+                closing_balance_observed(f"acct-{n}", "100.00", day,
+                                         _p("doc-one"))]
+    return LedgerProjection(evs)
+
+
+def test_a_point_says_it_rests_on_several_dates_only_where_it_does():
+    """The staleness sentence gains the condition its own words imply, and
+    loses the pointer at fields nobody reading an answer can see.
+
+    A point every line of which was measured on one day is as current as that
+    day, and saying it is only as current as its stalest input tells a person
+    nothing they can act on. Where the lines really were measured on different
+    days, that is a fact about the value and it is said."""
+    one_day = ledger_tools.query_ledger(
+        _measured_on("2026-01-31"),
+        {"entity": "aggregate", "metric": "net_worth"})
+    assert one_day.ok, one_day.text
+    assert one_day.caveats == []
+
+    several = ledger_tools.query_ledger(
+        _measured_on("2026-01-31", "2026-05-31"),
+        {"entity": "aggregate", "metric": "net_worth"})
+    assert several.ok, several.text
+    assert several.caveats == [ledger_tools.MIXED_VINTAGE]
+    assert "staleness fields" not in ledger_tools.MIXED_VINTAGE
+
+
+def test_when_a_value_rests_on_several_dates_is_one_rule_with_one_sentence():
+    """Both halves of the disclosure have one home, so a second reader
+    composing a value from measurements of several days places the same
+    sentence on the same condition rather than writing a rival one."""
+    assert ledger_tools._mixed_vintage(["2026-01-31", "2026-05-31"])
+    assert not ledger_tools._mixed_vintage(["2026-01-31", "2026-01-31"])
+    # A day nothing recorded is a gap rather than a second vintage.
+    assert not ledger_tools._mixed_vintage(["2026-01-31", ""])
+    assert not ledger_tools._mixed_vintage([])
 
 
 def test_a_grouping_the_vault_names_nothing_for_still_names_its_slice():
@@ -3585,15 +4251,15 @@ def test_a_grouping_the_vault_names_nothing_for_still_names_its_slice():
     for f in grouped:
         assert f["boundary"] == {
             "whole": False,
-            "cut": {"kind": "subcategory",
-                    "value": f["what"].split("'")[1]}}
+            "cut": [{"kind": "subcategory",
+                    "value": f["what"].split("'")[1]}]}
     # And the name in that cut is still not a filter, which is why it is a
     # scope and not an entity.
     for f in grouped:
         follow_up = ledger_tools.query_ledger(
             LedgerProjection(evs),
             {"entity": "aggregate", "metric": "spending",
-             "filters": {"category": f["boundary"]["cut"]["value"]}})
+             "filters": {"category": f["boundary"]["cut"][0]["value"]}})
         assert not follow_up.ok and follow_up.refusal == "unknown_category"
     assert not [i for i in result.identifiers if i["kind"] == "category"]
 
@@ -3775,7 +4441,8 @@ def test_an_incomplete_net_worth_names_what_it_leaves_out():
                 if f["what"].startswith("liabilities in"))
     holds = next(f for f in result.figures if f["what"].startswith("assets in"))
     assert owed["boundary"] == net["boundary"]
-    assert holds["boundary"] == {"whole": True}
+    assert holds["boundary"] == {"whole": True,
+                                 "cut": [{"kind": "currency", "value": "USD"}]}
 
 
 def test_an_account_whose_balance_was_never_observed_is_a_gap_too():
@@ -3807,7 +4474,8 @@ def test_an_account_whose_balance_was_never_observed_is_a_gap_too():
                  "settled_by": ""}]
     # And the side it cannot be short of still says it is whole.
     holds = next(f for f in result.figures if f["what"].startswith("assets in"))
-    assert holds["boundary"] == {"whole": True}
+    assert holds["boundary"] == {"whole": True,
+                                 "cut": [{"kind": "currency", "value": "USD"}]}
 
 
 def test_an_account_measured_only_later_is_a_gap_in_an_earlier_point():
@@ -3841,6 +4509,7 @@ def test_an_account_measured_only_later_is_a_gap_in_an_earlier_point():
     assert owed["value"] == "0"
     assert owed["boundary"] == {
         "whole": False,
+        "cut": [{"kind": "currency", "value": "USD"}],
         "unmeasured": [{"account": "loan", "reason": "unobserved",
                         "settled_by": ""}]}
 
@@ -3862,16 +4531,21 @@ def test_a_complete_net_worth_says_it_is_complete():
         today="2026-03-01")
     for f in result.figures:
         if f["what"].startswith(("net in", "assets in", "liabilities in")):
-            assert f["boundary"] == {"whole": True}, f["what"]
+            assert f["boundary"] == {
+                "whole": True,
+                "cut": [{"kind": "currency", "value": "USD"}]}, f["what"]
 
 
-def test_a_figure_nobody_declared_a_boundary_for_claims_none(proj):
-    """No default of "whole". A figure whose read said nothing about the set it
-    was taken over must not pick up a claim nobody made — silence and "this is
-    everything" are different sentences."""
-    result = ledger_tools.query_ledger(proj, {"entity": "holdings"})
-    assert result.figures
-    assert all(f["boundary"] == {} for f in result.figures)
+def test_a_figure_nobody_declared_a_boundary_for_claims_none():
+    """No default of "whole". A figure whose emitter said nothing about the set
+    it was taken over must not pick up a claim nobody made — silence and "this
+    is everything" are different sentences.
+
+    Every read states one, so the silence this holds open is the one an
+    emitter written later would leave."""
+    said = figure("1", "a number nobody said the set of",
+                  quantity=quantity.COUNT)
+    assert said["boundary"] == {}
 
 
 def test_a_whole_set_cannot_also_name_what_it_leaves_out():
@@ -3902,17 +4576,17 @@ def test_a_set_is_narrowed_only_in_a_way_the_vocabulary_names():
     from viva.tools.envelope import bounded
     with pytest.raises(ValueError, match="is not narrowed by"):
         bounded(whole=False, selected=[{"kind": "colour", "value": "green"}])
-    # And the same vocabulary, and the same checks, for the slice one figure
+    # And the same vocabulary, and the same checks, for the slices one figure
     # was taken over rather than the narrowing of the read it came from.
     with pytest.raises(ValueError, match="is not narrowed by"):
-        bounded(whole=False, cut={"kind": "colour", "value": "green"})
+        bounded(whole=False, cut=[{"kind": "colour", "value": "green"}])
     with pytest.raises(ValueError,
                        match="says nothing about what it was narrowed to"):
-        bounded(whole=False, cut={"kind": "tag", "value": ""})
+        bounded(whole=False, cut=[{"kind": "tag", "value": ""}])
     # A cut is the one entry a whole figure may still carry, because naming
     # which slice a figure is is not a way of falling short of anything.
-    assert bounded(whole=True, cut={"kind": "tag", "value": "pantry"}) == {
-        "whole": True, "cut": {"kind": "tag", "value": "pantry"}}
+    assert bounded(whole=True, cut=[{"kind": "tag", "value": "pantry"}]) == {
+        "whole": True, "cut": [{"kind": "tag", "value": "pantry"}]}
     with pytest.raises(ValueError, match="cannot also name what it leaves out"):
         bounded(whole=True, selected=[{"kind": "tag", "value": "pantry"}])
     with pytest.raises(ValueError,
@@ -3933,6 +4607,29 @@ def test_a_set_is_narrowed_only_in_a_way_the_vocabulary_names():
                        match="carries the other number of them"):
         bounded(whole=False, selected=[{"kind": "since", "value": "2026-01-01",
                                         "to": "2026-01-31"}])
+
+
+def test_a_figure_names_each_axis_it_was_cut_by_once():
+    """A cut is a set of axes, and one axis named twice is two narrowings of
+    one thing offered as one set — no single set is what they describe, and
+    which of the two the figure was taken over would be a guess. Refused where
+    the emitter is written.
+
+    Two axes at once is the ordinary case and is how a group of a narrowed read
+    says it is the narrowing AND the group. Because the axes are unique, they
+    have one written form — ordered by axis — so a set assembled in either
+    order is the same declaration and compares equal to itself."""
+    from viva.tools.envelope import bounded
+    one_way = bounded(whole=False, cut=[{"kind": "merchant", "value": "one"},
+                                        {"kind": "category", "value": "two"}])
+    other_way = bounded(whole=False, cut=[{"kind": "category", "value": "two"},
+                                          {"kind": "merchant", "value": "one"}])
+    assert one_way["cut"] == [{"kind": "category", "value": "two"},
+                              {"kind": "merchant", "value": "one"}]
+    assert one_way == other_way
+    with pytest.raises(ValueError, match="names each axis it was cut by once"):
+        bounded(whole=False, cut=[{"kind": "tag", "value": "one"},
+                                  {"kind": "tag", "value": "two"}])
 
 
 def test_a_boundary_is_only_what_its_own_constructor_made():
@@ -4047,7 +4744,9 @@ def test_a_document_read_and_not_posted_stops_a_total_being_whole():
     settled = ledger_tools.query_ledger(
         LedgerProjection(evs), {"entity": "aggregate", "metric": "net_worth"},
         today="2026-03-01")
-    assert all(f["boundary"] == {"whole": True} for f in settled.figures
+    assert all(f["boundary"] == {"whole": True,
+                                 "cut": [{"kind": "currency", "value": "USD"}]}
+               for f in settled.figures
                if f["what"].startswith("net in"))
 
     evs += [document_captured("doc-x", "x.pdf", 90, "bank_statement", 0.5,
@@ -4059,7 +4758,9 @@ def test_a_document_read_and_not_posted_stops_a_total_being_whole():
         today="2026-03-01")
     for f in result.figures:
         if f["what"].startswith(("net in", "assets in", "liabilities in")):
-            assert f["boundary"] == {"whole": False, "unposted": 1}, f["what"]
+            assert f["boundary"] == {
+                "whole": False, "unposted": 1,
+                "cut": [{"kind": "currency", "value": "USD"}]}, f["what"]
 
 
 def test_every_grouping_called_partitioning_actually_partitions():
@@ -4204,7 +4905,8 @@ def test_a_boundary_says_how_many_documents_are_read_and_not_posted():
         today="2026-03-01")
     net = next(f for f in result.figures if f["what"].startswith("net in"))
     # Counted in the record, so the sentence has something to say.
-    assert net["boundary"] == {"whole": False, "unposted": 2}
+    assert net["boundary"] == {"whole": False, "unposted": 2,
+                               "cut": [{"kind": "currency", "value": "USD"}]}
 
 
 # ------------------------------------------------- the vault's own vocabulary
@@ -4250,18 +4952,27 @@ def test_a_spending_read_names_the_slice_of_every_group_under_every_grouping():
         assert grouped, group_by
         seen.add(group_by)
         for fig in grouped:
-            cut = fig["boundary"].get("cut") or {}
-            assert cut.get("kind") == kind, (group_by, fig["what"])
-            assert cut["value"] == fig["what"].split("'")[1]
+            cut = fig["boundary"].get("cut") or []
+            # A group of a narrowed read is the narrowing AND the group, so it
+            # names both axes and is a different claim from the read's own
+            # total.
+            assert {item["kind"] for item in cut} == {kind, "period"}, (
+                group_by, fig["what"])
+            named = next(item for item in cut if item["kind"] == kind)
+            assert named["value"] == fig["what"].split("'")[1]
             # And the narrowing of the read is a separate statement, still
             # made, so the two halves of a boundary do not stand in for each
             # other.
             assert [item["kind"] for item in fig["boundary"]["selected"]] \
                 == ["period"]
-        # The read's own total and count are not a slice of anything.
+        # The read's own total and count are the whole of what one filter
+        # left, so the slices they name are that filter itself and nothing
+        # further — which is what tells a total apart from a line of the same
+        # read.
         for fig in result.figures:
             if fig not in grouped:
-                assert "cut" not in fig["boundary"], fig["what"]
+                assert fig["boundary"]["cut"] == fig["boundary"]["selected"], \
+                    fig["what"]
     assert seen == set(ledger_tools._GROUP_NAMES)
 
 
@@ -4339,6 +5050,201 @@ def test_a_vocabulary_read_needs_to_be_told_which_vocabulary():
     assert not result.ok and result.refusal == "missing_group_by"
     for name in ledger_tools._VOCABULARIES:
         assert name in result.text
+
+
+# ----------------------------------------- finding the label a name reaches
+
+def _counterparty_vault():
+    """One vault whose counterparty keys separate the tiers a lookup has.
+
+    Under the key function the four descriptors below become `havenmart`,
+    `cedar haven market`, `sunhaven bakery` and `brightline transit`. Against
+    the name `haven` the first begins with it, the second holds it as a whole
+    word, the third merely contains it and the fourth has nothing to do with
+    it."""
+    return LedgerProjection(_spending_events(
+        ("2026-01-05", "HAVENMART", "-40.00", "", ()),
+        ("2026-01-06", "CEDAR HAVEN MARKET", "-50.00", "", ()),
+        ("2026-01-07", "SUNHAVEN BAKERY", "-60.00", "", ()),
+        ("2026-01-08", "BRIGHTLINE TRANSIT", "-70.00", "", ())))
+
+
+def _looked_up(proj, name, group_by="merchant"):
+    return ledger_tools.query_ledger(
+        proj, {"entity": "vocabulary", "group_by": group_by, "matching": name})
+
+
+def test_a_name_reaches_the_label_it_is_exactly():
+    """The first tier: what the caller wrote keys to a label the vault holds,
+    and only that label comes back."""
+    result = _looked_up(_counterparty_vault(), "Havenmart")
+    assert result.ok
+    assert result.data["labels"] == ["havenmart"]
+
+
+def test_a_name_reaches_the_labels_that_begin_with_it_and_hold_it_as_a_word():
+    """The other two tiers, and the order they come back in.
+
+    A label whose key begins with the name is nearer than one merely carrying
+    it as a word, so the beginnings come first. Both are labels this vault
+    holds, which is what the caller then narrows by."""
+    result = _looked_up(_counterparty_vault(), "Haven")
+    assert result.ok
+    assert result.data["labels"] == ["havenmart", "cedar haven market"]
+
+
+def test_a_name_buried_inside_a_label_reaches_nothing():
+    """The line the tiers draw, and the reason the search may be generous at
+    all: a run of characters inside a word is not a thing the caller named, so
+    it is not found. Generosity that went this far would be a pattern, and a
+    pattern is not something the vault holds."""
+    reached = _looked_up(_counterparty_vault(), "Haven").data["labels"]
+    assert "sunhaven bakery" not in reached
+    assert "brightline transit" not in reached
+
+
+def test_a_name_that_reaches_nothing_still_answers_with_the_size_held():
+    """A lookup that found nothing establishes no thing and still establishes
+    the one number it always did — how many labels the vault holds — so it
+    cites what it read rather than what it failed to find."""
+    result = _looked_up(_counterparty_vault(), "nothing-by-that-name")
+    assert result.ok and result.data["labels"] == []
+    assert result.data["count"] == 4
+
+
+def test_a_lookup_counts_the_whole_vocabulary_and_never_its_matches():
+    """The count is the same number matched or not, and it declares the whole.
+
+    A number over the labels a name reached would be a number about a set the
+    narrowing vocabulary cannot name, so no such figure exists and the one
+    that does says what it always said."""
+    proj = _counterparty_vault()
+    whole = ledger_tools.query_ledger(
+        proj, {"entity": "vocabulary", "group_by": "merchant"})
+    matched = _looked_up(proj, "Haven")
+    for result in (whole, matched):
+        stated = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+        assert len(stated) == 1
+        assert stated[0]["value"] == "4"
+        assert stated[0]["boundary"]["whole"] is True
+    assert matched.data["count"] == whole.data["count"]
+
+
+def test_a_capped_lookup_counts_what_it_reached_rather_than_what_is_held(
+        monkeypatch):
+    """The cap sentence says how many of what came back are named.
+
+    Capping a lookup after it has narrowed makes the whole vocabulary's size
+    the wrong number for that sentence: it would say a hundred labels were cut
+    to forty when the name reached three."""
+    monkeypatch.setattr(ledger_tools, "MAX_LABELS", 1)
+    result = _looked_up(_counterparty_vault(), "Haven")
+    assert result.data["labels"] == ["havenmart"]
+    assert result.caveats == [
+        "The first 1 of 2 merchant label(s) a name reached are named here, "
+        "closest match first; the count is the whole count."]
+
+
+def test_a_lookup_answers_for_every_vocabulary_the_read_offers():
+    """A mode gains an argument, not a mode of its own: whatever a vocabulary
+    read can be asked for, it can be asked for by name."""
+    proj = _counterparty_vault()
+    for group_by in sorted(ledger_tools._VOCABULARIES):
+        held = ledger_tools.query_ledger(
+            proj, {"entity": "vocabulary", "group_by": group_by})
+        assert held.ok
+        by_name = _looked_up(proj, "nothing-by-that-name", group_by)
+        assert by_name.ok, group_by
+        assert by_name.data["labels"] == []
+        assert by_name.data["count"] == held.data["count"]
+
+
+def test_a_name_reaches_a_label_outside_the_counterparty_vocabulary():
+    """The lookup is an argument to the vocabulary read rather than a mode of
+    its own, so every vocabulary that read offers answers by name — not only
+    the one whose labels are counterparties.
+
+    A name written in the caller's own capitals reaches the label the vault
+    holds, and so does one that is the start of a label. What comes back is
+    labels this vault holds, which is what a follow-up then narrows on
+    exactly."""
+    proj = LedgerProjection(_spending_events(
+        ("2026-01-05", "HAVENMART", "-40.00", "groceries", ("pantry",)),
+        ("2026-01-06", "BRIGHTLINE TRANSIT", "-70.00", "transport",
+         ("commute",))))
+    for group_by, name, reached in (("category", "Groceries", ["groceries"]),
+                                    ("category", "groc", ["groceries"]),
+                                    ("tag", "pantry", ["pantry"]),
+                                    ("account", "chk", ["chk"]),
+                                    ("currency", "usd", ["USD"])):
+        result = _looked_up(proj, name, group_by)
+        assert result.ok, (group_by, name)
+        assert result.data["labels"] == reached, (group_by, name)
+
+
+def test_looking_a_name_up_is_refused_where_a_read_would_narrow_instead():
+    """The lookup belongs to the read of labels. A read of money is not quietly
+    made to do it, because what it would have to do is narrow on a pattern."""
+    proj = _counterparty_vault()
+    result = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "matching": "Haven"})
+    assert not result.ok and result.refusal == "matching_unsupported"
+    assert "vocabulary" in result.text
+
+
+def test_a_counterparty_filter_takes_the_key_however_the_name_was_written():
+    """The caller's value goes through the vault's own key function, so a name
+    written in a person's own capitals and punctuation reaches the key their
+    statements were filed under. This is not a search: it resolves to one key,
+    and the read then narrows on that key exactly."""
+    proj = _counterparty_vault()
+    for written in ("havenmart", "Havenmart", "HAVENMART", "Havenmart."):
+        result = ledger_tools.query_ledger(
+            proj, {"entity": "aggregate", "metric": "spending",
+                   "filters": {"merchant": written}})
+        assert result.ok, (written, result.text)
+        assert result.data["by_group"] == {"Uncategorized": "40.00"}
+
+
+def test_a_counterparty_filter_refuses_a_name_that_is_not_a_key():
+    """The generosity stops at discovery. A name that reaches two labels in a
+    lookup narrows nothing: the filter is refused, and what the vault holds is
+    named back."""
+    result = ledger_tools.query_ledger(
+        _counterparty_vault(), {"entity": "aggregate", "metric": "spending",
+                                "filters": {"merchant": "Haven"}})
+    assert not result.ok and result.refusal == "unknown_merchant"
+    assert "havenmart" in result.data["known_merchants"]
+
+
+def test_a_read_narrowed_by_a_counterparty_states_the_key_it_counted():
+    """What is stated is what was counted. The narrowing a figure declares is
+    the key the vault holds, never the spelling the filter arrived as, so the
+    thing named beside a number and the thing the number was taken over are one
+    string."""
+    result = ledger_tools.query_ledger(
+        _counterparty_vault(), {"entity": "transactions",
+                                "filters": {"merchant": "Havenmart."}})
+    assert result.ok
+    selected = [item for f in result.figures
+                for item in (f["boundary"] or {}).get("selected") or []
+                if item["kind"] == ledger_tools.BY_MERCHANT]
+    assert selected and {item["value"] for item in selected} == {"havenmart"}
+
+
+def test_a_truncated_remedy_list_says_how_to_find_the_one_that_was_meant():
+    """Where the list fits it is the whole answer and says nothing else. Where
+    it does not, forty names in any order are not the useful thing — how to
+    find the one that was meant is — so the last entry names the lookup and
+    carries no value the caller supplied."""
+    short = ledger_tools._known(["one", "two"], cap=2)
+    assert short == ["one", "two"]
+
+    long = ledger_tools._known([f"label-{n:03d}" for n in range(5)], cap=2)
+    assert long[:2] == ["label-000", "label-001"]
+    assert len(long) == 3
+    assert "matching" in long[-1] and "vocabulary" in long[-1]
 
 
 def test_how_many_labels_a_vault_holds_is_not_how_many_its_spending_uses():
@@ -4524,8 +5430,8 @@ def test_a_movement_naming_no_counterparty_is_named_under_every_grouping(
         for key in result.data["by_group"]:
             assert key.strip(), (group_by, repr(key))
         for f in result.figures:
-            cut = f["boundary"].get("cut") or {}
-            assert cut.get("value", "x").strip(), (group_by, f["what"])
+            for cut in f["boundary"].get("cut") or []:
+                assert cut["value"].strip(), (group_by, f["what"])
         for item in result.identifiers or []:
             assert str(item.get("example", "x")).strip(), (group_by, item)
     by_merchant = ledger_tools.query_ledger(
@@ -4652,7 +5558,8 @@ def test_a_read_narrowed_by_tag_says_so_under_the_answer(registry):
     answer, not only in a payload a model may skip."""
     from viva import persona
 
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    shape = _shape(("You spent {total}.", [("total", "money", "spending",
+                                            "tag")]))
     result = run("what did I spend on pantry things?",
                  _script(shape,
                          ("query_ledger", {"entity": "aggregate",
@@ -4670,7 +5577,8 @@ def test_a_read_narrowed_by_currency_says_so_under_the_answer(registry):
     """The same claim for the other filter that narrowed and stated nothing."""
     from viva import persona
 
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    shape = _shape(("You spent {total}.", [("total", "money", "spending",
+                                            "currency")]))
     result = run("what did I spend in dollars?",
                  _script(shape,
                          ("query_ledger", {"entity": "aggregate",
@@ -4684,15 +5592,409 @@ def test_a_read_narrowed_by_currency_says_so_under_the_answer(registry):
                           currency=render.label("USD")) in result.text
 
 
-def test_every_filter_a_read_honours_can_be_said_in_the_answer():
-    """Every filter some read honours can be said in an answer, and the form
-    offers exactly the filters the reads honour.
+def test_the_summary_read_records_what_narrowed_it(registry):
+    """Every figure the summary read emits says what set it was taken over: a
+    read narrowed to one counterparty records that counterparty on each of
+    them, and an unnarrowed read declares the whole and names no narrowing."""
+    narrowed = registry.call("query_ledger",
+                             {"entity": "transactions",
+                              "filters": {"merchant": "greenfield market"}})
+    assert narrowed.ok, narrowed.text
+    assert narrowed.figures
+    for fig in narrowed.figures:
+        assert fig["boundary"], fig["what"]
+        assert fig["boundary"]["whole"] is False, fig["what"]
+        assert {"kind": "merchant", "value": "greenfield market"} in \
+            fig["boundary"]["selected"], fig["what"]
 
-    A set narrowed in a way no sentence can state is the same fault as a filter
-    accepted and silently dropped. `window` is the one filter absent from the
-    writing table on purpose: it yields three different narrowings depending on
-    which of its edges are given, and names them where the narrowing is
-    assembled."""
+    whole = registry.call("query_ledger", {"entity": "transactions"})
+    for fig in whole.figures:
+        if fig["boundary"]["whole"]:
+            assert "selected" not in fig["boundary"], fig["what"]
+
+
+def test_a_read_that_covers_everything_never_also_names_a_narrowing(registry):
+    """No figure both declares it covers everything and names what narrowed it,
+    over every supported combination of filters on these reads.
+
+    That pairing is the contradiction the boundary constructor refuses, and it
+    would raise out of a read, through a registry whose module states that a
+    call never raises."""
+    for filters in ({}, {"account": "chk"}, {"currency": "USD"},
+                    {"window": {"from": "2026-01-01", "to": "2026-01-31"}},
+                    {"account": "chk", "currency": "USD"}):
+        for args in ({"entity": "transactions", "filters": filters},
+                     {"entity": "balances",
+                      "filters": {k: v for k, v in filters.items()
+                                  if k in ("account", "currency")}}):
+            result = registry.call("query_ledger", args)
+            assert result.ok, (args, result.text)
+            for fig in result.figures:
+                bound = fig["boundary"]
+                assert not (bound["whole"] and bound.get("selected")), (
+                    args, fig["what"])
+
+
+def test_each_group_of_the_summary_read_names_its_own_slice(registry):
+    """The read cuts the same movements two ways at once, and each figure says
+    which slice it is: a per-account figure names its account, a per-month
+    figure names its month. The read-level figures name no slice."""
+    result = registry.call("query_ledger", {"entity": "transactions"})
+    cuts = {fig["what"]: fig["boundary"].get("cut")
+            for fig in result.figures if fig["boundary"].get("cut")}
+    assert cuts["net movement on chk"] == [{"kind": "account",
+                                            "value": "chk"}]
+    assert [c["kind"] for c in cuts["net movement in 2026-01"]] == ["period"]
+    # The five read-level figures name no slice: they are the read, not a cut
+    # of it.
+    assert not result.figures[0]["boundary"].get("cut")
+
+
+def test_a_months_slice_is_the_calendar_month_not_what_moved_in_it(registry):
+    """A month figure's slice is the calendar month's own first and last day,
+    not the first and last day something moved in it — so two vaults' January
+    is the same period."""
+    result = registry.call("query_ledger", {"entity": "transactions"})
+    (month,) = [fig for fig in result.figures
+                if fig["what"] == "net movement in 2026-01"]
+    assert month["boundary"]["cut"] == [{"kind": "period",
+                                         "value": "2026-01-01",
+                                         "to": "2026-01-31"}]
+    # The movements themselves run from the fifth to the twentieth, so a slice
+    # read off the data would have said so.
+    days = sorted(r["date"] for r in registry.call(
+        "list_movements", {"filters": {"account": "chk"}}).data["movements"])
+    assert days[0] > "2026-01-01" and days[-1] < "2026-01-31"
+
+
+def test_a_listed_movement_is_whole_and_names_no_slice(registry):
+    """One movement is all of what the quantity `movement` measures, so a row
+    figure declares the whole and carries no slice: a row is a member of the
+    set rather than a cut of it, and no way of narrowing a set to a single
+    movement exists to name it by."""
+    result = registry.call("list_movements",
+                           {"filters": {"merchant": "greenfield market"}})
+    rows = [f for f in result.figures if f["quantity"] == quantity.MOVEMENT]
+    assert rows
+    for fig in rows:
+        assert fig["boundary"] == {"whole": True}, fig["what"]
+
+
+def test_a_detailed_read_records_its_narrowing_on_its_count(registry):
+    """The count over the matching set carries the read's narrowing. It is the
+    only figure of that read that can: every other one is a complete
+    movement."""
+    result = registry.call("list_movements",
+                           {"filters": {"merchant": "greenfield market"}})
+    (count,) = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+    assert count["value"] == str(result.data["total"])
+    assert count["boundary"]["selected"] == [{"kind": "merchant",
+                                              "value": "greenfield market"}]
+
+
+def test_a_detailed_read_names_a_counterparty_by_the_key_its_scope_declares(
+        registry):
+    """A read that returns rows names the counterparty it was narrowed to by
+    the same string its own count figure declares that narrowing as.
+
+    A counterparty answers to two names — the key every filter and every
+    grouping uses, and whichever spelling one statement wrote — and a read that
+    established the thing under one while declaring its scope under the other
+    offers a sentence no comparison of the two can pass. So the entity carries
+    the key.
+
+    The spelling is not lost by this: it stays on each row, which is what a
+    person reading their movements reads."""
+    result = registry.call("list_movements",
+                           {"filters": {"merchant": "greenfield market"}})
+    (count,) = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+    (cut,) = [c for c in count["boundary"]["cut"] if c["kind"] == "merchant"]
+    named = [i for i in result.identifiers if i["kind"] == "merchant"]
+    assert named, "the read established no counterparty to refer to"
+    assert [i["example"] for i in named] == [cut["value"]]
+    # And the statement's own spelling still travels, on the rows themselves.
+    assert result.data["movements"]
+    assert all(row["description"] != cut["value"]
+               for row in result.data["movements"])
+
+
+def test_every_read_names_a_counterparty_the_same_way(proj, registry):
+    """One counterparty reached through three different reads is one label.
+
+    The rows read, the spending grouping and the counterparty vocabulary each
+    establish counterparties; a thing established twice under two labels is two
+    things to anything that matches a number against what it is about."""
+    rows = registry.call("list_movements",
+                         {"filters": {"merchant": "greenfield market"}})
+    grouped = registry.call("query_ledger", {"entity": "aggregate",
+                                             "metric": "spending",
+                                             "group_by": "merchant"})
+    held = registry.call("query_ledger", {"entity": "vocabulary",
+                                          "group_by": "merchant"})
+    named = {}
+    for result in (rows, grouped, held):
+        named[result.tool, str(result.data.get("vocabulary", ""))] = {
+            i["example"] for i in result.identifiers if i["kind"] == "merchant"}
+    listed, breakdown, vocabulary = named.values()
+    assert listed and listed <= breakdown and listed <= vocabulary
+
+
+def test_a_capped_list_says_so_to_a_person_and_not_only_to_its_caller():
+    """A read that shows fifty of three hundred discloses the cap in a caveat,
+    which the run places under the answer. The half naming which filters would
+    reach the rest is instruction to whoever called the read and stays in the
+    coverage line."""
+    registry = _ledger(per_month=30)
+    capped = registry.call("list_movements", {"filters": {"account": "acct0"}})
+    said = f"Showing {capped.data['shown']} of {capped.data['total']} matching movement(s)."
+    assert said in capped.caveats
+    assert "Narrow by" not in " ".join(capped.caveats)
+    assert "Narrow by" in capped.coverage
+
+    uncapped = registry.call("list_movements",
+                             {"filters": {"account": "acct0",
+                                          "window": {"from": "2025-01-01",
+                                                     "to": "2025-01-02"}}})
+    assert uncapped.data["shown"] == uncapped.data["total"]
+    assert not [c for c in uncapped.caveats if "Showing" in c]
+
+
+def _narrowable(*accounts):
+    """A vault where every filter the reads honour names something it holds: a
+    counterparty with a category and a tag, a measured holding, an attributed
+    income, and movements inside one window. Every value in it is synthetic."""
+    evs = [account_opened(a, "investment", f"Account {n}", "USD", "2026-01-01")
+           for n, a in enumerate(accounts)]
+    first = accounts[0]
+    evs += [
+        document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        opening_balance_observed(first, "1000.00", "2026-01-01", _p("doc-one")),
+        simple_transaction(first, "-40.00", "NORTHWIND SUPPLY", "2026-01-05",
+                           provenance=_p("doc-one")),
+        transaction_recorded([Posting(first, Decimal("500.00"), VERIFIED),
+                              Posting("Income:Salary", Decimal("-500.00"),
+                                      VERIFIED)],
+                             "PAYROLL", "2026-01-10", provenance=_p("doc-one")),
+        closing_balance_observed(first, "1460.00", "2026-01-31",
+                                 _p("doc-one", 6)),
+        position_observed(first, "ALPHA FUND", "10", "1500.00", "USD",
+                          "2026-01-31", provenance=_p("doc-one")),
+        merchant_enriched("northwind supply", "supplies",
+                          subcategory="hardware", occurred_at="2026-02-02"),
+    ]
+    key = movement_key("doc-one", first, "2026-01-05", Decimal("-40.00"),
+                       "NORTHWIND SUPPLY", 0)
+    evs.append(movement_tagged(key, ["pantry"], "2026-02-05"))
+    return default_registry(LedgerProjection(evs))
+
+
+def test_no_holding_is_ever_the_whole_of_what_a_balance_measures():
+    """No per-holding figure declares whole, on any vault under any combination
+    of filters, including a vault of one holding: a holding is a member of the
+    set the read enumerated, and the cash beside it is money this read cannot
+    see. A whole figure places no scope sentence, so the claim would delete
+    every clause the answer would otherwise carry.
+
+    Not whole is still a declaration, and different from an empty boundary. The
+    count beside them is a different quantity — how many holdings were measured
+    — and over an unnarrowed read that is all of them."""
+    for accounts in (("acct-one",), ("acct-one", "acct-two")):
+        registry = _narrowable(*accounts)
+        for filters in ({}, {"account": accounts[0]}, {"currency": "USD"},
+                        {"account": accounts[0], "currency": "USD"}):
+            result = registry.call("query_ledger", {"entity": "holdings",
+                                                    "filters": filters})
+            where = (accounts, sorted(filters))
+            assert result.ok, (where, result.text)
+            values = [f for f in result.figures
+                      if f["quantity"] == quantity.BALANCE]
+            assert values, where
+            for fig in values:
+                assert fig["boundary"]["whole"] is False, (where, fig["what"])
+                # Not whole is a declaration; an empty boundary is a read that
+                # said nothing. This read says something either way.
+                assert fig["boundary"] != {}, (where, fig["what"])
+            (count,) = [f for f in result.figures
+                        if f["quantity"] == quantity.COUNT]
+            assert count["boundary"]["whole"] is (not filters), where
+
+
+def _stored_date(date: str):
+    """A registry over a vault holding one movement whose stored date is the
+    text given, which no write path in front of the read validates."""
+    evs = [account_opened("acct-one", "depository", "Account One", "USD",
+                          "2026-01-01"),
+           document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           simple_transaction("acct-one", "-10.00", "NORTHWIND SUPPLY", date,
+                              provenance=_p("doc-one"))]
+    return default_registry(LedgerProjection(evs))
+
+
+def test_a_group_whose_name_is_no_calendar_month_names_no_slice():
+    """A group named from a stored date that is no calendar month yields no
+    span, so that figure carries no slice and the read comes back as an
+    envelope rather than an exception through a registry whose module states
+    that a call never raises. A group that is a month names its own first and
+    last day."""
+    for date in ("2026-13-01", "sometime last winter"):
+        registry = _stored_date(date)
+        result = registry.call("query_ledger", {"entity": "transactions"})
+        assert result.ok, (date, result.text)
+        months = [f for f in result.figures
+                  if f["what"].startswith("net movement in ")]
+        assert months, date
+        for fig in months:
+            assert "cut" not in fig["boundary"], (date, fig["what"])
+    # And a month that is one still names its own first and last day.
+    result = _stored_date("2026-02-09").call("query_ledger",
+                                             {"entity": "transactions"})
+    (month,) = [f for f in result.figures
+                if f["what"].startswith("net movement in ")]
+    assert month["boundary"]["cut"] == [{"kind": "period",
+                                         "value": "2026-02-01",
+                                         "to": "2026-02-28"}]
+
+
+def _income_vault(*currencies):
+    """A projection with one account per currency named and one attributed
+    income, as `(projection, registry)`. An income bucket carries no currency
+    of its own, so the accounts decide what the income read groups under."""
+    evs = [account_opened(f"acct-{n}", "depository", f"Account {n}", currency,
+                          "2026-01-01")
+           for n, currency in enumerate(currencies)]
+    evs += [
+        document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        transaction_recorded([Posting("acct-0", Decimal("500.00"), VERIFIED),
+                              Posting("Income:Salary", Decimal("-500.00"),
+                                      VERIFIED)],
+                             "PAYROLL", "2026-01-10", provenance=_p("doc-one")),
+    ]
+    proj = LedgerProjection(evs)
+    return proj, default_registry(proj)
+
+
+def test_income_cuts_by_a_currency_only_where_the_vault_holds_it():
+    """The income read writes a slice only for a key the vault's own currency
+    vocabulary knows — the set a `currency` filter is validated against.
+
+    An income bucket carries no currency of its own, so where the accounts
+    declare more than one the read groups everything under a key naming no
+    currency anybody holds. Cutting by that key would say the income was
+    narrowed to a currency the person holds nothing in, and a block of rows
+    over the read would print it as a line. With no figure naming a slice, such
+    a block refuses instead."""
+    proj, registry = _income_vault("USD")
+    held = {info.currency for info in proj.account_infos() if info.currency}
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "income"})
+    assert result.ok, result.text
+    (one,) = [f for f in result.figures if f["quantity"] == quantity.INCOME]
+    assert one["boundary"]["cut"] == [{"kind": "currency",
+                                       "value": next(iter(held))}]
+
+    proj, registry = _income_vault("USD", "EUR")
+    held = {info.currency for info in proj.account_infos() if info.currency}
+    result = registry.call("query_ledger", {"entity": "aggregate",
+                                            "metric": "income"})
+    assert result.ok, result.text
+    figures = [f for f in result.figures if f["quantity"] == quantity.INCOME]
+    assert figures
+    # The precondition: the read did group under a key no account declares.
+    assert set(result.data["by_currency"]) - held
+    for fig in figures:
+        assert "cut" not in fig["boundary"], fig["what"]
+
+
+def _read_call(kind: str, filters: dict) -> tuple:
+    """The call that reaches one entry of the read-to-filters table, as
+    `(tool, args)`. A read added to that table is reached by this without the
+    test being touched."""
+    if kind == ledger_tools.LIST_TOOL:
+        return kind, {"filters": filters}
+    entity, _, metric = kind.partition(":")
+    args = {"entity": entity, "filters": filters}
+    if metric:
+        args["metric"] = metric
+    return "query_ledger", args
+
+
+# What a filter must come back recorded as. Written out rather than read from
+# the map the reads narrow by, so a read and the test of it cannot agree by
+# construction.
+_RECORDED_AS = {"account": "account", "category": "category", "tag": "tag",
+                "merchant": "merchant", "currency": "currency",
+                "window": "period"}
+
+
+def test_every_filter_a_read_honours_can_be_said_in_the_answer():
+    """A read that narrows a set records what it narrowed it to.
+
+    Every read is called with every filter it honours, singly and all at once,
+    on a vault of one account and again on a vault of two. Each call must come
+    back as an envelope carrying at least one figure that records the
+    narrowing. This asks the reads rather than comparing tables of names, which
+    cannot see a read that honours a filter and declares nothing about it.
+
+    Calling is also what catches a read raising: a figure declaring it covers
+    everything cannot also name what narrowed it, and a read computing those
+    two from different filters raises a ValueError out through a registry whose
+    module states that a call never raises — on a vault of one account, or one
+    where every account is in the currency asked for, both called here."""
+    for accounts in (("acct-one",), ("acct-one", "acct-two")):
+        registry = _narrowable(*accounts)
+        values = {"account": accounts[0], "category": "supplies",
+                  "tag": "pantry", "merchant": "northwind supply",
+                  "currency": "USD",
+                  "window": {"from": "2026-01-01", "to": "2026-01-31"}}
+        for kind, honoured in sorted(ledger_tools._SUPPORTED_FILTERS.items()):
+            if not honoured:
+                continue
+            for name in sorted(honoured):
+                filters = {name: values[name]}
+                # A detailed read answers only a question narrow enough to name
+                # one, so a filter that does not narrow it is paired with one
+                # that does; both are still recorded.
+                if (kind == ledger_tools.LIST_TOOL
+                        and not set(filters) & set(ledger_tools.NARROWING)):
+                    filters["account"] = accounts[0]
+                tool, args = _read_call(kind, filters)
+                result = registry.call(tool, args)
+                where = (accounts, kind, name)
+                assert result.ok, (where, result.refusal, result.text)
+                assert result.figures, where
+                said = [f for f in result.figures
+                        if any(entry["kind"] == _RECORDED_AS[name]
+                               for entry in f["boundary"].get("selected") or ())]
+                assert said, (where, [f["boundary"] for f in result.figures])
+                for fig in result.figures:
+                    assert fig["boundary"], (where, fig["what"])
+            # And every filter it honours at once, because a combination is a
+            # supported call too, and it is the one that narrows hardest.
+            tool, args = _read_call(kind, {name: values[name]
+                                           for name in honoured})
+            result = registry.call(tool, args)
+            where = (accounts, kind, "every filter at once")
+            assert result.ok, (where, result.refusal, result.text)
+            assert result.figures, where
+            for name in honoured:
+                assert any(entry["kind"] == _RECORDED_AS[name]
+                           for f in result.figures
+                           for entry in f["boundary"].get("selected") or ()), (
+                    where, name)
+
+
+def test_the_form_the_reads_and_the_writing_table_offer_the_same_filters():
+    """Three sets of names agree: the filters some read honours, the filters
+    the form offers, and the filters the writing table can word.
+
+    This compares names and calls no read, so it says nothing about whether a
+    read records what it narrowed to. `window` is the one filter absent from
+    the writing table on purpose: it yields three different narrowings
+    depending on which of its edges are given, and names them where the
+    narrowing is assembled."""
     honoured = set().union(*ledger_tools._SUPPORTED_FILTERS.values())
     offered = set(ledger_tools.QUERY_LEDGER_PARAMS["properties"]["filters"]
                   ["properties"])
@@ -4720,3 +6022,988 @@ def test_nature_is_not_a_filter_any_read_offers(proj, registry):
     rows = ledger_tools.list_movements(
         proj, {"filters": {"account": "chk", "nature": "spending"}})
     assert rows.refusal == "filter_unsupported"
+
+
+# ------------------------- the read's own account of why the turn had nothing
+
+
+def _turn(*steps):
+    """A planner that takes the given steps in order, one per call.
+
+    Every step the runner asks for consumes one — a shape, a read, or the
+    delivery that ends the turn — so a test says the trajectory it means rather
+    than counting what has come back."""
+    remaining = iter(steps)
+
+    def planner(context):
+        return next(remaining)
+    return planner
+
+
+_SPENT = _shape(("You spent {total}.",
+                [("total", "money", "spending", "whole")]))
+_ALSO_HELD = _shape(("You spent {total}.",
+                    [("total", "money", "spending", "whole")]),
+                    ("You hold {balance}.",
+                     [("balance", "money", "balance", "whole")]))
+
+# A read refused for a category the vault does not hold, and one that succeeds.
+_UNHELD_CATEGORY = {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending",
+                             "filters": {"category": "Zzz"}}}
+_A_READ_THAT_WORKS = {"tool": "query_ledger", "args": {"entity": "balances"}}
+_DELIVER_NOTHING = {"bindings": {}}
+
+
+def test_a_turn_that_established_nothing_says_why_the_last_read_stopped(registry):
+    """The verdict in the pack's words for the turn's tag, then the cause in the
+    pack's words for the read's. Both were reviewed before the turn began, and
+    the value the read was called with is in neither."""
+    from viva.persona import moment
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, _DELIVER_NOTHING),
+                 registry)
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == "unknown_category"
+    assert result.text == (moment("refusal_nothing_established") + " "
+                           + moment("diagnosis_unknown_category"))
+    assert "Zzz" not in result.text
+    assert result.to_dict()["diagnosis"] == "unknown_category"
+
+
+def test_a_turn_that_spent_its_budget_says_why_the_last_read_stopped(registry):
+    """The same failure told slower: the calls ran out on reads that refused,
+    and which of them refused is the best account of the turn."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, _UNHELD_CATEGORY),
+                 registry, max_calls=2)
+    assert result.refusal == "call_budget_exhausted"
+    assert result.diagnosis == "unknown_category"
+
+
+def test_a_cause_is_not_spoken_where_a_later_read_succeeded(registry):
+    """The turn's trouble lies where the reads cannot explain it, so the
+    verdict stands alone rather than quoting a complaint that has stopped being
+    the reason."""
+    from viva.persona import moment
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, _A_READ_THAT_WORKS,
+                       _DELIVER_NOTHING),
+                 registry)
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == ""
+    assert result.text == moment("refusal_nothing_established")
+
+
+def test_a_cause_is_not_spoken_where_the_last_read_refused_the_call_itself(
+        registry):
+    """A read that refused the arguments it was handed is talking to whoever
+    called it. Its tag is not one whose cause may be spoken, and the refusal
+    before it is not reached back for."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY,
+                       {"tool": "query_ledger",
+                        "args": {"entity": "balances", "unknown_field": "x"}},
+                       _DELIVER_NOTHING),
+                 registry)
+    assert result.transcript[-1]["refusal"] == "invalid_arguments"
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == ""
+
+
+def test_a_cause_is_not_spoken_where_one_tag_stands_for_several_faults(
+        registry):
+    """A read that finds more than one fault in the filters it was handed
+    gathers them under a single tag, and that tag says nothing about which
+    faults are inside it. Two malformed window edges are entirely about the
+    form of the call — nothing was looked for in the records at all — so the
+    turn says the verdict and nothing more.
+
+    The field is what is asserted, not any sentence: a tag that is not spoken
+    has no sentence to compare against, and this holds whatever words the pack
+    happens to carry."""
+    from viva.tools.envelope import SPEAKABLE_REFUSALS
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT},
+                       {"tool": "query_ledger",
+                        "args": {"entity": "aggregate", "metric": "spending",
+                                 "filters": {"window": {"from": "last month",
+                                                        "to": "yesterday"}}}},
+                       _DELIVER_NOTHING),
+                 registry)
+    problems = result.transcript[-1]["data"]["filter_problems"]
+    assert len(problems) > 1 and not set(problems) & SPEAKABLE_REFUSALS
+    assert result.transcript[-1]["refusal"] not in SPEAKABLE_REFUSALS
+    assert result.refusal == "nothing_established"
+    assert result.diagnosis == ""
+
+
+def test_a_note_the_runner_wrote_to_the_planner_is_never_a_cause(registry):
+    """Eligibility is registry membership: the runner's own note about a shape
+    is not a read, so it is passed over rather than spoken and rather than
+    hiding the read behind it."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY,
+                       {"shape": _ALSO_HELD}, _DELIVER_NOTHING),
+                 registry)
+    last = result.transcript[-1]
+    assert last["tool"] == "commit_shape" and last["refusal"] == "bad_shape"
+    assert result.diagnosis == "unknown_category"
+
+
+def test_a_call_no_registered_tool_answered_is_never_a_cause(registry):
+    """The same rule for a step naming a tool that does not exist: the refusal
+    is the registry's, not a read's, so it is passed over."""
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY,
+                       {"tool": "no_such_read", "args": {}}, _DELIVER_NOTHING),
+                 registry)
+    assert result.transcript[-1]["refusal"] == "unknown_tool"
+    assert result.diagnosis == "unknown_category"
+
+
+@pytest.mark.parametrize("step, tag", [
+    ({"bindings": {"total": {"figure": "f99"}}}, "unknown_figure"),
+    ({"bindings": {"nowhere": {"figure": "f1"}}}, "unshaped_binding"),
+    ({"bindings": "not an object"}, "bad_delivery"),
+    ({"neither": "shape nor read nor delivery"}, "bad_plan"),
+])
+def test_a_turn_that_faulted_at_its_own_delivery_borrows_no_reads_account(
+        registry, step, tag):
+    """A delivery that reached wrongly, and a step that was never a turn, are
+    the machine catching itself. Those verdicts stand alone: whatever the reads
+    did, none of their accounts is borrowed over the top of one."""
+    from viva.persona import moment
+
+    result = run("what did I spend on that?",
+                 _turn({"shape": _SPENT}, _UNHELD_CATEGORY, step), registry)
+    assert result.refusal == tag
+    assert result.diagnosis == ""
+    assert result.text == moment("refusal_" + tag)
+
+
+# ------------------------------------- what set each figure was taken over
+
+# One call per read the registry holds, and per branch of a read that answers
+# more than one question. Written out rather than generated, because what is
+# being asserted is that nothing a person can ask for comes back with a figure
+# whose set nobody stated; the coverage checks below hold this list to the
+# schemas rather than the other way round.
+_EVERY_READ = (
+    ("query_ledger", {"entity": "balances"}),
+    ("query_ledger", {"entity": "transactions"}),
+    ("query_ledger", {"entity": "holdings"}),
+    ("query_ledger", {"entity": "vocabulary", "group_by": "account"}),
+    ("query_ledger", {"entity": "aggregate", "metric": "spending"}),
+    ("query_ledger", {"entity": "aggregate", "metric": "income"}),
+    ("query_ledger", {"entity": "aggregate", "metric": "net_worth"}),
+    ("list_movements", {"filters": {"account": "chk"}}),
+    ("check_completeness", {}),
+    ("get_provenance", {"record_id": "doc-jan"}),
+    ("get_provenance", {"record_id": "chk"}),
+    ("get_transparency", {"topic": "agent_activity"}),
+    ("get_transparency", {"topic": "calls_spent"}),
+    ("get_transparency", {"topic": "declined_questions"}),
+)
+
+
+def test_every_read_says_what_set_each_of_its_figures_was_taken_over(registry,
+                                                                    proj):
+    """No figure any read emits leaves its set for something downstream to
+    guess at. Silence and "this is everything" are different sentences, and a
+    figure carrying neither is one that can be spoken as any claim at all.
+
+    Every read the registry holds is called, every branch that answers a
+    different question with it, and a movement's provenance besides — that last
+    one by the key the vault holds rather than by a literal, since a movement's
+    identity is derived from what it says."""
+    called = set()
+    key = movement_key("doc-jan", "chk", "2026-01-20", Decimal("-60.00"),
+                       "GREENFIELD MARKET", 0)
+    for tool, args in _EVERY_READ + (("get_provenance", {"record_id": key}),):
+        result = registry.call(tool, args)
+        called.add(tool)
+        assert result.ok, (tool, args, result.text)
+        for fig in result.figures:
+            assert fig["boundary"] != {}, (tool, args, fig["what"])
+    # And the calls above reach every read there is, every entity, every
+    # metric and every topic — so a read arriving later is either in this list
+    # or fails here.
+    reads = {name for name, spec in registry._specs.items()
+             if not spec.needs_figures}
+    assert called == reads, sorted(reads - called)
+    for field, key in (("entity", "entity"), ("metric", "metric")):
+        offered = set(ledger_tools.QUERY_LEDGER_PARAMS["properties"][field]
+                      ["enum"])
+        assert offered == {args[key] for tool, args in _EVERY_READ
+                           if tool == "query_ledger" and key in args}
+    topics = set(ledger_tools.TRANSPARENCY_PARAMS["properties"]["topic"]
+                 ["enum"])
+    assert topics == {args["topic"] for tool, args in _EVERY_READ
+                      if tool == "get_transparency"}
+
+
+def test_a_read_names_the_things_its_figures_are_slices_of_as_it_named_them(
+        registry, proj):
+    """One thing, one string, across the two declarations a read makes about
+    it.
+
+    A figure says which slice of a set it is; a read says which things it spoke
+    about; and the comparison that decides whether a number belongs to the
+    thing a sentence names is between those two strings. So where a read
+    establishes a thing of some kind and cuts a figure by a value that names a
+    thing of that kind, the value has to be the label that read gave it —
+    otherwise a true sentence pairing the two is refused, which is a defect
+    wearing the fix's clothes and fails no other way.
+
+    Two conditions, and each is a property rather than a list. A read that
+    establishes nothing of a kind says nothing about the things of that kind,
+    so its cuts of that kind are compared against nothing. And a value naming
+    something no read of this vault establishes is a set the run holds no thing
+    for: nothing can be bound that names it, so nothing can be bound beside it
+    wrongly, and the comparison is silent rather than satisfied.
+
+    Held over every read there is, every branch of every read that answers a
+    different question, and over the narrowings that make a read declare an
+    axis it did not group by."""
+    from viva.tools.envelope import ENTITY_KINDS, SELECTED_KINDS, _named
+
+    key = movement_key("doc-jan", "chk", "2026-01-20", Decimal("-60.00"),
+                       "GREENFIELD MARKET", 0)
+    calls = list(_EVERY_READ) + _every_declared_call(registry) + [
+        ("get_provenance", {"record_id": key}),
+        ("list_movements", {"filters": {"account": "chk"}}),
+        ("list_movements", {"filters": {"merchant": "greenfield market"}}),
+        ("list_movements", {"filters": {"category": "groceries"}}),
+        ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                          "group_by": "merchant",
+                          "filters": {"account": "chk"}}),
+    ]
+    reads = [(tool, args, registry.call(tool, args)) for tool, args in calls]
+    reads = [read for read in reads if read[2].ok]
+
+    def labelled(result):
+        out: dict = {}
+        for item in result.identifiers or []:
+            out.setdefault(item["kind"], set()).add(_named(item)["label"])
+        return out
+
+    established: dict = {}
+    for _, _, result in reads:
+        for kind, labels in labelled(result).items():
+            established.setdefault(kind, set()).update(labels)
+
+    compared = set()
+    for tool, args, result in reads:
+        named = labelled(result)
+        for fig in result.figures:
+            for item in (fig["boundary"].get("cut") or []):
+                kind, value = item["kind"], str(item["value"])
+                if not named.get(kind):
+                    continue
+                if value not in established.get(kind, set()):
+                    continue
+                compared.add(kind)
+                assert value in named[kind], (
+                    f"{tool} {args} took {fig['what']!r} over {kind} "
+                    f"{value!r} and named that thing "
+                    f"{sorted(named[kind])} — one thing under two strings is "
+                    "two things to anything comparing them")
+    # And the sweep reached every kind of thing a set can be narrowed to and a
+    # sentence can name, so a kind nothing exercised cannot pass by absence.
+    assert compared == set(ENTITY_KINDS) & set(SELECTED_KINDS), sorted(compared)
+
+
+def test_a_boundary_that_does_not_say_it_is_whole_is_not_read_as_whole():
+    """Where the claim ends is read off what a boundary says, and nothing
+    supplies the word where it is missing. A default of "whole" there would put
+    a coverage claim on every figure nobody made one about, which is the
+    opposite of what an emitter's silence means."""
+    from viva.tools import runner
+
+    unsaid = {"selected": [{"kind": "account", "value": "chk"}]}
+    said, gaps = runner._boundary({"boundary": unsaid})
+    assert said and not gaps
+    assert runner._boundary({"boundary": {"whole": True}}) == ([], [])
+    assert runner._boundary({}) == ([], [])
+
+
+def test_a_per_account_figure_names_its_account_on_a_vault_of_one():
+    """Which slices a figure is and whether they are everything are two
+    statements, and a figure covering everything still has a name. A vault of
+    one account in one currency is where the two meet, and no combination of
+    filters over it refuses or raises.
+
+    A figure of a narrowed read is the narrowing AND its own account, so what
+    it names grows with the filters while what it is stays the same one
+    account."""
+    registry = _narrowable("acct-one")
+    for filters in ({}, {"account": "acct-one"}, {"currency": "USD"},
+                    {"account": "acct-one", "currency": "USD"}):
+        result = registry.call("query_ledger", {"entity": "balances",
+                                                "filters": filters})
+        assert result.ok, (sorted(filters), result.text)
+        held = [f for f in result.figures if f["quantity"] == quantity.BALANCE]
+        assert held, sorted(filters)
+        for fig in held:
+            cut = fig["boundary"]["cut"]
+            assert {"kind": "account", "value": "acct-one"} in cut
+            assert {c["kind"] for c in cut} == {"account"} | set(filters)
+            assert fig["boundary"]["whole"] is (not filters), fig["what"]
+
+
+def test_the_net_worth_lines_and_a_looked_up_balance_name_their_account():
+    """A figure taken over one account of several says which one. Neither read
+    counts what it is one of — one is a part of a point built from parts, and
+    the other reaches a single record and knows nothing about the rest — so
+    neither claims to cover what a balance measures."""
+    registry = default_registry(LedgerProjection(_events()))
+    point = registry.call("query_ledger", {"entity": "aggregate",
+                                           "metric": "net_worth"})
+    # Found by what each figure declares it is a slice of, not by how the read
+    # happened to word it: a subject picked out of prose survives the property
+    # it was written for being removed.
+    lines = [f for f in point.figures
+             if [c["kind"] for c in f["boundary"].get("cut") or []]
+             == ["account"]]
+    assert lines
+    for fig in lines:
+        assert fig["boundary"] == {
+            "whole": False,
+            "cut": [{"kind": "account", "value": fig["record_ids"][0]}]}
+    looked_up = registry.call("get_provenance", {"record_id": "chk"})
+    (balance,) = looked_up.figures
+    assert balance["boundary"] == {"whole": False,
+                                   "cut": [{"kind": "account", "value": "chk"}]}
+
+
+def _measured_in(*currencies):
+    """A vault holding one account in each currency named, every one of them
+    measured by a statement of its own and short of nothing, so what a point
+    over it is not whole of is the other currency beside it and nothing else.
+    Every value here is invented."""
+    evs = []
+    for n, currency in enumerate(currencies, 1):
+        account, doc = f"acct-{n}", f"doc-{n}"
+        evs += [account_opened(account, "depository", f"Account {n}", currency,
+                               "2026-01-01"),
+                document_captured(doc, f"{doc}.pdf", 10, "bank_statement", 0.9,
+                                  "2026-02-01"),
+                opening_balance_observed(account, "500.00", "2026-01-01",
+                                         _p(doc)),
+                closing_balance_observed(account, "500.00", "2026-01-31",
+                                         _p(doc, 6))]
+    return LedgerProjection(evs)
+
+
+def test_net_worth_in_one_of_several_currencies_is_not_the_whole_of_it():
+    """A per-currency part of a point is the whole of what its quantity ranges
+    over only where that currency is the only one the vault holds, exactly as
+    one account's balance is a total only on a vault of one account. Either way
+    it names the currency it is a part of.
+
+    Nothing adds across currencies, so on a vault of two there is no whole for
+    one of them to be the whole of, and a sentence asking for one gets nothing
+    to fill it rather than one currency's part standing in for the lot. Neither
+    part is short of anything measurable here, so what stops them being whole
+    is the currency beside them and nothing else."""
+    for currencies in (("USD",), ("USD", "EUR")):
+        result = ledger_tools.query_ledger(
+            _measured_in(*currencies),
+            {"entity": "aggregate", "metric": "net_worth"},
+            today="2026-03-01")
+        assert result.ok, result.text
+        parts = [f for f in result.figures
+                 if [c["kind"] for c in f["boundary"].get("cut") or []]
+                 == ["currency"]]
+        assert {f["currency"] for f in parts} == set(currencies)
+        for fig in parts:
+            assert fig["boundary"] == {
+                "whole": len(currencies) == 1,
+                "cut": [{"kind": "currency",
+                        "value": fig["currency"]}]}, fig["what"]
+
+
+def test_a_looked_up_movement_is_the_whole_of_what_a_movement_measures():
+    """One movement is all of what the quantity `movement` ranges over, the
+    same as a listed one, so it declares the whole and names no slice."""
+    registry = default_registry(LedgerProjection(_events()))
+    key = movement_key("doc-jan", "chk", "2026-01-20", Decimal("-60.00"),
+                       "GREENFIELD MARKET", 0)
+    result = registry.call("get_provenance", {"record_id": key})
+    (moved,) = result.figures
+    assert moved["boundary"] == {"whole": True}
+
+
+def test_the_counts_of_the_agents_own_records_are_over_all_of_them(registry):
+    """The four counts of what the agent holds are taken over every document it
+    has and every counterparty it has seen: nothing narrows that read, so each
+    covers the whole of what it counts. A day one account's evidence is good as
+    of is not every account's, so it says it is not whole and claims no more."""
+    result = registry.call("check_completeness", {})
+    counted = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+    assert len(counted) == 4
+    for fig in counted:
+        assert fig["boundary"] == {"whole": True}, fig["what"]
+    dated = [f for f in result.figures if f["quantity"] == quantity.TIME]
+    assert dated
+    for fig in dated:
+        assert fig["boundary"] == {"whole": False}, fig["what"]
+
+
+def test_a_journal_read_narrowed_to_a_day_says_so_on_its_count(registry):
+    """A day to run from narrows what is counted, so the count records it and
+    declares the whole only where nothing was asked for."""
+    for topic in ("agent_activity", "calls_spent"):
+        whole = registry.call("get_transparency", {"topic": topic})
+        (count,) = whole.figures
+        assert count["boundary"] == {"whole": True}, topic
+        since = registry.call("get_transparency", {"topic": topic,
+                                                   "since": "2026-02-01"})
+        (count,) = since.figures
+        assert count["boundary"] == {
+            "whole": False,
+            "selected": [{"kind": "since", "value": "2026-02-01"}],
+            "cut": [{"kind": "since", "value": "2026-02-01"}]}, topic
+
+
+def test_how_many_accounts_do_i_have_still_answers(registry):
+    """A count of what the vault holds reaches a person. It is the gain a
+    figure kind bought, and it stands on this read declaring what set it
+    counted over rather than leaving it unsaid.
+
+    Held over both reads that answer a question of that shape, and the second
+    is what makes this bite: a sentence asking how many there are is a claim
+    about the whole of them, so it is answered only by a figure that says it
+    was taken over the whole of them. Take the boundary away from those counts,
+    or take the whole out of it, and this fails."""
+    for read in (("query_ledger", {"entity": "vocabulary",
+                                   "group_by": "account"}),
+                 ("check_completeness", {})):
+        result = run("how many accounts do I have?",
+                     _script(_shape(("You hold {many} account(s).",
+                                     [("many", "count", "count", "whole")])),
+                             read,
+                             bind=lambda r: {"many": {"figure": "f1"}}),
+                     registry)
+        assert result.answered, (read, result.detail)
+        assert result.text.startswith("You hold 3 account(s)."), (read,
+                                                                  result.text)
+        assert result.figures[0]["boundary"] == {"whole": True}, read
+
+
+def test_arithmetic_over_one_set_is_over_that_set(registry):
+    """Two operands taken over the same set give a result over that same set,
+    and the comparison is of the whole declaration rather than of any field in
+    it. So a share of one account's balance is still a figure about that
+    account, and says which one."""
+    book = _one_figure(registry, "query_ledger",
+                       {"entity": "balances", "filters": {"account": "chk"}})
+    balance = next(f["id"] for f in book.values()
+                   if f["quantity"] == quantity.BALANCE)
+    result = registry.call("compute", {"expression": "a - a",
+                                       "inputs": {"a": balance}},
+                           figures=book)
+    assert result.ok, result.text
+    assert result.figures[0]["boundary"] == book[balance]["boundary"]
+
+
+def test_a_result_carries_its_own_declaration_and_not_its_operand_s(registry):
+    """A result that inherits a declaration inherits its meaning, not the
+    object it was written in. Two figures sharing one nested slice would make
+    any later change to either a silent change to what the other says it is
+    about, and the wrong description would be the one nobody wrote."""
+    book = _one_figure(registry, "query_ledger",
+                       {"entity": "balances", "filters": {"account": "chk"}})
+    balance = next(f["id"] for f in book.values()
+                   if f["quantity"] == quantity.BALANCE)
+    source = book[balance]["boundary"]
+    assert source["cut"]
+    result = registry.call("compute", {"expression": "a * 12",
+                                       "inputs": {"a": balance}},
+                           figures=book)
+    assert result.ok, result.text
+    carried = result.figures[0]["boundary"]
+    assert carried == source
+    assert carried is not source
+    assert carried["cut"] is not source["cut"]
+
+
+def test_arithmetic_over_two_different_sets_is_over_neither(registry):
+    """Two operands taken over different sets give a number over neither: not
+    everything its quantity ranges over, and no slice anybody can name. It
+    claims nothing about coverage in either direction."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    ids = [f["id"] for f in book.values()
+           if f["quantity"] == quantity.BALANCE]
+    assert book[ids[0]]["boundary"] != book[ids[1]]["boundary"]
+    result = registry.call("compute", {"expression": "a + b",
+                                       "inputs": {"a": ids[0], "b": ids[1]}},
+                           figures=book)
+    assert result.ok, result.text
+    assert result.figures[0]["boundary"] == {"whole": False}
+
+
+def test_a_value_the_person_supposed_is_over_no_set_the_vault_measured(
+        registry):
+    """A figure resting on the person's own premise is not a claim about the
+    whole of anything: it says it is not everything and names no slice it is.
+    What it is computed with makes no difference — a supposition carries that
+    declaration through every hop, like the supposition itself."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    balance = next(f["id"] for f in book.values()
+                   if f["quantity"] == quantity.BALANCE)
+    alone = registry.call("compute",
+                          {"expression": "trip",
+                           "inputs": {"trip": {"stipulated": "250"}}},
+                          figures=book, question="could I afford a 250 trip?")
+    assert alone.ok and alone.figures[0]["boundary"] == {"whole": False}
+    against = registry.call("compute",
+                            {"expression": "have - trip",
+                             "inputs": {"have": balance,
+                                        "trip": {"stipulated": "250"}}},
+                            figures=book,
+                            question="could I afford a 250 trip?")
+    assert against.ok and against.figures[0]["boundary"] == {"whole": False}
+
+
+def test_arithmetic_over_a_term_whose_set_nobody_stated_states_none(registry):
+    """An operand nobody declared a set for gives a result nobody has declared
+    a set for, rather than a claim the arithmetic invented.
+
+    One kind of term reaches this and no read emits it, so what is held open
+    here is the backstop under a figure some emitter written later would leave
+    silent. It is checked by handing the arithmetic exactly such a figure,
+    rather than assumed from the fact that nothing produces one."""
+    unsaid = figure("2", "a number nobody said the set of",
+                    quantity=quantity.COUNT, grade=VERIFIED,
+                    record_ids=["doc-jan"])
+    unsaid["id"] = "f1"
+    for expression in ("a * 2", "a / 2", "a + 2", "a - 2"):
+        result = registry.call("compute", {"expression": expression,
+                                           "inputs": {"a": "f1"}},
+                               figures={"f1": unsaid})
+        assert result.ok, (expression, result.text)
+        assert result.figures[0]["boundary"] == {}, expression
+
+
+def test_a_literal_contributes_no_set_and_takes_none_away(registry):
+    """A bare number in the expression is not a set, and each operator decides
+    for itself what a set met by one comes out as — the same way each already
+    decides what records and what grade come out.
+
+    Scaling changes the units and takes nothing away, so a figure multiplied or
+    divided by a literal is still over the set its read declared, and can still
+    be spoken as a claim about that set. Adding injects a magnitude nothing
+    measured, so the total is over neither: not everything its quantity ranges
+    over, and no slice anybody can name. Two literals are that same number over
+    no set anybody measured, which is a declaration rather than a silence."""
+    book = _one_figure(registry, "query_ledger", {"entity": "balances"})
+    ids = [f["id"] for f in book.values() if f["quantity"] == quantity.BALANCE]
+    counted = next(f["id"] for f in book.values()
+                   if f["quantity"] == quantity.COUNT)
+    over_one_account = book[ids[0]]["boundary"]
+    assert over_one_account["cut"], "the operand names the slice it is"
+    over_every_account = book[counted]["boundary"]
+    assert over_every_account["whole"] is True
+    over_no_set = {"whole": False}
+    for expression, inputs, expected in (
+            # Scaled: what the read declared, unchanged.
+            ("a * 12", {"a": ids[0]}, over_one_account),
+            ("a / 2", {"a": ids[0]}, over_one_account),
+            ("(a + a) / 2", {"a": ids[0]}, over_one_account),
+            ("n * 12", {"n": counted}, over_every_account),
+            # Added to: over neither, whatever either side declared.
+            ("n + 12", {"n": counted}, over_no_set),
+            ("n - 12", {"n": counted}, over_no_set),
+            # Two literals, and a disagreement that a later scaling does not
+            # repair: both are numbers over no set anybody measured.
+            ("12 * 5", {}, over_no_set),
+            ("a / b * 100", {"a": ids[0], "b": ids[1]}, over_no_set)):
+        result = registry.call("compute", {"expression": expression,
+                                           "inputs": inputs}, figures=book)
+        assert result.ok, (expression, result.text)
+        assert result.figures[0]["boundary"] == expected, expression
+
+
+def test_no_read_names_one_slice_of_what_it_cuts_more_than_once(registry):
+    """Two figures over one slice are two measurements of one thing, and a
+    block written from them would state that thing's money once per figure
+    while reading as one line per slice. No read produces that: where an
+    emitter has several figures inside one thing, the thing is what they are
+    in rather than the slice they are, and they name no slice at all.
+
+    Held over every read there is, and over a vault holding two instruments in
+    one account, which is the shape that would produce it if any did."""
+    from viva.tools import runner
+
+    several_inside_one = LedgerProjection([
+        account_opened("brk-2", "investment", "Second Brokerage", "USD",
+                       "2026-01-01"),
+        document_captured("doc-brk-2", "brk.pdf", 10, "bank_statement", 0.9,
+                          "2026-02-01"),
+        position_observed("brk-2", "ALPHA FUND", "10", "1500.00", "USD",
+                          "2026-01-31", provenance=_p("doc-brk-2")),
+        position_observed("brk-2", "BETA FUND", "5", "500.00", "USD",
+                          "2026-01-31", provenance=_p("doc-brk-2"))])
+    calls = [(registry, tool, args) for tool, args in _EVERY_READ]
+    calls.append((default_registry(several_inside_one), "query_ledger",
+                  {"entity": "holdings"}))
+    for called, tool, args in calls:
+        result = called.call(tool, args)
+        assert result.ok, (tool, args, result.text)
+        cuts = [cut for cut in (runner._line_of(f) for f in result.figures)
+                if cut]
+        if len({cut["kind"] for cut in cuts}) > 1:
+            # A read that cuts the same set more than one way at once fills no
+            # block on that ground, and that is settled before one slice named
+            # twice is looked for. The rule below is not reachable for it.
+            continue
+        named = [cut["value"] for cut in cuts]
+        assert len(set(named)) == len(named), (tool, args, named)
+
+
+def test_two_figures_over_one_slice_fill_no_block():
+    """The rule the test above says nothing reaches, held where it lives.
+
+    A read whose figures name one slice twice fills no block, for the reason a
+    read cutting two ways at once fills none: a line per slice would state one
+    slice's money once for each figure taken over it. Two figures over two
+    slices of the same kind are the ordinary case and write two lines."""
+    from viva.tools import runner
+
+    def held(account, value):
+        return figure(value, "what one account holds",
+                      quantity=quantity.BALANCE, grade=VERIFIED,
+                      currency="USD", record_ids=[account],
+                      boundary=bounded(whole=False,
+                                       cut=[{"kind": "account",
+                                             "value": account}]))
+
+    slot = Slot("breakdown", render.ROWS)
+    apart = runner._Ground(book={"f1": held("acct-1", "10.00"),
+                                 "f2": held("acct-2", "20.00")})
+    block, tag, text = runner._rows_bound(slot, ["f1", "f2"], apart, "en-US")
+    assert (tag, text) == ("", "")
+    assert block is not None
+
+    twice = runner._Ground(book={"f1": held("acct-1", "10.00"),
+                                 "f2": held("acct-1", "20.00")})
+    block, tag, text = runner._rows_bound(slot, ["f1", "f2"], twice, "en-US")
+    assert block is None
+    assert tag == "wrong_kind"
+    assert slot.name in text
+
+
+def test_arithmetic_over_one_axis_set_written_two_ways_keeps_that_set(registry):
+    """Two figures over the same axes and the same values are one declaration,
+    however the emitter that wrote each of them assembled it.
+
+    A cut is a set, and a set has one written form: the axes are unique, so
+    ordering by axis is a total order and the constructor puts every cut in it.
+    What this pins is the constructor's contract — take the ordering out and
+    the first assertion below fails, because one emitter's `narrowing then
+    group axis` stops equalling another's `two filters`.
+
+    It is not a verdict the arithmetic reaches. No pair of reads produces that
+    pairing today: two operands are inherited from only where their whole
+    boundaries are equal, equal boundaries mean the same narrowing, and one
+    narrowing is written in one order, so two real operands cannot differ in
+    cut ordering alone. The two figures below are built here rather than read
+    from a vault for exactly that reason. The contract is worth holding anyway,
+    because equality over a whole declaration is not one function's business —
+    anything that walks a boundary compares the same way, and being right by
+    default beats being right by having read why.
+
+    The other direction is held beside it: axes that genuinely differ still
+    give a number over neither operand's set, declaring not-whole and naming
+    nothing, which is what tells a slice of a read from the read's own total."""
+    def over(*axes):
+        return figure("100.00", "spending over a set", quantity=quantity.SPENDING,
+                      grade=VERIFIED, currency="USD", record_ids=["r"],
+                      boundary=bounded(whole=False, cut=[
+                          {"kind": kind, "value": value}
+                          for kind, value in axes]))
+
+    merchant = ("merchant", "a counterparty")
+    category = ("category", "a category")
+    tag = ("tag", "a tag")
+    # The two orders one axis set arrives in: a read narrowed to the
+    # counterparty and grouped by category names the counterparty first; a read
+    # narrowed to both names them in the order its filters were read.
+    book = {"f1": over(merchant, category), "f2": over(category, merchant),
+            "f3": over(merchant), "f4": over(merchant, tag)}
+    for fid, fig in book.items():
+        fig["id"] = fid
+    assert book["f1"]["boundary"] == book["f2"]["boundary"]
+
+    agreed = registry.call("compute", {"expression": "a + b",
+                                       "inputs": {"a": "f1", "b": "f2"}},
+                           figures=book, question="how much over both?")
+    assert agreed.ok, agreed.text
+    assert agreed.figures[0]["boundary"] == {
+        "whole": False, "cut": [{"kind": "category", "value": "a category"},
+                                {"kind": "merchant", "value": "a counterparty"}]}
+
+    # A subset and a disjoint pair: different sets both ways, and neither is
+    # answered with a set either operand was taken over.
+    for other in ("f3", "f4"):
+        differs = registry.call("compute", {"expression": "a + b",
+                                            "inputs": {"a": "f1", "b": other}},
+                                figures=book, question="how much over both?")
+        assert differs.ok, differs.text
+        assert differs.figures[0]["boundary"] == {"whole": False}, other
+
+
+# --------------------------------------- the thing a number is a number of
+
+_BALANCES = ("query_ledger", {"entity": "balances"})
+_POINT = ("query_ledger", {"entity": "aggregate", "metric": "net_worth"})
+_BY_MERCHANT = ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                                 "group_by": "merchant"})
+
+
+def test_a_clause_states_the_figure_of_the_account_it_names(registry):
+    """The wrong instance of the right sort, caught — and the right one still
+    said.
+
+    Both halves of the sentence are real: the account is one this run
+    established and the figure is one it emitted, of the same kind of thing,
+    measuring what the hole asked for and taken over the axis it declared.
+    Every check before this one passes. What fails is that the figure's own
+    boundary names a different account from the one the sentence names.
+
+    The two halves come from two different reads, which is the shape this is
+    bought for: the run's ledger merges what every read established, so a thing
+    one read spoke about sits beside a number another read emitted with nothing
+    but this saying whether they belong together."""
+    said = ("Your {which} holds {amount}.",
+            [("which", "account"), ("amount", "money", "balance", "account")])
+
+    def turn(account):
+        return run("what is in it?",
+                   _script(_shape(said), _BALANCES, _POINT,
+                           bind=lambda results: {
+                               "which": {"entity": _entity(results, account)},
+                               "amount": {"figure": _fig(results,
+                                                         "chk — its part")}}),
+                   registry)
+
+    # The account the figure is of is established by the first read; the figure
+    # is emitted by the second.
+    right = turn("chk")
+    assert right.answered, right.refusal
+
+    wrong = turn("brk")
+    assert not wrong.answered
+    assert wrong.refusal == "wrong_subject", wrong.detail
+    # And what the person hears is the reviewed sentence for that tag, whole.
+    assert wrong.text == moment("refusal_wrong_subject")
+
+
+def test_a_clause_states_the_figure_of_the_counterparty_it_names(registry):
+    """The same rule where the thing is a counterparty, and the one place the
+    two declarations were ever written by different hands.
+
+    A counterparty is established by the read that lists movements and cut by
+    the read that groups spending, so the sentence names a thing one read
+    spoke about and states a number the other took over it. That the correct
+    pairing answers is half of what this holds: the two reads have to write one
+    string for one counterparty, or a true sentence refuses."""
+    said = ("You spent {amount} at {who}.",
+            [("amount", "money", "spending", "merchant"),
+             ("who", "merchant")])
+    rows = ("list_movements", {"filters": {"account": "chk"}})
+
+    def turn(merchant):
+        return run("what did I spend there?",
+                   _script(_shape(said), rows, _BY_MERCHANT,
+                           bind=lambda results: {
+                               "who": {"entity": _entity(results, merchant)},
+                               "amount": {"figure": _fig(results,
+                                                         "merchant 'green")}}),
+                   registry)
+
+    right = turn("greenfield market")
+    assert right.answered, right.refusal
+    wrong = turn("card payment")
+    assert not wrong.answered
+    assert wrong.refusal == "wrong_subject", wrong.detail
+
+
+def test_every_axis_a_figure_is_a_slice_of_is_held_to_what_the_clause_names(
+        registry):
+    """A cut is a set, so the comparison is over every axis of it.
+
+    A read narrowed to one account and grouped by counterparty emits a figure
+    that is both — the intersection — and a sentence naming both things is
+    checked on both. Right on one axis and wrong on the other is a number about
+    something else, whichever axis it is right about."""
+    said = ("At {who}, out of {which}, you spent {amount}.",
+            [("who", "merchant"), ("which", "account"),
+             ("amount", "money", "spending", ("account", "merchant"))])
+    narrowed = ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                                 "group_by": "merchant",
+                                 "filters": {"account": "chk"}})
+
+    def turn(account, merchant):
+        return run("what did I spend there out of that?",
+                   _script(_shape(said),
+                           ("list_movements", {"filters": {"account": "chk"}}),
+                           _BALANCES, narrowed,
+                           bind=lambda results: {
+                               "who": {"entity": _entity(results, merchant)},
+                               "which": {"entity": _entity(results, account)},
+                               "amount": {"figure": _fig(results,
+                                                         "merchant 'green")}}),
+                   registry)
+
+    both = turn("chk", "greenfield market")
+    assert both.answered, both.refusal
+    for account, merchant in (("brk", "greenfield market"),
+                              ("chk", "card payment")):
+        result = turn(account, merchant)
+        assert not result.answered, (account, merchant)
+        assert result.refusal == "wrong_subject", result.detail
+
+
+def test_a_clause_naming_two_things_of_a_kind_may_state_either_ones_figure(
+        registry):
+    """A sentence that names two counterparties and states one's number is
+    answered, because which of two named things a number sits beside is the
+    sentence's own order and reading that would be reading the sentence.
+
+    This is what keeps a comparison sayable — *you spent {x} at ⟨A⟩, more than
+    at ⟨B⟩* — and it is why the residual named in the design stands: two things
+    and two figures of one kind in one clause can be exchanged and each figure
+    still finds a thing of its kind that its boundary names."""
+    said = ("You spent {amount} at {who}, rather than at {other}.",
+            [("amount", "money", "spending", "merchant"),
+             ("who", "merchant"), ("other", "merchant")])
+    result = run("where did it go?",
+                 _script(_shape(said),
+                         ("list_movements", {"filters": {"account": "chk"}}),
+                         _BY_MERCHANT,
+                         bind=lambda results: {
+                             "who": {"entity": _entity(results, "card payment")},
+                             "other": {"entity": _entity(results, "greenfield")},
+                             "amount": {"figure": _fig(results,
+                                                       "merchant 'green")}}),
+                 registry)
+    assert result.answered, result.refusal
+
+
+def test_a_thing_named_for_another_purpose_is_still_a_thing_the_clause_names(
+        registry):
+    """What the sentence is about is the clause, so a thing named anywhere in
+    it is a thing it names.
+
+    A clause that names one account and states a figure taken over another is
+    refused even where the account was named for its own reason, because
+    nothing here can tell one reason from another without reading the words.
+    The way to say both is to say them as two sentences — which is what they
+    are — and the same two bindings split across two clauses answer."""
+    narrowed = ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                                 "group_by": "merchant",
+                                 "filters": {"account": "chk"}})
+    holes = [("which", "account"),
+             ("amount", "money", "spending", ("account", "merchant"))]
+
+    def turn(shape):
+        return run("what about the other one?",
+                   _script(shape, _BALANCES, narrowed,
+                           bind=lambda results: {
+                               "which": {"entity": _entity(results, "brk")},
+                               "amount": {"figure": _fig(results,
+                                                         "merchant 'green")}}),
+                   registry)
+
+    together = turn(_shape(("Your {which} is one of several, and you spent "
+                            "{amount} at the market.", holes)))
+    assert not together.answered
+    assert together.refusal == "wrong_subject", together.detail
+
+    apart = turn(_shape(("Your {which} is one of several.", holes[:1]),
+                        ("You spent {amount} at the market.", holes[1:])))
+    assert apart.answered, apart.detail
+
+
+def test_a_clause_that_names_no_thing_of_a_slices_kind_states_it_freely(
+        registry):
+    """A sentence that says what it is about only in its own words is checked
+    by nothing here, and that residual ships named.
+
+    The comparison is between two references, and prose is neither. A clause
+    binding a figure cut by one counterparty and naming no counterparty
+    through a hole is answered — refusing it would mean either reading the
+    words, or requiring that a figure naming a slice may only be stated beside
+    that slice's own thing, which would silence every slice the vault holds no
+    thing for."""
+    said = ("You spent {amount} at the market.",
+            [("amount", "money", "spending", "merchant")])
+    result = run("what did I spend there?",
+                 _script(_shape(said), _BY_MERCHANT,
+                         bind=lambda results: {
+                             "amount": {"figure": _fig(results,
+                                                       "merchant 'green")}}),
+                 registry)
+    assert result.answered, result.refusal
+
+
+def test_every_account_a_point_cuts_by_is_one_a_sentence_can_name(registry):
+    """A figure taken over a set no read established a thing for can be bound
+    by no sentence, so nothing can check what is said beside it. The point read
+    produces no such figure.
+
+    One account is one line, so every slice the point cuts by is a thing the
+    same read hands over, and a sentence naming one beside its own figure is
+    checked rather than merely tolerated."""
+    point = registry.call("query_ledger", {"entity": "aggregate",
+                                           "metric": "net_worth"})
+    per_account = [f for f in point.figures
+                   if [c["kind"] for c in f["boundary"].get("cut") or []]
+                   == ["account"]]
+    assert per_account, "the point cut by no account, so this proves nothing"
+    named = {i["account"] for i in point.identifiers}
+    assert all(f["record_ids"][0] in named for f in per_account), (
+        "a figure names a slice this run holds no thing for")
+
+    said = ("Your {which} holds {amount}.",
+            [("which", "account"), ("amount", "money", "balance", "account")])
+    result = run("what is in it?",
+                 _script(_shape(said), _BALANCES, _POINT,
+                         bind=lambda results: {
+                             "which": {"entity": _entity(results, "brk")},
+                             "amount": {"figure": _fig(results,
+                                                       "its part of net")}}),
+                 registry)
+    assert result.answered, result.refusal
+
+
+def test_a_dropped_clause_is_not_held_to_what_it_would_have_named(registry):
+    """The comparison runs over what survived the drops.
+
+    A clause with a hole nothing filled asserts nothing: it never reaches the
+    person, so a thing and a figure inside it that do not belong together are
+    not a false sentence and do not cost the turn. The clause that does reach
+    the person is checked, and answers."""
+    said = (("You have {count} accounts.", [("count", "count", "count",
+                                             "whole")]),
+            ("Your {which} holds {amount}, as of {when}.",
+             [("which", "account"),
+              ("amount", "money", "balance", "account"),
+              ("when", "date")]))
+    result = run("how many accounts do I have?",
+                 _script(_shape(*said), _BALANCES, _POINT,
+                         bind=lambda results: {
+                             "count": {"figure": _fig(results,
+                                                      "accounts holding")},
+                             "which": {"entity": _entity(results, "brk")},
+                             "amount": {"figure": _fig(results,
+                                                       "chk — its part")}}),
+                 registry)
+    assert result.answered, result.refusal
+    assert result.gaps and result.gaps[0]["name"] == "when"

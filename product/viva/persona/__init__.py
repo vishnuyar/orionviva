@@ -49,6 +49,15 @@ _DIR = pathlib.Path(__file__).resolve().parent
 # resolving to the exact words it recorded.
 ACTIVE_PACK = versions.active(_DIR.parent, "persona_pack")
 
+# How a grade finds its sentence in the pack. One reviewed line per word on the
+# ladder, in a namespace of its own, said wherever a run states how well a set
+# of figures is stood behind. Two sets are stated, so there are two namespaces:
+# the answer's own, and a block of rows'. Each names its set in its own words,
+# which is what tells a person which figures the word is about when both are in
+# front of them.
+STOOD_BEHIND_MOMENT = "stood_behind_"
+ROWS_STOOD_BEHIND_MOMENT = "rows_stood_behind_"
+
 # ------------------------------------------------------------- the contract
 #
 # Phrasing key -> the slots its template MAY use, and what each slot IS. These
@@ -273,13 +282,29 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # A gap no account can name: a document read and not posted may be about an
     # account that does not exist yet, so it is said as a number of documents.
     "boundary_unposted":           frozenset({"count"}),
+    # How well a set of figures is stood behind: one whole reviewed line per word
+    # on the ladder, chosen by that word, so no sentence anywhere is a frame with
+    # a machine's word dropped into it. Not one takes a slot. Each is worded as
+    # being about its set and states the weakest in it, so it never claims more
+    # than the whole of what it covers.
+    #
+    # A run states this for an answer, over every money figure the answer stated.
+    "stood_behind_verified":     frozenset(),
+    "stood_behind_corroborated": frozenset(),
+    "stood_behind_unverified":   frozenset(),
+    "stood_behind_conflicted":   frozenset(),
+    # And above a block of rows, over the one read those lines came from. Those
+    # figures are among the answer's, so a person reading both sentences reads
+    # one set inside another and never two claims that can disagree. The two
+    # families say the same four words of different sets, and each says which
+    # set it is about rather than leaving a person to work it out.
+    "rows_stood_behind_verified":     frozenset(),
+    "rows_stood_behind_corroborated": frozenset(),
+    "rows_stood_behind_unverified":   frozenset(),
+    "rows_stood_behind_conflicted":   frozenset(),
     # A block of rows: how many lines there are is not knowable when the
     # sentence holding them is authored, so the machine writes every one of them
-    # and the model writes no words at any. The grade goes once, above, worded
-    # as being about the set — one grade is computed over a whole read and
-    # stamped on each of its figures, so a word per line would read as a claim
-    # about that line when it is a claim about the read.
-    "rows_stood_behind":        frozenset({"grade"}),
+    # and the model writes no words at any.
     "rows_line":                frozenset({"name", "amount"}),
     "gap_money":                frozenset(),
     "gap_count":                frozenset(),
@@ -290,7 +315,6 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "gap_merchant":             frozenset(),
     "gap_category":             frozenset(),
     "gap_document":             frozenset(),
-    "gap_grade":                frozenset(),
     "gap_rows":                 frozenset(),
     "gap_supposed":             frozenset(),
     # And when there is no answer at all. One reviewed sentence per way a turn
@@ -312,11 +336,26 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "refusal_unknown_reading":       frozenset(),
     "refusal_unfounded_date":        frozenset(),
     "refusal_unfounded_stipulation": frozenset(),
-    "refusal_ungraded_figure":       frozenset(),
     "refusal_wrong_kind":            frozenset(),
     "refusal_wrong_quantity":        frozenset(),
+    "refusal_wrong_scope":           frozenset(),
+    "refusal_wrong_subject":         frozenset(),
     "refusal_nothing_established":   frozenset(),
     "refusal_uncited_figure":        frozenset(),
+    # And why the turn had nothing, where a read that stopped can
+    # account for it. The verdict above is chosen by the turn's own tag
+    # and this is chosen by the read's, so the words a person hears are
+    # reviewed before the turn begins either way. Not one of them takes a
+    # slot: a read is called with values a caller chose, and a cause that
+    # could place one would put a word the person never said in front of
+    # them as a fact about their records.
+    "diagnosis_too_broad":           frozenset(),
+    "diagnosis_filter_unsupported":  frozenset(),
+    "diagnosis_unknown_account":     frozenset(),
+    "diagnosis_unknown_category":    frozenset(),
+    "diagnosis_unknown_tag":         frozenset(),
+    "diagnosis_unknown_merchant":    frozenset(),
+    "diagnosis_unknown_currency":    frozenset(),
 }
 
 
