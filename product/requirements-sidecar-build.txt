@@ -1,0 +1,2 @@
+# Pinned build tool for the Tauri external sidecar.
+pyinstaller==6.11.1

@@ -1,0 +1,47 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install product development dependencies
+        run: python -m pip install -e core -e merchant -e product[dev]
+      - name: Check surface contract artifact
+        run: PYTHONPATH=.:product:core:merchant python scripts/check_surface_contract.py --check
+      - name: Check surface impact gate
+        run: PYTHONPATH=.:product:core:merchant python scripts/check_surface_impact.py --check
+      - name: Run surface contract and boundary tests
+        run: PYTHONPATH=.:product:core:merchant pytest product/tests/test_surface_contract.py product/tests/test_surface_capability_coverage.py product/tests/test_surface_gate_scripts.py product/tests/test_surface_import_boundaries.py product/viva/surface/test_contracts.py
+
+  desktop:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install product and sidecar build dependencies
+        run: python -m pip install -e ../core -e ../merchant -e ../product -r ../product/requirements-sidecar-build.txt
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Build desktop sidecar
+        run: python ../scripts/build_desktop_sidecar.py --output-dir src-tauri/binaries --target "$(rustc -vV | sed -n 's/^host: //p')"
+      - name: Build Tauri desktop bundle
+        run: npx tauri build

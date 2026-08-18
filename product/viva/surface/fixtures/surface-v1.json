@@ -1,0 +1,526 @@
+{
+  "artifact": "orionviva.surface-v1",
+  "fixtures": [
+    {
+      "capability_id": "conversation.viva",
+      "contract": "ConversationTurn.v1",
+      "id": "conversation.viva.ready",
+      "payload": {
+        "capability_id": "conversation.viva",
+        "contract": "ConversationTurn.v1"
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "documents.ingest",
+      "contract": "DocumentIngestResult.v1",
+      "id": "documents.ingest.ready",
+      "payload": {
+        "capability_id": "documents.ingest",
+        "contract": "DocumentIngestResult.v1"
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "documents.rescan",
+      "contract": "RescanResult.v1",
+      "id": "documents.rescan.ready",
+      "payload": {
+        "capability_id": "documents.rescan",
+        "contract": "RescanResult.v1"
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "maintenance.agent",
+      "contract": "MaintenanceRun.v1",
+      "id": "maintenance.agent.ready",
+      "payload": {
+        "capability_id": "maintenance.agent",
+        "contract": "MaintenanceRun.v1"
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "review.questions",
+      "contract": "QuestionQueue.v1",
+      "id": "review.questions.ready",
+      "payload": {
+        "capability_id": "review.questions",
+        "contract": "QuestionQueue.v1"
+      },
+      "state": "ready"
+    }
+  ],
+  "models": {
+    "ActionOutcome": [
+      "kind",
+      "message",
+      "state",
+      "reason"
+    ],
+    "FigureView": [
+      "id",
+      "exact_value",
+      "display",
+      "currency",
+      "measure",
+      "grade",
+      "grade_label",
+      "exactness",
+      "as_of",
+      "coverage",
+      "record_ids",
+      "provenance",
+      "caveats"
+    ],
+    "PanelState": [
+      "absent",
+      "ready",
+      "partial",
+      "needs_input",
+      "unavailable",
+      "failed"
+    ]
+  },
+  "protocol": "1.0",
+  "registry": [
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.diff_rulings",
+      "fixture_ids": [],
+      "id": "advanced.diff_rulings",
+      "maturity": "stable",
+      "owner": "viva.diff_rulings",
+      "reason": "ruling comparison is rebuild evaluation tooling, not a user-facing action",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.export_rulings",
+      "fixture_ids": [],
+      "id": "advanced.export_rulings",
+      "maturity": "stable",
+      "owner": "viva.export_rulings",
+      "reason": "ruling export contains personal data and requires an explicit advanced privacy warning",
+      "trust_effect": [
+        "reads_data",
+        "may_egress"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.rebuild",
+      "fixture_ids": [],
+      "id": "advanced.rebuild",
+      "maturity": "stable",
+      "owner": "viva.rebuild",
+      "reason": "rebuild creates a new vault and belongs to the advanced vault laboratory",
+      "trust_effect": [
+        "reads_data",
+        "writes_event"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.reingest",
+      "fixture_ids": [],
+      "id": "advanced.reingest",
+      "maturity": "stable",
+      "owner": "viva.reingest",
+      "reason": "reingest is an advanced migration operation requiring a fresh vault",
+      "trust_effect": [
+        "reads_data",
+        "writes_event",
+        "may_call_model"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.reset_categorization",
+      "fixture_ids": [],
+      "id": "advanced.reset_categorization",
+      "maturity": "stable",
+      "owner": "viva.reset_categorization",
+      "reason": "categorization reset rewrites a derived vault and is not ordinary settings",
+      "trust_effect": [
+        "reads_data",
+        "writes_event"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "when the vault is open and the conversation engine is configured",
+      "contract": "ConversationTurn.v1",
+      "destination": "viva",
+      "disposition": "surface",
+      "entrypoint": "viva.speak",
+      "fixture_ids": [
+        "conversation.viva.ready"
+      ],
+      "id": "conversation.viva",
+      "maturity": "stable",
+      "owner": "viva.speak",
+      "reason": null,
+      "trust_effect": [
+        "reads_data",
+        "may_call_model",
+        "writes_event"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.categories",
+      "fixture_ids": [],
+      "id": "diagnostic.categories",
+      "maturity": "stable",
+      "owner": "viva.debug.categories",
+      "reason": "category diagnostics inspect engine projections and are not a product read model",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.claim",
+      "fixture_ids": [],
+      "id": "diagnostic.claim",
+      "maturity": "stable",
+      "owner": "viva.debug.claim",
+      "reason": "claim inspection exposes internal evidence and is reserved for development",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.descriptors",
+      "fixture_ids": [],
+      "id": "diagnostic.descriptors",
+      "maturity": "stable",
+      "owner": "viva.debug.descriptors",
+      "reason": "descriptor diagnostics expose raw recognition details outside the product surface",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.gaps",
+      "fixture_ids": [],
+      "id": "diagnostic.gaps",
+      "maturity": "stable",
+      "owner": "viva.debug.gaps",
+      "reason": "debug diagnostic output is not a product read model",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.networth",
+      "fixture_ids": [],
+      "id": "diagnostic.networth",
+      "maturity": "stable",
+      "owner": "viva.debug.networth",
+      "reason": "debug diagnostic output is not the canonical financial picture",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.pattern_report",
+      "fixture_ids": [],
+      "id": "diagnostic.pattern_report",
+      "maturity": "stable",
+      "owner": "viva.pattern_report",
+      "reason": "diagnostic report; it describes recurrence but does not decide a user-facing finding",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.read",
+      "fixture_ids": [],
+      "id": "diagnostic.read",
+      "maturity": "stable",
+      "owner": "viva.debug.read",
+      "reason": "document reader trace is a development diagnostic, not a rendered journey",
+      "trust_effect": [
+        "reads_data",
+        "may_call_model"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.speak",
+      "fixture_ids": [],
+      "id": "diagnostic.speak",
+      "maturity": "stable",
+      "owner": "viva.debug.speak",
+      "reason": "conversation trace is a development diagnostic, not a second conversation surface",
+      "trust_effect": [
+        "reads_data",
+        "may_call_model"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.streams_report",
+      "fixture_ids": [],
+      "id": "diagnostic.stream_report",
+      "maturity": "stable",
+      "owner": "viva.streams_report",
+      "reason": "diagnostic report for engine development; selected findings may later feed Activity",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.tiers",
+      "fixture_ids": [],
+      "id": "diagnostic.tiers",
+      "maturity": "stable",
+      "owner": "viva.debug.tiers",
+      "reason": "tier diagnostics explain engine question states and are not the Review contract",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.transfer_report",
+      "fixture_ids": [],
+      "id": "diagnostic.transfer_report",
+      "maturity": "stable",
+      "owner": "viva.transfer_report",
+      "reason": "diagnostic report for transfer matching and repair review",
+      "trust_effect": [
+        "reads_data",
+        "writes_event"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.debug.vault",
+      "fixture_ids": [],
+      "id": "diagnostic.vault",
+      "maturity": "stable",
+      "owner": "viva.debug.vault",
+      "reason": "vault inspection exposes internal storage details unsuitable for the ordinary UI",
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [
+        "upload",
+        "cancel"
+      ],
+      "availability": "when a local document is selected or dropped",
+      "contract": "DocumentIngestResult.v1",
+      "destination": "documents",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "documents.ingest.ready"
+      ],
+      "id": "documents.ingest",
+      "maturity": "stable",
+      "owner": "viva.ingest",
+      "reason": null,
+      "trust_effect": [
+        "writes_event"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "after a document has been ingested",
+      "contract": "RescanResult.v1",
+      "destination": "documents",
+      "disposition": "surface",
+      "entrypoint": "viva.rescan",
+      "fixture_ids": [
+        "documents.rescan.ready"
+      ],
+      "id": "documents.rescan",
+      "maturity": "stable",
+      "owner": "viva.rescan",
+      "reason": null,
+      "trust_effect": [
+        "reads_data",
+        "writes_event"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "developer_only",
+      "entrypoint": "viva.eval_listen",
+      "fixture_ids": [],
+      "id": "evaluation.listen",
+      "maturity": "stable",
+      "owner": "viva.eval_listen",
+      "reason": "model evaluation is CI and developer tooling only",
+      "trust_effect": [
+        "may_call_model"
+      ]
+    },
+    {
+      "actions": [
+        "run"
+      ],
+      "availability": "when unattended maintenance is explicitly enabled",
+      "contract": "MaintenanceRun.v1",
+      "destination": "trust",
+      "disposition": "surface",
+      "entrypoint": "viva.agent",
+      "fixture_ids": [
+        "maintenance.agent.ready"
+      ],
+      "id": "maintenance.agent",
+      "maturity": "stable",
+      "owner": "viva.agent",
+      "reason": null,
+      "trust_effect": [
+        "reads_data",
+        "writes_event",
+        "may_call_model"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "internal",
+      "entrypoint": "viva.induce_profile",
+      "fixture_ids": [],
+      "id": "maintenance.grammar_induction",
+      "maturity": "stable",
+      "owner": "viva.induce_profile",
+      "reason": "private maintenance is audited by the engine and is not an ordinary product destination",
+      "trust_effect": [
+        "reads_data",
+        "writes_event",
+        "may_call_model"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "available to the local engine",
+      "contract": "DeveloperDiagnostic.v1",
+      "destination": "none",
+      "disposition": "deferred",
+      "entrypoint": "viva.enrich",
+      "fixture_ids": [],
+      "id": "maintenance.merchant_enrichment",
+      "maturity": "stable",
+      "owner": "viva.enrich",
+      "reason": "model-bound merchant enrichment needs a reviewed privacy boundary before it is surfaced",
+      "trust_effect": [
+        "reads_data",
+        "writes_event",
+        "may_call_model",
+        "may_egress"
+      ]
+    },
+    {
+      "actions": [
+        "answer",
+        "decline"
+      ],
+      "availability": "when the vault has open questions",
+      "contract": "QuestionQueue.v1",
+      "destination": "review",
+      "disposition": "surface",
+      "entrypoint": "viva.ask",
+      "fixture_ids": [
+        "review.questions.ready"
+      ],
+      "id": "review.questions",
+      "maturity": "stable",
+      "owner": "viva.ask",
+      "reason": null,
+      "trust_effect": [
+        "reads_data",
+        "writes_event"
+      ]
+    }
+  ]
+}

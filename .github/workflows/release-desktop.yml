@@ -1,0 +1,168 @@
+name: Release Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate release metadata
+        env:
+          ORIONVIVA_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: python scripts/prepare_native_release.py --metadata-only
+      - id: targets
+        name: Load supported targets
+        run: echo "matrix=$(jq -c . desktop/src-tauri/release-targets.json)" >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: prepare
+    environment: native-release
+    # release-targets.json is the source of truth for this matrix:
+    # aarch64-apple-darwin, x86_64-apple-darwin, x86_64-pc-windows-msvc,
+    # and x86_64-unknown-linux-gnu.
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux bundler dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Install product and sidecar build dependencies
+        run: python -m pip install -e core -e merchant -e product -r product/requirements-sidecar-build.txt
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Validate signing and updater inputs
+        env:
+          ORIONVIVA_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          ORIONVIVA_UPDATER_PUBLIC_KEY: ${{ vars.ORIONVIVA_UPDATER_PUBLIC_KEY }}
+          ORIONVIVA_UPDATER_ENDPOINT: ${{ vars.ORIONVIVA_UPDATER_ENDPOINT }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT: ${{ vars.ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT }}
+          ORIONVIVA_WINDOWS_TIMESTAMP_URL: ${{ vars.ORIONVIVA_WINDOWS_TIMESTAMP_URL }}
+        run: python scripts/prepare_native_release.py --target "${{ matrix.target }}"
+      - name: Build target-native sidecar
+        run: python scripts/build_desktop_sidecar.py --output-dir desktop/src-tauri/binaries --target "${{ matrix.target }}"
+      - name: Validate staged sidecar
+        env:
+          ORIONVIVA_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          ORIONVIVA_UPDATER_PUBLIC_KEY: ${{ vars.ORIONVIVA_UPDATER_PUBLIC_KEY }}
+          ORIONVIVA_UPDATER_ENDPOINT: ${{ vars.ORIONVIVA_UPDATER_ENDPOINT }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT: ${{ vars.ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT }}
+          ORIONVIVA_WINDOWS_TIMESTAMP_URL: ${{ vars.ORIONVIVA_WINDOWS_TIMESTAMP_URL }}
+        run: python scripts/prepare_native_release.py --target "${{ matrix.target }}" --check-sidecar
+      - name: Validate Tauri build command
+        working-directory: desktop
+        run: npx tauri build --help
+      - name: Import macOS signing certificate
+        if: matrix.platform == 'macos'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          certificate_path="$RUNNER_TEMP/orionviva-signing.p12"
+          keychain_path="$RUNNER_TEMP/orionviva-signing.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$APPLE_KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_KEYCHAIN_PASSWORD" "$keychain_path"
+          identity=$(security find-identity -v -p codesigning "$keychain_path" | awk -F'"' 'NR == 1 { print $2 }')
+          test -n "$identity"
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Import Windows signing certificate
+        if: matrix.platform == 'windows'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          EXPECTED_THUMBPRINT: ${{ vars.ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $certificatePath = Join-Path $env:RUNNER_TEMP "orionviva-signing.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          $actual = ($certificate.Thumbprint -replace '\s', '').ToUpperInvariant()
+          $expected = ($env:EXPECTED_THUMBPRINT -replace '\s', '').ToUpperInvariant()
+          if ($actual -ne $expected) { throw "Imported Windows certificate thumbprint does not match release configuration" }
+      - name: Build and upload signed desktop bundles
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: desktop
+          tagName: desktop-v__VERSION__
+          releaseName: OrionViva Desktop v__VERSION__
+          releaseBody: Signed desktop installers and updater artifacts. Review all platform jobs before publishing this draft.
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          uploadUpdaterSignatures: true
+          uploadWorkflowArtifacts: true
+          workflowArtifactNamePattern: orionviva-[platform]-[arch]-[bundle]
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config src-tauri/tauri.release.generated.json
