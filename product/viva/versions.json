@@ -6,7 +6,7 @@
     },
     "speak_final": {
       "in": "prompts",
-      "active": "speak-final-v12"
+      "active": "speak-final-v13"
     },
     "speak_protocol": {
       "in": "prompts",
@@ -18,7 +18,7 @@
     },
     "speak_repairs": {
       "in": "prompts",
-      "active": "speak-repairs-v2"
+      "active": "speak-repairs-v3"
     },
     "speak_closing": {
       "in": "prompts",
@@ -42,7 +42,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v12"
+      "active": "pack-v13"
     },
     "schema_pack": {
       "in": "schemas",
@@ -54,7 +54,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v9"
+      "active": "speak-shape-v10"
     },
     "shape_committed": {
       "in": "prompts",
@@ -84,6 +84,7 @@
     "pack-v10": "87eba5fff1fd5fc5",
     "pack-v11": "7471eab0aededb29",
     "pack-v12": "104c77379c2cbd5f",
+    "pack-v13": "717eb1d405220c17",
     "pack-v2": "7e8f38e3db15c2f9",
     "pack-v3": "62a56a4b9b7c1b5e",
     "pack-v4": "ab13c947b9ee4086",
@@ -100,6 +101,7 @@
     "speak-final-v10": "0c7373aad33dd23e",
     "speak-final-v11": "4f3b44d44b932585",
     "speak-final-v12": "a7915d70695b4b4f",
+    "speak-final-v13": "95e287a51e143dec",
     "speak-final-v2": "d746425703084d91",
     "speak-final-v3": "19506ea8954a63c5",
     "speak-final-v4": "2cac1de408a24750",
@@ -121,10 +123,12 @@
     "speak-refusal-v2": "0936b83589585cdf",
     "speak-repairs-v1": "40e6f50289ce7171",
     "speak-repairs-v2": "0cbfcb3aa63a0739",
+    "speak-repairs-v3": "8b9b05d2329bb6ed",
     "speak-retry-v1": "9224620b7b861c8c",
     "speak-retry-v2": "fc0ed5d5b85f4e4f",
     "speak-retry-v3": "ec6b6369a6c02300",
     "speak-shape-v1": "6dc9f1a9279a5a76",
+    "speak-shape-v10": "1e12c41a720d2507",
     "speak-shape-v2": "c1eb515f0f44f510",
     "speak-shape-v3": "86cdfecaf82680e9",
     "speak-shape-v4": "b1414ddd20442800",

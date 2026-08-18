@@ -293,7 +293,7 @@ class Boundary(dict):
 
 
 def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
-            cut=None, unmeasured=(), unposted: int = 0) -> Boundary:
+            cut=(), unmeasured=(), unposted: int = 0) -> Boundary:
     """What one figure was taken over, and whether that set is everything the
     quantity it declares would range over.
 
@@ -309,21 +309,25 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
     where a total was asked for is a true figure over the wrong set.
     ``selected`` names how the set was narrowed, each entry a member of
     ``SELECTED_KINDS`` with the thing it was narrowed to — ``value``, plus
-    ``to`` for the members that take two days. ``cut`` names the one slice of
-    that set THIS figure was taken over, in the same vocabulary and under the
-    same checks: a read grouped into ten totals narrows once and cuts ten ways,
-    and which cut a figure is is a property of the figure rather than of the
-    read. It is told apart from ``selected`` because it is the one part of a
-    boundary that is already said when the figure is written beside its own
-    name, and saying it twice would be the same claim made twice.
+    ``to`` for the members that take two days. ``cut`` names every slice THIS
+    figure is the intersection of, in the same vocabulary and under the same
+    checks: a read narrowed to one counterparty and grouped into ten totals
+    cuts ten ways, and each of those figures is that counterparty AND its own
+    group. A figure is the set its cuts name together, so what a sentence about
+    it may claim is decided by the whole set rather than by any one of them,
+    and a counterparty's groceries and a counterparty's total are told apart by
+    what they declare rather than by what their numbers look like.
+
+    One axis is named once. Two entries of one axis would be two narrowings of
+    the same thing offered as a set, and no single set is what they describe.
 
     A cut is the only entry a whole figure may still carry, because it is the
-    only one that is not a way of falling short. It says WHICH slice the figure
-    is; ``whole`` says whether that slice is everything the quantity ranges
-    over. The one group of a grouping that partitions is both — it is the
-    groceries group and it is all of the spending — and a block of rows needs
-    its name whichever it is. Nothing is said about it either way: a whole
-    figure states no boundary at all.
+    only one that is not a way of falling short. It says WHICH slices the
+    figure is; ``whole`` says whether those slices together are everything the
+    quantity ranges over. The one group of a grouping that partitions is both —
+    it is the groceries group and it is all of the spending — and a block of
+    rows needs its name whichever it is. Nothing is said about it either way: a
+    whole figure states no boundary at all.
 
     ``unmeasured`` names what the figure claims to measure and does not
     include, each with why it is out and the document that would settle it —
@@ -347,11 +351,11 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
                 "to": str(item.get("to", ""))}
 
     chosen = [named(item) for item in selected]
-    slice_of = named(cut) if cut else None
+    slice_of = [named(item) for item in cut]
     # One vocabulary and one set of checks, whichever half of the boundary the
     # entry belongs to: a cut is narrowing said of one figure rather than of the
     # read, so nothing about how it must be written is different.
-    for item in chosen + ([slice_of] if slice_of else []):
+    for item in chosen + slice_of:
         if item["kind"] not in SELECTED_KINDS:
             raise ValueError(f"a set is not narrowed by {item['kind']!r}: "
                              + ", ".join(SELECTED_KINDS))
@@ -365,6 +369,17 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
                              + ", and it carries the other number of them")
         if not item["to"]:
             del item["to"]
+    # After the entries are known to be well written, so a cut wrong in a more
+    # particular way is told about that instead.
+    if len({item["kind"] for item in slice_of}) != len(slice_of):
+        raise ValueError("a figure names each axis it was cut by once; twice "
+                         "is two narrowings of one thing offered as one set")
+    # One set, one written form. The axes are unique by the check above, so
+    # ordering by axis is a total order, and two figures over the same axes and
+    # values are then the same declaration however their emitters assembled
+    # them — a narrowing plus a group axis, or two filters. Whoever compares
+    # two boundaries with `==` is right without having to know that.
+    slice_of.sort(key=lambda item: item["kind"])
     left_out = [{"account": str(item["account"]),
                  "reason": str(item.get("reason", "")),
                  "settled_by": str(item.get("settled_by", ""))}
@@ -403,6 +418,49 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
     return out
 
 
+def cut_set(selected=(), *slices) -> list:
+    """Every slice one figure is the intersection of: what narrowed the read it
+    came from, and the slice of what came back this figure is.
+
+    A read narrowed to one counterparty returned that counterparty's spending,
+    and the figure that is the whole of what came back is the whole of that
+    slice, so it says so. A group of that read is the counterparty AND the
+    group, so it says both, and the two figures are then different claims
+    rather than the same one. An unnarrowed read's own total is cut by nothing.
+
+    A slice states its own axis more narrowly than the read's narrowing did, so
+    where the two name one axis the slice is what stands: a month of a read
+    asked for a span is that month.
+
+    A figure that could not name a slice it is names none at all. The slices
+    left would describe a wider set than the figure was taken over, which is
+    the claim every boundary exists to stop, so the figure declares nothing and
+    fills no hole rather than declaring something true of something else.
+
+    It takes what the read and the emitter already wrote down rather than
+    deciding anything itself, so a figure declaring the slices it is and a
+    figure declaring the narrowing it was taken under cannot describe two
+    different sets."""
+    if any(item is None for item in slices):
+        return []
+    axes = {item["kind"]: dict(item) for item in selected}
+    for item in slices:
+        axes[item["kind"]] = dict(item)
+    return list(axes.values())
+
+
+def recorded_boundary(fig: dict):
+    """The boundary a figure carries, as the type `bounded` returns, or None
+    where the figure states none.
+
+    A figure holds its boundary as a plain mapping, and every one of them was
+    built by `bounded`, since `figure` accepts nothing else. Reading one back
+    gives it that type again, so a figure taken over the same set as another
+    can be written with the boundary that other one recorded."""
+    recorded = fig.get("boundary") or {}
+    return Boundary(recorded) if recorded else None
+
+
 # What a model-facing field says when it has nothing to add. Every result is
 # resent on every remaining call of the turn, so a field carrying the ordinary
 # case on every figure is paid for many times over and tells the model nothing.
@@ -414,8 +472,8 @@ def _named(item) -> dict:
     tell it from another. What kind of thing it is travels in its id.
 
     The label is the handle the figures use — an account's ledger path, a
-    counterparty's descriptor — so a result's numbers and the things they are
-    about can be matched up. It is not what a person reads: the rest of what an
+    counterparty's key — so a result's numbers and the things they are about
+    can be matched up. It is not what a person reads: the rest of what an
     entity carries, and the choice among those forms, belongs to the renderer,
     and sending it would be paying on every remaining call of the turn for a
     choice the model does not make."""

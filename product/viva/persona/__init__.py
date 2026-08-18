@@ -338,6 +338,8 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "refusal_unfounded_stipulation": frozenset(),
     "refusal_wrong_kind":            frozenset(),
     "refusal_wrong_quantity":        frozenset(),
+    "refusal_wrong_scope":           frozenset(),
+    "refusal_wrong_subject":         frozenset(),
     "refusal_nothing_established":   frozenset(),
     "refusal_uncited_figure":        frozenset(),
     # And why the turn had nothing, where a read that stopped can

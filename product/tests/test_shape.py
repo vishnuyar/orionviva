@@ -52,11 +52,27 @@ def registry():
     return default_registry(LedgerProjection(_events()))
 
 
+def _slot_of(declared) -> "Slot":
+    """One hole from `(name, type)`, `(name, type, quantity)` or
+    `(name, type, quantity, scope)`.
+
+    A scope is the set of axes the sentence narrows on. One axis may be written
+    as the bare word, several as a sequence of them, so a fixture says what its
+    sentence is about and nothing else."""
+    name, kind, *rest = declared
+    measures = rest[0] if rest else ""
+    over = rest[1] if len(rest) > 1 else ()
+    return Slot(name=name, type=kind, quantity=measures,
+                scope=frozenset([over] if isinstance(over, str) and over
+                                else over))
+
+
 def _shape(*clauses):
     """A shape as a planner commits one. Each hole is `(name, type)`, or
-    `(name, type, what its number measures)` where it holds one."""
+    `(name, type, what its number measures, what sets it is over)` where it
+    holds one."""
     return Shape(clauses=tuple(
-        Clause(text=text, slots=tuple(Slot(*slot) for slot in slots))
+        Clause(text=text, slots=tuple(_slot_of(slot) for slot in slots))
         for text, slots in clauses))
 
 
@@ -73,6 +89,12 @@ def _script(shape, *calls, bind=None):
 
 
 BALANCES = ("query_ledger", {"entity": "balances", "filters": {"account": "chk"}})
+
+# A spending read narrowed to one counterparty and nothing else: one filter
+# leaves one slice, so what comes back is the whole of that slice.
+_AT_ONE_COUNTERPARTY = ("query_ledger",
+                        {"entity": "aggregate", "metric": "spending",
+                         "filters": {"merchant": "greenfield market"}})
 
 # A turn that answers having read nothing. Every clause rests on something the
 # run established, and a run that made no read has established one thing only:
@@ -112,7 +134,8 @@ def test_a_clause_with_no_digits_is_fine_however_it_is_worded():
     clause = Clause(text="You spent a great deal more than usual, frankly: "
                          "{total}.",
                     slots=(Slot(name="total", type=render.MONEY,
-                                quantity=quantity.SPENDING),))
+                                quantity=quantity.SPENDING,
+                                scope=frozenset({shape_module.WHOLE})),))
     assert clause.written({"total": "USD 40.00"}) == (
         "You spent a great deal more than usual, frankly: USD 40.00.")
 
@@ -166,7 +189,8 @@ def test_a_denial_written_beside_a_figure_cannot_be_authored():
     being — the machine's own gap sentence is what says this, and it is placed
     only where a hole went unfilled."""
     with pytest.raises(BadShape) as raised:
-        _shape(("You spent {total}.", [("total", "money", "spending")]),
+        _shape(("You spent {total}.",
+               [("total", "money", "spending", "whole")]),
                ("I could not establish that figure from the records "
                 "available to me here.", []))
     assert raised.value.problem.repair == HOLE_THE_CLAUSE
@@ -185,8 +209,8 @@ def test_two_holes_in_one_shape_may_not_share_a_name():
     """A binding names one hole. A name used twice would fill two claims at
     once, and the second would be a claim nobody bound."""
     with pytest.raises(BadShape):
-        _shape(("You have {x}.", [("x", "money", "balance")]),
-               ("And {x} besides.", [("x", "money", "balance")]))
+        _shape(("You have {x}.", [("x", "money", "balance", "whole")]),
+               ("And {x} besides.", [("x", "money", "balance", "whole")]))
 
 
 def test_a_shape_of_nothing_is_not_an_answer():
@@ -217,12 +241,14 @@ def test_a_well_formed_shape_reads_back_as_the_structure_it_declares():
         {"text": "Your {which} holds {total}.",
          "slots": [{"name": "which", "type": "account"},
                    {"name": "total", "type": "money",
-                    "quantity": "balance"}]}]})
+                    "quantity": "balance", "scope": ["account"]}]}]})
     assert problem == ""
     assert set(shape.slots) == {"which", "total"}
     assert shape.slots["total"].type == render.MONEY
     assert shape.slots["total"].quantity == quantity.BALANCE
+    assert shape.slots["total"].scope == frozenset({"account"})
     assert shape.slots["which"].quantity == ""
+    assert shape.slots["which"].scope == frozenset()
 
 
 # ----------------------------------------------------- the order, which is it
@@ -281,27 +307,31 @@ def test_a_second_shape_may_only_take_claims_away():
     """Re-shaping, monotone. Results can contradict what a shape assumed, and a
     clause may then be dropped — but a clause written after its data is exactly
     what the order exists to prevent, so nothing may be added or reworded."""
-    first = _shape(("You hold {a}.", [("a", "money", "balance")]),
+    first = _shape(("You hold {a}.", [("a", "money", "balance", "whole")]),
                    ("It covers {g}.", [("g", "period")]),
                    ("As of {d}.", [("d", "date")]))
     assert weakens(first, first)
-    assert weakens(first, _shape(("You hold {a}.", [("a", "money", "balance")])))
+    assert weakens(first, _shape(("You hold {a}.",
+                                 [("a", "money", "balance", "whole")])))
     assert weakens(first, _shape(("It covers {g}.", [("g", "period")]),
                                  ("As of {d}.", [("d", "date")])))
     # Added, reworded, and re-ordered: none of the three.
-    held = ("You hold {a}.", [("a", "money", "balance")])
+    held = ("You hold {a}.", [("a", "money", "balance", "whole")])
     assert not weakens(first, _shape(held, ("And {b} more.",
-                                            [("b", "money", "balance")])))
+                                            [("b", "money", "balance",
+                                              "whole")])))
     assert not weakens(first, _shape(("You hold plenty of {a}.",
-                                      [("a", "money", "balance")])))
+                                      [("a", "money", "balance", "whole")])))
     assert not weakens(first, _shape(("It covers {g}.", [("g", "period")]), held))
 
 
 def test_a_reshape_that_adds_a_claim_is_refused_and_the_turn_goes_on(registry):
     """And end to end: the widening is refused, the shape in force stands, and
     the model is told why rather than the turn dying."""
-    first = _shape(("Your balance is {total}.", [("total", "money", "balance")]))
-    wider = _shape(("Your balance is {total}.", [("total", "money", "balance")]),
+    first = _shape(("Your balance is {total}.",
+                   [("total", "money", "balance", "account")]))
+    wider = _shape(("Your balance is {total}.",
+                   [("total", "money", "balance", "account")]),
                    ("That is unusually high, as of {when}.",
                     [("when", "date")]))
     tries = []
@@ -384,7 +414,8 @@ def test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn(registry):
 
     The clause carrying it is dropped, what could be established still stands,
     and the person is told plainly what was missing."""
-    shape = _shape(("Your balance is {total}.", [("total", "money", "balance")]),
+    shape = _shape(("Your balance is {total}.",
+                   [("total", "money", "balance", "account")]),
                    ("It was last touched on {when}.", [("when", "date")]))
     result = run("balance?",
                  _script(shape, BALANCES,
@@ -400,7 +431,8 @@ def test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn(registry):
 def test_an_answer_whose_every_clause_falls_away_says_so(registry):
     result = run("balance?",
                  _script(_shape(("Your balance is {total}.",
-                                 [("total", "money", "balance")])), BALANCES),
+                                 [("total", "money", "balance",
+                                   "whole")])), BALANCES),
                  registry)
     assert not result.answered and result.refusal == "nothing_established"
 
@@ -410,14 +442,18 @@ def test_a_thing_of_the_wrong_kind_cannot_fill_a_hole(registry):
     currency and a plain number states none, which is the distinction the
     emitters already make, so this is a check over a field the code computes
     rather than over anything anybody wrote."""
-    for hole, reference in (((render.MONEY, "balance"), {"figure": "f2"}),
-                            ((render.COUNT, "count"), {"figure": "f1"}),
+    for hole, reference in (((render.MONEY, "balance", "account"),
+                             {"figure": "f2"}),
+                            ((render.COUNT, "count", "whole"),
+                             {"figure": "f1"}),
                             ((render.DATE,), {"figure": "f1"}),
                             ((render.ACCOUNT,), {"figure": "f1"}),
-                            ((render.MONEY, "balance"), {"entity": "a1"}),
+                            ((render.MONEY, "balance", "account"),
+                             {"entity": "a1"}),
                             ((render.MERCHANT,), {"entity": "a1"}),
                             ((render.PERIOD,), {"date": "2026-01-31"}),
-                            ((render.SUPPOSED, "balance"), {"figure": "f1"})):
+                            ((render.SUPPOSED, "balance"),
+                             {"figure": "f1"})):
         result = run("?", _script(_shape(("It is {x}.", [("x", *hole)])),
                                   BALANCES,
                                   bind=lambda r, b=reference: {"x": b}),
@@ -437,7 +473,8 @@ def test_a_caveat_a_result_wrote_about_its_own_number_cannot_be_dropped(registry
     have to be declared — leaving the saying of it to the shape was leaving it
     to a guess. The run places what its stated figures owe."""
     spending = ("query_ledger", {"entity": "aggregate", "metric": "spending"})
-    silent = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    silent = _shape(("You spent {total}.",
+                    [("total", "money", "spending", "whole")]))
     result = run("what did I spend?",
                  _script(silent, spending,
                          bind=lambda r: {"total": {"figure": _spending(r)}}),
@@ -480,11 +517,14 @@ def test_a_reference_the_hole_can_only_read_one_way_is_read_that_way(registry):
     A date hole holds a day and nothing else, so a delivery naming the day
     without naming it AS a day has still said which day it means. What changed
     is the shape of the reference, never what it has to answer for."""
-    shape = _shape(("As of {when}, that is where it stood.", [("when", "date")]))
+    shape = _shape(("As of {when}, it stood at {total}.",
+                    [("when", "date"),
+                     ("total", "money", "balance", "account")]))
     result = run("when?",
                  _script(shape, BALANCES,
                          # The day, bare: a value where the named form was wanted.
-                         bind=lambda r: {"when": "2026-01-31"}),
+                         bind=lambda r: {"when": "2026-01-31",
+                                         "total": {"figure": "f1"}}),
                  registry)
     assert result.answered, result.detail
     assert result.text.startswith("As of ")
@@ -511,7 +551,7 @@ def test_a_magnitude_hole_still_needs_to_say_which_kind_of_thing_fills_it(regist
     — inferring one would let a number the person never said be spoken as a
     figure, or the reverse."""
     shape = _shape(("Your balance is {total}.",
-                    [("total", "money", "balance")]))
+                    [("total", "money", "balance", "account")]))
     result = run("balance?",
                  _script(shape, BALANCES, bind=lambda r: {"total": "f1"}),
                  registry)
@@ -521,9 +561,11 @@ def test_a_magnitude_hole_still_needs_to_say_which_kind_of_thing_fills_it(regist
 def test_a_caveat_behind_a_figure_no_clause_states_is_not_owed(registry):
     """What survives is what asserts, so what survives is what answers for its
     caveats. A clause that fell away states nothing and owes nothing."""
-    shape = _shape(("Your balance is {held}.", [("held", "money", "balance")]),
+    shape = _shape(("Your balance is {held}.",
+                   [("held", "money", "balance", "account")]),
                    ("You spent {spent} on {when}.",
-                    [("spent", "money", "spending"), ("when", "date")]))
+                    [("spent", "money", "spending", "whole"),
+                     ("when", "date")]))
     result = run(
         "what did I spend?",
         _script(shape, BALANCES,
@@ -551,7 +593,8 @@ def test_a_gross_sum_of_postings_cannot_be_spoken_as_what_was_spent(registry):
     it is not what they spent — and a sentence that says spending gets the
     figure that measures spending, or it gets nothing."""
     summary = ("query_ledger", {"entity": "transactions"})
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    shape = _shape(("You spent {total}.",
+                   [("total", "money", "spending", "whole")]))
     result = run(
         "how much did I spend?",
         _script(shape, summary,
@@ -569,7 +612,7 @@ def test_a_count_of_things_cannot_be_spoken_as_a_proportion(registry):
     whole. Three documents is three of something; it is not three per
     hundred of anything, and no property of the number says so."""
     shape = _shape(("That is {share} of your spending.",
-                    [("share", "rate", "ratio")]))
+                    [("share", "rate", "ratio", "whole")]))
     result = run(
         "how much of my spending is that?",
         _script(shape, ("check_completeness", {}),
@@ -585,7 +628,8 @@ def test_the_figure_the_hole_asked_about_is_spoken(registry):
     everything: the figure that measures what the sentence is about goes
     through, and is written as the amount it is."""
     spending = ("query_ledger", {"entity": "aggregate", "metric": "spending"})
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    shape = _shape(("You spent {total}.",
+                   [("total", "money", "spending", "whole")]))
     result = run(
         "how much did I spend?",
         _script(shape, spending,
@@ -645,9 +689,9 @@ def _both_ways(first, second, read, bind):
 
 
 OWES = ("You owe {debt} on {which}.",
-        [("debt", "money", "owed"), ("which", "account")])
+        [("debt", "money", "owed", "account"), ("which", "account")])
 HOLDS = ("Your {holding} balance is {amount}.",
-         [("holding", "account"), ("amount", "money", "balance")])
+         [("holding", "account"), ("amount", "money", "balance", "account")])
 
 
 def _the_card(results):
@@ -722,7 +766,8 @@ def test_a_magnitude_nothing_measured_can_fill_no_hole(registry):
     meaning of. There is no hole it belongs in, because there is no hole that
     can ask for "whatever this is" — which is the entry the vocabulary
     deliberately does not have."""
-    shape = _shape(("That comes to {total}.", [("total", "count", "count")]))
+    shape = _shape(("That comes to {total}.",
+                   [("total", "count", "count", "whole")]))
     result = run("how many?",
                  _script(shape,
                          ("compute", {"expression": "12 + 30", "inputs": {}}),
@@ -757,11 +802,272 @@ def test_a_hole_holding_no_magnitude_may_not_claim_one():
     assert shape is None and problem
 
 
-def _hole(kind, measures=""):
-    """One clause holding one hole of `kind`, as a model sends it."""
+# ------------------------------------- what set a number is a number over
+
+
+def test_a_hole_holding_a_magnitude_must_say_what_set_it_is_over():
+    """The second declaration, refused every way the first one is.
+
+    A hole that says what it measures and not what set it measured it over is
+    one a subset can be put into and read as a total, which is the sentence
+    this exists to stop. An empty set is that same silence written out. A set
+    outside the vocabulary is refused as the vocabulary's own list; a set on a
+    hole holding nothing to measure is a declaration about a number that is not
+    there. Each names its own repair, because the change each asks for is
+    different."""
+    from viva.tools.shape import (CHOOSE_THE_SCOPE, DROP_THE_SCOPE,
+                                  NAME_THE_SCOPE, WORD_THE_SCOPE)
+
+    for hole, repair in (
+            ({"name": "t", "type": "money", "quantity": "balance"},
+             NAME_THE_SCOPE),
+            ({"name": "t", "type": "count", "quantity": "count"},
+             NAME_THE_SCOPE),
+            ({"name": "t", "type": "rate", "quantity": "ratio"},
+             NAME_THE_SCOPE),
+            ({"name": "t", "type": "money", "quantity": "balance",
+              "scope": []}, NAME_THE_SCOPE),
+            ({"name": "t", "type": "money", "quantity": "balance",
+              "scope": ["instrument"]}, CHOOSE_THE_SCOPE),
+            ({"name": "t", "type": "money", "quantity": "balance",
+              "scope": ["merchant", "instrument"]}, CHOOSE_THE_SCOPE),
+            # The whole of what a quantity ranges over is not an axis a
+            # sentence narrows on, so it is never one of several.
+            ({"name": "t", "type": "money", "quantity": "balance",
+              "scope": ["whole", "merchant"]}, CHOOSE_THE_SCOPE),
+            ({"name": "t", "type": "money", "quantity": "balance",
+              "scope": 7}, WORD_THE_SCOPE),
+            # A scope is a list of axes, so one word standing alone is not one.
+            ({"name": "t", "type": "money", "quantity": "balance",
+              "scope": "merchant"}, WORD_THE_SCOPE),
+            ({"name": "t", "type": "money", "quantity": "balance",
+              "scope": [7]}, WORD_THE_SCOPE),
+            ({"name": "t", "type": "account", "scope": ["account"]},
+             DROP_THE_SCOPE)):
+        shape, problem = read_shape(
+            {"clauses": [{"text": "It is {t}.", "slots": [hole]}]})
+        assert shape is None, hole
+        assert problem.repair == repair, (hole, problem)
+
+
+def test_a_value_the_person_supposed_declares_no_set_it_was_taken_over():
+    """A supposition is not a measurement, so it is refused a scope — every
+    one of them, including the whole.
+
+    The person may suppose about anything they can name, so the hole says what
+    its number is of and that declaration stands. What it cannot say is what
+    set the number was taken over, because nobody took it over one: nothing
+    reads such a declaration, nothing could, and a recorded shape carrying it
+    would mean nothing forever. Refused at the shape, before a read has run,
+    and told to take the field out."""
+    from viva.tools.shape import DROP_THE_SCOPE
+
+    for over in shape_module.SCOPES:
+        shape, problem = read_shape({"clauses": [
+            {"text": "The {trip} you named.",
+             "slots": [{"name": "trip", "type": render.SUPPOSED,
+                        "quantity": "spending", "scope": [over]}]}]})
+        assert shape is None, over
+        assert problem.repair == DROP_THE_SCOPE, (over, problem)
+
+    # And the hole itself is untouched: what a supposed value is of is still
+    # asked for, and still refused when it is not one of that kind's own.
+    assert read_shape(_hole(render.SUPPOSED, "spending"))[0] is not None
+    assert read_shape(_hole(render.SUPPOSED))[0] is None
+
+
+def test_the_sets_a_hole_may_declare_are_the_ones_a_figure_can_be_taken_over():
+    """One vocabulary, read from where the boundaries declare into rather than
+    listed twice. A way of narrowing a set that a hole could not ask about
+    would be a scope no sentence could be written for; one a hole could ask for
+    and no figure could declare would be a hole nothing can ever fill."""
+    from viva.tools.envelope import SELECTED_KINDS
+
+    assert set(shape_module.SCOPES) == set(SELECTED_KINDS) | {"whole"}
+    assert len(shape_module.SCOPES) == len(SELECTED_KINDS) + 1
+
+
+def test_the_form_says_a_magnitude_hole_must_declare_the_set_it_is_over():
+    """A field a model may leave out is a check a model can switch off. The
+    form requires the scope on every alternative that holds a magnitude and
+    offers it on none of the others, and the enum it offers is the vocabulary
+    the check reads back.
+
+    It is offered as a set of axes, never one, and each axis at most once: a
+    sentence narrows on as many as it names, and one named twice is one claim
+    written twice."""
+    offered = _offered_holes()
+    for kind, form in offered.items():
+        carries = bool(render.magnitudes_of(kind))
+        field = form["properties"].get("scope") or {}
+        told = field.get("items", {}).get("enum")
+        assert bool(told) == carries, kind
+        assert ("scope" in form["required"]) == carries, kind
+        if carries:
+            assert field["type"] == "array", kind
+            assert field["minItems"] == 1 and field["uniqueItems"], kind
+            assert set(told) == set(shape_module.SCOPES), kind
+            # And a hole of that kind with no scope is refused, so the form and
+            # the check describe one rule rather than two.
+            first = shape_module.quantities_of(kind)[0]
+            assert read_shape(_hole(kind, first))[0]
+            unsaid = {"clauses": [{"text": "It is {it}.", "slots": [
+                {"name": "it", "type": kind, "quantity": first}]}]}
+            assert read_shape(unsaid)[0] is None
+
+
+def test_the_shape_prompt_teaches_every_set_a_hole_can_declare():
+    """A set the code takes and the instructions never mention is one no model
+    will declare; one the instructions offer and the code refuses is a shape
+    that will always be sent back."""
+    from vivacore import promptstore
+
+    from viva.speak import SHAPE_VERSION
+    from viva.tools.registry import PROMPTS
+
+    taught = promptstore.load(PROMPTS, SHAPE_VERSION)
+    for over in shape_module.SCOPES:
+        assert f"`{over}`" in taught, over
+
+
+def test_a_total_of_everything_cannot_be_spoken_as_one_counterpartys(registry):
+    """A sentence about what was spent at one counterparty, bound to the whole
+    ledger's total, is a real number under a description it does not answer —
+    and the turn ends rather than saying it.
+
+    Nothing here reads the clause's words. The hole says the sentence is about
+    one counterparty; the figure says it was taken over everything; two
+    declarations, both written by code, and they disagree."""
+    result = run("what did I spend there?",
+                 _script(_shape(("You spent {total} there.",
+                                 [("total", "money", "spending",
+                                   "merchant")])),
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending"}),
+                         bind=lambda r: {"total": {"figure": _named(
+                             r, "total spending")}}),
+                 registry)
+    assert not result.answered
+    assert result.refusal == "wrong_scope", result.detail
+    assert result.text == moment("refusal_wrong_scope")
+
+
+def test_a_total_of_one_counterparty_cannot_be_spoken_as_everything(registry):
+    """The same check the other way round, which is the half a vocabulary of
+    kinds alone would miss. A read narrowed to one counterparty returns that
+    counterparty's total; a sentence claiming to be about everything spent is
+    refused it."""
+    result = run("what did I spend in total?",
+                 _script(_shape(("You spent {total} in all.",
+                                 [("total", "money", "spending", "whole")])),
+                         _AT_ONE_COUNTERPARTY,
+                         bind=lambda r: {"total": {"figure": _named(
+                             r, "total spending")}}),
+                 registry)
+    assert not result.answered
+    assert result.refusal == "wrong_scope", result.detail
+
+
+def test_what_was_spent_at_one_counterparty_is_still_spoken(registry):
+    """And the answer that must survive the check: the most-asked narrowed
+    question there is.
+
+    A read narrowed one way returned one slice, and the total over it is the
+    whole of that slice — so it says which slice it is, and a sentence about
+    one counterparty has a figure that is the whole of what it asks about."""
+    result = run("what did I spend there?",
+                 _script(_shape(("You spent {total} there.",
+                                 [("total", "money", "spending",
+                                   "merchant")])),
+                         _AT_ONE_COUNTERPARTY,
+                         bind=lambda r: {"total": {"figure": _named(
+                             r, "total spending")}}),
+                 registry)
+    assert result.answered, result.detail
+    assert result.text.startswith(
+        f"You spent {render.money(Decimal('400.00'), 'USD')} there.")
+
+
+_AT_ONE_COUNTERPARTY_IN_ONE_SPAN = (
+    "query_ledger",
+    {"entity": "aggregate", "metric": "spending",
+     "filters": {"merchant": "greenfield market",
+                 "window": {"from": "2026-01-01", "to": "2026-01-31"}}})
+
+
+def test_what_was_spent_at_one_counterparty_inside_one_span_is_spoken(registry):
+    """The most-asked narrowed money question there is, and it narrows on two
+    axes rather than one.
+
+    A read filtered to one counterparty and one window returned the overlap of
+    the two, and the total over it is the whole of that overlap — so the figure
+    says it is both, and a sentence about what was spent there between those
+    two days has a figure that is the whole of what it asks about. A rule that
+    let a figure name only one axis would refuse this."""
+    result = run("what did I spend there between those days?",
+                 _script(_shape(("You spent {total} there in that stretch.",
+                                 [("total", "money", "spending",
+                                   ("merchant", "period"))])),
+                         _AT_ONE_COUNTERPARTY_IN_ONE_SPAN,
+                         bind=lambda r: {"total": {"figure": _named(
+                             r, "total spending")}}),
+                 registry)
+    assert result.answered, result.detail
+    assert result.text.startswith(
+        f"You spent {render.money(Decimal('400.00'), 'USD')} there")
+
+
+def test_a_counterpartys_total_in_one_span_is_not_that_counterpartys_total(
+        registry):
+    """And the strictness that answer is bought with, on the same figure.
+
+    The figure above is the whole of one counterparty inside one span. A
+    sentence about what was spent at that counterparty — with no stretch in it
+    — is a claim about every day there has been, and this number is not that.
+    It is refused, though the number is real and the counterparty is right."""
+    result = run("what did I spend there?",
+                 _script(_shape(("You spent {total} there.",
+                                 [("total", "money", "spending",
+                                   "merchant")])),
+                         _AT_ONE_COUNTERPARTY_IN_ONE_SPAN,
+                         bind=lambda r: {"total": {"figure": _named(
+                             r, "total spending")}}),
+                 registry)
+    assert not result.answered
+    assert result.refusal == "wrong_scope", result.detail
+    assert result.text == moment("refusal_wrong_scope")
+
+
+def test_a_figure_that_states_no_set_fills_no_hole_asking_for_one():
+    """Silence and "this is everything" are different sentences. A figure
+    carrying no boundary has had nothing said about what set it was taken
+    over, so it fills neither a hole asking for the whole nor one asking for a
+    slice — a default either way would put a claim on a figure nobody made one
+    about."""
+    from viva.tools import runner
+    from viva.tools.envelope import figure
+
+    unsaid = figure("1", "a thing", quantity=quantity.COUNT, record_ids=["r"])
+    unsaid["id"] = "f1"
+    for over in shape_module.SCOPES:
+        slot = Slot("many", render.COUNT, quantity.COUNT, over)
+        written, tag, detail = runner._figure_bound(slot, unsaid, "en-US")
+        assert written is None, over
+        assert tag == "wrong_scope", (over, detail)
+
+
+def _hole(kind, measures="", over=""):
+    """One clause holding one hole of `kind`, as a model sends it.
+
+    A hole holding a magnitude carries the set it is over as well as what it
+    measures, so a pairing refused for want of the second declaration is not
+    read as a pairing the check rejects. A hole of a kind that measures nothing
+    over a set carries no scope, for the same reason the other way round."""
     slot = {"name": "it", "type": kind}
     if measures:
         slot["quantity"] = measures
+        if render.magnitudes_of(kind):
+            slot["scope"] = list(over) if over else [shape_module.WHOLE]
     return {"clauses": [{"text": "It is {it}.", "slots": [slot]}]}
 
 
@@ -1110,7 +1416,8 @@ def test_the_shape_and_its_bindings_are_kept(registry):
     """C-iii, and what keeps C-v open: what was said is recorded as the
     structure it was, so a sentence can be shown standing on what it stood on
     and the shapes a real conversation needs can accumulate."""
-    shape = _shape(("Your balance is {total}.", [("total", "money", "balance")]))
+    shape = _shape(("Your balance is {total}.",
+                   [("total", "money", "balance", "account")]))
     result = run("balance?",
                  _script(shape, BALANCES,
                          bind=lambda r: {"total": {"figure": "f1"}}),
@@ -1178,7 +1485,7 @@ def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(several):
     read — and the run places the boundary anyway, out of what the read
     declared. Nothing here asks a planner to remember."""
     shape = _shape(("You currently owe {total}.",
-                    [("total", "money", "owed")]))
+                    [("total", "money", "owed", "account")]))
     result = run("what do I owe?",
                  _script(shape, ("query_ledger", {"entity": "balances"}),
                          bind=lambda r: {
@@ -1190,6 +1497,25 @@ def test_a_figure_over_part_of_a_set_says_so_whatever_the_shape_said(several):
                   held=render.count(2)) in result.text
 
 
+def test_a_balance_over_one_of_several_accounts_says_which_one(several):
+    """One account's balance says which account it is, not only that it is one
+    of several. Nothing narrowed this read, so which one it is comes from the
+    figure's own slice rather than from what the read was asked for."""
+    shape = _shape(("You hold {total}.",
+                   [("total", "money", "balance", "account")]))
+    result = run("how much have I got?",
+                 _script(shape, ("query_ledger", {"entity": "balances"}),
+                         bind=lambda r: {
+                             "total": {"figure": _figure_id(r, "Everyday "
+                                                            "Checking")}}),
+                 several)
+    assert result.answered, result.detail
+    assert moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[])) in result.text
+
+
 def test_a_figure_whose_set_is_everything_it_measures_places_nothing(registry):
     """The statement fires only where there is a set worth stating. This vault
     holds one account and the read was asked for all of them, so its balance is
@@ -1197,7 +1523,7 @@ def test_a_figure_whose_set_is_everything_it_measures_places_nothing(registry):
     and nothing else."""
     result = run("balance?",
                  _script(_shape(("Your balance is {total}.",
-                                 [("total", "money", "balance")])),
+                                 [("total", "money", "balance", "whole")])),
                          ("query_ledger", {"entity": "balances"}),
                          bind=lambda r: {"total": {"figure": "f1"}}),
                  registry)
@@ -1215,7 +1541,7 @@ def test_a_balance_read_narrowed_to_one_account_says_which_account(registry):
     a figure covering everything cannot also name what narrowed it."""
     result = run("balance?",
                  _script(_shape(("Your balance is {total}.",
-                                 [("total", "money", "balance")])),
+                                 [("total", "money", "balance", "account")])),
                          BALANCES,
                          bind=lambda r: {"total": {"figure": "f1"}}),
                  registry)
@@ -1233,7 +1559,8 @@ def test_an_incomplete_total_cannot_be_stated_without_its_gap(several):
 
     This vault holds both: a loan a ruling brought into being and no statement
     has ever measured, and a card held with no statement at all."""
-    shape = _shape(("Your net worth is {n}.", [("n", "money", "net_worth")]))
+    shape = _shape(("Your net worth is {n}.",
+                   [("n", "money", "net_worth", "currency")]))
     result = run("what am I worth?",
                  _script(shape,
                          ("query_ledger", {"entity": "aggregate",
@@ -1262,7 +1589,8 @@ def test_a_boundary_is_said_once_however_many_figures_say_it(several):
     """The same discipline a caveat is held to. Two figures over the same set
     are one boundary between them, not two sentences a person reads twice."""
     shape = _shape(("You hold {a} and owe {b}.",
-                    [("a", "money", "balance"), ("b", "money", "owed")]))
+                    [("a", "money", "balance", "account"),
+                     ("b", "money", "owed", "account")]))
     result = run("where do I stand?",
                  _script(shape, ("query_ledger", {"entity": "balances"}),
                          bind=lambda r: {
@@ -1279,7 +1607,8 @@ def test_a_figures_boundary_comes_before_what_it_does_not_cover(several):
     """A boundary says what the claim is a claim about; a limit says what that
     claim does not reach. Read the other way round, the limit is about a set
     the person has not been told the shape of yet."""
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    shape = _shape(("You spent {total}.",
+                   [("total", "money", "spending", "category")]))
     result = run("what did I spend on transport?",
                  _script(shape,
                          ("query_ledger", {"entity": "aggregate",
@@ -1310,7 +1639,7 @@ def test_an_answer_states_how_well_the_figures_it_stated_are_stood_behind(
     in which only that were true would be a run in which nobody was told."""
     result = run("balance?",
                  _script(_shape(("Your balance is {total}.",
-                                 [("total", "money", "balance")])),
+                                 [("total", "money", "balance", "account")])),
                          BALANCES,
                          bind=lambda r: {"total": {"figure": "f1"}}),
                  registry)
@@ -1339,7 +1668,8 @@ def test_a_grade_is_said_after_the_extent_of_a_claim_and_before_its_limits(
     """Scope, then strength, then what it does not cover. A word about how well
     a figure is stood behind, heard before the extent of the claim has been
     stated, invites reading it as covering more than it does."""
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]))
+    shape = _shape(("You spent {total}.",
+                   [("total", "money", "spending", "category")]))
     result = run("what did I spend on transport?",
                  _script(shape,
                          ("query_ledger", {"entity": "aggregate",
@@ -1366,7 +1696,7 @@ def test_an_answer_stating_nothing_graded_says_nothing_about_being_stood_behind(
 
     result = run("how much have you got on file?",
                  _script(_shape(("I am holding {many} document(s).",
-                                 [("many", "count", "count")])),
+                                 [("many", "count", "count", "whole")])),
                          ("check_completeness", {}),
                          bind=lambda r: {"many": {"figure": "f1"}}),
                  registry)
@@ -1384,7 +1714,7 @@ def test_a_refusal_says_nothing_about_how_well_anything_is_stood_behind(
 
     result = run("balance?",
                  _script(_shape(("Your balance is {total}.",
-                                 [("total", "money", "balance")])),
+                                 [("total", "money", "balance", "account")])),
                          BALANCES,
                          bind=lambda r: {"total": {"figure": "f99"}}),
                  registry)
@@ -1397,7 +1727,8 @@ def test_a_figure_stated_as_a_number_is_graded_though_a_block_also_holds_it():
     """The other half of the same rule. A figure named in a sentence of its own
     has said nothing about how well it is stood behind, so the answer says it —
     however many blocks that figure also appears in."""
-    shape = _shape(("You spent {slice_}.", [("slice_", "money", "spending")]))
+    shape = _shape(("You spent {slice_}.",
+                   [("slice_", "money", "spending", "subcategory")]))
     result = run("what did I spend on that?",
                  _script(shape, BY_SUBCATEGORY,
                          bind=lambda r: {"slice_": {"figure": _figure_id(
@@ -1447,8 +1778,9 @@ def test_a_boundary_is_not_said_three_times_for_one_set_of_gaps():
                                  Provenance("doc-jan", 6, "r")),
     ]))
     shape = _shape(("Net {n}, held {a}, owed {l}.",
-                    [("n", "money", "net_worth"), ("a", "money", "balance"),
-                     ("l", "money", "owed")]))
+                    [("n", "money", "net_worth", "currency"),
+                     ("a", "money", "balance", "currency"),
+                     ("l", "money", "owed", "currency")]))
     result = run("where do I stand?",
                  _script(shape,
                          ("query_ledger", {"entity": "aggregate",
@@ -1496,14 +1828,16 @@ def test_a_gap_no_account_can_name_is_still_said():
     registry = default_registry(LedgerProjection(evs))
     result = run("what am I worth?",
                  _script(_shape(("Your net worth is {n}.",
-                                 [("n", "money", "net_worth")])),
+                                 [("n", "money", "net_worth", "currency")])),
                          ("query_ledger", {"entity": "aggregate",
                                            "metric": "net_worth"}),
                          bind=lambda r: {"n": {"figure": _figure_id(r, "net in")}}),
                  registry)
     assert result.answered, result.detail
     stated = next(f for f in result.figures if f["what"].startswith("net in"))
-    assert stated["boundary"] == {"whole": False, "unposted": 1}
+    assert stated["boundary"] == {"whole": False, "unposted": 1,
+                                  "cut": [{"kind": "currency",
+                                          "value": "USD"}]}
     assert moment("boundary_unposted", count=render.count(1)) in result.text
 
 
@@ -1641,8 +1975,9 @@ def test_a_list_of_one_is_still_a_list():
     from viva.tools.envelope import BY_SUBCATEGORY as CUT
 
     key, slot, _writes = SELECTED_TERMS[CUT]
-    assert moment(key, **{slot: render.label(
-        stated["boundary"]["cut"]["value"])}) not in result.text
+    (named,) = stated["boundary"]["cut"]
+    assert moment(key, **{slot: render.label(named["value"])}) \
+        not in result.text
 
 
 def test_a_person_sees_every_row_the_read_named():
@@ -1733,7 +2068,7 @@ def _mixed_strength():
 _BLOCK_AND_A_NUMBER = (("Here is what you spent, by sub category:{breakdown}",
                         [("breakdown", render.ROWS)]),
                        ("Your balance is {total}.",
-                        [("total", "money", "balance")]))
+                        [("total", "money", "balance", "account")]))
 
 
 def _bind_the_read_and_the_balance(results):
@@ -1821,7 +2156,7 @@ def test_a_row_names_its_own_slice_and_no_scope_clause_repeats_it():
     assert result.answered, result.detail
     key, slot, _writes = SELECTED_TERMS[CUT]
     for figure in result.figures:
-        cut = figure["boundary"]["cut"]
+        (cut,) = figure["boundary"]["cut"]
         assert cut["kind"] == CUT
         # Named in the block, once, as the line it is.
         assert result.text.count(f"{cut['value']} — ") == 1
@@ -1837,7 +2172,8 @@ def test_the_slice_a_figure_covers_is_still_said_where_the_figure_is_a_number():
     from viva.tools.runner import SELECTED_TERMS
     from viva.tools.envelope import BY_SUBCATEGORY as CUT
 
-    shape = _shape(("You spent {slice_}.", [("slice_", "money", "spending")]))
+    shape = _shape(("You spent {slice_}.",
+                   [("slice_", "money", "spending", "subcategory")]))
     registry = _wide(4)
     result = run("what did I spend on that?",
                  _script(shape, BY_SUBCATEGORY,
@@ -1869,14 +2205,172 @@ def test_every_row_shown_is_cited_and_answers_for_its_records():
 
 
 def test_a_read_that_named_no_slice_has_no_rows_in_it():
-    """A block is one line per figure taken over a named slice. A read that
-    took none has nothing to write a line per, and binding it is a delivery
-    naming the wrong sort of read rather than a hole nothing could fill."""
-    result = run("list my accounts",
-                 _script(_shape(*_LIST), BALANCES, bind=_bind_the_read),
+    """A block is one line per figure taken over a named slice. A read whose
+    figures are each over the whole of what they count named none, so there is
+    nothing to write a line per, and binding it is a delivery naming the wrong
+    sort of read rather than a hole nothing could fill."""
+    result = run("list what you are holding",
+                 _script(_shape(*_LIST), ("check_completeness", {}),
+                         bind=_bind_the_read),
                  _wide(4))
     assert not result.answered
     assert result.refusal == "wrong_kind", result.detail
+
+
+def test_a_narrowed_reads_own_total_is_not_a_line_of_itself(registry):
+    """A read narrowed one way and grouped another has two sorts of figure that
+    each name a slice, and only one of them is a row.
+
+    The groups are slices of what the read returned. The total is the whole of
+    what it returned, and the slice it names is the narrowing itself — which
+    the block already states once, above the lines. So the block is the groups,
+    the total is not among them, and neither the count of lines nor what the
+    answer stands on includes it."""
+    result = run("what did I spend there, by category?",
+                 _script(_shape(("Here is what you spent, by category:"
+                                 "{breakdown}", [("breakdown", render.ROWS)])),
+                         _AT_ONE_COUNTERPARTY, bind=_bind_the_read),
+                 registry)
+    assert result.answered, result.detail
+    assert len(_lines_of(result.text)) == 1, result.text
+    assert [f["what"] for f in result.figures] == [
+        "spending — category 'Uncategorized'"]
+
+
+def test_a_read_grouped_by_what_it_was_filtered_on_has_no_list_in_it(registry):
+    """A read narrowed on the same axis it groups by has one group, and that
+    group is the narrowing.
+
+    Written as a block it would be a single line naming the bucket the person
+    put in their own filter, under an introduction promising a breakdown, with
+    the same narrowing stated again beside it. It is the whole of what came
+    back rather than a part of it, so the block has nothing to write a line per
+    and the answer refuses instead of listing one thing.
+
+    The precondition is asserted from the read: every figure it emits is cut
+    by the read's own narrowing and by nothing further, so the refusal is on
+    that ground rather than on a read that named no slice at all."""
+    narrowed = ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                                 "group_by": "category",
+                                 "filters": {"category": "Uncategorized",
+                                             "merchant": "greenfield market"}})
+    read = registry.call(*narrowed)
+    assert read.ok, read.text
+    cuts = [f["boundary"]["cut"] for f in read.figures
+            if f["boundary"].get("cut")]
+    assert cuts, "the read named no slice, so this proves nothing"
+    for cut in cuts:
+        assert cut == read.figures[0]["boundary"]["selected"], cut
+
+    result = run("what did I spend on that there, by category?",
+                 _script(_shape(("Here is what you spent, by category:"
+                                 "{breakdown}", [("breakdown", render.ROWS)])),
+                         narrowed, bind=_bind_the_read),
+                 registry)
+    assert not result.answered
+    assert result.refusal == "wrong_kind", result.detail
+
+
+def test_a_read_narrowed_to_one_account_is_still_a_list_of_its_months(registry):
+    """And the answer that shape has to keep. A read narrowed to one account
+    cuts the movements by month as well, and the months are slices of what came
+    back rather than the narrowing itself — so they are the lines.
+
+    What the account's own total would have been is not among them: the read
+    was narrowed to that account, so it holds no list of accounts. Every line
+    is true of the stated set, and what that set is reaches the person as the
+    disclosure the machine places under the block."""
+    from viva.tools import runner
+
+    result = run("what moved on that account?",
+                 _script(_shape(("Here is how the month went:{breakdown}",
+                                 [("breakdown", render.ROWS)])),
+                         ("query_ledger", {"entity": "transactions",
+                                           "filters": {"account": "chk"}}),
+                         bind=_bind_the_read),
+                 registry)
+    assert result.answered, result.detail
+    lines = _lines_of(result.text)
+    assert lines, result.text
+    for line in lines:
+        assert "Everyday Checking" not in line, line
+    for fig in result.figures:
+        # Cut by what narrowed the read and by the month besides, so the month
+        # is the one axis past the narrowing and is what the line is named by.
+        assert {c["kind"] for c in fig["boundary"]["cut"]} == {"account",
+                                                              "period"}
+        assert runner._line_of(fig)["kind"] == "period", fig["what"]
+    assert moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[])) in result.text
+
+
+def test_a_month_of_a_windowed_read_declares_only_the_days_it_covers(registry):
+    """The stated-figure path of the clipped month.
+
+    A read asked for part of a month still groups by month, and the group's own
+    calendar days are not what its figure was taken over: money measured from
+    the 3rd onward, declared as the month, claims the first two days as well.
+    Both statements are the read's own — the month it grouped by and the window
+    it was asked for — so the slice is where they meet.
+
+    A two-ended window hides this everywhere else: the month's edges collapse
+    onto the read's own period axis, so the figure is no line of a block and
+    the falsehood reaches a person only here, as the sentence saying what the
+    number covers."""
+    asked = ("query_ledger", {"entity": "transactions",
+                              "filters": {"window": {"from": "2026-01-03",
+                                                     "to": "2026-02-15"}}})
+    result = run("what moved in that month?",
+                 _script(_shape(("In that month, {moved} went through.",
+                                 [("moved", "money", "net_movement",
+                                   "period")])),
+                         asked,
+                         bind=lambda r: {"moved": {
+                             "figure": _figure_id(r, "net movement in")}}),
+                 registry)
+    assert result.answered, result.detail
+    # What the figure covers, said as the days it was taken over: the month
+    # narrowed to the window, never the month's own first day.
+    assert moment("boundary_selected_period",
+                  period=render.period("2026-01-03",
+                                       "2026-01-31")) in result.text
+    assert "2026-01-01" not in result.text, result.text
+    # And why this is the only path it reaches a person on here: a two-ended
+    # window is the read's own period axis, so the month replaces it in the cut
+    # and the figure is no line of a block.
+    from viva.tools import runner
+
+    assert runner._line_of(result.figures[0]) is None, result.figures[0]
+
+
+def test_a_month_row_of_a_one_ended_window_is_named_by_the_days_it_covers(
+        registry):
+    """The rows path of the same clipped month, which the two-ended window
+    hides.
+
+    A `since` is a different axis from a period, so a month group of a read
+    given one is cut by the read's narrowing and one axis more — which is what
+    makes it a line — and the month reaches a person as that line's own name.
+    Named by the calendar month it would tell them a span the figure was not
+    taken over; named by where the month and the window meet it tells them what
+    was measured."""
+    asked = ("query_ledger", {"entity": "transactions",
+                              "filters": {"account": "chk",
+                                          "window": {"from": "2026-01-03"}}})
+    result = run("how did the month go?",
+                 _script(_shape(("Here is how the month went:{breakdown}",
+                                 [("breakdown", render.ROWS)])),
+                         asked, bind=_bind_the_read),
+                 registry)
+    assert result.answered, result.detail
+    lines = _lines_of(result.text)
+    assert lines, result.text
+    for line in lines:
+        assert line.startswith(str(render.period("2026-01-03", "2026-01-31"))), (
+            line)
+    assert "2026-01-01" not in result.text, result.text
 
 
 def test_a_read_that_cuts_two_ways_at_once_has_no_list_in_it():
@@ -1894,6 +2388,103 @@ def test_a_read_that_cuts_two_ways_at_once_has_no_list_in_it():
     assert result.refusal == "wrong_kind", result.detail
 
 
+# One clause introducing a list of what is held, so a block of balances or of
+# holdings is asked for in words that fit it.
+_PER_ACCOUNT_LIST = (("Here is what you are holding:{breakdown}",
+                      [("breakdown", render.ROWS)]),)
+
+
+def _lines_of(text: str) -> list:
+    """The lines of a block whose rows are named for accounts and instruments,
+    which is every line written as a name against a magnitude."""
+    return [line for line in text.splitlines() if " — " in line]
+
+
+def test_a_balance_per_account_is_a_block_that_makes_no_claim_of_its_own(
+        several):
+    """The balances read names one slice per figure, so it fills a block: one
+    line per account, each written as the account it is.
+
+    How much of what is held one of those figures covers is not said under the
+    block. Said per line it would be one sentence under every line, all of them
+    the same; said once for the block it would read as a claim about the
+    answer, and the answer covered every account it listed. What says which
+    account a line is is the line's own name."""
+    result = run("list what I am holding",
+                 _script(_shape(*_PER_ACCOUNT_LIST),
+                         ("query_ledger", {"entity": "balances"}),
+                         bind=_bind_the_read),
+                 several)
+    assert result.answered, result.detail
+    assert len(_lines_of(result.text)) == 2, result.text
+    assert len(result.figures) == 2
+    for fig in result.figures:
+        assert [c["kind"] for c in fig["boundary"]["cut"]] == ["account"]
+    assert moment("boundary_accounts", counted=render.count(1),
+                  held=render.count(2)) not in result.text
+
+
+def _two_holdings_in_one_account():
+    """One investment account holding two instruments, so a read of it comes
+    back with two figures inside one account. Every value here is
+    invented."""
+    from viva.ledger.events import position_observed
+    p = Provenance("doc-stat", 1, "r")
+    return [
+        account_opened("brk", "investment", "Brokerage", "USD", "2026-01-01"),
+        document_captured("doc-stat", "stat.pdf", 100, "bank_statement", 0.9,
+                          "2026-02-01"),
+        position_observed("brk", "ALPHA FUND", "10", "1500.00", "USD",
+                          "2026-01-31", cost_basis="1200.00", provenance=p),
+        position_observed("brk", "BETA FUND", "5", "500.00", "USD",
+                          "2026-01-31", cost_basis="400.00", provenance=p),
+    ]
+
+
+def test_a_holding_is_in_an_account_rather_than_a_slice_of_one():
+    """A balance is *of* its account and names that account as the slice it
+    is. A holding is one of several things held *in* an account, and nothing a
+    set may be narrowed by names an instrument — so a per-holding figure names
+    no slice, and a block asked of that read refuses on the same ground as any
+    other read that named none: there is nothing in it to write one line per.
+
+    What follows from that, now that a sentence declares what set its number is
+    over: a per-holding figure says it is not the whole of what a balance
+    measures and names no slice it is, so there is no set for a sentence to
+    declare that it answers. Every scope a hole can name refuses it. That is
+    the honest reading of what the figure declares — a number over no nameable
+    set — and it is the price of a holding not being a slice of anything the
+    vocabulary names."""
+    registry = default_registry(
+        LedgerProjection(_two_holdings_in_one_account()))
+    HOLDINGS = ("query_ledger", {"entity": "holdings"})
+    held = registry.call(*HOLDINGS)
+    assert held.figures
+    # No figure of this read names a slice, so "named no slice" is the only
+    # ground the block below can have refused on.
+    assert all("cut" not in f["boundary"] for f in held.figures)
+
+    blocked = run("list what I am holding",
+                  _script(_shape(*_PER_ACCOUNT_LIST), HOLDINGS,
+                          bind=_bind_the_read),
+                  registry)
+    assert not blocked.answered
+    assert blocked.refusal == "wrong_kind", blocked.detail
+
+    for over in shape_module.SCOPES:
+        spoken = run("what is that one worth?",
+                     _script(_shape(("That is worth {held}.",
+                                     [("held", "money", "balance", over)])),
+                             HOLDINGS,
+                             bind=lambda r: {
+                                 "held": {"figure": _figure_id(r,
+                                                               "ALPHA "
+                                                               "FUND")}}),
+                     registry)
+        assert not spoken.answered, over
+        assert spoken.refusal == "wrong_scope", (over, spoken.detail)
+
+
 def test_a_read_this_turn_never_made_cannot_be_shown():
     result = run("what did I spend, by sub category?",
                  _script(_shape(*_LIST), BY_SUBCATEGORY,
@@ -1908,8 +2499,10 @@ def test_a_block_holds_a_whole_read_and_nothing_else_does():
     other, and a rows hole is filled by a read and by nothing else."""
     for hole, reference in ((("x", render.ROWS), {"figure": "f1"}),
                             (("x", render.ROWS), {"entity": "a1"}),
-                            (("x", render.MONEY, "spending"), {"read": "r1"}),
-                            (("x", render.COUNT, "count"), {"read": "r1"}),
+                            (("x", render.MONEY, "spending", "whole"),
+                             {"read": "r1"}),
+                            (("x", render.COUNT, "count", "whole"),
+                             {"read": "r1"}),
                             (("x", render.CATEGORY), {"read": "r1"})):
         result = run("?", _script(_shape(("It is {x}.", [hole])),
                                   BY_SUBCATEGORY,
@@ -1940,7 +2533,8 @@ def test_a_block_is_named_by_the_read_rather_than_by_its_rows():
 
 def test_a_block_nothing_can_fill_costs_its_clause_and_not_the_turn():
     """A list degrades the way every other hole does."""
-    shape = _shape(("You spent {total}.", [("total", "money", "spending")]),
+    shape = _shape(("You spent {total}.",
+                   [("total", "money", "spending", "whole")]),
                    *_LIST)
     result = run("what did I spend, by sub category?",
                  _script(shape, BY_SUBCATEGORY,

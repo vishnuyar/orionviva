@@ -55,8 +55,8 @@ from .tools.registry import PACKAGE, PROMPTS
 from .tools.runner import (DEFAULT_MAX_CALLS, FINAL_TOOL, SHAPE_TOOL,
                            RunResult, run)
 from .tools.shape import (BIND_EACH_HOLE, BIND_ONE_THING, MAGNITUDE_TYPES,
-                          PLAIN_TYPES, PROTOCOL, Problem, quantities_of,
-                          read_shape)
+                          MEASURED_TYPES, PLAIN_TYPES, PROTOCOL, SCOPES,
+                          Problem, quantities_of, read_shape)
 
 SPEAK_VERSION = versions.active(PACKAGE, "speak")
 FINAL_VERSION = versions.active(PACKAGE, "speak_final")
@@ -68,22 +68,40 @@ CLOSING_VERSION = versions.active(PACKAGE, "speak_closing")
 
 # The alternatives a hole is described to a model as: one per kind that holds a
 # magnitude, each pinned to that kind and requiring a quantity out of the ones
-# that kind may be of, plus one for the kinds that hold no magnitude, which has
-# no quantity field at all. Every enum is read from the check that reads the
-# shape back, so a combination the form offers is a combination the check takes.
+# that kind may be of and a scope out of the sets a figure can be taken over,
+# plus one for the kinds that hold no magnitude, which has neither field at
+# all. Every enum is read from the check that reads the shape back, so a
+# combination the form offers is a combination the check takes.
+#
+# The scope is required rather than offered: a field a model may leave out is a
+# check a model can make disappear, which is instruction where this wants
+# structure. It is offered on the kinds that hold a measurement, which is not
+# every kind that carries a quantity: a value the person supposed says what it
+# is of and was taken over nothing, so the form has no field for a set it was
+# measured over and the check refuses one. It takes a set of axes rather than
+# one, because a sentence narrows on as many as it names, and each is named at
+# most once: an axis given twice is one claim written twice.
 #
 # `additionalProperties` is what makes a hole match one alternative and not
 # two: without it on the plain hole, a hole carrying a quantity satisfies that
 # alternative as well as its own, and an alternation satisfied twice is
 # satisfied by nothing.
 def _magnitude_hole(kind: str) -> dict:
+    properties = {"name": {"type": "string"},
+                  "type": {"type": "string", "enum": [kind]},
+                  "quantity": {"type": "string",
+                               "enum": list(quantities_of(kind))}}
+    required = ["name", "type", "quantity"]
+    if kind in MEASURED_TYPES:
+        properties["scope"] = {"type": "array", "minItems": 1,
+                               "uniqueItems": True,
+                               "items": {"type": "string",
+                                         "enum": list(SCOPES)}}
+        required.append("scope")
     return {
         "type": "object",
-        "properties": {"name": {"type": "string"},
-                       "type": {"type": "string", "enum": [kind]},
-                       "quantity": {"type": "string",
-                                    "enum": list(quantities_of(kind))}},
-        "required": ["name", "type", "quantity"],
+        "properties": properties,
+        "required": required,
         "additionalProperties": False,
     }
 

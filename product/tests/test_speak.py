@@ -67,26 +67,43 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-final-v11": "4f3b44d44b932585",
     "speak-shape-v8": "834245339f59345e",
     "speak-repairs-v2": "0cbfcb3aa63a0739",
+    "speak-repairs-v3": "8b9b05d2329bb6ed",
     "speak-v11": "84c0ff0b9959fd85",
     "speak-shape-v9": "326ab1790a3a40ee",
+    "speak-shape-v10": "1e12c41a720d2507",
     "speak-final-v12": "a7915d70695b4b4f",
+    "speak-final-v13": "95e287a51e143dec",
 }
 
 
-def _slot(name, type_, quantity=""):
+def _slot(name, type_, quantity="", scope=()):
     """One hole as a model sends it: what it is called, what shape of thing it
-    holds, and — where it holds a magnitude — what that magnitude is of."""
+    holds, and — where it holds a magnitude — what that magnitude is of and
+    what sets it is a magnitude over.
+
+    The scope travels as a list of axes. One written as the bare word is that
+    one axis, so a fixture about one counterparty says so and nothing else."""
     out = {"name": name, "type": type_}
     if quantity:
         out["quantity"] = quantity
+    if scope:
+        out["scope"] = sorted([scope] if isinstance(scope, str) else scope)
     return out
 
 
 def _shape_of(*clauses):
     """A shape as the runner takes one, for a scripted planner."""
     from viva.tools.shape import Clause, Shape, Slot
+
+    def slot(declared):
+        name, kind, *rest = declared
+        over = rest[1] if len(rest) > 1 else ()
+        return Slot(name=name, type=kind, quantity=rest[0] if rest else "",
+                    scope=frozenset([over] if isinstance(over, str) and over
+                                    else over))
+
     return Shape(clauses=tuple(
-        Clause(text=text, slots=tuple(Slot(*slot) for slot in slots))
+        Clause(text=text, slots=tuple(slot(s) for s in slots))
         for text, slots in clauses))
 
 
@@ -110,7 +127,8 @@ def _shape_block(*clauses):
 # the run established, and a run that made no read has established one thing:
 # the value the person put into their own question.
 ASKED = "was it 40?"
-ASKED_CLAUSE = ("You asked about {yours}.", [("yours", "supposed", "spending")])
+ASKED_CLAUSE = ("You asked about {yours}.",
+                [("yours", "supposed", "spending")])
 ASKED_BINDINGS = {"yours": {"supposed": "40"}}
 
 
@@ -248,7 +266,7 @@ def test_every_repair_a_check_can_name_has_reviewed_words():
 def test_native_planner_produces_a_cited_answer(registry):
     script = ChatScript([
         _turn([_shape_call(("Your checking holds {balance}.",
-                            [("balance", "money", "balance")]))]),
+                            [("balance", "money", "balance", "account")]))]),
         _turn([_call("query_ledger", {"entity": "balances",
                                       "filters": {"account": "chk"}},
                      call_id="c1")]),
@@ -281,7 +299,7 @@ def test_native_planner_produces_a_cited_answer(registry):
 def test_native_planner_threads_the_result_back_as_a_tool_message(registry):
     script = ChatScript([
         _turn([_shape_call(("Your balance is {total}.",
-                            [("total", "money", "balance")]))]),
+                            [("total", "money", "balance", "whole")]))]),
         _turn([_call("query_ledger", {"entity": "balances",
                                       "filters": {"account": "chk"}},
                      call_id="call-77")]),
@@ -352,7 +370,7 @@ def _stray_quantity_shape_call(call_id="c0"):
     """A shape a model plausibly sends and the check refuses: a hole holding a
     day, declaring that the day measures a count."""
     return _shape_call(("You have {many}, as of {when}.",
-                        [("many", "count", "count"),
+                        [("many", "count", "count", "whole"),
                          ("when", "date", "count")]), call_id=call_id)
 
 
@@ -391,7 +409,8 @@ def _denial_beside_a_figure_call(call_id="c0"):
     """A two-clause shape: one clause carrying a figure, and beside it a clause
     saying in the model's own words that the figure could not be established.
     The second declares no hole, so nothing could ever have dropped it."""
-    return _shape_call(("You spent {total}.", [("total", "money", "spending")]),
+    return _shape_call(("You spent {total}.",
+                       [("total", "money", "spending", "whole")]),
                        ("I could not establish that figure from the records "
                         "available to me here.", []),
                        call_id=call_id)
@@ -450,7 +469,8 @@ def test_the_text_protocol_names_the_same_repair(registry):
 
     steps = [
         _shape_block(("You have {many}, as of {when}.",
-                      [("many", "count", "count"), ("when", "date", "count")])),
+                      [("many", "count", "count", "whole"),
+                       ("when", "date", "count")])),
         _shape_block(ASKED_CLAUSE),
         _bind_block(ASKED_BINDINGS),
     ]
@@ -477,7 +497,7 @@ def test_a_delivery_the_gate_could_not_read_is_told_about_the_delivery(
                                                   "entity": "chk"}}})):
         script = ChatScript([
             _turn([_shape_call(("Your balance is {total}.",
-                                [("total", "money", "balance")]))]),
+                                [("total", "money", "balance", "whole")]))]),
             _turn([_call(FINAL_TOOL, args, call_id="c1")]),
             _turn([_call(FINAL_TOOL, args, call_id="c2")]),
         ])
@@ -498,7 +518,8 @@ def test_a_hole_that_named_the_wrong_quantity_is_told_to_change_it(registry):
     from viva.tools.shape import CHOOSE_THE_QUANTITY, NAME_THE_QUANTITY
 
     script = ChatScript([
-        _turn([_shape_call(("You have {many}.", [("many", "count", "spending")]),
+        _turn([_shape_call(("You have {many}.",
+                           [("many", "count", "spending", "whole")]),
                            call_id="c0")]),
         _turn([_shape_call(ASKED_CLAUSE, call_id="c1")]),
         _turn([_call(FINAL_TOOL, {"bindings": ASKED_BINDINGS}, call_id="c2")]),
@@ -522,7 +543,7 @@ def test_native_transport_failure_refuses_model_unreachable(registry):
 def test_text_planner_produces_a_cited_answer(registry):
     steps = [
         _shape_block(("Your checking holds {balance}.",
-                      [("balance", "money", "balance")])),
+                      [("balance", "money", "balance", "account")])),
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {"account": "chk"}}}\n```',
         _bind_block({"balance": {"figure": "f1"}}),
@@ -563,7 +584,7 @@ def test_text_transport_failure_refuses_model_unreachable(registry):
 def _answer_script():
     return ChatScript([
         _turn([_shape_call(("Your checking holds {balance}.",
-                            [("balance", "money", "balance")]))]),
+                            [("balance", "money", "balance", "account")]))]),
         _turn([_call("query_ledger", {"entity": "balances",
                                       "filters": {"account": "chk"}},
                      call_id="c1")]),
@@ -628,7 +649,8 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
     kept = json.loads(log.events[-1].body["response_text"])
     assert kept["shape"]["clauses"][0]["slots"] == [{"name": "balance",
                                                      "type": "money",
-                                                     "quantity": "balance"}]
+                                                     "quantity": "balance",
+                                                     "scope": ["account"]}]
     assert kept["bindings"] == {"balance": {"figure": "f1"}}
 
 
@@ -678,7 +700,7 @@ def test_text_planner_grants_its_correction_per_step_not_per_run(registry):
     steps = [
         "no json here at all",
         _shape_block(("Your checking holds {balance}.",
-                      [("balance", "money", "balance")])),
+                      [("balance", "money", "balance", "account")])),
         '```json\n{"tool": "query_ledger", "args": {"entity": "balances", '
         '"filters": {"account": "chk"}}}\n```',
         "prose again, later in the turn",
@@ -727,7 +749,7 @@ def test_a_number_echoed_by_a_refusal_cannot_ground_an_answer(registry):
     refusal emits no figure, so there is no reference to bind, and the clause
     that wanted one is dropped."""
     shape = _shape_of(("Your savings holds {total}.",
-                       [("total", "money", "balance")]))
+                       [("total", "money", "balance", "whole")]))
     result = run("savings balance?",
                  _step_planner(shape, [
                      {"tool": "query_ledger",
@@ -762,7 +784,7 @@ def test_a_number_the_caller_typed_cannot_become_a_computed_figure(registry):
     first call, and it names what could have been used instead."""
     seen = {}
     shape = _shape_of(("You hold {total} in savings.",
-                       [("total", "money", "balance")]))
+                       [("total", "money", "balance", "whole")]))
 
     def note(results):
         seen["refusal"] = [r for r in results
@@ -784,7 +806,7 @@ def test_compute_over_a_fetched_figure_still_grounds(registry):
     the result — must keep working, and its provenance is inherited rather than
     asserted by the caller."""
     shape = _shape_of(("Twice your checking balance would be {doubled}.",
-                       [("doubled", "money", "balance")]))
+                       [("doubled", "money", "balance", "account")]))
 
     def compute_over(results):
         return {"tool": "compute",
@@ -812,7 +834,8 @@ def test_an_answer_may_quote_a_row_date_from_a_windowed_read(registry):
     the row's date is something the read asserts, carried on the figure for
     that row's amount."""
     shape = _shape_of(("On {when} you spent {amount} at {who}.",
-                       [("when", "date"), ("amount", "money", "movement"),
+                       [("when", "date"),
+                        ("amount", "money", "movement", "whole"),
                         ("who", "merchant")]))
 
     def bind(results):
@@ -933,7 +956,8 @@ def test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag(registry):
     moment of refusing, so the one moment a model can see exactly why it fell
     short is not the moment it is asked to write about it."""
     script = ChatScript([
-        _turn([_shape_call(("It is {total}.", [("total", "money", "balance")]))]),
+        _turn([_shape_call(("It is {total}.",
+                           [("total", "money", "balance", "whole")]))]),
         _turn([_call(FINAL_TOOL, {"bindings": {"total": {"figure": "f9"}}})]),
     ])
     planner = NativePlanner(script)
@@ -986,12 +1010,12 @@ def test_the_footer_shows_each_figure_the_way_the_sentence_showed_it(
 
     shape = Shape(clauses=(
         Clause(text="Your balance is {total}.",
-               slots=(Slot("total", "money", "balance"),)),
+               slots=(Slot("total", "money", "balance", frozenset({"whole"})),)),
         Clause(text="I hold this many: {many}.",
-               slots=(Slot("many", "count", "count"),)),
+               slots=(Slot("many", "count", "count", frozenset({"whole"})),)),
         Clause(text="A seventh of it is {part}, a share of {share}.",
-               slots=(Slot("part", "money", "balance"),
-                      Slot("share", "rate", "ratio_of_balance"))),
+               slots=(Slot("part", "money", "balance", frozenset({"whole"})),
+                      Slot("share", "rate", "ratio_of_balance", frozenset({"whole"})))),
     ))
 
     def planner(context):
@@ -1045,9 +1069,9 @@ def test_a_figure_two_holes_refer_to_stands_under_the_sentence_once(
 
     shape = Shape(clauses=(
         Clause(text="Your balance is {total}.",
-               slots=(Slot("total", "money", "balance"),)),
+               slots=(Slot("total", "money", "balance", frozenset({"whole"})),)),
         Clause(text="Nothing has moved since, so it stands at {again}.",
-               slots=(Slot("again", "money", "balance"),)),
+               slots=(Slot("again", "money", "balance", frozenset({"whole"})),)),
     ))
 
     def planner(context):
@@ -1119,7 +1143,8 @@ def test_the_recorded_request_is_what_was_sent_not_what_came_later(
         _Response(_chat_payload(
             {"role": "assistant", "content": None,
              "tool_calls": [_shape_call(("Your balance is {total}.",
-                                         [("total", "money", "balance")]))]})),
+                                         [("total", "money", "balance",
+                                           "account")]))]})),
         _Response(_chat_payload(
             {"role": "assistant", "content": None,
              "tool_calls": [_call("query_ledger",

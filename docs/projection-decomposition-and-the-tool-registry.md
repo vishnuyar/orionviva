@@ -1134,3 +1134,83 @@ ungraded figure and the phrase for a missing grade; `tools-v12` stops saying
 `check_completeness` counts "how many counterparties are still unidentified".
 `speak-shape-v8`, `speak-final-v11`, `speak-v10`, `pack-v11` and `tools-v11` were
 in force until this cycle._
+
+---
+
+_Amended 2026-08-18 (a hole declares what its number is a number of). **A
+boundary reached the check, and not only the disclosure.** Since 2026-08-10 a
+figure has declared what set it was taken over, and until now that declaration
+was read by the sentences the run places beside a number and by nothing else: a
+total narrowed to one counterparty and a total over the whole ledger both said
+`spending`, so a real number could be spoken as a claim about something else
+with every guard on the answering path satisfied. The general form is the
+sentence to carry forward: **a figure declares what it measured and what set it
+was taken over, and a sentence is checked against both — the first stops a
+number meaning something else, and only the second stops it being about
+something else.**_
+
+_**A cut is a set of axes rather than one slice.** A figure declares every axis
+it is the intersection of — what narrowed the read it came from, plus the slice
+of what came back that it is — so a counterparty's total declares one axis and
+its groceries group declares two, and the two are told apart by what their
+emitters wrote down rather than by anything inspecting a payload. An axis is
+named once, since two values of one axis offered as one set describe no single
+set; the entries are sorted by axis in the constructor, so one set has one
+written form wherever two boundaries are compared with `==`. A read narrowed on
+the same axis it groups by therefore has no list in it, and `_line_of` says so
+directly: a figure is a line of its read where its cut set is the read's
+narrowing plus **exactly one** further axis._
+
+_**The substrate that check needed.** Every figure every read emits now declares
+a set: `check_completeness`'s counts and `get_provenance`'s figures declare the
+whole, per-account balances and net-worth per-account lines name the account
+they are of, and a net-worth part in one of several currencies names its
+currency and declares whole only on a vault holding one. **A per-holding figure
+names no slice**, because a holding is *in* an account rather than a slice of
+one and no member of the narrowing vocabulary names an instrument. `compute`
+composes the declaration instead of losing it — identical operand boundaries are
+inherited, differing ones produce a number over neither set, a literal
+contributes no set and takes none away, and a value the person supposed declares
+itself over no nameable set — which closes the open item the 2026-08-17
+amendment named. A counterparty is named by its key everywhere, so what a read
+says it spoke about and what a figure declares its slice as are one string; a
+movement's own description stays on the row a person reads. And a month group of
+a windowed read declares that month **intersected with the window**, from the
+two declarations already in the code, so a read asked for the 15th onward no
+longer labels its group with a month that starts on the 1st._
+
+_**What it costs, and every piece of it is deliberate.** A holding's value is
+unspeakable, as a row and as a number — per-instrument only; the holdings read's
+own total and its total narrowed to one account still answer — and the successor
+is chartered as its own item, *what a holding is a slice of*, after the
+reachability and wording items. A figure over two disagreeing operands can be
+stated as neither a whole nor a slice. A monthly average computed over one span
+and spoken under another refuses rather than answering, because the span a
+figure's operands were measured over is a third object nothing in this product
+computes: it is neither the coverage a document attests nor the window a read
+was asked for, and restoring the answer needs a decision about where a measured
+extent lives on a figure. Beside it, *what a count is a count of* is chartered:
+a count of things found cites only what it found, so a count of none cites
+nothing and refuses at the citation gate._
+
+_**Open, and named rather than discovered later.** The **value** of a period is
+unchecked — the vocabulary holds no entity for a span, so what the check
+compares is the axes and only the axes, and a sentence naming the wrong window
+binds a figure cut by `period` as happily as the right one. The words a model
+writes around a hole are still read by nobody, so a clause may name a slice in
+its own literal text, declare the whole, bind a real total and pass. And two
+things are now dead weight rather than mechanism: `check_completeness`'s
+per-account date figures, which can fill no hole and are kept exactly as they
+are, and the run-wide pool of days the runner still records at two sites and
+reads nowhere, now that a day is bound from a figure the same clause states._
+
+_**Four families moved.** `speak-shape-v10` teaches the scope declaration and
+the set it takes; `speak-repairs-v3` carries a line per new repair;
+`speak-final-v13` corrects what a block of rows is and states the scope sibling
+of the quantity sentence, so a model is told what will happen rather than
+reaching; `pack-v13` carries the two reviewed refusals, one for a figure taken
+over a different set and one for a figure of a different thing, since the repair
+differs — so the tag vocabulary goes from nineteen to **twenty-one**, and four
+new repairs bring those to twenty-three. `speak-shape-v9`, `speak-repairs-v2`, `speak-final-v12` and `pack-v12`
+were in force until this cycle. No tools version is claimed: nothing about what
+a read is asked for changed._

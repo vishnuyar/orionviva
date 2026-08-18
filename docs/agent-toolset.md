@@ -359,3 +359,26 @@ halves are closed in the 2026-08-05 amendment below._
 > ledger. See the closing amendment of
 > [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)
 > for the half of that cycle this file does not hold._
+
+> _Amended 2026-08-18 (a hole declares what its number is a number of). **The
+> sentence above about the per-account date figures is now false in its last
+> clause.** They stay exactly as they are, financial and graded, and they no
+> longer put a day anywhere an answer can reach: a date is bound from the
+> `dated` of a figure the same clause states, so a figure that can fill no hole
+> can be in no clause and its day is unreachable. The run-wide pool of days is
+> written and read by nothing. That is a small, deliberate loss — every read
+> that states a balance carries its own day — and a refusal beats a day
+> belonging to a different number.
+>
+> **What the verbs gained and what they lost.** Every figure every read emits
+> now declares the set it was taken over, so `check_completeness`'s counts and
+> `get_provenance`'s figures declare the whole, a per-account balance names its
+> account, and `compute` composes its operands' declaration rather than losing
+> it. What is lost is per-instrument values from the holdings read: a holding is
+> *in* an account rather than a slice of one, and nothing a set may be narrowed
+> by names an instrument, so a per-holding figure names no set a sentence can
+> declare. That read's own total, and its total narrowed to one account, still
+> answer. `get_provenance` gains a boundary and is otherwise as broken as it
+> was. No tools version is claimed — nothing about what a read is asked for
+> changed. See the closing amendment of
+> [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)._

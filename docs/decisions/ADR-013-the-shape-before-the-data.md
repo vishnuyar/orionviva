@@ -160,6 +160,48 @@ else. *Capability honesty is unbuilt* stands too, and now has its missing input:
 `query_ledger` answers what labels a vault holds under any of its groupings,
 which is the enumeration nothing could do before.
 
+**Amended 2026-08-18 — a magnitude hole declares two things, and §4's list of
+what is checked gains two comparisons.** A hole holding a magnitude said what
+its number measures. It now also says **what set that number is a number of**:
+the axes its sentence narrows on, drawn from the closed vocabulary a figure's
+boundary already declares into, or `whole` for everything the quantity ranges
+over. It is a set, because a sentence narrows on as many axes as it names;
+`whole` is exclusive of the rest; and the declaration is required on every
+magnitude hole and forbidden on every other, because a field a model may leave
+out is a check a model can switch off. This is not §7's rule reversed. A
+boundary is not among the fields a planner is shown and the shape is authored
+before anything is read, so what the hole declares is a claim about the sentence
+being written rather than a property of a figure the machine holds — the same
+footing the quantity declaration has stood on since the mechanism shipped.
+
+**The third comparison:** the axes a figure declares it is the intersection of
+and the axes a hole declares its sentence narrows on are **equal**, or the
+figure is not what the sentence is about. Equality both ways rather than
+containment — one counterparty's total for one month fills neither a hole about
+that counterparty nor a hole about that month, and that counterparty's
+whole-history total fills neither of those either. A figure that declares no set
+at all fills none of them: nothing has said what it was taken over, which is not
+the same as saying the set was everything.
+
+**The fourth takes the clause as its unit**, because every check above resolves
+one hole at a time against everything the run established, so a real figure of
+one thing and a real thing of the same kind can each be true and belong to
+different sentences. Where a clause states a figure and names, through a hole, a
+thing of a kind that figure was cut by, the figure's own boundary must name what
+the clause names, on every axis it was cut by. **An entity belongs to a figure
+when the figure's own boundary names it.** Both halves are strings the code
+wrote, and no word of the clause is read. The same move answers a day and a
+span: a `date` hole is filled from the `dated` of a figure its own clause
+states, and a `period` hole from a span such a figure declares itself taken
+over — never from the days or the spans the turn as a whole happens to carry.
+Arithmetic composes the new declaration by agreement or by nothing: identical
+operand boundaries are inherited, differing ones produce a number over neither
+set that fills no hole of any kind, and a literal contributes no set and takes
+none away. Two refusals join the vocabulary of §7 — one for a figure taken
+over a different set, one for a figure of a different thing, because what
+each asks of the model differs — so it stands at twenty-one tags.
+`speak-shape-v10`, `speak-repairs-v3`, `speak-final-v13`, `pack-v13`.
+
 ---
 
 ## What this costs, honestly — the residuals
@@ -237,6 +279,28 @@ writes **around** a hole is still read by nobody, so a model may still type the
 word "verified" into a clause of its own — but it is now betting against a
 machine-placed sentence in the same answer, which will contradict it when the
 bet was wrong._
+
+_**Amended 2026-08-18 — the residual narrows at its sharpest point, and the
+amendment says so in both directions.** What closes: a sentence can no longer be
+about a set the figure beside it was not taken over, and a sentence naming a
+thing through a hole can no longer state a different thing's number. Those were
+the two ways a true figure was described falsely with no word being read, and
+they are closed by two declarations rather than by anyone reading one. What
+stands, unchanged: the words **around** a hole are read by nobody. A clause may
+still write the name of a slice into its own literal text, declare `whole`, bind
+a real total and pass. Closing that would take the further rule that a figure
+naming a slice may only be stated in a clause binding that slice's entity, and
+it is rejected for now on a measured cost rather than on taste: of the nine ways
+a set may be narrowed only three have an entity a hole could bind, so the rule
+would make every breakdown by subcategory, by tag, by currency and by month
+unspeakable — a large silent loss to close a loophole nobody has yet measured
+being walked through. Three narrower ones ship open beside it. Two figures and
+two entities of one kind in one clause can be exchanged, because closing that
+needs positional pairing and position is the sentence. The **value** of a period
+is unchecked, because the vocabulary holds no entity for a span, so the check
+compares the axes and only the axes. And a value the person supposed declares no
+set at all — it is not a measurement over one — so a hedge written around such a
+hole is still where this residual is widest._
 
 **Viability is per-model, and the model in force was on the wrong side of it.**
 The blind-authoring assumption was phrased as "a capable model", and that phrase
@@ -341,6 +405,19 @@ to restore it.
   concepts declared nowhere today: the **stock/flow split** in
   `product/viva/quantity.py`, and **`gross_flow`'s deliberate
   direction-blindness**, which is a decision and not an omission.
+
+  **Amended 2026-08-18 — the deferral's first ground is spent, so the document
+  is owed rather than waiting.** The hole this bullet named is closed: a figure
+  can no longer be spoken as a claim about a set it was not taken over, and
+  arithmetic no longer launders a scope, because a computed figure inherits its
+  operands' declaration or declares itself over neither set. The renderer that
+  is wrong by a hundred is untouched and belongs to the wording item. What the
+  document owes has grown with the closure: four declarations compared pairwise,
+  a rule whose unit is the clause rather than the hole, and a composition rule
+  for boundaries through arithmetic — a mechanism a later reader cannot
+  reconstruct from amendments spread across three files. It is chartered as its
+  own item, after the reachability and wording items, and this is the record of
+  the debt and of why it came due.
 - **A model that never calls a tool must become detectable.** The residual in §4
   is not a thing to live with quietly: nothing in the product notices, and ten
   turns cost four minutes each to produce ten identical apologies touching no

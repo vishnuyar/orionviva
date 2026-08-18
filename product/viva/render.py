@@ -88,6 +88,18 @@ TYPE_OF_QUANTITY: dict[str, str] = {
     measure: kind for kind, measures in MAGNITUDE_OF_TYPE.items()
     for measure in measures}
 
+
+def magnitudes_of(kind: str) -> frozenset:
+    """What a thing of this kind may be a magnitude of, or nothing at all.
+
+    The magnitude table as anything outside this module reads it, so a kind
+    that holds a magnitude and a kind that merely carries a quantity are told
+    apart in one place. Empty for a kind that measures nothing, and empty for a
+    value the person supposed: that says what it is of and is not a measurement
+    over any set, so nothing about the extent of one is asked of it."""
+    return MAGNITUDE_OF_TYPE.get(kind) or frozenset()
+
+
 # Money is written to the minor unit, and a figure is quantized before it is
 # grouped so that the digits shown are the digits rounded.
 CENTS = Decimal("0.01")
@@ -287,11 +299,17 @@ def accounts(entities) -> Account:
 def merchant(entity) -> Merchant:
     """One counterparty, in the form this surface may show.
 
-    A merchant has an impersonal normalized key and a descriptor lifted from
-    the person's own statement, and which of the two is shown is a T9 decision.
-    This is the one function that makes it, so nothing else has to remember to.
-    A person reading their own ledger is shown what their statement said; the
-    key is what identifies it where the descriptor may not travel."""
+    A counterparty arrives here under two names — the example label carried by
+    whatever established it, and the normalized key it is filed under — and
+    this is the one function that chooses between them, so nothing else has to
+    remember to. The example is what is shown where there is one; the key is
+    what identifies the counterparty where no example travelled.
+
+    The example a read establishes is that same key, so a counterparty named in
+    a sentence is named the way a filter takes it back and the way a figure
+    beside it declares its scope. A movement's own description is a different
+    thing and is not this: it stays on the row it belongs to, which is where
+    someone reading their movements reads it."""
     fields = dict(entity or {})
     example = str(fields.get("example") or fields.get("description") or "").strip()
     return Merchant(example or str(fields.get("key") or "").strip())

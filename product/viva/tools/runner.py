@@ -24,9 +24,11 @@ A turn has three stages, and the order is enforced rather than requested:
 What is then checked is the structure, never the sentence. Every hole has one
 binding and every binding names a hole; the thing referred to exists in this
 run's ledger; its type is the type the hole declared; a figure filling a hole
-that asks for a magnitude measures the quantity that hole asked for; a figure
-about money that stands on no record refuses. Nothing reads the words: there is
-no scanning, no token matching, no list of what may be said.
+that asks for a magnitude measures the quantity that hole asked for and was
+taken over the set that hole declared; a figure is of the thing its own clause
+names; a day and a span come from a figure the same clause states;
+a figure about money that stands on no record refuses. Nothing reads the words:
+there is no scanning, no token matching, no list of what may be said.
 
 Every caveat carried behind a stated figure is then placed by the runner, out
 of what it already holds. No hole asks for one and no binding names one: a
@@ -59,6 +61,31 @@ count of documents offered where it says a proportion. It is code comparing the
 tool's declaration with the shape's, both drawn from one closed list. No model
 is asked to check another model's work.
 
+The scope check is that move made a second time, over what a number is a number
+OF. A figure declares every axis it was cut by and a hole declares every axis
+its sentence narrows on, and the two sets are equal or the figure is not what
+the sentence is about; a hole asking for the whole takes only a figure that says
+it is the whole. Equality both ways is the whole of it, so one counterparty's
+total for one month fills neither a hole about that counterparty nor a hole
+about that month, and a figure that states no set at all fills none of them.
+
+The subject check is the same comparison one step in, and the clause is its
+unit, because every hole above was resolved on its own against everything the
+run established. Where a clause states a figure and names a thing of a kind that
+figure was cut by, the figure's own boundary must name what the clause names, on
+every axis it was cut by. An entity belongs to a figure when the figure's own
+boundary names it; both halves are strings the code wrote, and the words around
+them are read by nothing.
+
+A day and a span belong to the figure beside them. A date hole is filled from
+the `dated` of a figure its own clause states, and a period hole from a span
+such a figure was taken over — never from the days or the spans the turn as a
+whole happens to carry. A day one read stamped on its own totals is a real day
+and it answers a different question when it is put beside a balance months
+older; a clause that states no dated figure therefore has no day to say, so the
+hole is left unbound and costs its clause, and a day reached for from elsewhere
+refuses the turn as any other binding fault does.
+
 A hole nothing can fill costs its clause and not the turn. The clause is
 dropped and a phrase from the persona pack says what could not be established,
 so a partial answer with a stated gap is the ordinary way this degrades.
@@ -89,9 +116,10 @@ from .compute import numbers_said
 from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_MERCHANT,
                        BY_PERIOD, BY_SINCE, BY_SUBCATEGORY, BY_TAG, BY_UNTIL,
                        ENTITY_ACCOUNT, ENTITY_MARKS, EXACT, HYPOTHETICAL,
-                       MONEY_KINDS, SPEAKABLE_REFUSALS, ToolResult, weakest)
+                       MONEY_KINDS, SPEAKABLE_REFUSALS, ToolResult, _named,
+                       weakest)
 from .registry import PACKAGE, PROMPTS, Registry
-from .shape import Shape
+from .shape import WHOLE, Shape
 
 # One tool call per planner step. Past this the run refuses rather than
 # looping.
@@ -281,7 +309,7 @@ REFUSAL_TAGS = (
     "unknown_figure", "unknown_entity", "unknown_period", "unknown_reading",
     "unfounded_date", "unfounded_stipulation", "wrong_kind",
     # a real figure was offered for a hole asking about something else
-    "wrong_quantity",
+    "wrong_quantity", "wrong_scope", "wrong_subject",
     # the answer as a whole could not be stood behind
     "nothing_established", "uncited_figure",
 )
@@ -495,13 +523,42 @@ def _named_reference(slot, reference) -> dict | None:
     return {key: reference}
 
 
-def _bound(slot, reference, ground: _Ground, locale: str):
+def _stated_figures(clause, bindings: dict, ground: _Ground) -> tuple:
+    """The figures one clause states, as the figures themselves.
+
+    What a clause holds is read from the bindings it was given rather than from
+    what has been resolved so far, so which figures a hole stands beside does
+    not depend on the order the holes are walked in. A binding naming a figure
+    this run never emitted is skipped here and refuses where it is resolved.
+
+    A block of rows states figures too, and they are not among these: a block
+    is many figures at once, so which of them a day or a span said beside it
+    belongs to is the sentence's own order, and reading that would be reading
+    the sentence."""
+    out = []
+    for slot in clause.slots:
+        reference = bindings.get(slot.name)
+        named = (_named_reference(slot, reference) if reference is not None
+                 else None)
+        fig = (ground.book.get(str(named["figure"]))
+               if named and "figure" in named else None)
+        if fig is not None:
+            out.append(fig)
+    return tuple(out)
+
+
+def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
     """One hole, filled — or the problem with filling it, as
     ``(written, machine tag, sentence)``.
 
     Every branch resolves a reference into this run's ledger and hands the
     thing to its renderer. Nothing here writes characters: the renderer does,
-    once, in one place."""
+    once, in one place.
+
+    ``alongside`` is the figures the hole's own clause states. A day and a span
+    are properties of a number rather than of a turn, so the two holes that
+    hold one are answered out of what the sentence they are in states, and not
+    out of everything the run happens to carry."""
     named = _named_reference(slot, reference)
     if named is None:
         return None, "bad_binding", (
@@ -550,6 +607,19 @@ def _bound(slot, reference, ground: _Ground, locale: str):
             return None, "wrong_kind", (
                 f"The hole {slot.name!r} wants {slot.type}, and a period is a "
                 "span a document answers for, never a magnitude.")
+        # And the span a figure the same clause states was taken over, read off
+        # the slices that figure declares itself to be. A span this run's
+        # documents answer for and a span a number was measured across are two
+        # different things, and a number said under a span it was not measured
+        # across claims days it never saw.
+        measured = {(item["value"], item["to"]) for fig in alongside
+                    for item in (fig.get("boundary") or {}).get("cut") or []
+                    if item["kind"] == BY_PERIOD}
+        if (span["from"], span["to"]) not in measured:
+            return None, "unknown_period", (
+                f"The answer refers to a period {str(value)!r}, and no figure "
+                f"the clause holding {slot.name!r} states was taken over that "
+                "span.")
         return render.period(span["from"], span["to"]), "", ""
 
     if key == "read":
@@ -569,10 +639,16 @@ def _bound(slot, reference, ground: _Ground, locale: str):
             return None, "wrong_kind", (
                 f"The hole {slot.name!r} wants {slot.type}, and a day is not a "
                 "magnitude.")
-        if str(value) not in ground.dates:
+        # The day of a figure the same clause states. Every figure says which
+        # day its value is good for, so a sentence saying how current its own
+        # number is has that day beside it — and a day taken from anywhere else
+        # in the turn is a real day belonging to a different number, which is
+        # the reading a person cannot tell from the true one.
+        if str(value) not in {str(fig["dated"]) for fig in alongside
+                              if _is_iso_date(fig.get("dated"))}:
             return None, "unfounded_date", (
-                f"The answer says {str(value)!r}, a day none of this run's "
-                "results carries.")
+                f"The answer says {str(value)!r}, and no figure the clause "
+                f"holding {slot.name!r} states carries that day.")
         return render.date(str(value)), "", ""
 
     # supposed
@@ -654,6 +730,35 @@ def _figure_bound(slot, fig: dict, locale: str):
             f"{fig['what']!r} measures {fig['quantity']} — the number is real "
             "and it is not a number about that.")
 
+    # And the second pair, the same way. The tool declared every slice the
+    # figure is the intersection of; the shape declared every axis its sentence
+    # narrows on; the two sets are equal or the figure is not what the sentence
+    # is about. A hole asking for the whole is filled by a figure that says it
+    # is the whole.
+    #
+    # Equality in both directions is the whole of it. A sentence about one
+    # counterparty is refused a figure cut by that counterparty and a span,
+    # because that figure is not the counterparty's total; a sentence about a
+    # counterparty inside a span is refused the counterparty's whole-history
+    # total for the same reason read the other way. Nothing here works out what
+    # a figure covers — it reads what the emitter wrote down and compares it.
+    #
+    # A figure that states no boundary fills neither. Nothing has said what set
+    # it was taken over, and that is not the same as saying the set was
+    # everything.
+    if slot.scope:
+        bound = fig.get("boundary") or {}
+        asked = set(slot.scope)
+        cut_by = {item["kind"] for item in bound.get("cut") or []}
+        asked_for = (bound.get("whole", False) if asked == {WHOLE}
+                     else asked == cut_by)
+        if not asked_for:
+            return None, "wrong_scope", (
+                f"The hole {slot.name!r} asks for a number over "
+                + ", ".join(sorted(asked))
+                + f", and {fig['what']!r} was taken over a different set — the "
+                "number is real and it is not a number about that.")
+
     if value is None:
         return None, "wrong_kind", (
             f"The hole {slot.name!r} wants {slot.type}, and {fig['what']!r} "
@@ -730,6 +835,36 @@ def _named_slice(item: dict, ground: _Ground):
     return SELECTED_TERMS[item["kind"]][2](item, ground)
 
 
+def _line_of(fig: dict):
+    """The slice this figure is a line of its read for, or None.
+
+    A figure is a line of its read where the axes it is cut by are the read's
+    own narrowing and exactly one axis more. That one axis is what the line is
+    named by, and it is what makes the figure a part of what came back rather
+    than the whole of it.
+
+    So a read narrowed to one counterparty has no line for that counterparty —
+    neither its own total, cut by the narrowing and nothing further, nor a
+    group over the axis the read was filtered on, which is that same set again
+    and would stand beside the other groups as though it were one more of them.
+    A read narrowed to one account still has a line per month, because a month
+    is an axis the narrowing did not name. And a figure cut two axes past the
+    narrowing is a cell rather than a line: the lines beside it would each be
+    true of a different set.
+
+    Two declarations compared, both written by the read: which slices this
+    figure is, and what narrowed the read it came from. Nothing here reads a
+    value or asks what sort of thing a payload holds."""
+    bound = fig.get("boundary") or {}
+    cut = bound.get("cut") or []
+    narrowing = {item["kind"] for item in bound.get("selected") or []}
+    axes = {item["kind"] for item in cut}
+    if not narrowing <= axes or len(axes - narrowing) != 1:
+        return None
+    (axis,) = axes - narrowing
+    return next(item for item in cut if item["kind"] == axis)
+
+
 def _rows_bound(slot, rows, ground: _Ground, locale: str):
     """One read's figures as a block, each beside the slice it covers.
 
@@ -753,20 +888,35 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
     either. One read may cut the same set several ways at once — a figure per
     account and a figure per month over the same movements — and a line per
     slice would state the same money once for each way it cuts. The refusal is
-    on the declared kinds, not on which read or tool produced them."""
-    kinds = {cut["kind"] for cut in
-             ((ground.book[fid].get("boundary") or {}).get("cut")
-              for fid in rows) if cut}
+    on the declared kinds, not on which read or tool produced them.
+
+    A read whose figures name one slice more than once fills nothing, for the
+    same reason. Several figures over the same slice are several measurements
+    of one thing, and a line apiece would state that thing's money once per
+    figure while reading as one line per slice.
+
+    The two refusals are in that order and the order decides which a read hears
+    about: a read that cuts several ways is settled by the first, so the second
+    is never reached for it however its slices repeat within a kind."""
+    cuts = [cut for cut in (_line_of(ground.book[fid]) for fid in rows) if cut]
+    kinds = {cut["kind"] for cut in cuts}
     if len(kinds) > 1:
         return None, "wrong_kind", (
             f"The hole {slot.name!r} wants rows, and that read cuts the same "
             "set more than one way at once — by " + ", by ".join(sorted(kinds))
             + ". A line per slice would state the same money once for each of "
             "them.")
+    named = [cut["value"] for cut in cuts]
+    if len(set(named)) < len(named):
+        return None, "wrong_kind", (
+            f"The hole {slot.name!r} wants rows, and that read has more than "
+            "one figure over the same slice of what it cuts. A line per slice "
+            "would state one slice's money once for each figure taken over "
+            "it.")
     lines, cited = [], []
     for fid in rows:
         fig = ground.book[fid]
-        cut = (fig.get("boundary") or {}).get("cut")
+        cut = _line_of(fig)
         if not cut:
             continue
         kind = render.TYPE_OF_QUANTITY.get(fig["quantity"], "")
@@ -834,35 +984,51 @@ def _boundary(fig: dict, *, cut: bool = True) -> tuple[list, list]:
     is compared whole; accounts left out are returned as a list for the caller
     to gather across every figure the answer stated.
 
-    Both empty where the set is everything the figure claims to measure, where
-    no read declared a boundary at all, and where a figure declares it is not
-    whole without naming anything it was narrowed to.
+    Both empty where the set is everything the figure claims to measure, and
+    where a figure declares it is not whole without naming anything it was
+    narrowed to. A figure carrying no boundary has nothing to say here either,
+    and says nothing for the other reason: no read has stated what set it was
+    taken over, which is not the same as a read stating that the set was
+    everything.
 
-    ``cut`` is whether the slice THIS figure was taken over is among the
-    statements. It is, wherever the figure is stated as a number in a sentence.
-    It is not where the figure is a line of a block, because there the slice is
-    already written beside the number as the line's own name, and a scope clause
-    repeating it would be the same claim made twice.
+    ``cut`` is whether what THIS figure alone covers is among the statements:
+    the slices it was taken over, and how many of the accounts held those
+    slices are one of. Both are said wherever the figure is stated as a number
+    in a sentence. Neither is said where the figure is a line of a block,
+    because there the slice is already written beside the number as the line's
+    own name, and a count of what one line covers — said once however many
+    lines make the same one — reads as a claim about the answer rather than
+    about the line, which it is not.
+
+    What the read as a whole was narrowed to is said either way, because that
+    is a fact about the call rather than about one line of it.
 
     What would settle a gap stays on the figure and is not said."""
     bound = fig.get("boundary") or {}
-    if not bound or bound.get("whole", True):
+    if bound.get("whole", False):
         return [], []
     said = []
+
+    def say(statement):
+        # A figure's cuts include what narrowed its read, so the two halves
+        # name some of the same slices. One slice is one sentence.
+        if statement not in said:
+            said.append(statement)
+
     counts = bound.get("accounts") or {}
-    if counts and counts["counted"] < counts["held"]:
-        said.append(("boundary_accounts",
-                     {"counted": counts["counted"], "held": counts["held"]}))
+    if cut and counts and counts["counted"] < counts["held"]:
+        say(("boundary_accounts",
+             {"counted": counts["counted"], "held": counts["held"]}))
     for item in bound.get("selected") or []:
-        said.append((SELECTED_TERMS[item["kind"]][0], dict(item)))
-    if cut and bound.get("cut"):
-        said.append((SELECTED_TERMS[bound["cut"]["kind"]][0],
-                     dict(bound["cut"])))
+        say((SELECTED_TERMS[item["kind"]][0], dict(item)))
+    if cut:
+        for item in bound.get("cut") or []:
+            say((SELECTED_TERMS[item["kind"]][0], dict(item)))
     if bound.get("unposted"):
         # A gap no account names is still said. It is a number of documents,
         # because a document read and not posted may be about an account that
         # does not exist yet and there is nothing else to call it.
-        said.append(("boundary_unposted", {"count": bound["unposted"]}))
+        say(("boundary_unposted", {"count": bound["unposted"]}))
     return said, [item["account"] for item in bound.get("unmeasured") or []]
 
 
@@ -888,8 +1054,9 @@ def _boundaries(cited, ground: _Ground, in_rows=()) -> list:
 
     ``in_rows`` names the figures the answer stated as lines of a block rather
     than as numbers in a sentence. Those have already said which slice they
-    cover; what the read as a whole was narrowed to is still said, once, the
-    same as for any other figure."""
+    cover, and nothing about the reach of one line is restated as though it
+    were the answer's; what the read as a whole was narrowed to is still said,
+    once, the same as for any other figure."""
     statements: list = []
     left_out: list = []
     for fig in cited:
@@ -908,6 +1075,66 @@ def _boundaries(cited, ground: _Ground, in_rows=()) -> list:
 
 
 # ------------------------------------------------------------------- the gate
+
+
+def _labelled(entities) -> dict:
+    """The things these entities are, as the one label each kind is told apart
+    by, grouped by kind.
+
+    It is the label the model was shown, taken from the same place the model
+    took it from, so what a sentence names and what a figure's boundary names
+    are one string rather than two spellings of one thing."""
+    out: dict = {}
+    for item in entities:
+        out.setdefault(item["kind"], set()).add(_named(item)["label"])
+    return out
+
+
+def _misnamed(clause, references: dict, ground: _Ground):
+    """The slice of a figure this clause states that the clause names a
+    different thing for, as ``(slot, figure, cut entry, what was named)``, or
+    None where every slice agrees with what the sentence names.
+
+    An entity belongs to a figure when the figure's own boundary names it. The
+    figure says which slice of a set it is; the sentence says which thing it is
+    about, through a hole, which is a reference and never words; and those are
+    two strings put there by code. Neither the sentence's words nor the read
+    that emitted either half is read.
+
+    Every axis of the cut is compared, because the cut is a set and a figure
+    that is right about one axis of it and wrong about another is a figure
+    about something else. A clause naming several things of one kind is
+    answered by any of them: which of two things a number sits beside is the
+    sentence's own order, and reading that would be reading the sentence.
+
+    Two ways of agreeing are silence rather than a fault. A clause that names
+    nothing of a slice's kind claims nothing about that slice, and a sentence
+    that says which thing it is about only in its own words is prose nothing
+    here checks. And a slice naming something no read of this run established
+    is a set the run holds no thing for: nothing can be bound that would name
+    it, so nothing can name it wrongly either.
+
+    A figure stated as a line of a block is not compared. Every line is written
+    beside the name of the slice it is, out of the same declaration this would
+    compare it against, so a line says what it is about itself and there is no
+    second declaration for it to disagree with."""
+    bound = [references.get(slot.name) or {} for slot in clause.slots]
+    named = _labelled(ground.entities[str(reference["entity"])]
+                      for reference in bound if "entity" in reference)
+    established = _labelled(ground.entities.values())
+    for slot in clause.slots:
+        reference = references.get(slot.name) or {}
+        if "figure" not in reference:
+            continue
+        fig = ground.book[str(reference["figure"])]
+        for item in (fig.get("boundary") or {}).get("cut") or []:
+            here = named.get(item["kind"]) or set()
+            value = str(item["value"])
+            if not here or value not in established.get(item["kind"], set()):
+                continue
+            if value not in here:
+                return slot, fig, item, sorted(here)
+    return None
 
 
 def _written_out(parts) -> str:
@@ -950,6 +1177,13 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                 f"The delivery binds {name!r}, which is not a hole in the shape "
                 "this turn committed to.", dicts, len(transcript), shape)
 
+    # Which figures each hole stands beside, by the clause it is in. The holes
+    # are resolved one at a time and the clause is what says which of this
+    # run's figures a day or a span in it belongs to, so the clause each hole
+    # came from travels with it into the resolution.
+    beside = {slot.name: _stated_figures(clause, bindings, ground)
+              for clause in shape.clauses for slot in clause.slots}
+
     written: dict = {}
     references: dict = {}
     gaps: list = []
@@ -957,7 +1191,8 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         if name not in bindings:
             gaps.append({"name": name, "type": slot.type})
             continue
-        value, tag, detail = _bound(slot, bindings[name], ground, locale)
+        value, tag, detail = _bound(slot, bindings[name], ground, locale,
+                                    alongside=beside.get(name, ()))
         if value is None:
             return _refused(tag, detail, dicts, len(transcript), shape)
         written[name] = value
@@ -981,6 +1216,26 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                         "run could not establish.", dicts, len(transcript),
                         shape, diagnosis=_diagnosed(transcript, tools))
 
+    # The clause is the unit here, and it has to be: every hole above was
+    # resolved on its own against everything this run established, so a figure
+    # of one thing and a thing of the same kind can each be real and belong to
+    # different sentences. What ties them together is that the figure's own
+    # boundary names what the clause names. It runs over what survived the
+    # drops, because a clause about to be dropped asserts nothing to be wrong
+    # about.
+    for clause in spoken:
+        misnamed = _misnamed(clause, references, ground)
+        if misnamed is None:
+            continue
+        slot, fig, item, named = misnamed
+        return _refused(
+            "wrong_subject",
+            f"The clause holding {slot.name!r} names the {item['kind']} "
+            + ", ".join(repr(one) for one in named)
+            + f", and {fig['what']!r} was taken over the {item['kind']} "
+            f"{str(item['value'])!r} — the number is real and it is a number "
+            "about something else.", dicts, len(transcript), shape)
+
     # Only what survived asserts anything, so only what survived is answerable
     # for its records and its caveats. The holes are walked in the order the
     # sentence places them, which is the order a person reads it in.
@@ -999,7 +1254,7 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         # are not stated and are not cited.
         if as_rows:
             stated = [fid for fid in ground.readings[str(reference["read"])]
-                      if (ground.book[fid].get("boundary") or {}).get("cut")]
+                      if _line_of(ground.book[fid])]
         elif "figure" in reference:
             stated = [str(reference["figure"])]
         else:

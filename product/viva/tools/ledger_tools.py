@@ -40,7 +40,8 @@ from .envelope import (ACTIVITY, BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY,
                        BY_MERCHANT, BY_PERIOD, BY_SINCE, BY_SUBCATEGORY,
                        BY_TAG, BY_UNTIL, ENTITY_ACCOUNT, ENTITY_CATEGORY,
                        ENTITY_MERCHANT, GAP_REFUSED, GAP_UNOBSERVED,
-                       ToolResult, bounded, entity, figure, refusal, weakest)
+                       ToolResult, bounded, cut_set, entity, figure, refusal,
+                       weakest)
 from .registry import Registry, ToolSpec
 
 LIABILITY = "liability"
@@ -145,15 +146,30 @@ def _identifiers(proj, accounts) -> list:
     return out
 
 
-def _merchants(descriptors) -> list:
+def _merchant_key(proj, m) -> str:
+    """The one string a counterparty is known by across every read.
+
+    A movement's own description is the fallback and never the first answer:
+    two statements spell one counterparty two ways, and a figure narrowed or
+    grouped by counterparty is narrowed by the key. Every surface that names a
+    counterparty — a group, a vocabulary, an entity a sentence may refer to —
+    reads it from here, so the name beside a number and the value that number's
+    scope declares are the same string."""
+    return str(proj.merchant_key_of(m) or m.description or "").strip()
+
+
+def _merchants(keys) -> list:
     """The counterparties this read spoke about, each as an entity.
 
-    A movement's description is one of them: it names who the money went to,
-    which is a thing rather than a magnitude, however many digits a statement
-    happens to have written into it."""
+    A counterparty key is one of them: it names who the money went to, which is
+    a thing rather than a magnitude, however many digits a statement happens to
+    have written into the description it was read from. The key is what carries
+    here because it is what a follow-up filter takes and what a figure's scope
+    names; the description each movement was written with travels on the row it
+    belongs to."""
     out, seen = [], set()
-    for descriptor in descriptors:
-        text = str(descriptor or "").strip()
+    for key in keys:
+        text = str(key or "").strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -401,6 +417,12 @@ def _movement_row(proj, m, grades: dict) -> dict:
     ruling = proj.derived_category(m) or {}
     return {"record_id": m.key, "account": m.account, "date": m.date,
             "description": m.description,
+            # Which counterparty this row is one of, under the one key every
+            # read names a counterparty by. It is not a field of the row a
+            # person is shown — the description above is — and it is here so a
+            # read can say which counterparties it spoke about without
+            # recomputing what the grouping already knows.
+            "merchant_key": _merchant_key(proj, m),
             # How much, and which way it went. The posting's own sign does not
             # say the direction — the kind of account it sits on does — so the
             # raw signed amount is not a field of a row at all. A reader that
@@ -451,8 +473,11 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                        "I don't have any balance-holding accounts on file yet.")
     # One account's balance is one account's balance, whatever it is asked for:
     # it covers one of the accounts held, and it says so where the whole of
-    # them is more than one. The count covers as many as this read ranged over.
-    # An account someone is owed on measures what is owed rather than what is
+    # them is more than one, and names which one it is either way — beside
+    # whatever narrowed the read, because the figure is the overlap of the two.
+    # The count covers as many as this read ranged over, which is whatever the
+    # filters left, so it names that and nothing further. An
+    # account someone is owed on measures what is owed rather than what is
     # held, and both the word it is written under and the kind it declares say
     # so.
     figures = [figure(r["value"],
@@ -464,7 +489,10 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                          if r["provenance"].get("doc_id") else []),
                       boundary=bounded(whole=not narrowed and holds == 1,
                                        counted=1, held=holds,
-                                       selected=narrowed))
+                                       selected=narrowed,
+                                       cut=cut_set(narrowed,
+                                                   {"kind": BY_ACCOUNT,
+                                                    "value": r["record_id"]})))
                for r in rows]
     figures.append(figure(len(rows), "accounts holding a balance",
                           quantity=quantity.COUNT,
@@ -473,7 +501,8 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                           boundary=bounded(
                               whole=not narrowed and len(rows) == holds,
                               counted=len(rows), held=holds,
-                              selected=narrowed)))
+                              selected=narrowed,
+                              cut=cut_set(narrowed))))
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
         identifiers=_identifiers(proj, (r["record_id"] for r in rows)),
@@ -536,33 +565,36 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
     grade = weakest(r["grade"] for r in rows)
     # What these figures were taken over. Whole is read off the same list the
     # narrowing is written from, because `bounded` refuses a figure that
-    # declares it covers everything and also names what narrowed it.
+    # declares it covers everything and also names what narrowed it. Each of
+    # the five is the whole of what the filters left, so each names exactly
+    # what the filters named and nothing beyond it.
     narrowed = _narrowed_to(proj, filters)
     whole = not narrowed
+    over = cut_set(narrowed)
     figures = [
         figure(len(rows), "movements matching the filters",
                quantity=quantity.COUNT, grade=grade, record_ids=record_ids,
-               boundary=bounded(whole=whole, selected=narrowed)),
+               boundary=bounded(whole=whole, selected=narrowed, cut=over)),
         # Summed by which way the money went, which is read off the account's
         # kind rather than off the posting's sign.
         figure(money_in, "money in over these movements",
                quantity=quantity.GROSS_FLOW, grade=grade,
                currency=currency, record_ids=record_ids,
-               boundary=bounded(whole=whole, selected=narrowed)),
+               boundary=bounded(whole=whole, selected=narrowed, cut=over)),
         figure(money_out, "money out over these movements",
                quantity=quantity.GROSS_FLOW, grade=grade,
                currency=currency, record_ids=record_ids,
-               boundary=bounded(whole=whole, selected=narrowed)),
+               boundary=bounded(whole=whole, selected=narrowed, cut=over)),
         figure(money_in - money_out, "net movement over this set",
                quantity=quantity.NET_MOVEMENT, grade=grade,
                currency=currency, record_ids=record_ids,
-               boundary=bounded(whole=whole, selected=narrowed)),
+               boundary=bounded(whole=whole, selected=narrowed, cut=over)),
         # The divisor a per-month average over this set is computed with.
         # Arithmetic takes figure ids, so a count that lives only in the
         # payload cannot be divided by.
         figure(len(by_month), "months these movements span",
                quantity=quantity.COUNT, grade=grade, record_ids=record_ids,
-               boundary=bounded(whole=whole, selected=narrowed)),
+               boundary=bounded(whole=whole, selected=narrowed, cut=over)),
     ]
     # Two groupings over the same movements: a figure per account and a figure
     # per month. Each names its own slice, and declares itself whole only where
@@ -572,7 +604,9 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
                        currency=currency, record_ids=[k],
                        boundary=bounded(whole=whole and len(by_account) == 1,
                                         selected=narrowed,
-                                        cut={"kind": BY_ACCOUNT, "value": k}))
+                                        cut=cut_set(narrowed,
+                                                    {"kind": BY_ACCOUNT,
+                                                     "value": k})))
                 for k, v in sorted(by_account.items())]
     figures += [figure(v, f"net movement in {k}",
                        quantity=quantity.NET_MOVEMENT, grade=grade,
@@ -580,7 +614,9 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
                        record_ids=sorted(month_docs.get(k, ())),
                        boundary=bounded(whole=whole and len(by_month) == 1,
                                         selected=narrowed,
-                                        cut=_calendar_month(k)))
+                                        cut=cut_set(narrowed,
+                                                    _month_slice(
+                                                        k, narrowed))))
                 for k, v in sorted(by_month.items())]
     return ToolResult(
         tool=TOOL, ok=True,
@@ -649,7 +685,8 @@ def list_movements(proj, args: dict) -> ToolResult:
                        supported_filters=sorted(_SUPPORTED_FILTERS[LIST_TOOL]))
     rows, _ = _matching_rows(proj, filters)
     total = len(rows)
-    shown = [{k: r[k] for k in ROW_FIELDS} for r in rows[:MAX_ROWS]]
+    matched = rows[:MAX_ROWS]
+    shown = [{k: r[k] for k in ROW_FIELDS} for r in matched]
     record_ids = sorted({r["doc_id"] for r in shown if r["doc_id"]}
                         | {r["record_id"] for r in shown})
     covers, caveats = _attested_coverage(proj, filters)
@@ -680,7 +717,8 @@ def list_movements(proj, args: dict) -> ToolResult:
                           grade=weakest(r["grade"] for r in rows),
                           record_ids=counted_on,
                           boundary=bounded(whole=not narrowed,
-                                           selected=narrowed)))
+                                           selected=narrowed,
+                                           cut=cut_set(narrowed))))
     # A capped result says so in the sentence the tool itself writes: how many
     # of how many were shown, and which filters would reach the rest.
     coverage = f"Showing {len(shown)} of {total} matching movement(s)."
@@ -695,8 +733,12 @@ def list_movements(proj, args: dict) -> ToolResult:
         tool=LIST_TOOL, ok=True, data={"movements": shown, "shown": len(shown),
                                        "total": total},
         figures=figures,
+        # A counterparty is named by its key, which is what a figure of this
+        # read declares its scope as and what a follow-up filter takes back. A
+        # row's own description stays on the row, where a person reading their
+        # movements reads it.
         identifiers=(_identifiers(proj, (r["account"] for r in shown))
-                     + _merchants(r["description"] for r in shown)),
+                     + _merchants(r["merchant_key"] for r in matched)),
         grade=weakest(r["grade"] for r in shown),
         record_ids=record_ids, covers=covers, caveats=caveats,
         coverage=coverage, text=coverage)
@@ -739,7 +781,8 @@ def _query_holdings(proj, filters: dict) -> ToolResult:
                           grade=weakest(r["grade"] for r in rows),
                           record_ids=sorted({r["record_id"] for r in rows}),
                           boundary=bounded(whole=not narrowed,
-                                           selected=narrowed)))
+                                           selected=narrowed,
+                                           cut=cut_set(narrowed))))
     return ToolResult(
         tool=TOOL, ok=True, data={"holdings": rows, "count": len(rows)},
         figures=figures, identifiers=_identifiers(
@@ -809,8 +852,7 @@ def _spending_rows(proj, filters: dict, group_by: str) -> tuple[dict, dict]:
             # Stripped rather than merely truthy: a description of nothing but
             # spaces names no counterparty either, and both land on the same
             # named group.
-            key = (str(proj.merchant_key_of(m) or m.description or "").strip()
-                   or UNNAMED_MERCHANT)
+            key = _merchant_key(proj, m) or UNNAMED_MERCHANT
         elif group_by == "account":
             key = m.account
         else:
@@ -873,13 +915,27 @@ def _narrowed_to(proj, filters: dict) -> list:
     return out
 
 
-def _calendar_month(month: str) -> dict | None:
-    """The slice a month-shaped group covers, as a period spanning the calendar
-    month's own first and last day — not the days something moved in it.
+def _month_slice(month: str, narrowed) -> dict | None:
+    """The slice a month-shaped group covers: the calendar month it names, held
+    inside whatever window the read was narrowed to.
+
+    Two declarations the read already wrote down, met where both of them are
+    known. The month's own first and last day say which month the group is —
+    not the days something moved in it — and a read asked for part of a month
+    holds none of that month's other days, so the month's own edges would
+    declare a span the figure was never taken over and claim the days before
+    the window opened as its own. Where the two disagree the narrower edge
+    stands, on each edge separately, so a window given one edge narrows that
+    edge and leaves the other where the month put it.
+
+    `narrowed` is how the read was narrowed, and it has no default: a caller
+    that left it out would get the month's own edges back, which is the claim
+    this exists to stop.
 
     `month` is a group name taken from a stored date, which nothing upstream
-    promises is a date. Returns None where it is not shaped `YYYY-MM` or names
-    a month no calendar has; the figure then carries no slice. Never raises."""
+    promises is a date. Returns None where it is not shaped `YYYY-MM`, names a
+    month no calendar has, or lies outside the window altogether; the figure
+    then carries no slice. Never raises."""
     try:
         if not (len(month) == 7 and month[4] == "-"):
             return None
@@ -887,8 +943,17 @@ def _calendar_month(month: str) -> dict | None:
         last = calendar.monthrange(year, index)[1]
     except (TypeError, ValueError):
         return None
-    return {"kind": BY_PERIOD, "value": f"{month}-01",
-            "to": f"{month}-{last:02d}"}
+    start, end = f"{month}-01", f"{month}-{last:02d}"
+    for item in narrowed:
+        if item["kind"] == BY_PERIOD:
+            start, end = max(start, item["value"]), min(end, item["to"])
+        elif item["kind"] == BY_SINCE:
+            start = max(start, item["value"])
+        elif item["kind"] == BY_UNTIL:
+            end = min(end, item["value"])
+    if start > end:
+        return None
+    return {"kind": BY_PERIOD, "value": start, "to": end}
 
 
 def _largest_groups(grouped: dict) -> tuple[dict, dict]:
@@ -985,9 +1050,12 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
                        f"{amount(tail['total'])} in total.")
     grade = weakest(extras["grades"])
     # What each of these figures was taken over. The total and the count were
-    # taken over whatever the filters left; a group was taken over one slice of
-    # that, and says which slice where the grouping cuts by a thing the vault
-    # names.
+    # taken over whatever the filters left — so they name exactly what the
+    # filters named, and a sentence asking what was spent at one counterparty,
+    # or at one counterparty inside one span, has a figure that is the whole of
+    # what it asks about. A group was taken over one slice of what the filters
+    # left, so it names the filters AND its own slice, which is what makes it a
+    # different claim from the total beside it.
     #
     # A group is the whole of the spending its quantity ranges over only where
     # the grouping puts every counted movement in exactly one group AND there
@@ -1005,23 +1073,24 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
         # spending: a breakdown of one group is still a breakdown, and its one
         # row still has a name. What `covers_all` decides is whether there is a
         # boundary to state, not whether the figure knows what it is of.
-        cut = {"kind": _GROUP_NAMES[group_by], "value": k}
+        cut = cut_set(narrowed, {"kind": _GROUP_NAMES[group_by], "value": k})
         figures.append(figure(v, f"spending — {group_by} '{k}'",
                               quantity=quantity.SPENDING, grade=grade,
                               currency=currency, record_ids=record_ids,
                               boundary=bounded(whole=covers_all,
                                                selected=narrowed, cut=cut)))
+    over = cut_set(narrowed)
     figures.append(figure(extras["total"], f"total spending by {group_by}",
                           quantity=quantity.SPENDING,
                           grade=grade, currency=currency,
                           record_ids=record_ids,
                           boundary=bounded(whole=not filtered,
-                                           selected=narrowed)))
+                                           selected=narrowed, cut=over)))
     figures.append(figure(extras["count"], "spending movements counted",
                           quantity=quantity.COUNT,
                           grade=grade, record_ids=record_ids,
                           boundary=bounded(whole=not filtered,
-                                           selected=narrowed)))
+                                           selected=narrowed, cut=over)))
     # What a spending read groups by is sometimes a thing it spoke about — a
     # category, a counterparty — and an answer refers to that rather than
     # spelling it. A subcategory group is not one: its key names a pair, the
@@ -1075,8 +1144,10 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
                       grade=weakest(line_grades), currency=k,
                       record_ids=sources,
                       boundary=bounded(whole=whole, selected=narrowed,
-                                       cut=({"kind": BY_CURRENCY, "value": k}
-                                            if k in known else None)))
+                                       cut=cut_set(
+                                           narrowed,
+                                           {"kind": BY_CURRENCY, "value": k}
+                                           if k in known else None)))
                for k, v in sorted(by_currency.items())]
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
@@ -1223,7 +1294,13 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
     # apart from what it lists per account. It is counted, and said as a count.
     unposted = len(data.get("held") or [])
     figures = []
-    for currency, row in sorted(data.get("by_currency", {}).items()):
+    # One currency's part of a point held in several is one slice of it, and it
+    # names which. It is the whole of what its quantity ranges over only where
+    # that currency is the only one the vault holds, the same as one account's
+    # balance is a total only on a vault of one account. There is no total
+    # across currencies, so on a vault of several nothing here is whole.
+    by_currency = data.get("by_currency", {})
+    for currency, row in sorted(by_currency.items()):
         for part in PARTS:
             # What is held less what is owed is net worth; each side of it on
             # its own is a total of balances, and saying so keeps a hole that
@@ -1236,19 +1313,29 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
                                   record_ids=record_ids,
                                   boundary=bounded(
                                       whole=(not missing and not unposted
-                                             and placed),
+                                             and placed
+                                             and len(by_currency) == 1),
                                       unmeasured=missing,
-                                      unposted=unposted)))
+                                      unposted=unposted,
+                                      cut=[{"kind": BY_CURRENCY,
+                                            "value": currency}])))
     # A line of the point is emitted under what it measures, not under the sign
     # the point holds it in: an account someone is owed on comes out as the
     # debt the bill prints, the same figure the balances read gives for it, and
     # what is held comes out as its contribution. The line inside the point
     # keeps its signed contribution, which is what every subtotal is built from.
+    #
+    # A line is one account's part of a point built from several, so it is
+    # never the whole of what its quantity ranges over, and it names the
+    # account it is the part of.
     figures += [figure(_emitted_line(line), _line_word(line),
                        quantity=_measure_of(line.get("kind", "")),
                        grade=line.get("grade", ""), dated=line.get("as_of", ""),
                        currency=line.get("currency", ""),
-                       record_ids=[line["account"]])
+                       record_ids=[line["account"]],
+                       boundary=bounded(whole=False,
+                                        cut=[{"kind": BY_ACCOUNT,
+                                              "value": line["account"]}]))
                 for line in lines]
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
@@ -1282,8 +1369,7 @@ _VOCABULARIES = {
     "subcategory": lambda proj: proj.known_subcategory_pairs(),
     "tag": lambda proj: proj.known_tags(),
     "merchant": lambda proj: sorted(
-        {str(proj.merchant_key_of(m) or m.description or "").strip()
-         for m in proj.movements()} - {""}),
+        {_merchant_key(proj, m) for m in proj.movements()} - {""}),
     "account": lambda proj: sorted(i.account for i in _real_accounts(proj)),
     "currency": lambda proj: sorted(_currencies(proj)),
 }
@@ -1450,23 +1536,34 @@ def check_completeness(proj, args: dict) -> ToolResult:
     # Four counts of this agent's own paperwork, not of the person's money: a
     # wrong one moves the account the agent gives of its records and no figure
     # about what they hold, so each is activity and carries no grade.
+    #
+    # This read takes no filters, so each count is taken over every document
+    # the agent holds and every counterparty it has seen — the whole of what it
+    # counts, with nothing narrowing it and nothing left out.
     figures = [
         figure(len(captured), "documents held", quantity=quantity.COUNT,
-               kind=ACTIVITY, record_ids=all_docs),
+               kind=ACTIVITY, record_ids=all_docs,
+               boundary=bounded(whole=True)),
         figure(len(captured) - len(held), "documents posted to the ledger",
-               quantity=quantity.COUNT, kind=ACTIVITY, record_ids=all_docs),
+               quantity=quantity.COUNT, kind=ACTIVITY, record_ids=all_docs,
+               boundary=bounded(whole=True)),
         figure(len(held), "documents awaiting review", quantity=quantity.COUNT,
-               kind=ACTIVITY, record_ids=all_docs),
+               kind=ACTIVITY, record_ids=all_docs,
+               boundary=bounded(whole=True)),
         figure(unidentified, "counterparties with no category yet",
-               quantity=quantity.COUNT, kind=ACTIVITY, record_ids=all_docs),
+               quantity=quantity.COUNT, kind=ACTIVITY, record_ids=all_docs,
+               boundary=bounded(whole=True)),
     ]
     # A day, which is a point in time and not a magnitude: it fills no hole
-    # that asks for an amount, a count or a proportion.
+    # that asks for an amount, a count or a proportion. One account's day is
+    # not every account's, so it declares itself not whole rather than saying
+    # nothing about what it was taken over.
     figures += [figure(a["dated"], f"{a['name'] or a['account']} — the date "
                        "its evidence is good as of",
                        quantity=quantity.TIME,
                        grade=a["grade"], dated=a["dated"],
-                       record_ids=[a["account"]])
+                       record_ids=[a["account"]],
+                       boundary=bounded(whole=False))
                 for a in accounts if a["dated"]]
     return ToolResult(
         tool="check_completeness", ok=True, figures=figures,
@@ -1506,12 +1603,18 @@ def get_provenance(proj, args: dict) -> ToolResult:
         ba = proj.balance(rid)
         ids = [rid] + ([ba.provenance.doc_id] if ba.provenance.doc_id else [])
         measures = _measure_of(proj.account_info(rid).kind)
+        # One account's balance, named as the account it is of: this read
+        # reaches one record and knows nothing about how many others there
+        # are, so it never claims to be the whole of what a balance measures.
         return ToolResult(
             tool="get_provenance", ok=True, grade=ba.grade, dated=ba.dated,
             figures=[figure(proj.account_value(rid), f"{rid} — {measures}",
                             quantity=measures,
                             grade=ba.grade, dated=ba.dated,
-                            currency=ba.currency, record_ids=ids)],
+                            currency=ba.currency, record_ids=ids,
+                            boundary=bounded(whole=False,
+                                             cut=[{"kind": BY_ACCOUNT,
+                                                   "value": rid}]))],
             identifiers=_identifiers(proj, [rid]),
             record_ids=[rid] + ([ba.provenance.doc_id]
                                 if ba.provenance.doc_id else []),
@@ -1526,6 +1629,8 @@ def get_provenance(proj, args: dict) -> ToolResult:
         grades = movements_view.movement_grades(proj.core)
         ids = [match.key] + ([match.provenance.doc_id]
                              if match.provenance.doc_id else [])
+        # One movement is the whole of what the quantity `movement` ranges
+        # over, and a member of the set rather than a slice of it.
         return ToolResult(
             tool="get_provenance", ok=True,
             grade=grades.get(match.key, ""), dated=match.date,
@@ -1533,7 +1638,8 @@ def get_provenance(proj, args: dict) -> ToolResult:
                             f"{match.description} on {match.date}",
                             quantity=quantity.MOVEMENT,
                             grade=grades.get(match.key, ""), dated=match.date,
-                            currency=match.currency, record_ids=ids)],
+                            currency=match.currency, record_ids=ids,
+                            boundary=bounded(whole=True))],
             identifiers=_identifiers(proj, [match.account]),
             record_ids=[match.key] + ([match.provenance.doc_id]
                                       if match.provenance.doc_id else []),
@@ -1580,7 +1686,11 @@ def get_transparency(proj, args: dict) -> ToolResult:
                        f"since must be an ISO date, got '{since}'.")
     # Every number here is a claim about the agent rather than about the
     # person's money, and stands on the ledger events that recorded the
-    # behaviour.
+    # behaviour. A day to run from narrows what the two journal topics count,
+    # so their figures record it and declare the whole only where nothing was
+    # asked for. The questions set aside are not narrowed by it, and their
+    # count is over every one of them.
+    since_narrowed = [{"kind": BY_SINCE, "value": since}] if since else []
     if topic == "agent_activity":
         log = proj.agent_log()
         if since:
@@ -1603,7 +1713,10 @@ def get_transparency(proj, args: dict) -> ToolResult:
                   "count": len(log)},
             figures=[figure(len(log), "unattended actions on record",
                             quantity=quantity.COUNT,
-                            kind=ACTIVITY, record_ids=events)],
+                            kind=ACTIVITY, record_ids=events,
+                            boundary=bounded(whole=not since_narrowed,
+                                             selected=since_narrowed,
+                                             cut=cut_set(since_narrowed)))],
             record_ids=events, coverage=said, text=said)
     if topic == "calls_spent":
         log = [a for a in proj.agent_log()
@@ -1615,7 +1728,10 @@ def get_transparency(proj, args: dict) -> ToolResult:
             data={"topic": topic, "calls": calls, "since": since},
             figures=[figure(calls, "model calls the agent spent on its own",
                             quantity=quantity.COUNT,
-                            kind=ACTIVITY, record_ids=events)],
+                            kind=ACTIVITY, record_ids=events,
+                            boundary=bounded(whole=not since_narrowed,
+                                             selected=since_narrowed,
+                                             cut=cut_set(since_narrowed)))],
             record_ids=events,
             caveats=["Counts only the maintenance agent's unattended calls; "
                      "a conversation's own model calls are recorded "
@@ -1629,6 +1745,7 @@ def get_transparency(proj, args: dict) -> ToolResult:
         data={"topic": topic, "declined": declined, "count": len(declined)},
         figures=[figure(len(declined), "questions set aside",
                         quantity=quantity.COUNT,
-                        kind=ACTIVITY, record_ids=events)],
+                        kind=ACTIVITY, record_ids=events,
+                        boundary=bounded(whole=True))],
         record_ids=events,
         text=f"{len(declined)} question(s) set aside.")
