@@ -1,876 +1,439 @@
 # The Conduit and the Counterparty — reading a descriptor as a record
 
-**Status:** Built — see *What the build changed* at the end · **Date:** 2026-07-28 · **Invariants touched:** T1, T2, T5, T7, T9, I2, I5, X2
+**State:** built
+**Rules:** MER-1, MER-2, MER-3, MER-4, MER-5, MER-6, MER-7, MER-8, MER-9, MER-10, MER-11, MER-71, MER-12, MER-13, MER-14, MER-15, MER-16, MER-17, MER-18, MER-19, MER-70, MER-72
 
-## What is wrong today
+## Rules
 
-`VENMO TO JOHN SMITH` is refused at the boundary because `venmo` and `" to "` are
-in a ten-item substring list. That list is the last survivor of the nine raw-text
-keyword tables this project deleted, and it survived the purge by being filed
-under **privacy** rather than **classification** — nobody audits a privacy guard
-for being a word list.
+### MER-1 — The slot vocabulary is closed
+**State:** enforced
+**Code:** merchant/merchantcore/profile.py:42 (`SLOTS`), :181 (`Template.compile`), merchant/merchantcore/induce.py:96 (`vocabulary_block`)
+**Test:** merchant/tests/test_profile.py::test_only_names_from_the_vocabulary_compile, merchant/tests/test_profile.py::test_the_prompt_is_rendered_from_the_same_dict_the_validator_enforces
 
-It fails in both directions:
+1. A template names holes only from `SLOTS`; any other name raises `ProfileError`.
+2. A template carries no regular expression; the expression is compiled from the template in this package.
+3. A slot other than `noise` appears at most once in one template.
+4. The prompt's slot list is rendered from `SLOTS`, so prompt and validator cannot name different sets.
 
-```
-False  PAYMENT TO MERIDIAN CARD 2291       ← blocked: an ordinary card payment
-False  TRANSFER TO NORTHBANK SAVINGS 8802  ← blocked: your own savings
-True   UPI/DR/402938/JOHN S/HDFC           → crosses, carrying a name
-True   PAGO A JUAN                         → crosses, carrying a name
-```
+### MER-2 — A template explains a whole line or none of it
+**State:** enforced
+**Code:** merchant/merchantcore/profile.py:209 (anchored at both ends), :277 (`Profile.apply`)
+**Test:** merchant/tests/test_profile.py::test_a_match_explains_the_whole_line
 
-Measured on the author's real vault: **183 of 492 merchant keys refused, behind
-26% of every movement ever ingested.** Every English descriptor containing "to"
-is excluded from enrichment; every non-English one carrying a name is admitted.
+1. A compiled template is anchored at both ends, so every character of a matched descriptor lands in a slot or a literal.
+2. `apply` returns the first template that matches; template order is part of the grammar.
+3. No match is a legitimate answer and returns `None`.
 
-Two deeper faults sit under the list's length.
+### MER-3 — Privacy is a slot name
+**State:** enforced
+**Code:** merchant/merchantcore/profile.py:64 (`PERSONAL_SLOTS`), :70 (`PARTY_SLOTS`), :212 (`party_slot`), :239 (`Match.personal`), :243 (`Match.shareable`)
+**Test:** merchant/tests/test_profile.py::test_personal_and_shareable_are_decided_by_slot_not_by_text, merchant/tests/test_profile.py::test_a_contact_where_the_party_belongs_is_personal_by_STRUCTURE
 
-**The gate answers the question enrichment exists to answer.** *"Is this a peer
-payment?"* is world knowledge, and `counterparty_kind` is the field that holds
-it. The gate runs first, so it must guess — with substrings — the thing the model
-would have told us.
+1. `counterparty`, `counterparty_handle` and `account_ref` are personal by declaration; nothing inspects the text that landed in them.
+2. A template naming no party slot promotes its `{contact}` to personal, because a line that names nobody prints a person's contact detail rather than a shop's.
+3. `{institution}` never counts as naming the other side; it names the conduit the money crossed.
+4. `noise` is carried and never shared.
 
-**One function answers two questions.** `is_shareable` decides eight things:
-what gets enriched, what exports to the commons, whether a question generalizes,
-whether a ruling generalizes, and the attention tier. Some ask *"may this leave
-the machine?"* and some ask *"does this describe a pattern?"* Several call sites
-ask the second and receive an answer to the first, which is why a ruling about
-your own savings transfer refuses to generalize.
+### MER-4 — A wire is refused every layer
+**State:** enforced
+**Code:** merchant/merchantcore/descriptor.py:54 (`_WIRE_MARKERS`), :78 (`is_never_templatable`), merchant/merchantcore/profile.py:284, merchant/merchantcore/resolve.py:262
+**Test:** merchant/tests/test_profile.py::test_a_wire_is_refused_a_grammar_however_good_the_template_looks, merchant/tests/test_profile.py::test_a_refused_line_is_excluded_from_coverage_not_counted_against_it
 
-## What the rails actually give us
+1. A line carrying two or more distinct Fedwire/SWIFT markers is refused a grammar; no template may claim it.
+2. The refusal is checked before any template is tried, not after.
+3. Refused lines are excluded from the coverage denominator rather than counted against a grammar.
 
-The decisive fact, and the reason this is not the problem it appears to be:
-**a descriptor is not free text.** It is the flattened tail of a pipeline that
-carried typed, fixed-width fields.
+### MER-5 — A slotless template needs a line the bank repeats
+**State:** enforced
+**Code:** merchant/merchantcore/profile.py:349 (`validate_evidence`), merchant/merchantcore/induce.py:274 (`_fixed_phrase`)
+**Test:** merchant/tests/test_profile.py::test_a_template_with_no_holes_is_an_example_not_a_grammar, merchant/tests/test_profile.py::test_a_fee_line_is_a_grammar_when_the_bank_prints_it_repeatedly
 
-**Card — ISO 8583 DE43 is positional, not delimited.** Visa lineage: merchant
-name 1–25, city 26–38, state/country 39–40. Mastercard lineage: 1–23, 24–36,
-37–38, 39–40. `PLANO TX` is not a phrase; it is two adjacent fixed-width
-subfields. Also specified rather than conventional:
+1. A template with no holes is kept only where some line it matches occurs more than once in the corpus.
+2. Without counts, every slotless template is refused.
+3. `validate` (format only) admits a frozen slotless template at load time; the evidence rule lives only in `validate_evidence`.
 
-- **An asterisk at index 3, 7 or 12** separates a brand prefix from a product or
-  sub-merchant — a processor-mandated layout (`AMNUTTS*HUNT&FISHCAT`).
-- **Visa mandates the semantics of that split**: `PayFac*SubMerchant`,
-  `Marketplace*Retailer`, `Wallet*Retailer`.
-- **For card-absent transactions the 13-character city slot legally holds a
-  phone number or URL instead** (`617-SERVICE`). A trailing `\d{3}-\S+` is
-  therefore the city field, and its presence is a card-not-present signal.
-- Airlines and fuel dispensers carry mandated positional layouts inside the name.
+### MER-6 — A profile is a versioned pack, never edited
+**State:** enforced
+**Code:** merchant/merchantcore/profile.py:375 (`ProfileStore`), :481 (overwrite refusal), :470 (coverage comparison)
+**Test:** merchant/tests/test_profile.py::test_a_released_profile_cannot_be_overwritten, merchant/tests/test_profile.py::test_a_worse_rerun_cannot_silently_become_the_grammar
 
-**ACH — NACHA record layouts are fixed-width.** `Company Name` (16 chars) is the
-*platform*; `Company Entry Description` (10 chars) is a low-cardinality purpose
-token; `Individual Name` (22 chars) is the *person*. Separate fields.
+1. The filename is the version; `write` refuses to overwrite an existing profile id (T7).
+2. Where evidence is supplied, a new version that explains a smaller share of those movements than the version it succeeds is refused unless `force` is passed.
+3. `latest` resolves by version number, so a superseded version keeps resolving for the records stamped with it.
 
-**Zelle is not ACH.** It runs over RTP, which is native ISO 20022, so the
-counterparty arrives as a structured `Cdtr/Nm` and `ZELLE TO JOHN SMITH` is a
-sentence the *bank composed* for display from data that was already typed.
+### MER-7 — A grammar is gated and chosen on lines it never saw
+**State:** enforced
+**Code:** merchant/merchantcore/induce.py:70 (`holdout_split`), :352 (`Induction.scored`), :359 (`accepted`), :426
+**Test:** merchant/tests/test_profile.py::test_a_grammar_is_gated_on_lines_that_never_helped_choose_it, merchant/tests/test_profile.py::test_the_holdout_is_stable_so_two_runs_measure_the_same_thing
 
-**Europe never had the problem.** `camt.053` carries `RltdPties/Cdtr/Nm`,
-`UltmtCdtr/Nm`, a three-level transaction taxonomy and structured remittance
-info. PSD2 gives `creditorName`/`debtorName` as first-class fields; UK Open
-Banking has `MerchantDetails/MerchantName` and `MerchantCategoryCode`.
+1. A share of distinct lines is withheld before induction begins: never sampled, never used to choose between candidates.
+2. The gate and any selection between candidate grammars read the held-out score where one exists, the training coverage only where there is no holdout; the check is deterministic, with no model in the loop (T2).
+3. The split is a hash of the descriptor salted with `PROFILE_FORMAT`, so two runs over one vault split identically and a descriptor keeps its side as the vault grows.
+4. Coverage is measured over every eligible descriptor, weighted by movements, never over the sample.
 
-**And the category we pay a model to guess was computed and discarded.** Every
-card authorization carries the MCC in DE18. The issuer has it — it drives reward
-tiers. No US consumer channel exposes it; neither does Plaid.
+### MER-8 — The induction thresholds
+**State:** enforced-with-exception
+**Code:** merchant/merchantcore/induce.py:50 (`DEFAULT_SAMPLE` 40), :53 (`MIN_COVERAGE` 0.80), :57 (`MAX_ROUNDS` 3), :62 (`HOLDOUT_SHARE` 0.20), :67 (`MIN_LINES_TO_INDUCE` 30)
+**Test:** merchant/tests/test_profile.py::test_a_grammar_that_explains_the_rare_lines_and_misses_the_mass_fails, merchant/tests/test_profile.py::test_the_loop_shows_each_round_only_what_the_last_one_missed
 
-So: **the person is not hiding in ambiguous text. The person is in a known slot
-of a known format.** We do not detect them and we do not ask about them. We parse
-the format, and the name falls out of the position it always occupied.
+1. A pair with fewer than 30 distinct lines is not induced; it still resolves through Layer 0 and the normalizer.
+2. A grammar scoring below 0.80 is not accepted and not written.
+3. Induction is a loop bounded at three rounds; each round sees only what the accumulated grammar could not explain, and stops early when a round returns nothing new or explains no new line.
+4. At most five examples of any one line shape ride in a sample, chosen for difference from each other rather than frequency.
 
-## The reframe: recover a record, do not parse a string
+**Exception:** `MIN_LINES_TO_INDUCE` is a constant `Inducer.induce` never reads (merchant/merchantcore/induce.py:410). Assertion 1 is enforced by two callers — product/viva/induce_profile.py:262, which `--force` bypasses, and product/viva/agent/act.py:90 — and by neither cited test. Nothing in the package refuses a three-line induction.
 
-The target is not a cleaned string. It is a **record with provenance on every
-field**:
+### MER-9 — The layer order, and a borrowed grammar
+**State:** enforced
+**Code:** merchant/merchantcore/resolve.py:42 (`LAYERS`), :50 (`Resolution.layer`), :234 (`resolve_descriptor`), :274 (borrowing)
+**Test:** merchant/tests/test_merchantcore.py::test_the_banks_own_grammar_always_wins, merchant/tests/test_merchantcore.py::test_which_lender_wins_does_not_depend_on_dict_order, merchant/tests/test_merchantcore.py::test_a_borrowed_grammar_is_still_a_grammar, merchant/tests/test_merchantcore.py::test_borrowing_never_reaches_a_refused_line
 
-```
-{ brand, sub_merchant, store_number, city, region, country,
-  contact, mcc, counterparty, counterparty_kind, purpose, rail }
-```
+1. Layers are applied refused → the bank's own grammar → a borrowed grammar → published rules → the normalizer, each claiming only what it can prove, and the resolution records which layer produced it (T1).
+2. The bank's own grammar always wins over a borrowed one.
+3. Borrowed grammars are tried in profile-id order, so the answer never depends on iteration order; where one matches, `borrowed_from` records it.
+4. A borrowed match is recorded as layer `grammar`, because downstream privacy checks key on that word.
 
-Each field carries how it was obtained — `structured` · `parsed` · `inferred` ·
-`absent`. That one choice makes the work durable: a `camt.053` statement or a
-future US enhanced-merchant feed fills the record **directly, with the parser
-bypassed**, and nothing downstream changes. Mastercard's AN4569 already mandates
-enhanced merchant data across Europe and Visa's equivalent lands in 2027, so the
-parsing problem is shrinking. Build the consumer of structured data, and let
-parsing be the fallback rather than the foundation.
+### MER-10 — Identity is brand-level
+**State:** enforced
+**Code:** merchant/merchantcore/resolve.py:86 (`Resolution.merchant_key`), product/viva/ledger/hints.py:85, product/viva/ledger/projection/merchants.py:59
+**Test:** product/tests/test_hints.py::test_two_locations_of_one_brand_are_one_key_and_one_call, product/tests/test_merchant_keys.py::test_two_locations_of_one_brand_are_one_key
 
-## Four layers, each shrinking what the next one sees
+1. A merchant is keyed by the normalized brand a layer named; location is context on the occurrence, never part of identity.
+2. Where no layer names a brand, the key falls back to the whole normalized line, which still carries whoever was on it — never to the institution.
+3. Context travels with a hint only where every occurrence of the brand agreed on it.
 
-**Layer 0 — network-universal, deterministic, no model, no profile.** The
-asterisk convention, the trailing state code, store-number tokens, the
-phone-in-city-slot rule, known processor prefixes, date fragments. These are
-specified by the card networks and identical at every bank on earth. Free, and
-the first thing to measure: *what fraction of descriptors does this alone fully
-account for?* That number decides whether Layer 1 is a centrepiece or a
-long-tail tool.
+### MER-11 — A rail is proven by structure, never by a word
+**State:** enforced
+**Code:** merchant/merchantcore/resolve.py:139 (`_DE43_RULES`), :164 (`channel_of`), :143 (`rail_of`), product/viva/ledger/streams.py:450-478
+**Test:** product/tests/test_streams.py::test_a_merchant_with_one_proven_channel_does_not_split_across_templates, product/tests/test_streams.py::test_an_atm_withdrawal_and_a_cheque_still_separate
 
-**Layer 1 — an induced grammar, keyed by (institution × rail × document type).**
-Not per institution: a checking line and a card line from one bank have unrelated
-grammars, and the ACH/Zelle templates are a third language. This is where
-per-bank concatenation lives, and where the person's slot lives.
+1. A channel is claimed only where a published format proves it — a NACHA tail, two wire tags, an ISO 8583 DE43 structure — or where a grammar put a person in a slot named for one; otherwise it is `unknown` and stays `unknown` (X2).
+2. No rule keys a channel on a word in the descriptor text.
+3. Where this line proves nothing, the rail falls back to the channel the same counterparty's other lines prove when they prove exactly one, and that inference is bounded to one account at one institution.
+4. Failing both, the template stands in for the rail, so two lines off one template stay one stream.
 
-**Layer 2 — the merchant knowledge base.** Brand lookup; a model call only on a
-miss. By this point the input is a short clean brand string, which is where a
-model is accurate. Fed a raw descriptor it is not: the only public benchmark puts
-naive frontier-model merchant normalization at **0.66**, against **0.87** for a
-knowledge-base-backed system.
+### MER-71 — A brand slot crosses only where a published format corroborates the line
+**State:** enforced-with-exception
+**Code:** merchant/merchantcore/resolve.py:180 (`corroborates_a_business`), product/viva/ledger/hints.py:128, :160 (`_named_by_a_slot`)
+**Test:** product/tests/test_hints.py::test_a_brand_a_grammar_named_crosses_only_where_a_published_format_agrees, product/tests/test_hints.py::test_a_format_one_line_proves_does_not_certify_its_sibling, product/tests/test_hints.py::test_one_uncorroborated_stream_withholds_the_hint_it_shares, product/tests/test_hints.py::test_the_gate_does_not_wait_for_a_grammar_that_names_a_person
 
-**Layer 3 — local.** The counterparty, from the slot Layer 1 identified.
+1. A slot name may say a hole holds a person; it may not, by itself, say a hole holds a business. This is the mechanism **T9** names; T9 is the invariant and this rule is how it is honoured at the descriptor edge.
+2. Where a grammar named the brand, the hint crosses only if a published format read from each line behind it says the other side was a business.
+3. Corroboration is never inherited: a format a sibling line proved certifies nothing.
+4. The unit withheld is the whole hint — brand and context together — because a party's name lands in whichever slot the model called impersonal.
+5. The gate applies to every grammar, including one that names no person anywhere.
+6. Nothing about local resolution moves: the stream still keys on the brand, the merchant key still forms, categorization still works.
 
-## Induction from evidence, never recall
+**Exception:** the ACH clause is satisfied by a Company Name that `split_ach_heads` recovered from the corpus rather than read from a published boundary on the line (merchant/merchantcore/descriptor.py:285, merchant/merchantcore/resolve.py:200). An ACH line whose head is a person's given name is therefore corroborated and crosses. Recorded in the test that names it: product/tests/test_hints.py::test_an_ach_line_whose_head_recovered_a_company_name_corroborates.
 
-A profile is **never** obtained by asking a model *"how does this bank encode its
-descriptors?"* That is a recall question about undocumented, drifting, per-bank
-behaviour that no model was trained on — and it will be answered fluently anyway.
+### MER-12 — The declaration travels with the keys
+**State:** enforced
+**Code:** product/viva/ledger/merchant_keys.py:32 (`MerchantKeys`), :48 (`resolve_keys`), product/viva/ledger/projection/merchants.py:28 (`merchant_key_map`), :84 (`is_person`), product/viva/ledger/projection/rhythm.py:242
+**Test:** product/tests/test_merchant_keys.py::test_a_resolver_declaring_nothing_is_told_apart_from_one_of_the_wrong_shape, product/tests/test_rhythm.py::test_a_person_shaped_stream_reaches_no_prompt_no_catalog_and_no_question
 
-A profile is obtained by showing the model **real descriptors from the statement
-in hand** — a few examples of each line shape it prints — and asking what grammar
-produced them. Same call, same cost,
-entirely different failure mode: the model perceives what is in front of it and
-is never believed about the world. That distinction is the same one the whole
-extraction path already rests on.
+1. A resolver returns the line-to-key mapping and the lines a grammar slot declared a party on; it is the same declaration the enrichment gate reads, never a second way of asking.
+2. A resolver returning any other mapping raises `TypeError` rather than defaulting to silence.
+3. The rhythm read drops a declared person's movements before any flow is formed, so a person contributes no hypothesis, no question and no subject a ruling could be recorded under.
+4. A projection built with no resolver declares nobody and normalizes each descriptor to itself.
 
-## The vocabulary is closed, and it is the same list twice
+### MER-13 — `is_shareable` answers only where no grammar does
+**State:** enforced
+**Code:** merchant/merchantcore/normalize.py:68 (`is_shareable`), product/viva/ledger/hints.py:118
+**Test:** product/tests/test_hints.py::test_with_no_grammar_the_conservative_list_still_guards_a_peer_payment, merchant/tests/test_merchantcore.py::test_a_line_the_english_list_cannot_read_is_not_cleared_by_its_silence
 
-The model does not write a regular expression. It writes literal words and
-**named holes drawn from a closed set**:
+1. Where a stream's layer is not `grammar`, every occurrence's descriptor must pass `is_shareable` for the stream to cross.
+2. `is_shareable` fails closed: a peer-payment marker, any alphabetic character outside ASCII, or nothing left after normalization all refuse.
+3. Silence from the marker list is not a clearance for a line the list cannot read.
+4. Inducing a grammar for an institution retires the list there.
 
-```
-ZELLE TO {counterparty} {reference}
-CARD PURCHASE {date} {brand} {city} {region}
-```
+### MER-14 — A kind that names no party gets neither a grammar nor enrichment
+**State:** enforced
+**Code:** merchant/merchantcore/profile.py:75 (`INDUCIBLE_KINDS`), :78 (`is_inducible`), :442 (`latest_for`), :463, product/viva/ingest/categorize.py:229
+**Test:** merchant/tests/test_profile.py::test_a_kind_whose_lines_name_no_party_gets_no_grammar, merchant/tests/test_profile.py::test_a_grammar_is_never_served_for_an_ineligible_kind, product/tests/test_merchant_enrich.py::test_only_accounts_whose_lines_name_a_party_are_enriched
 
-Fifteen names, no more: `brand`, `city`, `region`, `store_number`,
-`counterparty`, `institution`, `account_ref`, `reference`, `trace`,
-`company_id`, `contact`, `date`, `amount`, `purpose`, `noise`. Each already
-knows what shape of text it matches, so a hole is a *name*, not a pattern. The
-expression is compiled **in our code**, from the template, which is what bounds
-the grammar: a profile cannot express anything the vocabulary does not permit,
-because the only thing the model ever supplies is which name goes where.
+1. `INDUCIBLE_KINDS` is an allowlist of account kinds whose descriptors name a party.
+2. A kind outside it may not have a grammar induced, is never served one however many files exist, and its merchants are never offered for enrichment.
+3. The gate reads the account kind the ledger already holds, never anything about the text.
 
-Three of those names were added by the first real statement rather than designed
-in, and the corrections are worth recording because each one was invisible until
-a bank's own lines were put next to the vocabulary. A real ACH line carries **two
-ids at once** — the trace number for this movement and the originator's standing
-company id — so `trace` and `company_id` are two names rather than one name used
-twice. And a card-not-present line carries the merchant's phone number where the
-city belongs, which Layer 0 already had a name for; `contact` keeps the two
-layers speaking the same language.
+### MER-15 — A better layer must not return less than a worse one
+**State:** enforced
+**Code:** merchant/merchantcore/resolve.py:227 (`_slot_from` re-adds `entry_description`), :292
+**Test:** product/tests/test_streams.py::test_the_ach_entry_description_is_recovered_from_the_statement
 
-That one list is used twice, and the two uses are what make it worth having.
+1. A grammar match that absorbed the NACHA Company Entry Description into literal text still reports it, recovered from the statement-level split.
+2. A higher layer displacing a lower one may not drop a field the lower one proved.
 
-**It is rule 1 of the induction prompt** — enumerated, with the instruction that
-any template using another name is discarded. **It is also the validator**, which
-refuses unknown slots, unknown shapes, and a slot **other than `{noise}`**
-repeated inside one template — `{noise}` is exempt because a line can carry
-filler in more than one place. A fourth rule lives at parse time rather than in
-the compiler: a template with no holes at all is refused **unless some line it
-matches occurs more than once in the corpus.** A fee or a payment
-acknowledgement has no variable part, and the bank prints the identical string
-every time, so recurrence is what separates a legitimate fixed phrase from an
-example copied out of the sample. Prompt and validator cannot drift apart,
-because the prompt is rendered *from* the vocabulary and states the same
-exception. _(Corrected 2026-08-14: this said the validator refuses a slotless
-template outright, and omitted the `{noise}` exemption. The parenthetical
-rationale it gave survives verbatim as the code's own error message — the defect
-was scope, not reasoning: the rule is conditional, and the condition is the
-whole point.)_
+### MER-16 — Word-recurrence counts decide nothing
+**State:** enforced
+**Code:** merchant/merchantcore/descriptor.py:245 (`word_owners`)
+**Test:** product/tests/test_streams.py::test_word_recurrence_is_a_diagnostic_and_decides_nothing
 
-Two properties then fall out of the structure rather than being checked
-afterwards:
+1. `word_owners` is a diagnostic for the streams report only.
+2. No rule may key on how many normalized keys print a word.
 
-- **Losslessness is structural.** The compiled expression is anchored at both
-  ends. A template explains the whole line or it does not match. So there is no
-  partial parse to mistake for a complete one — anything a profile claims is a
-  line every character of which landed in a slot.
-- **Privacy is a slot name.** `counterparty` and `account_ref` are personal *by
-  declaration*, in the vocabulary, in code. Nothing downstream inspects the
-  extracted text to decide whether it may travel; the slot it came from already
-  said. This is what replaces the substring list — not a better list, but a
-  different kind of thing.
+### MER-17 — The shape set is kept small on purpose
+**State:** enforced
+**Code:** merchant/merchantcore/profile.py:109 (`SHAPES`), :123 (`merchant` shape, no `#`), :143 (`SLOT_SHAPE`), :89 (`_MARKS`)
+**Test:** merchant/tests/test_profile.py::test_a_hash_is_left_out_because_it_slots_wrongly, merchant/tests/test_profile.py::test_a_name_may_not_start_with_a_digit_and_a_merchant_string_may
 
-## What the vocabulary cannot protect, and the shape refused because of it
+1. `#` is not in any shape; a template writes it as literal text with `{store_number}` after it.
+2. `counterparty` stays on the narrow `words` shape and is never widened.
+3. A name shape starts with a letter; only `brand` and `noise` take the wider `merchant` shape, which may start with a digit.
+4. Combining marks are enumerated by codepoint range, because this package takes no third-party regex dependency.
 
-A slot name is a promise about what is inside it. `{city}` holds a city;
-`{trace}` holds a number the network assigned. That promise is what makes the
-privacy boundary a schema instead of a filter — and it is exactly what a wire
-transfer breaks.
+### MER-18 — The induction diagnostics decide nothing
+**State:** enforced
+**Code:** merchant/merchantcore/induce.py:159 (`narrow_templates`), :179 (`uncorroborated_brands`), product/viva/induce_profile.py:341-361
+**Test:** merchant/tests/test_profile.py::test_a_template_is_judged_by_what_it_MATCHES_not_by_its_words, merchant/tests/test_profile.py::test_a_brand_slot_is_counted_against_the_lines_that_prove_nothing
 
-A wire is not a descriptor with more fields in it. It is a Fedwire or SWIFT
-message dumped into a display line: the beneficiary bank's routing number, the
-beneficiary's account and name, and an **operator free-text `Ref:` field
-carrying whatever the sender typed**. On a property purchase that is a street
-address. On a family transfer it can be anything at all.
+1. `narrow_templates` reports every template matching one distinct line or none, measured by matching rather than by inspecting literal words.
+2. `uncorroborated_brands` reports, per template, how many distinct lines put a party in a brand slot with nothing published agreeing.
+3. Both are printed beside a fresh grammar for a person to read; neither gates anything, and neither reaches a grammar already in force.
+4. Their counts are distinct lines, not a measure of what the enrichment boundary withholds.
 
-No slot name can honour a field whose contents are unconstrained. So the wire
-shape is **refused a grammar outright** rather than parsed carefully: the line
-stays local and whole, no template may ever claim it, and the refusal is checked
-before templates are consulted rather than after — otherwise it would only be as
-strong as the templates that happen to exist today. Refused lines are excluded
-from the coverage denominator, not counted against it; they are a boundary
-decision, not a grammar failure.
+### MER-19 — A non-English peer line still crosses where no grammar exists
+**State:** unmet
+**Code:** merchant/merchantcore/normalize.py:68 — `is_shareable("PAGO A JUAN")` and `is_shareable("VIREMENT A MARIE")` both return True, so both are offered for enrichment where the institution has no grammar
+**Test:** none
 
-This is the honest version of a claim the design was about to overreach on. The
-vocabulary protects fields whose *shape* is known. Where a rail hands us an
-unbounded field, the answer is to keep the line, not to name it well.
+1. A peer payment named in a language the marker list does not speak must not cross the enrichment boundary, with no Spanish or French in the codebase (I2).
+2. The non-ASCII clause catches accented spellings only; an ASCII non-English line passes.
 
-## One thing the model writes that nothing above bounds
+### MER-70 — A slot empty across a whole statement means the grammar is wrong
+**State:** unmet
+**Code:** none found — nothing in merchant/merchantcore/induce.py or merchant/merchantcore/profile.py inspects whether a named slot ever captured a value
+**Test:** none
 
-The literal text. Holes are bounded by the vocabulary, but the words between
-them come from the model, and a template that ignored the rules could bake a
-person's name into its literal text — `ZELLE PAYMENT FROM ARJUN {reference}` —
-which would carry that name into a file whose entire premise is that it is
-impersonal.
+1. A slot that stays empty across every line of the statement a grammar was induced from means the grammar is wrong, not merely incomplete.
+2. Nothing checks this; the gates read whether a template *matched*, never what landed in its holes.
 
-There is a deterministic check here, and it is weaker than this section
-originally claimed. _(Corrected 2026-08-14.)_ The tempting rule — *a literal word
-occurring in exactly one descriptor is not a literal* — was **rejected in the
-building**, and rejected for a good reason: a genuine bank literal such as the
-NACHA entry description `Payroll` may occur under one originator on one
-statement, so the word-level test false-positives on real grammars. It is also
-the same family of rule this document later records as *falsified and deleted*,
-now under an explicit prohibition that no rule may key on those counts.
+### MER-72 — No token from an occurrence attribute reaches the commons, and a test says so
+**State:** unmet
+**Code:** merchant/merchantcore/catalog.py:161 (`export` returns record fields only, for keys `is_shareable` passes), :187 (`_save`), merchant/merchantcore/enrich.py:143-155 (a record's attributes are built from a closed set of reply keys, so no occurrence attribute has a path in), product/viva/ingest/categorize.py:298 (`export_catalog` returns `{category, grade}`)
+**Test:** none walks the export for occurrence attributes — merchant/tests/test_merchantcore.py:99 (`test_catalog_pending_add_and_linted_export`) reads `Catalog.export()` only to assert a peer key is filtered and a record reloads, and product/tests/test_merchants.py:114 (`test_export_catalog_is_linted_and_carries_no_amounts`) asserts the key set of one record from the product's own `export_catalog`
 
-What `narrow_templates` does instead is count **how many distinct lines each
-template matches**, and report every template matching one or none. A name baked
-into literal text lands there, because a template carrying it can only ever match
-its own line. Two limits are worth stating plainly: it is an advisory printed
-*beside* the grammar rather than a gate that runs before it, and a name baked
+1. No token from any occurrence attribute can reach the commons — publication is a schema and not a decision, so occurrence attributes are unreachable rather than filtered.
+2. That is enforced by a test that walks the export, not by review. No such test exists.
+
+## Why
+
+A descriptor is not free text. It is the flattened tail of a pipeline that
+carried typed, fixed-width fields, and the person is not hiding in ambiguous
+prose — the person is in a known slot of a known format. ISO 8583 DE43 is
+positional: merchant name, then city, then a state or country code, with an
+asterisk at a specified index separating a brand prefix from a sub-merchant, and
+a card-absent transaction legally putting a phone number or URL in the
+thirteen-character city slot. NACHA record layouts are fixed-width, so the
+platform, the purpose token and the person are three separate fields. Zelle runs
+over RTP, which is native ISO 20022, so a Zelle sentence is something the *bank
+composed* for display out of data that was already typed. Europe never had the
+problem at all: `camt.053` carries structured creditor names and a three-level
+taxonomy, and Mastercard already mandates enhanced merchant data there. So the
+target is not a cleaned string but a record with provenance on every field, and
+the durable move is to build the consumer of structured data and let parsing be
+the fallback.
+
+That reframing is what replaced the substring list. The old gate answered, with
+ten English substrings filed under privacy rather than classification, the very
+question enrichment exists to answer — *is this a peer payment?* — and it failed
+in both directions: every English descriptor containing "to" was excluded, every
+non-English one carrying a name was admitted. Worse, one function decided eight
+different things, some asking *may this leave the machine?* and some asking *does
+this describe a pattern?*, which is why a ruling about a savings transfer refused
+to generalize. The replacement is not a better list but a different kind of
+thing: the slot a value came from already said whether it may travel.
+
+The layers each shrink what the next one sees. Layer 0 is network-universal and
+deterministic — it needs no model and no profile, and it cannot claim the brand,
+because no published rule says where a brand ends. Layer 1 is an induced grammar
+keyed by (institution × rail × document type), because a checking line and a card
+line from one bank have unrelated grammars. Layer 2 is the merchant knowledge
+base, reached only on a miss, and by then the input is a short clean brand
+string — which is the input on which the only public benchmark separates 0.87 for
+a knowledge-base-backed system from 0.66 for naive frontier-model normalization.
+Better privacy and better accuracy turn out to be the same change.
+
+A profile is never obtained by asking a model how a bank encodes its descriptors.
+That is a recall question about undocumented, drifting, per-bank behaviour that
+no model was trained on, and it will be answered fluently anyway. It is obtained
+by showing the model real descriptors from the statement in hand and asking what
+grammar produced them: the model perceives what is in front of it and is never
+believed about the world. The same distinction the whole extraction path rests
+on.
+
+Which lines to show is a solved problem elsewhere. Log template mining has a
+decade of parsers and a public benchmark, and two of its results transfer
+directly. Mask the variable parts *before* grouping — [*Preprocessing is All You
+Need*](https://arxiv.org/html/2412.05254v1) measures moving masking ahead of
+grouping as a 109% rise in Drain's template-accuracy F1 and 48% in its grouping
+F1 — because grouping on the raw line turns twenty-one lines differing only in a
+posting date into twenty-one groups. And within a group show lines that are
+*unlike* each other: [LogBatcher](https://arxiv.org/html/2406.06156v2) measures
+similarity-based selection at 7.7% worse than diversity-maximizing selection, and
+[DivLog](https://arxiv.org/pdf/2307.09950) finds that replacing diverse sampling
+with random costs 11% parsing accuracy and 28% template precision. A model learns
+where a hole is by seeing one template with different fillers; three
+near-identical lines teach it nothing about which part varies. Batch size
+transfers too — five to ten lines, with larger batches slightly worse.
+
+The vocabulary is used twice, and that is what makes it worth having: it is
+rendered into the prompt and it is enforced by the validator, so the two cannot
+drift apart. Two properties then fall out of the structure rather than being
+checked afterwards. Losslessness is structural, because the compiled expression
+is anchored at both ends, so there is no partial parse to mistake for a complete
+one. And privacy is a slot name, declared in code rather than inspected in text.
+
+What a slot name cannot protect is a field whose contents are unconstrained. A
+wire is a Fedwire or SWIFT message dumped into a display line, carrying an
+operator free-text field holding whatever the sender typed — a street address on
+a property purchase, anything at all on a family transfer. No slot name can
+honour that, so the wire shape is refused a grammar outright rather than parsed
+carefully, and the refusal is checked before templates are consulted, or it would
+only be as strong as the templates that happen to exist today.
+
+One thing the model writes is bounded by nothing above: the literal text between
+the holes. A template could bake a person's name into its literals and carry it
+into a file whose entire premise is that it is impersonal. The tempting rule —
+*a word occurring in exactly one descriptor is not a literal* — was rejected in
+the building, because a genuine bank literal such as the NACHA entry description
+`Payroll` may occur under one originator on one statement. What exists instead
+counts how many distinct lines each template matches: a name baked into literal
+text lands there, because a template carrying it can only ever match its own
+line. It is an advisory printed beside the grammar, not a gate, and a name baked
 into a template that still matches several lines is invisible to it. Reading
 remains the line of defence, and it is the one people skip.
 
-The consequence for the report: an induced grammar is **not automatically safe
-to paste**. It is *intended* to be impersonal, the check exists to say when it
-isn't, and reading it is how that intention gets confirmed.
-
-## Which lines to show — the part that is already solved elsewhere
-
-Recovering a format string from the lines it produced is not a new problem. It is
-**log template mining**, a field with a decade of parsers (Drain, IPLoM, SPELL,
-LogMine), a public benchmark, and by now a body of work on doing it with a model.
-Two of its results apply directly, and the first dry run against a real statement
-violated both.
-
-**Mask the variable parts before grouping, not after.** [*Preprocessing is All
-You Need*](https://arxiv.org/html/2412.05254v1) measures exactly this: moving the
-masking step ahead of the grouping step raises Drain's template-accuracy F1 by
-**109%** and its grouping F1 by **48%** on the same data. Grouping on the raw
-line does the opposite of what it appears to: twenty-one lines differing only in
-a leading posting date become twenty-one groups, and one template eats half the
-sample. (The same paper declines to recommend Drain's other trick, partitioning
-by token count, so that is not adopted either.)
-
-Two masks do the work here, and the second is the interesting one:
-
-- **A token containing a digit is a filler.** Dates, trace numbers, masked
-  account refs, confirmation ids.
-- **A word occurring in exactly one distinct line is a filler.** Template
-  literals repeat *by definition* — that is what makes them literals — while a
-  merchant name printed once is the hole. Parameter-free, and it needs no list of
-  known words, which is the whole point given what this design deleted.
-
-What survives both masks is the line's literal spine, and lines sharing a spine
-are lines one template produced.
-
-**Within a group, show lines that are UNLIKE each other.** This is the one that
-was backwards. The instinct is to show the most common line, and it is measurably
-the worst choice: [LogBatcher](https://arxiv.org/html/2406.06156v2) measures
-similarity-based selection at **7.7% worse** than diversity-maximizing selection,
-and [DivLog](https://arxiv.org/pdf/2307.09950) finds that replacing diverse
-sampling with random costs **11% parsing accuracy and 28% template precision**.
-The reason is plain once stated: a model learns where a hole *is* by seeing one
-template with different fillers. Three near-identical lines teach it nothing
-about which part varies.
-
-LogBatcher reaches diversity through DBSCAN over TF-IDF vectors and a
-determinantal point process. None of that is needed here — application logs are
-fuzzy, but bank descriptors are composed from literal templates, so exact spine
-equality is a *stronger* clustering than density estimation and costs nothing.
-Greedy farthest-first on token sets covers the diversity step.
-
-Its batch size transfers directly, though: 5–10 lines per batch, with larger
-batches slightly *worse*. So the sample is capped at five examples per shape. A
-statement with three shapes sends fifteen lines, not a padded forty.
-
-## The profile is a data pack — the fourth instance of a pattern already here
-
-A profile is **data, versioned, and never edited once released**. That is not a
-new convention; it is the fourth time this project has reached for the same one:
-
-| pack | what it holds | why it is never edited |
-|---|---|---|
-| **prompts** (`prompts/<version>.txt`) | model-facing instructions | a recorded `prompt_version` must resolve to the exact text that produced a reading |
-| **persona packs** (`persona/pack-vN/`) | how Viva speaks | a reply attributed to a pack must be reproducible from it |
-| **expectations registry** (`expectations-v1.json`) | what a document kind should contain | a parked document must be re-judgeable under the rule that parked it |
-| **profiles** (`profiles/<inst>-<kind>-vN.json`) | one bank's line grammar | a stored decomposition must re-derive from the grammar that produced it |
-
-Same shape each time: the filename is the version, the content is the payload,
-a change means a new file. A profile earns it for the strongest reason of the
-four — it is applied to *every line a bank ever prints*, so a template accepted
+A profile is a data pack for the strongest reason of the four packs this project
+keeps — it is applied to *every line a bank ever prints*, so a template accepted
 and then quietly corrected would mean two different meanings share one id, and
 every record stamped with that id becomes unreadable.
 
-The store refuses to overwrite an existing version. Bumping is the only way to
-change a grammar.
+The lossless-parse check earns three things at once. It is a gate, because a
+profile that mis-slots a field is wrong consistently and confidently for every
+transaction from that institution, which is worse than one bad read. It is a
+loop, because a bank's long tail is a *different set of templates* rather than a
+vaguer version of the common ones — capped, because the tail is finite but
+one-off lines are not. And it is a drift detector for free: the number that gated
+the profile keeps being computed on every ingest, and a drop is the signal. The
+recent figure moves first; lifetime coverage barely twitches when a bank adds a
+shape, because old lines outnumber new. A grammar at 84% lifetime and 40% on the
+last quarter stopped working three months ago, and only one of those figures says
+so. Because profiles are versioned and never edited, the response is a new
+version with the old one still resolving — drift becomes an ordinary version bump
+instead of a silent, retroactive change of meaning. It also makes a *shared*
+profile safe in a way the merchant catalog is not: a recipient can verify someone
+else's grammar against their own statement before trusting it.
 
-## Two calls, two frequencies, two payloads
-
-The confusion worth heading off: this is not one model call moved around. It is
-two calls that differ in everything that matters.
-
-| | **grammar induction** | **merchant enrichment** |
-|---|---|---|
-| asks | "what templates produced these lines?" | "what is this brand?" |
-| payload | ~40 raw descriptors from one statement | a brand string, plus impersonal slots |
-| sees a person's name | **yes** — that is the point; the name is what teaches it where the `counterparty` slot is | **never** — the personal slots are removed before the call by slot name |
-| frequency | once per (institution × kind). Five, in the author's vault. **Five calls, ever.** | once per brand never seen before, anywhere |
-| result | a profile, impersonal, shareable, verifiable | a merchant record, impersonal, shareable |
-| graded | passes or is discarded, by a deterministic check | `corroborated` |
-
-The first call is where the descriptor goes whole — and it may, because ingest
-already sent the model every page of the statement, including that line. The
-second call is where the descriptor never goes at all: by then the line has been
-decomposed, and only the slots the vocabulary declares impersonal are assembled
-into the request. The privacy boundary moved from *"which strings look risky"* to
-*"which slots are named personal"*, and it moved from a filter to a schema.
-
-The order matters too: enrichment gets a **short clean brand plus typed
-context** instead of a raw descriptor, which is the input on which the published
-benchmark separates 0.87 from 0.66. Better privacy and better accuracy are the
-same change.
-
-## The lossless-parse invariant
-
-A profile that mis-slots a field is wrong *consistently and confidently* for
-every transaction from that institution — worse than one bad read. So a profile
-is held to the same standard as a statement:
-
-> **Every character of a descriptor must be claimed by a slot.** Brand, city,
-> region, store number, product, counterparty, reference, or an explicit noise
-> slot. Tokens that fall on the floor mean the profile is incomplete. A slot that
-> is empty across the whole statement means it is wrong.
-
-This is `opening + Σ = closing` for a parse: checked against the evidence it was
-induced from, deterministically, with no model in the loop. A profile that cannot
-account for its own statement is never applied to anything.
-
-**Measured on held-out lines, never on the sample.** A few dozen descriptors are
-shown to the model; coverage is scored against *every* descriptor the institution
-ever produced, weighted by movements. A grammar that explains its own examples
-and nothing else has learned the sample rather than the bank, and only the
-held-out number can tell the difference. It is the same reason a reader is never
-scored on the page it was tuned against.
-
-**And the check is a loop, not a gate.** Whatever a round cannot explain becomes
-the next round's sample, bounded at three. This is the shape log-template mining
-converged on independently — LogBatcher compiles a returned template to a regex,
-matches it against the corpus, and sends the unmatched lines back as a fresh
-cluster — and it fits the material, because a bank's long tail is a *different
-set of templates* rather than a vaguer version of the common ones. The cap is
-there because the tail is finite but a one-off line is not: without it, forty
-singletons would burn forty calls.
-
-It also makes a **shared** profile safe in a way the merchant catalog is not —
-a recipient can verify someone else's grammar against their own statement before
-trusting it. A commons with a built-in check.
-
-**And the same check is a drift detector, for free.** A bank changes its
-composition — a new product line, a merged acquisition, a rail migration — and
-the coverage of a pinned profile falls. Nobody has to notice the change, read a
-release note, or diff a statement: the number that gated the profile on the day
-it was induced keeps being computed on every ingest, and a drop is the signal.
-Because profiles are versioned and never edited, the response is a new version
-induced from the new lines, with the old one still resolving for every record
-that was stamped with it. Drift becomes an ordinary version bump instead of a
-silent, retroactive change of meaning.
-
-## What the author's real vault measured
-
-The three cheap steps ran before anything was induced, and two of them changed
-the plan.
-
-**The date-fragment fix collapsed 492 keys to 365.** 163 raw descriptors carried
-a posting date, so a merchant seen in two months was two merchants; every purely
-numeric head token disappeared with them. Read-side re-derivation, no re-ingest,
-and it owed nothing to the rest of this architecture.
-
-**Five grammars cover the vault.** Five (institution × kind) pairs across 1,076
-movements, and the two largest cover **83%** of them. Five is small enough that
-each grammar can be induced, read by a human, and gated by hand before any of it
-is automated. That answers the question step 2 existed to ask.
-
-**Layer 0 does not cancel Layer 1.** The deterministic parse says something about
-**80%** of movements — but 88 keys get 0% coverage, and 83 more leave residue in
-scattered runs rather than one, which is the parse announcing it fired in the
-wrong places. Layer 0 removes structure it can prove; it cannot claim the brand,
-because no published rule says where a brand ends. So it shrinks Layer 1's job
-substantially and does not replace it.
-
-**The NACHA layout is not a theory — it is visible, and it is truncated.** On the
-largest depository grammar, six different originator names come back at *exactly
-sixteen characters*, which is the width of the NACHA Company Name field. The
-brand handed to Layer 2 is therefore hard-truncated, deterministically. Two
-consequences, both actionable: a truncated brand is a perfectly good key, because
-truncation is stable and repeats every month; and the enrichment prompt must say
-the string may be cut off, or a model reads `Longcreek-Servic` as an odd brand
-name rather than a clipped one. Meanwhile the SEC code — `PPD`, `CCD`, `WEB` —
-needs no slot at all: it is literal text, so `PPD ID:` and `WEB ID:` are simply
-two templates, which is what they are.
-
-**Direction is in the literal words.** `ZELLE PAYMENT FROM` against `PAYMENT TO`.
-The template carries which way the money went, for free, with nothing inferred.
-
-**The fanning heads split cleanly in two**, which is the finding that decides the
-design. Some are bank-composed sentence openers — a peer-payment verb heading 59
-distinct tails, then card, you, atm, payment, online, refund. Those are not
-merchants at all; they are the bank's own template text, and a template is
-exactly what should absorb them. The rest are real merchants whose tails are
-locations. One kind belongs in the grammar, the other in the knowledge base, and
-before this they were the same undifferentiated string.
-
-## Identity has two levels, and that is settled by consensus
-
-Plaid, Spade, MX, Stripe Issuing and Heron independently converged on a
-**brand-level identifier stable across all locations**, plus a **separate
-location identifier**. Plaid states it outright: the merchant id *"will map to
-the broader merchant, not a specific location or store."* Spade: every Walmart
-location shares one counterparty id, against more than forty thousand merchant
-ids coming through the networks.
-
-So: **`costco` is one key however many cities appear.** Location is a typed field
-on the occurrence, not part of the merchant's identity. Two hundred stores
+Identity is brand-level because the whole field converged there independently —
+Plaid, Spade, MX, Stripe Issuing and Heron all pair a brand-level identifier
+stable across locations with a separate location identifier. Two hundred stores
 produce one commons row.
 
-## Three boundaries, not one
+Three boundaries, not one. The whole descriptor crosses to the induction model
+call, and it may, because ingest already sent every page of the statement
+including that line. The whole record, counterparty included, crosses into the
+encrypted local store. Only the merchant block and the grammar profile cross to
+the commons, and publication is a schema rather than a decision: occurrence
+attributes have no path to the export.
 
-| boundary | what crosses | why |
-|---|---|---|
-| **the model call** | the whole descriptor | ingest already sent every page and the issuer's full embedded text; withholding one line protects nothing |
-| **the local store** | the whole record, encrypted | including the counterparty |
-| **the commons** | the merchant block and the grammar profile | both impersonal by construction |
+Then the asymmetry that the corroboration gate exists for. Believing
+`{counterparty}` costs enrichment coverage and never a name, so it is believed.
+`{brand}` is the claim that goes the other way, and it was believed on a model's
+word alone. Gating it costs coverage — the errors this gate makes all have one
+shape, a genuine business on a rail that proves nothing losing its enrichment —
+and that asymmetry is the reason to accept the price. It is stated as the weaker
+true sentence rather than the stronger false one: the crossing is gated, and the
+gate's evidence includes one signal inferred from the corpus. A fence believed to
+close something it does not is worse than no fence.
 
-Publication is a **schema, not a decision**: the export takes `merchant.key`,
-`merchant.name`, `category`, `subcategory`, `counterparty_kind`, and the profile.
-Occurrence attributes have no path to it. Not filtered — unreachable.
+Several parts of this design were falsified by real data and are kept as
+reasoning rather than as rules. **Token fan-out as the privacy gate** — a token
+may cross only if it heads *K* distinct descriptors — was falsified the day it was
+proposed: 116 heads led exactly one key, so ordinary single-location merchants
+would all have been blocked; the rule admitted bare month numbers as shared
+knowledge; and `the` heads three keys, so head-keying merges unrelated retailers.
+188 heads is too coarse and 492 keys too fine — neither is a merchant. The deeper
+error was that it was a statistical re-implementation of the reflex this codebase
+keeps catching: computing locally a piece of world knowledge that could simply be
+asked for. **Stripping "the bank's own words" from a brand candidate** by counting
+how many counterparties print each word was falsified the same way: the ranking
+interleaves three populations — bank sentence words, city names, merchant names —
+so no threshold separates them, and the count was circular besides, because
+normalization fragments one merchant into many, so a merchant with fifteen
+spellings looks like fifteen counterparties agreeing. Separating the bank's
+sentence from the merchant's name is Layer 1's job, done from evidence with a
+lossless check. **A keyword table nearly went back in at the centre**, deriving
+the channel by matching English phrases against the text; it now comes from
+structure only, and the ATM and cheque distinctions were lost and recovered for
+free, because two lines matching one template came off one rail by construction.
 
-And a merchant key publishes only once **corroborated by independent vaults**,
-which closes the residual risk of a model returning a person's name as a brand:
-`costco` clears immediately at any scale, and a private individual never does.
+Some rulings live in the code and were argued nowhere else. An investment line is
+refused a grammar because every name in the vocabulary asserts something about a
+party or a place, and an activity line describes a trade against a security and
+holds no party at all; a grammar induced over such lines would file a realized
+gain as `{purpose}` and a security as `{brand}`, consistently, on every line that
+institution prints — a confident wrong answer manufactured at scale. Instrument
+events need their own vocabulary, which belongs to a deferred `instrumentcore`.
+`#` is kept out of the shapes because admitting it lets a greedy brand eat a word
+of the city; the general form is that every shape added is a shape a model can
+misuse, so the set is kept small by policy. Induction waits for thirty lines
+because below that the sample *is* the population and a fifth of it is three or
+four lines, and the coverage gate is not 1.0 because a bank's long tail contains
+genuine one-off lines — a grammar that honestly covers most of a statement is
+worth more than one claiming all of it by being vague. Borrowing another bank's
+grammar matters most for exactly the population the minimum creates, and a
+borrowed match is recorded as layer `grammar` because it is structurally the same
+claim.
 
-## The Party
+Not merchant coverage, and not a business on the fallback. Plaid enriches 500M
+transactions a day into a knowledge base built over years; the goal is *this
+person's* few hundred merchants plus a commons for the tail. Enhanced merchant
+data is becoming a regulatory floor — consume it where it exists, parse where it
+does not.
 
-Built now. Enumerated in the data model since the spike, with three customers
-waiting — peer counterparties, the employer thread from pay stubs, and the
-counterparty of the endgame. *"Write side late"* means late enough that the shape
-has stopped moving; this shape has not moved in weeks.
+## Open
 
-**It gets its own event type, for the reason tags did:** so *"a party never
-leaves this device"* is an event-level rule rather than a field somebody must
-remember. A person's name has a stronger claim to that than a tag.
-
-It is an identity resolved from signals, so it inherits the existing machinery —
-signals, graded match, ask only when genuinely ambiguous, record the ruling,
-apply on the read side. Two requirements from day one: the same person across
-conduits (`RulingRecorded(scope="party", same_as=…)`, which would be the
-seventh scope — attribute became the sixth on 2026-08-01), and
-meaning that generalizes (*"John is my landlord"* makes every payment rent).
-
-**This is the one place the field has no answer.** Plaid types the platform
-(`payment_app`) and has no `person` entity at all. Ntropy and Teller have
-`person` but no multi-party model. Nobody publishes accuracy on it. The reason is
-architectural: a shared knowledge base cannot hold a private individual, and
-every vendor is building one. A user-scoped private namespace is unavailable to
-them by construction.
-
-## Considered and rejected
-
-**Token fan-out as the privacy gate** — a token may cross only if it heads *K*
-distinct descriptors. It was proposed here on 2026-07-27 and **falsified by the
-author's real vault the same day**:
-
-- 116 heads lead exactly one key — ordinary single-location merchants, all of
-  which the rule would have blocked from the commons.
-- It admits `02`, `01`, `12` — bare month numbers, which would have been
-  published as shared knowledge.
-- `the` heads three keys, so head-keying merges two unrelated retailers. `card`,
-  `atm`, `you`, `non` and `refund` do the same.
-
-188 heads is too coarse and 492 keys too fine; **neither is a merchant.** The
-deeper error is that it was a statistical re-implementation of the reflex this
-codebase keeps catching — computing locally a piece of world knowledge that could
-simply be asked for. It is recorded because the failure is instructive, not
-because the idea is worth revisiting.
-
-## What not to build
-
-**Not merchant coverage.** Plaid enriches 500M transactions a day into a
-knowledge base built over years. The goal is *this person's* few hundred
-merchants plus the commons for the tail — which is Monzo's model, and the only
-approach that structurally beats the long tail.
-
-**Not a business on the fallback.** Enhanced merchant data is becoming a
-regulatory floor. Consume it where it exists; parse where it does not.
-
-## Sequence, and what each step decides
-
-1. ~~**The date-fragment normalizer fix.**~~ **Done.** 492 keys → 365; 163 dated
-   descriptors; every bare-numeric head gone. Version bump to `merch-v2`,
-   read-side re-derivation, no re-ingest.
-2. ~~**Count (institution × rail) pairs in a real vault.**~~ **Done — it is five**,
-   two of them covering 83% of movements. So five grammars get hand-checked
-   before induction is automated.
-3. ~~**Build Layer 0 and measure its coverage.**~~ **Done, and it did not cancel
-   step 4.** 80% of movements touched, but 88 keys at zero and 83 with scattered
-   residue.
-4. ~~**Induce the largest depository grammar, alone, first.**~~ **Done.** It
-   returned the person slot, and reading it found the vocabulary gaps that
-   `trace`, `company_id` and `counterparty_handle` now fill.
-5. **Then the others**, on a rebuilt vault, `--best-of 3`, gated on withheld
-   lines. Four inducible pairs, not five: an investment statement names no party.
-
-## Done criteria
-
-- No token from any occurrence attribute can reach the commons — enforced by a
-  test that walks the export, not by review.
-- All three of the corpus's structural transfers reach enrichment, where today
-  all three are blocked.
-- `PAGO A JUAN` and `VIREMENT A MARIE` do not cross, with no Spanish or French in
-  the codebase.
-- ~~A merchant with locations in many cities produces **one** commons row.~~
-  **Met.** Enrichment keys on the brand slot, and the context that travels is
-  only what every occurrence agreed on — a shop seen in one city keeps its city,
-  a chain seen in five has none.
-- A profile that cannot account for every character of its statement is never
-  applied.
-- A ruling on a party applies to every movement through every conduit that
-  reaches them, retroactively.
-
-## What the build changed  (2026-07-28, from a real vault)
-
-Design survived contact in its shape and lost several of its parts. Recorded
-here rather than quietly corrected, because the corrections are the useful half.
-
-**Layer 1 works, and the person slot is real.** One induction call on the
-largest depository grammar returned `ZELLE PAYMENT TO {counterparty}
-{reference}` and `… FROM {counterparty} {reference}` — and, on the same rail,
-`ZELLE PAYMENT FROM {brand} {reference}`, separating an organisation paying by
-peer rail from the people. That distinction is the whole argument of this
-document and no keyword list could ever have made it. Two halves of one lending
-relationship, previously two unrelated keys, became one stream of eighteen
-movements. **Twenty-six people are now named locally and never leave.**
-
-**A rule this document proposed was falsified and deleted.** Stripping "the
-bank's own words" from a brand candidate, by counting how many counterparties
-print each word. On 1,076 real movements the ranking interleaves three
-populations — bank sentence words, city names, merchant names — so no threshold
-separates them; a cut high enough to keep merchants misses `ppd`, `web`, `ccd`,
-`atm`, and a cut low enough to catch those deletes real brands. The count was
-circular besides: it counted normalized keys, and normalization fragments one
-merchant into many, so a merchant with fifteen spellings looked like fifteen
-counterparties agreeing. Separating the bank's sentence from the merchant's name
-is Layer 1's job, done from evidence with a lossless check, and Layer 0 should
-never have attempted it.
-
-**A keyword table nearly went back in, at the centre.** The channel — half the
-stream key — was first derived by matching `\bcard purchase\b`, `\batm\b`,
-`\bpaper check\b` against the text. English, classifying, load-bearing: the
-exact thing `is_shareable` was. It now comes from structure only — the NACHA
-tail proves ACH, Fedwire tags prove a wire, a DE43 structure proves a card, a
-`{counterparty}` slot proves a peer rail — and where nothing proves a rail the
-answer is `unknown` and stays there. The ATM and cheque distinctions were lost
-and recovered for free: two lines matching one template came off one rail by
-construction, so the *template* separates them without this codebase containing
-the word "ATM".
-
-**The word list survives in one place, and the distinction is worth stating.**
-Where no grammar exists there is no slot, so nothing can say a line holds a
-person, and a peer payment is indistinguishable from a shop. `is_shareable`
-remains as the fallback for exactly that case. It was wrong as a *primary
-mechanism* — answering with substrings, in one language, the question enrichment
-exists to answer. It is defensible as a conservative answer to *"we cannot
-tell"*, because then its errors cost enrichment coverage rather than somebody's
-name. **A rule that guesses in place of knowledge is a bug; the same rule
-declining to send when nothing is known is a safeguard.** Inducing a grammar
-retires it for that institution.
-
-**The vocabulary grew by contact, not by design.** A real ACH line carries two
-ids at once, so `trace` and `company_id` are two names rather than one used
-twice. A peer payment addresses somebody by name, phone, email or username — a
-vocabulary with only a name slot sent the model looking for somewhere else to
-put a phone number, and it found `{contact}`, which is a *merchant's* public
-number. `counterparty_handle` closes that, and a template naming no party at all
-promotes whatever it does hold, so grammars frozen before the fix are covered
-too.
-
-**Induction is stochastic, which the pack rules did not know.** The same prompt
-over the same forty lines returned 27 templates at 84% one run and 33 at 82% the
-next — and the second was written, because the gate is absolute and `latest`
-wins by version number. A version must now beat the one it succeeds on the same
-measurement, and a fifth of all lines are withheld from sampling *and* from
-choosing between candidates, so the number reported estimates rather than
-flatters.
-
-**The drift detector this document claimed did not exist.** Coverage was computed
-once and frozen into the profile; nothing ever ran it again. Two numbers now,
-and the second is the one that moves: lifetime coverage barely twitches when a
-bank adds a shape, because old lines outnumber new, while **recent** coverage
-collapses immediately. A grammar at 84% lifetime and 40% on the last quarter
-stopped working three months ago, and only one of those figures says so.
-
-**Not every movement has a counterparty.** The two largest streams by count were
-a person paying their own cards, and dozens of singletons were brokerage
-activity lines where a capital-gain phrase minted a key of its own. Marked
-`internal` and `activity` rather than dropped. Investment lines are refused a
-grammar outright for the same reason: every name in the vocabulary asserts
-something about a party, and a trade against a security has none.
-
-**Storage moved.** Grammars and the catalog were under the product's home, which
-said they belonged to the product. They are merchantcore's: a shipped seed
-inside the package, committed, and learned data outside any working tree — so a
-grammar carrying a name that slipped past the checks cannot be committed by
-accident rather than merely should not be.
-
-### What is still true, and what is still open
-
-The four layers hold. Losslessness is structural, privacy is a slot name, and
-identity is brand-level. What has *not* been closed: every quality gate measures
-whether a template **matched**, never whether it **slotted correctly** — a
-grammar can cover 90% of lines while putting cities in `{brand}` and pass every
-check. Reading it is the only thing that catches that. So a grammar may be
-induced and used unattended, and publishing one to the commons waits for a
-person. *Refined 2026-08-12 — see* What a slot name may be believed about *below:
-privacy is a slot name where the slot says a person, and a corroborated slot
-where it says a business.*
-
-## What the rail measurement changed  (2026-08-11, the same vault)
-
-**A template standing in for a rail over-separates one merchant.** The rule
-above is unchanged where nothing is proven, but it was applied per line, so a
-merchant reached one way acquired a rail per template: a card purchase, a
-recurring payment and a refund of the same merchant on the same card arrived as
-three streams. The rail now falls back to the channel that merchant's *other*
-lines on the same account prove, when they prove exactly one, before it falls
-back to the template. The inference is bounded to one account at one
-institution, so the same brand paid on cards at two banks stays two streams;
-widening it across institutions is a later decision, not this one.
-
-**An institution is a conduit, and the code was reading it as a party in two
-places.** `PARTY_SLOTS` counted `{institution}` as naming the other side, so a
-template naming a bank and a `{contact}` was read as naming somebody, and the
-contact stayed a shop's public number rather than being promoted as a person's.
-And `_slot_from` fell back to the institution when a grammar named no brand,
-which keys every party reached over that bank's rail under the bank. Neither now
-holds: where a grammar names no brand, `merchant_key` falls back to the whole
-line, which still carries whoever was on it.
-
-**The gate that is open is the one this document already named.** A stream key
-that drops the party is the one error direction this engine may not have —
-fragmentation still yields true statements about a merchant, while two parties
-in one stream is a rhythm nobody has. The two rules above close the mechanisms
-the resolver controls, and a test asserts the property over every slot the
-vocabulary can name a party with. Neither reaches the case this vault actually
-holds: an induced template labelled a slot `brand`, an institution's name landed
-in it, and the party's name went to two slots the vocabulary treats as
-impersonal. No guard over slot *names* can see a party in a slot that does not
-name one — this is the "matched, never slotted correctly" hole recorded just
-above, and only a person reading the grammar catches it. Accepted and open, not
-closed; closing it means re-inducing that grammar. *Amended 2026-08-12:* a
-second route exists and was not taken — the crossing is now gated on
-corroboration, and narrowing what counts as corroboration withholds the hint
-without touching the grammar. At the setting built, this case still crosses.
-
-## What a slot name may be believed about  (2026-08-12, the same vault)
-
-**A slot name may say a hole holds a person. It may not, by itself, say a hole
-holds a business.** Believing `{counterparty}` costs enrichment coverage and
-never a name, so it is believed. `{brand}` is the claim that goes the other way,
-and it was believed on a model's word alone: the hole the section above left open
-— a party's name in a slot the vocabulary treats as impersonal — reaches the
-enrichment boundary, the catalog and the pending queue with nothing between it
-and the crossing but a label a forward pass wrote.
-
-So the crossing is now gated. Where a grammar named the brand, a hint leaves only
-if a published format **read from each line behind it** says the other side was a
-business: an ISO 8583 DE43 structure fired, or a NACHA line's Company Name field
-came back with a value. The unit withheld is the **whole hint** — brand and
-context together — because a party's name lands in whatever slot the model called
-impersonal, and a hint's example is the brand followed by its agreed context
-slots. Withholding the brand value alone would have sent the name in `{purpose}`.
-Corroboration is not inherited: a stream's rail may be a channel a *sibling* line
-proved, and reading that would certify a line by association, so the gate
-recomputes the Layer 0 reading per occurrence out of the raw line it already
-holds. Nothing about local resolution moves — the stream still keys on the brand,
-the merchant key still forms, categorization still works. Only what crosses is
-gated, which is the boundary T9 draws.
-
-**The gate applies to every grammar, not only to one that demonstrably carries
-people.** A card-only grammar names nobody and still makes the brand claim.
-Measured over this vault: **43 of 235 hints and 169 of 863 movements (18.3% /
-19.6%) stop crossing**, against 11 / 80 if the gate fired only on grammars with a
-person slot. The errors this gate makes all have one shape — a genuine business
-on a rail that proves nothing loses its enrichment — and that asymmetry, coverage
-rather than a name, is the reason to accept the price.
-
-**What this does not close, stated plainly, because a fence believed to close
-something it does not is worse than no fence.** The second clause is weaker than
-the first, and it is weak in exactly the way this document warns about elsewhere:
-the Company Name / Entry Description boundary is not printed on the display line,
-so `split_ach_heads` recovers it from the statement as a whole — an inference over
-this vault's own values. It returned a value for every ACH line measured here, so
-**an ACH line whose head is a person's given name is corroborated by it and
-crosses.** The mislabelled template this cycle began from still crosses, and so
-does the sibling line whose `{purpose}` holds a name. The durable rule the
-measurement argues for is stricter — corroboration read from a published boundary
-on the line, never recovered from what other lines look like — and this build does
-not implement it. What it implements is the weaker true sentence: **the crossing
-is gated, and the gate's evidence includes one signal inferred from the corpus.**
-
-Two consequences follow and are carried rather than resolved. The maintenance
-agent's enrichment step stays **out of the autonomous set**: with the crossing
-still open, letting an unattended run reach it re-opens exactly what the hold
-exists for, and anything that restores it says first what closed the crossing.
-And the shape is built to be re-pointed — what counts as corroboration is one
-predicate, `corroborates_a_business`, so narrowing it is a change in one place
-and a re-measurement rather than a redesign.
-
-**Two limits worth knowing before reading a withheld share as a coverage
-figure.** Both clauses are US-scope by construction, and every corroboration in
-this vault came from them; on a rail proving neither — UPI, SEPA — this gate
-withholds every brand-slot hint, and no third signal exists anywhere in the code
-to rescue it (I3, I5). And the gate only sees what a brand slot produced: where a
-grammar's template names no brand at all, the key falls back to the whole
-normalized line, which crosses without passing through this gate or the
-substring fallback either.
-
-Induction gained a companion that decides nothing: `uncorroborated_brands` prints,
-per template, how many distinct lines put a party in a brand slot with nothing
-published agreeing, for the person reading a fresh grammar. It cannot reach a
-grammar already in force, and the counts are lines rather than a measure of what
-the boundary withholds. `induce-profile-v3` adds the inbound peer-rail examples
-rule 8 never had — all four of its worked examples pointed outward, and the model's
-error mirrored them — and remains a repair to the prompt, not a fence.
-
-## What the declaration reaches, beyond the crossing  (2026-08-13)
-
-A slot name saying a hole holds a person was, until now, read at one place: the
-gate above, deciding what leaves for a model. The rhythm read measured every
-counterparty it could key, person or not, and what kept a peer relationship out
-of it was that no catalog record existed under those keys yet — an accident of
-what had not been bought, not a fence. Measured on this vault: **58
-`(merchant key, direction)` flows carry movements from a person's stream, and
-three of them clear the cadence floor.** The enrichment that would give them a
-record is the same one the gate stands in front of.
-
-So the declaration now travels with the keys. A resolver returns the map of
-lines to merchant keys **and** the lines a slot named a party on
-(`MerchantKeys`), because person-ness is knowable only from an induced grammar,
-which lives on disk rather than in the event log — the projection could not ask
-the question at all. `merchants.is_person` reads that, the rhythm read drops
-those movements before any flow is formed, and a person contributes no
-hypothesis, no question and no subject a ruling could be recorded under. It is
-the same declaration `hints.py` reads, never a second way of asking. A resolver
-returning any other mapping raises rather than defaulting to silence: a shape
-that lost the declaration and a resolver that declared nobody are
-indistinguishable, and the default would fail towards measuring a person.
-
-**This makes the rhythm path as safe as the enrichment gate and no safer.** A
-person's given name sitting in a `{brand}` slot is declared a person by nothing,
-reads `is_person == False` everywhere, and still forms a flow — so the two keys
-this vault holds could raise a rhythm question once a record exists and their
-spacing clears the cadence floor, which would render a person's descriptor into
-a sentence proposing they are a merchant with a billing model. That is the
-accepted consequence recorded above arriving on a third surface, not a new one.
-
-**Amended 2026-08-13:** narrower than that now, and still not sealed. The rhythm
-read no longer licenses on the billing prior alone — the catalog record must
-also say the counterparty is a `business`, and both keys above already hold a
-record, graded `corroborated`, saying `peer`. So the sentence feared here now
-needs the *next* enrichment to contradict its own earlier answer about the same
-key, affirmatively: an absent or unparseable kind withholds too. Both keys sit
-in the 192 a restage would re-ask, and a reply replaces the record the fence
-reads, which is why this narrows the residue rather than closing it. What the
-paragraph above says is unchanged: a name in a `{brand}` slot is declared a
-person by nothing, and the fence that reaches it is a label about a merchant
-rather than a declaration about a party.
-
-## The parts the code decided, and this document did not
-
-Seven rulings that live in `merchantcore` and were argued nowhere else. Each one
-looks like an arbitrary constant or a missing feature until the reason is stated.
-
-**Why an investment line is refused a grammar, in full.** The refusal is recorded
-above; the reason is that every name in the closed vocabulary asserts something
-about a party or a place, and an activity line — `You Sold … Short-term gain: …` —
-describes a trade against a security and holds no party at all. A
-grammar induced over such lines would file a realized gain as `{purpose}` and a
-security as `{brand}`, consistently, on every line that institution prints. That
-is a confident wrong answer manufactured at scale. Instrument events need their
-own vocabulary — security, action, quantity, price, realized gain — which belongs
-to the deferred `instrumentcore`. Until that exists the honest answer is that no
-grammar applies, which matches the `activity` marking the stream engine already
-gives those movements. `INDUCIBLE_KINDS` is narrower in name than in function: it
-now gates both whether a grammar may be induced *and* whether the kind's
-merchants may be enriched, and was left un-renamed deliberately.
-
-**Why `#` is kept out of the `merchant` shape.** Admit it, and `{brand} {city}
-{region}` matches `SPICE RACK # 03453 WEST MONROE LA` with brand `SPICE RACK #
-03453 WEST` and city `MONROE` — a greedy brand eating a word of the city. A
-template that writes `#` as literal text with `{store_number}` after it parses the
-same line correctly and costs no vocabulary. The general form: **every shape added
-to `SHAPES` is a shape a model can misuse**, so the set is kept small by policy
-rather than by accident. Related, from `SLOT_SHAPE`: `counterparty` is left on the
-narrow `words` shape on purpose — widening the slot the privacy guarantee rests on
-would let it swallow punctuation.
-
-**Why `_MARKS` is a hand-enumerated list of codepoint ranges.** Python's `re` has
-no `\p{M}`, and `\w` excludes combining marks, so a Devanagari virama or vowel
-sign fails any shape built from `\w` alone. The alternative to enumerating
-general-category-M ranges by hand is a third-party regex engine, and this package
-takes no dependencies. The constant looks like an accident and is not.
-
-**Why induction waits for thirty lines and settles for 80% coverage.** Below
-thirty distinct lines, the sample *is* the population: training coverage means
-nothing and a 20% holdout is three or four lines. The cost of waiting is quality
-rather than function — a pair with no grammar still resolves through Layer 0 and
-the normalizer. And the coverage gate is not 1.0 because a bank's long tail
-contains genuine one-off lines; a grammar that honestly covers most of a statement
-is worth more than one that claims all of it by being vague.
-
-**Layer 1′ — a grammar borrowed from another bank.** This document describes four
-layers and no borrowing; the code borrows, and it matters most for exactly the
-population `MIN_LINES_TO_INDUCE` creates — an account too small to induce from.
-Four rules govern it. A borrowed match is recorded as layer `grammar`, not as a
-weaker layer name: it is structurally the same claim — the same closed vocabulary,
-the same compiled expression, the same rule that a person is whatever landed in a
-slot named for one — and every downstream privacy check keys on that word. The
-bank's own grammar always wins, because it was measured against its own lines and
-a borrowed one was not; where the borrowed one came from rides in `borrowed_from`.
-And borrowed grammars are tried in profile-id order, so the answer never depends
-on how a collection happened to iterate.
-
-**A better layer must not return less than a worse one.** A grammar usually
-absorbs the NACHA Company Entry Description into its literal text (`{brand}
-PAYROLL PPD ID: {company_id}`), so the field leaves the slots — where Layer 0 had
-it. `_slot_from` re-adds it from the statement-level `ach_split`. The principle
-generalizes past this case: a higher layer displacing a lower one must not drop a
-field the lower one proved.
-
-**`word_owners` survives as a diagnostic that decides nothing.** The
-strip-the-bank's-own-words rule was falsified and deleted, as recorded above. The
-counting function remains, for the streams report only, under an explicit
-prohibition: no rule may key on these counts. The reasons are the ones that
-falsified the rule — bank sentence words, place names and merchant names
-interleave by frequency, and the count is over normalized keys, which fragment one
-merchant into several, so a merchant with fifteen spellings looks like fifteen
-counterparties agreeing. It is kept because looking at the interleaving is useful;
-it is fenced because acting on it is not.
-
-## Deliberately out of scope
-
-Merchant-as-Party unification. Attributes of a party beyond a name. Any attempt
-to identify a *person* from a name — the product learns that a party exists and
-what you say they are, and asks nobody else. Contribution of profiles to a
-commons, which waits until the lossless check has been measured on real
-statements.
+- No quality gate measures whether a template **slotted correctly**, only whether
+  it **matched**. A grammar can cover 90% of lines while putting cities in
+  `{brand}` and pass every check. Only a person reading the grammar catches it,
+  which is why using a grammar unattended is allowed and publishing one to the
+  commons waits for a person.
+- The vault holds at least one grammar whose template labelled a slot `brand`
+  where an institution's name landed, with the party's name in slots the
+  vocabulary treats as impersonal. No guard over slot *names* can see a party in
+  a slot that does not name one. Closing it means re-inducing that grammar, or
+  narrowing what counts as corroboration.
+- The ACH corroboration clause is recovered from the corpus rather than read from
+  a published boundary. The durable rule the measurement argues for is stricter,
+  and this build does not implement it. Narrowing is one predicate,
+  `corroborates_a_business`, plus a re-measurement.
+- Both corroboration clauses are US-scope. On a rail proving neither — UPI, SEPA —
+  every brand-slot hint is withheld, and no third signal exists in the code
+  (I3, I5).
+- Where a grammar's template names no brand at all, the key falls back to the
+  whole normalized line, which crosses without passing through the corroboration
+  gate or the substring fallback.
+- A peer payment written in a language the marker list does not speak still
+  crosses where no grammar exists (MER-19).
+- The enrichment prompt does not say a brand string may be hard-truncated, so a
+  clipped NACHA Company Name reads to a model as an odd brand name rather than a
+  cut-off one (MER-32 in [merchantcore-package.md](merchantcore-package.md)).
+- Widening the rail inference across institutions — so one brand paid on cards at
+  two banks is one stream — is an open decision.
+- Contribution of profiles to a commons waits until the lossless check has been
+  measured on real statements.
+- A merchant key publishing only once corroborated by independent vaults is
+  unbuilt; the export filters on the key's shareability alone.
+- `INDUCIBLE_KINDS` governs enrichment as well as induction and is narrower in
+  name than in function.
+- The Party primitive is unbuilt: there is no party event type and no `party`
+  ruling scope. Its two day-one requirements stand — the same person across
+  conduits, and meaning that generalizes, so *"John is my landlord"* makes every
+  payment rent. This is the one place the field has no answer either: Plaid types
+  the platform and has no `person` entity, Ntropy and Teller have `person` but no
+  multi-party model, and nobody publishes accuracy on it, because a shared
+  knowledge base cannot hold a private individual and every vendor is building
+  one.
+- Deliberately out of scope: merchant-as-Party unification; attributes of a party
+  beyond a name; any attempt to identify a *person* from a name — the product
+  learns that a party exists and what you say they are, and asks nobody else.

@@ -1,223 +1,134 @@
 # Prompts as Files
 
-**Status:** ✅ **BUILT 2026-07-25** — P1 = (a), read-only package data · **Amended 2026-08-06** with *Where a version is declared* (the manifest) · **Amended 2026-08-13** (a manifest family may pin data that is not a prompt) · **Amended 2026-08-16** (a version file may be a keyed table of phrases rather than one prompt) · **Created:** 2026-07-25 · **Origin:** Vishnu: *"move all the prompts and versions out of code — I had mentioned this previously, it still drifted. Prompt versions have gone up but the previous versions are buried in code."*
-
-**Invariants touched:** **T8 (a recorded `prompt_version` must resolve to the exact text that produced it)** · T3 (raw capture is worthless if the instructions behind it are unrecoverable) · I5 (code universal, specifics are data — a prompt is the most specific data there is) · X1 (a contributor's toolchain is never a user's problem).
-
----
-
-## The state, counted
-
-**18 prompt versions live in four different places**, under three different disciplines:
-
-| Where | Versions | Retention |
-|---|---|---|
-| `product/viva/ingest/prompt_library.py` (424 lines) | 14 | ✅ append-only, **frozen-hash test** |
-| `merchant/merchantcore/enrich.py` — `_PROMPT` | 1 text, version bumped **v1 → v2 → v3** | ❌ **none** |
-| `core/vivacore/prompts.py` — `EXTRACTION_PROMPT` | 1 text, `PROMPT_VERSION = "p2"` | ❌ none |
-| `product/viva/listen.py` — until this session | 1 | ❌ none (now migrated) |
-
-### The finding that matters
-
-**`enrich-v1` and `enrich-v2` no longer exist.** `merchantcore` holds a *single* `_PROMPT` string that has been **edited in place** three times while `ENRICHMENT_VERSION` was bumped. Every `MerchantEnriched` event recorded under `enrich-v1` or `enrich-v2` names a prompt version whose text is **not in the codebase**. `vivacore.prompts` has the same shape: `PROMPT_VERSION = "p2"` with no `p1` anywhere.
-
-That is a **T8 violation already in the vault**, not a hypothetical. The whole point of stamping a version is that a stored read can be re-derived and re-explained; a version id that resolves to nothing is decoration.
-
-It is recoverable — `git log -p` on those three commits has the exact bytes — but *"go read git history"* is precisely the archaeology the prompt library was built to abolish.
-
-## Why it drifted, twice
-
-Because **the library is Python.** Adding a prompt means editing a module, importing it, wiring a dict. When you are inside `listen.py` building a feature, a local `"""..."""` is one line and the library is five plus an import. The path of least resistance wins, every time, regardless of intent — which is why saying it again would not work either.
-
-So the fix has two parts, and the second is the one that matters:
-
-1. **Make the data path easier than the code path.** Adding a prompt should be *creating a file*, with no Python to edit at all.
-2. **Make the code path fail a test.** A prompt-shaped string literal in a `.py` file becomes a build failure, not a code-review hope.
-
----
-
-# The plan
-
-Six steps, ordered by reversibility. **Nothing changes any prompt's text** — this is a move, and the existing frozen-hash test is what proves it.
-
-### Step 1 — The loader (`vivacore.promptstore`)
-
-One small module, shared by all three packages. `merchantcore` must not depend on the product (T9 cuts both ways), and `vivacore` is already the common floor.
-
-```
-load(package_dir, "classify-v2")  -> str      # exact bytes, no interpolation
-ids(package_dir)                  -> [str]    # what exists
-digest(package_dir, version)      -> str      # sha256[:16]
-```
-
-Files sit beside the code that uses them, one per version, **filename is the id**:
-
-```
-core/vivacore/prompts/              extract-image-p2.txt
-product/viva/prompts/               classify-v1.txt  classify-v2.txt
-                                    extract-base-v1.txt  extract-card-v1.txt … 
-                                    interpret-v1.txt  interpret-v2.txt  interpret-v3.txt …
-merchant/merchantcore/prompts/      enrich-v3.txt  (+ v2; v1 never existed)
-```
-
-Plain `.txt`. No YAML, no front-matter, no templating engine — placeholders stay Python `str.format` fields, which is what every call site already uses. **A prompt file must be readable and editable by someone who does not know Python**, because eventually that person is the user tuning their own agent.
-
-Read via `importlib.resources` so it works from a wheel, a zip, or a checkout, and add package-data config so the files actually ship (X1: the packaging is our problem, never the user's).
-
-### Step 2 — Migrate, and let the old test prove it
-
-Move all 14 `prompt_library.py` versions to files **byte for byte**. Then:
-
-> **The existing `test_active_versions_are_frozen` must pass unchanged, with its pinned digests untouched.**
-
-That is the whole verification. The test that has been enforcing retention becomes the proof that the migration altered nothing — no new test to trust, no diff to eyeball. If a single character moved, a digest changes and it fails.
-
-`prompt_library.py` shrinks from 424 lines to a thin accessor keeping its current API (`classify_prompt`, `compose_extraction`, `interpret_prompt`, `resolve`), so **no call site changes in this step.**
-
-### Step 3 — Recover the lost versions
-
-`git log -p merchant/merchantcore/enrich.py` across its three commits yields the exact `enrich-v1` and `enrich-v2` text. Write them out as files, pin their digests, and `resolve("enrich-v1")` works again — which means every `MerchantEnriched` event already in the vault becomes explainable again.
-
-Same for `vivacore`'s `p1` if it exists in history; if it genuinely predates version control, record that honestly in the file (`# text not recovered — this vault has reads that cannot be re-derived`) rather than leaving a silent hole. **An admitted gap is a different thing from an unnoticed one.**
-
-### Step 4 — Bring the two unversioned prompts under the discipline
-
-`merchantcore._PROMPT` and `vivacore.EXTRACTION_PROMPT` become library entries with real ids. Both packages get the frozen-hash test the product already has — the discipline stops being one module's local habit and becomes the project's.
-
-### Step 5 — The test that makes it stick
-
-`test_no_prompts_in_code`: walk every `.py` in the repo, parse it with `ast`, and fail on any string literal that is **long (>200 chars), multi-line, and instruction-shaped**. The one legitimate home for such a string is a `prompts/` file.
-
-Two honest notes about this test:
-
-- **It is itself a keyword check**, and I have just spent a session deleting those ([[practice-no-substring-lists-for-ambiguity]]). The distinction is real and worth stating: that lesson is about **classifying a user's data**, where being wrong corrupts a ledger. This is a **lint over our own source**, where being wrong costs a contributor an `# allow-prompt` comment. Different blast radius, different rule.
-- It must be **cheap to satisfy**: the failure message should name the file, the line, and the exact `promptstore` call to replace it with. A test that only says "no" trains people to add exemptions.
-
-Plus `test_every_recorded_version_resolves`: for every version id the code can *emit*, `resolve()` returns text. That is T8 asserted directly, and it is the test whose absence let `enrich-v1` disappear.
-
-### Step 6 — Make adding one obvious
-
-A three-line `product/viva/prompts/README.md`: *to change a prompt, copy the file to a new id, edit, point the profile at it, add the digest.* Plus a line in `CLAUDE.md` under the standing practices, so it is loaded in every session rather than remembered.
-
----
-
-## Decision for Vishnu
-
-**P1 — do prompt files ship as read-only package data, or as a user-editable directory?**
-
-- **(a) package data, read-only** — simple, versioned with the code, digests always match. My lean for now.
-- **(b) package data + an optional user override directory** — a person could tune their own agent's prompts, which is very much in this project's spirit (your keys, your machine, your rules) — but an edited prompt breaks the digest chain, so a stored read would resolve to text the user changed. That is a **T8 hazard wearing a feature's clothes**: it would need overrides to be *content-addressed as new versions* rather than edits, which is a slice, not a config flag.
-
-**My lean: (a) now, (b) designed for and deferred.** The loader takes a directory argument precisely so (b) is later a second search path rather than a rewrite.
-
-## What this does not do
-
-No prompt text changes. No event schema change. No re-ingest. No call-site changes in Steps 1–3. If the whole thing were reverted, the only loss would be the recovered `enrich-v1`/`v2` files, which are pure gain.
-
-## Cost
-
-Roughly: Step 1 ~60 lines, Step 2 mechanical (a script does the extraction, the frozen test judges it), Steps 3–4 an hour, Step 5 ~40 lines plus the exemption plumbing, Step 6 minutes. The expensive part is already done — **the discipline exists in `prompt_library.py`; this makes it structural and universal instead of local and voluntary.**
-
----
-
-## What the build showed
-
-**20 prompt versions now live in files**, across three packages, and **no prompt text remains in any `.py` file** in the repo.
-
-| Package | Directory | Versions |
-|---|---|---|
-| `product/viva` | `prompts/` | 15 — classify ×2, extract base ×4, fragments ×7, interpret ×2 |
-| `core/vivacore` | `prompts/` | 5 — the p2 body, three mode headers, the page-text block |
-| `merchant/merchantcore` | `prompts/` | 2 — `enrich-v2` (recovered), `enrich-v3` |
-
-**The migration proved itself, exactly as planned.** `test_active_versions_are_frozen` passes with its **pinned digests untouched** — the same numbers it had when the text lived in Python. Nothing to eyeball; one changed byte would have failed it. `prompt_library.py` went from **424 lines to 88**, and holds no prompt text at all.
-
-### Three things the build turned up
-
-**`enrich-v1` never existed.** The plan assumed two lost versions; git shows `merchantcore` shipped at `enrich-v2` and the constant simply started there. So `enrich-v2` was recovered and **nothing is actually unexplainable** — a better outcome than expected, and worth stating plainly rather than letting the plan's guess stand as history.
-
-**The lint caught three more prompts on its very first run** — `_HEADERS` in `vivacore/prompts.py`, holding the three input-mode openings for the benchmark. Nobody had flagged them; they were not in the plan's inventory. A benchmark that could reword its own question between runs would measure nothing, so those are now pinned files too. **The test found drift the audit had missed on its first execution**, which is the argument for mechanism over vigilance in one line.
-
-**`_PAGE_TEXT_BLOCK` moved too**, though it is a delimiter rather than an instruction. The rule is easier to keep when it has no exceptions: *no model-facing text in a `.py` file*, full stop.
-
-### The guarantee, stated plainly
-
-- **`test_no_prompt_text_lives_in_code`** — an AST walk over every `.py` in all four packages, failing on long multi-line instruction-shaped literals, with the fix printed in the message.
-- **`test_every_version_the_code_can_emit_resolves`** — T8 asserted directly. This is the test whose absence let `enrich-v2` slip out of the codebase while events kept naming it.
-- **`PromptNotFound`** raises rather than defaulting. A silent fallback to the *current* prompt would re-explain an old reading with new instructions and look like it worked — the most dangerous possible failure for a system whose product is trust.
-- **`package-data` in all three `pyproject.toml`s.** A packaging slip is invisible in a checkout and fatal in an install (X1).
-
-### A recorded version resolves to a family, not only to itself
-
-Because a version id is self-describing and permanent, it can answer a question it was never designed for: what *type* of document a stored read was. The balance family's extraction JSON does not name its own type, so replaying from stored claims has only the recorded `prompt_version` to go on — and that turns out to be enough, provided recovery matches the version's *family* rather than the exact string. Matching exactly fails on any document read under an earlier version of a profile that has since been bumped: the type was written down, and we were asking for an exact match on the one part designed to change.
-
-### Retained versions in circulation
-
-Every version below still resolves; records written under any of them keep their meaning.
-
-- `enrich-v2` — the sixteen controlled primaries plus a model-supplied subcategory.
-- `enrich-v3` — adds `counterparty_kind` and the implication block.
-- `enrich-v4` — shows the model the subcategories this vault already uses, so minting a new label is a deliberate act rather than the path of least resistance.
-
-### Deferred, deliberately
-
-User-editable prompts (P1 (b)). `promptstore.load()` takes a directory argument precisely so an override path is later a second lookup rather than a rewrite — but an edited prompt breaks the digest chain, so overrides must arrive as **content-addressed new versions**, not edits. That is a slice, not a config flag.
-
----
-
-# Where a version is declared
-
-**Amended 2026-08-06**, from [briefs/the-constants-that-are-not-constants.md](../briefs/the-constants-that-are-not-constants.md), Option C. The 2026-07-25 work made a prompt's *text* data. Its *declaration* stayed code: **eighteen active-version literals in three packages under three different names** — `PROMPT_VERSION`, `ACTIVE_PACK` (two different things with that name), `ACTIVE_REGISTRY`, `PACK_RULES`, seven in `speak.py` alone — pinned by **four independent frozen-digest tables** in four test files. That is the same condition that lost `enrich-v2`'s text, one level up.
-
-## The ask, and why it was not taken literally
-
-The request was to declare nothing and resolve the highest version at run time. It fails four ways mechanically: `sorted()` is lexicographic, so `speak-v10` reverts the product to `speak-v2`; a family notion has to be invented anyway, because `speak-v6` and `speak-refusal-schema-v1` share a directory and "the highest `speak`" resolves by prefix to the wrong one; a version deliberately **held back** — the open `speak-v5` length risk is exactly that case — is unexpressible; and a composite id like `extract:base-v1+card-v1` has two independent axes with no "highest".
-
-The reason that decided it is none of those. Auto-resolution puts a new prompt in force the moment a file lands, **with no diff showing that behaviour changed** — the same stale-artifact failure [the-surface-cards.md](the-surface-cards.md) reversed a build-step decision over. So the declaration is not the problem. **The declaration is the review gate.** The problem was that it was made in eighteen places.
-
-## What is built
-
-One `versions.json` per package (`product/viva/`, `merchant/merchantcore/`), shipped as package data, read through `vivacore.versions`. Per package, not per repo, because the three ship as independently installable wheels (T9).
-
-- **`released`** — every version file, by its own file stem, against `sha256[:16]` of its bytes. A directory-shaped version (a persona pack) hashes its files by name in sorted order, hidden files excluded. This is now the *only* pin table; the four test-file copies read from it. **Corrected 2026-08-16:** four of five do — `test_prompt_library.py`, `test_tools.py`, `test_persona_pack.py` and `test_interview.py` derive their frozen maps from `released`, and `FROZEN_SPEAK_PROMPTS` in `test_speak.py` is a literal dict kept by hand, so releasing a speak prompt means writing its digest in two places. Found by doing it twice in one cycle; it is one comprehension away from the others.
-- **`in_force`** — the families that have one active pointer, and the directory each lives in. Nothing else declares a version id, and a test fails on any quoted id that reappears in a module. **Extended 2026-08-13:** a family need not be a prompt. `merchantcore`'s `taxonomy` family points at `data/`, where `cat-v3.json` holds the shipped subcategory vocabulary, and `TAXONOMY_VERSION` is read from the manifest rather than written as a literal. The argument is the same one that made prompts files: the version is stamped into every enriched record, so it must resolve to one artifact's bytes forever, and a tuple edited in place changes what every future record anchors to with nothing recording that it changed. The `released` pin, the audit and the literal lint all applied unchanged.
-- **`withdrawn`** — per version, not per family, mapping a version to why it is not in force. Per family would have been a mute button: mark one version held and every later one lands unnoticed. Keyed to the version, holding `v2` back leaves `v3` raising the same complaint as before.
-- **`versions.audit`** — the promotion lint. A version file nobody pinned, a released file edited or deleted, a family pointing at nothing released, or a newer version sitting unpromoted with no reason all fail the suite. Its friction is real and accepted: a draft prompt on disk reds the build until it is promoted or marked.
-
-Nothing was promoted. Every id in force after is the id in force before.
-
-## What this does not yet cover
-
-- **`core/vivacore` has no manifest.** Its `PROMPT_VERSION = "p2"` and the `p2`/`t1`/`ti1` map remain literals, and those five prompt files are pinned nowhere. This is the same hole as TODO's *the bench records prompt versions that do not resolve*: `t1` and `ti1` do not name single files at all, so a manifest cannot key them until that is settled.
-- **Event stamps still carry a bare id.** `QuestionDeclined` records `pack-v3`, not `pack-v3@62a56a4b`. `versions.stamp()` exists and is tested, which makes the fix cheap — but it changes recorded payloads, so it is its own cycle and the owed TODO item stands.
-- **The literal test is textual.** It catches a quoted id; an id built by concatenation or an f-string passes it and is caught nowhere.
-
-# A version file need not be one prompt
-
-**Amended 2026-08-16.** `speak-repairs-v1.txt` is a **keyed table**: one
-`tag: words` line per entry, split on the first colon, holding the eighteen
-repairs a malformed reply can be asked to make. The check that finds a defect
-names a tag; the words for it are read from the file and placed into the retry
-prompt's `{repair}` field. No entry is sent on its own, and the table's own
-text is never `.format`ed.
-
-This is the same extension as `taxonomy` → `cat-v3.json`, one step further in:
-that was a manifest family pinning data, this is a *prompt* family whose file
-holds many reviewed phrases instead of one. Everything the discipline asks for
-applies unchanged — a new file for a new id, a pin in `released`, a pointer in
-`in_force`, and the literal lint — because the reason is unchanged: a recorded
-`prompt_version` must resolve to the exact words a model was told (T8), and a
-model told one of eighteen phrases was told a version's bytes as surely as a
-model told all of them.
-
-A table adds one obligation a single prompt does not have. **Its set of tags is
-an interface**, shared with the code that names them, so adding, removing or
-renaming a tag is a new version file even when no phrase changes. What holds it
-is a test that the tags the code can name and the tags the file answers are the
-same set, with no phrase empty.
-
-## The rule this leaves standing
-
-A version id is declared once, as data, beside the code it governs — and **promotion is an explicit, reviewable act**, never a consequence of a file appearing. What the lint removes is not the decision; it is the ability to forget you owed one.
-
-**And a version is released by being pinned here, not by a commit reaching a remote** (ruled 2026-08-06, when a pack was released in a commit held off `main`). T8's subject is the recorded stamp: an id written into an event must resolve to the exact bytes that produced that reading, forever, and a stamp does not know which branch it was written on. So once a version is in the manifest the next phrasing change is a new id — even while the commit that released the last one is still local, and even if nobody but you has ever run it.
+**State:** built
+**Rules:** VOICE-6, VOICE-1, VOICE-2, VOICE-3, VOICE-4, VOICE-5
+
+## Rules
+
+### VOICE-6 — a recorded version resolves to the text that produced the reading
+**State:** enforced
+**Code:** core/vivacore/promptstore.py:34 (`load`), product/viva/prompts/
+**Test:** product/tests/test_prompt_library.py::test_every_version_the_code_can_emit_resolves, product/tests/test_prompt_library.py::test_the_other_packages_keep_their_prompts_in_files_too
+
+1. Every version id the code can emit resolves to the exact bytes a model was sent.
+2. A version id retained in circulation keeps resolving after it stops being in force.
+3. Prompt files are plain `.txt`, one file per version, and the filename is the id.
+
+### VOICE-1 — no model-facing text lives in code
+**State:** enforced
+**Code:** core/vivacore/promptstore.py:34 (`load`)
+**Test:** product/tests/test_prompt_library.py::test_no_prompt_text_lives_in_code
+
+1. A multi-line string literal of 200 characters or more, in any `.py` file in any package, fails the build where it matches one of the check's instruction markers.
+2. The failure message names the file, the line, and the `promptstore` call that replaces it. The gate is a marker list, so a shorter prompt, or one worded outside that list, passes (product/tests/test_prompt_library.py:216-231).
+3. The same discipline applies to `core/vivacore` and `merchant/merchantcore`, not only `product/viva`.
+
+### VOICE-2 — a released version file is immutable
+**State:** enforced
+**Code:** core/vivacore/versions.py:182 (`audit`)
+**Test:** product/tests/test_versions.py::test_editing_a_released_version_fails
+
+1. Editing or deleting a file pinned in `released` fails the suite.
+2. Changing a prompt means copying it to a new version id, never editing a released one.
+3. A version file nobody pinned, a family pointing at nothing released, and a newer version sitting unpromoted with no recorded reason each fail the suite.
+
+### VOICE-3 — a version is declared once, as data, beside the code it governs
+**State:** enforced-with-exception
+**Code:** product/viva/versions.json, core/vivacore/versions.py
+**Test:** product/tests/test_versions.py::test_no_version_id_is_declared_as_a_literal_in_the_modules_that_use_one
+
+1. One `versions.json` per installable package holds `released` and `in_force`, with `withdrawn` nested inside a family's entry (core/vivacore/versions.py:218); nothing else declares a version id. product/viva/versions.json has no top-level `withdrawn` key.
+2. A quoted version id reappearing in a module fails the suite.
+3. `withdrawn` is keyed to a version, not to a family, so holding one version back leaves the next one raising the same complaint.
+4. A family need not be a prompt: `merchantcore`'s `taxonomy` family pins `data/cat-v3.json`, and `TAXONOMY_VERSION` is read from the manifest.
+5. Promotion is an explicit, reviewable act, never a consequence of a file appearing on disk.
+
+**Exception:** `FROZEN_SPEAK_PROMPTS` in product/tests/test_speak.py:29 is a literal dict kept by hand, so releasing a speak prompt writes its digest in two places; four of the five frozen maps derive from `released`. And `core/vivacore` has no manifest at all — `PROMPT_VERSION = "p2"` in core/vivacore/prompts.py:20 and the `p2`/`t1`/`ti1` map are literals, and those five prompt files are pinned nowhere.
+
+### VOICE-4 — a missing version raises rather than defaulting
+**State:** enforced
+**Code:** core/vivacore/promptstore.py:23 (`PromptNotFound`), :40
+**Test:** product/tests/test_prompt_library.py::test_a_missing_version_raises_rather_than_defaulting
+
+1. Resolving an unknown version id raises.
+2. No lookup falls back to the version currently in force.
+
+### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
+**State:** enforced
+**Code:** product/viva/prompts/speak-repairs-v3.txt
+**Test:** product/tests/test_speak.py::test_every_repair_a_check_can_name_has_reviewed_words
+
+1. A table file holds one `tag: words` line per entry, split on the first colon, and its own text is never formatted.
+2. The tags the code can name and the tags the file answers are the same set, with no phrase empty.
+3. Adding, removing or renaming a tag is a new version file even when no phrase changes.
+
+## Why
+
+Intent loses to friction. Adding a prompt as a Python literal was one line and
+adding it to a library was five plus an import, so the library lost every time
+regardless of what anyone meant to do. The fix has two halves and the second is
+the load-bearing one: make the data path cheaper than the code path, and make
+the code path fail a test. Saying it again was already tried and it drifted
+twice.
+
+The reason a version id must resolve forever is that stamping a version is the
+whole mechanism by which a stored read can be re-derived and re-explained. A
+version id that resolves to nothing is decoration. That was not hypothetical:
+`merchantcore` held a single `_PROMPT` string edited in place while
+`ENRICHMENT_VERSION` was bumped, so events named text that was not in the
+codebase. Git history holds the bytes, but *"go read git history"* is exactly
+the archaeology the library exists to abolish. An admitted gap is a different
+thing from an unnoticed one, which is why an unrecoverable version is recorded
+in the file rather than left as a silent hole.
+
+The migration proved itself: the pre-existing frozen-digest test passed with its
+pinned digests untouched, so nothing needed eyeballing — one changed byte would
+have failed it. The lint then caught three prompts on its first run that no
+audit had flagged, including the benchmark's input-mode headers. A benchmark
+that can reword its own question between runs measures nothing. That is the
+argument for mechanism over vigilance in one line, and it is why the rule has no
+exceptions: no model-facing text in a `.py` file, delimiters included.
+
+The declaration was a separate problem one level up. Resolving the highest
+version at run time fails mechanically four ways — `sorted()` is lexicographic
+so `v10` reverts to `v2`; a family notion has to be invented anyway because
+`speak-v6` and `speak-refusal-schema-v1` share a directory; a version
+deliberately held back is unexpressible; and a composite id has two axes with no
+"highest". But none of those decided it. Auto-resolution puts a new prompt in
+force the moment a file lands with no diff showing that behaviour changed — the
+same stale-artifact failure a build step was reversed over. The declaration is
+the review gate. The problem was that it was made in eighteen places. What the
+lint removes is not the decision; it is the ability to forget you owed one.
+
+Manifests are per package, not per repo, because the three ship as
+independently installable wheels. Package-data configuration matters for the
+same reason a packaging slip does: invisible in a checkout, fatal in an install.
+
+A prompt file must be readable and editable by someone who does not know
+Python, because eventually that person is the user tuning their own agent. User
+overrides are designed for and deferred: an edited prompt breaks the digest
+chain, so a stored read would resolve to text the user changed. Overrides must
+arrive as content-addressed new versions rather than edits — a slice, not a
+config flag. The loader takes a directory argument precisely so that stays a
+second search path rather than a rewrite.
+
+A version is released by being pinned in the manifest, not by a commit reaching
+a remote. VOICE-6's subject is the recorded stamp, and a stamp does not know which
+branch it was written on. So once a version is in the manifest the next phrasing
+change is a new id, even while the commit that released the last one is still
+local, and even if nobody but you has ever run it.
+
+A version id also answers a question it was not designed for: because it is
+self-describing and permanent, it identifies what *type* of document a stored
+read was, for a family whose extraction JSON does not name its own type.
+Recovery matches the version's *family* rather than the exact string — matching
+exactly fails on any document read under an earlier version of a profile that
+has since been bumped.
+
+## Open
+
+- `core/vivacore` has no manifest, and its five prompt files are pinned nowhere. `t1` and `ti1` do not name single files, so a manifest cannot key them until that is settled.
+- Event stamps carry a bare id: `QuestionDeclined` records `pack-v3`, not `pack-v3@62a56a4b`. `versions.stamp()` exists and is tested, but changing it changes recorded payloads, so it is its own cycle.
+- The literal test is textual. An id built by concatenation or an f-string passes it and is caught nowhere.
+- `FROZEN_SPEAK_PROMPTS` is the one frozen map still kept by hand; it is one comprehension away from deriving from `released` like the other four.
+- User-editable prompts, as content-addressed new versions rather than edits.

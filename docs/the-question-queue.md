@@ -1,184 +1,152 @@
 # The Question Queue
 
-**Status:** BUILT (`product/viva/questions.py`, `python -m viva.ask`) · **Last updated:** 2026-08-14 (two claims were amended from a real sitting on 2026-08-08: answering was not idempotent for movement-scoped nature questions — **repaired since, and verified**, see *Scope — the build* — and the closed category vocabulary is closed in one direction only, half-repaired, near-duplicates excepted) · **Block seeded:** the **Question** primitive — the learning loop's front door. Sequel to [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
+**State:** built
+**Rules:** MON-44, MON-45, MON-46, MON-47, MON-48, MON-49, MON-50, MON-51, MON-52, MON-53, MON-54, MON-55
 
-**Invariants touched:** T1 (a question carries the evidence it rests on) · T2 (questions are raised deterministically — a model never decides *whether* to ask) · **T4 (an answer is an append-only ruling event; we reuse the writers we already have)** · X2 (an unanswered question leaves the figure visibly incomplete, never silently resolved) · principle 5 (**serve, don't overwhelm** — the failure mode is asking about everything) · principle 6 (you direct the pace) · principle 7 (autonomous where safe, deferential where it counts). Extends [verification-findings-and-correction.md](verification-findings-and-correction.md)'s Rung 2 ("the human, asked well") from one document to the whole vault.
+**Invariants touched:** T1 · T2 · **T4** · X2 · **X3** · principle 5 · principle 6 · principle 7. Extends [verification-findings-and-correction.md](verification-findings-and-correction.md)'s Rung 2 — *the human, asked well* — from one document to the whole vault.
 
----
+## Rules
 
-> _Forward note, 2026-07-25 — the first real run put two questions in front of the author that its three answers could not hold: a mortgage payment (three things at once) and a car purchase (something he now **owns**). The diagnosis is that a **NATURE** question's option set was an impoverished stand-in for what the counter-leg *is*. **Rulings in your own words** ([from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)) widens the answer space to the four majors — expense / asset / liability / income — reached through a sentence rather than a button. **The queue itself does not change**: framing, ranking by consequence, scope, and the tail summary are all untouched, and buttons remain the fast path and the no-model fallback. Free text becomes an additional way to answer a question the queue already asked._
+### MON-44 — a question is a read-side projection, and answering uses the writers that exist
+**State:** enforced
+**Code:** product/viva/questions.py:670 (`open_questions`)
+**Test:** product/tests/test_questions.py::test_the_queue_introduces_no_new_event_type
 
+1. `open_questions()` gathers every source of ambiguity the vault already records; it adds no event type and no ingest change: questions, pending state and declines are projections over events the ledger already has.
+2. Answering routes to the existing writers, through the one door in `product/viva/engine.py`.
+3. Every question carries the evidence it rests on and the figure it moves (T1).
 
-## Why now
+### MON-45 — ranked by consequence, with stable ids
+**State:** enforced
+**Code:** product/viva/questions.py:705 (`open_qs.sort(key=lambda q: (-q.amount, q.id))`)
+**Test:** product/tests/test_questions.py::test_questions_are_ranked_by_what_answering_moves
 
-Movement nature made the spending figure honest and, in doing so, **quantified what the system doesn't know**: on a real vault, a third of reported spending rests on a category hint alone, alongside dozens of unknown merchants and a handful of unresolved transfer suggestions. The system knows precisely what it is unsure about and has no way to work through it with the person.
+1. The list is ordered by how much money answering moves, highest first, with ties broken by id so the order is stable between reads.
+2. A question's id is derived from what it is about, so the same question does not churn between projections (product/tests/test_questions.py::test_question_ids_are_stable_across_reads).
+3. No model chooses a subject or an order; the persona changes the words of a question and never promotes a movement between the three tiers.
 
-It also already asks four kinds of question — built four separate times:
+### MON-46 — a question is raised at the most general unit that is still honest
+**State:** enforced
+**Code:** product/viva/questions.py:276 (`_nature_questions`, grouped by merchant key); product/viva/listen.py:566 (what may generalize)
+**Test:** product/tests/test_questions.py::test_answering_a_nature_question_settles_the_merchant_and_stops_asking
 
-| Question | Built in | Event it writes | Generalizes to |
-|---|---|---|---|
-| Whose account is this? | account identity resolution | `AccountAliasConfirmed` | every future statement of it |
-| Are these the same money? | transfer links | `TransferLinked(by=human)` | that pair (patterns learned) |
-| What is this merchant? | the merchant catalog | `MerchantCategorized/Enriched` | every transaction from it |
-| Is this spending, or moving? | movement nature | `CategoryAssigned(nature=…)` | that movement |
+1. A commercial counterparty's question is scoped to the merchant, so one answer settles every transaction from it, past and future.
+2. A peer or instrument descriptor, and a genuinely one-off ambiguity such as a transfer pair, is scoped to itself (product/tests/test_questions.py::test_a_peer_payment_is_scoped_to_itself_not_a_rule).
+3. Answering is idempotent: the ruling changes state, so the question does not return (product/tests/test_questions.py::test_a_ruled_one_off_question_is_never_asked_again).
 
-Four implementations of one primitive, four queues, four cards in the surface. **The questions Viva asks — and the rulings they produce — are the product** (CLAUDE.md: *memory of the user is the moat*). This slice gives them one front door.
+### MON-47 — silence by ranking, never by hiding
+**State:** enforced
+**Code:** product/viva/questions.py:707 (`shown, rest`), :778 (`pending_questions`), :759 (`_split_declined`)
+**Test:** product/tests/test_questions.py::test_the_tail_is_summarized_never_dropped
 
-## What a Question is
+1. The top N surface and the rest are reported as a tail with its count and its total; nothing is dropped, because hiding them would be a lie of omission.
+2. There is no materiality threshold, which would be a currency- and jurisdiction-shaped guess (I1, I5).
+3. A declined question is still built and still findable in the pending list; the decline filter is what keeps it out of the ranked list, and it returns when its stake changes.
 
-A **read-side projection** over ambiguity the system already records. No new event type, no ingest change (a generic `Ruling` event waited on a fifth question type to earn it, and has since arrived as the generic scoped ruling).
+### MON-48 — question text is a deterministic template from the persona pack
+**State:** enforced
+**Code:** product/viva/questions.py (every `say(...)` call); the persona pack under product/viva/persona/
+**Test:** product/tests/test_persona_pack.py::test_question_text_no_longer_lives_in_code
 
-```
-Question(
-  id,             # stable + derived from what it is about (so it doesn't churn)
-  kind,           # identity | transfer | merchant | nature | reconciliation
-  text,           # Viva's voice, deterministic template (no model call)
-  why,            # the evidence: what we saw that makes this uncertain (T1)
-  consequence,    # {amount, currency, count} — how much money the answer moves
-  scope,          # "one" (this movement) | "pattern" (everything like it)
-  options,        # the answers offered, each mapped to an existing writer
-  refs)           # the movement keys / doc ids / merchant the answer applies to
-```
+1. A question's words are a template, never a model call, so the queue is reproducible, free and offline-testable.
+2. A phrasing may only place fields the deterministic intent supplied, and the slot's declared type is checked as well as its name (product/tests/test_persona_pack.py::test_phrasings_use_only_their_intent_fields).
+3. Every figure a question states goes through the one renderer that writes every other amount in the product.
 
-`open_questions()` returns them **ranked by consequence, descending.** Answering routes to the writers that already exist (`confirm_transfer`, `assign_category(nature=…)`, `assign_merchant_category`, `apply_identity_ruling`) — this slice adds no write path.
+### MON-49 — every question declares what structure an answer has
+**State:** enforced
+**Code:** product/viva/reply.py:138 (`Slot`), :323 (what a model is told)
+**Test:** product/tests/test_listen.py::test_the_model_never_supplies_a_figure
 
-## The three rules that keep it a butler, not a chore list
+1. Each question carries typed slots, and one inbound router reads any reply into them, whatever the question's kind.
+2. The model turns language into structure and never into a value; deterministic code validates each value against its type and writes.
+3. A reply that does not hold up goes back to the model once, with what it sent and what was wrong with it, before anyone troubles the person (product/tests/test_ask.py::test_a_reply_that_does_not_hold_up_comes_back_in_vivas_words).
 
-**1 — Leverage ranking.** Ask the question that moves the most money first. This is the merchant-catalog lesson turned on the questions themselves: on the real vault, two questions (a vehicle purchase and a property closing) resolve roughly half the outstanding uncertainty. A hundred small ones can wait forever without harming the picture.
+### MON-50 — there is no button path and no second way in
+**State:** enforced
+**Code:** product/viva/reply.py:536 (a closed vocabulary is validation, not a payload)
+**Test:** product/tests/test_ask.py::test_a_reply_she_could_not_read_leaves_the_question_where_it_was
 
-**2 — Scope: one ruling should clear many.** A question is raised at the **most general unit that is still honest**. Nature questions group by *merchant key* — the brand a resolution layer named, and the normalized descriptor only where none could (amended 2026-08-01) — the unit that already generalizes retroactively and forward (the merchant catalog) — so answering once settles every transaction from that counterparty, past and future. A genuine one-off (an ambiguous transfer pair) is scoped to itself.
+1. A question offers no clickable payload that would write without anyone saying anything.
+2. A closed vocabulary survives as validation of what a person said.
+3. `offered` — the part of a vocabulary a model is told — may be narrower than `choices`, which is what a reply is validated against.
 
-**3 — Silence by ranking, not by hiding.** Rather than a hard materiality threshold (which would be a currency- and jurisdiction-shaped guess — I1/I5), the queue **surfaces the top N and summarizes the tail**: "plus 34 smaller items worth X in total — ask me if you want them." Nothing is hidden, nothing is pushed. An unanswered question leaves its figure provisional and *labelled* (movement nature already does this), so silence degrades the picture's precision, never its honesty.
+### MON-51 — a confirmation is a question, not a second door (X3)
+**State:** enforced
+**Code:** product/viva/listen.py:538 (`propose`), :658 (`apply_proposal`)
+**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written
 
-## Viva's voice
+1. An answer that would do something irreversible comes back as a proposal stating in plain words what it would do.
+2. The yes that applies it is a declared `yes_no` slot, filled by the model from the person's words and decided by code (product/tests/test_ask.py::test_a_confirmation_is_read_as_language_not_as_a_word).
+3. A proposal never confirmed leaves the ledger untouched (product/tests/test_ask.py::test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched).
 
-Question text is a **deterministic template**, not a model call: the queue must be reproducible, free, and offline-testable, and a model that phrases a question could smuggle a claim into it. _Amended 2026-07-27 (the voiced queue): the templates now live in the persona pack (`viva/persona/`, [viva-persona-and-interview.md](viva-persona-and-interview.md)) rather than in `questions.py` — the rule stands unchanged; a lint test guarantees a phrasing can only place fields the deterministic intent supplied. The persona pack also made "not now" an answer: a declined question is suppressed while its stake (amount, count) is unchanged and returns on new evidence._ Templates carry the figure, the evidence, and the choice:
+### MON-52 — a nature question is raised only where the evidence is weak
+**State:** enforced
+**Code:** product/viva/questions.py:305 (`if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT): continue`); product/viva/ledger/projection/tiers.py:26 (`tier_of`)
+**Test:** product/tests/test_questions.py::test_an_ordinary_known_merchant_is_never_asked_about
 
-> "On 3 March you moved $2,400 to Chase. I've treated that as a payment to your own card rather than spending — is that right?"
-> "You have 12 transactions with FIRST AMERICAN TITLE totalling $23,512. Is that money spent, or a property purchase — something you now own?"
+1. A movement is asked about only where its nature rests on a category hint or the plain default; anything a link, an own account or a ruling settled is not asked about again, at any tier.
+2. A settled counterparty raises nothing; a counterparty implying a relationship raises one grouped proposal; an instrument or a peer raises one question per movement; an unidentified merchant raises the merchant question instead, so the two never collide.
+3. There is no list of capital-looking categories anywhere — leverage ranking is the filter (I5).
 
-Slice 9 (Viva) will re-voice these through the persona; the *content* — figure, evidence, options — stays deterministic. This is where the unwritten persona work (C1 uncertainty language, C3 when-to-speak) gets its first concrete surface.
+### MON-53 — a rhythm question is one proposal per counterparty and direction, licensed by the catalog
+**State:** enforced
+**Code:** product/viva/questions.py:417 (`_rhythm_questions`)
+**Test:** product/tests/test_rhythm.py::test_a_standing_prior_raises_one_grouped_proposal_per_pair
 
-> _**As built, amended 2026-08-07. The rule above stands; three things around it changed.**_
->
-> _**The templates are typed, not merely whitelisted.** `INTENT_FIELDS` was a per-question-key set of names a phrasing could place; it is now a per-key map of name to **slot type** — money, count, date, account, merchant, category, document — and the lint checks the type as well as the membership. A question text is still a deterministic template and still never a model call._
->
-> _**Every question declares what structure an answer to it has.** Previously one of seven question kinds said so, and the other six were routed by kind rather than by declared type, so a sentence typed into a transfer question's box was parsed as a ruling about the four majors. Now each `Question` carries typed slots, and one inbound router reads any reply into them: the model turns language into structure and never into a value, and deterministic code validates each value against its type and writes. A reply that does not hold up goes back to the model once, with what it sent and what was wrong with it, before anyone troubles the person._
->
-> _**`options` is gone, and so is `free_text`.** There is no button path and no second way in — a channel that triggers a write without anyone saying anything is the thing the design excludes. A closed vocabulary a reply must land in survives as **validation** rather than as clickable payloads. **Amended 2026-08-08, from a real sitting: that is true in one direction only.** The merchant question validates its reply against the offered list; the nature question's category slot is a free-text label with no vocabulary check at all, and a label minted there is written, folded into the known categories, and then offered by the next merchant question alongside the one it duplicates. So the vocabulary is closed where a reply is checked and open where it is written — one mechanism described as if it were the whole of it. [Issue #7](https://github.com/vishnuyar/orionviva/issues/7) carries the symptom. **Half-closed later the same day.** There is now one definition of the vocabulary (`listen.category_vocabulary`), every question that can write a category carries it in the slot the model answers into, and an answer naming a category the vault already holds lands on the vault's own spelling of it (`listen.settled_category`). What is **not** closed, and is not going to be by this mechanism: a near-duplicate. `Groceries` folds onto `groceries`; `Grocery` still mints a second category beside it. Closing that needs either a fence — which contradicts D2 of [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md), where a category the person coins is theirs to add — or a stemming rule, which is the keyword-table class of workaround this project has already deleted twice. Issue #7 stays open on the near-duplicate, and the ruling is Vishnu's. The `Question` sketch above still shows the old fields; treat the code as current. And `_money()` is deleted: the queue's figures go through the one renderer that writes every other amount in the product, from the same versioned locale rules the parser reads them with._
->
-> _**A confirmation is a question, not the second door.** Ruled 2026-08-06, after a build stopped on exactly this reading. When an answer would open an account, the engine returns a proposal rather than writing, and the yes that applies it comes back in language through the same machinery as every other reply — a declared `yes_no` slot, filled by the model, decided by code. The thing excluded above is a channel that writes with nobody saying anything; a second *function*, with X3's gate between its halves, is what an irreversible action is required to have. Ask, read, record — or propose, confirm, record._
+1. The catalog must say two things before a question is raised: that the counterparty is a business, and that an arrangement with them is possible. A record naming a rail or a person, or naming no kind at all, raises nothing (product/tests/test_rhythm.py::test_a_merchant_with_no_billing_prior_is_never_asked_about).
+2. A pair whose other side a grammar slot declared a person raises nothing, and no measurement is dropped either way.
+3. The answer is a ruling at the rhythm scope carrying a set-valued value; it settles the pair in the open list and the set-aside list alike, and more of the same money does not reopen it (product/tests/test_rhythm.py::test_more_of_the_same_money_does_not_reopen_a_confirmed_rhythm).
+4. "No rhythm" is an answer rather than a decline.
 
-## Scope — the build
+### MON-54 — a stake is money already measured
+**State:** enforced
+**Code:** product/viva/questions.py:670 (every builder's `amount` comes from posted movements)
+**Test:** product/tests/test_rhythm.py::test_a_question_is_ranked_on_money_already_measured
 
-- `Question` + `open_questions()` in the projection (ranked, grouped, with consequence).
-- Nature questions grouped by merchant key; transfer/identity/merchant questions from the existing sources.
-- A `python -m viva.questions` CLI — the ranked list against a real vault, the way `debug.vault` works today.
-- The surface: one **"what Viva needs from you"** panel, ranked, replacing the four disconnected review cards (the existing endpoints answer them unchanged).
-- Answering is idempotent by construction: a ruling changes state, so the question disappears from the next projection. _**Falsified in part 2026-08-08**, by an audit of a real sitting: it holds for questions scoped to a merchant, and it does **not** hold for a nature question scoped to a single movement whose counterparty is instrument- or peer-shaped. Those are built from the movement's tier alone, the tier never consults rulings, and the question therefore returns however many times it is answered — the ruling attaches, the state changes, and the queue does not notice. The queue cannot be driven to empty. See [issue #12](https://github.com/vishnuyar/orionviva/issues/12), which files the counter this surfaces through; the counter is correct and this is the thing underneath it._
-  _**Repaired since, and verified 2026-08-14.** The nature builder no longer asks about a movement whose nature something stronger already decided: before the tier is consulted at all, it drops anything whose `nature_reason` is not a category hint or the plain default, so a movement-scoped ruling suppresses its own question at every tier. The tier still never consults rulings — the fix went one layer up, which is why a reader checking `tiers.py` alone will conclude the falsification stands. Verified by driving both halves of the original sitting to genuinely empty: two peer-shaped movements, two instrument-shaped ones, answered through the same door a person uses, queue total zero and the old question ids unresolvable. **One limit survives and is the thing to watch:** the filter reads the *derivation*, not "this was answered". A ruling recorded at a scope the nature derivation does not consult — a category-scoped rule, the one promised below — would suppress nothing and would reintroduce exactly this failure._
+1. The figure a question is ranked on is money the ledger has measured, never a projection of what a relationship will move next.
+2. An interview question about an account whose money its statements already explain carries a stake of zero rather than borrowing its balance.
 
-## Done criteria / tests
+### MON-55 — a cash withdrawal is a spend until an unexplained asset says otherwise
+**State:** unmet
+**Code:** none found
+**Test:** none
 
-- Questions are ranked by consequence; the highest-value question is first.
-- A nature question scoped to a merchant, once answered, settles **every** transaction from that merchant — past and future — and the question does not return.
-- A question carries its evidence and the figure it moves; an unanswered question leaves the affected total provisional and labelled.
-- The tail is summarized (count + total), never silently dropped.
-- Answering routes to the existing writers — no new event type is introduced by this slice.
-- Question ids are stable across projections (the same question doesn't churn between reads).
-- Existing identity / transfer / merchant / nature tests stay green.
+1. The trigger is an asset declared that no card spend and no bank withdrawal explains, never a withdrawal on its own.
+2. The machine proposes that past withdrawals were that asset's acquisition and never re-reads a movement on its own word (T9).
+3. The answer is a ruling on the movement, which already outranks the heuristic rung that defaulted it, so answering is idempotent and needs no new event type.
 
-## As-built (2026-07-25)
+## Why
 
-Three decisions the build forced, all resolved toward the reversible option:
+Movement nature made the spending figure honest and, in doing so, **quantified what the system does not know**: on a real vault a third of reported spending rested on a category hint alone, alongside dozens of unknown merchants and a handful of unresolved transfer suggestions. The system knew precisely what it was unsure about and had no way to work through it with the person.
 
-- **What raises a *nature* question.** The spec advertised a vehicle purchase and a property closing as the two highest-leverage questions — but neither is `provisional`; both are confidently categorized and counted as spending. So "ask about provisional items" would have missed exactly what was promised. **A nature question is raised wherever nature rests on weak evidence** (a category hint, rung 4, *or* the plain default, rung 5) for a merchant we already have a category for — and **leverage ranking is the filter**. No list of "capital-looking" categories, which would be jurisdiction-shaped guessing (I5). Big-ticket ambiguity floats up; a grocery run sinks. An *unknown* merchant raises the more fundamental MERCHANT question instead, so the two never collide.
-- **Alongside, not replacing.** The four existing review cards stay for this pass; the queue ships as the ranked front door that says *which to do first* and carries the answering actions. Rebuilding four working confirm flows in one go was the higher-risk path; retire them once the queue's answering is proven.
-- **Merchant-scope nature rides the existing attributes bag.** `merchant_enriched(attributes={"nature": …})` — no new event type and no new field, so the write side stayed untouched. The nature derivation's rung 3 now reads a ruling from the movement overlay *or* the merchant catalog, which is what makes one answer settle a counterparty past and future. Peer descriptors are excluded from merchant-scope rulings (`is_shareable`) and stay per-movement, per the local-categorization decision.
+It also already asked several kinds of question, built several separate times — whose account is this, are these the same money, what is this merchant, is this spending or moving — each with its own writer, its own queue and its own card in a surface. Four implementations of one primitive. The queue is one front door over them, and the reason it needed no write path is the standing trade: abstract the read side early, the write side late.
 
-Built: `Question` + `open_questions()` in `product/viva/questions.py` (held documents → transfer suggestions → unknown merchants → weak-nature merchants, ranked by amount with a stable id per subject); `rule_merchant_nature` writer; `python -m viva.ask` (read-only CLI); `/api/questions` + `/api/rule-nature`. Tests: `test_questions.py` (9) covering ranking, tail summary, both scopes, one-ruling-settles-and-stops-asking, id stability, and that the event vocabulary is unchanged. Full suite 303 green.
+Three rules keep it a butler rather than a chore list. **Leverage ranking** — ask the question that moves the most money first; on the real vault two questions resolved roughly half the outstanding uncertainty, and a hundred small ones can wait forever without harming the picture. **Scope** — one ruling should clear many, so a question is raised at the merchant, the unit that already generalizes retroactively and forward. **Silence by ranking rather than hiding** — the top surface, the tail is summarized, and an unanswered question leaves its figure provisional and labelled, so silence degrades the picture's precision and never its honesty.
 
-> _**Fenced 2026-08-14.** Two clauses above are this slice's, at its date, and are no longer true. **The two endpoints went with the 2026-08-06 web deletion** — there is no HTTP surface anywhere in the product now, and the queue is reached from `viva.ask`. And `viva.ask` is **not** a read-only CLI: `--list` prints the queue and writes nothing, which is what it has always done, but without it each question is asked in turn and the answer is recorded through `viva/engine.py`'s one door. The figures have moved too: `test_questions.py` is 14 tests and the product suite is 1049 green._
+The words are deterministic because a model that phrases a question could smuggle a claim into it, and because a queue that is reproducible and free can be tested offline. What moved over time is where the templates live — the persona pack, with a lint holding a phrasing to the fields and types the intent supplied — not the rule.
 
-## Known limitation: questions it should not ask (added 2026-07-25)
+The answer path had to be typed for a reason that showed up in a real sitting. Routing a reply by the *kind* of question meant a sentence typed into a transfer question's box was parsed as a ruling about the four majors. Now each question declares the structure of an answer to it, one router reads any reply into those slots, and the split of labour is fixed: the model turns language into structure, deterministic code turns structure into a write.
 
-The first real run asked two questions that have no correct answer among the options offered — a **compound payment** (a mortgage is interest *and* principal *and* escrow at once) and a **capital purchase** (a car, which the ledger cannot yet represent as a thing you own). Forcing a nature ruling on either produces a wrong figure in one direction or the other. The fix is not a better option list: it is to recognize these cases and *say what is missing* — the document that states the split, or the Asset primitive — rather than inviting a guess. Recorded in [learning-mode.md](learning-mode.md); deferred by decision.
+Buttons went for a stronger reason. A channel that triggers a write without anyone saying anything is the thing the design excludes. A closed vocabulary survives as *validation* rather than as clickable payloads — and it is closed in one direction only for a good reason: a label the vocabulary does not hold is still read, because a category a person coins is theirs to add. That leaves a near-duplicate open, and closing it would need either a fence, contradicting the local-categorization decision, or a stemming rule, which is the class of workaround this project has deleted twice.
 
-## Known limitation (and what the generic scoped ruling fixed)
+A confirmation is not a rival to X3; it *is* the mechanism. What the design excludes is a write with nobody saying anything, not a second function with the gate between its halves. Ask, read, record — or propose, confirm, record.
 
-A nature ruling generalizes at the merchant unit. A *category-shaped* pattern ("anything in title-and-escrow is a capital purchase") could not be recorded as one rule — answering applies it to the movements at hand. Fixing that needs a ruling that carries its own scope, which is exactly the **generic scoped ruling** — deferred until a fifth question type (Slice 8's obligations, or Slice 11's loans) proved the shape, and since arrived as `RulingRecorded` carrying `scope` + `same_as`. **The fifth question type arrived 2026-08-12** (rhythm, from Slice 8 rescoped); see the section below. Until it landed the queue re-asked about genuinely new merchants, which is honest, if slightly repetitive.
+What raises a nature question was the build's sharpest surprise. The spec advertised a vehicle purchase and a property closing as the two highest-leverage questions, and neither is provisional: both are confidently categorized and counted as spending. So "ask about provisional items" would have missed exactly what was promised. A nature question is therefore raised wherever nature rests on **weak evidence** — a category hint, or the plain default — and leverage ranking is the filter. Big-ticket ambiguity floats up and a grocery run sinks, with no jurisdiction-shaped list of capital-looking categories anywhere.
 
-## The fifth question type, and an eighth source (2026-08-12)
+Idempotence was falsified once, and the repair says where such a fix belongs. A nature question scoped to a single movement was built from the movement's tier alone, and a tier never consults rulings, so the question returned however many times it was answered and the queue could not be driven to empty. The fix went one layer up: the builder drops any movement whose nature something stronger already decided, before the tier is consulted at all. A reader checking the tier alone will conclude the falsification stands. The surviving limit is worth watching — the filter reads the *derivation*, not "this was answered", so a ruling recorded at a scope the nature derivation does not consult would suppress nothing and reintroduce the failure.
 
-The queue gained **rhythm**: *what kind of arrangement is this?*, one grouped
-proposal per `(merchant key, direction)` pair the merchant catalog says an
-arrangement is even possible for — and, *amended 2026-08-13*, never a pair whose
-other side a grammar slot declared a person, whose movements the read drops
-before it measures anything. *Amended again the same day:* the catalog must say
-two things rather than one, that the counterparty is a business and that an
-arrangement with them is possible, so a record naming a rail or a person, or
-naming no kind at all, raises nothing however it bills — a question withheld,
-never a measurement dropped. It is the fifth question type this doc said
-the generic scoped ruling was waiting on, and it proves the shape — the answer
-is a `RulingRecorded` at a new scope, carrying a set-valued `value` and no
-`same_as`, written through the same slot machinery as every other reply. No new
-event type, and no second surface.
+The fifth question type — rhythm — proved the shape the generic scoped ruling was waiting on, and settled three things about the queue itself. **A prior may license a question the ledger cannot yet evidence**, provided the sentence carrying it claims no measurement: a merchant seen twice and a merchant seen fourteen times raise the same kind of question with visibly different sentences. **Answering it is idempotent**, and "there is no rhythm" is an answer rather than a decline, so no new decline behaviour was needed. **The stake is money already measured**, because a stake is a ranking key and a projected one would put a claim about the future into the ordering with nothing saying so. The licensing conjunction is the T9 asymmetry applied: a model-authored label may *withhold* a question and may not *delete* a measurement, so the flow the ledger measured is unchanged whatever the label says.
 
-Three things it settles about the queue itself:
+The sixth type is chartered and unbuilt, and its charter is deliberately narrow. A cash withdrawal is a spend unless the person says otherwise — the same shape as money moving to a card, except that with no statement on the other side there is nothing for it to be the settlement *of*. What may reopen it is evidence, and the evidence runs **backwards**: an asset declared that nothing explains. A question raised per withdrawal would be exactly the chore list rule 3 forbids. This is the first question type that reaches back to movements already posted, already counted, and possibly already spoken in an answer — and what that costs a person whose spending figure later moves is named, not settled (M1 in [design-invariants.md](design-invariants.md)).
 
-- **A prior may license a question the ledger cannot yet evidence.** Rule 2 said
-  a question is raised at the most general unit that is still honest; this adds
-  that a question may be raised at all on impersonal world knowledge, provided
-  the sentence that carries it claims no measurement. A merchant seen twice and
-  a merchant seen fourteen times raise the same kind of question with visibly
-  different sentences.
-- **Answering it is idempotent** — the property a nature question scoped to a
-  single movement failed at until it was repaired, recorded above. A rhythm ruling covers the pair the
-  question was asked about, so the ruling suppresses the question in the open
-  list and the set-aside list alike, and more of the same money does not reopen
-  it. `one_time` and `irregular` are answers, not declines: a person who says
-  there is no rhythm has settled the question permanently, so the slice needed
-  no new decline behaviour.
-- **The stake is money already measured**, never a projection about what the
-  relationship will move next. A stake is a ranking key rather than a spoken
-  figure, and a projected one would put a claim about the future into the
-  ordering with nothing saying so.
+Two questions have no correct answer among anything the queue can offer: a **compound payment**, where a mortgage is interest and principal and escrow at once, and a **capital purchase**, where the thing bought is something the person now owns. Forcing a nature ruling on either produces a wrong figure in one direction or the other. The fix is not a better option list; it is to recognize these cases and say what is missing — the document that states the split, or the primitive that represents the thing — rather than inviting a guess.
 
-## The sixth question type, chartered and unbuilt (2026-08-17)
+## Open
 
-**Ruled by Vishnu, 2026-08-17.** A cash withdrawal is a spend unless he says
-otherwise. It is the same shape as money moving to a card to settle what a card
-purchase incurred — except that with no statement on the other side there is
-nothing for it to be the settlement *of*, so it stays a spend. What may reopen
-it is evidence, and the evidence runs backwards: **an asset declared that no card
-spend and no bank withdrawal explains.** Then, and only then, past cash
-withdrawals are looked at again as that asset's acquisition, after confirming
-with him. See M1 in [design-invariants.md](design-invariants.md).
-
-Nothing here is built. What the charter fixes, so the cycle that builds it is not
-choosing these afresh:
-
-- **The trigger is an unexplained asset, never a withdrawal.** The queue does not
-  ask about cash because cash is uncertain; it asks because something concrete
-  arrived that nothing accounts for. A question raised per withdrawal would be the
-  chore list rule 3 forbids.
-- **It proposes and never applies** (T9). The machine may say *this asset appeared
-  and nothing explains it; was it one of these withdrawals?* and may not re-read a
-  movement on its own word. The answer is a `RulingRecorded` on the movement,
-  which already outranks the heuristic rung that defaulted it — so no new event
-  type, and answering is idempotent, as the fifth type established.
-- **It reaches backwards, which no existing type does.** Every question so far is
-  raised about what has just been read. This one is raised about movements already
-  posted, already counted, and possibly already spoken in an answer. The cycle that
-  builds it owes an answer to what that costs a person who was told a spending
-  figure that later moves — M1 names the consequence and does not settle it.
-
-## Deferred
-
-The generic `Ruling` event and category-scoped rules — **since arrived** as the generic scoped ruling (`RulingRecorded` with `scope` + `same_as`). Model-phrased questions (Slice 9). Proactive *timing* — deciding when to interrupt rather than wait to be opened (Slice 8's trigger). Learned auto-apply for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)).
-
-## A source with a next step (2026-08-01)
-
-The queue gained a seventh source: the **interview**, one question per account whose kind the schema pack can resolve — see [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md). It is the first source where answering produces *another question*, and it changes nothing about the queue itself: an interview question is ranked with everything else by the cash a ruling has put against the account, so it never outranks a larger finding for being new, and an account whose money its statements already explain carries a stake of zero rather than borrowing its balance.
-
-Two consequences worth knowing. **A declined interview question is still built** — the decline filter is what keeps it out of the ranked list — so it can be found in the pending list and returns when the movements touching its account change. And `open_questions` now returns a `pending` count alongside the tail; `pending_questions` returns the same questions the decline filter removed, built by the same builders so the two lists cannot drift.
+- MON-55 is unbuilt: nothing raises a question from an unexplained asset, and nothing re-reads past cash withdrawals.
+- What a person is owed when a figure they were already shown moves afterwards is undecided.
+- The queue's filter for repeat nature questions reads the derivation rather than "this was answered", so a ruling at a scope the nature derivation does not consult — a category-scoped rule is the standing case — would suppress nothing.
+- Near-duplicate category labels minted through an answer ([issue #7](https://github.com/vishnuyar/orionviva/issues/7)); the ruling is Vishnu's.
+- Model-phrased questions, and proactive *timing* — deciding when to interrupt rather than waiting to be opened — are unbuilt.
+- Learned auto-apply for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)) is unbuilt.
+- The interview source is the one place where answering produces *another* question ([the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md)); the compound and capital-purchase cases above are recorded in [learning-mode.md](learning-mode.md) and deferred by decision.

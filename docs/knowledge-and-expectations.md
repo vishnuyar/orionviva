@@ -1,72 +1,134 @@
 # Knowledge & Expectations — where the domain rules live
 
-**Status:** ✅ **Tiers 1 + 2 BUILT 2026-07-27** — read-side, in `viva/knowledge/`: three universal mechanisms driven by the jurisdiction-tagged registry (`expectations-v1.json`, data), asks ranked in the queue by the money the document would attest, declined via the voiced queue's decline event (silent until the stake changes), satisfied deterministically by the expected doc_type's arrival. Tier 3 (model-suggested expectations) deliberately unbuilt; inferred accounts deferred with it · **Last updated:** 2026-07-27 · **Origin question:** how does OrionViva *know* to ask for 401(k) statements after seeing a pay-stub contribution, or an escrow analysis after a mortgage statement? Where do such rules sit?
-**Invariants touched:** T1 (inferred accounts/expectations are graded, cited claims), T2 (expectation evaluation is deterministic), I5/I6 (knowledge is jurisdiction-tagged data, community-extensible packs), X2 (unmet expectations are visible quiet state, honestly labeled inferences)
+**State:** partial
+**Rules:** PROJ-19, PROJ-20, PROJ-21, PROJ-22, PROJ-23, PROJ-24
 
-## The reframe
+## Rules
 
-These "rules" are not instructions for reading documents (parsers — banned, models read). They are **expectations about what exists in the world and how it relates** — completeness knowledge. And expectations are just another kind of claim, so they flow through the trust machinery already built: proposed → graded → confirmed by evidence or the user → enforced deterministically.
+### PROJ-19 — expectations are derived, never stored
+**State:** enforced
+**Code:** product/viva/knowledge/__init__.py:162
+**Test:** product/tests/test_expectations.py::test_retirement_flow_raises_an_expectation
 
-## Three tiers
+1. Every unmet expectation is derived on each projection from evidence already in the ledger.
+2. No event type records an expectation.
+3. `evaluate` is pure: the same events, registry and date give the same expectations.
 
-### Tier 1 — Mechanisms (code, verify/-grade, ~5 total, universal)
+### PROJ-20 — the registry is jurisdiction-tagged data, never a parser
+**State:** enforced
+**Code:** product/viva/knowledge/expectations-v1.json:1
+**Test:** product/tests/test_expectations.py::test_jurisdiction_filters_the_registry
 
-The gears, true everywhere forever, knowing nothing about any document type:
+1. A registry entry names a universal mechanism, the document to pursue in plain words, the document types that satisfy it, and the jurisdictions it holds in.
+2. No entry describes how to read a document.
+3. An entry whose jurisdictions do not include the vault's raises nothing.
 
-- Every account carries an expected document cadence; gaps are computable (`viva.knowledge`'s `account_cadence` mechanism — not `check_completeness`, which never consults it).
-- Every recurring flow to/from an external destination implies a counterpart account exists.
-- Every inferred entity carries a grade and a source, like any fact.
-- Expectations have states: `unmet` → `satisfied` (document arrived and linked) / `dismissed` (user said no) / `expired` — all as events.
-- Satisfaction is deterministic matching (the arriving document links by account/fingerprint), never model opinion.
+### PROJ-21 — an unknown mechanism fails loudly
+**State:** enforced
+**Code:** product/viva/knowledge/__init__.py:182
+**Test:** product/tests/test_expectations.py::test_an_unknown_mechanism_in_the_registry_fails_loudly
 
-### Tier 2 — The knowledge registry (data: versioned, shipped, extensible)
+1. A registry entry naming a mechanism the code does not hold raises, rather than being silently skipped.
 
-Declarative, jurisdiction-tagged entries — a table, not a codebase:
+### PROJ-22 — satisfaction is deterministic matching
+**State:** enforced
+**Code:** product/viva/knowledge/__init__.py:69
+**Test:** product/tests/test_expectations.py::test_satisfaction_is_the_documents_arrival
 
-```yaml
-- given: {doc_type: mortgage_statement, jurisdiction: US, has: escrow_line}
-  expect:
-    - {doc_type: escrow_analysis, cadence: annual}
-    - {doc_type: form_1098, cadence: annual, season: tax}
-- given: {doc_type: pay_stub, has: retirement_deduction}
-  expect:
-    - {account_kind: retirement, evidence: deduction_line}
-    - {doc_type: retirement_statement, cadence: quarterly}
-- given: {account_kind: brokerage, jurisdiction: US}
-  expect:
-    - {doc_type: brokerage_statement, cadence: monthly_or_quarterly}
-    - {doc_type: form_1099, cadence: annual, season: tax}
-```
+1. An expectation is satisfied when one of its expected document types is present among the captured documents.
+2. Matching is by the classifier's `doc_type`; no model opinion decides satisfaction.
 
-Properties that keep it on the right side of the anti-goal line: entries state what exists and relates — never how to parse anything; they're versioned like normalization rules; jurisdiction tags make a German or Indian entry set a **knowledge pack** (the I6 pattern for the third time — benchmark packs, taxonomy, now knowledge); and the registry ships small, growing from tier 3 confirmations and community contributions rather than from anyone's attempt to foresee finance.
+### PROJ-23 — an unmet expectation is a ranked queue question and never a push
+**State:** enforced
+**Code:** product/viva/questions.py:643
+**Test:** product/tests/test_expectations.py::test_cadence_expectation_ranks_below_money_and_names_the_edge
 
-### Tier 3 — Model world knowledge (runtime suggestions, never silent facts)
+1. An unmet expectation reaches a person only as a question in the ranked queue, alongside every other question.
+2. It is ranked by the money the document would attest; a cadence expectation carries zero and therefore ranks below every question that settles money.
+3. Declining one suppresses it until its stake moves, through the queue's ordinary decline rule rather than a mechanism of its own.
 
-At ingestion, the understanding model may propose expectations beyond the registry ("solar loans typically issue annual interest statements"). These enter as *expectation claims*: low-grade, cited to what prompted them, surfaced quietly. Confirmation — by the user, or by the predicted document arriving and linking — promotes them into **personal knowledge** (memory events, the moat). Personally-confirmed patterns that are plausibly universal become upstream candidates for the shared registry (a community contribution, reviewed like any PR). The model proposes; the registry remembers; tier 1 enforces.
+### PROJ-24 — `check_completeness` reports what is held, not what is missing
+**State:** enforced
+**Code:** product/viva/tools/ledger_tools.py:1671
+**Test:** product/tests/test_tools.py::test_completeness_counts_the_held_document
 
-## The flow, concretely (the two motivating examples)
+1. `check_completeness` reports documents held, documents posted, documents awaiting review, counterparties with no category yet, and each account's as-of date and grade.
+2. It never consults the expectations engine, and never reports which statements are missing.
 
-**Pay stub → 401(k):** extraction finds deduction "401K FIDELITY $750" → tier 1: recurring external flow ⇒ counterpart account → tier 2: retirement deduction ⇒ retirement account + quarterly statements → ledger gains an **inferred account** (grade `unverified`, source: pay stub line, cited) + an unmet expectation → a question in the ranked queue, quietly: "401(k) at Fidelity — inferred from your pay stub; no statements yet" (no ping; speak-only-when-spoken-to) → statement uploaded later links, inference graduates, expectation becomes cadence.
+## Why
 
-**Mortgage → escrow analysis:** mortgage statement shows escrow line → registry ⇒ expect annual escrow analysis + 1098 → the queue carries both, ranked by the money each would attest → tax season's "mortgage interest?" answer can honestly say "…and your 1098 hasn't been seen yet."
+These "rules" are not instructions for reading documents — parsers are a
+standing anti-goal, and models read. They are **expectations about what exists
+in the world and how it relates**: completeness knowledge. An expectation is
+just another kind of claim, so it flows through the trust machinery already
+built — proposed, graded, confirmed by evidence or by the person, enforced
+deterministically.
 
-**The pattern: documents are evidence that other documents exist.** The knowledge layer turns every arrival into a checklist for the rest of the financial life — job 1 (organize & consolidate) becomes *pursued*, not passively received, without nagging.
+The layer has three tiers, and only the first two are built.
 
-## Where it sits in the product
+**Tier 1, mechanisms** — a handful of gears, true everywhere, knowing nothing
+about any document type. Every account carries an expected document cadence, so
+gaps are computable. Every recurring flow to an external destination implies a
+counterpart account. Every inferred entity carries a grade and a source, like
+any fact. Satisfaction is deterministic matching, never model opinion.
 
-A component between the pipeline and the ledger — the **expectations engine** (`viva/knowledge/`): consults registry + personal knowledge + tier-3 suggestions, and derives unmet expectations **read-side on every projection** from evidence already in the ledger. There is no expectation event type. They surface as **questions in the queue**, ranked with everything else by the money the document would attest; Viva mentions them only when spoken to. No new agent tool needed — the verb surface holds (the scaling law survives its first test: a whole new subsystem, zero new tools).
+**Tier 2, the knowledge registry** — declarative, jurisdiction-tagged entries: a
+table, not a codebase. Entries state what exists and relates, never how to parse
+anything. They are versioned like normalization rules, and jurisdiction tags
+make a German or Indian entry set a **knowledge pack** — the same pattern as
+benchmark packs and the taxonomy (I6). The registry ships small and grows from
+confirmations and community contributions rather than from anyone's attempt to
+foresee finance.
 
-_**Corrected 2026-08-14.** This paragraph said the engine emits expectation events, that `check_completeness` reads expectation state, and that a dashboard coverage map renders it. None of the three is true. `check_completeness` never touches `viva.knowledge` — it reports what is *held*: documents captured, posted and awaiting review, each account's as-of date and grade, tier counts, unidentified counterparties and open holds. There is no dashboard and no separate renderer anywhere in the product; the queue is the only surface. The status line at the top of this document has been right about this since it was written; the body was never revised to match._
+**Tier 3, model world knowledge** — at ingestion the understanding model could
+propose expectations beyond the registry ("solar loans typically issue annual
+interest statements"), entering as low-grade expectation claims that promote
+into personal knowledge on confirmation. Deliberately unbuilt; inferred accounts
+are deferred with it. The shape is: the model proposes, the registry remembers,
+tier 1 enforces.
 
-## Boundaries (what this layer must never become)
+The motivating pattern is one sentence: **documents are evidence that other
+documents exist.** A pay stub showing a 401(k) deduction is evidence that a
+retirement account and its quarterly statements exist. A mortgage statement with
+an escrow line is evidence that an escrow analysis and a 1098 exist. That turns
+every arrival into a checklist for the rest of the financial life, so organizing
+and consolidating becomes *pursued* rather than passively received — without
+nagging.
 
-- Never a parser: no entry may describe how to read a document.
-- Never a nag: unmet expectations are queue state, never a push (the no-interruption rule).
-- Never silent: an inferred account is always visibly labeled as inferred with its evidence; it never quietly becomes real without linkage or confirmation.
-- Never load-bearing for money math: expectations affect completeness honesty, not balances.
+Deriving read-side rather than emitting events is the read-early/write-late
+principle applied at its cheapest point: nothing to migrate, and a wrong entry
+is fixed by editing data. The two states that need memory already have it —
+*declined* is the decline event, and *satisfied* is the expected document's
+arrival. No new agent tool was needed either, which was the scaling law's first
+real test: a whole new subsystem, zero new verbs.
 
-## Open questions
+The boundaries this layer must never cross are the reason it stays small. Never
+a parser: no entry may describe how to read a document. Never a nag: unmet
+expectations are queue state, never a push. Never silent: an inferred account is
+always visibly labeled as inferred, with its evidence, and never quietly becomes
+real without linkage or confirmation. Never load-bearing for money math:
+expectations affect completeness honesty, not balances.
 
-- Registry seed size for v0: just the document types in the v1 corpus (~7 types' worth of entries) — resist encyclopedism; the tiers grow it.
-- Upstreaming mechanics: how a personally-confirmed tier-3 pattern becomes a registry PR without leaking personal detail (entries must be generic by construction).
-- Dismissal semantics: "I don't have a 401(k) anymore" — expectation dismissed *and* remembered so it doesn't resurrect from the next pay stub (memory interplay).
+The queue is the only surface. There is no dashboard and no separate renderer
+anywhere in the product, and `check_completeness` answers for what the agent
+holds rather than for what it lacks — the two reads are kept apart so that one
+number never contradicts the other.
+
+Invariants this leans on: T1 (inferred accounts and expectations are graded,
+cited claims), T2 (expectation evaluation is deterministic), I5/I6 (knowledge is
+jurisdiction-tagged data in community-extensible packs), X2 (unmet expectations
+are visible quiet state, honestly labeled).
+
+## Open
+
+- Tier 3 is unbuilt: model-suggested expectations, and the inferred accounts
+  deferred with them.
+- Registry seed size: it holds three entries against the document types the
+  corpus actually produces. Resisting encyclopedism is the rule; the tiers are
+  meant to grow it.
+- Upstreaming mechanics: how a personally-confirmed tier-3 pattern becomes a
+  registry contribution without leaking personal detail. Entries must be generic
+  by construction.
+- Dismissal semantics: "I don't have a 401(k) anymore" should dismiss the
+  expectation *and* be remembered, so it does not resurrect from the next pay
+  stub. That interplay with memory is undecided.

@@ -1,45 +1,87 @@
 # Account Identity & Entity Resolution — a learning building block
 
-**Status:** Partially implemented — signals, keys, the matcher, the ask and alias learning are built; the **Party** primitive and joint-account links are not (corrected 2026-08-14) · **Last updated:** 2026-08-15 · **Origin:** real-run finding — the same checking account arrived sometimes labelled by product name, sometimes by holder name, so a free-text `account_ref` produced different account ids and statements failed to stitch. The fix is not a smarter label; it is a *learning* identity block. Code: `viva/ledger/identity.py` (keys + name matching), `LedgerProjection.resolve` (the matcher), `viva/ingest/review.apply_identity_ruling` (ask-once-and-learn via `AccountAliasConfirmed`).
-**Invariants touched:** T1 (provenance on every identity signal), T2 (a match is graded, never guessed), T4 (identity rulings are correction-events, append-only), T7 (honest about ambiguity), I5 (no country-shaped identity table — format specifics are data). Serves the moat: identity learned per-user, per-institution, forever.
+**State:** partial
+**Rules:** MON-68, MON-69, MON-70, MON-71, MON-72, MON-73, MON-74
 
-## The multi-problem, and why we don't enumerate it in code
+**Invariants touched:** T1 · T2 · T4 · T7 · I5. Serves the moat: identity learned per person, per institution, forever.
 
-Account identity is open-ended: same name / different number, same number / different name, two names (joint), reissued numbers, and endless per-country / per-institution formats (US routing+account; India IFSC+account; varied masking). You cannot hardcode the cases — you'll never finish. So identity uses the system's universal shape:
+## Rules
 
-> **Extract signals → produce a graded match → act automatically when confident, ask only when ambiguous → learn from the answer.**
+### MON-68 — identity is signals, not a label
+**State:** enforced
+**Code:** product/viva/ledger/events.py:160 (`account_opened`, carrying institution, number and `account_names[]`)
+**Test:** product/tests/test_pipeline.py::test_same_number_different_labels_are_one_account
 
-That one shape absorbs every case, including unseen ones. The *intelligence we are adding is the learning*: the person confirms each **new kind** of ambiguity once, and the system resolves that pattern automatically ever after — for **all** account types, no bank-specific code.
+1. Each statement contributes `account_number`, `institution` and `account_names[]` as dedicated signals rather than one free-text label.
+2. Jurisdiction defaults to empty — *nobody has said* — never to a country nothing attested.
+3. Per-format specifics live in a registry as data, so no code branches per country (I5).
 
-## The building block (four reused blocks + two primitives)
+### MON-69 — the account key is the anchor, and a readable number decides
+**State:** enforced
+**Code:** product/viva/ledger/identity.py:41 (`account_key`), :24 (`number_key`)
+**Test:** product/tests/test_pipeline.py::test_two_readable_numbers_are_two_accounts_and_nobody_is_asked
 
-1. **Signals, not a label.** Extract identity *signals* separately per statement: `account_number`, `institution`, `account_names[]` (a list — joint accounts have two), plus currency/jurisdiction. Each signal carries provenance (T1). **Amended 2026-08-01:** jurisdiction is not yet one of them. It is a plain field on the account with no source and no grade, defaulting to empty — *nobody has said* — rather than to a country nothing attested. Making it a graded attribute with the country tag derived is designed and unbuilt.
-2. **A universal matcher (deterministic).** Score a new statement's signals against every known account and emit a **graded** verdict (reusing the grade block): number+institution+name agree → `corroborated` (same, automatic); partial agreement (name matches / number differs, number matches / name differs, a new second name) → ambiguous; nothing agrees → new account. The matcher is universal code; it scores whatever signals it is handed. **Amended 2026-08-15:** partial agreement is *not* ambiguous in the built matcher, and the difference is deliberate. Two readable, different account numbers are **two accounts** — a new account, no question asked — because the number is the anchor and a checking and a savings account at one institution share a holder by definition. Where neither statement shows a number, two different product labels are likewise two accounts, compared as slugs. The mirror case never reaches the matcher at all: the account key is the institution plus the last four digits of the number, so *same number, different name* is already the same key and resolves to `same` automatically. What survives as ambiguous is one case only — a **holder name** overlaps a held account of the same kind and nothing stronger tells them apart — because a holder's name is the weakest signal there is, sitting on every account that person owns. The rule underneath, and the reason ambiguity was narrowed rather than widened: **a wrong split is visible and a merge ruling repairs it; a wrong merge corrupts a balance silently.**
-3. **Ambiguity → a Finding (reused).** The same Finding mechanism used for reconciliation surfaces the evidence and a plain question: *"matches your name but a different number — new account or same?"* / *"same number, different name — same account or someone else's?"* / *"two names — a joint account of A and B?"* **Amended 2026-08-15:** none of those three questions is asked, and the hold it raises carries no reconciliation `Finding` — the same held-statement path and the same event carry it, under an `identity` reason rather than a reconciliation one. The first two are settled by the rules in block 2 rather than asked, and the third has nothing to record an answer into — see block 5, where the Party primitive is designed and unbuilt. The one question that is asked follows a holder-name overlap: the statement is **held** under an `identity` hold carrying the candidate account, its name and the reason — *a holder name matches X, and nothing stronger tells them apart* — and the person's ruling is the same correction-event and the same learning as block 4 describes. So the shape of this block holds; the list of what it triggers on does not.
-4. **The answer → a correction-event (reused, T4).** The person rules once; it is appended, never overwritten, and it **teaches the identity map**. This is the moat.
-5. **Account primitive (seeded here); Party designed, unbuilt.** An **Account** carries an *identity set* (aliases: numbers, name variants, institution). **Amended 2026-08-14:** holder names are a flat list of strings on the account, and they do not accumulate — the list is *replaced* by the statement that opened the account, and `AccountOpened` is emitted at most once per account, so a second statement that first reveals a joint holder never records that name at all. There is no `Party` type, no `account → parties` link, and no joint-account representation anywhere in the ledger; "joint" survives only as a comment explaining why the list is a list.
-6. **The identity map is a projection (reused pattern).** Confirmation events replay into `signal → account`. _(There is no `account → parties` map — see 5.)_ Known signals resolve automatically; only new/ambiguous ones ask. **Per-format specifics live in a registry (data, not code)** — how a given institution prints/masks a number is a profile row (like the doc-type registry and the normalization rules), so the code never branches per country.
+1. The key is the institution plus the last four digits of the number, so *same number, different name* is already the same key and resolves automatically.
+2. Two readable, different account numbers are two accounts, with no question asked.
+3. Where neither statement shows a number, two different product labels are two accounts, compared as slugs.
+4. The comparison is scoped to one account kind, so a card and a checking account sharing a holder are two accounts (product/tests/test_pipeline.py::test_card_and_checking_same_holder_are_two_accounts).
 
-**The same block, reused later:** merchants ("AMZN Mktp" = "Amazon"?), employers, and transfer counterparties are all *entity resolution* — the identical *signals → graded match → ask → learn* block. Accounts are just its first use.
+### MON-70 — one case is ambiguous, and only that one is asked about
+**State:** enforced
+**Code:** product/viva/ledger/projection/accounts.py:84 (`resolve`)
+**Test:** product/tests/test_pipeline.py::test_ambiguous_identity_is_held_then_learned_as_new
 
----
+1. A verdict is `same`, `new`, or `ambiguous`; never guessed.
+2. `ambiguous` is raised only where a **holder name** overlaps a held account of the same kind and nothing stronger tells them apart.
+3. A wrong split is visible and a merge ruling repairs it; a wrong merge corrupts a balance silently, so ambiguity is narrowed rather than widened.
 
-## Account identity & entity resolution (learning)
+### MON-71 — an ambiguous statement is held, and the ruling teaches the map
+**State:** enforced
+**Code:** product/viva/ingest/pipeline.py:414 (the `identity` hold); product/viva/ingest/review.py:111 (`apply_identity_ruling`)
+**Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias
 
-**Blocks seeded:** Account (identity set) · the universal entity-resolution matcher · the identity-map projection · the per-format registry (seed). _(Party — names, joint — was listed here and was never planted.)_
+1. The statement is held under an `identity` reason carrying the candidate account, its name and the reason — never posted on a guess.
+2. The person's ruling is an append-only correction event that updates the identity map.
+3. The next matching statement resolves automatically, with no re-ask.
 
-**Open state:** account identity is a slug of a free-text `account_ref`, which the model renders inconsistently, so statements of the *same* account get *different* ids and don't stitch (gaps never fill); joint accounts and reissued numbers have no representation. *Proof:* two statements of one account with different `account_ref` labels post as two accounts and never fill each other's gap (a red test).
+### MON-72 — an account carries an identity set
+**State:** enforced
+**Code:** product/viva/ledger/projection/core.py:126 (the learned `signal-key → account_id` map), :243 (its replay)
+**Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias
 
-**Implementation:**
-- Extract `account_number`, `institution`, `account_names[]` as dedicated fields (schema + prompt), each with provenance.
-- Derive a **deterministic identity from the normalized account number** (institution-scoped) for the confident common case — this alone fixes the stitching bug.
-- A **matcher** producing a graded verdict; **ambiguous** verdicts raise a **Finding** and are **held for confirmation** rather than guessed.
-- The person's ruling is a **correction-event** that updates the **identity map** (a projection): add an alias, split into a new account, or link Parties (joint). Future matches of that pattern resolve automatically — **ask-once-and-learn, for every account type**.
-- Account carries its identity set; `account_id_for` consults the identity map, not the raw label. _(Parties: designed, unbuilt.)_
-- (Bundled, from the same finding) **sort transactions by value-time date** in the view — the log stays append-only knowledge-time; only the display is chronological (bitemporality made visible).
+1. Confirmation events replay into a `signal → account` map, and `account_id_for` consults it rather than a raw label.
+2. Known signals resolve automatically; only new or ambiguous ones ask.
 
-**Final state:** the same account is recognized across statements regardless of how it is labelled; ambiguous identity is asked once and learned forever, for all account types; backfilled statements read in date order. _(The joint-accounts-link-two-Parties clause was struck 2026-08-14 — unbuilt, see block 5.)_
+### MON-73 — a person and their accounts
+**State:** unmet
+**Code:** none found
+**Test:** none
 
-**Done criteria / tests:** two statements of one account with different labels but the same number stitch into one chain; same name / different number raises a Finding and, once confirmed "new account," never asks again for that pattern; a confirmed alias auto-resolves on the next matching statement (no re-ask); transactions display in date order after a backfill; existing any-order ingestion tests stay green.
+1. A `Party` exists as a primitive, and an account links to the parties who hold it, so a joint account is representable.
 
-**Why now + future use:** it is the true fix for what blocked real stitching, and it is a prerequisite for the doc-type registry (multi-account). It seeds the Account primitive and the **entity-resolution block that later resolves merchants, employers, and transfer counterparties** — one learning mechanism, reused everywhere. The learning-from-corrections is the moat, turned on for identity from the first ambiguous statement.
+### MON-74 — transactions display in value-time order
+**State:** enforced
+**Code:** product/viva/ledger/projection/movements.py:221 (`transactions`)
+**Test:** product/tests/test_pipeline.py::test_transactions_sorted_by_date_after_backfill
+
+1. The log stays append-only in knowledge time; only the display is chronological.
+
+## Why
+
+The finding was real and dull: the same checking account arrived sometimes labelled by product name and sometimes by holder name, so a free-text label produced different account ids and statements failed to stitch. The fix is not a smarter label; it is a *learning* identity block.
+
+Account identity is open-ended — same name with a different number, same number with a different name, two names on a joint account, reissued numbers, and endless per-country and per-institution formats. You cannot hardcode the cases; you will never finish. So identity uses the system's universal shape: **extract signals → produce a graded match → act automatically when confident, ask only when ambiguous → learn from the answer.** That one shape absorbs every case including unseen ones, and the intelligence being added is the *learning*: a person confirms each new kind of ambiguity once, and the system resolves that pattern automatically ever after, for all account types, with no bank-specific code.
+
+Which cases are ambiguous narrowed deliberately, against the intuition that more questions are safer. The number is the anchor, and a checking and a savings account at one institution share a holder by definition, so two readable different numbers are simply two accounts — that arrangement is the most ordinary in personal finance, and asking about it meant asking on almost every real vault. The mirror case never reaches the matcher at all, because the key already folds it. What survives is the weakest signal there is: a holder's name, which sits on every account that person owns. The rule underneath is the asymmetry — a wrong split is visible and a merge ruling repairs it; a wrong merge corrupts a balance silently.
+
+The same block is reused everywhere else identity is needed. Merchants, employers and transfer counterparties are all entity resolution — the identical signals-to-graded-match-to-ask-to-learn shape. Accounts are just its first use, and the learning-from-corrections is the moat, turned on from the first ambiguous statement.
+
+The bundled fix came from the same finding: the ledger is bitemporal, so a backfilled older statement lands last in knowledge time while a person reads a statement chronologically. Sorting the *view* by value time makes that visible without touching the log.
+
+## Open
+
+- **Party is unbuilt** (MON-73). Holder names are a flat list of strings on the account and they do not accumulate: the list is *replaced* by the statement that opened the account, and the opening event is emitted at most once per account, so a second statement that first reveals a joint holder never records that name. "Joint" survives only as the reason the list is a list.
+- Three questions this block was designed to ask are not asked: *matches your name but a different number*, *same number different name*, and *two names — a joint account?*. The first two are settled by rule instead, and the third has nothing to record an answer into until Party exists.
+- The identity hold carries no reconciliation `Finding`; the same held-statement path and event carry it under an `identity` reason.
+- The **graded** match in the shape above is not built. `Resolution` (product/viva/ledger/projection/accounts.py:31) carries `account_id`, `key`, `verdict`, `candidate`, `candidate_name` and `reason`, and no grade; the deterministic rules in MON-69 settle the cases a score was to have graded.
+- Jurisdiction is a plain field with no source and no grade. Making it a graded attribute, with the country tag derived, is designed and unbuilt.

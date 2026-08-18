@@ -1,27 +1,44 @@
 # ADR-006 · Zero Exfiltration by Default; Diagnostics by Manual Export Only
 
+_This records reasoning, not current behaviour._
+
 **Status:** Accepted · **Date:** 2026-07-19 · **Decided by:** Vishnu (diagnostics posture) · **Door type:** one-way in trust (the first silent byte breaks the promise permanently)
 
-## Context
+**State:** partial
+**Rules:** ADR-006
+**Invariants touched:** T6
 
-There is no hosted backend: OrionViva is an app each person runs on their own machine; the project hosts only the website and the code. The only data that ever leaves a user's machine is the user-initiated model traffic under ADR-001. The open question was diagnostics — the traditional first crack through which "just telemetry" grows.
+## Rules
 
-## Decision
+### ADR-006 — Nothing transmits itself, and diagnostics leave only by the person's own hand
+**State:** by-review-with-exception
+**Code:** core/vivacore/models/openai_compat.py:76 · core/vivacore/models/anthropic_adapter.py:64
+**Test:** none
 
-Nothing transmits itself, ever. No telemetry, no analytics, no update pings carrying identifiers, no crash reporting endpoint — the receiving infrastructure is not built, so the temptation has no object. Diagnostics: errors log locally; a user wanting help generates a diagnostics bundle, can read exactly what it contains, and sends it themselves (email, GitHub issue). The product can always display a complete, plain-language account of everything that has ever left the machine, and to whom (in practice: model API calls under the user's key, and 32-byte anchor hashes per ADR-004).
+1. There is no telemetry, no analytics, no update ping carrying an identifier and no crash-reporting endpoint; the receiving infrastructure is not built, so the temptation has no object.
+2. Errors log locally. A person wanting help generates a diagnostics bundle, can read exactly what it contains, and sends it themselves.
+3. The product can always display a complete, plain-language account of everything that has ever left the machine and to whom.
+4. Update checks, when packaging exists, are designed identifier-free.
 
-## Alternatives considered
+**Exception:** assertions 2 and 3 have no implementation. Nothing in the tree generates a diagnostics bundle, and no surface enumerates what has left the machine; `product/viva/surface/capabilities.py` registers developer diagnostic reports, which are engine tooling rather than the person-facing outbound record.
 
-**Opt-in automatic crash reporting** — conventional, eases remote support at scale. Rejected by decision: it creates the project's first user-data-receiving infrastructure, and off-by-default settings have a documented tendency to creep toward on-by-default; D4 exists to prevent exactly that ratchet.
+## Why
 
-**Privacy-preserving aggregate telemetry** (differential privacy etc.) — sophisticated, and still a stream of bytes leaving machines by default; the promise "nothing leaves" is legible to a non-technical user in a way "ε-differentially-private aggregates leave" never will be. Trust must be *verifiable by the person extending it*.
+There is no hosted backend: OrionViva is an app each person runs on their own machine, and the project hosts only the website and the code. The only data that ever leaves is user-initiated model traffic under ADR-001. The open question was diagnostics — the traditional first crack through which "just telemetry" grows.
 
-**No diagnostics at all** — purist but self-defeating; unsupportable software gets abandoned, and abandonment is also a trust failure.
+**Opt-in automatic crash reporting** is conventional and eases remote support at scale. It was rejected by decision because it creates the project's first user-data-receiving infrastructure, and off-by-default settings have a documented tendency to creep toward on-by-default. This decision exists to prevent that ratchet.
 
-## Consequences
+**Privacy-preserving aggregate telemetry** is sophisticated and is still a stream of bytes leaving machines by default. The promise "nothing leaves" is legible to a non-technical person in a way that a differential-privacy guarantee never will be, and trust must be verifiable by the person extending it.
 
-Remote debugging of future non-author users is deliberately harder; the eval harness (the discovery map, A8) and reproducible local logs must compensate. The "what has ever left this machine" ledger is a UI requirement, not a policy page. Update checks (when packaging exists) must be designed identifier-free.
+**No diagnostics at all** is purist and self-defeating: unsupportable software gets abandoned, and abandonment is also a trust failure.
+
+The cost is accepted knowingly. Remote debugging of future non-author users is deliberately harder, and the eval harness plus reproducible local logs are what must compensate. The "what has ever left this machine" ledger is a product requirement rather than a policy page.
 
 ## Would reverse this
 
-Nothing reverses the default. A future *user-initiated, per-incident* transmission convenience could be added if it remains explicit-action-only.
+Nothing reverses the default. A future user-initiated, per-incident transmission convenience could be added if it remains explicit-action-only.
+
+## Open
+
+- No diagnostics bundle exists, so a person needing help has no supported way to produce one.
+- No surface shows what has ever left the machine, so promise 4 rests on the absence of code rather than on something a person can read.

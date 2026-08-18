@@ -1,68 +1,47 @@
 # ADR-003 · Raw Capture Doctrine
 
+_This records reasoning, not current behaviour._
+
 **Status:** Accepted · **Date:** 2026-07-19 · **Door type:** one-way (uncaptured data is gone forever)
 
-## Context
+**State:** partial
+**Rules:** ADR-003
+**Invariants touched:** T3, T5
 
-Irreversibility in this project lives mostly in what we fail to capture: a source region not recorded at extraction time can never be attached later; a model response discarded cannot be re-audited. Storage is cheap; the past is unrecoverable.
+## Rules
 
-## Decision
+### ADR-003 — Originals, model I/O and verification trails are captured before parsing and kept forever
+**State:** enforced-with-exception
+**Code:** product/viva/ingest/raw_store.py:51 · product/viva/ledger/events.py:271 · core/vivacore/models/base.py:169
+**Test:** product/tests/test_raw_store.py::test_put_is_content_addressed
 
-From the first ingestion, keep forever, encrypted and immutable: (1) every original document exactly as received; (2) every model interaction during extraction — full request, full response, model identity/version, and every source-region claim; (3) every verification trail (which checks ran, what they found). Nothing on this list is ever pruned, summarized-in-place, or "cleaned up."
+1. Every original document is stored exactly as received, encrypted and immutable, before any parsing touches it.
+2. Every model interaction during extraction is stored: full request, full response, model identity and version, and every source-region claim.
+3. Every verification trail is stored: which checks ran and what they found.
+4. Nothing on that list is ever pruned, summarized in place, or cleaned up.
+5. Extraction interfaces are built capture-first: the raw exchange is written before parsing.
+6. A recorded request may elide an image payload, replacing it with the page hash, and only while the page cache is retained — which puts the page cache on the never-pruned list.
 
-## Alternatives considered
+**Exception:** assertion 2 is unmet on the ingest path. `read_recorded` (product/viva/ledger/events.py:271) carries the model, the prompt version, the input mode, the raw response text, whether it parsed, and the cost and token counts — and no request field of any kind. The image-elision carve-out (core/vivacore/models/base.py:169) describes the paths that *do* record a request; it is not the only gap, because one path records none. The answering path stores the request verbatim (product/viva/speak.py:600), so the difference is a choice rather than a limit.
 
-**Keep originals only, discard model I/O** — smaller and tidier; loses the ability to audit *how* a figure was derived, to re-grade history when verification improves, and to harvest verified training pairs (the domain-model doc flywheel). Rejected: the discarded bytes are precisely the audit trail a trust product runs on.
+## Why
 
-**Retention window (e.g., 7 years)** — conventional in finance. Rejected: the trust arc's value grows with unbroken history, volumes are personal-scale (megabytes), and the user can always delete their own data — the *product* just never does it silently.
+Irreversibility in this project lives mostly in what is not captured: a source region not recorded at extraction time can never be attached later, and a model response discarded cannot be re-audited. Storage is cheap and the past is unrecoverable.
 
-**Capture lazily, "add provenance later when needed"** — the classic mistake this ADR exists to forbid. Provenance cannot be retrofitted.
+**Keeping originals and discarding model I/O** is smaller and tidier, and it loses the ability to audit *how* a figure was derived, to re-grade history when verification improves, and to harvest verified training pairs for the specialization flywheel. The discarded bytes are precisely the audit trail a trust product runs on.
 
-## Consequences
+**A retention window** is conventional in finance and rejected here: the trust arc's value grows with unbroken history, volumes are personal-scale, and the person can always delete their own data — the product just never does it silently.
 
-Extraction interfaces must be built capture-first: the raw exchange is written before any parsing touches it. Storage layout needs an immutable blob store beside the database (the storage doc). This doctrine is what demotes most other decisions from one-way to revisable — schemas, grades, and models can all be re-derived from retained truth.
+**Capturing lazily and adding provenance later** is the classic mistake this record exists to forbid. Provenance cannot be retrofitted.
 
-**Amendment (2026-07-31) — one carve-out, and it is in the code.** Recorded
-after the fact, because the decision above did not anticipate it. The recorded
-request elides image payloads, replacing each with its page hash. The page bytes
-are already stored once, content-addressed, in the page cache, so copying
-megabytes of base64 into every run record would bloat the log without adding
-evidence — the hash keeps the audit chain whole (run record → page hash → the
-exact bytes) at a fraction of the size. This is the only exception to "the
-request is stored verbatim", and it is conditional: what it drops is recoverable
-**only while the page cache is retained**, which puts the page cache on this
-ADR's never-pruned list rather than beside it.
+The doctrine is also what demotes most other decisions from one-way to revisable: schemas, grades and models can all be re-derived from retained truth.
 
-**Amendment (2026-08-15) — on the extraction path the request is not stored at
-all.** The decision's item (2) promises full request *and* full response for
-every model interaction during extraction, and the amendment above calls the
-elided image payload the **only** exception to storing a request verbatim. Both
-overstate what the ingest path does. The event it writes carries the model, the
-prompt version, the input mode, the raw response text, whether the response
-parsed, and the cost and token counts — one per phase, `classify` and `extract`
-— and no request field of any kind. The earlier carve-out still describes the
-paths that *do* record a request; it is not the only gap, because one path
-records none.
-
-The position the code takes is that an extraction request is **reconstructable**
-rather than stored: the source document is kept content-addressed, the prompt is
-an immutable versioned file, and the recorded prompt version resolves to the
-exact text that produced the reading, so the request can be rebuilt from what
-the vault holds. That is a real argument, and this ADR has never been asked to
-ratify it. Where it falls short of the decision is specific and worth naming:
-reconstruction is faithful in **content** and not in **bytes**, so anything the
-caller assembled around the prompt and the document is inference rather than
-evidence, and it holds only as long as every prompt version stays resolvable
-forever. The answering path shows the difference is a choice rather than a
-limit — a `speak` capture stores the verbatim request beside the verbatim
-response.
-
-The decision above is not withdrawn and nothing here licenses dropping a
-capture. This records that item (2) is unmet on the ingest path, so no reader
-infers that an extraction request can be produced on demand. Whether the right
-close is to build the capture or to ratify reconstruction is open, and this note
-does not settle it.
+The position the ingest code takes is that an extraction request is *reconstructable* rather than stored — the source document is content-addressed, the prompt is an immutable versioned file, and the recorded prompt version resolves to the exact text that produced the reading. That is a real argument, and it has never been ratified here. Where it falls short is specific: reconstruction is faithful in **content** and not in **bytes**, so anything the caller assembled around the prompt and the document is inference rather than evidence, and it holds only as long as every prompt version stays resolvable forever.
 
 ## Would reverse this
 
-Nothing foreseeable. Volume would have to grow ~six orders of magnitude before cost is a conversation.
+Nothing foreseeable. Volume would have to grow roughly six orders of magnitude before cost is a conversation.
+
+## Open
+
+- Whether the right close on the ingest request is to build the capture or to ratify reconstruction. Nothing here settles it, and nothing here licenses dropping a capture.

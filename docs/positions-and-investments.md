@@ -1,129 +1,117 @@
 # Positions & Investments
 
-**Status:** BUILT (both stages) · **Last updated:** 2026-08-15 (the holdings composition corrected in three places: one snapshot, not each instrument's latest) · **Block seeded:** Asset (valuation class) / Position (instrument + units + cost basis, dated).
+**State:** built
+**Rules:** MON-29, MON-30, MON-31, MON-32, MON-33, MON-34, MON-35, MON-36
 
-**Invariants touched:** T1 (every position value points to the statement region it was read from) · T2 (the reconciliation identity is deterministic `Decimal` arithmetic, never the model's mental math) · T3 (raw capture — the brokerage PDF is stored, so a richer position profile later re-reads it, no re-upload) · **T4 (a holding is an append-only *measurement* event; a revaluation is a new measurement, never an edit of the old one)** · **M1 (cash-flow over accrual — the ledger posts only realized cash events; unrealized gain is a derived presentation view, never a ledger fact)** · I5 (instrument and currency are data, no US-market assumptions) · **the valuation-class invariant (a measured value is always surfaced with its as-of date and class; a stale price is never dressed as "current" — the "never bluff a number" wall applied to prices) · X2 (unrealized gain is shown as an as-of-date estimate, its uncertainty visible)** · the grade ladder (a statement-attested position is `measured`+`verified`-of-source; a derived or stale figure is graded down, never silently).
+**Invariants touched:** T1 · T2 · T3 · **T4** · **M1** · I5 · **the valuation-class invariant** · **X2** · the grade ladder.
 
----
+## Rules
 
-## Open state (the capability is absent)
+### MON-29 — a holding is a dated measurement, never a posting
+**State:** enforced
+**Code:** product/viva/ledger/events.py:659 (`position_observed`); product/viva/ingest/pipeline.py:616 (`post_brokerage`)
+**Test:** product/tests/test_brokerage.py::test_brokerage_reconciles_and_records_positions_as_measurements
 
-The pipeline reads *flow* documents only. A brokerage or retirement statement classifies but parks — or, at best, only its cash sweep reconciles as a depository balance, while the holdings that are the whole point of the account are invisible. Net worth cannot include investments, and "what do I hold, and what's it worth?" is unanswerable. *Proof (red test):* ingest a brokerage statement → parked (no projector for its identity); a positions query returns empty.
+1. A holding is recorded as `PositionObserved` — instrument, units, market value, currency, `as_of`, grade, provenance — and is not posted to the money ledger.
+2. Only realized cash events post: buys, sells, dividends, interest, fees, sweeps, contributions and withdrawals.
+3. Unrealized gain is never posted, never reconciled and never an event; it is derived at read time from the measurements on hand (product/viva/ledger/projection/positions.py:257, product/tests/test_brokerage.py::test_unrealized_gain_is_a_derived_as_of_view_not_a_ledger_fact).
+4. Measurements are append-only: a later statement emits a new observation for the same instrument and edits nothing (product/tests/test_brokerage.py::test_a_later_statement_revalues_the_same_holding).
+5. Positions emit only the `measured` valuation class, and a position value is surfaced with its as-of date, never as "current".
+6. If a statement prints a "change in value" line, presentation may show our derived number beside it; the ledger never reconciles against it (product/viva/ingest/brokerage.py:90 — the read carries positions, cash and the stated total, and no such figure; the two identities are product/viva/ingest/pipeline.py:644 and :681).
 
-## The locked decision: holdings are dated measurements, not postings (Option A)
+### MON-30 — the internal tally is a hard gate
+**State:** enforced
+**Code:** product/viva/ingest/pipeline.py:644 (`check_brokerage_identity` in `post_brokerage`); product/viva/ingest/registry.py:30 (`BROKERAGE_IDENTITY`)
+**Test:** product/tests/test_brokerage.py::test_a_misread_holding_fails_the_tally_and_is_held
 
-Every prior document reconciles a **flow** — money moved and a posting recorded it (`opening + Σ movements = closing`; `gross − deductions = net`). A brokerage statement breaks that: an account can go from \$100k to \$110k with no money moving, because the market repriced holdings already owned. That change is a **revaluation, not a transaction.**
+1. `Σ position market_value + cash = stated total`, deterministic `Decimal` arithmetic, no model.
+2. A failure holds the statement with a localized finding through the same forced/suggested/held contract as every other identity; nothing is guessed.
+3. A different-shaped investment type registered by a profile row alone routes to this parser and this identity.
 
-So positions do **not** post to the double-entry money ledger. A holding is recorded as a **`PositionObserved`** event — a unit quantity of an instrument, *measured* at the statement date, exactly as `ClosingBalanceObserved` measures a balance rather than posting it. Only real cash flows (buys, sells, dividends, fees, sweeps) post. **Unrealized gain is never fabricated as a transaction** — it is simply the difference between two successive measurements, computed and surfaced at read time.
+### MON-31 — the cash flow reconciles when the statement reports it
+**State:** enforced
+**Code:** product/viva/ingest/pipeline.py:681 (`check_balance_identity` over the activity)
+**Test:** product/tests/test_brokerage.py::test_cash_flow_reconciles_and_recognizes_income_fees_gains
 
-This is a thesis decision, not merely a modeling convenience. OrionViva's claim is that personal financial records are clean *because they are measurements, not generations*. Option B (posting each price change against an "unrealized gain" equity account) would manufacture money-movement events for changes that were never movements — the exact kind of generation the thesis rejects, and it would force a fabricated price onto every date. Option A keeps the money ledger pure cash flow and treats a holding honestly as a dated measurement carrying a valuation class.
+1. The flow path runs when a statement carries both an opening cash figure and an activity list: the opening is booked once, each activity item posts, and the closing is observed.
+2. Where the statement omits the opening, the previous statement's closing cash carries forward rather than the activity being discarded (product/tests/test_brokerage.py::test_opening_cash_carries_forward_when_the_statement_omits_it).
+3. A cash flow that does not reconcile holds the statement and says the activity is held back (product/tests/test_brokerage.py::test_cash_flow_mismatch_is_held).
+4. A holdings-only statement falls back to the snapshot path, with cash observed as a lone attested balance.
 
-## The two reconciliations: internal tally + cross-account flow
+### MON-32 — activity counter-legs, and a contribution counted once
+**State:** enforced
+**Code:** product/viva/ledger/postings.py:94 (the counter-leg map), :121 (`brokerage_activity_transaction`)
+**Test:** product/tests/test_brokerage.py::test_a_contribution_ties_to_the_funding_account
 
-The brokerage account is a **reconciliation hub**, checked two independent ways (Vishnu, 2026-07-24). Both must hold; together they separate *contributed* growth from *market* growth — the honest heart of "how are my investments doing?"
+1. Contribution and withdrawal post to `Transfers:Uncategorized` and tie to the funding account by a cross-document transfer link, so the money is counted once and excluded from spending.
+2. Dividend and interest post to income; a fee posts to an expense; a buy and a sell move cash to and from invested capital, and a statement-reported realized gain posts as income.
+3. Realized gain is taken from the statement's reported figure, not computed from lot basis.
 
-**1 — Internal tally (within the uploaded statement), a hard gate.**
-`Σ position market_value + cash = account total`, at the statement's close. Tight, deterministic (T2), model-free. A misread position or cash line fails it loudly and holds the statement.
+### MON-33 — a holdings figure is one snapshot, not a composition across statements
+**State:** enforced
+**Code:** product/viva/ledger/projection/positions.py:45 (`snapshot_positions`)
+**Test:** product/tests/test_networth.py::test_a_holding_the_newest_statement_no_longer_lists_is_no_longer_held
 
-**2 — Cross-account cash flow (over the period), all realized events.**
-The ledger reconciles only *cash* — money that actually moved (M1: cash-flow over accrual). Each realized component maps to how Option A already records things:
+1. A holdings figure sums the measurements carried on the newest statement date at or before the date asked about.
+2. An instrument the newest statement does not list is not held, and does not contribute.
+3. The projection keeps a latest-per-instrument view beside the full history; no holdings figure and no net-worth point reads it.
 
-- **contributions / withdrawals** tie to their source: a checking/savings → brokerage transfer is a **cross-document `TransferLinked`** between the source outflow and the brokerage cash inflow — counted once, a *contribution*, never spending. This is the "money moved to brokerage should tie to the brokerage account."
-- **dividends / interest** → income postings (pay stubs and income reuse); a cash dividend also visible in checking corroborates (cross-document corroboration).
-- **fees** → an expense posting (categorization and spending reuse).
-- **realized gain** (a sell) → a real cash event: proceeds post to cash, the position's units drop, and `proceeds − cost basis of the units sold` is the booked gain/loss — a tax event (seeds cap-gains, Slice 11).
+### MON-34 — one composition, dated by the oldest and graded by the weakest
+**State:** enforced
+**Code:** product/viva/ledger/projection/positions.py:174 (`composed_values`), :110 (`_composed_grade`)
+**Test:** product/tests/test_networth.py::test_one_account_reads_the_same_from_every_read_that_states_it
 
-**Unrealized gain is deliberately NOT here.** It is not cash and not a tax event, so it is never posted, never a reconciliation gate, never an event (M1). It lives in the **presentation layer** as a *derived, as-of-date* figure — `Σ market_value − Σ cost_basis` over held positions (or period market-change) — computed from the `PositionObserved` measurements on hand and labeled with that date under the valuation-class rule (X2). If a statement prints a "change in value" line, presentation may show our derived number beside it; the ledger never reconciles against it. This is what dissolves any "gate the market change" question — there is nothing to gate, because the paper change isn't a ledger fact.
+1. An account's value is computed in one function, and every read that states an account's value calls it.
+2. The value is dated by the oldest measurement it rests on, graded by the weakest of them with cash included, and says when the parts were not measured on one day.
+3. A term nothing graded leaves the value with no grade at all rather than a weak one (product/tests/test_networth.py::test_a_value_with_a_term_nothing_graded_carries_no_grade).
+4. Holdings in a currency the cash is not in are a second value, not a bigger number.
 
-The **internal tally (1)** remains the one hard gate — it is read-validation (the statement's own numbers are self-consistent), not accrual accounting.
+### MON-35 — the sweep is cash, decided by which reading closes the tally
+**State:** enforced
+**Code:** product/viva/ingest/brokerage.py:169 (`resolve_sweep_cash`)
+**Test:** product/tests/test_brokerage.py::test_sweep_counted_once_when_the_cash_line_already_includes_it
 
-## New primitives (each the smallest that works)
+1. Both readings are tried — the cash line includes the sweep, or excludes it — and the one whose tally closes exactly is taken.
+2. Neither reading closing means nothing is decided and the ordinary gate holds the statement (product/tests/test_brokerage.py::test_a_sweep_that_reconciles_neither_way_is_still_held).
+3. The result is normalized so cash always includes the sweep, and the projector and the claims diagnostic share the one implementation.
+4. A cash row recorded as a holding is folded into the account's cash on read (product/tests/test_brokerage.py::test_a_legacy_cash_position_self_corrects_on_read).
 
-**`INVESTMENT` account kind.** A third kind beside `DEPOSITORY` and `LIABILITY`: an asset that holds *cash + positions*. Its account "value" is a **composition**, not a single posted balance — cash (from postings) plus the sum of its latest position measurements. Display is kind-aware, like the card's "owed." _(Corrected 2026-08-15: the sum is over **one snapshot** — the measurements carried on the account's latest statement — not over each instrument's own latest measurement. See the note under `PositionObserved` below.)_
+### MON-36 — an optional field that cannot be read is unknown, never fatal
+**State:** enforced
+**Code:** product/viva/ingest/brokerage.py:234 (`from_brokerage_json`)
+**Test:** product/tests/test_brokerage.py::test_missing_cost_basis_is_absent_not_invented
 
-**`PositionObserved` event.** The Position primitive as data:
+1. Cost basis and realized gain degrade to unknown when a statement prints something unparseable.
+2. Units, market value, cash and the stated total do not degrade, because the reconciliation identity rests on them.
+3. Cost basis is stored when the statement shows it and absent, never invented, when it does not.
 
-```
-PositionObserved(
-  account_id,            # the investment account it belongs to
-  instrument,            # ticker / name (the identity key — see below)
-  units,                 # Decimal quantity held
-  market_value,          # Decimal, the statement's value for the holding
-  currency,              # per-currency, no FX faking (I5)
-  as_of,                 # value time — the statement date (bitemporal)
-  cost_basis="",         # optional Decimal, if the statement shows it (graded)
-  valuation_class="measured",
-  grade,                 # from the reconciliation, like every figure
-  provenance)            # → the statement region (T1)
-```
+## Why
 
-It is append-only: next quarter's statement emits a *new* `PositionObserved` for the same instrument, and every measurement is kept. Nothing is edited (T4).
+Every other document reconciles a **flow** — money moved and a posting recorded it. A brokerage statement breaks that: an account can go from one figure to a larger one with no money moving, because the market repriced holdings already owned. That change is a **revaluation, not a transaction**.
 
-_**Corrected 2026-08-15, and this is the sentence the rest of the record copied.** This read "the projection reads the latest as-of", per instrument, and a read does not compose that way. It takes the newest statement date at or before the date asked about and sums only the measurements carried on it. The difference is not academic: composing per-instrument latest values double-counts a stale snapshot, because an instrument that appeared on an older statement and is absent from the newer one keeps contributing its old value forever. A brokerage statement states everything the account holds on its date, so one snapshot answers both halves at once — an earlier point on a curve still uses the statement that was current then, and a holding the newest statement no longer lists is no longer held. The projection does keep a latest-per-instrument view beside the full history; it is not what a holdings figure or a net-worth point reads._
+So a holding is recorded the way a closing balance is recorded — measured, not posted — and only real cash flows post. This is a thesis decision rather than a modeling convenience. The claim is that personal financial records are clean *because they are measurements, not generations*. Posting each price change against an unrealized-gain account would manufacture money-movement events for changes that were never movements, and would force a fabricated price onto every date. Keeping the money ledger pure cash flow keeps it aligned with reality and with tax (M1).
 
-**Valuation class.** `measured` (a statement value at its date) · `valued` (mark-to-market from a live price feed — deferred) · `estimated` (a guess — deferred). **Positions and investments emit only `measured`.** The invariant is the point: a position value is surfaced as "AAPL \$18,400 **as of Mar 31**," never "AAPL \$18,400" — a stale measured price must never read as current. Every future asset (property, vehicles, a price feed's `valued`, an `estimated` guess) inherits this discipline.
+The brokerage account is a reconciliation hub checked two independent ways, and together they separate *contributed* growth from *market* growth — the honest heart of "how are my investments doing?". The internal tally is a **snapshot cross-check** over many numbers the statement itself asserts, which makes it the densest verification surface in the system and entirely model-free; a single misread position fails it loudly. The cross-account cash flow ties each realized component to how it is already recorded: a contribution links to its funding account so it is counted once and never spending, a dividend visible in checking corroborates across issuers, a fee is an expense, a sell books proceeds and a realized gain.
 
-**`BROKERAGE_IDENTITY`.** A new identity row in the registry: `Σ(position market_value) + cash = account total`. Unlike the flow identities this is a **snapshot cross-check** — a point-in-time consistency test over many numbers the statement itself asserts, so a single misread position (wrong units or value) fails it loudly. Densest verification surface yet, and entirely model-free arithmetic (T2). It plugs into the *same* Finding contract (forced / suggested / held) as the balance family and pay stubs — a divergent profile, as data, exactly like pay stubs and income.
+Unrealized gain is deliberately absent from both. It is not cash and not a tax event, so it is never posted, never a gate, never an event; it lives as a derived as-of-date figure labelled with its date under the valuation-class rule. That is what dissolves any "should we gate the market change?" question — there is nothing to gate, because the paper change is not a ledger fact.
 
-**`BrokerageFacts`.** The extraction shape the profile owns: account identity, statement date, cash balance, a list of positions (instrument, units, market value, optional cost basis), dividends, fees, and the stated account total.
+The valuation class is the invariant, not the field: a position value is surfaced as a figure *as of a date*, never bare, and every future asset — property, vehicles, a price feed's `valued`, an `estimated` guess — inherits that discipline.
 
-## The projector (`post_brokerage`) — mostly reuse
+Composing per-instrument latest values is the mistake the snapshot rule exists to prevent: an instrument that appeared on an older statement and is absent from the newer one would keep contributing its old value forever, and one instrument written two ways would count twice. A brokerage statement states everything the account holds on its date, so one snapshot answers both halves at once.
 
-1. **Internal tally (hard gate):** `Σ market_value + cash = total` deterministically → grade + Finding (reuse the forced/suggested/held contract verbatim).
-2. **Positions →** emit a `PositionObserved` per holding (`measured`, graded, provenance to its row). Not posted.
-3. **Cash →** post the cash sweep/balance as an ordinary depository-style leg on the investment account (real money).
-4. **Contributions/withdrawals →** the brokerage cash inflow is a movement like any other; a checking/savings counter-leg auto-links (`TransferLinked`, a cross-document transfer link), so a contribution is counted once and excluded from spending. An unmatched inflow is a `suggested` transfer, asked, then learned.
-5. **Dividends / interest →** income (reuse the pay-stub income recognition); a cash dividend also in checking **corroborates** via the cross-document net↔deposit witness.
-6. **Fees →** an expense leg (reuse the category overlay).
-7. **Sells →** proceeds post to cash, units drop on the position; `proceeds − cost basis` is the booked realized gain/loss (a tax event; seeds cap-gains, Slice 11). **Buys →** cash → position at cost, accumulating cost basis.
-8. **Unrealized gain is not projected here at all** (M1) — it is a presentation-layer derivation over the `PositionObserved` measurements, computed as-of-date, never posted or reconciled.
-9. **Heal / order-independence** (any-order ingestion) and **identity resolution** (the account matcher) apply unchanged.
+Three things real statements taught, kept because they were not obvious. A brokerage account's "cash" is usually a money-market fund, and the *same* account printed it two ways in consecutive months — one where the cash line **was** the sweep, one where it excluded a separately-listed sweep. Treating it as a holding double-counts in the first case; treating it as cash under-counts in the second, so the tally decides, decisive-or-hold, and the figure is normalized so it means the same thing across statements, which is what lets the cash flow stitch month to month. A real December statement printed no opening cash, which would have silently discarded two dozen activity items including a contribution from the person's own checking account — the ledger already knew the opening, because it is the previous statement's closing, which is the heal cascade's forward-stitching rule applied to brokerage cash. And options needed no work at all: real holdings included short puts and calls with negative units and negative market values, and the measurement model absorbed them unchanged, so the caution about derivatives was more than was needed.
 
-## Decisions taken (open to veto before build)
+Refusing a figure means declining to *use* it, not discarding the document that carried it. A real statement printed a cost basis of "not applicable", and strict parsing threw away the whole statement — every position, the cash line, the tally — over one field nothing depends on. That is why an optional field degrades and a load-bearing one does not.
 
-- **Cost basis: a single figure per position now, per-lot detail deferred.** We store one `cost_basis` on the position when the statement shows it (graded like any attribute), enough to seed capital-gains and tax later (Slice 11). Per-lot tranche tracking is a large extraction-and-reconciliation surface for the smallest seed; deferred, with the `lots` attribute slot reserved. _(Reconsider only if your real statements carry clean lot detail AND tax is near-term — then capture at read time to avoid a re-ingest.)_
-- **An optional field that cannot be read is unknown, never fatal.** Cost basis and realized gain degrade to unknown when a statement prints something unparseable; units, market value, cash and total do not, because the reconciliation identity rests on them. This reads like a softening of the refuse-ambiguity stance and is the opposite of one: refusing a figure means declining to *use* it, not discarding the document that carried it. The rule exists because a real statement printed a cost basis of "not applicable", and strict parsing threw away the whole statement — every position, the cash line and the tally — over one field nothing depends on.
-- **Instrument identity is the ticker/name string for now.** No heavy instrument entity-resolution (the account matcher applied to securities) yet — tickers are usually clean. Reserve the seam; don't build it.
-- **Net-worth composition stays with net worth.** Positions and investments make positions queryable, dated, and classed; summing assets − liabilities into one figure is net worth's job (a pure projection over what positions record — zero migration).
+Instrument identity is the ticker or name string, with no entity resolution behind it; the seam is reserved rather than built, because tickers are usually clean. Cost basis is one figure per position, enough to seed capital gains later, because per-lot tranche tracking is a large extraction-and-reconciliation surface for the smallest seed.
 
-## Scope — staged, smallest seed first
+Summing assets minus liabilities into one figure is not this document's job — that is [net-worth.md](net-worth.md), a pure projection over what positions record.
 
-The two reconciliations are built in order so each stage stands alone and green:
+## Open
 
-- **Stage 1 — the holdings snapshot.** Classify → brokerage profile → extract positions + cash + total → the **internal tally** hard gate → emit `PositionObserved` (`measured`, graded) + post cash → holdings queryable with units + value + `as_of` + `class=measured`. This is the minimum that proves the divergent profile and the measurement model.
-- **Stage 2 — the cross-account cash flow.** Tie contributions/withdrawals to checking/savings via cross-document transfer links (counted once); recognize dividends/interest as income and fees as expense from the statement lines; compute realized gain on sells (a cash/tax event). Unrealized gain stays out of the ledger — it's a presentation-layer as-of-date derivation over the position measurements (M1), landing with the presentation slice.
-
-Cost basis: a single graded figure per position, captured when the statement shows it (per-lot deferred). Nothing beyond the two stages.
-
-## As-built notes (both stages, 2026-07-24)
-
-- **Cash is a flow only when the statement reports it.** `post_brokerage` uses the flow path iff a statement carries *both* `opening_cash` and an `activity` list; then it books the opening once, posts each activity item, and observes the closing — the balance identity reconciles the cash sub-ledger (`opening + Σ activity = closing`) and grades it `corroborated`. A holdings-only statement falls back to the Stage-1 snapshot (cash observed as a lone attested balance). The two hard gates are the **internal tally** (`Σ market_value + cash = total`) and, when present, the **cash flow**; a failure of either holds the statement (never guessed).
-- **Activity counter-legs** (the account buckets each realized reason maps to): contribution/withdrawal → `Transfers:Uncategorized` (ties to the funding account via a cross-document transfer link, counted once, excluded from spending); dividend → `Income:Dividends`, interest → `Income:Interest` (recognized by `income_by_currency`); fee → `Expenses:Fees`; buy → `Assets:Investments` (cash→holdings at cost); sell → `Assets:Investments` for the basis and, when the statement reports it, the realized gain to `Income:CapitalGains` (`proceeds = basis + gain`). Realized gain is taken from the statement's reported figure, not computed from lot basis (consistent with single-cost-basis; lots deferred).
-- **A contribution is an internal transfer.** The matcher (`_flow`) now treats an investment account's cash like a depository, so a checking/savings → brokerage contribution auto-links on the usual decisive evidence (a "transfer"/own-account naming hint) and is counted once.
-- **The sweep is cash (from two real Fidelity statements, 2026-07-25).** A brokerage account's "cash" is usually a money-market fund (Fidelity's core position is SPAXX), and the *same* account printed it two different ways in consecutive months: November's cash line **was** the sweep (identical figures), December's cash line **excluded** a separately-listed sweep. Treating it as a holding double-counts in the first case; treating it as cash under-counts in the second. So `resolve_sweep_cash` tries **both readings and takes the one whose tally closes exactly** — decisive-or-hold, the same contract as every other forced correction — then normalizes to "cash includes the sweep" so the figure means the same thing across statements. That normalization is what lets the **cash flow stitch month to month**, and it is shared by the projector and `debug.claim` so the two can never disagree.
-- **Opening cash carries forward when the statement omits it.** A real December statement printed no opening cash, which would have silently discarded 24 activity items (including a contribution from the person's own checking account). The ledger already knew the opening: it is the previous statement's closing cash — **the heal cascade's forward-stitching rule applied to brokerage cash**. If the flow still can't be reconciled, the result *says* the activity is held back rather than quietly posting a holdings-only picture.
-- **Options needed no work.** Real holdings included short puts and calls with negative units and negative market values; the measurement model absorbed them unchanged. The spec's "derivatives deferred" was more cautious than necessary.
-- **Known limitation (noted, not a bug):** an investment **fee** lands in the `Expenses:Fees` account balance but not in the movement-based `spending_by_category` view (that view is scoped to depository/liability legs). Consumer spending stays clean; investment costs are visible in the account. Multi-period cash-flow stitching (a later statement's opening = the prior closing) is lightly handled via the shared balance identity; full gap/heal hardening for brokerage cash is deferred with the rest of multi-statement investment history.
-
-## Done criteria / tests
-
-**Stage 1 (snapshot):**
-- A real brokerage statement reconciles on `Σ market_value + cash = total` and posts; a misread position (units or value) fails the internal tally and is **held with a localized Finding**, never guessed.
-- A `PositionObserved` carries units + market_value + currency + `as_of` + `class=measured` + grade + provenance; the answer/surface shows a holding as "as of {date}," never "current."
-- Cost basis is stored when the statement shows it and absent (not invented) when it doesn't.
-- The account's composed value = cash + Σ measured positions on its latest statement _(corrected 2026-08-15 from "Σ latest measured positions" — the snapshot is the unit, not the instrument)_, and it carries the halves a value needs to be stated at all: it is **dated by the oldest measurement it rests on**, because a sum is only as current as the stalest thing in it; **graded by the weakest of them**, cash included, because a grade is inherited from what a figure was computed out of and never declared by whoever computed it; and it says when the parts were **not measured on one day**. A term nothing graded leaves the total with no grade at all rather than a weak one, which is a guard: nothing the ingest path records reaches it. Holdings in a currency the cash is not in stay their own figure — what cannot be summed is not summed. The composition lives in one function and every read that states an account's value calls it, so the balances read, the provenance read and a point on the net-worth curve state one account one way. Registering a *synthetic* investment type via a profile row alone routes to the brokerage parser/identity (the divergent-profile proof holds).
-
-**Stage 2 (flow):** _(all green)_
-- The cash flow reconciles (`opening + Σ activity = closing`) and recognizes dividend + realized capital gain as income, a fee as an expense, and buys/sells as invested-capital moves; a statement whose activity doesn't reconcile the cash is **held**.
-- A checking→brokerage contribution auto-links (a cross-document transfer link), is **counted once**, and is excluded from spending.
-- **Unrealized gain is never posted or reconciled** (M1); it is computed on demand from the position measurements, as-of-date, and a stale figure is labeled as such (X2) — asserted by a projection test, not a ledger event.
-
-Existing balance-family, pay-stub, transfer, and categorization tests stay green throughout (269 total).
-
-## Deferred (explicitly not now)
-
-Live price feeds (`valued`) and any "current" valuation; per-lot cost basis; instrument entity-resolution; options/derivatives and non-equity instruments beyond a priced line; FX on foreign holdings (Slice 11); performance/return analytics.
-
-## Why now + future use
-
-The biggest missing net-worth component, and the first place the **valuation-class discipline** is set — a trust-critical invariant against dressing guesses (or stale prices) as facts, inherited by every future asset. It's the second real payoff of the divergent-profile architecture (its own schema + identity as *data*, proven by pay stubs and income), reuses cross-document corroboration for dividends and any-order ingestion / account identity resolution for order-independence and identity, and its cost-basis seed is the precursor to Tax (Slice 11). Positions recorded honestly and dated are the direct precursor to net worth and, eventually, the provable claim bundle (Slice 13).
+- An investment **fee** lands in the `Expenses:Fees` account balance but not in the movement-based spending view, which is scoped to depository and liability legs. Consumer spending stays clean; investment costs are visible in the account.
+- Full gap and heal hardening for brokerage cash across many statements is deferred; multi-period stitching is handled lightly by the shared balance identity.
+- Live price feeds and any `valued` or "current" valuation are unbuilt.
+- Per-lot cost basis is unbuilt; the `lots` attribute slot is reserved. Reconsider only if real statements carry clean lot detail and tax is near-term, then capture at read time to avoid a re-ingest.
+- Instrument entity resolution is unbuilt.
+- FX on foreign holdings and performance or return analytics are unbuilt.

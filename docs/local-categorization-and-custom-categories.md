@@ -1,48 +1,72 @@
 # Local Categorization & Custom Categories (per-transaction, private)
 
-**Status:** Design note — captured 2026-07-24, unbuilt. It was anchored to "the presentation layer", a milestone that has since passed twice (Slice 6.7, then the surface cards) without it; there is still no `CategoryDefined` event and no custom-category surface. Re-anchor it to a named slice before scheduling · **Origin:** the first real enrichment run (235 merchants) left 116 merchants / 163 transactions / ~$65k Uncategorized, all of them *non-shareable* peer descriptors. Vishnu's observation: one Zelle transaction is a rent payment, another a gift, another a loan repayment — a single merchant-level category is structurally wrong for these.
+**State:** partial
+**Rules:** MON-90, MON-91, MON-92, MON-22, MON-23
 
-**Invariants touched:** T1 (provenance rides every assignment) · T4 (a categorization is an append-only event, never an edit) · **T9 (the personal/impersonal boundary — a user's custom category is personal and must NEVER cross into the merchantcore catalog or the commons export)** · I5 (jurisdiction-neutral: custom categories are the user's own words, no locale assumptions) · the moat (a human assignment is `verified` and outranks any model prior).
+**Invariants touched:** T1 · T4 · **T9** · I5 · the moat (a human assignment is `verified` and outranks any model prior).
 
----
+## Rules
 
-## The problem, precisely
+### MON-90 — a peer descriptor is ruled per transaction, never everywhere
+**State:** enforced
+**Code:** product/viva/listen.py:566 (`generalizes = merchant and is_shareable(descriptor) and not instrument`)
+**Test:** product/tests/test_questions.py::test_a_peer_payment_is_scoped_to_itself_not_a_rule
 
-Merchant-level categorization is right when the merchant *is* the category: Costco is always groceries, Netflix always entertainment. It is wrong when the "merchant" is a person. A Zelle/Venmo descriptor normalizes to a peer, and peers have no stable category — the same counterpart is a gift one month, a loan repayment the next, a split dinner the third. `is_shareable` already keeps these out of enrichment (privacy, T9), which is why they sit Uncategorized after a run. They cannot be solved by the shareable, commons path *by construction*. They need a **local, per-transaction** path that never leaves the vault.
+1. A commercial merchant's ruling is scoped to the merchant and settles every payment to it.
+2. A peer or instrument descriptor is scoped to the single movement.
+3. A movement-scoped answer covering more than one movement with no key is refused rather than quietly applied to the whole conduit bucket.
 
-Two of these transaction types are not even spending: a loan you repaid, or money a friend paid back, is a transfer/settlement, not an expense. So the local path must be able to say *what a movement is*, not only *which spending bucket it falls in*.
+### MON-91 — a custom category is personal, and what crosses to a model is the shareable part of the vocabulary
+**State:** enforced
+**Code:** product/viva/listen.py:110 (`category_vocabulary`), :131 (`shareable_categories`), :161 (`ruling_slots`)
+**Test:** product/tests/test_category_identity.py::test_the_known_vocabulary_is_what_every_minting_path_is_offered
 
-## What the substrate already supports (no new mechanism needed)
+1. A category is the person's own words and stays in the encrypted vault.
+2. What a model is told is the slot's `offered` list, which `ruling_slots` narrows to `shareable_categories` — the vocabulary filtered through `is_shareable`, the same gate the merchant path uses (product/viva/listen.py:131, :161; product/viva/reply.py:138, :323).
+3. The whole vocabulary survives only as `choices`: what a reply is validated against, and what `settled_category` matches on. It is never sent.
 
-The category overlay's derivation is `per-movement override ?? merchant-catalog prior ?? Uncategorized`. `CategoryAssigned` is keyed to the individual **movement key**, graded `verified`, and already **beats** the merchant-level default (proven by `test_human_override_beats_the_synced_enrichment`). So:
+### MON-92 — a per-transaction assignment can say what a movement *is*
+**State:** enforced
+**Code:** product/viva/ingest/categorize.py:96 (`assign_category(..., nature=)`); product/viva/ledger/projection/movements.py:270 (the overlay's `nature` read at the ruling rung)
+**Test:** product/tests/test_nature.py::test_a_human_ruling_beats_the_implication
 
-- Per-transaction categorization needs **no new event type**. A Zelle payment and a Zelle gift already carry different categories via two `CategoryAssigned` events on different movement keys.
-- Categories are already **open strings** — `assign_category` accepts any label — so "create a new category" is, mechanically, "mint and reuse a label."
+1. A category assignment may carry a nature — `spending`, `transfer` or `settlement`.
+2. The projection honours it above any category hint when it derives nature, so a lone peer payment ruled "loan repaid" leaves spending.
 
-The presentation layer's job is therefore mostly *exposure*, plus two genuine modeling decisions below.
+### MON-22 — a personal category never reaches a shared surface
+**State:** enforced
+**Code:** product/viva/ingest/categorize.py:298 (`export_catalog`)
+**Test:** product/tests/test_merchants.py::test_export_catalog_is_linted_and_carries_no_amounts
 
-## Decisions to make with the presentation layer
+1. Nothing personal — a custom label, an amount, a raw descriptor — enters the exported catalog, `merchantcore`, or the commons (T9).
+2. Only the shareable taxonomy crosses that boundary.
 
-**D1 — Peer/private descriptors default to per-transaction, not "everywhere."**
-The surface already tags non-shareable items `private`. That tag should flip the interaction: a commercial merchant offers "Categorize everywhere" (merchant-level); a peer descriptor offers only per-transaction assignment. One ruling must not smear across a person's many unrelated payments.
+### MON-23 — a category exists by being used
+**State:** enforced
+**Code:** product/viva/listen.py:110 (`category_vocabulary`), product/viva/engine.py:605 (`assign_category_to`)
+**Test:** product/tests/test_category_identity.py::test_a_vault_with_no_seed_is_shown_exactly_what_it_uses, product/tests/test_reply.py::test_a_category_the_vault_does_not_know_is_refused_rather_than_minted
 
-**D2 — Custom categories are first-class and strictly local (T9).**
-Recommended: a `CategoryDefined` event (name + optional color/icon), so the picker can list, rename, and style a user's own categories ("Gifts", "Loan to Raj", "Rent split"). The alternative — implicit strings, any label used in a `CategoryAssigned` *is* a category — is simpler but gives the UI nothing to enumerate or rename cleanly. Either way, custom categories are a **personal overlay**: they must be excluded from `export_catalog` and can never reach merchantcore or the commons. The 16 primaries remain the only shareable taxonomy; a user's categories live and die in the encrypted vault.
+1. The vocabulary is the seed labels plus every label already in the vault, with no two spellings of one name.
+2. Minting a category needs no event and no migration; assigning it is what creates it.
+3. There is no `CategoryDefined` event: a category exists by being used, consistent with abstracting the write side late.
+4. A category the vault does not know is refused rather than minted by a model.
 
-> **The implicit half of D2 is built, and it moved a T9 line nobody ruled on (2026-08-08).** A category exists by being used — `listen.category_vocabulary` is the seeds plus every name already in the vault — and that vocabulary now rides in the `category` slot of every question that can write one, which means it is **rendered into the interpreter prompt and sent to the model on every ruling**. A name like this doc's own "Loan to Raj" is exactly the kind of label that travels. It reaches no catalog, no commons and no export, so the letter of D2 holds; but the model is a boundary this decision never considered, and the merchant path that already sends a name past it is gated by `is_shareable`, while this is not. **Vishnu's ruling is owed, and it is owed before a Witness run** — that run is what would actually send them. The options are the gate (`is_shareable` over the vocabulary, which mutes a person's own words in their own question), the seeds only (which reopens the duplicate the vocabulary was added to close), or accepting it as within T9 because a per-ruling model call is already the path a person's sentence takes.
+## Why
 
-**D3 — A movement's *nature*: spending vs transfer/settlement.**
-Today `spending_by_category` excludes only *linked* transfers. A lone Zelle a user marks "loan repaid" or "gift received" must be excludable from spending too, but it has no counterpart leg to link. Options: (a) let a per-transaction assignment carry a `nature` (spending | transfer | settlement) that the projection honors when aggregating; or (b) route "this is a transfer" to a **one-sided transfer** mechanism (an extension of transfer links) rather than a category. Leaning (a) for the common case — it keeps the user's action a single categorize gesture — with (b) reserved for when a real counterpart later appears and can corroborate. This is the subtle one; settle it before building, because it decides whether "spending" stays honest for peer money.
+Merchant-level categorization is right when the merchant *is* the category: a warehouse club is always groceries, a streaming service always entertainment. It is wrong when the "merchant" is a person. A peer-transfer descriptor normalizes to a peer, and peers have no stable category — the same counterpart is a gift one month, a loan repayment the next, a split dinner the third. `is_shareable` already keeps these out of enrichment for privacy (T9), which is exactly why they sit uncategorized after a run: they cannot be solved by the shareable, commons path *by construction*. They need a local, per-transaction path that never leaves the vault.
 
-## Scope split
+Two of those transaction types are not even spending. A loan repaid, or money a friend paid back, is a transfer or a settlement, so the local path must be able to say *what a movement is*, not only which spending bucket it falls in — otherwise the honesty guarantee (spending excludes non-spending) breaks the moment a person categorizes their first peer payment. Letting the assignment carry a nature keeps the person's action one gesture; routing it to a one-sided transfer mechanism is reserved for when a real counterpart appears and can corroborate.
 
-- **Core (ledger/projection):** whatever D3 chooses (a `nature` on the assignment, honored by `spending_by_category`), and — if D2 picks first-class — the `CategoryDefined` event + a custom-category projection that stays out of every export.
-- **Presentation:** the per-transaction assign affordance, the private-vs-commercial interaction split (D1), and a category picker with "+ New category," reading the custom-category projection.
+Almost none of this needed new mechanism. The category overlay already derives as *per-movement override, else merchant prior, else Uncategorized*; the assignment is already keyed to the individual movement, graded `verified`, and already beats the merchant-level default. Two peer payments already carry different categories through two events on different movement keys. Categories are already open strings. What was left was exposure, plus the two genuine modeling decisions above.
 
-## Deferred (not now)
+The scale is what made the boundary concrete: a real enrichment run left a large share of the vault sitting as peer and settlement money the commons path cannot and should not touch.
 
-Learned auto-apply for peer descriptors (e.g. "this Zelle counterpart is usually rent") — a later projection over the recorded `CategoryAssigned` events, exactly as merchant learning was; nothing here forecloses it, and nothing needs re-ingesting to get it. Merchant-as-Party and counterpart identity resolution also deferred.
+## Open
 
-## Why now (as a note, not a build)
+- `product/viva/listen.py:168` cites this document's rule by its former id, `D2`. The rule is now MON-91; the comment is stale until someone with the code lane fixes it.
 
-The enrichment run made the boundary concrete and quantified: ~$65k of the vault is peer/settlement money the commons path can't and shouldn't touch. Recording the decisions now means the presentation-layer slice starts from a settled model instead of rediscovering it in UI code — and it keeps the honesty guarantee (spending excludes non-spending) from silently breaking the moment a user categorizes their first Zelle.
+- A first-class `CategoryDefined` event (name, colour, icon) is unbuilt, so there is nothing a picker can enumerate, rename, or style. The implicit half — a label exists by being used — is what is built.
+- No custom-category surface exists. This note was anchored to "the presentation layer", a milestone that has passed twice without it; re-anchor it to a named slice before scheduling.
+- Near-duplicate labels a fold cannot close: `Groceries` lands on `groceries`, and `Grocery` still mints a second category beside it ([issue #7](https://github.com/vishnuyar/orionviva/issues/7)). Closing it needs either a fence, which contradicts MON-91, or a stemming rule, which is the keyword-table class of workaround this project has deleted twice. The ruling is Vishnu's.
+- Learned auto-apply for peer descriptors — "this counterpart is usually rent" — is a later projection over the recorded assignments, exactly as merchant learning was; nothing here forecloses it and nothing needs re-ingesting.
+- Merchant-as-Party and counterpart identity resolution are deferred.

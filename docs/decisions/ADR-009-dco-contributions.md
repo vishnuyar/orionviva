@@ -1,25 +1,38 @@
 # ADR-009 · Contributions Under DCO
 
+_This records reasoning, not current behaviour._
+
 **Status:** Accepted · **Date:** 2026-07-19 · **Decided by:** Vishnu · **Door type:** one-way at first external merge
 
-## Context
+**State:** built
+**Rules:** ADR-009
 
-The day the first outside contribution merges, the copyright-holder set stops being one person, and the legal basis for inclusion must already be settled. Deciding after is somewhere between expensive and impossible.
+## Rules
 
-## Decision
+### ADR-009 — Contributions come in under the Developer Certificate of Origin
+**State:** by-review
+**Code:** .github/workflows/dco.yml:1 · CONTRIBUTING.md:11
+**Test:** none
 
-Developer Certificate of Origin: contributors add `Signed-off-by` to commits, certifying they have the right to submit the work under MIT. Their copyright remains theirs; the project is a patchwork of MIT-licensed contributions. Enforced by a standard DCO check on pull requests; documented in CONTRIBUTING.md before the repo invites contributions.
+1. A contributor adds `Signed-off-by` to their commits, certifying they have the right to submit the work under MIT.
+2. Copyright remains the contributor's; the project is a patchwork of MIT-licensed contributions.
+3. The rule is enforced by a DCO check on pull requests and documented in CONTRIBUTING.md before the repo invites contributions.
+4. CONTRIBUTING.md also carries the trust-critical review policy: changes touching verification, crypto or the event log get adversarial review.
 
-## Alternatives considered
+## Why
 
-**CLA** — grants the project broad rights including unilateral relicensing; preserves dual-licensing/open-core options. Rejected: signing friction deters the security-minded reviewers this project most wants; a "we reserve the right to relicense" instrument is a dissonant signal from a project whose pitch is verifiable trust; and MIT's permissiveness already covers every commercial path that matters (anyone, including the author, may build on or sell the code).
+The day the first outside contribution merges, the copyright-holder set stops being one person, and the legal basis for inclusion must already be settled. Deciding afterwards is somewhere between expensive and impossible.
 
-**Nothing** (implicit inbound=outbound) — common in small repos, ambiguous when it matters. Rejected: ambiguity in provenance of *code* is a poor look for a product about provenance of *data*.
+**A CLA** grants the project broad rights including unilateral relicensing, and preserves dual-licensing and open-core options. It was rejected on three grounds: signing friction deters exactly the security-minded reviewers this project most wants; a "we reserve the right to relicense" instrument is a dissonant signal from a project whose pitch is verifiable trust; and MIT's permissiveness already covers every commercial path that matters, since anyone including the author may build on or sell the code.
 
-## Consequences
+**Nothing at all** — implicit inbound-equals-outbound — is common in small repos and ambiguous when it matters. Ambiguity in the provenance of *code* is a poor look for a product about the provenance of *data*.
 
-Contributed portions are MIT forever; whole-project relicensing is foreclosed for practical purposes — accepted knowingly alongside ADR-002. Author-written code remains relicensable by the author alone (rarely needed under MIT). CONTRIBUTING.md must also carry the trust-critical review policy (the discovery map, E5): changes touching verification, crypto, or the event log get adversarial review.
+The consequence is accepted knowingly: contributed portions are MIT forever, and whole-project relicensing is foreclosed for practical purposes. Author-written code remains relicensable by the author alone, which under MIT is rarely needed.
 
 ## Would reverse this
 
-Moving DCO→CLA later would require every past contributor's consent — treat as unavailable. This is the door closing, on purpose, in the community's favor.
+Moving from DCO to a CLA later would require every past contributor's consent — treat as unavailable. This is the door closing, on purpose, in the community's favour.
+
+## Open
+
+Nothing open.

@@ -1,390 +1,253 @@
 # Where the Intelligence Goes
 
-**Status:** ✅ **BUILT 2026-07-25** — all six steps; see *What the build showed* at the end · **Created:** 2026-07-25 · **Origin:** Vishnu, after using rulings in your own words on his own vault: *"any merchant we have by enrichment we already get category and subcategory, they should be assigned by default… it is only when we get categories under zelle or checks that we should ask… we are thinking about a financial AI agent, which means it has intelligence… it is ok to be a rule maker, but to the user it should feel like intelligence."*
-
-**Invariants touched:** **T2 / ADR-010** (a model may perceive and infer; deterministic code decides and posts) · T4 (everything new is an event) · **T9** (the impersonal/personal boundary — this doc leans on it hard) · X2 (a proposal states its confidence and what it does not know) · X3 (nothing irreversible without a yes) · **I5** (code universal, specifics are data) · principle 5 (serve, don't overwhelm).
-
----
-
-## The diagnosis
-
-Viva listens works and is aimed at the wrong moment.
-
-**It made the *answer* intelligent and left the *question* stupid.** The queue asks *"Is this money spent, or is it something you now own?"* about a counterparty the vault has **already enriched as `loan_payments / mortgage`.* We knew it was a mortgage servicer. We asked anyway. Then a model was spent interpreting a sentence whose content we could have proposed ourselves.
-
-Three costs follow, and they compound:
-
-1. **The person carries load we could have carried.** Being asked what you already told the system — or what any competent reader would infer from the counterparty's name — is the opposite of a butler.
-2. **The model call happens at the point of least leverage.** One sentence, one merchant, one person, uncacheable, unshareable, repeated forever. The same reasoning done once per *merchant category* would serve every transaction, every future transaction, and every other user.
-3. **It reads as unintelligent even when it is correct.** *"Is that money spent — or is it something you now own?"* about `Harborline-Servi` is a question a person would not ask, because a person would already have a hypothesis.
-
-The correct shape is the inverse: **the product forms the belief; the person confirms or corrects it.**
-
-### And a self-inflicted one
-
-While building Viva listens I wrote **five separate keyword tables** — `_TRANSFER_HINT_CATEGORIES`, `suggest_answers`'s substring matching, `CORROBORATION`, `_group_for`, `_CONDUIT_MARKERS`. The project's own anti-goals say: *"No per-institution parsers or a keyword classification engine; that whole class of workaround is obsolete."* Each felt local and reasonable. Together they are exactly the engine we said we would not build, and they are why the product feels like a rule-follower rather than a reader. That drift is the thing to correct, not just the question ordering.
-
----
-
-## The missing idea: a merchant category *implies structure*
-
-Today `merchantcore` answers **"what kind of business is this?"** → `loan_payments / mortgage`. The ledger then uses that only as a *weak hint* for nature (rung 4, provisional) and as a display label.
-
-But `mortgage servicing` is not a weak hint about spending. It is a **near-certain statement about the shape of this person's financial life**: there is a property, there is a loan, the payment is compound, an escrow account probably exists, and a 1098 exists once a year. None of that is uncertain. What *is* uncertain is narrower and much more answerable: *which* property, and whether they want it tracked.
-
-So the missing layer answers a different question:
-
-> **What does having this counterparty in your life imply about your financial structure?**
-
-Most categories imply **nothing**: groceries, utilities, restaurants, streaming. Those should be assigned silently and never asked about — which is most transactions. A minority imply a **relationship**, and that minority is where every question worth asking lives.
-
-| Counterparty category | What it implies | Direction matters |
-|---|---|---|
-| mortgage servicing | a property, a home loan, escrow, an annual 1098 | out → compound payment |
-| brokerage / investment | an investment account | out = contribution (asset); in = withdrawal *or* distribution (income) |
-| auto lending | a car loan, probably a vehicle | out → debt paydown + interest |
-| consumer lending | a loan | **in = you borrowed; out = you repaid** |
-| property management | rent | out = expense (tenant); in = income (landlord) |
-| insurance | a policy, and often an asset being insured | out → expense; in → a claim (income) |
-| title / escrow company | a property transaction | a one-off, high-stakes, document-implying |
-| groceries, utilities, dining, retail | nothing | — |
-
-**Direction is part of the implication, not a separate rule.** Vishnu's example is the clean case: money *in* from a lender asks *"was this a loan?"*; money *out* asks *"do you have a loan outstanding?"* Same counterparty, opposite sign, different question. That must be data on the implication, never an `if` in the queue.
-
-### Where this knowledge belongs — and why the answer is obvious
-
-*"Mortgage servicers imply a property and a loan"* is **impersonal, universal, and true for everyone.** It carries no amount, no date, no account, no name.
-
-So it belongs in **`merchantcore`, produced during enrichment, cached in the catalog, and eventually shared in the commons** — beside category and subcategory, under the same T9 boundary that already governs them. That single placement decision resolves almost everything:
-
-- the model call is **batched** (40 merchants per call, machinery that already exists),
-- **impersonal** (T9-safe by construction, nothing about this person crosses),
-- **cached forever** (a merchant is enriched once, not once per transaction),
-- **versioned** (the enrichment prompt is already in the library),
-- **retroactive** (it arrives as `MerchantEnriched`, and the read side re-derives),
-- and **shareable** — this is precisely the commons the project has been building toward. *"Mortgage servicers imply a home loan"* is knowledge every user benefits from and no user's privacy is spent on.
-
-Compare with where Viva listens put it: one personal call, per sentence, uncacheable, unshareable. **Same reasoning, wrong side of the boundary.**
-
-> **Industry note.** Enrichment vendors already infer "financial products held with other institutions" from transaction data — and sell it to banks for cross-sell ([Open Banking Tracker](https://www.openbankingtracker.com/embedded-finance/category/transaction-enrichment), [Personetics](https://personetics.com/products/enrich/)). The capability is proven; the *direction* is what differs. They infer your products to market to you. Here the same inference describes you to yourself, on your machine, with the derived knowledge shared only in its impersonal form. Worth stating plainly in the build log: **we are not inventing the inference, we are inverting who it serves.**
-
----
-
-## The three tiers
-
-Everything reduces to one rule — **ask only where the counterparty genuinely cannot tell us** — which sorts every movement into three tiers.
-
-### Tier 1 — Known, and implies nothing → **silence**
-
-Enriched merchant, ordinary category. **Assign the category and the major automatically.** Never raise a question. This is the large majority of transactions and today we ask about them, which is the single biggest fix in this document.
-
-*Groceries at a supermarket is an expense. There was never a question here.*
-
-### Tier 2 — Known, and implies structure → **an informed proposal, not a question**
-
-The counterparty tells us what kind of relationship this is. We do **not** ask what it is. We say what we believe, name what we are unsure of, and offer the specific choices:
-
-> *"These 13 payments go to a mortgage servicer. That normally means a home loan — usually split between interest, principal and escrow, which I can't separate without your statement. Shall I set up the loan? (Do you also want me to track the property?)"*
-
-Options composed from the implication; the person taps one, or writes a sentence. **This is where "feels like intelligence" is actually earned** — the product arrives already knowing something, and asks a narrow, expert question instead of a naive open one.
-
-### Tier 3 — Genuinely unknown → **a real question, per transaction**
-
-Conduits (check, ATM, wire, teller, money order) and peers (Zelle, Venmo, a person's name). The descriptor names the *pipe*, not the payee, so no amount of enrichment will ever help. One question per transaction, free text first-class.
-
-**This is the only tier where the machinery of rulings in your own words was pointed at the right target** — and it is where the earnest-money-vs-account-opening failure lives.
-
-*Amended 2026-08-12: the ladder now runs on a second axis. Asked of a rhythm
-rather than a nature, tier 1 is a merchant the world only ever sells to per
-purchase — silence, however many times it was bought from — and tier 2 is a
-merchant one can deal with by a continuing arrangement, which earns one informed
-proposal per `(merchant key, direction)`. The impersonal knowledge that sorts
-them is the catalog's `billing` field, and it licenses the question without ever
-answering it: what the person actually arranged is theirs to say, and where the
-ledger has measured enough to have an opinion, the measurement is what the
-proposal proposes.*
-
-*Amended 2026-08-13: a party a grammar slot declared is not on this axis at all.
-Tier 3 is where a peer belongs and it stays there — the rhythm read drops those
-movements before it measures anything, so no arrangement is ever proposed about
-a person. The declaration is a slot name, so the limit is the gate's: a person's
-name in a `{brand}` slot is declared a person by nothing and is sorted like any
-merchant.*
-
-*Amended 2026-08-13 (second): the sort is now enforced where the question is
-licensed, rather than inherited from what a grammar happened to declare. A
-rhythm proposal is raised only where the catalog record says the counterparty is
-a `business` **and** says an arrangement with them is possible; `instrument` and
-`peer` withhold, and so does a record naming no kind at all. It is the same
-`counterparty_kind` the tier ladder has read since it was written, finally read
-by the tier-2 machine that grew up beside it and never asked it anything.*
-
-*The limit, plainly: the fence stands on a model-authored label that the next
-enrichment re-authors, so a reply saying `business` turns it off for the very
-keys it was built for. It narrows the residue the grammar's declaration cannot
-reach and it does not seal it. And because the label withholds the question and
-never the measurement — the flow map is untouched, so a peer relationship is
-still counted and totalled locally — a later read over flows must license
-itself, because it inherits nothing from this one.*
-
----
-
-## The confidence ladder — reuse, don't invent
-
-How decisively an implication is applied should use the contract the project already has for verification findings ([verification-findings-and-correction.md](verification-findings-and-correction.md)): **forced / suggested / unlocalized.**
-
-| Rung | When | Behaviour |
-|---|---|---|
-| **forced** | the implication is decisive and unambiguous (a supermarket is an expense; a card payment reduces that card) | **apply, and report that you did.** Never silent, never asked. |
-| **suggested** | the implication is strong but the specifics aren't (a mortgage servicer — but which property?) | **propose with options.** One tap, or a sentence. |
-| **unlocalized** | nothing implies anything (a check, an ATM withdrawal) | **ask openly.** Free text is the primary channel. |
-
-Three benefits from reuse rather than a new vocabulary: it is already tested, already understood, and it keeps *"never bluff"* structural — a forced application is one we can defend, a suggestion states its own doubt, and an open question admits we don't know.
-
----
-
-## Where it sits in the flow
-
-```
-document → classify → extract → verify → post                    [unchanged]
-                                            ↓
-                                       movements
-                                            ↓
-                 resolve descriptor → merchant key (brand)        [deterministic]
-                                            ↓
-  ┌────────────────────────────────────────────────────────────────────┐
-  │  merchantcore ENRICH   — batched · impersonal · cached · versioned │
-  │  in :  normalized merchant + one linted example                    │
-  │  out:  category, subcategory                                       │
-  │      + counterparty_kind: business | instrument | peer             │
-  │      + implies: [ { relationship, major, on, account_group,        │
-  │                     compound, confidence, documents } ]            │
-  └────────────────────────────────────────────────────────────────────┘
-                                            ↓
-                        MerchantEnriched  (event — exists already)
-                                            ↓
-  ┌────────────────────────────────────────────────────────────────────┐
-  │  DERIVE   — read side · deterministic · retroactive · free         │
-  │   • category → every transaction, automatically       (Tier 1)     │
-  │   • implication × direction → proposed major + account             │
-  │   • existing accounts matched by the account matcher               │
-  │   • confidence → forced | suggested | unlocalized                  │
-  └────────────────────────────────────────────────────────────────────┘
-                                            ↓
-              questions raised ONLY for `suggested` and `unlocalized`
-```
-
-**Note what is absent: a second personal model call.** The impersonal step already did the thinking; turning an implication into this person's options is *matching against their account registry*, which is the account matcher pointed at yet another target. Deterministic, free, offline, testable.
-
-That is the answer to *"send it to a model call saying I have this, what could it be"* — **yes, but once per merchant category rather than once per person per transaction.** Same intelligence, ~1000× less of it, and it becomes an asset instead of a cost.
-
-`counterparty_kind` also **replaces `_CONDUIT_MARKERS`**: whether "check" names an instrument rather than a business is exactly the kind of universal a model should tell us and a keyword list should not.
-
----
-
-## Rules vs intelligence — the reconciliation
-
-> *"It is ok to be a rule maker, but to the user it should feel like intelligence."* (Vishnu)
-
-The resolution is a distinction the project already uses elsewhere and lost sight of here:
-
-**A model writes the rules. Deterministic code applies them.**
-
-- Nobody codes `mortgage → house`. A model, reading a merchant category, produces the implication — from world knowledge, generally, for categories nobody anticipated.
-- The implication is **stored as data**, versioned, correctable.
-- Applying it is **deterministic**: auditable, free, offline, unit-testable, and incapable of inventing a number.
-
-This is the same stance as *"we own the schema, the model assists authoring"* (the doc-type registry) and *"read documents like a person would — no per-institution parsers"* (a founding anti-goal). A hardcoded table is a rule *we* wrote and will be wrong about; a learned implication is a rule *the world* wrote that we can check, cache and share.
-
-**And a person's correction beats both, permanently** — which is the moat: *"memory of the user is the moat, not the model."*
-
----
-
-## What survives from Viva listens, and what changes
-
-**Keep — all of it earned its place:**
-
-- `RulingRecorded` (generic, scoped) — the write-side spine for every tier.
-- The **four majors** and the derived chart of accounts.
-- **`origin: issued | asserted`** (A3) and the corroboration ladder.
-- **`MIXED` / `undecomposed()`** — honest handling of an unknown split.
-- **Conduits are per-transaction** — correct, though the *detection* should move to enrichment.
-- The **Proposal** type, the eval harness, and the failure taxonomy.
-
-**Change:**
-
-- **The entry point.** Viva listens assumed the person opens with a sentence. The product should open with a belief; the sentence becomes the correction channel and the Tier-3 primary.
-- **The model call moves upstream** — from per-sentence to per-merchant-category, from personal to impersonal, from uncached to cached.
-- **The five keyword tables go**, replaced by enrichment output.
-- **Tier 1 stops being asked about at all**, which is most of the queue.
-
-Nothing is thrown away. The machinery was built for the hard tier and gets to keep doing that job.
-
----
-
-## Decisions for Vishnu
-
-**D1 — Where does implication knowledge live?**
- · **(a) merchantcore, at enrichment, commons-shareable** · (b) product-side, per user · (c) a hardcoded table.
-**My lean: (a), strongly.** It is impersonal by construction, batched, cached, versioned, retroactive, and it is the commons' entire reason for existing. (c) is the anti-goal restated.
-
-**D2 — Does a second, personal model call exist?**
- · **(a) no — compose options deterministically from the implication + the account registry** · (b) yes, when an implication is ambiguous.
-**My lean: (a) first.** Prove the deterministic composition is insufficient before adding a personal call; every personal call is cost, latency, privacy surface and a T9 risk. Revisit with measurement.
-
-**D3 — How much does Viva do without asking?**
- · (a) auto-assign category only · **(b) auto-assign category always, and the major when the implication is *forced*; propose otherwise** · (c) propose everything.
-**My lean: (b).** This is the "feels intelligent" lever, and *report what you did* is what keeps it honest rather than presumptuous.
-
-**D4 — Rebuild or extend?**
- · (a) new slice extending Viva listens in place · **(b) this restructure: enrichment gains implications, the queue is rewritten around the three tiers, the machinery of rulings in your own words is retargeted** · (c) revert Viva listens.
-**My lean: (b).** Not a revert — the write side of Viva listens is right and its read side is retroactive, so this is repointing, not rebuilding. (c) would throw away work that is correct for Tier 3.
-
----
-
-## What I'd want to measure before committing
-
-Honest gaps, because this doc is an argument and not yet a result:
-
-- **What fraction of the real vault is Tier 1?** If it's 90%, this change removes most of the queue and the case is settled. If it's 40%, the balance of effort shifts. *One projection query over the existing vault answers this today, before any code changes.*
-- **Can a model reliably produce implications?** The eval harness already exists and can be pointed at this: given a category/subcategory, does it produce the right relationship, with the right direction, without inventing one for a supermarket? **Inventing structure where none exists is the new ruin case** — the false positive that would create phantom accounts across a whole vault.
-- **Does the commons hold?** An implication must be checked to carry no personal residue before it can be shared — the T9 lint that already exists, applied to a new field.
-
----
-
-# The refactor, concretely
-
-Written against the code as it stands. **Nothing here touches ingest, verification or posting** — the write side is where mistakes are permanent, and none of this needs one. Everything below is enrichment plus read side, which means it is retroactive on the existing vault and reversible.
-
-## Step 0 — Measure before changing anything (no code moves)
-
-`viva.debug.tiers`: for every movement, classify it Tier 1 / 2 / 3 using *today's* catalog, and print the counts and money in each. This is a pure projection query.
-
-It decides whether the rest is worth doing, and it is also the **before** half of the only number that matters: *how many questions did the queue ask, and how many should it have asked?* Run it again after and the difference is the result.
-
-## Step 1 — Enrichment learns to imply (`merchantcore`)
-
-`MerchantRecord` already carries a free `attributes` dict, and `MerchantEnriched` already syncs it into the ledger — so **no new event type and no schema migration.** Two fields go in:
-
-- `counterparty_kind`: `business | instrument | peer`. This **replaces `_CONDUIT_MARKERS`** — whether "check" names an instrument rather than a business is a universal a model should tell us and a keyword list should not.
-- `implies`: a list of `{relationship, major, on, account_group, compound, confidence, documents}`, where `on` is one of `inflow | outflow | both` rather than a pair of flags, and `compound` marks a payment that is normally several things at once. Empty for the vast majority — **a supermarket implies nothing**, and saying so must be the easy, default answer. _(Field names corrected 2026-08-14: this section and the diagram above said `on_inflow`/`on_outflow`, `account_shape` and `nature_of_counterparty`; the code, the active `enrich-v6` prompt and all four consumers have always said `on`, `account_group` and `counterparty_kind`, and this document's own build report at the end already used the right names. The stale names were the dangerous kind: `clean_implications` silently defaults `on` to `"both"` and drops an unknown `account_group` to `""`, so a new prompt written from the old diagram would degrade data without failing.)_
-
-New prompt `enrich-v3` in the versioned library (append-only; `enrich-v2` retained). The **new ruin case for the eval** is *inventing structure where none exists*: a model that decides a coffee shop implies a loan would create phantom accounts across an entire vault. That failure gets the same treatment as an invented split — disqualifying, never averaged.
-
-Cost: unchanged. Same batched call, ~40 merchants at a time, a few more output tokens each.
-
-## Step 2 — The read side derives (`projection/`)
-
-- **Delete `_TRANSFER_HINT_CATEGORIES` / `_TRANSFER_HINT_SUBCATEGORIES`.** Nature's rung 4 stops being a keyword guess and becomes *"what does this counterparty's implication say, given the direction of this movement?"* — with the implication's own confidence deciding whether the result is provisional.
-- Add `implication_of(movement)` and `tier_of(movement)` as derived reads. Both are projections: **retroactive for free, no re-ingest**, consistent with *abstract the read side early*.
-- `derived_category` already fills Tier 1 categories from the catalog. That part needs nothing — which is why the Tier 1 fix is mostly *deletion of a question*, not new machinery.
-
-## Step 3 — The queue asks a tenth as often (`questions.py`)
-
-This is where the felt change happens.
-
-- **Tier 1 raises nothing.** `_nature_questions` currently fires for every enriched merchant decided by hint-or-default. That is the "we already knew and asked anyway" bug, and removing it is the single biggest improvement in this document.
-- **Tier 2 becomes a proposal, not a question**: what we believe, what we're unsure of, and options composed from the implication matched against existing accounts (the account matcher, deterministic). Free text stays as the escape.
-- **Tier 3 keeps today's per-transaction question** — checks, ATMs, Zelle — which is already correct.
-
-## Step 4 — `listen.py` sheds its rules and keeps its spine
-
-Delete `CORROBORATION`, `_DEFAULT_GROUP`, `_group_for`, and `suggest_answers`'s substring matching. Every one of them is replaced by enrichment output: the document that proves a claim, the account's place in the hierarchy, and the order of the offered answers are all properties of the *implication*, learned once and cached, not of a table we maintain.
-
-`interpret` / `propose` / `apply_proposal` / `Proposal` / `RulingRecorded` / the majors / `origin` / `MIXED` — **all unchanged.** They stop being the front door and become the correction channel and Tier 3's primary path, which is what they were always good at.
-
-## Step 5 — Prove it
-
-- `test_tiers.py`: a supermarket asks nothing; a mortgage servicer proposes; a check asks per transaction.
-- Extend `eval_listen` (or a sibling) to score **implication quality**, with *invented structure* as ruin.
-- The real-vault run, which the standing practice requires and Viva listens never got: **Step 0's numbers, before and after.**
-
-## Order, and why
-
-Steps are strictly ordered by reversibility. Step 0 changes nothing. Step 1 adds fields to an existing bag. Steps 2–4 are read-side and deletion. **No event schema changes, no migration, no re-ingest** — and if the implications turn out to be unreliable, reverting is deleting a projection, not unwinding a ledger.
-
----
-
-## Deferred / out of scope
-
-Multi-party or household implications. Using implications to *predict* future obligations (that is Slice 8). Sharing the implication commons with other users (the mechanism should be built commons-ready and the sharing switched on separately). Any change to the ingest, verification or posting layers — this proposal touches only enrichment and the read side, which is deliberate: **the write side is where mistakes are permanent, and none of this needs one.**
-
----
-
-## What the build showed (2026-07-25)
-
-**The audit was worse than the diagnosis.** Counting properly found **nine** raw-text classifiers, not five, and **four predate Viva listens**: `_TRANSFER_WORDS` / `_CARD_WORDS` / `_DEPOSITORY_WORDS` (transfer links), `_CASH_MARKERS` (positions and investments), `_PEER_MARKERS` (the merchant catalog). So this was never one slice drifting — it is a **reflex**: every time the code met ambiguity in raw text, it reached for a word list. Naming that is more useful than blaming a slice, because the reflex will recur unless the alternative is easier than the list, which is the point of putting implications where enrichment already runs.
-
-> **Amended 2026-07-30 — the last three are gone.** `_TRANSFER_WORDS`,
-> `_CARD_WORDS` and `_DEPOSITORY_WORDS` were deleted from the transfer matcher,
-> along with two stopword lists the audit had not counted. `_CARD_WORDS` turned
-> out to be the load-bearing one and it was **always true** — a card statement
-> prints "card" on nearly every line — so it was approving links rather than
-> checking them, and it had linked a cash withdrawal to an unrelated card payment
-> of the same amount. The replacement is a property of the accounts rather than of
-> the language, and the tie between equally-named candidates is broken by the date
-> the bank printed on the line. Full account in
-> [transfer-links-and-cross-document-corroboration.md](transfer-links-and-cross-document-corroboration.md#the-evidence-a-link-stands-on).
->
-> The reflex this section names is real and the deletion confirms the diagnosis:
-> the list was reached for because it was one line and the alternative looked like
-> five. It is worth adding one test the audit did not have — **measure how often a
-> classifier says no.** A rule that never refuses is not classifying, and cheapness
-> plus always-true is exactly the profile of a rule nobody audits.
-
-*(Not everything that looks like a table is drift. `PRIMARY_CATEGORIES`, `DEDUCTION_ACCOUNTS`, `BROKERAGE_CASH_IN/OUT` are **schema we deliberately own**, mapping our own structured field values. The drift is specifically **classifying raw descriptors by substring**.)*
-
-**Deleted:** `_TRANSFER_HINT_CATEGORIES`, `_TRANSFER_HINT_SUBCATEGORIES`, `_CONDUIT_MARKERS` + `is_conduit`, `CORROBORATION`, `_DEFAULT_GROUP`, `_group_for`, and `suggest_answers`'s substring matching. Each is now a property of the counterparty's implication — `major`, `account_group`, `documents`, `counterparty_kind` — learned once, cached, versioned, shareable.
-
-**Measured, on a synthetic vault of six movements** (four ordinary merchants, one mortgage servicer, one check):
-
-```
-before:  6 questions          — one per movement, including the supermarket
-after:   2 questions          — 33 per 100 movements
-         settled     4  67%   handled without asking
-         structural  1  17%   proposed, with its grounds
-         unknown     1  17%   asked, one transaction at a time
-```
-
-**Two-thirds of the queue disappeared** — and the two questions that remain are the two a person would actually ask.
-
-### What changed in the building
-
-- **`implication_for(merchant, inflow)`** had to exist separately from `implication_of(movement)`. `propose` needs to ask what a counterparty implies *before* it has a movement in hand, and scanning movements to find out was both slow and wrong for a proposal being composed.
-- **Confirming a `suggested` implication changes no figure — it removes the doubt about one.** That surfaced when a test asserted spending would drop on confirmation and it didn't: the implication had already excluded it, provisionally. That is the ladder working, and it is a better story than the old one: *"I believed this, and now I'm sure."*
-- **Unenriched counterparties raise no nature question at all.** Asking what money *became* before knowing *who received it* is the wrong order, so the flow is strictly ingest → enrich → ask. `debug.tiers` says so out loud when a vault has unenriched merchants, because otherwise the measurement would look artificially question-heavy.
-- **Tolerant on transport noise, strict on claims.** `clean_implications` accepts `" Asset "` (whitespace and case are noise) and drops `"assets"` or `"liability payment"` outright. An unrecognised `confidence` degrades to `suggested` and an unrecognised direction to `both` — always toward the rung that **asks** rather than the rung that **acts**.
-
-### The instance that sized the tier work
-
-On the first real run, **185 counterparties sat in `unenriched`** — the tier meaning "we will identify this later" — about counterparties nothing will ever identify, because the privacy boundary means enrichment can never see a peer or an instrument. A tier that promises a future that cannot arrive is not merely inaccurate; it hides the size of the genuinely unknown set behind a much larger number.
-
-### Still to do
-
-**The real-vault run.** Everything above is measured on synthetic data. `python -m viva.debug.tiers` gives the honest before; `python -m viva.enrich` under `enrich-v3` fills in the implications; running `debug.tiers` again gives the after. The human rulings already made survive — `reset_categorization` keeps them by default, and they were true regardless of how naively they were asked for.
-
----
-
-## Amended 2026-08-01 — the key, and what follows tier 2
-
-**The merchant key is the brand.** The flow above said *normalize descriptor →
-merchant key*. Enrichment had always filed what it learned under the brand a
-resolution layer named, so the two keyspaces never met and a vault could hold a
-full catalog while reading as though it held none. The key is now one property:
-the normalized brand where a layer could name one, the normalized descriptor
-where none could. It is resolved for the whole vault at once, because the ACH
-company-name boundary is a property of the corpus rather than of any single
-line, and every lookup considers both candidates so that a person's own answer,
-recorded before grammars existed, is not stranded under the older name.
-
-**Tier 2 now has a successor.** An informed proposal names what the product
-already believes about a *movement*. What it cannot do is ask what the *thing*
-is — a property, a loan, a term deposit each have a shape, and a movement does
-not carry it. That is the interview
+**State:** built
+**Rules:** PROJ-34, PROJ-35, PROJ-36, PROJ-37, PROJ-38, PROJ-39, PROJ-40
+
+## Rules
+
+### PROJ-34 — what a counterparty implies is impersonal knowledge, learned once
+**State:** enforced
+**Code:** merchant/merchantcore/enrich.py:149
+**Test:** product/tests/test_tiers.py::test_a_counterparty_that_implies_structure_is_proposed_not_asked
+
+1. `counterparty_kind` and `implies` are produced during merchant enrichment and stored on the merchant record's attributes, beside category and subcategory.
+2. Enrichment is batched, sees nothing about the person, is cached per merchant and is versioned by its prompt.
+3. The knowledge arrives through the merchant event already in use; the read side re-derives, so it applies retroactively with no re-ingest and no new event type.
+4. An implication carries structure only — a relationship, a major, a direction, an account group, a document — and no sentence for anyone to say.
+
+### PROJ-35 — three tiers, and the rule is ask only where the counterparty cannot tell us
+**State:** enforced
+**Code:** product/viva/ledger/projection/tiers.py:26
+**Test:** product/tests/test_tiers.py::test_an_ordinary_counterparty_is_settled_and_silent
+
+1. A known counterparty implying nothing is `settled`: the category and the major are assigned and no question is raised.
+2. A counterparty implying structure is `structural`: an informed proposal carrying its grounds and specific options, never a naive open question.
+3. An instrument or a peer is `unknown`: one real question per transaction, free text first-class.
+4. A counterparty enrichment has not reached is `unenriched` and raises no nature question at all — the order is ingest, enrich, then ask.
+5. A descriptor that may never be shared is `unknown` rather than `unenriched`, because an identification that cannot arrive must not be promised.
+
+### PROJ-36 — direction is part of the implication, never a branch in the caller
+**State:** enforced-with-exception
+**Code:** product/viva/ledger/projection/merchants.py:146
+**Test:** product/tests/test_tiers.py::test_the_same_counterparty_means_opposite_things_by_direction
+
+1. An implication carries `on` — inflow, outflow or both — and the caller selects on that data rather than on an `if`.
+2. An implication that does not apply in this direction is ignored, and money in from a lender and money out to one reach different conclusions.
+
+**Exception:** product/viva/ledger/projection/merchants.py:152 picks the direction from the posted sign (`m.amount > 0`) rather than from `money_effect(kind, amount)`, so on a liability account the implication is selected for the wrong direction.
+
+### PROJ-37 — the confidence ladder decides how decisively an implication is applied
+**State:** enforced
+**Code:** product/viva/ledger/projection/movements.py:279 (assertion 1); merchant/merchantcore/enrich.py:205 (`clean_implications` — assertions 2 and 3: `.strip().lower()`, an unknown `major` dropped and logged at :224, `on` defaulting to `both` at :228, `confidence` to `suggested` at :231)
+**Test:** product/tests/test_tiers.py::test_forced_is_decisive_and_suggested_says_it_is_not
+
+1. A `forced` implication is applied and is decisive; a `suggested` one is applied and marks the movement provisional; an absent implication leaves the default.
+2. An unrecognised confidence degrades to `suggested` and an unrecognised direction to `both` — always toward the rung that asks rather than the rung that acts.
+3. Tolerant on transport noise, strict on claims: whitespace and case are noise, and a value outside the closed vocabulary is dropped and logged.
+
+### PROJ-38 — a model writes the rules and deterministic code applies them
+**State:** by-review-with-exception
+**Code:** product/viva/ledger/projection/merchants.py:155
+**Test:** none
+
+1. Whether a descriptor names a business, an instrument or a person is learned at enrichment and stored, never matched against a word list in code.
+2. The major, the account group and the document that would prove a claim are properties of the implication, learned once and cached, rather than entries in a table this project maintains.
+3. Applying an implication is deterministic: auditable, free, offline, unit-testable, and incapable of inventing a number.
+
+**Exception:** two substring classifiers over raw text remain — product/viva/ingest/brokerage.py:154 (`_CASH_MARKERS`) and merchant/merchantcore/normalize.py:31 (`_PEER_MARKERS`, which fails closed by design).
+
+### PROJ-39 — a rhythm question is licensed by two facts of one record
+**State:** enforced
+**Code:** product/viva/ledger/projection/rhythm.py:64
+**Test:** product/tests/test_rhythm.py::test_a_merchant_with_no_billing_prior_is_never_asked_about
+
+1. A rhythm proposal is raised only where the catalog record says the counterparty is a business **and** says a standing arrangement with them is possible.
+2. A record naming a rail, naming a person, or naming no kind at all raises nothing, however it bills.
+3. The label withholds the question and never the measurement: the flow is measured either way.
+
+### PROJ-40 — a person is not a counterparty on the rhythm axis
+**State:** enforced
+**Code:** product/viva/ledger/projection/rhythm.py:224
+**Test:** product/tests/test_rhythm.py::test_a_merchant_with_no_billing_prior_is_never_asked_about
+
+1. A movement whose other side a grammar slot declared a party is dropped before any flow is formed: no measurement, no hypothesis, no question, no subject a ruling could be written under.
+2. The limit is the declaration's: a person's name in a `{brand}` slot is declared a person by nothing and is sorted like any merchant.
+
+## Why
+
+Viva listens worked and was aimed at the wrong moment. **It made the *answer*
+intelligent and left the *question* stupid.** The queue asked *"Is this money
+spent, or something you now own?"* about a counterparty the vault had already
+enriched as loan payments and mortgage servicing. We knew it was a mortgage
+servicer. We asked anyway. Then a model was spent interpreting a sentence whose
+content we could have proposed ourselves.
+
+Three costs follow and they compound. The person carries load we could have
+carried — being asked what you already told the system is the opposite of a
+butler. The model call happens at the point of least leverage: one sentence, one
+merchant, one person, uncacheable, unshareable, repeated forever, when the same
+reasoning done once per merchant would serve every transaction and every other
+user. And it reads as unintelligent even when it is correct, because a person
+would already have a hypothesis.
+
+**The correct shape is the inverse: the product forms the belief; the person
+confirms or corrects it.**
+
+**The missing idea is that a merchant category implies structure.** Mortgage
+servicing is not a weak hint about spending. It is a near-certain statement about
+the shape of a financial life: there is a property, there is a loan, the payment
+is compound, an escrow account probably exists, and a tax form exists once a
+year. None of that is uncertain. What is uncertain is narrower and much more
+answerable — *which* property, and whether they want it tracked. Most categories
+imply nothing at all: groceries, utilities, restaurants, streaming. Those should
+be assigned silently, which is most transactions, and that deletion of a question
+is the single largest improvement here.
+
+**Where that knowledge belongs is the decision everything else follows from.**
+*"Mortgage servicers imply a property and a loan"* is impersonal, universal and
+true for everyone; it carries no amount, no date, no account, no name. So it
+belongs in merchant enrichment, under the same T9 boundary that already governs
+category and subcategory. That single placement resolves the rest: the call is
+batched, the knowledge is T9-safe by construction, cached forever, versioned by
+the enrichment prompt, retroactive because the read side re-derives, and
+shareable — which is precisely the commons the project has been building toward.
+Compare where the earlier design put it: one personal call, per sentence,
+uncacheable, unshareable. Same reasoning, wrong side of the boundary.
+
+Enrichment vendors already infer *"financial products held with other
+institutions"* from transaction data and sell it to banks for cross-sell. The
+capability is proven; the *direction* is what differs. They infer your products
+to market to you. Here the same inference describes you to yourself, on your
+machine, with the derived knowledge shared only in its impersonal form. **We are
+not inventing the inference, we are inverting who it serves.**
+
+**Notice what is absent: a second personal model call.** The impersonal step did
+the thinking; turning an implication into this person's options is matching
+against their own account registry, which is the account matcher pointed at yet
+another target. Deterministic, free, offline, testable. That is the answer to
+*"send it to a model saying I have this, what could it be"* — yes, but once per
+merchant rather than once per person per transaction. Same intelligence, orders
+of magnitude less of it, and it becomes an asset instead of a cost.
+
+**The confidence ladder reuses the contract this project already has** for
+verification findings — forced, suggested, unlocalized. Three benefits from
+reuse rather than a new vocabulary: it is already tested, already understood, and
+it keeps *never bluff* structural. A forced application is one we can defend, a
+suggestion states its own doubt, and an open question admits we do not know.
+Confirming a `suggested` implication changes no figure — **it removes the doubt
+about one**, which surfaced when a test asserted spending would drop on
+confirmation and it did not. That is the ladder working, and a better story than
+the old one: *I believed this, and now I'm sure.*
+
+**Rules versus intelligence, reconciled: a model writes the rules, deterministic
+code applies them.** Nobody codes *mortgage → house*. A model reading a merchant
+category produces the implication from world knowledge, generally, for categories
+nobody anticipated. The implication is stored as data, versioned and correctable.
+Applying it is deterministic. This is the same stance as *we own the schema, the
+model assists authoring* and *read documents like a person would, no
+per-institution parsers*. A hardcoded table is a rule *we* wrote and will be
+wrong about; a learned implication is a rule *the world* wrote that we can check,
+cache and share. **And a person's correction beats both, permanently** — memory
+of the user is the moat, not the model.
+
+**The self-inflicted problem this fixed was a reflex, not a slice.** Building the
+sentence path produced five separate keyword tables; counting properly found
+**nine** raw-text classifiers, four of which predated it. So every time the code
+met ambiguity in raw text, it reached for a word list — and the project's own
+anti-goals say that whole class of workaround is obsolete. Naming the reflex is
+more useful than blaming a slice, because it recurs unless the alternative is
+easier than the list. The most instructive deletion was a card-word list that was
+**always true** — a card statement prints "card" on nearly every line — so it was
+approving links rather than checking them, and it had linked a cash withdrawal to
+an unrelated card payment of the same amount. Worth a standing test nobody has
+written: **measure how often a classifier says no.** A rule that never refuses is
+not classifying, and cheapness plus always-true is exactly the profile of a rule
+nobody audits.
+
+Not everything that looks like a table is drift. A mapping of our own structured
+field values is schema we deliberately own. The drift is specifically
+**classifying raw descriptors by substring**.
+
+**The measurement.** On a synthetic vault of six movements — four ordinary
+merchants, one mortgage servicer, one check — the queue went from six questions
+to two: four settled without asking, one proposed with its grounds, one asked one
+transaction at a time. Two-thirds of the queue disappeared, and the two that
+remain are the two a person would actually ask.
+
+**Two things the build taught.** `implication_for(merchant, direction)` had to
+exist separately from `implication_of(movement)`, because a proposal must ask
+what a counterparty implies *before* it has a movement in hand. And a tier that
+promises a future that cannot arrive hides the size of the genuinely unknown set:
+185 counterparties sat in `unenriched` on the first real run, about counterparties
+nothing will ever identify, because the privacy boundary means enrichment can
+never see a peer or an instrument.
+
+**The ladder runs on a second axis too.** Asked of a *rhythm* rather than a
+nature, tier 1 is a merchant the world only ever sells to per purchase — silence,
+however many times it was bought from — and tier 2 is a merchant one can deal
+with by a continuing arrangement, which earns one informed proposal per
+counterparty and direction. The impersonal knowledge that sorts them is the
+catalog's billing field, and it licenses the question without ever answering it:
+what the person actually arranged is theirs to say, and where the ledger has
+measured enough to have an opinion, the measurement is what the proposal
+proposes.
+
+**Nothing was thrown away.** The scoped ruling event, the four majors, the
+derived chart of accounts, `origin`, the mixed nature, per-transaction conduits,
+the Proposal type and the eval harness all earned their place and keep doing
+their job. What changed is the entry point — the product opens with a belief and
+the sentence becomes the correction channel and the unknown tier's primary path
+— and the model call moved upstream, from per-sentence to per-merchant, from
+personal to impersonal, from uncached to cached.
+
+**Tier 2 has a successor.** An informed proposal names what the product already
+believes about a *movement*. What it cannot do is ask what the *thing* is — a
+property, a loan, a term deposit each have a shape a movement does not carry.
+That is the interview
 ([the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md)):
-the implication says an instrument exists, the schema pack says what may be
-asked about it, and the answer is a scoped ruling like any other. A tier-2 or
-tier-3 answer that would bring an account into being is also no longer applied
-in the request that raised it — it comes back as a proposal for an explicit
-yes, and an answer that names nothing at all is met with a question rather than
-a placeholder path.
+the implication says an instrument exists, the schema pack says what may be asked
+about it, and the answer is a scoped ruling like any other.
+
+**The merchant key is the brand.** Enrichment files what it learns under the
+brand a resolution layer names, so a keyspace that normalized descriptors instead
+would never meet it, and a vault could hold a full catalog while reading as
+though it held none. The key is one property: the normalized brand where a layer
+could name one, the normalized descriptor where none could — resolved for the
+whole vault at once, because the ACH company-name boundary is a property of the
+corpus rather than of any single line.
+
+Invariants this leans on: T2/ADR-010 (a model may perceive and infer;
+deterministic code decides and posts), T4, T9 (the impersonal/personal boundary,
+leaned on hard), X2, X3, I5, and principle 5 (serve, don't overwhelm). The
+precedence ladder a stream kind enters is in
+[honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md);
+the confidence vocabulary is
+[verification-findings-and-correction.md](verification-findings-and-correction.md);
+the word-list deletion is recorded in
+[transfer-links-and-cross-document-corroboration.md](transfer-links-and-cross-document-corroboration.md).
+
+## Open
+
+- The direction defect: `implication_of` reads the posted sign, so on a card the
+  implication is selected for the wrong direction. Known and scheduled as its own
+  cycle with a structural guard against the next one.
+- The rhythm fence stands on a model-authored label that the next enrichment
+  re-authors, so a reply saying `business` turns it off for the very keys it was
+  built for. It narrows the residue a grammar's declaration cannot reach and does
+  not seal it.
+- Because the label withholds the question and never the measurement, a peer
+  relationship is still counted and totalled locally — so a later read over flows
+  must license itself, inheriting nothing from this one.
+- What fraction of a *real* vault is each tier. The synthetic measurement is
+  suggestive and settles nothing; the standing practice's real-vault before-and-
+  after has not been run.
+- Whether a model reliably produces implications, measured. **Inventing structure
+  where none exists is the ruin case** — a coffee shop implying a loan would
+  create phantom accounts across a whole vault — and it must be scored
+  disqualifyingly rather than averaged against successes.
+- Whether the commons holds: an implication must be checked to carry no personal
+  residue before it can be shared, which is the existing boundary lint applied to
+  a new field.
+- Multi-party and household implications; using implications to *predict* future
+  obligations; switching on sharing of the implication commons.
+- A standing test nobody has written: how often does each classifier refuse?

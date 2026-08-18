@@ -1,66 +1,96 @@
 # Eval Harness Design (A8) — how honesty is measured, continuously
 
-**Status:** Design — PARTIALLY BUILT: `eval_listen` scores sentence interpretation; **document reading has no live measurement yet** (the project's largest standing gap) · **Last updated:** 2026-07-21 · **Covers:** discovery-map A8. The last discovery design doc.
-**Invariants touched:** T1 (every eval case checks a figure *and* its source), T2 (grading is deterministic), T3 (eval runs are captured), X2 (the confidently-wrong rate is the alarm), and it is the enforcement mechanism behind promise #1 ("never bluff a number")
-**Related:** [benchmark-harness-design.md](benchmark-harness-design.md) (the one-time exam this reuses), [model-trust-policy.md](model-trust-policy.md) (feedback loop 3).
+**State:** partial
+**Rules:** PROG-24, PROG-25, PROG-26, PROG-27, PROG-28, PROG-29, PROG-55
 
-## What it is, and why it's not the benchmark
+## Rules
 
-The **benchmark** (viva-bench) is a driving test — a one-time exam a *model* sits to earn admission. The **eval harness** is the dashboard warning light — a continuously-running honesty test on the *whole system*, forever after. The benchmark asks "is this model good enough to admit?" The eval harness asks, on every code change, model swap, and schedule tick, "is OrionViva *still* telling the truth today?"
+### PROG-24 — Honesty is checked before accuracy
+**State:** enforced-with-exception
+**Code:** product/viva/eval_listen.py:55 (verdict vocabulary), product/viva/eval_listen.py:71
+**Test:** product/tests/test_eval_listen.py::test_declining_is_safe_and_never_counted_as_confidently_wrong
 
-It exists because an AI system's honesty rots **silently**. A button that breaks is obvious; a model update or a refactor that makes Viva confidently wrong about 2% more figures looks like nothing at all. The project's own rule — *an untested trust property doesn't exist* — makes this non-negotiable: the eval harness is how "never bluff a number" becomes a thing measured every day, so a slip triggers an alarm instead of a betrayed user.
+1. A case checks honesty, then accuracy, then provenance, in that order.
+2. A wrong-but-flagged answer passes the honesty check; a wrong-but-confident answer fails it.
+3. A reading the model declines to make is safe, never confidently wrong.
 
-## The unit: a canonical eval case
+**Exception:** only the sentence-interpretation path is measured. `eval_listen` grades a model reading a sentence into a structured ruling (product/viva/eval_listen.py:1). Document reading has no live measurement, and the answer path is graded by no harness at all.
 
-One case is a known-truth expectation the system is asked to satisfy:
+### PROG-25 — The confidently-wrong rate is the headline, and its target is zero
+**State:** enforced
+**Code:** product/viva/eval_listen.py:161, product/viva/eval_listen.py:196-202
+**Test:** product/tests/test_eval_listen.py::test_an_invented_split_is_ruin_even_when_the_majors_are_right, product/tests/test_eval_listen.py::test_an_amount_in_the_reply_is_ruin
 
-```
-question:        "What is the closing balance on the March checking statement?"
-expected_value:  <the true figure>            # from a frozen key or a user correction
-expected_source: {doc, page, region}          # the provenance the answer must cite (T1)
-expected_grade:  verified | corroborated | ... # what confidence the system should assign
-locale/currency: en-US / USD                   # normalization context (I2)
-```
+1. A run reports the confidently-wrong rate as its headline figure, not accuracy.
+2. A ratio nobody stated and a figure from the model's head are each ruin, whatever else the reading got right.
+3. A figure the person themselves stated is not ruin.
 
-A case checks three things at once, in priority order:
-1. **Honesty** — when the system is *wrong or unsure*, does it *say so*? (The load-bearing check.)
-2. **Accuracy** — is the figure correct?
-3. **Provenance** — does it cite the right source region?
+### PROG-26 — A call that never reached the model is scored by nothing
+**State:** enforced
+**Code:** product/viva/eval_listen.py:60, product/viva/eval_listen.py:150-161
+**Test:** product/tests/test_eval_listen.py::test_a_broken_pipe_is_never_reported_as_a_clean_result, product/tests/test_eval_listen.py::test_a_partly_broken_run_scores_only_what_it_measured
 
-The asymmetry is the whole point: a wrong-but-flagged answer *passes the honesty check* (a bad day, handled); a wrong-but-confident answer *fails it* (the ruin case). The headline metric is the **confidently-wrong rate**, and its target is zero.
+1. A call that never reached the model is excluded from every rate and reported on its own.
+2. A run in which nothing reached the model reports no confidently-wrong rate at all rather than reporting zero.
+3. A declining model is still distinguished from a broken pipe.
 
-## Where cases come from (all near-free, by prior design)
+### PROG-27 — The eval runs on every change to trust-critical code
+**State:** unmet
+**Code:** none found (.github/workflows/quality.yml runs the surface gates and their tests, and no eval)
+**Test:** none
 
-1. **Frozen benchmark keys** — the human-audited answer keys (benchmark-harness) seed the first, highest-quality cases: hundreds of figure+source truths on real documents.
-2. **User corrections** — *every* correction is automatically a case: "the system said X, the truth is Y" is exactly a known-truth expectation. The feedback loop that teaches Viva you (the memory moat, trust-policy loop 2) is the *same* machinery that tests her. This is the elegant part: usage generates the test suite for free, and each case is anchored to a real past mistake so the same error can never silently return.
-3. **Hand-written adversarial cases** — a small curated set of the hardest, most dangerous questions (multi-currency net worth, a figure from a page with a missing sibling statement, an ambiguous date), plus the **injection tripwire** (threat-model Q28): a case whose document contains a planted instruction, asserting the system never actuates it and grades the poisoned value `conflicted`.
+1. A change to trust-critical code — verification, the ledger, the model layer, prompts — re-runs the eval before it lands, in pre-commit and in CI.
+2. A change that moves the confidently-wrong rate fails the build.
+3. A new model or a re-tuned local model re-sits the relevant eval slice before it serves ([model-trust-policy.md](model-trust-policy.md), feedback loop 3: every version is a new hire).
+4. A scheduled run on the author's real instance catches drift no code change triggered.
 
-## When it runs
+### PROG-28 — The frozen case set ships with the code and holds nobody's data
+**State:** enforced-with-exception
+**Code:** product/viva/eval_listen.py:48 (`evals/listen_cases.json`)
+**Test:** product/tests/test_eval_listen.py::test_the_key_names_nobody_real, product/tests/test_eval_listen.py::test_the_key_carries_no_amounts_or_account_numbers
 
-- **On every change to trust-critical code** (verify/, the ledger, the model layer, prompts) — pre-commit and CI. A change that moves the confidently-wrong rate fails the build. This is the adversarial-review policy (ADR-009) given teeth.
-- **On every model version change** — a new model or a re-tuned local LoRA re-sits the relevant eval slice before it can serve (trust-policy "every version is a new hire").
-- **On a schedule** (nightly) in the product for the author's real instance — catching drift that no code change triggered (a silently-updated cloud model, per T8).
+1. The case set is frozen and shipped, so any contributor's change is graded against the same honesty bar.
+2. It names no real person, institution or account, and carries no real amounts.
+3. Real personal cases stay local, like the corpus.
+4. A case may accept a set of correct readings, because some sentences have more than one right answer.
 
-## What it measures (deterministic, reusing viva-bench)
+**Exception:** the *names nobody real* half of assertion 2 is unenforced anywhere but the author's machine. `test_the_key_names_nobody_real` reads a gitignored `.denylist` (product/tests/test_eval_listen.py:139) and skips when it is absent, which is every other machine and CI. The no-amounts half is always on.
 
-The scorer already exists (benchmark `score.py`): per-case accuracy, provenance validity, and the confidently-wrong rate. The eval harness is mostly *wiring the existing scorer to run continuously against the product's answer path* rather than one-off against raw model output. Outputs a trend line per metric; the alarm is any upward move in confidently-wrong, or a regression past a set band on the others.
+### PROG-29 — The answer path returns structure, not prose
+**State:** enforced-with-exception
+**Code:** product/viva/tools/envelope.py:1 (figures carry value, quantity, kind, grade, `record_ids` and boundary)
+**Test:** product/tests/test_tools.py::test_balances_match_the_projection_and_carry_grades, product/tests/test_tools.py::test_every_figure_a_tool_emits_says_what_it_measures
 
-**The one genuinely new thing** vs. the benchmark: the benchmark grades *extraction* (document → claims); the eval harness grades *the full answer path* (question → tools → composed answer → cited figure + grade). It tests the tool-using agent (the verbs in [agent-toolset.md](agent-toolset.md)) and the composer's refusal-of-uncited-figures (T1 enforced), not just the reader. So it needs a thin harness that poses a question to the assembled system and inspects the structured answer (figure, grade, source), which only exists once there's a v0 to point at.
+1. Every read returns a figure with its grade and the records behind it, not a bare number.
+2. A correction is appended as an event and never overwrites a value.
+3. A correction is replayable as an eval case: it carries the question, the truth and the source.
 
-## Sequencing (honest about what's buildable when)
+**Exception:** assertion 1 is narrower than written: an `activity` figure and a `hypothetical` figure carry no grade at all, by design (product/viva/tools/envelope.py:12-24) — the first costs candour and nothing else, the second rests on the asker's premise rather than on evidence. Assertion 3 is unmet: `correction_applied` (product/viva/ledger/events.py:228) appends the target, the old and new values, who ruled, and the document provenance — and carries no question text, so a stored correction is not yet a replayable eval case.
 
-- **Now (discovery):** the *design* (this doc) + the *seed corpus* (freeze the benchmark keys). No product to run against yet, so the harness itself waits.
-- **Build v0 (Phase IV):** the eval harness runs against the first assembled answer path — and should be wired *before* the first feature is called "done," so honesty is measured from the first commit that answers a question. It is Phase IV infrastructure, not a later add-on.
-- **Trust trial (Phase V):** the nightly schedule on the author's real instance; corrections accumulate into the growing case set. This is how "you believe an answer without re-checking it" becomes an *event the harness can witness* (the confidently-wrong rate holding at zero across months of real use) rather than a feeling.
+### PROG-55 — A case states the source it expects and the grade it expects
+**State:** unmet
+**Code:** none found (a case in `product/viva/evals/listen_cases.json` carries the sentence, the descriptor, a category and subcategory and a set of accepted readings — no source and no grade; nothing in the tree names an `expected_source` or an `expected_grade`)
+**Test:** none
 
-## Consequences for architecture
+1. A case carries an expected source — document, page and region — which is the provenance the answer must cite (T1).
+2. A case carries an expected grade: the confidence the system should assign, from the same vocabulary the product grades with.
 
-- The product's answer path must return **structured** answers (figure, grade, source, tools used), not just prose — the eval harness reads that structure, and it's the same structure the UI needs for provenance click-through. One shape serves testing, UI, and honesty.
-- Corrections must be stored as **replayable cases** (question + truth + source), not just value overwrites — reinforcing the event-sourced ledger (T4) and the correction-as-event design.
-- A frozen, hashed **eval set** ships with the code (the hand-written + benchmark-seed cases; never real personal cases, which stay local like the corpus) so any contributor's change is graded against the same honesty bar — the ADR-009 review policy, automated.
+## Why
 
-## Open questions (register)
+The benchmark ([benchmark-harness-design.md](benchmark-harness-design.md), whose one-time exam and frozen keys this reuses) is a driving test: a one-time exam a *model* sits to earn admission. The eval harness is the dashboard warning light: a continuously-running honesty test on the *whole system*, forever after. One asks whether a model is good enough to admit; the other asks, on every code change, model swap and schedule tick, whether the product is still telling the truth.
 
-- Q31: Case-set curation — how many hand-written adversarial cases, and who reviews additions (a wrong "expected answer" would erode the bar silently — the eval set itself needs the two-drafter+audit rigor the benchmark keys got).
-- Q32: Alarm thresholds — what movement in the confidently-wrong rate blocks a commit vs. warns; needs the frozen-key baseline to set honestly (same "no false precision" discipline as the trust-policy thresholds).
-- Q33: Regression triage — when the harness reddens, how the failing case points at the cause (model? prompt? verify rule? tool?), i.e. attribution, so a red light is actionable not just alarming.
+It exists because an AI system's honesty rots silently. A button that breaks is obvious; a model update or a refactor that makes Viva confidently wrong about two per cent more figures looks like nothing at all. The project's own rule — an untested trust property does not exist — makes this non-negotiable: the eval harness is how "never bluff a number" becomes a thing measured every day, so a slip triggers an alarm instead of a betrayed user.
+
+The asymmetry between the three checks is the whole point. A wrong-but-flagged answer is a bad day, handled. A wrong-but-confident answer is the ruin case, and no amount of accuracy elsewhere buys it back. That is why the headline metric is the confidently-wrong rate and not accuracy, and why a broken pipe is excluded rather than counted as a pass — a harness that scores its own failure to reach a model as a clean result is an instrument that lies in the direction of passing.
+
+Cases are near-free by prior design. Frozen benchmark keys seed the first and highest-quality ones. Every user correction is automatically a case, because "the system said X, the truth is Y" is exactly a known-truth expectation — so the feedback loop that teaches Viva a person is the same machinery that tests her, usage generates the test suite, and each case is anchored to a real past mistake that can never silently return. A small curated adversarial set covers the hardest questions, including the injection tripwire: a case whose document contains a planted instruction, asserting the system never actuates it and grades the poisoned value `conflicted`.
+
+The one genuinely new thing against the benchmark is what is graded. The benchmark grades extraction, document to claims. The eval harness grades the full answer path — question to tools to composed answer to cited figure and grade — so it tests the tool-using agent — the verbs in [agent-toolset.md](agent-toolset.md) — and the refusal of uncited figures, not just the reader. That is why the answer path must return structure rather than prose, and it is the same structure a user interface needs for provenance click-through: one shape serves testing, interface and honesty at once.
+
+## Open
+
+- Document reading has no live measurement. This is the project's largest standing gap: the harness grades sentence interpretation and nothing else.
+- Q31: case-set curation — how many hand-written adversarial cases, and who reviews additions. A wrong expected answer erodes the bar silently, so the eval set needs the two-drafter-plus-audit rigour the benchmark keys were designed for.
+- Q32: alarm thresholds — what movement in the confidently-wrong rate blocks a commit rather than warning. Setting it honestly needs the frozen-key baseline first.
+- Q33: regression triage — when the harness reddens, how a failing case points at the cause (model, prompt, verification rule, or tool), so a red light is actionable rather than merely alarming.
+- The injection tripwire case is designed and unbuilt.

@@ -1,79 +1,91 @@
 # Categorization & Spending — where your money went, and the moat that learns it
 
-**Status:** Implemented · **Last updated:** 2026-08-08 (the kind-aware counter-leg turned out to be a property of one path; direction is now a named derivation) · **Origin:** Every non-account leg today lands in `Uncategorized`, so "where did my money go?" is unanswerable — and a real-vault run during pay stubs and income showed the `Uncategorized` buckets are worse than empty: their sign is asset-centric, so a card *purchase* files as income. This slice makes the counter-leg honest, then turns each movement into a categorized, graded fact, and makes spending answerable. It is the first real *advice* (job 2), and the categorization stream is the moat — the same correction events that categorize your money are, later and for free, the training data that learns what a merchant is.
+**State:** built
+**Rules:** MON-13, MON-14, MON-15, MON-16, MON-17, MON-18, MON-93
 
-**Invariants touched:** T1 (a category carries provenance — the source line — and a grade), T2 (the counter-leg fix and any amount-split are deterministic and still balance), T4 (a categorization is an append-only correction event, movement-keyed, reversible — nothing overwritten, survives a reingest), I1 (amounts are `(value, currency)`), I5 (the category taxonomy is minimal, overridable **data**, never a US-shaped tree — jurisdiction is an attribute), X2 (a model-proposed category is a graded, visibly-unconfirmed claim). Principle 2 (a category we can't stand behind is shown as an unconfirmed suggestion, never asserted) and principle 7 (Core *suggests and asks*; it does not auto-apply) are load-bearing.
+**Invariants touched:** T1 · T2 · T4 · **M2** · I1 · I5 · X2 · principle 2 · principle 7.
 
-## The architecture (decisions locked with Vishnu, 2026-07-24)
+## Rules
 
-**1. First job: make the counter-leg *kind-aware* (the real-data fix from pay stubs and income).** The `Uncategorized` counter-leg is currently chosen by the sign of the account leg, which is right for an asset and inverted for a liability. It becomes a function of `(kind, direction)`:
+### MON-13 — the counter-leg is a function of kind and direction
+**State:** enforced
+**Code:** product/viva/ledger/postings.py:73 (`counter_account`)
+**Test:** product/tests/test_categorize.py::test_counter_account_is_kind_aware
 
-| account kind | direction | counter-leg |
-|---|---|---|
-| depository (asset) | money in (+) | `Income:Uncategorized` |
-| depository (asset) | money out (−) | `Expenses:Uncategorized` |
-| liability (card) | charge, owed ↑ (+) | `Expenses:Uncategorized` — a purchase **is** spending |
-| liability (card) | payment, owed ↓ (−) | `Transfers:Uncategorized` — a debt reduction, funded by a transfer, **not** an expense |
+1. Money into a depository account posts its counter-leg to `Income:Uncategorized`; money out to `Expenses:Uncategorized`.
+2. A charge on a liability posts to `Expenses:Uncategorized` — a purchase is spending.
+3. A payment on a liability posts to `Transfers:Uncategorized` — a debt reduction, never income (product/tests/test_categorize.py::test_card_purchase_is_expense_not_income).
 
-This alone makes a real spending number possible (card purchases finally count; card payments correctly don't), and it's the prerequisite everything else sits on.
+### MON-14 — a category is a graded overlay, appended and never a re-post
+**State:** enforced
+**Code:** product/viva/ledger/events.py:341 (`category_assigned`); product/viva/ingest/categorize.py:96 (`assign_category`)
+**Test:** product/tests/test_categorize.py::test_categorization_survives_a_replay
 
-**2. A category is a *graded overlay* via correction-as-event — not a re-post.** `CategoryAssigned(movement_key, descriptor, category, grade, by)` is an append-only, reversible event keyed to the same stable movement key transfers use. The projection reads it and moves that movement's counter-leg out of `Uncategorized` into the category. Model-proposed = `unverified`; you confirm = `verified`; (later) a learned rule applied it = `corroborated`. It survives a reingest (content-keyed), never mutates the read, and reuses the correction spine and the overlay pattern from transfer links wholesale.
+1. `CategoryAssigned(movement_key, descriptor, category, grade, by)` is append-only, reversible, and keyed to the stable movement key, so it survives a reingest.
+2. The projection reads the overlay and moves the movement's counter-leg out of `Uncategorized`; nothing is rewritten.
+3. A `by="model"` assignment is graded `unverified`; a `by="human"` one is `verified`, and supersedes it (product/tests/test_categorize.py::test_model_suggestion_is_unverified_human_confirmation_verified).
 
-**3. Core is single-category, suggest-and-confirm.** One category per movement (the common case). The model proposes a generic bucket from its world knowledge (it already knows KROGER is groceries, SPECTRUM is utilities), graded `unverified` so spending is populated immediately but honestly; you confirm or override, which upgrades it to `verified`. Nothing is auto-applied in Core (principle 7). Amount-splits, the tags overlay, and learned auto-apply are deferred (see notes).
+### MON-15 — Core suggests and confirms; it never auto-applies
+**State:** enforced
+**Code:** product/viva/ingest/categorize.py:309 (`suggest_categories`)
+**Test:** product/tests/test_categorize.py::test_model_suggestion_is_unverified_human_confirmation_verified
 
-**4. The category taxonomy is data, and two-level (I5).** The **primary** set is **16 controlled buckets** (`merchantcore.taxonomy.PRIMARY_CATEGORIES` — the single source of truth, informed by an industry scan of Plaid's 16-primary PFC taxonomy), and a **subcategory** the model fills with value ("streaming", "warehouse club") for finer slicing (see [merchantcore-package.md](merchantcore-package.md)). Jurisdiction-neutral, overridable; a person may still assign anything. `spending_by_category` groups by primary; `spending_by_subcategory` is the finer slice — the first two of several slice-and-dice axes (tags and recurrence follow).
+1. A model's category is recorded as a claim graded `unverified`, shown as a suggestion against the source, never asserted as fact.
+2. The model edge is injected (`suggest_fn`), so the mechanism runs offline.
+3. Nothing in Core applies a category on a model's word alone.
 
-**5. The one thing Core must do for the future: capture the merchant descriptor.** Every `CategoryAssigned` event records the movement's raw descriptor (the merchant string, e.g. "AMZN MKTP US*RA30Z3BP0") alongside the category. This costs nothing now and buys the entire merchant layer later: merchant learning becomes a **projection over categorization events we already have** — no re-reading a document, no re-doing a categorization (see notes). The categorizing you do by using the product *is* the training signal.
+### MON-16 — the taxonomy is data, two-level and jurisdiction-neutral
+**State:** enforced
+**Code:** merchant/merchantcore/taxonomy.py (`PRIMARY_CATEGORIES`, 16 labels); product/viva/ingest/categorize.py:31 (`SEED_CATEGORIES`)
+**Test:** product/tests/test_category_identity.py::test_the_known_vocabulary_is_what_every_minting_path_is_offered
 
-## The spending projection
+1. The primary set is a controlled list held in one file and is the single source of truth for it.
+2. A subcategory is the finer slice, and any string is a valid label — no country-shaped table anywhere.
+3. `spending_by_category` groups by primary; `spending_by_subcategory` is the finer view.
 
-With counter-legs kind-aware and categories overlaid, `spending_by_category` (and by time, and eventually by merchant) is the sum of `Expenses:*` postings grouped by category, **excluding transfer-linked movements** (transfer links compose in). This is real spending — card purchases included — replacing the stopgap from pay stubs and income ("outflow from deposit accounts"). "Groceries in March" answers with a grade (how much of it is confirmed vs model-suggested) and provenance (the source lines). The honest envelope stays: a total made of `unverified` guesses says so.
+### MON-17 — every assignment captures the raw descriptor
+**State:** enforced
+**Code:** product/viva/ledger/events.py:341 (`descriptor` on the event body)
+**Test:** product/tests/test_categorize.py::test_spending_by_category_and_assignment
 
-## Autonomy — suggest, don't assert
+1. Each `CategoryAssigned` records the movement's raw merchant string alongside the category.
+2. Merchant learning is therefore a projection over events already written, with nothing re-read and nothing re-done.
 
-The model's category is a claim, graded `unverified`, shown as a suggestion against the source — never asserted as fact. Your confirmation is the authoritative, `verified` event and the moat. This is the same forced/suggested discipline as reconciliation and transfers: the system proposes where it's useful, and the human ruling is what enters the trusted layer. In Core there is no auto-apply; a movement is either your confirmed category or a clearly-marked model suggestion.
+### MON-18 — the derived category is read through one funnel
+**State:** enforced
+**Code:** product/viva/ledger/projection/categories.py:36 (`derived_category`)
+**Test:** product/tests/test_merchants.py::test_per_transaction_override_beats_the_merchant_rule
 
-## Implementation status (as built, 2026-07-24) — audit vs the invariants
+1. A movement's effective category is its per-transaction override, else the strongest catalog record its merchant is filed under, else `Uncategorized`.
+2. Labels are canonicalized at that one funnel, so one alias ruling corrects every aggregate at once.
 
-- ✅ **Kind-aware counter-leg (the first job).** `ledger.postings.counter_account(kind, amount)`: a card purchase → `Expenses:Uncategorized`, a card payment → `Transfers:Uncategorized`, never income. Threaded through the pipeline's postings. Fixes the sign inversion found in pay stubs and income. _Retroactive for free: the user-facing aggregates (`spending_by_category`, `income_by_currency`) re-derive from the immutable **movement** legs kind-aware at query time, so every already-ingested statement reports correctly with **no reingest**. Only the raw `*:Uncategorized` account balances (a pre-fix card purchase still physically sits in `Income:Uncategorized`) stay in the old bucket — cosmetic (debug view), read by no answer. Reingest is optional cleanup, not a correctness requirement._
+### MON-93 — the spending answer says what its total is made of
+**State:** enforced-with-exception
+**Code:** product/viva/answer.py:191 (`answer_spending`); product/viva/tools/ledger_tools.py:1151 (the uncategorized caveat), :1172 (the grade over the movements counted)
+**Test:** product/tests/test_categorize.py::test_answer_spending_reports_categories
 
-  > **The fix was a property of one path, and a later path did not inherit it (2026-08-08).** The counter-leg has been kind-aware since this slice, and the aggregates above re-derive correctly. But `query_ledger`'s transactions summary, written much later against the movement rows directly, split money in from money out by the sign of the posting — and so reported every card purchase as money *received*, with the right magnitude, the right records and the right grade under a false description. Direction is now a named derivation, `projection.movements.money_effect(m)`, next to `is_expense` and `counts_as_spending`: the account's kind decides it, a liability reads the other way up, and nothing computes it inline any more. `list_movements` was the one read still handing out a raw posting sign until 2026-08-09; a row now carries `effect` and the raw signed posting is not a row field at all — see [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md). [Issue #1](https://github.com/vishnuyar/orionviva/issues/1).
-  >
-  > **Amended 2026-08-16: *nothing computes it inline any more* stopped being true within three days of being written, and is true again now.** A third reader — the streams module the rhythm detector is built on — decided direction from the posted sign alone, so a card-paid subscription was grouped, spoken and filed as money *arriving from* the merchant, and a subscription paid half from checking and half on a card became two arrangements with a total each describing half of it. The one derivation now lives in `ledger.streams.money_effect(kind, amount)`, beside the two words `in` and `out` it produces and at the bottom of that package's import graph, with `projection.movements.money_effect(m)` a one-line delegation keeping its name and its callers. A reader holding no account kind raises rather than falling back to the sign, and the rule is now a standing invariant (M2) rather than a sentence in a docstring.
-- ✅ **T4 — category as a graded overlay.** `CategoryAssigned(movement_key, descriptor, category, grade, by)` (append-only, reversible, movement-keyed → survives a reingest — tested). The projection tracks the overlay; a `verified` human ruling supersedes an `unverified` model suggestion.
-- ✅ **X2 / P7 — suggest and confirm.** `suggest_categories(ledger, suggest_fn)` records model suggestions `unverified` (the live model edge is injected, offline-testable); `assign_category(..., by='human')` records `verified`. Nothing auto-applies in Core.
-- ✅ **The spending projection.** `spending_by_category` sums expense movements — card purchases included, transfers excluded — grouped by the overlay category, from movements (not the sign-mixed Uncategorized account balances, which are internal bookkeeping). `answer_spending` reports it with the uncategorized share shown honestly. Replaces the deposit-outflow stopgap from pay stubs and income.
-- ✅ **I5 — taxonomy as data.** A minimal seed set (`ingest/categorize.SEED_CATEGORIES`); any string is a valid category; no US-shaped table.
-- ✅ **T1 / the seam.** Every `CategoryAssigned` captures the descriptor — the merchant-learning seam — and provenance rides on the movement. Surface: a categorization queue (`/api/categorize`, one-tap assign) + a spending-by-category breakdown; `debug.vault` shows spending by category.
+1. The spending answer carries a grade — how much of it is confirmed versus model-suggested — and provenance, the source lines.
+2. `answer_spending` reports the uncategorized share honestly, as a caveat beside the total rather than folded into it (product/tests/test_tools.py::test_an_amount_inside_a_caveat_is_written_like_every_other_amount).
+3. A total made of `unverified` guesses says so.
 
-Honest edges (deferred by scope, noted): merchant normalization + the merchant→category commons + learned auto-apply; amount-splits + the tags overlay; external Party. A live *model* categorizer is injected (`suggest_fn`) but not yet wired to a real model call — like the reader was at first, the deterministic mechanism ships and the network edge is a thin follow-on. Tests: `test_categorize.py` (7); full suite 227 green.
+**Exception:** the confirmed-versus-suggested *mix* of assertion 1 is not computed anywhere. `answer_spending` returns an `Answer` with `grade=None` and no provenance, and the tool read states a single grade — the weakest of the counted movements' grades (product/viva/tools/ledger_tools.py:1172) — so a total holding one unverified assignment reads `unverified`, which is assertion 3, and how much of it is confirmed is never stated. The uncategorized caveat on the tool read is written only where the read is grouped by category (:1152).
 
-## Notes for future slices (read these when you build them)
+## Why
 
-- **Merchant normalization + the merchant→category commons (later).** "AMZN MKTP US*…", "AMAZON.CO", "AMZN Digital" are one **Amazon** — the entity-resolution block (the account matcher) applied to merchants. On top sits a *merchant → category prior* ("Amazon → shopping"), which is **format-knowledge, shareable** (impersonal — about the merchant, not your money), so it follows the [format-commons](format-commons.md) pattern. Three refinements make it different from the format commons: it is a **prior, not truth** (a merchant's category is subjective; your override always wins locally), it is **lazy and locale-sharded** (merchants are millions, long-tail, country-specific — the model bootstraps every novel merchant on first sight; the commons is a *cache* of prior rulings, fetched by region, contributed opt-in and privacy-linted), and it has **two layers** (normalization vs the category prior). Crucially, because Core captured the descriptor on every categorization, this whole layer is a **projection over the existing correction events** — it mines "descriptors containing 'AMZN MKTP' were categorized shopping N times" to learn both the normalization and the prior, with **zero re-ingestion and nothing wasted**, and it only changes *future* suggestions (past confirmed categories stand).
-- **Learned auto-apply (with merchant learning).** Once a merchant's category is confirmed, future matches auto-categorize at `corroborated`; new/ambiguous merchants still ask. The ask-once-then-learn autonomy we used for identity and transfers, turned on for categories — the thing that makes categorization stop being tedious after the first pass. Depends on merchant normalization.
-- **The second mechanism: amount-splits + tags (later).** A movement split across categories by amount (double-entry: $100 Walmart → $70 groceries + $30 household, still balances) via a split-as-overlay; and a many-to-many `tags` overlay (free labels that never balance — "reimbursable", "vacation"). The `tags` field has been on the transaction event since v0 for exactly this. Both are overlays keyed to the movement, so they compose with the single-category work without redoing it.
-- **The external Party (deferred from transfer links).** A merchant, an employer, a landlord are all **Party**; the same descriptor-capturing correction events seed the Party graph. External counterparty attribution (a payment to a real person or biller is a real outflow, not a transfer) is the categorization-side of transfer-linking.
+Every non-account leg once landed in `Uncategorized`, and the bucket's sign was asset-centric: a card *purchase* raised what was owed, so it filed as **income**. Every statement still reconciled — the liability's own balance was correct — but any income or spending total built on those buckets was polluted. Reconciliation guards the figures a document states; it does not guard the interpretation layered on top. Making the counter-leg a function of `(kind, direction)` is the prerequisite everything else sits on, and it was retroactive for free: the user-facing aggregates re-derive from the immutable movement legs at query time, so every already-ingested statement reports correctly with no reingest. Only the raw `*:Uncategorized` account balances keep their old bucket, which is cosmetic and read by no answer.
 
----
+The kind-aware fix was a property of one path, and a later path did not inherit it. `query_ledger`'s transactions summary, written much later against the movement rows directly, split money in from money out by the posting's sign, and so reported every card purchase as money *received* — the right magnitude, the right records and the right grade under a false description. Direction is now a named derivation with the account's kind deciding it (M2), and a reader holding no kind raises rather than falling back to the sign. That rule was re-broken within three days of being written, by the streams module the rhythm detector is built on, which is why it is a standing invariant rather than a note beside the code.
 
-## Categorization & spending (core)
+A category is an *overlay*, not a re-post, for the same reason a transfer link is: per-statement reconciliation must keep holding, and merging or rewriting postings breaks the gate that makes any of it trustworthy. Keeping it an append-only event keyed to content also means a reingest cannot lose it.
 
-**Block(s) seeded:** the **kind-aware counter-leg** (correct P&L buckets for assets and liabilities), **Category** (a graded, descriptor-carrying overlay via correction-as-event), a minimal **seed taxonomy** (data), and the **spending projection** (by category and time). Reuses movement keys, correction-as-event, grade + provenance, the overlay pattern, and transfer-exclusion — genuinely new is the counter-leg fix, the category overlay event, the taxonomy, and the spending projection.
+The suggest-and-confirm split is the moat. The model already knows a supermarket from a cable company, so spending is populated immediately and honestly at `unverified`; a person's confirmation is the authoritative event, and it is the one thing a model call cannot regenerate. That is also why the descriptor is captured on every assignment: it costs nothing at the time and buys the entire merchant layer later as a projection over events already held — the categorizing done by using the product *is* the training signal. Because a merchant's category is a **prior, not truth**, a person's override always wins locally, and the shared layer stays impersonal: a normalized key and a linted example, never amounts or descriptors (T9).
 
-**Open state:** every non-account leg is `Uncategorized`, and worse, the bucket's sign is inverted for liabilities (a card purchase files as income), so "where did my money go?" has no answer and any income/spending total is polluted. *Proofs (red tests):* a card purchase lands in `Income:Uncategorized`; spending-by-category returns everything under `Uncategorized`; a $100 card charge is invisible to any spending figure.
+Exclusion belongs to nature rather than to the category. "Spending excludes transfers" once held only for *linked* transfers, so a movement categorized `transfers` or `loan_payments` was still counted, and one label covered two opposite natures. The rule generalized to derived movement nature, with the category demoted to a suggestion rung — see MON-1 and MON-3 in [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
 
-**Implementation:**
-- Make the counter-leg a function of `(account kind, direction)` — card purchase → expense, card payment → transfers.
-- `CategoryAssigned(movement_key, descriptor, category, grade, by)` overlay event; the projection reassigns the movement's counter-leg to the category. Model proposes (`unverified`, descriptor captured); a human confirms (`verified`).
-- A minimal, overridable, jurisdiction-neutral seed taxonomy (data).
-- `spending_by_category` / by-time projection, excluding transfer-linked movements; the spending answer carries a grade (confirmed vs suggested) and provenance. Replaces the "deposit-outflow" stopgap from pay stubs and income.
-- Surface: a categorization view (uncategorized movements with the model's suggested bucket; one tap to confirm or override) and a spending breakdown.
+## Open
 
-**Final state:** movements carry categories with grade + provenance; a card purchase is spending, a card payment is not; "spending on groceries in March" answers honestly; a confirmed category is `verified` and survives a reingest; every categorization has quietly recorded the merchant descriptor, so merchant learning is a later projection, not a redo.
-
-> _Amended 2026-07-25 (honest aggregates): "spending-by-category excludes transfers" held only for **linked** transfers. A real-vault run showed the category and the transfer link are two independent descriptions of the same fact, and the aggregate listened to only one — so a movement *categorized* `transfers` or `loan_payments` was still counted as spending, and one category (`loan_payments`) covered two opposite natures (mortgage vs own-card payment). Exclusion is now decided by derived **movement nature**, with category/subcategory demoted to a *suggestion* rung: [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md)._
-
-**Done criteria / tests:** a card purchase now posts to `Expenses:Uncategorized` (not income) and a card payment to `Transfers:Uncategorized`; assigning a category moves the movement out of `Uncategorized` in the spending projection; a model suggestion is `unverified` and a human confirmation is `verified`; spending-by-category excludes transfers and includes card purchases; a categorization survives a reingest (content-keyed); each `CategoryAssigned` event carries the raw descriptor (the merchant-learning seam); existing balance/transfer/pay-stub tests stay green.
-
-**Why now + future use:** it turns the ledger into answers ("where did my money go") — the first real advice, and the thing that makes a dashboard worth building (unblocking the presentation-layer decision). It fixes the counter-leg so income and spending are finally trustworthy. And it starts the moat that compounds: the correction stream is simultaneously your private categorization and — because Core captured the descriptor — the training data for merchant learning and a shareable merchant→category commons, built later as a projection with nothing wasted.
+- The live model categorizer is injected but not wired to a real model call on this path.
+- Merchant normalization, the merchant→category commons and learned auto-apply (once a merchant's category is confirmed, future matches auto-categorize at `corroborated`, while new or ambiguous merchants still ask) are designed and unbuilt. The commons is lazy, locale-sharded, opt-in and privacy-linted, and it changes only *future* suggestions — past confirmed categories stand.
+- Amount-splits — one movement divided across categories, still balancing — are a separate overlay, unbuilt, and compose with the single-category work.
+- The external **Party** — a merchant, an employer, a landlord — is unbuilt. External counterparty attribution (a payment to a real person or biller is a real outflow, not a transfer) is the categorization-side of transfer-linking, and the same descriptor-capturing events seed it.
+- Per-transaction custom categories for peer descriptors: [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md).

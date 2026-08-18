@@ -1,196 +1,160 @@
 # Benchmark Harness Design — the admission exam for models
 
-**Status:** Approved — all four decision points settled 2026-07-20 (§8) · **Last updated:** 2026-07-20
-**Invariants touched:** T1 (provenance+confidence is what we're measuring), T2 (deterministic scoring), T3 (raw capture of every exam run), T8 (pinned versions), I1–I2 (currency + locale-aware normalization in scoring), I4 (answer key carries locale from day one), I6 (pack-extensible), X2 (calibration is the headline metric)
+**State:** partial
+**Rules:** PROG-6, PROG-7, PROG-8, PROG-9, PROG-10, PROG-11, PROG-12, PROG-13, PROG-14, PROG-15, PROG-16, PROG-17, PROG-18
 
-## 1 · What this is, in one paragraph
+## Rules
 
-A permanent, repeatable exam that any model must pass before it touches real financial documents, and must keep passing to keep its standing (model trust policy). It has four parts: an **exam paper** (real documents), an **answer key** (every figure on them, verified by a human), a **proctor** (a small program that administers the exam identically to every candidate, forever), and a **grading rubric** (what counts as right, and — more importantly — how badly a candidate is punished for being *confidently* wrong). Version one settles Q1 (is model confidence meaningful?), Q8 (how far behind are local models?), Q9 (the flywheel's baseline), and Q13 (the zero-setup on-device floor).
+### PROG-6 — Grading is deterministic code, never a model
+**State:** enforced
+**Code:** bench/vivabench/score.py:78 (`grade_run`), bench/vivabench/score.py:204 (`build_scorecards`)
+**Test:** bench/tests/test_claims_and_score.py::test_grade_perfect_run, bench/tests/test_claims_and_score.py::test_grade_catches_silent_omission
 
-## 2 · The exam paper (corpus)
+1. Scoring is a pure function from raw runs plus a frozen key to grades.
+2. No model judges a candidate's answer.
+3. Normalisation rules are locale-aware and versioned, and matching is graded both strictly and normalised.
 
-**Recommendation:** 12–18 real documents from the author's own institutions, spanning roughly seven types — checking/savings statement, credit card statement, brokerage statement, retirement account statement, an insurance document, a pay stub, a loan or mortgage statement — weighted toward what the author's actual financial life contains, **plus two deliberately hard cases**: one poor-quality scan (photographed page, skew, shadow) and one unusual layout. Optionally 1–2 non-US documents *if* the author can personally verify them (I6 stretch test).
+### PROG-7 — No composite score
+**State:** enforced
+**Code:** bench/vivabench/report.py:3, bench/vivabench/report.py:42
+**Test:** bench/tests/test_claims_and_score.py::test_scorecards_group_and_calibrate
 
-**Alternatives considered:** *Common types only* — cheaper to ground-truth, but the exam would flatter every candidate; the product's promise ("no unsupported institution") lives in the tail. *Synthetic documents* — infinitely available, privacy-clean, but synthetic statements lack the true messiness (kerning artifacts, scan noise, inconsistent layouts) that causes real errors; synthetic is the right tool for *regional packs* later (I6), not for v1 ground truth. *Massive corpus (50+)* — better statistics, but ground-truthing cost scales linearly with the author's hours, and 12–18 documents already yield several hundred figures, enough to separate candidates decisively.
+1. The output is a scorecard per (model, document type, locale).
+2. No leaderboard number is computed, published or implied.
 
-**A second, compatible use for synthetic documents.** The rejection above is of
-synthetic documents as *ground truth*, and it stands. But the synthetic corpus is
-generated as a single coherent three-month life — a card payment that leaves
-checking and lands on the card, a pay stub whose net equals the payroll deposit,
-a brokerage contribution with two witnesses — because those cross-document facts
-are the only arithmetic an end-to-end run can be graded on that is known true by
-construction. A unit test with a stubbed reader cannot produce them: the stub
-supplies the very facts the matcher is supposed to derive. So synthetic is wrong
-for v1 ground truth, right for regional packs, and also the only source of
-cross-document identities the pipeline can be measured against.
+### PROG-8 — The answer key never enters the repo; only its hash does
+**State:** enforced
+**Code:** bench/vivabench/config.py:121 (data dir defaults to the gitignored `bench-data/`), .gitignore:40
+**Test:** bench/tests/test_claims_and_score.py::test_hash_is_order_independent, bench/tests/test_claims_and_score.py::test_hash_changes_with_content
 
-## 3 · The questions (what counts as an answer unit)
+1. The corpus, the answer keys and the raw run outputs live outside the tracked tree.
+2. The repository carries the canonical hash of a frozen key and never the key.
+3. The harness code itself is ordinary open-source; the corpus and key never are.
 
-Each document decomposes into **claims** — the atomic facts the verification layer would need: every monetary amount (transactions, balances, totals, fees, rates), every date, every counterparty/description, account identifiers (masked forms), and document-level facts (institution, account type, statement period, currency). Expected volume: roughly 30–80 claims per statement.
+### PROG-9 — A claim's identity is its value, page and region
+**State:** contradicted-by-code
+**Code:** bench/vivabench/keybuild.py:113, core/vivacore/claims.py:30 (`Claim.key`)
+**Test:** none
 
-**Alternatives:** *Balances and totals only* — cheap, but a model that silently drops one transaction would score perfectly while being exactly the failure we fear; completeness (recall) must be examined, so line items are in. *Everything including boilerplate* — legal text and marketing copy don't feed verification; scoring them wastes ground-truth hours on things the product never uses.
+1. A claim is identified by (value, page, region).
+2. A label is an annotation, never a join key.
 
-## 4 · The answer key (ground truth), and how we avoid grading models with a model
+**Contradiction:** the identity rule this project adopted (see [extraction-and-confidence.md](extraction-and-confidence.md)) is (value, page, region). `Claim.key()` (core/vivacore/claims.py:30) returns `(type, normalized label)`, and `merge_drafts` (bench/vivabench/keybuild.py:113) indexes on that tuple and merges with `setdefault`, so within a label bucket the first claim wins and every later one is discarded with no count, no warning and no audit row. The extraction prompt manufactures the collision by instructing the model to label every line item identically *and* to emit all of them. Every ingredient of the real identity exists and is thrown away: the runner writes page, region and a page-namespaced group onto every claim, and nothing reads them back.
 
-Every claim in the key stores: raw text **as printed** (e.g., "1.234,56"), normalized value, currency (I1), locale (I4), claim type, page and approximate region, and a verified-by flag. The key never enters the repo — it stays on the author's machine, encrypted; only its hash is committed, so future re-runs can prove they used the identical key (raw-capture spirit).
+### PROG-10 — Five runs per document per candidate
+**State:** by-review-with-exception
+**Code:** bench/vivabench/config.py:37, bench/vivabench/config.py:128
+**Test:** none
 
-**The circularity trap:** using one model to write the key and then grading models against it would just measure agreement with the scribe. **The break, four steps:** (1) two *different* model families independently draft the key; (2) the deterministic arithmetic checks run over both drafts — balances must reconcile, line items must sum, dates must order; arithmetic that passes is ground truth by *proof*, not by model opinion; (3) every disagreement between the two drafts, every arithmetic failure, and a random 20% audit sample go to the author's eyes — the ground-truth authority and court of appeal, with rulings recorded with reasons; (4) the key is then frozen and hashed. Estimated human effort: a few focused hours, concentrated exactly where math can't reach (payee names, dates the checks can't cross-validate).
+1. Each candidate reads each document five times, so self-consistency is measurable.
 
-**Alternative:** *fully manual keying* — the purist option; rejected because transcription by hand introduces its own errors at hundreds of claims, and the arithmetic identities catch machine errors more reliably than tired human eyes catch their own.
+**Exception:** five is a dataclass default and a `models.yaml` fallback, not a refusal. `runs_per_document: 3` loads without complaint (contrast config.py:70, where an unpinned alias raises), and `viva-bench run --runs N` overrides it per run (bench/vivabench/cli.py:255). Nothing in the tree asserts five.
 
-**Truncation during key building fails silently, so it is warned about loudly.**
-If one drafting model is cut off mid-document, the claims it did emit still agree
-with the other drafter's, so every entry that survives is stamped
-`verified_by="cross-model"` — while everything past the cut never becomes a key
-entry at all. A short key and a complete key are indistinguishable in the key's
-own terms; only the run log tells them apart. Hence `pages_truncated` and
-`pages_unparsed` raise explicit warnings rather than merely being recorded.
-[document-preprocessing.md](document-preprocessing.md) B4 covers truncation being
-recorded honestly during *scoring*; this is the separate consequence for key
-*building*, where the damage is a quietly incomplete answer key.
+### PROG-11 — Unpinned model aliases are refused
+**State:** by-review
+**Code:** bench/vivabench/config.py:52, bench/vivabench/config.py:70
+**Test:** none
 
-**Tracked as a defect, not a fence: the answer key joins on labels, and must
-not.** Everything in §4 above assumes a claim can be identified well enough to
-merge two drafters' readings. The built key builder identifies a claim by
-`(type, normalized label)` — `Claim.key()` — and merges with `setdefault`, so
-the *first* claim in a label bucket wins and every later one is discarded with
-no count, no warning, and no audit row. The extraction prompt manufactures the
-collision by design: it instructs the model to label every line item
-`'transaction amount'` / `'transaction date'` / `'payee'` **and** to emit every
-one of them.
+1. A candidate configured with a "latest"-style alias is refused before any call is made.
+2. Every run records the resolved model identity the endpoint reported, not just the configured string.
 
-The first bake-off measured the consequence and this document was never
-updated: 55 of 266 buckets agreed on the Fidelity 1099, ~21%, almost all of it
-a labelling artifact. Worse than the phantom conflicts is the silent collapse.
-Executed on the repo's own synthetic statement, two drafters reading
-*perfectly and identically* produced **35 claims and a 5-entry key**; scored
-against it, a candidate that omitted **ten of eleven transactions** graded
-`accuracy 1.0, recall 1.0`. That is exactly the silent-omission failure §3
-rejected a balances-only exam to catch, and `report.py` prints the false
-guarantee into every generated findings document.
+### PROG-12 — The circularity break is four steps
+**State:** by-review-with-exception
+**Code:** bench/vivabench/keybuild.py:58 (`draft_key` refuses fewer than two model families), :39 (`_agree`, the referee that exists), :158 (`freeze`); bench/vivabench/cli.py:170 (the audit worksheet), :196 (the author's rulings folded back), :203 (the hash)
+**Test:** none
 
-The identity rule this project has already adopted is
-[extraction-and-confidence.md](extraction-and-confidence.md)'s, from the same
-bake-off: **a claim's identity is its (value, page, region); the label is an
-annotation, never a join key.** Every ingredient exists and is thrown away —
-the runner writes page, region and a page-namespaced group onto every claim,
-and nothing reads them back. Until the key builder and the scorer join on that
-identity, no accuracy, recall or coverage figure this harness produces is a
-measurement of the candidate.
+1. Two different model families independently draft the key.
+2. Deterministic arithmetic referees both drafts, and what passes an identity is ground truth by proof rather than by model opinion.
+3. Every disagreement, every arithmetic failure and a random 20% sample of the agreements go to the author, whose rulings are recorded with reasons.
+4. The key is then frozen and hashed.
 
-**Amendment (2026-08-14): steps (2) and (3) of the break are not built.** The
-key builder is cross-model agreement plus human audit of the disagreements, and
-nothing else. `vivacore.verify.arithmetic` — balance, pay-stub, brokerage and
-line-item identities, exact Decimal — is written, tested and used by the
-product, and no bench module calls it: no draft is refereed against a balance
-that must reconcile, and `verified_by="arithmetic"` is never stamped, though
-the value is enumerated in the schema. The random 20% audit sample is not
-sampled — `draft-key` writes only the disagreements to the worksheet, so the
-entries the two drafters agree on are never spot-checked, which is the one
-check that would catch two models making the same mistake. Rulings are recorded
-without reasons: the worksheet has no reason field and `KeyEntry.notes` is never
-written. Until these land, a frozen key's authority is *two models agreed*, and
-the circularity break is three steps, not four.
+**Exception:** steps 1 and 4 are built. Step 2 is built in a weakened form: `_agree` (bench/vivabench/keybuild.py:39) is a deterministic referee over both drafts, but it compares the two readings to each other rather than running an arithmetic identity — `vivacore.verify.arithmetic` is written, tested and used by the product, and no bench module calls it, so `verified_by="arithmetic"` is never stamped though the schema enumerates it. Step 3 is partial: `draft-key` writes only the disagreements to the worksheet, so agreements are never spot-checked — the one check that would catch two models making the same mistake — and the worksheet has no reason field, `KeyEntry.notes` never being written. A frozen key's present authority is *two models agreed*.
 
-**Amendment (2026-08-14): the built key schema is narrower than §4's list.**
-`KeyEntry` stores raw text, locale, currency, type, label and the verified-by
-flag. It has **no region**, and its `page` field is declared but never
-populated — every construction site leaves it `None`, although the runner
-records the authoritative page on every claim. There is no normalized-value
-field, and that one is deliberate and better: normalization is derived at
-compare time by `vivacore.verify.normalize` and the key records `rules_version`,
-so storing it would duplicate a versioned derivation and could go stale against
-its own ruleset. The other two are not deliberate, and they are what blocks the
-(value, page, region) identity above, source-region validity as a metric, and
-an audit queue that can put the page in front of the auditor.
+### PROG-13 — The budget ceiling is hard, and breaching it is refused before it is spent
+**State:** by-review-with-exception
+**Code:** bench/vivabench/runner.py:271-276 (`BudgetExceeded`), bench/vivabench/runner.py:37
+**Test:** none
 
-**Also not built: `viva-bench probe`,** specified in the 2026-07-20 amendment
-below in the present tense. No `probe` subcommand exists.
+1. Accumulated spend is checked against a configured ceiling and the run stops rather than continuing past it.
+2. A plan whose projected spend breaches the ceiling is refused up front, with a stop-and-report.
 
-## 5 · The grading rubric (metrics)
+**Exception:** assertion 2 is unmet, and assertion 1 holds only between cells. bench/vivabench/runner.py:272 compares *actual* accumulated spend against the ceiling before each cell and never inside one, so a run can overshoot by up to one cell's cost, and nothing is refused up front — a plan that will obviously breach the ceiling is discovered only after the ceiling is spent.
 
-Two levels are graded separately, because they answer different questions:
+### PROG-14 — Source-region validity is graded
+**State:** unmet
+**Code:** bench/vivabench/score.py:167 (`Scorecard` carries no region metric)
+**Test:** none
 
-- **Raw model level** — how good is the candidate alone? Per-claim accuracy (strict and normalized match), **recall** (did it miss claims entirely? the silent-omission failure), self-consistency across repeat runs, source-region validity (does the place it *says* the figure came from actually contain it — this gates provenance click-through), and stated-confidence calibration: when the model says 90%, is it right nine times in ten? (Research says no — Q1 makes this measurable.)
-- **System level** — how good is the *pipeline* (N samples + cross-model agreement + arithmetic verification) built around the candidate? Headline metrics: **verified-coverage** (what share of claims the system can grade `verified` or `corroborated`) and the ruin metric, **confidently-wrong rate** — how often something graded `verified`/`corroborated` is actually false. The product promise rides on this number being ~zero; everything else is economics.
-- **Economics** — cost and latency per document, per candidate, at each redundancy level (this prices the trust policy's autonomy ladder).
+1. The exam checks whether the place a model says a figure came from actually contains it.
+2. The provenance click-through threshold is drawn from that measurement.
 
-**Alternative rejected:** a single leaderboard score (F1). One number invites choosing the model that's "best on average" while hiding that it's occasionally, confidently, catastrophically wrong — the exact confusion this project exists to end. The output is a **scorecard per (model, document type, locale)**, no composite.
+**Note:** model-reported regions are captured raw by the runner and never read back, and the frozen key carries no region to check them against, so the number the trust policy would draw a threshold from does not exist. Note also that [document-preprocessing.md](document-preprocessing.md) F4/Q22 has since ruled the product's region anchor is the text layer's measured character boxes rather than the model's self-reported box, which narrows the honest v1 check to *the claimed page contains the value*, with the box comparison waiting on character-box extraction reaching `bench/`.
 
-**Two latency figures, kept under distinct names on purpose.** `latency_s` is the
-sum of the per-page model calls and does not move when page concurrency changes;
-it is the figure that compares candidates. `wall_clock_s` is what the harness
-machine actually waited, and is therefore a property of the harness
-configuration, not of the model. The economics bullet above says "cost and
-latency per document" without distinguishing them, and a reader of the doc alone
-could take the wrong column: a concurrency setting must never be reported as a
-speed result.
+### PROG-15 — Cost and latency are reported per document per candidate
+**State:** unmet
+**Code:** bench/vivabench/score.py:167 (`Scorecard` has no cost or latency field)
+**Test:** none
 
-**The system level is currently agreement-only.** The definition above is "N
-samples + cross-model agreement + arithmetic verification". `_system_metrics`
-implements the agreement half: a label is accepted when a majority of runs
-produced it, and no balance reconciliation or line-item sum is consulted. So
-`system_verified_coverage` and `system_confidently_wrong` approximate the
-designed metric and understate what the real pipeline would verify. Either the
-code closes the gap or this stays stated — it must not be read as the metric §5
-specifies.
+1. Each scorecard reports cost and latency per document, at each redundancy level, so the trust policy's autonomy ladder can be priced.
 
-**Amendment (2026-08-14): source-region validity is not built either, and
-neither is the economics bullet.** The fence above covers the system bullet;
-this covers the other two in the same section, which were left silent while it
-was written. The scorer computes accuracy, recall, strict rate,
-self-consistency, calibration/ECE and mean-spurious, and no provenance check of
-any kind: model-reported regions are captured raw by the runner and never read,
-and the answer key carries no region to check them against (§4's schema
-amendment). So *"does the place it says the figure came from actually contain
-it"* — the gate on provenance click-through — is unmeasured, and the trust
-policy cannot draw a threshold from a number that does not exist. Separately,
-**no cost or latency figure is reported at all**: the runner captures both
-faithfully, `Scorecard` has no field for either, and the reporter emits neither
-— so the two-latency-figures note above protects a reader from misreading a
-column that does not yet appear.
+**Note:** the runner captures both faithfully (bench/vivabench/runner.py:210-216) and the reporter emits neither.
 
-Note also that [document-preprocessing.md](document-preprocessing.md) F4/Q22 has
-since ruled the product's region anchor should be the text layer's measured
-character boxes rather than the model's self-reported box, which changes what
-this metric should test: for a document with a text layer the honest v1 check is
-that the claimed *page* contains the value, and the box comparison waits on
-character-box extraction reaching `bench/`.
+### PROG-16 — Model time and wall-clock time keep distinct names
+**State:** by-review
+**Code:** bench/vivabench/runner.py:211-216
+**Test:** none
 
-## 6 · The candidates (v1 roster)
+1. `latency_s` is the sum of the per-page model calls and does not move when page concurrency changes; it is the figure that compares candidates.
+2. `wall_clock_s` is what the harness machine waited, and is a property of the harness configuration.
+3. A concurrency setting is never reported as a speed result.
 
-**Recommendation — four, spanning the adoption ladder's rungs:** two pinned frontier cloud models from *different* providers (cross-model agreement needs independent families; two also hedges the finding against one provider's quirks), one strong local VLM (Qwen3-VL-class at a pinned quantization, run on the author's machine), and one on-device-class small model (AFM-tier, for Q13's zero-setup floor).
+### PROG-17 — A frozen key's hash is stable
+**State:** contradicted-by-code
+**Code:** bench/vivabench/cli.py:183 (`cmd_freeze_key`), bench/vivabench/keybuild.py:158 (`freeze`)
+**Test:** none
 
-**Alternatives:** *cloud-only* — cheaper, but leaves Q8/Q13 unanswered and the hybrid trajectory (ADR-001) ungrounded; *kitchen sink (8–10 models)* — each candidate multiplies runs, ground-truth reconciliation, and findings complexity; the exam is permanent, so latecomers can simply sit it later.
+1. Only the key's hash is committed, so a future re-run can prove it used the identical key.
 
-## 7 · Proctor rules (protocol)
+**Contradiction:** the doc says the key is frozen and hashed so future re-runs can prove they used the identical key. `cmd_freeze_key` re-reads the audit worksheet and appends every resolved row to `key.entries` on every invocation, and `freeze` (bench/vivabench/keybuild.py:158) only sets the flag and hashes what it is given, so entries grow with each pass and each pass commits a different hash.
 
-Identical prompt template for all candidates (asking for structured claims with source regions and self-stated confidence — we measure the self-statement, we never *trust* it). **N = 5** runs per document per model — enough to measure self-consistency with usable statistics; 3 is too noisy to distinguish flakiness from bad luck, 10 doubles cost for diminishing precision. Versions pinned and recorded (T8); every request and response captured raw (T3); no candidate ever sees the answer key or another candidate's output; ambiguities in documents ruled on by the author, rulings logged. The harness code itself is ordinary open-source (MIT, in the repo); the corpus and key never are. Scoring is deterministic code (T2) — normalization rules locale-aware and versioned (I2).
+### PROG-18 — Truncation during key building is warned about loudly
+**State:** by-review
+**Code:** bench/vivabench/keybuild.py:75-80
+**Test:** none
 
-**Budget estimate:** ~15 documents × 4 candidates × 5 runs = ~300 runs, of which ~150 hit paid APIs. At mid-2026 frontier pricing with multi-page documents, plausibly **$20–60 total**; ceiling proposed at $100 with a stop-and-report rule if the projection breaches it. Local candidates cost only compute time.
+1. A drafting run that was cut off mid-document raises an explicit warning rather than merely recording the fact.
+2. A short key and a complete key are indistinguishable in the key's own terms, so only the run log can tell them apart.
 
-## 8 · Decision points — settled (author decision, 2026-07-20)
+## Why
 
-- **D-a Corpus mix:** seven types, US + non-US stretch (1–2 non-US documents the author can personally verify, if held).
-- **D-b Budget ceiling:** $100 hard stop, stop-and-report rule if projections breach it.
-- **D-c Roster:** four candidates — Claude (pinned) + GPT (pinned) + Qwen3-VL-class local + phone-class tiny model.
-- **D-d Repeat count:** N=5.
+A permanent, repeatable exam is what stands between a model and real financial documents, and what keeps it there. It has four parts: an exam paper of real documents, an answer key of every figure on them verified by a human, a proctor that administers the exam identically to every candidate forever, and a rubric that says what counts as right and — more importantly — how badly a candidate is punished for being *confidently* wrong.
 
-## 9 · What comes out, and what it seeds
+**The corpus is real, not synthetic, and small.** Twelve to eighteen real documents across roughly seven types, weighted toward the author's actual financial life, plus two deliberately hard cases: a poor-quality scan and an unusual layout. Common types only would flatter every candidate, and the product's promise lives in the tail. Synthetic statements lack the true messiness — kerning artifacts, scan noise, inconsistent layouts — that causes real errors, so synthetic is the wrong tool for v1 ground truth and the right one for regional packs later. A fifty-document corpus buys better statistics at a ground-truthing cost that scales linearly in the author's hours, and twelve to eighteen documents already yield several hundred claims, enough to separate candidates decisively.
 
-Outputs: a findings doc (same honesty standard as everything — published to the build log even if embarrassing); scorecards v1 per (model, doc type); the frozen, hash-anchored answer key; the runnable harness. Seeds: the A8 continuous-eval suite (same key, re-run on schedule), the trust policy's first real thresholds (replacing placeholders with measured numbers), the flywheel's baseline (Q9), and the I6 pack format for future regional corpora.
+Synthetic documents have a second, compatible use that the rejection above does not touch. The synthetic corpus is generated as one coherent three-month life — a card payment that leaves checking and lands on the card, a pay stub whose net equals the payroll deposit, a brokerage contribution with two witnesses — because those cross-document facts are the only arithmetic an end-to-end run can be graded on that is known true by construction. A unit test with a stubbed reader cannot produce them: the stub supplies the very facts the matcher is meant to derive.
 
-## Amendment (2026-07-20): the community mode — `probe`
+**The answer unit is a claim, not a total.** Every monetary amount, every date, every counterparty, masked account identifiers and document-level facts — roughly 30 to 80 per statement. Balances and totals alone would be cheap and would let a model that silently drops one transaction score perfectly while committing exactly the failure this project fears, so completeness has to be examined and line items are in. Boilerplate is out: legal text and marketing copy feed no verification, and scoring them would spend ground-truth hours on things the product never uses.
 
-Added alongside [format-commons.md](format-commons.md): the harness gains a lightweight sibling command for users, distinct from the full exam.
+**The key must not be written by the thing it grades.** Using one model to write the key and grading models against it measures agreement with the scribe. The break is arithmetic: identities that pass are ground truth by proof rather than by opinion, with the author as the court of appeal wherever arithmetic cannot reach — payee names, dates nothing cross-validates. Fully manual keying is the purist option and was rejected because hand transcription introduces its own errors at hundreds of claims, and the arithmetic identities catch machine errors more reliably than tired eyes catch their own.
 
-**`viva-bench probe <document>`** — the single-document diagnostic: frontier blind read → verification → format-profile distillation → a **shareable diagnostic bundle** containing exactly two artifacts: the format profile (layout knowledge, zero personal values) and a scorecard (accuracy statistics for that format). Minutes, not hours; one document, not a corpus. This is the answer to "this document reads badly" in the open-source support loop: every complaint becomes a potential contribution.
+**Two levels are graded separately because they answer different questions.** The raw model level asks how good the candidate is alone: per-claim accuracy, recall (the silent-omission failure), self-consistency across repeats, source-region validity, and stated-confidence calibration — when a model says 90%, is it right nine times in ten? The system level asks how good the *pipeline* around the candidate is: verified-coverage, and the ruin metric, the confidently-wrong rate. The product promise rides on that number being near zero; everything else is economics. A single leaderboard score invites choosing the model that is best on average while hiding that it is occasionally, confidently, catastrophically wrong — the exact confusion this project exists to end.
 
-**The contribution boundary, stated once for both modes:** what may flow to the shared registry is *profiles and scorecards only* — never documents, never answer keys, never extracted values. Contribution is always an explicit, user-reviewed act (ADR-006), gated by the privacy lint and PR review (format-commons lifecycle step 5). The full exam remains the instrument for *model admission*; `probe` is the instrument for *format knowledge*. They share the adapters, verify/, and the claim schema — the same embryos, two purposes.
+**The roster spans the adoption ladder**: two pinned frontier models from different providers, because cross-model agreement needs independent families and two providers hedge one provider's quirks; one strong local vision model at a pinned quantisation; and one on-device-class small model for the zero-setup floor. Cloud-only would leave the local questions unanswered and the hybrid trajectory ungrounded; eight to ten candidates would multiply runs, reconciliation and findings complexity, and the exam is permanent, so latecomers can sit it later.
 
-**Future harness mode** (noted in format-commons): profile-guided vs blind extraction on the same corpus, measuring what a profile buys in accuracy and cost.
+**The proctor rules are the fairness guarantee.** One prompt template for all candidates, asking for structured claims with source regions and self-stated confidence — the self-statement is measured, never trusted. Versions pinned and recorded; every request and response captured raw. No candidate ever sees the answer key or another candidate's output. Ambiguities in documents are ruled on by the author, and the rulings are logged.
 
-## Open questions
+**The system-level metric is currently agreement-only**, and that gap is stated rather than papered over. The definition is N samples plus cross-model agreement plus arithmetic verification; the implementation accepts a label when a majority of runs produced it and consults no balance reconciliation or line-item sum, so the reported figures approximate the designed metric and understate what the real pipeline would verify.
 
-- Whether the on-device-class candidate is testable outside Apple's frameworks at v1, or approximated by the smallest available open VLM (a Q13 measurement detail).
-- Prompt-template sensitivity: v1 uses one shared template; a small annex may test whether reasonable template variations move accuracy (if they do, that's itself a finding about fragility).
+**What comes out** is a findings document held to the same honesty standard as everything else, scorecards per (model, document type), the frozen hash-anchored answer key, and the runnable harness. What it seeds is the continuous eval suite, the trust policy's first measured thresholds in place of placeholders, the flywheel baseline, and the pack format for future regional corpora.
+
+**The community mode.** Alongside [format-commons.md](format-commons.md), the harness gains a lightweight sibling for users, distinct from the full exam: a single-document diagnostic — frontier blind read, verification, format-profile distillation — producing a shareable bundle of exactly two artifacts, the format profile (layout knowledge, zero personal values) and a scorecard for that format. Minutes rather than hours, one document rather than a corpus. It is the answer to "this document reads badly" in an open-source support loop: every complaint becomes a potential contribution. The contribution boundary holds for both modes: what may flow to the shared registry is profiles and scorecards only — never documents, never answer keys, never extracted values — and contribution is always an explicit, user-reviewed act, gated by the privacy lint and review. The full exam is the instrument for model admission; the diagnostic is the instrument for format knowledge. They share the adapters, the verification layer and the claim schema.
+
+**The decided points**, settled by the author: seven corpus types with a one-to-two-document non-US stretch the author can personally verify; a $100 hard budget ceiling with a stop-and-report rule; four candidates spanning frontier, local and phone class; and five repeats.
+
+## Open
+
+- The key builder and the scorer join on labels rather than on identity (PROG-9). Until they join on (value, page, region), no accuracy, recall or coverage figure this harness produces is a measurement of the candidate — measured on the repo's own synthetic statement, two drafters reading perfectly and identically produced 35 claims and a 5-entry key, against which a candidate that omitted ten of eleven transactions graded accuracy 1.0, recall 1.0, and the reporter prints that false guarantee into every generated findings document.
+- The built key schema is narrower than the design's list. `KeyEntry` stores raw text, locale, currency, type, label and the verified-by flag; it has no region, and its `page` field is declared and never populated at any construction site, although the runner records the authoritative page on every claim. The absence of a normalised-value field is deliberate and better — normalisation is derived at compare time and the key records its rules version, so storing it would duplicate a versioned derivation and could go stale against its own ruleset. The other two are what block the identity rule, source-region validity as a metric, and an audit queue that can put the page in front of the auditor.
+- The single-document diagnostic command is specified and no such subcommand exists.
+- Whether the on-device-class candidate is testable outside the platform vendor's own frameworks at v1, or approximated by the smallest available open vision model.
+- Prompt-template sensitivity: v1 uses one shared template, and a small annex may test whether reasonable variations move accuracy. If they do, that is itself a finding about fragility.

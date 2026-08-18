@@ -1,71 +1,166 @@
 # Verification Findings & Correction — how the hard cases are handled (and how they build the moat)
 
-**Status:** Design (architecture phase) · **Last updated:** 2026-07-22 · **Origin question:** when a statement fails verification — a misread figure, a missed transaction, or a document that isn't a statement at all — do we make more model calls, guess, or ask the user? And how does the answer ripple into every later slice?
-**Invariants touched:** T1 (the best "ask" is the source, cropped to the exact spot), T2 (verification localizes failure, it doesn't just detect it), T4 (corrections are events; nothing is overwritten), T7 (completeness/coverage stated honestly), X2 (answers say what they stand on). Serves principles P1 (trust earned on the hard cases), P2 (never bluff a number), P6 (you pace it), P7 (autonomous where safe, deferential where it counts).
+**State:** partial
+**Rules:** ING-60, ING-61, ING-62, ING-63, ING-64, ING-65, ING-66
+**Invariants touched:** T1 (the best ask is the source, cropped to the exact spot), T2 (verification localizes failure, it does not merely detect it), T4 (corrections are events; nothing is overwritten), T7 (completeness stated honestly), X2 (answers say what they stand on). Serves the principles that trust is earned on the hard cases, that a number is never bluffed, that the person sets the pace, and that autonomy is graduated.
 
-## The situation
+## Rules
 
-Upload seven checking statements. Five reconcile and post silently. Two fail — either they aren't statements, or they are but a figure was misread or a transaction missed. **The five easy ones win no trust; the two hard ones are the entire game.** This document is the standing design for the two, and the contract it sets is inherited by every document type we ever add.
+### ING-60 — Diagnosis is deterministic and costs no model call
+**State:** enforced
+**Code:** product/viva/ingest/diagnose.py:65 (`diagnose`), :116 (`_via_running_balance`)
+**Test:** product/tests/test_diagnose.py::test_forced_amount_misread_from_running_balance, product/tests/test_diagnose.py::test_suggested_transposition_multiple_of_nine
 
-## The core principle: never "more calls vs. guess" — a cheap-first escalation ladder
+1. A reconciliation failure is localized by arithmetic alone before anything else is tried.
+2. The printed running-balance column is a second, independent identity, walked to find the single row where the chain breaks and the value that would repair it.
+3. A delta equal to a line's amount localizes to that line; a delta that is a multiple of nine cents is read as a transposed digit.
 
-The instinctive framing ("make more model calls, or guess and ask") skips the most important and cheapest move. The real shape is three rungs, climbed only as far as needed:
+### ING-61 — A finding is forced, suggested, or unlocalized
+**State:** enforced
+**Code:** product/viva/ingest/diagnose.py:31-34, :37 (`ReconciliationFinding`)
+**Test:** product/tests/test_diagnose.py::test_unlocalized_when_no_clean_explanation, product/tests/test_diagnose.py::test_multiple_broken_rows_is_not_forced
 
-**Rung 0 — deterministic diagnosis. Zero model calls.** A reconciliation failure's *delta* is highly informative. A 9-cent gap is not "wrong document"; it is a digit misread or transposition. Arithmetic localizes it:
-- Does the delta equal a transaction amount? → a missed or duplicated line.
-- Is the delta a multiple of 9? → a classic digit transposition.
-- **The running-balance column is a second, independent identity.** Most checking statements print a running balance per line: `prev_balance ± amount = this_line's_balance`. Walking it pinpoints the *single* row where the chain breaks, and the value that would repair it. A correction the running balance *forces* is **not a guess — it is arithmetic**, and when the repaired value also closes the opening→closing reconciliation, two independent identities agree on it.
+1. **forced** — a correction an independent identity implies, which also closes the opening-to-closing reconciliation.
+2. **suggested** — a correction a heuristic proposes.
+3. **unlocalized** — the delta has no clean explanation.
+4. The finding names which identity failed, the delta, the locus, the observed value, the implied value, and its own confidence.
 
-**Rung 1 — targeted, bounded re-read. One cheap model call, only where doubt was localized.** If diagnosis narrows it to "the amount on line 14," we re-read *only that region* (the cropped line), ideally with a second/cheaper model, and check it against the deterministic implication. This is the cross-model-corroboration pattern from the answer-key builder, reused. **Hard cap: one repair pass.** We never re-read the whole document hoping it comes out consistent — unbounded retry-with-mutation is precisely how a system converges on a confident *wrong* answer, the one failure a trust product cannot survive.
+### ING-62 — A forced correction auto-applies at `corroborated` and is always reported
+**State:** enforced
+**Code:** product/viva/ingest/pipeline.py:311 (apply the forced correction and re-check), :265 (`_apply_forced`), :488 (the grade)
+**Test:** product/tests/test_pipeline.py::test_forced_correction_auto_applies_and_posts
 
-> _Extended 2026-07-25 (the question queue): "the quality of the ask is everything" now applies vault-wide, not just to a failed document. The four ask-and-learn loops built since (identity, transfer, merchant, nature) are one primitive, unified as a ranked **question queue** — asked in order of how much money the answer moves, scoped so one ruling clears many: [the-question-queue.md](the-question-queue.md)._
+1. A forced correction is applied only if the corrected statement then reconciles.
+2. It posts at `corroborated`, because two identities agree — agreement is not attestation (ING-3).
+3. The correction is reported on the result, so a bad auto-fix is visible rather than quiet.
 
-**Rung 2 — the human, asked well.** Only what survives Rungs 0–1 reaches the person, and the *quality of the ask* is everything: "Your December statement is off 9¢ — most likely line 14 (Starbucks, I read $45.67; your running balance implies $45.76). Is it $45.76?" One tap. The person does the minimum irreducible judgment, never re-keys a statement.
+### ING-63 — A suggested or unlocalized finding never posts
+**State:** enforced-with-exception
+**Code:** product/viva/ingest/pipeline.py:325-335 (hold, persist the finding, return CONFLICT)
+**Test:** product/tests/test_pipeline.py::test_unforced_conflict_carries_a_finding, product/tests/test_review.py::test_failed_statement_is_held_and_listed
 
-## The line through "never bluff a number"
+1. A statement whose finding is suggested or unlocalized is held with its finding and is not posted.
+2. A suggested correction is shown against the source rather than led by our number.
 
-Presenting a value *as a fact* because it makes things reconcile is the forbidden ruin case. Presenting it *as a clearly-labelled hypothesis requiring confirmation*, with its evidence, while nothing enters the trusted ledger until confirmed-or-forced, is deferral, not bluffing. The distinction is load-bearing and is encoded in the finding's **status**:
+**Exception:** cross-document corroboration runs before the hold. `product/viva/ingest/pipeline.py:324` calls `_try_corroboration` whatever the diagnosis said; where a counterparty document closes the gap exactly, that path discards the suggested or unlocalized finding, synthesizes a `cross_document` finding at `FORCED`, and posts (pipeline.py:386-397). The hold at :325 is what happens when corroboration returns nothing. So the rule reads: never posts *unless a second document supplies the leg* (MON-63).
 
-- **forced** — a correction implied by an *independent identity* (the running-balance chain), and which also closes the reconciliation. Safe to auto-apply, at grade `corroborated` (two identities agree — not `verified`, which is reserved for human attestation), and **always reported** so the person can catch a bad auto-fix.
-- **suggested** — a correction a *heuristic* proposes (transposition, delta-matches-a-line). **Never auto-applied.** Surfaced to the human — and shown *against the source pixels*, not led by our number, to avoid anchoring the person into rubber-stamping our guess.
-- **unlocalized** — the delta has no clean explanation. Likely not this document type at all → reclassify, don't correct.
+### ING-64 — The diagnosis rules are versioned
+**State:** by-review
+**Code:** product/viva/ingest/diagnose.py:28 (`DIAGNOSIS_VERSION`), :49 (carried on every finding)
+**Test:** none
 
-A "forced" correction that is really a heuristic misfire would post a wrong number at `corroborated` — so the forced-vs-suggested boundary is a **trust boundary**, and the diagnosis rules are deterministic and **versioned** (like the normalization `RULES_VERSION`) so a verdict can always explain and reproduce itself.
+1. Every finding carries the version of the rules that produced it, so a verdict can explain and reproduce itself.
 
-## The "not a statement" branch
+### ING-65 — Repair is bounded
+**State:** enforced-with-exception
+**Code:** product/viva/ingest/pipeline.py:281 (`post_statement` makes no model call), product/viva/ingest/reader.py:177 (`read_with_retry`, `max_retries=1`)
+**Test:** product/tests/test_reader_retry.py::test_gives_up_after_the_retry_and_parks
 
-Some failures are classification misses, not extraction errors, and reconciliation catches them naturally (no coherent opening/closing/transactions). The response is *reclassify*, not correct: "I don't think this is a checking statement — looks like a pay stub. I've held it. What is it?" The person's answer is a labelled example (see the flywheel), and a "no, it really *is* a checking statement" is a loud signal that our read is weak on *that issuer's format* — a direct feed into the format-profile work.
+1. The whole document is never re-read in the hope that it comes out consistent.
+2. A parse failure is re-asked at most once, and the second failure parks the document rather than trying again.
 
-## Why this is an asset, not a cost: correction-as-event and the flywheel
+**Exception:** the targeted re-read — one cheap model call over the cropped region doubt was localized to — is not built. `product/viva/ingest/pipeline.py:281` goes straight from deterministic diagnosis to cross-document corroboration to the hold, with no repair model call anywhere. The one-repair-pass cap is therefore satisfied vacuously.
 
-Every confirmation or forced fix is an **event on a fact** (T4 — nothing overwritten; the full history model-asserted → checks-ran → human-ruled is replayable). It does three things at once:
+### ING-66 — A correction is an event, and a human ruling grades highest
+**State:** enforced
+**Code:** product/viva/ledger/events.py:228 (`correction_applied`), product/viva/ingest/review.py:188 (`post_statement(..., confirmed_by="human")`), product/viva/ledger/projection/core.py:355
+**Test:** product/tests/test_review.py::test_human_correction_posts_at_verified, product/tests/test_review.py::test_correction_that_still_fails_is_re_held
 
-1. **Fixes this statement** — the corrected figure posts (human-confirmed → `verified`, the highest grade; identity-forced → `corroborated`).
-2. **Becomes a training pair** — `(model read X, truth is Y, on this doc-type/format)` — the eval seed and eventual few-shot / fine-tune material.
-3. **Teaches Viva about this user and this format** — the moat. The next statement of the same shape pre-empts the same misread.
+1. A ruling is appended as a correction event; nothing is overwritten and the full history stays replayable.
+2. The corrected statement re-enters the same reconciliation gate, and is held again if it still does not hold.
+3. A statement whose reading a person confirmed posts at `verified`: the issuer attests the figure, and the confirmation settles how it was read (ING-3).
 
-The hard cases are the *only* place the product learns. A system that never had to ask would never get better at your documents.
+## Why
 
-## Model-call economics
+Upload seven statements. Five reconcile and post silently. Two fail — either
+they are not statements, or they are and a figure was misread or a line missed.
+**The five easy ones win no trust; the two hard ones are the entire game.** This
+is the standing design for the two, and the contract it sets is inherited by
+every document type ever added.
 
-- **Cost scales with difficulty, not volume.** The five that reconcile cost one read each, forever. Only failures incur repair calls, and only after free diagnosis fails to force an answer.
-- **Cheap-first.** The benchmark established that cheap models compete and text+image is the default — so targeted re-reads use a cheap model and second-model cross-checks are near-free.
-- **Bounded, never open-ended.** One repair pass, one localized region. Deferring automated re-read (Rung 1) keeps the cost curve flat as document volume grows — exactly what the near-zero-cost, fully-local ingestion endgame needs.
+The instinctive framing — "make more model calls, or guess and ask" — skips the
+cheapest and most important move. The real shape is a ladder climbed only as far
+as needed.
 
-## How this ripples into future slices (the reason to get it right once)
+**Rung 0 is deterministic diagnosis, at zero model calls.** A reconciliation
+failure's *delta* is highly informative. A nine-cent gap is not "wrong
+document"; it is a digit misread. Arithmetic localizes it: a delta equal to a
+transaction's amount means a missed or duplicated line; a delta that is a
+multiple of nine is the classic signature of transposed digits. Best of all,
+most checking statements print a running balance per line, which is a second and
+independent identity — walking it pinpoints the single row where the chain
+breaks and the value that would repair it. A correction the running balance
+*forces* is not a guess, it is arithmetic, and when the repaired value also
+closes the opening-to-closing reconciliation, two independent identities agree
+on it.
 
-1. **The finding shape is a universal contract.** The gate returns a *structured diagnosis* (which identity failed, delta, localized region, forced/suggested/unlocalized, confidence). Every future document type plugs its own identities into the same shape — pay stub (`gross − deductions = net`), brokerage (`positions × price + cash = total`), 1099 (box sums). The escalation ladder is universal code; the per-type checks are **registry data**.
-2. **Correction-as-event is the single spine under all future human teaching.** "That figure is 45.76 not 45.67," "that Uncategorized leg is Groceries," "these two lines are the same transfer" are the *identical mechanism* — a graded correction event on a fact. Built for amounts here, it is reused verbatim for categorization, tagging, and transfer-linking. HITL-for-amounts now *is* the categorization-correction engine later.
-3. **The moat compounds from the first hard statement.** Corrections carrying `(model-said, truth-is, doc-context)` start the training-pair mine immediately; the later NL-agent and persona slices train and evaluate against a growing corpus of *real corrections on this user's documents*.
-4. **The confirmation surface becomes an agent primitive.** "Confirm this reading," "which category?", "same money?" are one interaction — show source → collect graded confirmation → emit correction event. The conversational agent *composes* this primitive; it does not rebuild it. It is the same surface as tap-to-source (T1): HITL and provenance are one system, and the Step-5 viewer is the correction surface.
-5. **Autonomy calibration gets its boundary.** "Post when it reconciles, ask when it doesn't" is the concrete seed of P7's graduated autonomy. Every future autonomous action — recategorizing, drafting a budget, flagging a fee — calibrates against the same "checks-passed-and-low-stakes → act; else → ask" boundary, with the finding's confidence as the dial.
+**Rung 1 is a targeted, bounded re-read** — one cheap model call, only over the
+region doubt was localized to, checked against the deterministic implication.
+The hard cap is one repair pass. Re-reading the whole document hoping it comes
+out consistent is precisely how a system converges on a confident *wrong*
+answer, which is the one failure a trust product cannot survive.
 
-## What v0 builds now, and what it defers
+**Rung 2 is the human, asked well.** Only what survives the first two rungs
+reaches the person, and the quality of the ask is everything: name the
+statement, the gap, the most likely line, what we read, what the running balance
+implies, and let one tap settle it. The person does the minimum irreducible
+judgment and never re-keys a statement. That principle now applies vault-wide
+rather than only to a failed document — the identity, transfer, merchant and
+nature loops are one primitive, a ranked [question queue](the-question-queue.md)
+asked in order of how much money the answer moves.
 
-**Now (headless, model-light, tested):** running-balance extraction (the second identity); deterministic diagnosis producing the typed `ReconciliationFinding` (forced / suggested / unlocalized), versioned; **forced** corrections auto-applied at `corroborated` and reported; **suggested/unlocalized** held with their finding, never posted. No repair model calls.
+The line through "never bluff a number" runs exactly here. Presenting a value
+*as a fact* because it makes things reconcile is the forbidden ruin case.
+Presenting it as a clearly-labelled hypothesis with its evidence, while nothing
+enters the trusted ledger until it is confirmed or forced, is deferral rather
+than bluffing. That distinction is encoded in the finding's status, which is why
+the forced/suggested boundary is a **trust boundary**: a "forced" correction
+that is really a heuristic misfire would post a wrong number at a grade that
+claims corroboration. Hence the diagnosis rules are deterministic and versioned,
+and a suggested correction is shown against the source pixels rather than led by
+our number, so the person is not anchored into rubber-stamping a guess.
 
-**With Step 5 (the viewer = correction surface):** the human confirmation flow — show the source crop, collect the ruling, emit the correction event at `verified`.
+Some failures are classification misses rather than extraction errors, and
+reconciliation catches them naturally — there is no coherent
+opening/closing/transaction structure to find. The response is to *reclassify*,
+not to correct. And a person answering "no, it really is a checking statement"
+is a loud signal that the read is weak on that issuer's format, which feeds the
+format-profile work directly.
 
-**Later slice:** Rung 1 (automated targeted re-read — the first *repair* model call), added once the human-ask rate justifies the plumbing and spend.
+The reason this is an asset rather than a cost is that every confirmation or
+forced fix is an event on a fact, and it does three things at once: it fixes
+this statement, it becomes a training pair of *(model read X, truth is Y, on
+this document shape)*, and it teaches the product about this person and this
+format so the next statement of the same shape pre-empts the same misread. The
+hard cases are the only place the product learns; a system that never had to ask
+would never get better at your documents.
 
-_This design may graduate to an ADR once the finding shape has proven itself across a second document type._
+The economics work because cost scales with difficulty rather than volume. The
+statements that reconcile cost one read each, forever. Only failures incur
+repair calls, and only after free diagnosis fails to force an answer. Bounded
+repair is what keeps the cost curve flat as document volume grows, which is what
+the near-zero-cost fully-local endgame needs.
+
+Five things ripple into every later slice, which is why it is worth getting
+right once. The **finding shape is a universal contract** — a structured
+diagnosis of which identity failed, the delta, the locus, the status and the
+confidence — so every future document type plugs its own identities into the
+same shape, with the ladder as universal code and the per-type checks as
+registry data. **Correction-as-event is the single spine under all human
+teaching**: "that figure is wrong", "that leg is groceries", "these two lines
+are the same transfer" are the identical mechanism, so the amount-correction
+engine built here *is* the categorization-correction engine later. **The moat
+compounds from the first hard statement.** **The confirmation surface is an agent
+primitive** — show source, collect a graded confirmation, emit a correction event
+— which the conversational agent composes rather than rebuilds, and which is the
+same surface as tap-to-source. And **autonomy calibration gets its boundary**:
+"post when it reconciles, ask when it doesn't" is the concrete seed of graduated
+autonomy, with the finding's confidence as the dial.
+
+## Open
+
+- Rung 1, the automated targeted re-read, is unbuilt. It is the first *repair* model call and waits until the human-ask rate justifies the plumbing and the spend.
+- The correction surface itself: showing the source crop and collecting a ruling in one tap is designed; today a ruling arrives through the review path.
+- Nothing pins the diagnosis version to its rules, so a rule change that forgets to bump the version would be invisible.
+- Whether the finding shape survives a document family with no arithmetic identity at all — the case that would decide whether the ladder is genuinely universal.
+- This design may graduate to an ADR once the finding shape has proven itself across a second document type.
