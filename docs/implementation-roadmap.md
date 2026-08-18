@@ -1,314 +1,110 @@
 # OrionViva — Implementation Roadmap
 
-**Status:** Living · **Last updated:** 2026-08-17 (UI implementation status is tracked in [user-interface-implementation-status.md](user-interface-implementation-status.md); Slice 0 parity machinery is complete) · **Approach:** data-first; every slice seeds a reusable **lego block**, and the trust signal (grade + provenance + bitemporality) rides all of them from v0 to the endgame.
-**Invariants touched:** the whole set — this is the ordered path by which T1–T9, I1–I6, M1, X1–X3 get built.
+**State:** partial
+**Rules:** PROG-1, PROG-2, PROG-3, PROG-4
 
-## Slice 0 parity audit — complete 2026-08-17
+## Rules
 
-This is a follow-up audit against `docs/user-interface-architecture-and-delivery.md`.
-The implementation is committed in `9cc8d7a`; the current UI status is tracked
-in [user-interface-implementation-status.md](user-interface-implementation-status.md).
+### PROG-1 — What is built is described by capability, not by slice
+**State:** untestable
+**Code:** none found
+**Test:** none
 
-**Acceptance criteria**
+1. The built half of this document names capabilities, so reading it answers *what does this product do today* and nothing else.
 
-- `viva.surface` exposes protocol/version, figure, panel, action, capability,
-  and synthetic-fixture contracts.
-- Every current user-facing and command capability has a surface destination or
-  an explicit developer-only, internal, or deferred disposition with a reason.
-- Representative contracts validate, regeneration is deterministic, and a
-  deliberate contract drift fails.
-- Import boundaries protect the product, surface, bridge, and desktop layers.
-- Gates A, C, and D exist and are runnable in CI: contract drift, capability
-  coverage, and interface-impact declaration.
+### PROG-2 — Slice labels are frozen and never renumbered
+**State:** untestable
+**Code:** none found
+**Test:** none
 
-**Current state and remaining boundary**
+1. A slice number that has appeared in a commit message or the public build log refers to the historical planning sequence and is never reused or renumbered.
+2. A slice number is a planning label, so it does not map onto the built half of this document.
+3. Work committed under the label "Slice 9b" is the counterparty-implications work — the three tiers of settled, structural and unknown, described under *Asking, and being told* — not the "Viva speaks" slice.
 
-- Present: `viva.surface.protocol` and common figure/panel/action models, plus
-  protocol/model tests.
-- Present and verified: `viva.surface.capabilities` inventories the backend
-  command set and gives each capability a surface or explicit non-surface
-  disposition.
-- Present and verified: a checked-in deterministic `surface-v1` fixture and
-  contract drift gate.
-- Present and verified: synthetic Python surface contract tests, capability
-  coverage, import-boundary tests, and the backend-impact gate.
-- Present and verified: CI wiring for the Slice 0 gates in
-  `.github/workflows/quality.yml`.
-- Remaining by design: Gates B, E, and F and the desktop bridge are deferred to
-  Slice 1 because no live desktop transport exists yet.
-- Compatibility note: the package requires Python 3.11+, while the local
-  default interpreter is Python 3.10.5; integration checks must use the
-  declared supported runtime.
+### PROG-3 — Nothing is built ahead of its slice
+**State:** untestable
+**Code:** none found
+**Test:** none
 
-**Development/testing integration notes**
+1. Each slice is designed in detail with the author before any code is written for it.
+2. Every slice seeds a reusable block, and the trust signal — grade, provenance, bitemporality — rides all of them.
 
-- The capability test imports the registry API and runs as a CI gate under the
-  declared supported Python runtime.
-- Existing desktop fixtures are synthetic UI data, not generated Python
-  surface fixtures; treating them as parity evidence would bypass Gate A.
-- A registry must classify backend commands that are intentionally not UI
-  features; exposing every command as a destination would violate progressive
-  disclosure and the architecture's developer-only/internal/deferred rules.
-- The desktop currently has no bridge consumer, so Gates B, E, and F should
-  remain deferred to the installable-shell slice rather than added as empty
-  machinery.
+### PROG-4 — The surface gates run in CI
+**State:** by-review
+**Code:** .github/workflows/quality.yml:17-22, scripts/check_surface_contract.py, scripts/check_surface_impact.py
+**Test:** product/tests/test_surface_contract.py, product/tests/test_surface_capability_coverage.py, product/tests/test_surface_gate_scripts.py
 
-**Recommended integration checks**
+1. A deliberate contract drift fails the contract gate, and schema and fixture regeneration is deterministic.
+2. Every user-facing and command capability has a surface destination or an explicit developer-only, internal or deferred disposition with a reason, and every command entry point is classified exactly once.
+3. A backend change that touches the interface must declare its impact.
 
-- Run the surface contract, capability coverage, import-boundary, and impact
-  checks under Python 3.11+.
-- Regenerate schema and fixtures twice and compare byte-for-byte output.
-- Mutate a field, closed vocabulary value, protocol version, and capability
-  disposition in temporary copies; each must fail for the intended reason.
-- Inventory all `product/viva` command entry points and assert every one is
-  classified exactly once.
-- Verify dependency direction: product core/engine does not import surface or
-  desktop; surface does not import React/Tauri; bridge and desktop consume the
-  contract only.
-- Run the existing product suite after the gates pass, then confirm the branch
-  remains free of generated frontend output changes.
+The import boundaries between product, surface, bridge and desktop are
+**VOICE-101** in
+[user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md),
+where the rule and its live contradiction are recorded once. This document's
+Slice 0 audit recorded those tests as present *and verified*; two of the six are
+red, so that line of the audit was wrong.
 
-This doc has two halves, and the split is the point.
+## Why
 
-**What is built** is described by **capability**, not by the slice that produced it. A slice is a unit of *planning*; once the work exists, the code and its design doc are the record, and a label like "5.6" only tells a reader where in a queue it once sat. Reading the built half should answer *what does this product do today*, and nothing else.
+This document has two halves, and the split is the point. A slice is a unit of *planning*. Once the work exists, the code and its design document are the record, and a label only tells a reader where in a queue it once sat — so the built half is organised by capability, and reading it answers what the product does today. Only the unbuilt half is organised by slice, in the fact-statement form the plan has used throughout, because for unbuilt work the order *is* the content.
 
-**What is not built** is described by **slice**, in order, in the fact-statement form the plan has used throughout: **open state** (with a proof the capability is absent) → **implementation** → **final state** → **done criteria / tests** → **why now + future use**. Nothing is built ahead of its slice, and each is designed in detail with the author before code.
+The approach is data-first: every slice seeds a reusable block rather than a feature, and the trust signal rides all of them from the first version to the endgame. This is the ordered path by which the whole invariant set gets built.
 
-**About the labels.** Slice numbers appear in commit messages and in the public build log. Those are the frozen record and are not renumbered; they refer to the historical planning sequence, which no longer maps onto this document's built half. Work committed before 2026-07-26 under the label "Slice 9b" is the counterparty-implications work described below under *Deciding who to ask*, not the "Viva speaks" slice.
+**What is built, by capability.**
 
-**Where this sits against the product phases.** `ROADMAP.md`'s Phase 0 (foundations) is complete. Phase 1 (organize & consolidate) is in progress: transfer-linking and always-current net worth are built; account aggregation is not.
+*The ledger and the log.* An encrypted, append-only, hash-chained event log: every fact is an event with a value time and an ingest time, sealed and chained by record hash, so state is always a projection and history is never rewritten. A corrupt ledger refuses to read rather than guessing, and chain verification needs no key. A movement's postings sum to exactly zero, deterministically checked; an amount is the signed change to the named account; account roots are fixed in code and everything below them is data. A movement's counter-leg goes to an uncategorized bucket graded unverified — the amount is attested, the classification is not — and every later categorization is a read-side overlay, so the posted leg is never rewritten. Raw capture precedes judgment: the original bytes are sealed and stored before anything parses them, and every model reply is recorded with its model id and prompt version. Ingestion is any-order with bidirectional heal — a statement older than the one that seeded an account prepends and re-seats the opening balance, a statement dropped into a gap heals both sides and cascades, every ordering of the same documents yields an identical chain, and Opening Balance Equity reflects only genuinely unexplained history. One cached incremental projection is folded forward on each append, so ordinary reads never re-decrypt the log.
 
----
+*Reading documents.* A document type is a data row naming its account kind, its identity check and the prompt fragments it owns; adding a balance-family type needs no code, and there are no per-institution parsers anywhere in the tree. Reading is two-phase: a cheap classify pass on the first page decides the type, and a type whose profile has no extraction prompt parks before an expensive call is paid for. Every model-facing string lives in a versioned file loaded by id, a released version is never edited, and a build-failing test keeps prompt text out of code. Verification is deterministic: exact-tolerance decimal arithmetic that refuses floats outright, one identity per document family, and a model never certifies a figure. Normalization is locale-aware and versioned, and where a shape is genuinely ambiguous and no locale decides it, the figure is refused rather than guessed. When a document does not reconcile, the gap is diagnosed cheapest-first, and only a forced finding is applied and re-checked — anything else holds the statement for review rather than posting a guess. Divergent profiles — a pay stub, a brokerage statement — each carry their own facts shape, identity and projector, proving that a new document shape is data plus a projector rather than new plumbing.
 
-# Built
+*Knowing what is the same thing.* The same primitive appears five times: gather signals, grade the match, ask only when genuinely ambiguous, record the ruling, apply it on the read side. Accounts anchor on the number, not on the holder's name. Two movements that are one internal transfer are linked as a graded overlay and excluded from spending, so money never appears to leave twice — and the same mechanism doubles as a reconciliation witness where a counterparty statement's movements uniquely account for another statement's gap, with uniqueness as the gate. A merchant is known by its brand, resolved for a whole vault at once because the boundary between a sender name and the noise around it is a property of the corpus rather than of any line, enriched in one batched call in a package that holds only impersonal knowledge. A category is a resolved identity rather than a bare string, because two spellings of one label silently halve every total that touches either. A category partitions and a tag overlays, and tag reports return the untagged and total figures beside the per-tag ones so a reader can see they do not add up.
 
-## The ledger and the log
+*Making the numbers honest.* Asset and liability signs are opposite, and the counter-leg is kind-aware. Spending means money that left your *life*, not money that left an account, derived on the read side by a ladder of evidence, strongest first — and anything the ladder cannot settle is counted but reported provisional rather than silently resolved. A holding is measured at the statement date and never posted; unrealized change is the difference between two measurements rather than a fabricated transaction. Net worth is a curve defined at every date, where an earlier point never moves when a later document lands, an account with no measurement contributes nothing rather than zero and appears in a skipped list, and an asserted-but-unpriced asset is a disclosed gap reported with the question that closes it. Subtotals are per currency with no converted grand total, and every point names its stalest input. The answering path has no model in it: a question is a fixed function over the projection, and the layer's job is the honesty envelope.
 
-**An encrypted, append-only, hash-chained event log.** Every fact is an `Event` with a value time and an ingest time, sealed with AES-GCM and chained by record hash, so state is always a projection and history is never rewritten. A corrupt ledger refuses to read rather than guessing. Chain verification needs no key.
+*Asking, and being told.* One ranked queue is the front door for everything Viva needs to know, ranked by consequence, scoped to the most general unit that is still honest, with the tail summarized rather than hidden. Question text is a deterministic template, because a model that phrased a question could smuggle a claim into it. Every movement sorts into three tiers — settled, asked nothing; structural, given an informed proposal; unknown, given a real question — so the product forms the belief and the person confirms it. A sentence becomes double-entry through six steps with exactly one model call, and that call parses *intent* only: a ruling's legs structurally cannot carry a figure, and no account comes into being without an explicit yes, whatever the path. The interview is a projection over the answers an account already carries rather than an object, so it is retroactive, correctable and free. What may be asked about a kind of asset is data in a reviewable pack, and which schema an account gets is decided by evidence, strongest first, and only when exactly one kind claims it. An account records its jurisdiction and defaults to *nobody has said* rather than to a country. Every sentence Viva can say lives in a versioned phrasing pack keyed by intent; rendering is strict, and a phrasing may not introduce a fact the intent did not supply. Declines snapshot the stake, so a declined question stays quiet until the stake changes — no timers.
 
-**Double-entry postings.** A movement's postings sum to exactly zero, checked deterministically. An `amount` is the signed change to the named account. Account roots are fixed in code; everything below them is data. A movement's counter-leg goes to an Uncategorized bucket graded `unverified` — the amount is attested, the classification is not — and every later categorization is an overlay on the read side, so the posted leg is never rewritten.
+*Being asked, and answering.* A registry of read tools sits on the projection, each returning a graded, cited envelope rather than a bare number, with a planner in front of them that chooses the calls and writes the sentence but never computes a figure. A session carries prior turns as context and re-fetches every figure per turn, so an answer is never composed from what an earlier answer said. Coverage is not the stretch of time a read happened to see movements in — it is the period a reconciled statement declared, recovered from what each document said about itself, joined only where balances continue *and* dates meet, and reported one entry per account. The citation gate is code rather than instruction: a figure with no record id behind it is refused, and the ways a number could ground itself falsely have been closed one at a time. That gate was rebuilt rather than lengthened: a whitelist over prose a model had already written could never be finished, because the set of numeric tokens in a sentence about money that are *not* claims about money is open-ended. What replaced it inverts the order — a model commits a *shape* of literal words with typed holes before any tool is on the table, code binds the holes to references into the run's own ledger, and one renderer writes them. Nothing inspects the finished sentence, because a model writes no digits into one ([projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)). Every exchange is kept verbatim with the prompt version and model that produced it, which is what makes a later eval possible at all.
 
-**Raw capture before judgment.** The original bytes are sealed and stored before anything parses them, and every model reply is recorded with its model id and prompt version. _(Corrected 2026-08-14: this said "every model request and reply … verbatim". On the ingest path the **request is not stored** — the position is that it is reconstructable from the captured document plus the immutable prompt version, which is faithful in content and not in bytes, and which ADR-003 has never been asked to ratify. The answering path does store both verbatim.)_
+*Presentation semantics, as a decision rather than as code.* One card per instrument kind, each carrying the same three things — the figure, its as-of date and grade, and what it does not include — with a liability speaking *owed* rather than showing a signed figure. Both the compiled-bundle surface and the plain-HTML one were built and removed: a stale artifact can serve last hour's product with no error and no way to tell by looking, and the debug page that replaced it had begun costing verification findings of its own. What survives is the semantics, carried in [the-surface-cards.md](the-surface-cards.md); the real presentation layer is still an unheld design conversation, and designing a third surface before that conversation would be a fourth thing to throw away.
 
-**Any-order ingestion with bidirectional heal.** A statement older than the one that seeded an account prepends and re-seats the opening balance; a statement dropped into a gap heals both sides and cascades. Every ordering of the same documents yields an identical chain. Opening Balance Equity reflects only genuinely unexplained history.
+*Instruments and tooling.* Rebuild replays stored claims through today's parsers into a new vault, free and with no model calls, testing the parsers against yesterday's replies. Reingest re-reads the stored originals through today's prompts at real cost and reports regressions. Reset rebuilds the log with categorization dropped and a person's own rulings preserved. An interpretation eval scores sentence-reading against a frozen synthetic key with the confidently-wrong rate as the headline and a hard disqualification on any fabricated split or amount, and a run that could not reach the model is never scored. A model admission exam grades candidates on a frozen corpus across input modes and publishes no composite leaderboard.
 
-**A cached incremental projection.** The `Ledger` facade holds one live projection folded forward on each append, so ordinary reads never re-decrypt the log. A point-in-time projection is available as an escape hatch.
+**What is planned, and why in this order.**
 
-## Reading documents
+*Obligations and proactive alerts* turn passive records into active help: an obligation primitive with cadence and due rules from recurrence detection, anomaly and fee and subscription detection reusing the existing finding block, and a proactive trigger deciding *when* to surface. Its real dependency is nature and category semantics settling, not time — recurrence detection stays noisy until then. The proactive-trigger block is exactly what the conversational agent later uses to volunteer. Card-specific fields feed obligations; when needed, the card profile version bumps and only affected statements are re-read, because the claims layer records which profile version read each document.
 
-**A doc-type registry.** A document type is a data row naming its account kind, its identity check, and the prompt fragments it owns. Adding a balance-family type needs no code. The pipeline classifies, selects the profile, then extracts. There are no per-institution parsers anywhere in the tree.
+*Viva speaks* is mostly built, and what remains is the honesty measurement rather than the machinery.
 
-**Two-phase reading.** A cheap classify pass on the first page decides the type; a type whose profile has no extraction prompt parks before an expensive extract call is paid for. Extraction sends every page image together with the issuer's own embedded text. A bounded retry distinguishes a JSON syntax failure from an unreadable field, and a shared continuation driver survives truncation.
+*Goals and budgets* compose spending, income and balances with no new engine, and establish the graduated-autonomy pattern — draft against act — that every future action inherits: Viva drafts on request and never acts irreversibly without a yes.
 
-**Prompts as versioned files.** Every model-facing string lives in `<package>/prompts/<version>.txt` and is loaded by id; a released version is never edited, so a recorded `prompt_version` resolves to the exact text that produced a reading, forever. A composed extraction prompt records a self-describing composite id that reverses back to its parts. A build-failing test keeps prompt text out of code.
+*Loans, insurance, tax and FX* each ship as their own smallest seed: one loan, one policy, one tax document, one currency pair. Most of this is [document-coverage.md](document-coverage.md) becoming registry rows. A mortgage payment is compound — interest, principal and escrow in one movement — so it cannot be answered by a single ruling and must be split, and the ratios come from the loan statement, which is why it lands here; until then the queue names such payments as compound and asks for the document rather than forcing a guess ([learning-mode.md](learning-mode.md)). This slice completes consolidation of a full financial life; the provision primitive proves the model is not secretly transaction-shaped, and tax, cost basis and jurisdiction are prerequisites for real advice and for a two-country reality.
 
-**Deterministic verification.** Arithmetic runs on `Decimal` with exact tolerance and refuses floats outright. Each document family has one identity: `opening + Σ = closing` for the balance family, `gross − deductions = net` for a pay stub, `Σ market_value + cash = total` for a brokerage snapshot, and `opening cash + Σ activity = closing cash` for brokerage flow. A model never certifies a figure.
+*Trust hardening* periodically anchors the chain head to a trusted timestamp or transparency log — signatures and a timestamp, no blockchain, no token — and verifies issuer signatures where issuers provide them, so authenticity needs no inference. It makes facts provable to others, which is the precondition for the endgame.
 
-**Locale-aware normalization.** An amount is always a value and a currency. Grouping and decimal conventions, negative conventions (parentheses, DR/CR, trailing sign) and date orders are resolved by explicit versioned rules; where the shape is genuinely ambiguous and no locale decides it, the figure is refused rather than guessed. One accessor supplies the configured locale to every entry point.
+*Creditworthiness and selective disclosure* is the vision in seed form: a bitemporal creditworthiness projection, and a proof bundle disclosing a single graded claim with its provenance and anchor, revealing nothing more. It composes every block, and the net-worth curve's provable subtotal is already its first primitive, derived for free.
 
-**Findings when a document does not reconcile.** A gap is diagnosed cheapest-first: a printed running balance can localize the misread line *forced*; a gap equal to one line's amount or divisible by nine is *suggested*; otherwise it is *unlocalized*. A forced finding is applied and re-checked; anything else holds the statement for review rather than posting a guess.
+*Household scope and sync* comes last because it is a *mode*, not a foundation: a scope lens filtering by party, and sync as encrypted vault export and import through a blind relay where documents stay put and the ledger follows. Party existed from day one, so this does not reshape the schema.
 
-**Divergent profiles.** A pay stub carries its own facts shape, its own identity, and its own projector, and decomposes the checking deposit its net explains — gross recognized as income once, withheld tax, retirement and insurance recorded as their own legs in universal buckets with jurisdiction as an attribute. A brokerage statement does the same for holdings and activity. Both prove that a new document shape is data plus a projector, not new plumbing.
+**Decision recorded: no agent-memory framework.** Rulings are institutional knowledge, not preferences, and the append-only, graded, deterministically-applied event log already avoids the staleness and trustworthy-retrieval problems those frameworks are benchmarking.
 
-## Knowing what is the same thing
+**The stack, end to end.** The first version gave one honest answer. The built half consolidates a whole financial life on a small set of re-composed blocks. Obligations make it volunteer, the speaking slice gives it a voice, goals and instruments let it advise and act across every domain, trust hardening and selective disclosure make its facts provable to others — the credit-bureau alternative — and household scope opens it to multiple people and devices. Every slice is the same blocks, re-composed.
 
-The same primitive appears five times: gather signals, grade the match, ask only when genuinely ambiguous, record the ruling, apply it on the read side.
+## Open
 
-**Account identity.** Accounts anchor on the last four digits of the number, with institution and holder names as supporting signals and the holder's own name deliberately excluded as non-distinctive. An ambiguous match raises a question scoped to the same account kind; the confirmation is recorded and applied thereafter.
-
-**Transfer links and cross-document corroboration.** Two movements that are one internal transfer are linked as a graded overlay — neither leg is re-posted — and excluded from spending, so money never appears to leave twice. The same mechanism doubles as a reconciliation witness: when a counterparty statement's movements uniquely account for another statement's gap, that gap closes with two issuers vouching and no model call. Uniqueness is the gate; a gap is never closed on a guess.
-
-**Merchant knowledge.** A merchant is known by its **brand**, so two locations of one retailer are one record: the key is the normalized brand a resolution layer named, and the normalized descriptor only where no layer could name one. It is resolved for a whole vault at once, because the boundary between a sender name and the noise around it is a property of the corpus rather than of any single line, and a lookup considers both candidates so an answer recorded under the older name still answers. Merchants are normalized deterministically by a versioned normalizer and enriched in one batched model call over new merchants only, into records carrying a category, a subcategory, a canonical name and structural attributes. Enrichment lives in `merchantcore`, a package peer to `vivacore` that holds only impersonal merchant knowledge; personal figures never cross into it. Results sync back as events so the ledger stays self-contained, and categorization applies retrospectively. The catalog is shared across vaults and is the seed of a content-addressed commons.
-
-**Category identity.** A category is a resolved identity, not a bare string, because two spellings of one label silently halve every total that touches either. Three layers, no string comparison: every minting path is shown the existing vocabulary first; a genuinely new label resolves once through a scoped ruling; and the projection folds aliases on the read side, retroactively, reversed by appending.
-
-**Tags.** A category partitions — exactly one per movement, so the parts sum to the whole — and a tag overlays, many per movement, with totals that deliberately do not sum. Tag reports return `untagged` and `total` beside the per-tag figures so a reader can see they do not add up. Tags are their own event type, because a tag is personal meaning that no commons can know.
-
-## Making the numbers honest
-
-**A kind-aware counter-leg.** Asset and liability signs are opposite: money out of an asset and a charge on a liability are both expenses; money into an asset is income; a payment on a liability is a debt reduction, not income.
-
-**Movement nature.** Spending means money that left your *life*, not money that left an account. Nature is derived on the read side by a ladder, strongest evidence first: an explicit transfer link, then a person's ruling on the movement or its merchant, then an own-account name in the description, then what the counterparty's category implies, then a default of spending. Anything the ladder cannot settle is counted but reported **provisional** rather than silently resolved, and a compound movement is reported as undecomposed rather than forced into one bucket.
-
-**Spending, by category and by subcategory**, composed with transfer exclusion, with the amount resting on weak evidence reported separately from the amount that does not.
-
-**Positions as dated measurements.** A holding is measured at the statement date, never posted. Unrealized change is the difference between two measurements — a presentation view carrying its date and valuation class — never a fabricated transaction. Realized cash events post: contributions tie to the funding account and are counted once, dividends and interest are income, fees are expense, and a reported realized gain books to capital gains.
-
-**Net worth as a curve.** `net_worth(D)` is defined at every date between the earliest and latest observation, each point built from every account's last measurement at or before D. An earlier point never moves when a later document lands. An account with no measurement contributes nothing — never zero, never a guess — and appears in a `skipped` list naming the document that would fix it. An asset the person asserted but has never priced is a **disclosed gap**: reported in `missing` with the question that closes it, so the point reads incomplete rather than quietly complete — and a stated cost then replaces the cash-derived line for that account rather than adding to it. Which answer lets the curve carry a thing, and which answer dates it, are pack fields; the curve infers neither. Sign comes from account kind, so an overpaid card reads as an asset. Subtotals are per currency with no converted grand total, and every point names its stalest input.
-
-**An answering path with no model in it.** A question is a fixed function over the projection; the layer's job is the honesty envelope. A total sums only trustworthy balances and names by grade every account it excluded. A conflicted balance returns the reconciliation explanation instead of a number. Multiple currencies return subtotals and a statement that they are not converted.
-
-## Asking, and being told
-
-**A question queue.** One ranked front door for everything Viva needs to know — identity, reconciliation, transfers, merchants, nature, corroboration, expected documents, and what an account still needs known about itself. Questions are ranked by consequence, so answering the top of the list moves the most money; each is scoped to the most general unit that is still honest; and the tail is summarized rather than hidden. Question text is a deterministic template. A model that phrased a question could smuggle a claim into it. A question set aside is deferred into a **pending list the person opens**, not into silence: it is still built, so it can be looked for, and it returns of its own accord when the money behind it moves.
-
-**Deciding who to ask.** A merchant's category implies structure — a mortgage servicer implies a property, a loan, escrow, a tax document — and that knowledge is attached at enrichment time, where it is impersonal, batched, cached and shareable. Every movement then sorts into three tiers: **settled**, which is asked nothing; **structural**, which gets an informed proposal naming what the product already believes; and **unknown**, which gets a real question, one transaction at a time. The product forms the belief and the person confirms it.
-
-**Rulings in your own words.** A sentence becomes double-entry through six steps with exactly one model call, and that call parses *intent* only. The four majors are expense, asset, liability and income; equity is absent because for a person it is net worth and is derived. A ruling's legs structurally cannot carry a figure — the event constructor refuses a leg with an amount — so the money always comes from the movement. The one exception is a figure the *person* stated about a thing they hold, and it is fenced: attribute scope only, refused unless the number appears among the numbers they actually wrote, refused if it is negative or not finite. Account resolution reuses the account matcher, so ask-only-when-ambiguous comes for free. **No account comes into being without an explicit yes**, whatever the path: an answer that would open one comes back as a proposal saying so in plain words, an account taken to be an existing one is named in that sentence rather than silently bound, and an answer that names nothing at all is met with the question rather than a placeholder path. A missing document never blocks a ruling: the account is created, the cash posted, the decomposition marked provisional, and the corroborating document asked for.
-
-**The interview — a question with a next step.** For an account whose kind is resolved, the next thing still owed about it is asked, one question at a time, and answering it produces the next. There is no interview object and no interview event: the state is a projection over the answers and declines the account already carries, so it is retroactive, correctable and free. An answer is a scoped ruling like every other. An interview is ranked with everything else by the cash a ruling has put against its account, so it never outranks a larger finding for being new, and an account whose money its own statements already explain carries a stake of zero rather than borrowing its balance. A yes that implies a second instrument — a loan against a property — offers to start that one's interview, and offers rather than creates.
-
-**The schema pack — the fourth pack.** What may be asked about a kind of asset or liability is data: kinds, question keys, jurisdiction tags, the words each question asks, what answering it unlocks, which answers are essential, which one gates net worth and which one dates it. A lint refuses a pack that could ask something unreviewable — an answer type outside the closed vocabulary, a choice that enumerates nothing, a question that cannot say what it unlocks, a document type the ingestion pipeline does not classify. The pack holds no vault data, so it is reviewable in one sitting and shareable like the merchant catalog. **Which schema an account gets is decided by evidence, strongest first:** the shape of a path this interview created, then the document types an issuer produced for it, then the ledger's own account kind — and only when exactly one kind claims it, because a loan and a card are both liabilities and that word alone settles nothing. An account nothing resolves is recorded as a coverage gap rather than asked a question built on a guess. A classified statement also answers the question its own type settles, so nobody is asked whether a checking account is a checking account.
-
-**Where an instrument lives.** An account records its jurisdiction, and it defaults to *nobody has said* rather than to a country. Which schema applies and which documents would attest a fact both follow from it, so a default naming one country would have put a fact in the ledger that no document and no person ever stated.
-
-**Viva's voice as data.** Every sentence Viva can say lives in a versioned phrasing pack keyed by intent, with a declared set of slots; rendering is strict, so a question with a hole where a fact should be fails loudly rather than shipping. A phrasing may not introduce a fact the intent did not supply. "Not now" and "I don't know" are recorded as decline events that snapshot the stake, so a declined question stays quiet until the stake changes — no timers.
-
-**Expectations — documents that pursue documents.** A jurisdiction-tagged registry of read-side mechanisms: a retirement flow implies a retirement statement, an investment account implies a tax document, and an account whose newest statement has gone stale implies a fresher one. Satisfaction is deterministic — the document arrived or it did not.
-
-## Being asked, and answering
-
-**A question in plain language, answered from tool results only.** A registry of read tools sits on the projection — querying the ledger, checking completeness, reading provenance and transparency, and doing arithmetic — and each returns a graded, cited envelope rather than a bare number. A planner puts a model in front of them: native tool-calling for every OpenAI-compatible endpoint, hosted route and local server in one wire format, with a text protocol covering any model that has no native mode. The model chooses the calls and writes the sentence; it never computes a figure. A session carries prior turns as context but **re-fetches every figure per turn**, so an answer is never composed from what an earlier answer said.
-
-**A read says what it is attested for, per account.** Coverage is not the stretch of time a read happened to see movements in — it is the period a reconciled statement declared. A statement enters the ledger only by closing its own arithmetic, so inside a posted period every movement is present and a zero there is money not spent rather than evidence not held. The periods are recovered from what each document said about itself, which the vault already stored, and two statements are joined only where the balances continue *and* the dates meet — so a month nobody ingested stays a visible gap instead of being spanned by a figure that happens to match. Coverage is reported one entry per account, because a statement covers one account and an answer may be complete for one and hold nothing for another. An account with no statement says so by name; a holdings snapshot attests no period at all.
-
-**The citation gate is code, not instruction.** A modality-neutral runner refuses to deliver a figure with no record id behind it, and the ways a number could ground itself falsely have been closed one at a time as each was found: a refusal grounds nothing, a call's own arguments cannot ground the answer that quotes them, a record id passed in by the caller never joins the citation pool, and a date is declared alongside the figures, checked for containment against the periods the run is attested for, and licensed component by component — the whole date, its year, and its month and day with and without a leading zero. Nothing is removed from the answer's text to make room for a date: text deleted before the numbers are counted takes whatever else it overlaps with it. When the gate refuses, the turn ends in a correction rather than in a delivered sentence.
-
-> _**Deleted 2026-08-07 — this paragraph describes machinery that no longer exists.** The gate was a whitelist over prose a model had already written, and the set of numeric tokens in a sentence about money that are *not* claims about money is open-ended, so it could never be finished: the second acceptance run refused four of nine answerable questions and spent 67% of its budget on refusals, every one triggered by a date or an identifier token and not one by a bad figure. What replaced it inverts the order rather than lengthening the list. A model commits a **shape** — clauses of literal words with typed holes — before any tool is on the table, code binds the holes to references into the run's own ledger, and one renderer writes them. Nothing inspects the finished sentence, because a model writes no digits into one. See the closing amendment of [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)._
-
-**Every exchange is kept.** The full request and reply are captured verbatim in the vault with the prompt version and model that produced them — which is what makes a later eval possible at all. _(Corrected 2026-08-15: this ended "on the same footing as a document reading", and the two are not on the same footing. An answering exchange stores the request verbatim beside the response; a document reading stores **no request at all**, on the position that it is reconstructable from the stored document plus the immutable prompt version — faithful in content, not in bytes. See ADR-003's amendment of the same date, which records that as unmet rather than ratified.)_
-
-**What is not yet true, and is not claimed to be.** None of this has been run against the author's real vault; the acceptance bar is a real-money conversation on both a hosted and a local target, and it has not happened. The confidently-wrong rate is unmeasured on this surface. Two done criteria have no test: that a document prompt-injection cannot make Viva act, and that swapping the model changes phrasing rather than answers. And the wiring between the model and the gate is unpinned — the gate is tested hard, its supply line is not.
-
-> _**Answered 2026-08-08, and not the way this paragraph hoped.** It has run against the author's real vault three times. The confidently-wrong rate is no longer unmeasured: **a wrong number reached a person**, carrying its grade and its citation correctly, from four compounding faults of which none was in the shape mechanism. And *"swapping the model changes phrasing rather than answers"* is false as written — one local model emitted no tool call in twenty replies and so answered nothing at all, which makes the property per-model rather than a property of the design, with the shipped default on the wrong side of it. What the runs found is on the public issue tracker._
-
-## The surface
-
-**A local web surface built from cards, in plain HTML with no build step.** One card per instrument kind: a depository leads with its balance and its as-of date; a liability speaks *owed* and calls out a credit balance; an investment shows the statement's own `cash + Σ holdings = total` cross-check and names activity it could not post; an asserted asset says *cost*, badged as your word, with the document that would corroborate it. Every card carries the same three things — the figure, its as-of date and grade, and what it does not include. A card that throws cannot take the page down or blame the ledger. A compiled-bundle surface was built and removed: a stale artifact can serve last hour's product with no error and no way to tell by looking.
-
-> _**Deleted 2026-08-06 — there is no web surface at all now.** The cards went with the rest of the debug page, which had begun costing verification findings of its own while on its way out. The engine beneath it moved to `viva/engine.py`, reached from two terminals: `viva.ask` (Viva asking you) and `viva.speak` (you asking Viva). **What survives is everything above about presentation *semantics*** — the three honesty elements, a liability speaking *owed* rather than showing a signed figure — as a **decision**, not as shipped code; [the-surface-cards.md](the-surface-cards.md) carries them, and records (2026-08-14) that the live speak path enforces neither. The real presentation layer is still an unheld design conversation, and designing a third surface before that conversation would be a fourth thing to throw away._
-
-## Instruments and tooling
-
-**Rebuild** replays stored claims through today's parsers into a new vault, free, with no model calls — testing the parsers against yesterday's replies. **Reingest** re-reads the stored original documents through today's prompts, at real cost, and reports regressions against the source vault. Both leave the source untouched.
-
-**Reset** rebuilds the log with categorization events dropped and a person's own rulings preserved, printing a per-type before-and-after count. **Export and diff of rulings** answer whether the product now proposes what a person previously had to type.
-
-**An interpretation eval** scores sentence-reading against a frozen synthetic key, with the confidently-wrong rate as the headline and a hard disqualification on any fabricated split or amount. A run that could not reach the model is never scored and never averaged.
-
-**A model admission exam** (`viva-bench`) grades candidate models on a frozen corpus across input modes, measuring per-claim accuracy, recall, self-consistency, calibration, spurious claims, truncation, cost and latency — and publishes no composite leaderboard.
-
----
-
-# Planned
-
-Slice numbers below continue the historical sequence and are not reused.
-
-## Slice 8 — Obligations & proactive alerts
-**Block seeded:** Obligation (bills/recurring) + Proactive trigger + Finding *reused*.
-
-> _Card-specific fields (credit limit, minimum payment, due date) feed Obligations. When needed, bump the card profile version and targeted-re-read only the affected statements — the claims layer records which profile version read each document — rather than a redesign._
-
-**Open state:** bills/recurring aren't tracked; fees, duplicate subscriptions, anomalies pass silently; the system never volunteers. *Proof:* no obligations list; a fee posts unremarked (red test).
-
-**Implementation:** an Obligation primitive (cadence + due rules from recurring detection); anomaly/fee/subscription detection as **Findings** (reuse); a proactive trigger deciding *when* to surface; completeness (expected-vs-seen) becomes a nudge.
-
-**Final state:** bills and recurring charges tracked; fees, anomalies, unused/duplicate subscriptions surfaced; the first volunteered insight.
-
-**Done criteria / tests:** a recurring charge becomes an Obligation with cadence; a surprise fee or duplicate subscription raises a Finding; a missing expected statement is flagged; triggers respect a speak-when-it-matters threshold.
-
-**Why now + future use:** turns passive records into active help; reuses Finding + Obligation + completeness; the proactive-trigger block is exactly what the conversational agent uses to volunteer.
-
-**Real dependency:** nature and category semantics settling, not time — recurrence detection will be noisy until then.
-
----
-
-## Slice 9 — Viva speaks: what remains
-The tool registry and the planner are built and are described under *Being asked, and answering*. What is listed here is the part of this slice that is genuinely not done.
-
-**Open state:** the conversation has never met the author's real vault, and nothing about its honesty is measured. *Proof:* no scored run on real money; no injection test; no model-swap test.
-
-**Implementation:** a real-money conversation on both a hosted and a local target, scored against the debug surface as oracle; the confidently-wrong rate measured on this surface the way it is measured on sentence interpretation; a test that a document's own text cannot make Viva act; a test that swapping the model changes phrasing and not answers; and volunteering through the Slice 8 triggers, which do not exist yet.
-
-**Final state:** you talk to Viva; she answers anything the tools cover — honestly, with sources, in her voice — and volunteers when something matters.
-
-**Done criteria / tests:** as above, each one currently unmet.
-
-**Decision recorded:** no agent-memory framework. Rulings are institutional knowledge, not preferences; the append-only, graded, deterministically-applied event log already avoids the staleness and trustworthy-retrieval problems those frameworks are benchmarking.
-
----
-
-## Slice 10 — Goals & budgets
-**Block seeded:** Goal/Budget (target + progress projection).
-
-**Open state:** can't set a budget or a savings/payoff goal; no progress; no take-action. *Proof:* goals unsupported (red test).
-
-**Implementation:** a Goal/Budget primitive (spend ≤ X on a category; save Y by a date; pay off Z) and a progress projection over spending, income and balances. Viva drafts budgets and payoff plans — autonomous on the draft, asking before anything irreversible.
-
-**Final state:** budgets and goals exist with live progress; Viva advises and drafts plans.
-
-**Done criteria / tests:** a category budget tracks actual against target from spending; a payoff or savings goal projects a date from cash flow; progress updates as statements post; Viva drafts on request but never acts irreversibly without a yes.
-
-**Why now + future use:** composes spending, income and balances with no new engine; establishes the graduated-autonomy pattern (draft vs act) that every future action inherits.
-
----
-
-## Slice 11 — Loans, insurance, tax, FX
-**Blocks seeded:** Loan/amortization · Provision (insurance and loan terms) · Tax (attribute + liability projection + cost basis + jurisdiction) · FX/currency.
-
-Each domain ships as its own smallest seed — one loan, one policy, one tax document, one currency pair.
-
-> _The full instrument list — what is covered, what is missing, and what each gap blocks — is [document-coverage.md](document-coverage.md). Most of this slice is that list becoming registry rows._
-
-> _A mortgage payment is compound — interest, principal and escrow in one movement — so it cannot be answered by a single ruling and must be split. The ratios come from the loan statement or the annual interest statement, which is why this lands here. Until then the queue names such payments as compound and asks for the document rather than forcing a guess: [learning-mode.md](learning-mode.md)._
-
-**Open state:** a mortgage is a raw transaction stream with no principal/interest/payoff; insurance coverage isn't searchable; tax-relevance and estimated liability are absent; multi-currency can't total or convert. *Proof:* a mortgage doesn't amortize; "am I covered for X" is unanswerable; the tax view is empty; two currencies can't combine (red tests).
-
-**Implementation:** Loan (amortization from terms held as a Provision; escrow split; payoff projection); Provision (attested non-numeric coverage and terms, searchable, graded); Tax (a tax-relevant tag, cost-basis capital gains, an estimated-liability projection citing jurisdiction rules); FX (answer-time conversion with a cited, dated rate, and converted totals labelled an estimate).
-
-**Final state:** loans amortize and project payoff; insurance and loan terms are searchable; tax liability is estimable with cited rules; cross-currency is reported honestly.
-
-**Done criteria / tests:** a mortgage payment splits principal/interest/escrow and projects a payoff date; a deductible question answers from a Provision with its source; estimated tax cites its jurisdiction rules; an FX-converted total is labelled an estimate with rate and date.
-
-**Why now + future use:** completes consolidation of a full financial life; each domain reuses existing blocks plus one new primitive; Provision proves the model isn't secretly transaction-shaped; tax, cost basis and jurisdiction are prerequisites for real advice and for a two-country reality.
-
----
-
-## Slice 12 — Trust hardening
-**Blocks seeded:** Anchoring (chain head → trusted timestamp / transparency log) + issuer signatures / verifiable credentials.
-
-**Open state:** the hash chain proves internal tamper-evidence but anchors to no external time; authenticity rests on a model reading a document rather than an issuer attesting it. *Proof:* no external anchor; a signed statement's signature isn't verified (red test).
-
-**Implementation:** periodically anchor the chain head to a trusted timestamp or transparency log — signatures and a timestamp, no blockchain. Where issuers provide signed documents, verify the signature so authenticity needs no inference and the grade rises to issuer-attested. No token, no chain.
-
-**Final state:** the ledger is tamper-evident to third parties and time-anchored; issuer-signed facts are authenticated at source.
-
-**Done criteria / tests:** the chain head anchors and the anchor verifies independently; a signed statement's signature validates and lifts its grade; an outside party detects tampering given only the anchor.
-
-**Why now + future use:** makes facts provable to others, the precondition for the endgame; reuses event, provenance and grade; holds the signatures-not-blockchain line.
-
----
-
-## Slice 13 — Creditworthiness + selective disclosure
-**Blocks seeded:** a creditworthiness projection + a selective-disclosure proof bundle.
-
-**Open state:** your data can't vouch for you; a counterparty can't verify a claim without seeing everything; there is no proof export. *Proof:* no proof bundle; a counterparty question can't be answered without full disclosure (red test).
-
-**Implementation:** a creditworthiness projection over grade, provenance, payment history and net worth, bitemporal; and a proof bundle disclosing a single graded claim — "balance ≥ X as of a date", "on-time payments ≥ N" — with its provenance and anchor, revealing nothing more. Smallest seed: export one signed, verifiable claim.
-
-**Final state:** you can prove a specific financial claim to a counterparty, holding your own keys, revealing only what is needed — the user-owned credit-bureau alternative, in miniature.
-
-**Done criteria / tests:** a proof bundle verifies against the anchor and issuer signatures without exposing other data; the claim carries its grade; a third party validates it offline; nothing beyond the claim leaks.
-
-**Why now + future use:** the vision in seed form. It composes every block, and the net-worth curve's provable subtotal is already its first primitive, derived for free.
-
----
-
-## Slice 14 — Household scope + sync
-**Blocks seeded:** a Scope/Household lens (Party + whose-money view) + Sync (blind-relay, encrypted).
-
-**Open state:** single-user, single-device; no shared view; no multi-device. *Proof:* can't scope to a household member's account or sync to a phone (red test).
-
-**Implementation:** a Scope lens filtering by Party — individual, joint, household — with the user still holding the keys; and Sync as encrypted vault export and import through a blind relay, where documents stay put and the ledger follows. Smallest seeds: one household member's account visible; one manual encrypted round-trip.
-
-**Final state:** an optional household view, and a vault that follows you across devices without decryptable data leaving your control.
-
-**Done criteria / tests:** a joint account attributes to the right parties; a household total scopes correctly; an encrypted vault round-trips across devices with no plaintext exposure; keys never leave the user.
-
-**Why now + future use:** last because it is a *mode*, not a foundation. Party existed from day one, so this doesn't reshape the schema.
-
----
-
-## The stack, end to end
-
-v0 gave one honest answer. The built half consolidates a whole financial life on a small set of re-composed blocks. Slice 8 makes it volunteer, Slice 9 gives it a voice, Slices 10 and 11 let it advise and act across every domain, Slices 12 and 13 make its facts provable to others — the credit-bureau alternative — and Slice 14 opens it to household and multi-device. Every slice is the same lego blocks, re-composed, and the trust signal rides all of them from v0 to the endgame.
+- Two of the six surface import-boundary tests fail on `main` (VOICE-101), and nobody owns them. What the interface currently does render is tracked in [user-interface-implementation-status.md](user-interface-implementation-status.md).
+- The desktop bridge gates and the live desktop transport are deferred by design until a bridge consumer exists; adding empty machinery ahead of one would be worse than the gap.
+- The packages require Python 3.11 or newer while the local default interpreter is older, so integration checks must run under the declared supported runtime or they prove nothing.
+- Existing desktop fixtures are synthetic interface data rather than generated surface fixtures; treating them as parity evidence bypasses the contract gate.
+- Recommended integration checks, standing: run the surface contract, capability coverage, import boundary and impact checks under the supported runtime; regenerate schema and fixtures twice and compare byte-for-byte; mutate a field, a closed-vocabulary value, a protocol version and a capability disposition in temporary copies and confirm each fails for the intended reason; inventory every command entry point and assert each is classified exactly once; verify dependency direction in both languages; then run the full product suite and confirm the branch carries no generated frontend output changes.
+- The conversation has met the author's real vault, and what the runs found is not settled. A wrong number reached a person, carrying its grade and its citation correctly, from four compounding faults of which none was in the shape mechanism. And *swapping the model changes phrasing rather than answers* is false as written: one local model emitted no tool call in twenty replies and so answered nothing at all, which makes the property per-model rather than a property of the design, with the shipped default on the wrong side of it.
+- Two done criteria for the speaking slice still have no test: that a document's own text cannot make Viva act, and that swapping the model changes phrasing rather than answers.
+- The wiring between the model and the citation gate is unpinned: the gate is tested hard and its supply line is not.
+- Volunteering through the proactive triggers is a done criterion of the speaking slice and the triggers do not exist yet.
+- Where this sits against the product phases: `ROADMAP.md`'s foundations phase is complete, and the organize-and-consolidate phase is in progress — transfer-linking and always-current net worth are built, account aggregation is not.
+- Anchoring has never run and nothing schedules it; it is trust hardening's work.
+- Done criteria, obligations and proactive alerts: a recurring charge becomes an obligation with cadence; a surprise fee or duplicate subscription raises a finding; completeness (expected-versus-seen) becomes a nudge, so a missing expected statement is flagged; triggers respect a speak-when-it-matters threshold.
+- Done criteria, goals and budgets: a category budget tracks actual against target from spending; a payoff or savings goal projects a date from cash flow; progress updates as statements post; Viva drafts on request but never acts irreversibly without a yes.
+- Done criteria, loans, insurance, tax and FX: a mortgage payment splits principal, interest and escrow and projects a payoff date; a deductible question answers from a provision with its source; estimated tax cites its jurisdiction rules; an FX-converted total is labelled an estimate with its rate and date.
+- Done criteria, trust hardening: the chain head anchors and the anchor verifies independently; a signed statement's signature validates and the grade rises to issuer-attested; an outside party detects tampering given only the anchor.
+- Done criteria, creditworthiness and selective disclosure: a proof bundle verifies against the anchor and issuer signatures without exposing other data; the claim carries its grade; a third party validates it offline; nothing beyond the claim leaks.
+- Done criteria, household scope and sync: a joint account attributes to the right parties; a household total scopes correctly; an encrypted vault round-trips across devices with no plaintext exposure; keys never leave the user.

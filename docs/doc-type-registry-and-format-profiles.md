@@ -1,144 +1,151 @@
 # Doc-Type Registry & Format Profiles — how new statement types become data
 
-**Status:** Implemented · **Last updated:** 2026-07-24 · **Origin:** v0 hardcoded one projector (checking). To hold a whole financial life we need many statement types — but adding one must be *data*, not a code change. This doc sets the architecture for that, and it is deliberately written to serve *every* future type, not just credit card + savings.
-**Invariants touched:** T1 (provenance per extracted field), T2 (verification identity per type, run by universal code), T4 (profiles are versioned; a re-read is an event, nothing overwritten), I5 (no country/institution-shaped tables — format specifics are profile data), X2 (types the model can't yet read are parked honestly). Serves the "code universal, specifics are data" doctrine.
+**State:** built
+**Rules:** ING-32, ING-33, ING-34, ING-35, ING-36, ING-37, ING-30, ING-31
+**Invariants touched:** T1 (provenance per extracted field), T2 (a verification identity per type, run by universal code), T4 (profiles are versioned; a re-read is an event and nothing is overwritten), I5 (no country- or institution-shaped tables — format specifics are profile data), X2 (a type the model cannot yet read is parked honestly). Serves the "code universal, specifics are data" doctrine.
 
-## The architecture (decisions locked with Vishnu, 2026-07-23)
+## Rules
 
-**1. Classify → select profile → extract per that profile.** We read *after*
-classifying, because the shapes genuinely diverge (checking = balance +
-transactions; brokerage = positions × price + cash; pay stub = gross −
-deductions = net; 1099 = boxes; insurance = provisions). A single mega-prompt
-gets worse at each type as more are added. So: a cheap classification, then the
-type's own extraction profile. The balance family (checking/savings/card) shares
-one *base shape* but each type contributes its own prompt *fragment* (what the
-balance means, its completeness traps), composed at read time — so a card's
-"payments live in a separate section" guidance never pollutes a checking read.
-_As built (two model calls): a cheap **classify** pass (first page + embedded
-text, no figures) names the type; then the **extract** pass runs the profile's
-composed prompt. A type with no projector yet is parked after the cheap classify —
-we don't pay for an extraction we can't use._
+### ING-32 — Classify first, then extract with that type's profile
+**State:** enforced
+**Code:** product/viva/ingest/reader.py:62 (`classify`), :100 (profile lookup), :104 (park after classify)
+**Test:** product/tests/test_reader_two_phase.py::test_unsupported_type_records_only_the_cheap_classify
 
-**2. We own the schema; the model owns the reading.** The ADR-010 / CaMeL split,
-one level up: the model *perceives* (pixels/text → the fields WE asked for) and
-never decides *what* to extract. We own the schema because deterministic
-verification requires a known shape — you cannot reconcile or catch a silent
-omission in a free-form extraction. The schema is **data** (a profile), not code.
+1. A read is two passes: a cheap classify pass over the first page plus embedded text names the type, then an extract pass runs the prompt that type's profile owns.
+2. The classify pass asks for a type and never for figures.
+3. A classified type with no projector is parked after the classify pass, and no extraction is paid for.
+4. The classification is authoritative for the document type and is stamped onto the extracted facts.
 
-**3. A schema may be model-*assisted* to author, then ratified.** A frontier
-model reads a genuinely new format once and *proposes* a profile (fields,
-identity check, labels); it is ratified the same way we break the answer-key
-circularity (two model families agree, or a human rules) and frozen with a
-**version**. The model helps write the schema; it never owns it at read time.
+### ING-33 — We own the schema; the model owns the reading
+**State:** enforced
+**Code:** product/viva/prompts/extract-base-v1.txt (the shape we ask for), product/viva/ingest/statement.py:243 (`from_model_json` accepts only that shape)
+**Test:** product/tests/test_prompt_library.py::test_no_prompt_text_lives_in_code
 
-**4. The verification identity is universal code; the per-type formula is data.**
-`opening + Σ(transactions) = closing` already covers checking/savings/**card** —
-a card is just a *liability* whose balance is money owed (prev + charges −
-payments = new is the same identity). Transaction sign is framed as **effect on
-the printed balance** (A1), so it is account-kind-agnostic for reconciliation;
-`kind` (asset/liability) is a separate interpretation attribute. Divergent
-families supply their own identity (brokerage: positions×price + cash = total;
-pay stub: gross − deductions = net) — still run by the one universal gate.
+1. The extraction shape is fixed by us and lives as versioned prompt data, not as code and not as a model's choice.
+2. The model fills the shape; it never decides what to extract.
 
-**5. Two kinds of learned data, kept strictly apart.**
-- **Personal knowledge** — *your* accounts, identity aliases, categories,
-  corrections. The moat. **Never leaves your machine.**
-- **Format knowledge** — *how an institution formats a statement*. Impersonal
-  (about the document, not the money). **Shareable.**
-Profiles are format knowledge, which is why a commons of them is possible
-without breaking local-first.
+### ING-34 — A profile may be model-authored, but is ratified before it is used
+**State:** unmet
+**Code:** none found
+**Test:** none
 
-**6. Profiles are versioned, self-contained, and personal-data-free** — so the
-format-commons (sharing format knowledge, never facts) is a later *addition*,
-not a redesign. The claims layer already records which profile/prompt version
-read each doc, enabling **surgical re-reads** (only the docs read by an outdated
-profile) via `reingest-from-raw` (the raw-capture payoff) when a profile gains
-fields.
+1. A frontier model may read a genuinely new format once and propose a profile — fields, identity check, labels.
+2. The proposal is ratified by cross-model agreement or a human ruling, and frozen with a version, before any read uses it.
+3. A model never owns the schema at read time.
 
-## Implementation status (as built, 2026-07-24) — audit vs the six decisions
+_Profiles are authored by hand today. The versioning the rule depends on exists; the authoring loop does not._
 
-- **D1 (classify → per-type extract):** ✅ Built two-phase. `reader.classify`
-  (prompt `classify-v1`, first page + text) names the type; `reader.read_statement`
-  looks up the profile and runs the extract pass with the composed prompt; an
-  unprojectable type parks after classify. _First implementation shipped a single
-  combined call — corrected here to match the decision._
-- **D2 (we own the schema):** ✅ The extraction shape lives in
-  `prompt_library.EXTRACT_BASE` (our schema); the model fills it. The schema is
-  data (a versioned prompt piece), not code.
-- **D3 (model-assisted authoring, then ratified):** ⏳ Not built — a forward
-  capability (format-authoring, a later slice). The versioning it depends on now
-  exists; authoring a profile is still done by hand.
-- **D4 (universal identity, per-type formula as data):** ✅ `opening + Σ(effect) =
-  closing` runs for all three balance types via the A1 sign reframe; `identity`
-  is a profile field, so a divergent formula (brokerage, pay stub) is a new
-  profile, not new gate code.
-- **D5 (personal vs format knowledge):** ✅ `registry.py` + `prompt_library.py`
-  are format knowledge and carry **no personal data** (verified: profiles are
-  type/prompt-version ids only). Personal knowledge (aliases, corrections) stays
-  in the encrypted event log.
-- **D6 (versioned, self-contained, personal-data-free profiles):** ✅ Prompts are
-  retained, addressable versions (`prompt_library.resolve`, frozen-hash test);
-  each read records its prompt version *per phase* (`ReadRecorded.phase`), so a
-  read is reproducible and its profile version is known. ⏳ The *surgical* re-read
-  — re-read only the documents whose recorded profile version is behind the one
-  in force — is not yet built. What is missing is the **selection**, not the
-  narrowing: `reingest --only <doc_type>` confines a run to one document family
-  and `--dry-run` prices it before a cent is spent, so a prompt change to one
-  family is already affordable to test. But nothing compares a document's stored
-  `prompt_version` against `in_force` — `reingest` reads that field only to
-  recover a missing doc type — so choosing which documents are stale is still
-  the operator's job. The per-doc version capture that unblocks it exists.
-  _(Corrected 2026-08-14: this said `reingest` is "still whole-vault", which
-  stopped being true when `--only` landed.)_
+### ING-35 — The verification identity is universal code; the per-type formula is data
+**State:** enforced
+**Code:** product/viva/ingest/registry.py:28-35 (identities as constants), :55 (`identity` is a profile field), core/vivacore/verify/arithmetic.py:44
+**Test:** product/tests/test_registry.py::test_whole_balance_family_shares_one_identity, product/tests/test_pipeline.py::test_new_balance_type_via_registry_row_only
 
-## Notes for future slices (read these when you build them)
+1. `opening + Σ(effect on the printed balance) = closing` reconciles checking, savings and credit card alike, because a card is a liability whose effect on balance inverts.
+2. A transaction's sign is its effect on the printed balance, which makes the identity account-kind-agnostic; `kind` is a separate interpretation attribute.
+3. A divergent family supplies its own identity as a profile field, and is run by the same gate rather than by new gate code.
 
-- **Transfer links:** a card *payment* corresponds to a checking
-  *withdrawal* — that cross-account link is deferred to transfer links, built on the same
-  graded-Finding + correction pattern. Card ingest here must not try to guess it.
-- **Positions & investments:** the first *divergent* profile — its own
-  extraction schema and identity (`positions × price + cash = total`). Because
-  the doc-type registry builds the classify→profile→extract structure, brokerage is a **new profile
-  + a Position primitive**, not new plumbing. Carries the valuation-class
-  discipline (measured/valued/estimated).
-- **Net worth:** liability netting (assets − liabilities) is a
-  **projection over posted data — zero data impact.** Card shows as "owed" here;
-  net worth composes it in later, no migration.
-- **Slice 8 (obligations):** card-specific fields (credit limit, minimum payment,
-  due date) feed Obligations. When we need them, **bump the card profile version
-  and targeted-re-read** the affected statements (claims layer says which were
-  read with the older profile). Not a redesign.
-- **Format commons (later slice):** profiles are already versioned, self-
-  contained, personal-data-free units — the commons is a *sharing channel* over
-  them: a frontier model distills a privacy-linted profile (structure, never
-  values); cheap local models reuse it; self-healing when a format changes.
-  Contributed opt-in. This is the network effect on top of the private core.
-- **Format authoring (later):** creating a profile reuses the trust pattern
-  (model proposes → cross-model/human ratifies → freeze + version).
+### ING-36 — Personal knowledge and format knowledge are kept strictly apart
+**State:** by-review
+**Code:** product/viva/ingest/registry.py:67-106 (rows hold type names, kinds, identities and prompt version ids only)
+**Test:** none
 
-## The consumer contract a held document carries
+1. Personal knowledge — accounts, aliases, categories, corrections — never leaves the machine.
+2. Format knowledge — how an institution formats a statement — is impersonal, being about the document rather than about the money, and is shareable.
+3. A profile contains no personal data of any kind.
 
-**A held document is polymorphic, and anything that walks the held set must route on its identity rather than assume a shape.** Once a second family existed, "held" stopped meaning "a balance statement that didn't reconcile": a pay stub awaiting its deposit and a brokerage statement that failed its tally are held too, and their facts have different fields. A heal pass, a review list, a rebuild — each must ask the registry which identity a facts blob belongs to *before* constructing a typed object from it.
+### ING-37 — A profile is versioned, and every read records the version that produced it
+**State:** enforced-with-exception
+**Code:** product/viva/ingest/prompt_library.py:60 (`compose_extraction` yields `extract:<base>+<fragment>`), :71 (`resolve` reconstructs any recorded version), product/viva/ingest/pipeline.py:795 (one `ReadRecorded` per phase)
+**Test:** product/tests/test_prompt_library.py::test_active_versions_are_frozen, product/tests/test_prompt_library.py::test_a_missing_version_raises_rather_than_defaulting, product/tests/test_prompt_library.py::test_resolve_round_trips_every_kind_of_version
 
-This is written down because skipping the step is not a graceful failure. A corroboration heal rebuilt every conflict-hold as a balance-family facts object and died on a held brokerage statement, which has no opening balance at all — one document of an unexpected shape taking down a pass that had nothing to do with it.
+1. Prompt files are append-only: changing a prompt means adding a new id, never editing a released one.
+2. A recorded `prompt_version` resolves to the exact text that produced the reading, and resolving an unknown version raises rather than falling back to current text.
+3. Each phase of a read records its own prompt version, so a read is reproducible and its profile version is known.
 
----
+**Exception:** the *surgical* re-read is not built. Nothing compares a document's stored `prompt_version` against the version in force — `product/viva/reingest.py:65` reads that field only to recover a missing doc type. What exists is narrowing, not selection: `--only <doc_type>` confines a run to one document family and `--dry-run` prices it before a cent is spent (product/viva/reingest.py:83-89, test: product/tests/test_registry.py::test_reingest_can_filter_to_one_document_family_and_cost_nothing_first). Choosing which documents are stale is still the operator's job.
 
-## Doc-type registry + credit card & savings
+### ING-30 — A held document is polymorphic, and consumers route on the registry
+**State:** by-review
+**Code:** product/viva/ingest/registry.py:143 (`identity_of_facts`), product/viva/ingest/pipeline.py:167, :212, :818
+**Test:** none
 
-**Blocks seeded:** the **format-profile registry** (doc_type → {kind, extraction profile, identity}) + **account kind** (asset/liability) + the classify→profile→extract structure.
+1. Anything that walks the held set asks the registry which identity a facts blob belongs to before constructing a typed object from it.
+2. No consumer assumes a held document has a balance-family shape.
 
-**Open state:** only checking posts; a card or savings statement classifies but parks (no projector). Transaction sign is "money in/out of the account," which is ambiguous for a liability. *Proof:* ingest a real credit-card statement → parked, no balance; a savings statement's interest line has no home (red tests).
+### ING-31 — Account kind is derived by the registry, never asked of the model
+**State:** enforced
+**Code:** product/viva/ingest/registry.py:130 (`account_kind_for`), :37-40 (the kinds)
+**Test:** product/tests/test_registry.py::test_card_is_a_liability_savings_is_depository, product/tests/test_pipeline.py::test_credit_card_statement_posts_as_a_liability_owed
 
-**Implementation:**
-- A **registry** mapping each `doc_type` to a profile: `{account_kind, extraction_profile_version, identity}`. The reconciliation gate code is unchanged; the profile is looked up from the registry (data).
-- Classify → select profile → extract. Checking/savings/**card** share one **balance-statement profile** (the shapes match); the model classifies which of the three and returns the shared shape + the account kind.
-- **A1 sign reframe (prompt → v3):** each transaction reports whether it **increases or decreases the printed balance** (universal across asset and liability), tying directly to `opening + Σ = closing`. Checking values are unchanged (a deposit increases the balance), so **no data migration** for existing checking reads.
-- **Account kind:** `depository` (checking/savings, an asset) vs `liability` (credit card, balance = money owed). Kind drives display ("held" vs "owed") and, later, net-worth sign.
-- **Reuse:** identity resolution (the account matcher) applies to cards unchanged (a card has a number, institution, holders). The universal gate, diagnosis, backfill, and the Ledger all apply as-is.
+1. `depository`, `liability` and `investment` are this system's interpretation of an account, looked up from the classified type.
+2. Kind drives display — held versus owed — and the kind-aware counter-leg; the model is never asked for it.
 
-**Final state:** credit-card and savings statements post and reconcile; a card shows as **owed**; the same account is recognized across its statements (identity); adding another balance-shaped type is a **registry row**, not code.
+## Why
 
-**Done criteria / tests:** a real credit-card statement reconciles on `prev + charges − payments = new` (as `opening + Σ = closing` with A1 signs); a savings statement with an interest line reconciles; registering a **synthetic** new balance-type via *data only* (no gate-code change) posts it; a card balance is displayed as a liability ("owed"); existing checking tests stay green (A1 is value-preserving for checking).
+The v0 pipeline hardcoded one projector. Holding a whole financial life needs
+many statement types, and the claim the entire architecture rests on is that
+adding one is **data**, not a code change. Everything here exists to make that
+claim true for types nobody has thought of yet, not merely for the next two.
 
-**Why now + future use:** it proves "new type = data, not code" — the claim the whole architecture rests on — and it does so by **generalizing the gate we already have**, not by adding per-type logic. It unlocks multi-account (net worth, transfers), seeds the profile registry that brokerage/tax/insurance extend, and establishes account **kind** (asset/liability) that net worth composes. Every seam for the format commons and the divergent types is left open by design (see the notes above).
+Reading after classifying, rather than with one mega-prompt, is forced by the
+fact that the shapes genuinely diverge: checking is a balance plus transactions,
+brokerage is positions times price plus cash, a pay stub is gross minus
+deductions equals net, a 1099 is boxes, an insurance policy is provisions. A
+single prompt covering all of them gets worse at each as more are added. So the
+read is a cheap classification followed by the type's own extraction profile.
+The balance family shares one base shape while each type contributes its own
+fragment — what the balance means, and that type's completeness traps —
+composed at read time, so a card's "payments live in a separate section" hint
+never pollutes a checking read.
+
+We own the schema because deterministic verification requires a known shape. You
+cannot reconcile a free-form extraction, and you cannot catch a *silent
+omission* in one at all: nothing is missing from a shape nobody declared. The
+model perceives — pixels and text become the fields we asked for — and never
+decides what to extract. That is the CaMeL split one level up, and the reason
+the schema is data rather than code is that a data schema can be versioned,
+recorded on the read, and re-read from.
+
+The verification identity being universal code, with the per-type formula as
+data, is what makes a new balance-shaped type a registry row. Framing a
+transaction's sign as its effect on the *printed* balance is what unified the
+family: a card's `previous + charges − payments = new` is the same identity as a
+checking account's, and the reframe is value-preserving for checking, so nothing
+already read had to move.
+
+Keeping personal knowledge and format knowledge apart is what makes a commons of
+profiles possible at all without breaking local-first. Your accounts, aliases
+and corrections are the moat and never leave. How a bank lays out a statement is
+a fact about the document, not about the money, and can be shared. Because
+profiles were versioned, self-contained and personal-data-free from the start,
+that sharing channel is a later *addition* rather than a redesign.
+
+Versioning pays for itself twice: a recorded reading stays reproducible after
+its prompt is superseded, and a profile that gains a field can re-read only the
+documents an outdated profile read. The second half of that — selecting which
+documents are stale — is the piece still missing.
+
+A held document is polymorphic, and skipping that step is not a graceful
+failure. A corroboration heal once rebuilt every conflict-hold as a
+balance-family facts object and died on a held brokerage statement, which has no
+opening balance at all: one document of an unexpected shape took down a pass
+that had nothing to do with it. Routing on the registry rather than on the shape
+of the data is the rule that prevents it.
+
+Several later seams are deliberately left open. A card payment corresponds to a
+checking withdrawal, and that cross-account link belongs to transfer linking on
+the same graded-finding and correction pattern — card ingest must not guess it.
+Net worth is a projection over posted data, so a card showing as *owed* composes
+in later with no migration. Obligations will want the card's credit limit,
+minimum payment and due date, which is a profile version bump and a targeted
+re-read rather than a redesign. And format authoring, when it comes, reuses the
+trust pattern already in use everywhere else: a model proposes, cross-model
+agreement or a human ratifies, and the result is frozen and versioned.
+
+## Open
+
+- Model-assisted profile authoring (ING-34) is unbuilt: today a new format is a hand-written profile.
+- Surgical re-read selection: nothing compares a document's stored profile version against the one in force, so an operator still chooses which documents a prompt change made stale.
+- No test pins ING-36 — that a registry row can never hold personal data is true by inspection and unchecked by the build.
+- The format commons as a sharing channel over these profiles is designed and unbuilt; see [format-commons.md](format-commons.md).
+- Divergent families beyond pay stub and brokerage — tax forms, insurance declarations — will test whether "a new type is a registry row" survives a shape with no arithmetic identity at all.

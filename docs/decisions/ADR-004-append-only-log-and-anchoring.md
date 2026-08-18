@@ -1,49 +1,50 @@
 # ADR-004 · Append-Only Hash-Chained Event Log, Anchored from Day One
 
-**Status:** Accepted · **Date:** 2026-07-19 · **Decided by:** Vishnu (anchoring destination) · **Door type:** one-way in time (history can't be backdated)
+_This records reasoning, not current behaviour._
 
-## Context
+**Status:** Accepted · **Date:** 2026-07-19 · **Decided by:** Vishnu (anchoring destination) · **Door type:** one-way in time (history cannot be backdated)
 
-Tamper-evidence proves history only from the moment it starts. The Phase 4 arc — an agent that vouches for you — requires a provable record of how the agent came to know what it knows. That record either begins at commit one or it begins with a permanent gap.
+**State:** partial
+**Rules:** ADR-004
+**Invariants touched:** T4, T5, T6
 
-## Decision
+## Rules
 
-All state changes are events in an append-only log: ingestions, extractions, verification results, corrections, answers given. Each entry embeds the hash of the previous entry (a hash chain); current state (accounts, balances, categories) is always a rebuildable projection of the log, never independently authoritative. The chain head is anchored **from the first event** to **two independent external timestamps**: OpenTimestamps (Bitcoin block header as notary clock — nothing on-chain, no tokens, consistent with the principles' "trusted timestamp / transparency log" allowance) and an RFC 3161 timestamp authority. Only the 32-byte head hash ever leaves the machine; it reveals nothing.
+### ADR-004 — All state is an append-only hash chain, anchored to two independent external clocks
+**State:** enforced-with-exception
+**Code:** product/viva/ledger/store.py:44 · product/viva/ledger/store.py:95 · product/viva/ledger/store.py:153
+**Test:** product/tests/test_store.py::test_chain_detects_tampering
 
-If a shared OrionViva-ecosystem ledger ever exists (Phase 4's political choice), it becomes an *additional* anchor destination from that day — anchors are additive; a future ledger inherits day-one proof but could never have created it retroactively.
+1. All state changes are events: ingestions, extractions, verification results, corrections, answers given.
+2. Each entry embeds the hash of the previous entry.
+3. Current state is always a rebuildable projection of the log and is never independently authoritative.
+4. The chain verifies without the encryption key.
+5. The chain head is anchored from the first event to two independent external timestamps — OpenTimestamps and an RFC 3161 authority.
+6. Only the 32-byte head hash ever leaves the machine.
+7. Anchoring runs as a quiet periodic job; failures queue and retry, and anchoring lag is recorded rather than hidden.
+8. Anchors are additive: a future shared ledger becomes an additional destination and could never have created the proof retroactively.
 
-## Alternatives considered
+**Exception:** assertions 5, 6 and 7 have no implementation. No OpenTimestamps call, no RFC 3161 call, no periodic job and no anchor-lag record exists anywhere in the tree; `EventStore.append` (product/viva/ledger/store.py:95) computes a head that nothing carries off the machine.
 
-**Mutable database with an audit table** — the conventional design. Rejected: audit tables are bypassable by the code that writes them; a projection-of-log architecture makes unaudited mutation structurally impossible rather than procedurally forbidden.
+## Why
 
-**Local chain now, anchor later** — simpler start. Rejected by decision: history before first anchor is forever self-attested; the gap is permanent and Phase 4 would inherit it.
+Tamper-evidence proves history only from the moment it starts. The trust-agent arc — an agent that vouches for a person — requires a provable record of how the agent came to know what it knows, and that record either begins at commit one or begins with a permanent gap.
 
-**Single anchor destination** — OpenTimestamps alone (free, strongest clock, but Bitcoin-adjacent) or RFC 3161 alone (no Bitcoin association, but trusts one company). Both viable; **both together** chosen: two independent trust bases at the cost of two small network calls, and the proof survives either one disappearing.
+**A mutable database with an audit table** is the conventional design and is rejected: audit tables are bypassable by the code that writes them, while a projection-of-log architecture makes unaudited mutation structurally impossible rather than procedurally forbidden.
 
-**Own blockchain** — explicitly forbidden by the project's principles at this stage; a shared ledger is an ecosystem-scale political decision for the multi-issuer phase, not an authenticity mechanism.
+**A local chain now, anchored later** is a simpler start and was rejected by decision: history before the first anchor is forever self-attested, the gap is permanent, and the later phases would inherit it. That reasoning is what the current state is spending — an anchor placed later proves only that the head existed *then*, so every unanchored day lengthens the stretch a future reader must take on trust.
 
-## Consequences
+**A single anchor destination** — OpenTimestamps alone (free, strongest clock, but Bitcoin-adjacent) or RFC 3161 alone (no Bitcoin association, but trusting one company) — is viable either way. Both together were chosen: two independent trust bases at the cost of two small network calls, and the proof survives either one disappearing.
 
-Event schema design becomes a sticky decision that deserves care (the discovery map, A-track). Anchoring runs as a quiet periodic job; failures queue and retry (anchoring lag is recorded, never hidden). The log doubles as the audit substrate for memory and corrections (the storage doc open question — one history, many projections).
+**An own blockchain** is forbidden by the project's principles at this stage. A shared ledger is an ecosystem-scale political decision for the multi-issuer phase, never an authenticity mechanism.
 
-**Amendment (2026-08-15) — the log is built; the anchoring is not, and the gap
-this ADR called permanent is being taken.** Half of the decision above ships in
-full: every state change is an event, each record embeds the previous record's
-hash, current state is a rebuildable projection, and the chain verifies without
-the encryption key. The other half has never run. **No chain head has ever been
-anchored** — there is no OpenTimestamps call, no RFC 3161 call, no periodic job,
-no anchor lag to record, and no code that reaches either destination.
-
-What that costs is exactly what the *Alternatives considered* section rejected
-"local chain now, anchor later" for: history before the first anchor is forever
-self-attested, and the gap is not repairable afterwards, because an anchor
-placed later proves only that the head existed *then*. Every day the log grows
-unanchored lengthens the stretch a future reader must take on trust. This
-amendment does not reverse the decision or soften it — the destinations, the
-two-independent-clocks reasoning and the 32-byte-head privacy argument all
-stand. It records that the requirement is unmet, so a reader of this ADR stops
-inferring a proof the vault cannot produce.
+The log doubles as the audit substrate for memory and corrections: one history, many projections.
 
 ## Would reverse this
 
-Nothing reverses append-only + day-one anchoring; destinations may be added or (if one collapses) retired, with the transition itself logged and anchored.
+Nothing reverses append-only plus day-one anchoring. Destinations may be added, or retired if one collapses, with the transition itself logged and anchored.
+
+## Open
+
+- No chain head has ever been anchored, so the word *anchored* states a requirement rather than a property the vault can demonstrate.
+- Event schema design is a sticky decision that deserves its own ADR, and the ledger/event-store record is owed.

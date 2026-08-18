@@ -1,107 +1,100 @@
 # Document Coverage — every instrument a financial life produces
 
-**Status:** Living checklist · **Created:** 2026-07-25 · **Purpose:** the corpus plan *and* the profile/prompt roadmap in one place. A document type is "covered" when a **real** one has passed through ingest, reconciled, and posted — not when a profile row exists.
+**State:** partial
+**Rules:** ING-20, ING-21, ING-22
+**Invariants touched:** I5 (no US-shaped taxonomy — the India column is not an afterthought) · I6 (regional packs run through identical machinery; real statements are never committed) · T3 (every document is raw-captured, so coverage grows by re-reading, not by re-uploading) · the practice that [a slice isn't done until real documents pass through it](implementation-roadmap.md).
 
-**Invariants touched:** I5 (no US-shaped taxonomy — the India column is not an afterthought) · I6 (regional packs run through identical machinery; real statements are never committed) · T3 (every document is raw-captured, so coverage grows by re-reading, not re-uploading) · the practice: [a slice isn't done until real documents pass through it](implementation-roadmap.md).
+## Rules
 
----
+### ING-20 — A document type counts as covered only when a real one has posted
+**State:** untestable
+**Code:** product/viva/ingest/registry.py:67 (the registered types), product/viva/ingest/pipeline.py:813 (a projectable type is posted, anything else is parked)
+**Test:** none
 
-## Why this list exists
+1. A registry row for a type is not coverage; a real document of that type must have been ingested, reconciled and posted.
+2. A type with a registry row but no real document through it is reported as unproven, not as supported.
 
-Five document types are covered. A financial life produces something closer to forty. Every gap here is a place the product will either **park a document honestly** (fine) or **answer a question wrongly because it never saw the evidence** (not fine) — the mortgage split is exactly that: the answer is unknowable until a mortgage statement or 1098 is read.
+_Untestable as written: the registry and the projector are checkable, but "a real document of this type has passed through" is a fact about a person's vault, not about the tree. The registry holds rows for checking, savings, credit card, pay stub and brokerage._
 
-The list doubles as the **prompt/profile backlog**: each row is eventually a registry row + a prompt fragment + an identity, and most are *data, not code*.
+### ING-21 — Real documents are never committed
+**State:** by-review
+**Code:** .gitignore:40 (`bench-data/`, matched at any depth)
+**Test:** none
 
-Status key: **✅ covered** (real document posted) · **🟡 partial** (reads, doesn't fully post/reconcile) · **⬜ not started** · **📄 have a real one to test with**
+1. Real statements live in the local vault and in an ignored `bench-data/` directory.
+2. What ships is the profile and the scorecard, never the document.
 
-## Banking & cards
+### ING-22 — A document a ruling names is corroboration, never a gate
+**State:** enforced
+**Code:** product/viva/listen.py:25, product/viva/questions.py:514 (`_corroboration_questions`)
+**Test:** product/tests/test_listen.py::test_an_asserted_account_asks_for_the_document_that_would_prove_it
 
-| Document | Status | Identity / what it proves | Where it lands |
-|---|---|---|---|
-| Checking statement | ✅ | `opening + Σ = closing` | built |
-| Savings / money-market statement | ✅ | same balance family | built |
-| Credit card statement | ✅ | balance family, liability | built |
-| Certificate of deposit | ⬜ | balance + maturity term (a Provision) | Slice 11 |
-| India: bank passbook / SBI card / IDFC savings | 📄 | balance family, en-IN/INR — the I2 locale test | built |
+1. An account a person's own words create is opened and its cash posted before any document is mentioned.
+2. The document is then asked for as a ranked question; declining costs the person a confidence grade and nothing else.
 
-## Income
+## Why
 
-| Document | Status | Identity / what it proves | Where it lands |
-|---|---|---|---|
-| Pay stub | ✅ | `gross − deductions = net` | built |
-| W-2 | ⬜ | annual totals corroborate the *sum* of pay stubs — a completeness check | Slice 11 |
-| 1099-NEC / MISC (self-employment) | ⬜ | annual total corroborates many deposits; **sibling profile, not a subtype** | Slice 11 |
-| 1099-INT / DIV | ⬜ | corroborates interest/dividend income already posted | Slice 11 |
-| 1099-B (proceeds) | 📄 | realized gains, **short vs long term** — the tax seam we currently discard | Slice 11 |
-| Social Security statement | ⬜ | future income projection, not a ledger fact | later |
-| India: Form 16 / ITR | ⬜ | the Indian pay-and-tax equivalent (I5 — must not be a US table) | Slice 11 |
+Five document types are covered. A financial life produces something closer to
+forty. Every gap is a place the product will either park a document honestly —
+which is fine — or answer a question wrongly because it never saw the evidence,
+which is not. The mortgage split is exactly the second case: the interest,
+principal and escrow shares of one payment are unknowable until a mortgage
+statement or a 1098 is read, so the answer is wrong rather than absent.
 
-## Investments & retirement
+The gap list doubles as the prompt and profile backlog. Each row is eventually a
+registry row plus a prompt fragment plus an identity, and most of them are data
+rather than code — which is the whole claim the doc-type registry rests on.
 
-| Document | Status | Identity / what it proves | Where it lands |
-|---|---|---|---|
-| Brokerage statement | ✅ | `Σ positions + cash = total`; cash-flow stitching | built |
-| Retirement (401k / IRA / 403b) | ⬜ | positions + **employer match** as a distinct inflow | positions + Slice 11 |
-| HSA / FSA | ⬜ | an account that is *both* health and investment | Slice 11 |
-| 529 | ⬜ | positions, restricted purpose | Slice 11 |
-| Employee equity (RSU / ESPP / options) | ⬜ | **vesting** — a schedule, not a balance; one of the six data-model leak candidates | Slice 11 |
-| Crypto exchange statement | ⬜ | positions with no issuer attestation; valuation class `estimated` | later |
-| India: mutual fund (CAMS/Karvy), Demat, PPF/EPF | ⬜ | positions + provident fund; the I5 proof for retirement | Slice 11 |
+Coverage is also demand-driven, not a list an author works through. Every
+account a ruling creates names the document that would corroborate it: *"I
+bought a car"* names the invoice, *"this is my mortgage"* names the statement or
+the 1098, *"this paid my car loan"* names the loan statement. The vault
+therefore says which document matters next, ranked by the money the answer would
+explain. And because the ask is corroboration rather than a gate, wanting the
+document never costs the person the ability to record the fact.
 
-## Debt
+The order that unblocks the most is: a mortgage statement plus a 1098, because
+it makes a currently-wrong answer right; a consolidated 1099, for short versus
+long-term realized gains that brokerage ingest reads and discards; a retirement
+statement, for positions plus the employer match as a second income shape; an
+India pack of one bank, one card and one mutual fund, which is the proof that
+locale and taxonomy are data and is non-negotiable before claiming
+international support; a closing disclosure, the three-facts-from-one-document
+case that forces the Asset primitive; and one insurance declaration, which
+proves that non-numeric attested terms need no new engine.
 
-| Document | Status | Identity / what it proves | Where it lands |
-|---|---|---|---|
-| **Mortgage statement** | 📄 | **the interest/principal/escrow split** — blocks an honest answer *today* | **Slice 11** |
-| 1098 (mortgage interest) | ⬜ | annual interest corroborates the monthly splits | Slice 11 |
-| Escrow analysis | ⬜ | why the payment changed; the escrow balance you own | Slice 11 |
-| Auto loan statement | ⬜ | amortization; pairs with the vehicle Asset | Slice 11 |
-| Student loan statement | ⬜ | amortization + interest deduction | Slice 11 |
-| HELOC / personal loan | ⬜ | revolving vs amortizing liability | Slice 11 |
+Documents fall into shapes rather than into a flat list, and the shape is what
+decides whether a new one is a registry row or a new primitive. Banking and
+cards share the balance family. Income documents split into per-period stubs and
+annual totals that corroborate the sum of them. Investments add positions,
+vesting schedules and an employer match that never touches a paycheck's
+gross-to-net. Debt documents carry an amortization split that is one movement
+with three destinations. Property, insurance and tax documents are the ones that
+are not transaction-shaped at all — a declarations page is attested non-numeric
+terms, and a return is an annual truth that many other documents corroborate.
 
-## Property & assets
+## Open
 
-| Document | Status | Identity / what it proves | Where it lands |
-|---|---|---|---|
-| Closing disclosure / settlement statement | ⬜ | a property purchase: cash out, asset in, liability created — **three facts from one document** | Asset + Slice 11 |
-| Property tax bill | ⬜ | recurring obligation; escrow's destination | Slice 8 |
-| Vehicle purchase agreement | ⬜ | the Asset primitive's first non-security instance | Asset |
-| Home / auto valuation | ⬜ | valuation class `estimated` — no issuer attests it | Asset |
-
-## Insurance
-
-| Document | Status | Identity / what it proves | Where it lands |
-|---|---|---|---|
-| Policy declarations (auto/home/life/health) | ⬜ | **Provision** — attested non-numeric terms, searchable ("am I covered for X?") | Slice 11 |
-| Premium notice | ⬜ | recurring obligation | Slice 8 |
-| Explanation of benefits (EOB) | ⬜ | what was billed vs paid vs owed — a three-way reconciliation | Slice 11 |
-
-## Tax & obligations
-
-| Document | Status | Identity / what it proves | Where it lands |
-|---|---|---|---|
-| Federal / state return | ⬜ | the annual truth many other documents corroborate | Slice 11 |
-| Estimated tax payments | ⬜ | outflow that is neither spending nor transfer | Slice 11 |
-| Recurring bills (utility, phone, internet) | ⬜ | mostly transaction-level; the document matters for Obligations | Slice 8 |
-| Lease / rent receipts | ⬜ | recurring obligation; a Party | Slice 8 |
-
-## The near-term testing list
-
-What to gather next, in the order it unblocks something real:
-
-1. **Mortgage statement + 1098** — unblocks the compound-payment split ([learning-mode.md](learning-mode.md)). Currently the single highest-value gap: it makes a wrong answer right.
-2. **1099-B / consolidated 1099** — short vs long-term realized gains, plus wash sales, which brokerage ingest reads and discards today.
-3. **Retirement statement (401k)** — positions plus employer match, the second income shape.
-4. **India pack (one bank, one card, one mutual fund)** — the I2/I5 proof that locale and taxonomy are data. Non-negotiable before claiming international support.
-5. **Closing disclosure** — the three-facts-from-one-document case that forces the Asset primitive.
-6. **One insurance declaration** — proves Provision (non-numeric attested terms) doesn't need a new engine.
-
-**Discipline:** real documents are never committed (I6, and the gitignore enforces it). They live in the local vault and `bench/bench-data/`; what ships is the *profile*, never the document.
-
----
-
-## Documents the product asks *for itself* (added 2026-07-25)
-
-This list was written as *"what should we test against."* Viva listens adds a second, live source: **every account a ruling creates names the document that would corroborate it** ([from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md)). *"I bought a car"* → the invoice. *"This is my mortgage"* → the statement or 1098. *"This paid my car loan"* → the loan statement.
-
-Two things follow. First, coverage stops being a list the author works through and becomes **demand-driven** — the vault says which document matters next, ranked by the money it would explain. Second, the asks are **corroboration, never gates**: the account is created and the cash posted before the document is mentioned, so declining costs the person nothing but a confidence grade.
+- The mortgage statement and 1098 gap: the compound-payment split is unanswerable until one is read, and it is the highest-value document gap open.
+- Realized gains, short versus long term, plus wash sales: brokerage ingest reads them and discards them today.
+- Retirement statements: positions plus employer match, which is a second income shape and not a variant of the first.
+- An India pack (one bank, one card, one mutual fund) as the locale-and-taxonomy proof.
+- A closing disclosure, which produces three facts — cash out, asset in, liability created — from one document and forces the Asset primitive.
+- An insurance declarations page, to prove that a Provision needs no new engine.
+- Certificates of deposit, HSA/FSA, 529, employee equity with vesting, and crypto positions with no issuer attestation: each is a registry row plus one modeling question.
+- Estimated tax payments, which are an outflow that is neither spending nor a transfer.
+- Recurring bills, leases and premium notices, which matter as obligations more than as transactions.
+- A W-2, whose annual totals corroborate the sum of a year's pay stubs — a completeness check rather than a new posting.
+- 1099-NEC and 1099-MISC, where an annual total corroborates many deposits; a sibling profile, not a subtype of the pay stub.
+- 1099-INT and 1099-DIV, which corroborate interest and dividend income already posted.
+- India's Form 16 and ITR, the Indian pay-and-tax equivalent, which must not become a row in a US table.
+- A Social Security statement, which is a future income projection and not a ledger fact.
+- An escrow analysis, which says why a payment changed and what escrow balance the person owns.
+- An auto loan statement: amortization, paired with the vehicle as an Asset.
+- A student loan statement: amortization plus an interest deduction.
+- A HELOC or personal loan, which is the revolving-versus-amortizing liability distinction.
+- A property tax bill, a recurring obligation and escrow's destination.
+- A vehicle purchase agreement, the Asset primitive's first non-security instance.
+- A home or auto valuation, whose valuation class is `estimated` because no issuer attests it.
+- An explanation of benefits, which is a three-way reconciliation of what was billed, paid and owed.
+- A federal or state return, the annual truth that many other documents corroborate.

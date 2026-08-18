@@ -1,80 +1,205 @@
 # Data Model Considerations — what the unified model must account for
 
-**Status:** Stable — the ten primitives and three layers, as built; tested empirically in [data-model-spike-findings.md](data-model-spike-findings.md) · **Last updated:** 2026-07-20
-**Invariants touched:** T1, T3, T4, T7 (the trust spine below is their schema form), I1 (currency on every amount), I2 (locale-driven normalization feeds the claims layer), I5 (no US-shaped taxonomy — jurisdiction as attribute, never as table), X2
+**State:** partial
+**Rules:** ING-40, ING-41, ING-42, ING-43, ING-44, ING-45, ING-46, ING-47, ING-48, ING-49, ING-90
+**Invariants touched:** T1, T3, T4, T7 (the trust spine below is their schema form), I1 (currency on every amount), I2 (locale-driven normalization feeds the claims layer), I5 (no US-shaped taxonomy — jurisdiction as an attribute, never as a table), X2
 
-## The pipeline, refined
+## Rules
 
-The working pipeline sketch — classify → extract → verify (per type) → data layer → queried by tools; document retained for provenance — is correct with two refinements:
+### ING-40 — Classification is a claim, not a fact
+**State:** contradicted-by-code
+**Code:** product/viva/ledger/events.py:241 (`document_captured` stores the type and its confidence as a claim), product/viva/ingest/reader.py:248 (`_peek_classification` yields `unknown` at 0.0 when the reply does not parse)
+**Test:** product/tests/test_reader_two_phase.py::test_classify_unreadable_is_unknown_not_a_guess, product/tests/test_pipeline.py::test_unreconciled_statement_is_conflict_not_posted
 
-1. **Classification is a claim, not a fact.** Document type comes from a model, carries confidence, and can be wrong. Misclassification must degrade to *visible conflict* (wrong checks fail loudly), never silent corruption. `unknown` is a first-class type: generic claim extraction still runs, fewer checks apply, and answers standing on such documents say so (X2). Which checks run per type is a **registry (data/config), not code** — new document types and new regional variants are additions to a table, not releases.
-2. **Three layers, not one data layer:**
-   - **Claims layer** — what models asserted, verbatim, per run (model version, prompt version, source regions). Immutable, append-only. This is also the flywheel's training-pair mine.
-   - **Facts layer** — what survived verification: canonical, typed records carrying grade (`verified` / `corroborated` / `unverified` / `conflicted`), the verification trail (which checks, what results), and provenance pointers (document → page → region).
-   - **Projection layer** — query-shaped views (`query_ledger`'s world): accounts, transactions, positions, net-worth series, spending by tag. **Rebuildable at any time from the event log.** This is what dissolves the "comprehensive from day one" pressure: comprehensiveness lives in what events *capture* (raw capture doctrine); projections expose what we've so far chosen to model, and can be re-derived richer later.
+1. A document's type comes from a model, carries a confidence, and can be wrong.
+2. `unknown` is a first-class type: generic claim extraction still runs, fewer checks apply, and answers standing on such documents say so (X2).
+3. A misclassification degrades to a visible conflict — the wrong checks fail loudly — and never to silent corruption.
+4. Which checks run for a type is a registry row, not code.
 
-## The core ontology — small, closed, universal
+**Contradiction:** assertion 2 is the commitment this document made, and the code does the opposite half of it. `product/viva/ingest/reader.py:100-107` parks a document whose type has no projector immediately after the classify pass — "no projector for this type: park after the classify pass rather than paying for an extraction nothing can use" — and `product/viva/ingest/pipeline.py:813` routes only a projectable type onward. So no generic claim extraction runs on an `unknown` document; there are no claims for fewer checks to apply to, and no answer stands on one to say so. What the code has is the *capture* half: the document is stored raw and parked, and re-reads later once a projector exists. The extraction half was abandoned, not met. Recorded, not resolved.
 
-Finance everywhere reduces to ~10 primitives. Regional variety is **attributes on primitives, never new primitives** (I5):
+### ING-41 — Three layers: claims, facts, projection
+**State:** enforced
+**Code:** product/viva/ledger/events.py:271 (`read_recorded`, the claims layer), :214 (`statement_held`, facts with their finding), product/viva/ledger/ledger.py (projection rebuilt from the log)
+**Test:** product/tests/test_pipeline.py::test_cached_projection_matches_a_fresh_replay, product/tests/test_pipeline.py::test_real_read_stores_the_claims_layer
 
-| Primitive | Covers | Regional note |
-|---|---|---|
-| **Party** | user, household members, institutions, merchants, employers | Unicode names, script-aware matching |
-| **Account** | any value-holding or obligation relationship: depository, credit, investment, retirement, loan/mortgage, insurance policy | 401(k)/EPF/ISA/superannuation = retirement-kind + jurisdiction tag; kind+subtype registry is data |
-| **Asset** | securities, property, vehicles | valuation source matters (see measurements vs valuations) |
-| **Transaction** | money moved: amount **(value, currency)**, date(s), direction, counterparty, description raw+normalized, tags | multi-currency transactions carry both legs |
-| **Position** | holding of an asset at a moment | units + instrument identity |
-| **BalanceSnapshot** | account value at a moment, as attested | always dated; never silently "current" |
-| **Obligation** | recurring/scheduled promises: bills, premiums, EMIs, minimums | cadence + due rules; feeds `list_obligations` and completeness |
-| **Provision** | non-numeric attested facts: coverage terms, loan conditions, plan rules | feeds `search_documents`; insurance is why this is core, not an afterthought |
-| **Document / Claim / Fact** | the trust spine (below) | locale + currency on Document from ingestion (I4) |
-| **Tag/Category** | the personal taxonomy: learned, corrected, hierarchical ("son" tag) | seeded minimal; grown from corrections (the moat) |
+1. The claims layer holds what a model asserted, verbatim, per run, with its model and prompt version. It is append-only.
+2. The facts layer holds what survived verification, carrying a grade, the verification result, and provenance pointers.
+3. The projection layer is query-shaped and rebuildable at any time from the event log; it is never independently authoritative.
 
-## Categorization is two mechanisms, not one (a deliberate feature)
+### ING-42 — An amount is a value and a currency
+**State:** enforced-with-exception
+**Code:** product/viva/ledger/events.py:160 (currency on the account), product/viva/ingest/statement.py:65 (currency on the statement), product/viva/ledger/projection/movements.py:70 (currency on the projected movement)
+**Test:** core/tests/test_normalize.py::test_currency_conflict_is_invalid_not_silently_resolved, product/tests/test_postings.py::test_posting_rejects_float
 
-A user does not categorize a purchase into one bucket, and forcing that would be a lie about how people think about money. One Walmart purchase can be, at once, "an expense," "groceries," "Walmart," and "birthday-related." Two distinct mechanisms serve this, and keeping them separate is what lets rich categorization coexist with a ledger that still balances:
+1. No field, computation or display assumes one currency.
+2. Amounts are exact Decimal; a float raises rather than being coerced.
+3. Totals are reported per currency rather than summed across currencies.
 
-1. **Split by amount → double-entry.** When one purchase genuinely divides across categories by *money* — a $100 receipt that is $70 groceries + $30 a gift — it is a single transaction whose counter-side has *multiple postings that sum to the whole* ($70 to `Expenses:Groceries`, $30 to `Expenses:Gifts`). This is native double-entry (the same shape as the mortgage-escrow split, leak candidate #1): the books still balance, and each part carries its own grade. A `Transaction` is therefore a *list of postings*, never a fixed pair.
-2. **Overlapping labels → the Tag/Category overlay.** When the *same* money wears several labels at once (nature = expense, category = groceries, merchant = Walmart, occasion = birthday), these are orthogonal *dimensions* of one purchase, not competing buckets. They live in the `Tag/Category` primitive as a **many-to-many, hierarchical overlay** on the transaction. This layer is *descriptive, not financial* — it never has to balance — which is exactly why a transaction can carry as many tags as the user likes without touching the ledger's integrity. It answers "how much on birthdays, across every merchant?"
+**Exception:** `Posting` carries `(account, amount, grade)` and no currency of its own — product/viva/ledger/events.py:74-88. A posting's currency is recovered from the account and the statement it came from, so the pairing is real at the movement level and absent at the leg level.
 
-The rule that keeps trust intact: **double-entry governs the money (one balanced truth, verifiable); tags govern the meaning (freely multiple, user-owned, the moat).** v0 seeds neither (categorization is deferred), but the ledger is built so both are already possible without a rewrite: multi-posting transactions and an (initially empty) `tags` field on every transaction.
+### ING-43 — A transaction is a list of postings that sum to zero
+**State:** enforced
+**Code:** product/viva/ledger/postings.py, product/viva/ledger/events.py:684 (`transaction_recorded`)
+**Test:** product/tests/test_postings.py::test_transaction_balances_catches_imbalance, product/tests/test_postings.py::test_split_balances_and_covers_whole
 
-## The trust spine (what no PFM schema has, and we exist for)
+1. A transaction is one or more postings, never a fixed pair, and its postings sum to exactly zero.
+2. A split by money — one purchase across several categories — is several postings summing to the whole, each carrying its own grade.
+3. An account's balance is the running sum of its postings' amounts.
 
-- **Observations accumulate; they don't just dedup.** The same real transaction seen on an overlapping statement, a re-upload, or two document types (card statement + bank autopay) merges by fingerprint (ADR-007) into one fact with *multiple observations* — and corroboration raises the grade. Conflicting observations → `conflicted`, surfaced, never averaged.
-- **Corrections are events on facts.** A fact's full history — model asserted, checks passed, user overruled — is replayable. Current value is a projection; nothing is overwritten (T4).
-- **Transfer links are graded facts.** Checking→card payment is one economic non-event; the link entity carries its own confidence and its own evidence (amount/date proximity, description hints, eventually learned patterns). Wrong links double-count spending — this is load-bearing for job 1.
-- **Completeness is data.** Accounts carry expected cadence ("monthly statement, ~5th"); gaps become one query (`check_completeness`), and every aggregate answer can state its coverage honestly ("Jan–Jun, May missing").
-- **Bitemporality.** Two timelines per fact: when it happened vs when we learned it (event time — free from ADR-004 if respected from the start). Enables "what did I know on March 3rd, provably" — the trust trial needs it; Phase 4's vouching *requires* it.
-- **Measurements vs valuations vs estimates.** A statement *measures* (attested by issuer, dated). A market price *values* (changes without documents). A property guess *estimates*. Three provenance classes; answers must never dress one as another. v0 is measurements-only: net worth is "as of your latest statements," honestly dated. Live valuations, if ever, enter as the labeled lower-trust feed (Q7 territory).
+### ING-44 — Double-entry governs the money; tags govern the meaning
+**State:** enforced
+**Code:** product/viva/ledger/events.py:706-716 (a category is a partition, a tag is an overlay in its own event type)
+**Test:** product/tests/test_tags.py::test_a_tag_never_touches_the_category_partition, product/tests/test_tags.py::test_tag_totals_do_not_sum_to_spending_and_the_report_says_so
 
-## Regional versatility, concretely (beyond I1–I6 restated)
+1. A category is a partition: exactly one per movement, so the parts sum to the whole.
+2. A tag is an overlay: many per movement, overlapping, and tag totals do not sum to spending — a report that shows them says so.
+3. Tags live in their own event type, so "tags never leave this device" is an event-level rule rather than a per-field check.
 
-- **Amounts:** (value, currency) always; account-level default currency but per-transaction override (foreign transactions on a US card). FX conversion happens at *answer time*, computed deterministically from a rate the answer must cite and date — converted totals are estimates by provenance class, and say so.
-- **Jurisdiction on accounts** (not just locale on documents): tax treatment, retirement semantics, insurance conventions hang off it. US-only v0 populates it with "US" — the field existing is the point (I4 logic applied to accounts).
-- **Calendars:** fiscal years differ (India: Apr–Mar; Japan: Apr–Mar); "this year" in a question is locale/jurisdiction-sensitive — an *answer-time* concern, but the schema must not bake calendar-year assumptions into stored aggregates (store atoms, aggregate at query time).
-- **Statement conventions:** passbooks (running-balance lines, no period totals), DR/CR columns, combined multi-account statements — all handled by the claims layer being shape-agnostic (claims are claims) plus type-registry checks; no per-region schema.
+### ING-45 — A measurement, a valuation and an estimate are never dressed as one another
+**State:** by-review-with-exception
+**Code:** product/viva/ledger/events.py:659 (`position_observed` carries `valuation_class`, defaulting to `measured`)
+**Test:** none
 
-## What experiment 2 (the spike) must stress with the author's real accounts
+1. A figure a statement attests is `measured` and carries its date.
+2. A revaluation moves no money, so it never touches a balance and is never posted; unrealized gain is derived on the read side.
+3. An answer states which class it stands on and never presents one as another.
 
-The known leak candidates — where clean ontologies meet messy reality:
+**Exception:** `valuation_class` exists only on `PositionObserved`. No other primitive carries the distinction, so for everything else the class is implied by which event wrote it rather than declared. Assertion 3 is unsupported on top of that: no code cite and no test names an answer stating which class it stands on.
 
-1. **Escrow inside a mortgage payment** — one transaction, three economic destinations (principal, interest, escrow). Split-transaction support: one movement, multiple classified parts.
-2. **Pay stub** — gross→net with deductions that are *also* other facts (401(k) contribution appears here AND on the 401(k) statement: two observations, one fact — the cross-document merge test).
-3. **401(k) vesting** — owned vs vested: a position attribute or a provision? Spike decides.
-4. **Joint accounts / household** — Party exists from day one so "wife's card" is representable; but v0 stays single-*user* (one human, one key) with multi-*party* data. The shared/household product is a later door the schema deliberately doesn't close.
-5. **Insurance** — mostly Provisions + Obligations (premiums), almost no transactions: the test that the model isn't secretly transaction-shaped.
-6. **Brokerage statements** — positions + transactions + income (dividends) + fees in one document; the densest cross-check surface and the best verification showcase.
+### ING-46 — Regional variety is an attribute on a primitive, never a new primitive
+**State:** by-review
+**Code:** product/viva/ledger/events.py:161 (`jurisdiction` on the account, defaulting to empty rather than to a country), product/viva/ingest/registry.py:43 (a type is a registry row)
+**Test:** none
 
-## Consequences
+1. Account types, tax concepts and document categories extend to non-US instruments by attribute, not by a parallel table.
+2. `jurisdiction` names where the instrument lives — not where the person lives and not its currency — and defaults to empty, meaning nobody has said.
+3. A stored aggregate never bakes in a calendar-year assumption; atoms are stored and aggregation happens at query time.
 
-- The type registry (document types → expected claims → applicable checks) is a first-class design artifact of the architecture phase, versioned like the normalization rules.
-- `query_ledger`'s query language is the projection layer's contract — designed together with it (as the toolset doc noted).
-- The claims layer's schema is already half-built: it is viva-bench's claim format, deliberately (the benchmark rehearses the product again).
-- Event schema design (ADR-004's sticky consequence) now has its requirements list: multi-writer, bitemporal, observation-merging, correction-carrying.
+### ING-47 — Observations accumulate; they do not just dedup
+**State:** enforced-with-exception
+**Code:** product/viva/ingest/raw_store.py:51-61 (the content address is the fingerprint, so the same bytes are one document), product/viva/ingest/pipeline.py:339 (`_try_corroboration`), :193 (`heal_corroboration`)
+**Test:** product/tests/test_pipeline.py::test_reupload_is_duplicate_no_double_post, product/tests/test_transfers.py::test_cross_document_corroboration_closes_the_gap, product/tests/test_transfers.py::test_corroboration_heals_in_either_order, product/tests/test_transfers.py::test_a_real_misread_is_not_falsely_corroborated
 
-## Open questions
+1. The same real transaction seen again — an overlapping statement, a re-upload, a second document type — merges by fingerprint into one fact, never a second copy.
+2. Corroboration raises the grade; conflicting observations become `conflicted`, surfaced and never averaged.
 
-- Whether Provision needs structure beyond (topic, text, source, grade) — or whether structured coverage modeling (deductibles, limits as typed amounts) earns its complexity. Spike + real policies decide.
-- Category taxonomy seed: ship a minimal neutral seed vs start empty and learn everything. Leaning: minimal seed, aggressively overridable (the moat is the corrections, not the seed).
-- Rate sources for FX at answer time (deferred until a non-USD account exists; the schema slot is what matters now).
+**Exception:** what merges by fingerprint is the document and the movement key derived from it, not an observation set. A fact carries one `Provenance` (product/viva/ledger/events.py:39), so a counterparty document attesting the same movement is recorded as a supplied leg citing that document rather than as a second observation on one record. "Multiple observations of one fact" is true at the ledger level and absent at the field level.
+
+### ING-48 — Transfer links are graded facts
+**State:** enforced
+**Code:** product/viva/ledger/events.py:297 (`transfer_linked` carries its own `grade` and `evidence`), :316 (`transfer_unlinked` revokes it append-only)
+**Test:** product/tests/test_transfers.py::test_auto_link_is_corroborated_and_survives_a_replay, product/tests/test_transfers.py::test_a_link_records_which_rule_decided_it, product/tests/test_transfers.py::test_answer_spending_excludes_transfers
+
+1. A payment from checking to a card is one economic non-event, and the link that says so is itself a fact carrying its own confidence and its own evidence.
+2. Neither leg is re-posted, so each statement still reconciles on its own and a linked movement is excluded from spending — a wrong link double-counts spending, which is why the link is graded rather than assumed.
+
+### ING-49 — Completeness is data
+**State:** enforced-with-exception
+**Code:** product/viva/tools/ledger_tools.py:1671 (`check_completeness`), :400 (`_attested_coverage` — what each account's statements attest, and what falls short of the window asked for)
+**Test:** product/tests/test_tools.py::test_completeness_counts_the_held_document, product/tests/test_tools.py::test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so, product/tests/test_tools.py::test_a_window_outside_what_is_attested_covers_nothing_and_says_which
+
+1. What is missing is one query rather than an inference: `check_completeness` reports every document held, posted and awaiting review, and the date each account's evidence is good as of.
+2. Every aggregate states its coverage honestly — the periods its statements attest, and a caveat naming each account in scope that falls short.
+
+**Exception:** the commitment also had an account carry an *expected cadence* ("monthly statement, ~5th") so that a statement nobody sent is itself a gap. `account_opened` (product/viva/ledger/events.py:160) has no cadence field, and a gap is detectable only where a posted statement's opening fails to continue from the balance held (`GAP`, product/viva/ingest/pipeline.py:61). A period with no statement at all is silence rather than a named hole.
+
+### ING-90 — Two timelines per fact: when it happened, and when we learned it
+**State:** by-review-with-exception
+**Code:** product/viva/ledger/events.py:115-120 (`occurred_at` is value time, as the document dates it), product/viva/ledger/store.py:101 (the store stamps ingestion time as `recorded_at` on append)
+**Test:** none
+
+1. Every event carries `occurred_at`, the date the money event happened as its own document dates it.
+2. Ingestion time is stamped by the store rather than by the caller, so the two timelines are kept apart and neither can be written as the other.
+
+**Exception:** `recorded_at` is sealed into the record and never read back out — `Ledger.events()` (product/viva/ledger/store.py:136) reconstructs the event body alone, and a rewrite preserves the field without exposing it (product/viva/reset_categorization.py:127). The second timeline is therefore written and not queryable, so "what did I know on this date, provably" is not answerable from the log today.
+
+## Why
+
+The pipeline sketch — classify, extract, verify per type, land in a data layer,
+query through tools, retain the document for provenance — is right, with two
+refinements that do most of the work.
+
+The first is that classification is a *claim*. It comes from a model, so it can
+be wrong, and the design question is what a wrong one costs. If a misclassified
+document silently lands in the wrong family, the corruption is invisible; if it
+runs the wrong checks, the checks fail loudly and the document is held. Making
+`unknown` a first-class type rather than an error state is what lets a document
+nobody can read yet be captured, acknowledged, and posted retroactively once a
+projector exists — without a re-upload.
+
+The second is that there is no single data layer, there are three. The **claims
+layer** is what models asserted, verbatim, per run — immutable, append-only, and
+incidentally the mine every future training pair is dug out of. The **facts
+layer** is what survived verification: typed records carrying a grade, the trail
+of which checks ran, and provenance pointers down to the page. The **projection
+layer** is query-shaped and rebuildable from the log at any time. That third
+layer is what dissolves the pressure to be comprehensive from day one:
+comprehensiveness lives in what events *capture*, while projections expose only
+what has so far been chosen to model, and can be re-derived richer later.
+
+Finance everywhere reduces to about ten primitives — Party, Account, Asset,
+Transaction, Position, BalanceSnapshot, Obligation, Provision, the
+Document/Claim/Fact trust spine, and Tag/Category. Regional variety is
+attributes on those primitives and never new ones: a 401(k), an EPF, an ISA and
+a superannuation fund are one retirement-kind account with a jurisdiction tag,
+and the kind-and-subtype registry is data. Insurance is why Provision is core
+rather than an afterthought — a policy is mostly attested non-numeric terms and
+almost no transactions, which is the test of whether the model is secretly
+transaction-shaped.
+
+Categorization is deliberately two mechanisms rather than one, because a person
+does not put a purchase in exactly one bucket and pretending otherwise is a lie
+about how people think about money. One purchase can at once be an expense,
+groceries, a particular merchant, and birthday-related. When the money genuinely
+*divides* — a receipt that is partly groceries and partly a gift — that is a
+split by amount, native double-entry, several postings summing to the whole,
+each with its own grade. When the *same* money wears several labels at once,
+those are orthogonal dimensions, not competing buckets, and they belong in a
+many-to-many overlay that is descriptive rather than financial. The overlay never
+has to balance, which is exactly why a transaction can carry as many tags as the
+person likes without touching the ledger's integrity. The rule that keeps trust
+intact: double-entry governs the money — one balanced truth, verifiable — and
+tags govern the meaning, freely multiple and user-owned.
+
+The trust spine is what no personal-finance schema has and what this product
+exists for. Observations *accumulate* rather than dedup: the same real
+transaction seen on an overlapping statement, a re-upload, or from two document
+types merges into one fact with multiple observations, and corroboration raises
+the grade — while conflicting observations become `conflicted`, surfaced, never
+averaged. Corrections are events on facts, so a fact's full history is
+replayable and nothing is overwritten. Transfer links are themselves graded
+facts carrying their own evidence, because a wrong link double-counts spending.
+Completeness is data, so an account's expected cadence turns a gap into a query
+and lets every aggregate state its coverage honestly. Bitemporality — when it
+happened versus when we learned it — is free if respected from the start and
+impossible to retrofit, and it is what makes "what did I know on this date,
+provably" answerable.
+
+Three provenance classes have to stay distinct: a statement *measures*, a market
+price *values*, a property guess *estimates*. Posting a price change that was
+not a cash movement fabricates an event that never happened, so revaluations are
+derived presentation views rather than ledger facts.
+
+Regional versatility is concrete rather than aspirational. Amounts are always a
+value and a currency, with an account-level default and a per-transaction
+override for foreign transactions. Conversion happens at answer time from a rate
+the answer must cite and date, and a converted total is an estimate by
+provenance class and says so. Jurisdiction hangs off the account, not just
+locale off the document, because tax treatment and retirement semantics hang off
+it. Fiscal years differ, so "this year" is a question about the asker, which is
+an answer-time concern the schema must not pre-empt. And statement conventions —
+running-balance passbooks with no period totals, DR/CR columns, combined
+multi-account statements — are absorbed by the claims layer being shape-agnostic
+plus per-type checks, never by a per-region schema.
+
+## Open
+
+- Whether Provision needs structure beyond topic, text, source and grade, or whether typed coverage modeling — deductibles and limits as amounts — earns its complexity. Real policies decide.
+- Category taxonomy seed: a minimal neutral seed versus starting empty and learning everything. The moat is the corrections, not the seed.
+- FX rate sources at answer time; the schema slot matters now, the source does not until a second currency is live.
+- Escrow inside a mortgage payment: one movement, three economic destinations. Modeled analytically and untested against a real monthly statement.
+- Pay-stub deductions that are also facts elsewhere — a retirement contribution appears on the stub and on the retirement statement, two observations of one fact.
+- Vesting: owned versus vested is either a position attribute or a provision, and no real document has settled it.
+- Joint accounts and households: Party exists so another person's card is representable, but the product stays single-user with multi-party data, and the shared product is a door the schema declines to close.
+- Asset, Obligation and Provision have no implementation; the ontology above is ahead of the ledger on those three.

@@ -1,56 +1,32 @@
 # Backend Capability Gaps For UI Parity
 
-**Purpose:** This document lists the backend capabilities still needed to bring
-the desktop UI up to date with the backend. It is written as a handoff note for
-the backend team: what the UI is waiting on, why it matters, and what the
-backend should expose.
+**State:** design-only
+**Rules:** none
 
-**Source of truth:** [User Interface Implementation Status](user-interface-implementation-status.md)
+## Rules
 
-## Summary
+This document is a handoff list of capabilities the desktop interface is waiting on. It states no behaviour the code can be held to; every item in it is either a gap (under *Open*) or a shaping principle for the work that closes one (under *Why*). Rules arrive with the capabilities themselves, in the documents that specify them.
 
-The desktop UI already has a synthetic preview for several surfaces, but the
-remaining gaps are the places where the UI cannot honestly become “live” without
-backend support.
+## Why
 
-## Capability Gaps By Slice
+The desktop interface already renders a synthetic preview of several surfaces. The gaps that remain are the places where it cannot honestly become "live" without backend support, and the point of naming them is not more interface — it is giving the interface a real, stable contract to consume.
 
-| Slice | Backend capability missing | Why the UI needs it |
-|---|---|---|
-| Slice 1: installable shell and demo vault | Packaged runtime validation, installer/update metadata, signed installer publication, native lifecycle/recovery validation | The shell can render preview UI today, but it still needs a proven native host path to be a distributable desktop app. |
-| Slice 2: document journey | Document ingest job registry, rescan, held/parked state transitions, progress events, outbound posting/accounting, error/retry states | The current UI can show capture and document states, but it still cannot drive real document processing or post document-derived results back into the product. |
-| Slice 3: financial picture | Broader live overview/account read models, formatting parity, evidence/account coverage details from live data | The UI can display account spotlights, but it still depends on synthetic figures and local fixtures rather than a complete backend read model. |
-| Slice 4: review and learning | Live review queue reads, answer/decline/proposal/confirm actions, post-action refresh, action outcome state | The UI can show review actions, but it cannot yet execute those actions against the backend or refresh from a live queue. |
-| Slice 5: ask Viva | Conversation session API, cited turn retrieval, refusal states, live answer generation, prompt/history read models | The UI can open a synthetic conversation drawer, but it still cannot ask the backend and render returned cited turns or refusals from a real conversation session. |
-| Slice 6: activity and organization | Live activity/transaction read models, filter endpoints, category/tag mutation endpoints, transfer linking, totals and drilldown data | The UI groundwork exists, but organization features need real transaction semantics, totals, and mutation support from the backend. |
-| Slice 7: trust and maintenance | Trust/maintenance surface models, outbound history, build identity metadata, update recovery state, watched-folder capture, diagnostic export | The UI has no trustworthy live maintenance surface until the backend exposes these operational and integrity-related capabilities. |
+Synthetic state is not backend parity. A preview that simulates a state locally proves the rendering and proves nothing about the product, so treating a preview as evidence of a working surface would bypass the gates that exist to catch exactly that.
 
-## What The Backend Team Should Implement
+Five properties shape everything the backend owes the surface. **Versioned read models**, so the shell can evolve without breaking older builds and an old client meets a contract it understands rather than a shape it must guess at. **Allowlisted actions**, so a surface that needs user input or mutation reaches a named, enumerated set rather than an open door into the product. **Progress and terminal states** for long-running document and sync work, because a job with no reportable state can only be rendered as a spinner or a lie. And **cited evidence, provenance and refusal states** carried through the conversation and review surfaces, because an answer stripped of its citation on the way to a screen is the one failure this whole product exists to prevent. The fifth is **explicit lifecycle and recovery states for native install and update flows**, which the backend owes the shell as squarely as it owes it a read model.
 
-1. Expose stable, versioned read models for each surface above.
-2. Expose allowlisted actions for the surfaces that need user input or mutation.
-3. Add progress and terminal-state reporting for long-running document and sync
-   work.
-4. Include cited evidence, provenance, and refusal states in the conversation
-   and review surfaces.
-5. Provide explicit lifecycle and recovery states for native install/update
-   flows.
-6. Keep these capabilities versioned so the desktop shell can evolve without
-   breaking older builds.
+The source of truth for what is currently built is [User Interface Implementation Status](user-interface-implementation-status.md); this document is the complement, listing what is not.
 
-## Practical Priority Order
+## Open
 
-1. Document ingest and job progress.
-2. Live review queue actions.
-3. Viva conversation session/citations.
-4. Live activity and organization read models.
-5. Trust/maintenance/update/export operational views.
-6. Packaged desktop lifecycle validation.
+Capability gaps, by the slice that needs them:
 
-## Notes
+- **Installable shell and demo vault** — packaged runtime validation, installer and update metadata, signed installer publication, native lifecycle and recovery validation. The shell renders preview interface today and still needs a proven native host path to be a distributable desktop app.
+- **Document journey** — a document ingest job registry, rescan, held and parked state transitions, progress events, outbound posting and accounting, error and retry states. The interface can show capture and document states and cannot drive real document processing or post document-derived results back into the product.
+- **Financial picture** — broader live overview and account read models, formatting parity, evidence and account-coverage details from live data. Account spotlights display today from synthetic figures and local fixtures rather than a complete backend read model.
+- **Review and learning** — live review queue reads, answer, decline, proposal and confirm actions, post-action refresh, action outcome state. The interface can show review actions and cannot execute them against the backend or refresh from a live queue.
+- **Ask Viva** — a conversation session API, cited turn retrieval, refusal states, live answer generation, prompt and history read models. A synthetic conversation drawer opens today; nothing can ask the backend or render returned cited turns and refusals from a real session.
+- **Activity and organization** — live activity and transaction read models, filter endpoints, category and tag mutation endpoints, transfer linking, totals and drilldown data. The groundwork exists; organization features need real transaction semantics, totals and mutation support.
+- **Trust and maintenance** — trust and maintenance surface models, outbound history, build identity metadata, update recovery state, watched-folder capture, diagnostic export. There is no trustworthy live maintenance surface until these operational and integrity-related capabilities exist.
 
-- The current desktop preview can simulate some of these states locally, but
-  synthetic state is not backend parity.
-- The goal of the missing capabilities is not “more UI”; it is giving the UI a
-  real, stable contract to consume.
-
+The practical priority order: document ingest and job progress first, then live review queue actions, then the conversation session and its citations, then live activity and organization read models, then the trust, maintenance, update and export operational views, and packaged desktop lifecycle validation last.

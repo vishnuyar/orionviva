@@ -1,223 +1,242 @@
 # merchantcore — the merchant enrichment package
 
-**Status:** Implemented · **Superseded-in-part 2026-07-28** (see the note at the end) · **Last updated:** 2026-08-14 (amendments through 2026-08-13 live in the as-built section) · **Origin:** the merchant catalog built merchant categorization *inside the product*. But a merchant — its canonical name, category, website, socials, reviews — is **impersonal, reusable knowledge** (true for everyone, about the merchant not your money), and it wants to grow into a multi-attribute entity and a shared commons. So it becomes its own package, a peer to `vivacore`, that the product *consumes*: `vivacore` is the trust/verification core, `merchantcore` is the merchant knowledge base. This doc is the deep design — the package boundary, how it makes its own model calls, and how the product gets the data back.
+**State:** built
+**Rules:** MER-20, MER-21, MER-22, MER-23, MER-24, MER-25, MER-26, MER-27, MER-28, MER-29, MER-30, MER-31, MER-32
 
-**Invariants touched:** **T5 drawn at a package boundary** (only *impersonal* data crosses product → merchantcore: a normalized merchant key and a privacy-linted example — never amounts, dates, accounts, or peer/PII descriptors), T4 (the product's ledger stays the source of truth: merchantcore is a knowledge *cache/service*, and the product imports its results as events, so a replay is self-contained), T6 (contributing to the commons is an opt-in decision), T8 (merchantcore makes provider-agnostic, pinned model calls through `vivacore.models`), I3/I5/I6 (merchants are locale-sharded, categories/attributes are open data, the commons is pack-extensible). Principle 2 (an enriched attribute is a *graded* claim; the personal override always wins).
+## Rules
 
-## The shape: a knowledge service, not a data store
+### MER-20 — Only a key and a linted example cross into the package
+**State:** enforced
+**Code:** product/viva/ingest/categorize.py:192 (`enrich_merchants`), product/viva/ledger/hints.py:69 (`Hint.example`), merchant/merchantcore/descriptor.py:265 (`linted_example`)
+**Test:** product/tests/test_merchant_enrich.py::test_only_impersonal_hints_cross_the_boundary, product/tests/test_streams.py::test_no_digit_reaches_the_boundary
 
-```
-   vivacore  (verify · models · claims — the trust core)
-      ▲
-      │ depends on
-   merchantcore  (normalize · enrich · catalog · commons — merchant knowledge)
-      ▲
-      │ consumes (impersonal boundary)
-   viva / product  (encrypted ledger — applies merchant knowledge to YOUR money)
-```
+1. What crosses product → merchantcore is a normalized merchant key and an impersonal example composed of the brand plus context slots.
+2. No amount, date, account, transaction reference or count crosses.
+3. `linted_example` removes every span a published rule proves, then every token carrying a digit, then anything shorter than two characters, and truncates.
+4. A linted example is not a guarantee of impersonality on its own; only the slot a value came from settles that (MER-3, MER-13 in [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md)).
 
-Clean, one-directional dependency DAG. The product knows nothing about how enrichment works; merchantcore knows nothing about amounts, accounts, or which transactions exist. They meet at one narrow, impersonal interface.
+### MER-21 — The lint is a property of the store
+**State:** enforced
+**Code:** merchant/merchantcore/catalog.py:55 (`submit`), :67 (lints again on the way in)
+**Test:** merchant/tests/test_merchantcore.py::test_catalog_pending_add_and_linted_export
 
-## What lives where
+1. `submit` lints every example again, whatever the caller did.
+2. The pending queue persists to plain unencrypted JSON, and anything submitted and never enriched sits in it indefinitely, so the invariant belongs to the store rather than to whoever writes the next caller.
+3. `submit` skips merchants already in the catalog and merchants already queued against the same example, so it is idempotent.
 
-**merchantcore (impersonal, reusable, unencrypted-safe):**
-- `normalize(descriptor) -> key` + `NORMALIZER_VERSION` + `is_shareable(descriptor)` — moved out of the product (deterministic, versioned, portable keys; the privacy lint).
-- `MerchantRecord` — the merchant **entity**: `{key, canonical_name, category, attributes{}, grade, source, version}`. Category is attribute #1; `attributes` is an open bag for `website`, `description`, socials, reviews — added later as fields, never a restructure.
-- `Enricher` — the batched model-call engine + its **versioned enrichment prompt**. Given a model spec and a set of merchants, it returns records. Self-contained: it builds the prompt, calls `vivacore.models`, parses, and grades.
-- `Catalog` — the merchant knowledge base: an unencrypted local store (`{key -> MerchantRecord}`) plus a **pending queue** (submitted, not-yet-enriched merchants), plus commons `import`/`export` (content-addressed, linted).
-- (Later) web/API enrichers (Yelp, website, socials) that fill more of `attributes`.
+### MER-22 — An enriched record is graded and stamped
+**State:** enforced
+**Code:** merchant/merchantcore/enrich.py:117 (`parse_enrichment_chunk`), :93 (version composition), merchant/merchantcore/record.py:16
+**Test:** merchant/tests/test_merchantcore.py::test_enricher_is_one_call_and_grades_records, merchant/tests/test_merchantcore_versions.py::test_the_versions_stamped_on_records_come_from_the_manifest
 
-**product (personal, encrypted):**
-- The `MerchantEnriched` event (generalized from `MerchantCategorized`) — the product's *applied* record of a merchant ruling in its ledger, so categories replay without merchantcore present.
-- The projection's derivation (`override ?? merchant catalog ?? Uncategorized`) — now populated by syncing merchantcore records into events.
-- The per-transaction override, the surface, the spending projection — unchanged.
+1. A model-produced record is graded `corroborated` — above a lone unconfirmed guess, below a human `verified`.
+2. Every record carries `enrichment prompt + taxonomy + normalizer` as its version, and the prompt resolves to the exact file that produced it ([prompts-as-files.md](prompts-as-files.md)).
+3. A key the reply does not carry is absent from the result rather than guessed into existence.
+4. A `counterparty_kind` outside `business | instrument | peer` is dropped, so a record carries one of those or no kind at all.
 
-## The three flows (the deep part)
+### MER-23 — Enrichment is chunked, and the chunk size is the caller's
+**State:** enforced-with-exception
+**Code:** merchant/merchantcore/enrich.py:65 (`DEFAULT_CHUNK_SIZE`), :265 (`Enricher.enrich`), product/viva/enrich.py:61 (`read_chunk_size`)
+**Test:** merchant/tests/test_merchantcore.py::test_enricher_chunks_a_large_batch_into_several_calls, merchant/tests/test_merchantcore.py::test_a_broken_chunk_does_not_sink_the_others, product/tests/test_merchant_enrich.py::test_how_many_merchants_ride_in_one_call_is_the_callers_to_set, product/tests/test_merchant_enrich.py::test_a_chunk_size_that_is_not_a_count_of_merchants_is_refused
 
-### 1. Product → merchantcore: submit unknown merchants (the impersonal boundary)
+1. One model call carries at most `chunk_size` merchants; a chunk whose reply fails costs one chunk and the rest of the run still lands.
+2. The size is set by `--chunk-size N` then `VIVA_CHUNK_SIZE` then the package default.
+3. A value that is not a whole number of at least one exits before anything is spent, and is never clamped to a usable one.
+4. An empty input returns `{}` without calling the model.
 
-The product's projection already knows its unknown merchants (`uncategorized_merchants()` → `{key: {count, example, shareable}}`). It sends **only the shareable ones**, and **only impersonal fields**:
+**Exception:** assertion 3 is a property of the CLI entry point, not of the package. product/viva/enrich.py:68 raises `SystemExit`; `Enricher.__init__` clamps — `self._chunk_size = max(1, int(chunk_size))` (merchant/merchantcore/enrich.py:253) — so a caller constructing an `Enricher` directly with `0` gets `1` rather than a refusal.
 
-```
-merchantcore.submit([MerchantHint(key="amzn mktp us", example="AMZN MKTP US")])
-```
+### MER-24 — "Asked and got nothing" is not "the reply did not parse"
+**State:** enforced
+**Code:** merchant/merchantcore/enrich.py:117 (`parse_enrichment_chunk` returns `(records, parsed)`), :258 (`Enricher.unparsed`), product/viva/ingest/categorize.py:258
+**Test:** product/tests/test_agent_run.py::test_a_chunk_that_did_not_parse_is_asked_again, product/tests/test_agent_run.py::test_a_model_that_looked_and_declined_is_not_asked_again
 
-`MerchantHint` carries the normalized key and a *linted example* (the example gives the model more signal than the stripped key; `is_shareable` guarantees no peer-payment/PII). **No amount, date, account, count, or transaction reference ever crosses.** This is T5 enforced at the API surface — merchantcore literally cannot learn anything about your money, only that "a merchant named roughly this exists." merchantcore drops hints it already has in its catalog, so submit is idempotent and cheap.
+1. A well-formed reply that omits a merchant is a non-answer and is recorded as one.
+2. A truncated or unreadable reply says nothing about any merchant in the chunk; those keys stay pending and are asked again.
+3. A caller recording a non-answer cannot record a transport failure that way.
 
-### 2. merchantcore, on its own: enrich via batched model calls
+### MER-25 — A non-answer is keyed by the example, not by the merchant
+**State:** enforced
+**Code:** merchant/merchantcore/catalog.py:122 (`mark_unanswered`), :102 (`pending`), :74 (new evidence retires a mark)
+**Test:** product/tests/test_agent_run.py::test_a_merchant_the_model_could_not_name_is_not_asked_about_again, product/tests/test_agent_run.py::test_a_better_example_retires_an_old_non_answer
 
-merchantcore owns the model call end-to-end. `Enricher.run(model_spec, batch_size)`:
-1. Pulls a batch of pending (unenriched) merchants from the queue.
-2. Builds the **versioned enrichment prompt** — "for each merchant, return `{canonical_name, category (one of the seed set), description, website?}`" — from the linted examples.
-3. Calls the model through a `vivacore.models` adapter (provider-agnostic, pinned, cost-tracked — the same socket the reader uses).
-4. Parses each result into a `MerchantRecord`, graded `corroborated` (a model batch is stronger than a lone guess, weaker than a human `verified`), tagged with the enrichment-prompt + normalizer version.
-5. Writes records to the catalog and clears them from the queue.
+1. `mark_unanswered` records the example that was asked about, not just the key.
+2. A merchant returns to `pending` as soon as its example changes.
+3. A key not currently pending is ignored rather than marked.
 
-It is **batched and decoupled**: enrichment runs on merchantcore's schedule (a threshold of pending merchants, a periodic pass, or an explicit call), never blocking the product's ingest. The catalog persists across runs, so a merchant is enriched **once**, ever — the O(new-merchants) cost. Cost scales with genuinely-new merchants, and the commons drives even that toward zero.
+### MER-26 — `queued` and `pending` answer different questions
+**State:** by-review
+**Code:** merchant/merchantcore/catalog.py:102 (`pending`), :111 (`queued`)
+**Test:** none
 
-### 3. merchantcore → product: the product syncs the results in
+1. `queued()` is everything that persists to plain unencrypted JSON — what a privacy audit walks.
+2. `pending()` is what a caller about to spend a model call reads.
+3. They are deliberately not one function.
 
-The product does not read merchantcore live at derivation time (that would break T4's self-contained ledger). Instead it **pulls and imports** — an idempotent sync, in the spirit of `heal`/`sweep`:
+### MER-27 — The product imports records as events
+**State:** enforced
+**Code:** product/viva/ingest/categorize.py:270-283 (sync loop), product/viva/ledger/events.py:640 (`merchant_enriched`)
+**Test:** product/tests/test_merchant_enrich.py::test_enrichment_syncs_as_events_and_categorizes_retrospectively, product/tests/test_merchant_enrich.py::test_sync_is_idempotent, product/tests/test_merchant_enrich.py::test_human_override_beats_the_synced_enrichment
 
-```
-for record in merchantcore.catalog.records():
-    if record.key not in already_imported:
-        ledger.append(merchant_enriched(record))   # a MerchantEnriched event
-```
+1. The product does not read merchantcore at derivation time; it pulls records and appends `MerchantEnriched` events.
+2. A replay reproduces the categorization with merchantcore absent — the ledger stays the source of truth (T4).
+3. The sync is idempotent: a record is imported only where the ledger does not already reflect it at an equal or higher grade.
+4. A human `verified` override still wins over a synced enrichment.
 
-The projection's derivation then categorizes every past and future transaction from that merchant retrospectively. Because the enrichment is now an **event in the product's own ledger**, a replay (or a reingest) reproduces the categorization with merchantcore absent — the ledger stays the source of truth (T4); merchantcore is the *source of the knowledge*, not the store of the answer. The sync runs on startup and after an enrichment pass, like the other heals.
+### MER-28 — A version-stale record is restaged, and keeps answering meanwhile
+**State:** enforced
+**Code:** merchant/merchantcore/catalog.py:78 (`restage`), :97 (`restaged`), :146, merchant/merchantcore/enrich.py:195 (`enrichment_is_stale`)
+**Test:** merchant/tests/test_merchantcore.py::test_a_version_stale_record_is_restaged_and_asked_about_again, ::test_a_restaged_record_is_asked_about_once_not_every_run, ::test_a_record_with_no_version_is_not_stale, ::test_a_new_taxonomy_does_not_restage_a_record, ::test_restaging_survives_a_reload
 
-### And the loop closes: contribution
+1. `restage(predicate)` returns the keys the predicate calls stale; nothing in the catalog infers staleness.
+2. `enrichment_is_stale` is a string comparison against the stamped enrichment version; a record carrying no version is not stale.
+3. A restaged record stays in place and keeps answering until a new one replaces it.
+4. A restaged key leaves the set when any record for it arrives, so a re-ask costs one call and not one per run.
+5. `dry_run` returns the same keys, queues nothing and saves nothing.
+6. Restaging persists under a `restaged` key; a file written without it loads with nothing marked.
 
-When you *confirm* a merchant's category (`verified` — you overruled or ratified the enrichment), that ruling is the moat. Opt-in (T6), the product hands it back to merchantcore as a stronger signal, and merchantcore's linted, content-addressed `export` is what a commons PR is built from — so your Amazon ruling raises the corroborated-by-count prior that spares the next person the model call entirely.
+### MER-29 — Where merchant knowledge lives: learned first, shipped second
+**State:** enforced
+**Code:** merchant/merchantcore/home.py:37 (`learned`), :42 (`shipped`), merchant/merchantcore/catalog.py:48, :197 (`_load_file`), :210 (`load`), merchant/merchantcore/profile.py:407 (`ProfileStore._file`)
+**Test:** merchant/tests/test_subcategory_seed.py::test_a_shipped_catalog_is_read_and_marked_as_shipped, ::test_a_learned_catalog_does_not_erase_the_seed, ::test_a_learned_record_wins_over_a_shipped_one_whatever_the_grade, ::test_a_seed_survives_the_first_save_and_stays_distinguishable, product/tests/test_merchant_enrich.py::test_the_catalog_is_shared_across_vaults_not_kept_inside_one
 
-## The privacy boundary, stated once
+1. Merchant knowledge belongs to merchantcore, not to a vault or to the product; one store is reused across every vault on the machine.
+2. Two locations: a shipped seed committed inside the package, and learned data outside any working tree at `~/.merchantcore` (`MERCHANTCORE_HOME`).
+3. On lookup the learned record wins outright, per key and whatever grade either carries.
+4. A shipped record is marked `source="shipped"` so it stays distinguishable after the first save copies it into the learned file.
+5. A shipped file's records only are read; a pending queue and an unanswered set are never read from it.
+6. Promotion from learned into shipped is a person's decision; nothing moves automatically.
 
-Everything that crosses product → merchantcore is impersonal: a normalized merchant key and a linted example. Everything merchantcore holds — the catalog, the commons — is merchant knowledge with **no amounts, dates, accounts, transaction links, or peer/PII merchants**. The catalog is unencrypted *because* it is impersonal; the personal application (which of your transactions, for how much) never leaves the encrypted product ledger. The one residual exposure — the *set* of merchants you frequent — is why contribution is opt-in and biased to popular merchants (share "Amazon", never "Joe's Corner Store, Plano").
+### MER-30 — The commons export is linted, and an import is only a prior
+**State:** enforced
+**Code:** merchant/merchantcore/catalog.py:161 (`export`), :169 (`merge`)
+**Test:** merchant/tests/test_merchantcore.py::test_catalog_pending_add_and_linted_export, merchant/tests/test_merchantcore.py::test_catalog_merge_prior_loses_to_local_verified
 
-## Graded knowledge
+1. `export` returns records whose key passes `is_shareable`, and nothing else — no pending queue, no unanswered set.
+2. `merge` applies an imported record only where no local record exists or the import's grade is strictly higher.
+3. A local `verified` ruling always beats an import.
 
-A transaction's category grade is the max of the rulings that reach it: `verified` (you confirmed this exact transaction, or this merchant) > `corroborated` (a model batch, or a commons prior with enough independent contributors) > `unverified` (a lone unconfirmed guess) > `Uncategorized`. The trust envelope rides all the way from a document read to a spending answer — a merchant category never enters the trusted layer as fact; it enters as a graded prior you can always overrule.
+### MER-31 — Billing is a fact about the merchant, validated against closed sets
+**State:** enforced
+**Code:** merchant/merchantcore/enrich.py:57 (`BILLINGS`), :61 (`BILLING_PERIODS`), :165 (`clean_billing`), merchant/merchantcore/prompts/enrich-v6.txt:47 (the `billing` section), :64 (`billing_period`), :69 (the separation from `implies`)
+**Test:** merchant/tests/test_merchantcore.py::test_a_billing_model_and_its_period_land_in_the_attributes_bag, ::test_a_billing_model_outside_the_closed_set_is_dropped, ::test_a_period_offered_for_a_per_purchase_merchant_is_dropped, ::test_an_unknown_period_is_dropped_and_the_model_survives, ::test_saying_nothing_about_billing_is_a_normal_answer, ::test_the_billing_question_is_separate_from_what_a_merchant_implies
 
-## The restructuring (bounded)
+1. `billing` and `billing_period` say how a merchant charges everybody who deals with them, never what any person arranged with them.
+2. A billing model outside the closed set is dropped and takes its period with it.
+3. A period outside the closed set, or one offered for `per_purchase`, is dropped on its own and the model survives.
+4. Absent is a normal answer wherever the model is unsure.
+5. Both live in the existing `attributes` bag: no dataclass change, no new event type, no change to `export` or `merge`.
+6. The prompt asks for billing in a section of its own rather than through `implies`, and answering it never adds an entry there.
 
-- **New package `merchantcore/`** (its own `pyproject`, depends on `vivacore`): `normalize`, `MerchantRecord`, `Enricher` (+ the enrichment prompt), `Catalog` (+ commons import/export). The normalizer + `is_shareable` + `export_catalog` move here from the product.
-- **Product, lightly rewired:** `ledger/merchants.py` and `ingest/merchants.py` become re-exports from `merchantcore`; the projection imports `merchantcore.normalize`; `MerchantCategorized` generalizes to `MerchantEnriched` (carrying a record); `categorize_merchants_batch` calls `merchantcore.Enricher` (still injectable for offline tests); a `sync_merchants` step imports catalog records as events. The ledger, ingest pipeline, and other slices are untouched.
-- Dependency DAG stays clean and one-directional; the product gains a `merchantcore` dependency alongside `vivacore`.
+### MER-32 — The enrichment prompt says a brand string may be truncated
+**State:** unmet
+**Code:** none found — merchant/merchantcore/prompts/enrich-v6.txt carries no clause about truncation
+**Test:** none
 
-## Implementation status (as built, 2026-07-24)
+1. A brand handed to enrichment may be hard-truncated, because a NACHA Company Name is sixteen fixed-width characters and the bank collapsed the padding.
+2. The prompt must say so, or a model reads a clipped name as an odd brand name rather than a cut-off one.
 
-- ✅ **The package exists** (`merchant/`, `pyproject` name `merchantcore`, depends on `vivacore`): `normalize` (moved out of the product), `MerchantRecord` (multi-attribute — `attributes` bag), `Enricher` (+ the versioned enrichment prompt, `enrich-v2` — the id the package shipped at; `enrich-v1` never existed, see [prompts-as-files.md](prompts-as-files.md)) via `vivacore.models`, `Catalog` (records + pending queue + JSON persistence + linted `export` + `merge`). Product `ledger/merchants.py` + `ingest/merchants.py` are now re-exports.
-- ✅ **The impersonal boundary** (T9): `enrich_merchants` submits only `(normalized key, linted example)`; a test asserts no amount, account number, or date reaches the model prompt, and a peer-payment merchant is filtered out entirely.
-- ✅ **Own model calls**: `Enricher.enrich` is a batched, injected call per chunk of `chunk_size` merchants (40 by default) → graded (`corroborated`) records carrying the taxonomy + prompt + normalizer version. `model_extractor(spec)` is the live text-only edge. **Amended 2026-08-13:** the chunk size is an argument the caller sets, reachable from the product's enrichment entry point as `--chunk-size N` or `VIVA_CHUNK_SIZE` — the failure message for a truncated reply advises a smaller chunk, and until now there was no way to set one without editing source. The vocabulary a chunk is shown grows across a run by whatever the previous chunk minted.
-- ✅ **Two-level taxonomy + richer attributes (enrich-v2, cat-v2).** Informed by an industry scan (Plaid's Personal Finance Categories are 16 primary + 104 detailed; Ntropy adds MCC, recurrence, custom categories — see below): the record now carries a **primary category** from **16 controlled buckets** (`merchantcore.taxonomy.PRIMARY_CATEGORIES`, the single source of truth the product's category picker also uses), a **model-provided `subcategory`** (open value, lightly normalized — "warehouse club", "streaming" — the commons converges on it), and `attributes` for **logo_url, mcc, website, description**. The product syncs `subcategory` into the `MerchantEnriched` event and exposes `projection.spending_by_subcategory` — the finer slice-and-dice axis. **Amended 2026-08-13 (cat-v3):** the subcategory is no longer invented from nothing. A vocabulary of 156 labels ships as `data/cat-v3.json`, pinned in `versions.json` under a new `taxonomy` family, and `TAXONOMY_VERSION` is read from the manifest. It is a prior and not a fence — a model is shown the list, mints only where nothing fits, and the run reports how many labels it minted; a person's own label is never displaced. See [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) for the measured result and its limits.
-- ✅ **How a merchant bills (enrich-v6, 2026-08-12).** The record's `attributes`
-  bag gains **`billing`** (`standing` · `per_purchase` · `either`) and
-  **`billing_period`** (`monthly` · `annual` · `either`, present only where a
-  billing model admits one) — how a merchant charges everybody who deals with
-  them, not what any person arranged with them, so it passes the same T9 test
-  `category` passes. Both are validated in code against closed sets and dropped
-  with a log line when the reply speaks outside them; absent is the expected
-  answer wherever the model is unsure, and a period offered without a model goes
-  with it. The prompt asks for it in a section of its own rather than through
-  `implies`: a wrong implication writes a phantom account into a balance sheet,
-  a wrong billing model licenses a question and nothing else. No dataclass
-  change, no new event type, no change to `export` or `merge`.
-- ✅ **`Catalog.restage(predicate, dry_run=…)`.** Nothing compared a record's
-  version to the one in force, so a released prompt reached only merchants with
-  no record at all. `restage` returns version-stale records to the pending queue
-  (`enrichment_is_stale` is a string comparison against the stamped enrichment
-  version; a record carrying no version is not stale), the record keeps
-  answering until a new one replaces it, and a restaged key leaves the set when
-  any record for it arrives — so a re-ask costs one call, not one per run. The
-  dry run measures the spend before anybody authorizes it. Persisted under a
-  `restaged` key in the catalog JSON; a file written without it loads with
-  nothing marked.
-- ✅ **Sync-as-events** (T4): the product imports catalog records as `MerchantEnriched` events; categorization is retrospective (a merchant ruling fills every transaction), idempotent, and survives a **replay with merchantcore absent** — tested.
-- ✅ **Runnable on a real vault**: `python -m viva.enrich` gathers unknowns, enriches in one call, persists the catalog beside the vault (plain JSON, impersonal), and syncs. `MerchantEnriched` and `MerchantCategorized` share the catalog projection with grade precedence; a human `verified` override still wins.
+## Why
 
-Install note: the product now depends on `merchantcore`, so `pip install -e ./merchant` alongside `./core` and `./product`. Deferred: web/API enrichers, the git commons registry, merchant-as-Party. Tests: `merchant/tests/test_merchantcore.py` (6) + `product/tests/test_merchant_enrich.py` (4); full suite 244 green.
+A merchant — its canonical name, category, website, socials — is impersonal,
+reusable knowledge: true for everyone, about the merchant rather than about your
+money. So it is not a feature of the product but a package the product consumes.
+The dependency runs one way, `vivacore` → `merchantcore` → product, and the
+product knows nothing about how enrichment works while merchantcore knows nothing
+about amounts, accounts, or which transactions exist. They meet at one narrow,
+impersonal interface, and that interface is where T9 is drawn.
 
-## Slice-and-dice: the dimensions, and where each comes from
+The catalog is unencrypted *because* it is impersonal, not as an exception to
+T5. The personal application — which of your transactions, for how much — never
+leaves the encrypted ledger. The one residual exposure is the *set* of merchants
+you frequent, which is why contribution is opt-in and biased toward popular
+merchants: share "Amazon", never "Joe's Corner Store, Plano".
 
-The goal of enrichment is to let a person slice their finances any way. That is not one richer category — it's a few **orthogonal dimensions**, sourced from three places (an industry scan — Plaid, Ntropy — confirmed this shape):
+Cost is the reason for the whole shape. A vault holds thousands of transactions
+but a few hundred distinct merchants, and a merchant is enriched once, ever, so
+spend scales with genuinely-new merchants and the commons drives even that toward
+zero. Enrichment therefore runs on merchantcore's own schedule and never blocks
+ingest.
 
-- **merchantcore (impersonal, shareable):** primary **category** (16) + **subcategory** (model value) + **MCC** + **logo** + website. Done (enrich-v2).
-- **the product, from transaction patterns:** **recurrence / subscriptions** — recurring inflow/outflow *streams* grouped by merchant + amount + cadence (Plaid/Ntropy both do this; matured at 3+ occurrences). This is **Slice 8 (Obligations)** and a first-class slice axis ("my subscriptions", "recurring vs discretionary").
-- **the product, from the user:** **tags** — the free, many-to-many personal axis ("reimbursable", "vacation-2024", "business"). Deferred in the category overlay; the axis that lets someone slice *their own way* (Ntropy's "custom categories"). A strong pull-forward candidate.
-- **per-transaction (from the statement read):** **location** (city/store) and **payment_channel** (in-store vs online) — these are transaction attributes (a merchant has many locations), so they belong to the reader/extraction, not the merchant record.
+The product syncing results in as events rather than reading merchantcore live is
+what keeps T4 intact. merchantcore is the *source of the knowledge*, not the store
+of the answer; the ledger holds the answer, so a replay or a reingest reproduces
+every categorization with the package absent.
 
-## Two operational rules, and what forced them
+How the product *applies* this knowledge to its own ledger — the derivation, the
+override, the two-key lookup — is [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md).
 
-**Enrichment is chunked, and the chunk size is not a tuning knob.** An oversized batch does not fail loudly — it returns zero records, which reads exactly like "there was nothing to enrich". Chunking bounds the reply so that a parse failure costs one chunk and the rest of the run still lands.
+An enriched attribute is a graded claim, never a fact. The ladder is `verified`
+(you confirmed this transaction, or this merchant) > `corroborated` (a model
+batch, or a commons prior with enough independent contributors) > `unverified` (a
+lone unconfirmed guess) > `Uncategorized`, and the personal override always wins.
+The trust envelope rides all the way from a document read to a spending answer.
 
-**The pending set is every uncategorized counterparty, not the expense-shaped ones.** Walking only expenses made employers, transfers, card payments and every inflow structurally invisible to enrichment — permanently unidentified, never asked about, never settled. It surfaced when two instruments that should have agreed did not: one reported 46 unknown merchants while the other reported 428 unenriched movements. The gap between two counts of the same population *was* the bug. Two instruments disagreeing is a finding, not a nuisance.
+Two operational rules were forced by real runs. **Chunking is not a tuning knob**:
+an oversized batch does not fail loudly, it returns zero records, which reads
+exactly like "there was nothing to enrich". And **the pending set is every
+uncategorized counterparty, not the expense-shaped ones**: walking only expenses
+made employers, transfers, card payments and every inflow structurally invisible
+to enrichment — permanently unidentified, never asked about, never settled. It
+surfaced because two instruments that should have agreed did not, one reporting
+46 unknown merchants where the other reported 428 unenriched movements. The gap
+between two counts of one population *was* the bug; two instruments disagreeing is
+a finding, not a nuisance.
 
-## Notes for future slices
+Where a question is asked decides what a wrong answer costs, which is why billing
+gets a section of its own rather than riding on `implies`: a wrong implication
+writes a phantom account into a balance sheet, a wrong billing model licenses a
+question and nothing else.
 
-- **Multi-attribute enrichment:** the `attributes` bag grows — model-world-knowledge fields (canonical name, description, website, mcc, logo) come from the same batched call; **looked-up / dynamic** fields (live Yelp reviews, current socials) are a separate enricher layer with a freshness story, opt-in, cached in the commons.
-- **Tags + recurrence** are the remaining slice dimensions (above); subcategory + these three are what deliver "slice and dice".
-- **The commons registry:** a git repo of `MerchantRecord`s keyed by normalizer version + locale, corroborated-by-count, self-healing when merchants rebrand. `Catalog.export` is its input; `import` merges as priors.
-- **Merchant as a Party:** the canonical merchant is the Party primitive; per-location detail and external-counterparty attribution attach to the same key.
+Two more rules exist because an empty result has more than one cause. A key-based
+non-answer would be permanent; an example-based one expires exactly when the
+evidence improves. And conflating a declined answer with an unreadable reply is a
+one-way loss: the first means the same example will buy the same silence, the
+second means nothing was learned about anybody in the chunk.
 
----
-
-## Extract merchantcore + the live enrichment engine
-
-**Block(s) seeded:** the `merchantcore` package (normalize · MerchantRecord · Enricher · Catalog · commons), the impersonal product↔package boundary, and the sync-as-events import. Reuses `vivacore.models` (the model socket), the grade + provenance spine, and the merchant catalog's events/projection (generalized).
-
-**Open state:** merchant knowledge lives inside the product, is category-only, and the enrichment model call is an unwired stub. *Proof:* there is no package boundary, no `MerchantRecord`, and `categorize_fn` is injected with no real prompt.
-
-**Implementation:** create `merchantcore` (peer package, depends on vivacore); move the normalizer + lint + export there; add `MerchantRecord` (multi-attribute), the `Enricher` (batched, versioned enrichment prompt via `vivacore.models`), and the `Catalog` (unencrypted store + pending queue + content-addressed commons export/import); rewire the product to submit impersonal hints, run enrichment (injectable), and sync results as `MerchantEnriched` events; generalize `MerchantCategorized` → `MerchantEnriched`.
-
-**Final state:** merchant knowledge is a reusable package the product consumes over a strictly-impersonal boundary; merchantcore enriches merchants on its own via batched model calls and holds a persistent, shareable catalog; the product pulls results in as events and categorizes retrospectively, with the ledger still self-contained; the enrichment is multi-attribute-ready and commons-ready.
-
-**Done criteria / tests:** the product→merchantcore boundary accepts only key + linted example (a test asserts no amount/date/account can cross, and a peer-payment hint is rejected); `Enricher.run` makes one batched, injected model call and produces graded `MerchantRecord`s; the product syncs records to `MerchantEnriched` events and categorizes retrospectively (survives replay with merchantcore absent); `Catalog.export` contains only linted merchant records (no financial data); a human `verified` override still wins; the full suite stays green through the extraction.
-
-**Why now + future use:** it makes the merchant knowledge base a first-class, reusable, shareable asset — the home for the enrichment prompt, multi-attribute records, web enrichers, and the commons registry — cleanly separated from the personal ledger by the impersonal boundary. It is the second shared crown-jewel package (after vivacore), and the concrete substrate for the network effect the format-commons chapter promised.
-
-
----
-
-## What 2026-07-28 changed
-
-Three claims in this document are no longer accurate, and the reasons are worth
-more than the corrections.
-
-**"The product submits a normalized key and a linted example."** It submitted
-`m.description` — the raw bank descriptor, verbatim — and the pending queue
+Three claims this document used to make were falsified by the first real run
+against a vault, and the reasons outlive the corrections. The product submitted
+the *raw bank descriptor* rather than a linted example, and the pending queue
 persisted those raw lines into plain JSON that is unencrypted by decision and
-shared across vaults by decision. Repair-list C2. Fixed twice over: the example
-is linted at the call site, and the store lints again on submit, so the
-invariant is a property of the store rather than of whoever writes the next
-caller.
+shared across vaults by decision — which is why the lint is now a property of the
+store as well as of the caller. The key was the descriptor, so a chain was one row
+per city: two locations of one shop meant two model calls, two commons rows and
+two chances to disagree with itself, while this project's own research records
+the whole field converging on brand-level identity. And the gate was a ten-item
+substring list which refused every English descriptor containing " to " and
+admitted a name in any other language — 183 of 365 keys blocked on a real vault.
 
-**The key was the descriptor, so a chain was one row per city.** Two locations of
-one shop were two keys, two model calls, two commons rows and two chances to
-disagree with itself — while this project's own research chapter records the
-whole field converging on brand-level identity. Enrichment now keys on the
-`{brand}` slot an induced grammar produces, and the context that travels is only
-what every occurrence agreed on: a shop seen in one city keeps its city, a chain
-seen in five has none.
+The catalog's address was load-bearing too. It began inside the vault directory,
+which quietly contradicted the reason it exists: a catalog scoped to one vault
+makes every rebuild start from zero and pay the model again for knowledge already
+bought — the network effect running in reverse. It then sat under the *product's*
+home, which said it belonged to the product. A brand's category is nobody's money
+and outlives every ledger. Learned data lives outside any working tree so a record
+that should not be published cannot be committed by accident rather than merely
+should not be.
 
-**The gate was `is_shareable`.** A ten-item substring list, which refused every
-English descriptor containing " to " and admitted a name in any other language —
-on the author's real vault, 183 of 365 keys blocked. A stream is now withheld
-because a grammar *slot* said a person is in it. The list survives only where no
-grammar exists, as the conservative answer to "we cannot tell". See
-[the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md).
+The slice-and-dice goal is not one richer category but a few orthogonal
+dimensions, sourced from three places: merchantcore supplies the impersonal,
+shareable axes (primary category, subcategory, MCC, logo, website); the product
+supplies what only transaction patterns can give (recurrence and subscriptions);
+the person supplies tags, the free many-to-many axis that lets someone slice their
+own way. Location and payment channel are per-occurrence facts and belong to the
+reader, not to the merchant record, because a merchant has many locations.
 
-**And the catalog moved.** It sat under the product's home directory, which
-quietly said it belonged to the product. A brand's category is nobody's money
-and outlives every ledger: it is merchantcore's. Two locations now — a shipped
-seed committed inside the package, and learned data at `~/.merchantcore`
-(`MERCHANTCORE_HOME`), deliberately outside any working tree so a record that
-should not be published cannot be committed by accident. Learned wins on lookup;
-promotion into the shipped seed is a person's decision.
+## Open
 
-## Two rules about not paying twice for the same silence
-
-Both live in the code and in neither doc, and both exist because an empty result
-has more than one cause.
-
-**The unanswered set is keyed by the example, not by the merchant key.** A
-merchant that was sent to a model and came back unnamed should not be paid for
-again on the same evidence, so `mark_unanswered` records the *example that was
-asked about*. When the example changes — a better linted string arriving with a
-new occurrence — the non-answer retires by itself and the merchant returns to
-`pending`. `submit` does the same on the way in. A key-based non-answer would be
-permanent; an example-based one expires exactly when the evidence improves.
-
-Relatedly, `queued()` and `pending()` are two readers of the same store for a
-stated reason. `queued()` is everything that persists to plain unencrypted JSON,
-so it is what a privacy audit walks. `pending()` is what a caller about to spend
-a model call reads. They answer different questions and are deliberately not one
-function.
-
-**"Asked and got nothing" is not "the reply did not parse."** Both produce an
-empty `records`, and conflating them is a one-way loss: a truncated or unreadable
-reply says nothing about any merchant in the chunk and should be retried, while a
-well-formed reply that omits a merchant means the same example will buy the same
-silence. `parse_enrichment_chunk` returns `(records, parsed)` and
-`Enricher.unparsed` collects the second case, so a caller recording a non-answer
-cannot record a transport failure that way.
+- Web and API enrichers (Yelp, website, socials) filling more of `attributes`.
+  Model-world-knowledge fields come from the same batched call; looked-up and
+  dynamic fields need a separate enricher layer with a freshness story, opt-in,
+  cached in the commons.
+- The commons registry: a git repo of `MerchantRecord`s keyed by normalizer
+  version and locale, corroborated-by-count, self-healing when merchants rebrand.
+  `Catalog.export` is its input and `merge` its consumer; the registry itself does
+  not exist.
+- Merchant as a Party: the canonical merchant is the Party primitive, with
+  per-location detail and external-counterparty attribution attaching to the same
+  key. Unbuilt.
+- Tags and recurrence are the remaining slice dimensions; the finer axes deliver
+  "slice and dice" only once all three exist.
+- `queued()` versus `pending()` has no test asserting the distinction the code
+  states.

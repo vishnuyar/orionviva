@@ -1,281 +1,312 @@
 # From Your Words to the Ledger — Viva listens
 
-**Status:** ✅ **BUILT 2026-07-25** (A1–A3 settled during the build; see *What changed in the building* at the bottom) · **Created:** 2026-07-25 · **Design by:** Vishnu (the flow and the four-category framing); mechanism and reuse mapping by Claude. **Block seeded:** the **Proposal** (see [viva-listens-and-speaks.md](viva-listens-and-speaks.md)) and **account resolution** — the account matcher pointed at a new target.
-
-**Invariants touched:** **T2 / ADR-010 (the model parses meaning; it never supplies a figure, picks an account, or posts)** · T3 (your sentence and the parse are captured verbatim) · T4 (a confirmed ruling is an append-only event; postings use the builders we already have) · **X2 (a proposal states what it changes, how much money it moves, and what it does *not* know)** · X3 (nothing applied without an explicit yes — a property of Proposal, not a rule to remember) · I5 (the four majors are universal; everything beneath is data) · **M1 (cash-flow over accrual — a created asset records what you *paid*, not what it's *worth*)**.
-
----
-
-## The problem this closes
-
-The question queue offers three answers — `spending / transfer / settlement` — and a real vault immediately produced two questions none of them fit: a mortgage payment (three things at once) and a car purchase (something you now own, which the ledger cannot represent). Answering more questions in that vocabulary produces more wrong answers, and any net worth built on top inherits them.
-
-The diagnosis: **`nature` was an impoverished stand-in for what the counter-leg *is*.** The ledger already posts to `Assets:`, `Income:`, `Expenses:`, `Equity:` and `Transfers:` internally — double-entry's own vocabulary, complete and centuries old — but the surface collapsed it to three words. There is not even a `Liabilities:` root: paying down a card lands in `Transfers:Uncategorized`, which is why *"I paid off debt"* is currently unsayable.
-
-That vocabulary has many members and compound cases, so **it cannot go behind buttons — but it fits in a sentence.** Free text is not a convenience here; it is the only practical interface to a complete ontology.
-
-## The vocabulary
-
-Every movement's counter-leg is one of **four majors**, closed and universal:
-
-| Major | Means | Example |
-|---|---|---|
-| **Expense** | money spent, gone | groceries, interest, a fee |
-| **Asset** | you still have it, in another form | a car, cash withdrawn, escrow, money lent to a friend, another of your accounts |
-| **Liability** | what you owe changed | a card paid down, mortgage principal |
-| **Income** | money that arrived | salary, a dividend, rent from a tenant |
-
-**Equity is deliberately absent.** For a person, equity *is* net worth — assets minus liabilities — so it is derived, never asserted. (`Equity:OpeningBalance` stays system-generated for unexplained history.)
-
-**Fixed top, free hierarchy below** — the same shape as the 16 primary categories with a free subcategory: `Assets:Vehicles:<name>`, `Liabilities:Mortgage:<lender>`. The four are code; everything under them is data (I5).
-
-## The toolset — six steps, one model call
-
-```
-1  frame_question      deterministic   (exists — the question queue)
-2  suggest_answers     deterministic   from merchant category/subcategory: the common case is a button
-3  interpret           ← THE MODEL     your sentence → a structured proposal
-4  resolve_account     deterministic   exact match / candidate to confirm / new / unnamed
-5  propose_posting     deterministic   the legs, the accounts, what changes, how much moves
-6  confirm → apply     deterministic   simple_transaction | split_transaction + the ruling event
-```
-
-The model touches **step 3 only**. It never sees the ledger, never picks an account, never emits an amount — any number in its output is discarded, because amounts come from the movement.
-
-### Step 3 — what `interpret` may return
-
-```
-Interpretation(
-  legs: [ {major, account_hint, share?} ],   # 1 leg normally; N for a compound payment
-  relates_to: "loan" | "asset" | none,        # what the counterparty *is*
-  corroborates: "mortgage_statement" | none,   # a document that would PROVE this — a suggestion, never a gate
-  confidence, verbatim)                       # the sentence, kept
-```
-
-`share` is present only when the person states proportions. **If the split is unknown, that is a valid and expected outcome** — see below.
-
-### Step 4 — account resolution *is* the account matcher
-
-This is the reuse that makes the slice cheap. Resolving *"which account does this belong to?"* is the same problem as *"is this the same account as one I've seen?"*, which account identity resolution already solves: **signals → graded match → ask only when ambiguous → learn the ruling → never ask again.**
-
-- **Exact match** → post, no question. (The default should be silence.)
-- **Candidate** → *"Does this belong to your Chase mortgage, or is it a different loan?"*
-- **No match** → propose creating one, named from the words the person used. _(Corrected 2026-08-15: this said "with a name suggested from the merchant's canonical name and subcategory". The built resolver suggests no name at all — a path is assembled from the person's own words, and an answer saying they now own or owe something without saying **what** returns no path: the verdict is `unnamed`, which is a question, because a path built from a placeholder is a thing nobody named reaching net worth. The same sentence was corrected in the interview spec's §4 on the same day; this one sits in a design body with nothing marking it as history.)_
-
-**Creation always requires confirmation — and that is the only confirmation this slice needs (D2).** **Account sprawl is the failure mode** — `Assets:Car`, `Assets:Tesla`, `Assets:My Car` — so the same disciplines that tamed merchant descriptors apply: normalize the name, suggest existing accounts before offering new, and let the matcher offer merges later.
-
-## The three cases that shaped this
-
-**"I bought a car."** → one leg, `Asset`, new account `Assets:Vehicles:<name>`. It records **cost**, not value: what you paid is a measured fact, what it's worth now is unknown. So the account carries cost basis plus a valuation class of `estimated` — exactly what the valuation-class discipline was built for. Without this, net worth silently claims the car is still worth what you paid.
-
-**"This is my mortgage."** → **three legs**: `Expense` (interest), `Liability` (principal), `Asset` (escrow — money you still own). The proportions are unknown *to you as well*, because they are printed on a statement neither of us has.
-
-**A missing document must not block the account** (Vishnu, 2026-07-25). Create `Liabilities:Mortgage:<lender>` now, post the cash to it — cash leaving is a measured fact (M1) — and mark **the decomposition** provisional, not the movement. What we know is recorded; only the split waits. Concretely: the account exists and generalizes immediately, spending stops being overstated, and the **liability balance derived from these payments is flagged unreliable** so net worth cannot quietly treat interest as debt reduction. The 1098 then arrives as a *suggestion for corroboration*, not a precondition: *"Your 1098 would let me split these into interest, principal and escrow exactly — and prove it."*
-
-**"This paid my car loan."** → one leg, `Liability`, account created. Its **balance is unknown** until a loan statement arrives, and that is an honest state: payments known, outstanding unknown, coverage says so. It also makes the loan statement a natural thing to ask you for.
-
-### The corroboration prompt (generalized)
-
-> **Big purchases have paperwork. Ask for it — never to unblock, always to prove.** (Vishnu, 2026-07-25)
-
-Provenance is the product, so every account this slice creates should invite the document that vouches for it: a **car → invoice or bill of sale**; a **home → closing disclosure**; a **mortgage → statement or 1098**; a **loan → the loan statement**. These are corroboration in exactly the cross-document sense — a second, independent issuer confirming what a bank line only implies. A purchase inferred from one bank line is `unverified`; the same purchase with its invoice is `verified`, with an amount, a date, a counterparty and often an itemization the bank line never carried.
-
-Two rules keep this from turning into nagging: **the ask is never a gate** (the account is already created, the posting already made), and **the ask is ranked with everything else** in the question queue by consequence, so a $40k invoice surfaces and a $200 one does not. These asks route into [document-coverage.md](document-coverage.md)'s list rather than a separate mechanism.
-
-## What the substrate needs — after reading the code (2026-07-25)
-
-A pass over `postings.py` / `projection.py` before building corrected two claims this spec made:
-
-**The chart of accounts is already *derived*, not posted.** A category is an **overlay keyed on `movement_key`** (the category overlay); the posted counter-leg stays `Expenses:Uncategorized` forever and every aggregate reads the overlay — which is why the `Income:Uncategorized` / `Expenses:Uncategorized` balances are recorded as cosmetically stale with no answer path reading them. So a **`Liabilities:` root is a read-side change**: cheap, retroactive, reversible, exactly as [principle: read side early, write side late](honest-aggregates-and-the-learning-loop.md) predicts. `Assets:Vehicles:<name>` and `Liabilities:Mortgage:<lender>` are *materialized by the projection* from the ruling, not written into postings. The overlay carries everything a real posting would need, so re-posting later remains possible without losing anything.
-
-**`split_transaction` is not this slice's first customer.** It requires split magnitudes summing to the movement total, so it cannot express *"three legs, proportions unknown."* The unknown-ratio mortgage posts **one leg with the decomposition pending**. `split_transaction` waits for Slice 11, when the 1098 supplies real ratios — which is the honest reading of "post nothing you cannot justify."
-
-Still genuinely needed:
-
-- **Asset accounts** for things that are not securities — the general Asset primitive, with valuation class. `Position` (from positions and investments) becomes a subtype rather than the only kind.
-- A pointer from the **merchant catalog to an account**, so the ruling generalizes: once *"Harborline is my mortgage"* is settled, every future payment posts without asking.
-
-## Architectural decisions (A1–A3) — the write-side, one-way doors
-
-The read side is reversible and can be built freely. These three are not.
-
-**A1 — the ruling event: build the generic scoped `Ruling` now.** The alternatives were extending `CategoryAssigned` a fourth time, or adding narrow per-question event types. `Ruling` was deferred until *a fifth question type earned it* — this is that type, and it needs exactly what `Ruling` was designed to carry: **its own scope** (movement / merchant / account). Deferring costs a fourth narrow event that `Ruling` would then have to subsume anyway.
-
-**A2 — accounts born from a sentence live in the *same* registry.** Every account today is born from a document with identity signals (number, institution, holder names); `Assets:Vehicles:<name>` has none. One registry is what makes step 4 cheap — the account matcher, sprawl control and merge-later all work unchanged. The cost is a registry containing accounts nobody issued, which is handled by A3 rather than by a second namespace.
-
-**A3 — every account records its `origin`: `issued` or `asserted`.** *(The expensive-to-miss one.)* Everything in the ledger traces to a document from an issuer. A car account's existence rests on **the person saying so** — fine for a butler, and *not* fine at the endgame, where a claim is proven to a counterparty and an asserted account is not evidence in the way a statement is. **The distinction is only capturable at write time**; miss it and the ledger quietly becomes un-vouchable, with no way to reconstruct which accounts a third party could ever rely on. It is near-free today and unrecoverable later, so it goes in now.
-
-This also makes the corroboration ask **structural rather than a nicety**: the invoice / 1098 / closing disclosure is literally the path from `asserted` to `issued`, and a document arriving *upgrades the account's origin*. What began as "ask for the invoice, we're provenance-based" turns out to be the mechanism by which a personal ledger becomes something another party can trust — the endgame, reachable from this slice.
-
-## Decisions (both settled 2026-07-25, by Vishnu)
-
-**D1 — Plain English on the surface, always. The four majors live only in the data.** The person is never asked "is this an asset?"; they are asked whether they still have it, in another form. Nobody types an accounting term to use this product.
-
-> **Forward note — question phrasing is a job for a small local model.** Today the templates are fixed strings. Later, a **small in-house model can phrase the question in the person's own language and preferred tone** — a Swedish user gets a Swedish question, not a translated one, and someone who wants terse gets terse. This is the right shape for three reasons: phrasing touches **no figure and no account**, so it sits entirely outside the T2 boundary and cannot corrupt anything; it is small enough to run **locally**, so the warmest surface in the product needs no cloud; and it turns I5 from "we avoided US-shaped assumptions" into something actually felt. Because the majors are stored, never spoken, this is a **surface-only change** — no event, projection or prompt moves. Record it as a candidate for the local-model thread (ADR-001's flip-to-local bar).
-
-**D2 — Confirmation is scoped to the account, not to every parse: the first time an account is involved, always confirm; after that, the learned ruling applies silently.** This is the account matcher's ask-once-and-learn contract, and it is a sharper rule than a blanket "never auto-apply" — the expensive, sprawl-creating, hard-to-reverse act is **binding money to an account for the first time**, and that is exactly what gets the explicit yes. Once *"Harborline is my mortgage"* is confirmed, the next twelve payments post without a question. The default, after the first answer, is silence.
-
-## Done criteria / tests
-
-- A sentence produces the **same events** the buttons would, with the same grade and reversibility — free text is an alternative channel, never a second mechanism.
-- **The interpreter never supplies a figure**: fed a sentence containing an amount, the amount is ignored and the posting uses the movement's own value (a test asserts this).
-- A compound answer with unknown proportions **still creates the account and posts the cash**; only the *decomposition* is provisional, and the liability balance derived from it is flagged unreliable. A missing document never blocks a ruling.
-- Every created asset or liability **raises a corroboration ask** (invoice / closing disclosure / 1098 / loan statement), ranked by consequence — and answering it is never required to proceed.
-- **Confirmation is per account, not per parse**: the first binding asks; the thirteenth payment to the same lender posts in silence.
-- A created asset carries cost basis and an `estimated` valuation class; a created liability carries an unknown balance, stated honestly in coverage.
-- Account resolution asks **only when ambiguous**; an exact match posts silently; a ruling generalizes so the same counterparty is never asked about twice.
-- With **no model configured**, the queue still works with buttons — free text is an addition, never a dependency.
-- The person's sentence is kept verbatim on the ruling it produced — `RulingRecorded.said`, with the `prompt_version` that read it — for a nature, rhythm or attribute answer that reaches a write. **Tracked as a defect, not fenced as prose (2026-08-14):** there is no `phase="interpret"` claim and never was. The only capture phases in the codebase are `classify`, `extract` and `speak`. The model's parse is held for one retry and discarded; a sentence that never reaches a write, and any answer to an identity, transfer, merchant, corroboration or expectation question, leaves no verbatim record at all — four of nine question kinds keep the sentence, five do not. So a better model **cannot** re-derive a reading from what a vault holds. This is **T3 unmet on the interpretation edge**, on the one path whose own risk register says a mis-parse "persists and generalizes". `speak.py` already shows how to capture a read with no document behind it, so the build is a copy of a solution this package already has.
-
-## Deferred
-
-Open-world free text with no question attached (Stage A's harder sibling). Proposal unification across sources (Stage B). The tool registry and planner — **Slice 9 — Viva speaks**. Splitting a mortgage by real amortization ratios (Slice 11, once the statement is ingested). Asset *valuation* over time as opposed to cost at acquisition. **Locally-phrased questions** (the small in-house model in D1's forward note) — the templates stay fixed strings for now.
-
----
-
-## How the sentence reader is configured, and where a local model plugs in
-
-The interpreter has its own model configuration. `VIVA_INTERPRET_*` overrides
-`VIVA_MODEL_*` field by field and falls back to it wherever a field is unset, so
-one setting can serve both and a second setting can split them.
-
-The split earns its place because these are not the same task. Reading a
-statement is a vision problem over dense tables that wants the strongest model
-available; reading *"this is my mortgage"* is a text problem of roughly 390
-tokens that a 4B model handles well. A single setting for both either overpays on
-every typed sentence or under-reads every statement.
-
-The same seam is how a local model gets wired in: point `VIVA_INTERPRET_BASE_URL`
-at Ollama or LM Studio and set `VIVA_INTERPRET_KEY_ENV=none`, and no sentence a
-person types leaves the machine — while document reading keeps whatever
-capability it needs. That is the cheapest available step toward the local
-endgame, and it exists today.
-
-## What changed in the building (2026-07-25)
-
-Reading the code before writing it corrected two claims, and the tests found two bugs the design had not anticipated. Both are recorded here rather than quietly fixed, because a build log that only reports its wins would refute this project's own thesis.
-
-**A fifth nature: `mixed`.** The spec said a compound payment with unknown proportions "posts nothing it cannot justify." Building it forced the sharper question — *is it spending or isn't it?* Counting the whole mortgage payment as spending restates the exact overstatement honest aggregates fixed; dropping it understates. Neither is true, so it is neither: `MIXED` is its own nature with its own line, `undecomposed()`, reporting the total, the count, the accounts and **the document that would resolve it**. The headline now reads *"X spent, plus Y I can't split yet — your 1098 would settle it."* That sentence is the thing the three-button question could never say.
-
-**The ruling rung was promoted above the own-account rung.** Nature was decided: link → own-account → ruling → category → default. A ruling is *a person telling us what something is*; the own-account rung is a **heuristic over description text**. When they disagree the person is right, so rungs 2 and 3 swapped. _(Corrected 2026-08-15: the ladder as it stands is link → ruling → own-account → what the counterparty implies → default. The fourth rung reads no category or subcategory label — it reads an `implies` entry on the counterparty's enrichment record, filtered by direction. The primary document was corrected 2026-08-14 and this line still carried the old fourth rung.)_ The product quietly overriding what it was told would be the worst class of bug this codebase could have.
-
-**A ruling's new account matched its own movements as an internal transfer.** `Liabilities:Mortgage:Acme`, created from *"this is my mortgage"*, entered the own-account token index — and every payment to `ACME MORTGAGE SERVICING` then looked like a transfer to itself, silently overriding the ruling that created it. Fixed by indexing **issued accounts only**: an asserted account is named after the counterparty whose payments created it, so it can never be evidence of an internal transfer. *Found by a test, not by a real run* — which is the argument for testing the rungs individually rather than only the aggregate.
-
-**A model's reply is untrusted input, not a contract.** `{"legs": "nope"}` crashed the interpreter. Now anything that is not a list of objects, and any leg outside the closed vocabulary, is dropped with a warning and the caller falls back to the buttons.
-
-**Two things the spec got wrong about the substrate**, both corrected above: the `Liabilities:` root is a read-side change (a category is an overlay, so the chart of accounts is materialized by the projection), and `split_transaction` is **not** this slice's first customer — it requires shares summing to the total, which is precisely what an unknown split does not have.
-
-**An old bug found on the way past:** the queue's third option, *"Something I now own,"* was wired to `nature="settlement"` — debt repayment. Answering it honestly recorded the wrong thing. The four majors replace it.
-
-### What shipped
-
-`RulingRecorded` (generic, scoped: movement / merchant / account) · `origin: issued | asserted` on every account · the four majors + `account_path` · `MIXED` + `undecomposed()` + `ruled_accounts()` · `viva/listen.py` (the six steps, one model call) · the `corroboration` question kind · `/api/rule-major`, `/api/listen`, `/api/apply-ruling` · the sentence box and proposal card on the debug surface. **26 new tests, 249 green.**
-
-> _**Amended 2026-08-07.** The three endpoints and the debug surface are deleted; the engine they called moved to `viva/engine.py` and is reached from `viva.ask` at a terminal. The six steps and the four majors are unchanged. What did change is where `listen.py` sits: it is no longer the default reader for every question's free-text box — a question declares the typed slots an answer to it has, and `interpret` fills those slots rather than always reading a sentence as a ruling about the four majors. That routing defect is what this cycle's brief was opened on._
-
-### Measuring the model (added the same day)
-
-`python -m viva.eval_listen` scores any model on the one job this slice gives it, against a **frozen synthetic key** of 22 sentences (`viva/evals/listen_cases.json` — invented counterparties, no amounts, safe in a public repo). Free, offline-capable, and reproducible.
-
-**The headline is not accuracy — it is the confidently-wrong rate.** This is [eval-harness-design.md](eval-harness-design.md)'s thesis meeting its first real subject, and the failure modes are deliberately not on one scale:
-
-| verdict | meaning | cost |
-|---|---|---|
-| `unreadable` | no JSON, or no legs | **safe** — one tap on a button that already existed |
-| `missed_compound` | read a mortgage as one thing | weak — collapses a nature, doesn't fabricate |
-| `wrong_majors` | a confident misreading | wrong — and it *generalizes* to every future payment |
-| **`invented_split`** | a ratio nobody stated | **ruin** |
-| **`leaked_amount`** | a figure from the model's head | **ruin** |
-
-A model that declines costs a person a tap. A model that invents a 60/40 mortgage split writes a wrong number into someone's finances, grades it `verified` because the person did confirm the sentence, and applies it forever. **Any non-zero ruin count disqualifies a model outright** — averaging it against successes is exactly the mistake this project exists not to make.
-
-Several cases accept *more than one* reading: an ATM withdrawal is defensibly cash-you-still-have or money-spent. A key insisting on one answer would measure obedience rather than understanding. `--repeat N` surfaces instability, because a model that is right two times in three is a different product from one that always is.
-
-The harness has its own tests (`test_eval_listen.py`) — a scorer that mis-grades a fabrication as "ok" would silence the one alarm the thesis rests on.
-
-**The harness failed its own test on the first real run (2026-07-25).** Pointed at a local Ollama, all 66 calls errored before reaching the model — and the report said *"0% ruin, clean, safe but weak."* Every failure had been swallowed by `interpret`'s deliberate degrade-never-raise behaviour and scored as `unreadable`, the safe bucket. The tell was in the output and unread: **p50 latency of 0.01s**, two orders of magnitude too fast for local inference.
-
-This is the confidently-wrong failure committed *by the instrument built to detect it*, which makes it the most useful bug in the slice. An eval that cannot distinguish "the model declined" from "we never reached the model" is worse than no eval, because it is **reassuring**. Fixed by making the distinction structural rather than inferred:
-
-- `Interpretation` now carries **why** there are no legs — `unreachable` / `unparseable` / `empty` — plus the underlying error and the raw reply. Two identical-looking outcomes that mean opposite things are no longer collapsed.
-- `BROKEN` is its own verdict, **excluded from the denominator**, so a broken run cannot launder non-events into a good score.
-- The confidently-wrong rate becomes **`None`, not `0`**, when nothing was measured. An unknown rate is not a good rate — the same discipline the ledger applies to an unknown balance.
-- A wholly-broken run prints *"NOTHING WAS MEASURED"*, the actual error, and what to check. It says nothing whatsoever about the model, because nothing was learned about the model.
-- `--probe` runs one call with nothing swallowed, and `--no-json-mode` covers local servers that reject `response_format`.
-
-The general lesson, worth more than the fix: **a component that degrades gracefully must still report the difference between "I handled it" and "it broke."** Silent resilience in the product is correct; silent resilience in the instrument measuring the product is a lie.
-
-### The second live run: a good mechanism in the wrong place
-
-With the connection working, one sentence produced **seven HTTP calls over 23 seconds**, then *"reply still truncated after continuation"*, then a JSON parse error. The count is the diagnosis: `MAX_CONTINUATIONS = 6`, plus the first call, is exactly seven.
-
-The **continuation driver** — lifted into `vivacore.models.base` a few days earlier precisely because a truncated document read was silently losing transactions — was doing its job in a place where its job is wrong. Reading a statement, truncation means *the list was genuinely too long* and stitching the tail back is the correct repair. Reading a sentence, the answer is ~60 tokens **by construction**: hitting the limit means the model is rambling, and stitching six more chunks onto a runaway reply turns one cheap, recoverable failure into unparseable garbage at seven times the cost and seven times the latency. Worse, continuation turns `json_mode` off for the follow-up turns, so it was concatenating free prose onto a JSON prefix and then asking `json.loads` to make sense of it.
-
-The fix, and the principle behind it:
-
-- `ModelSpec.max_continuations` — a call whose output is **short and bounded** sets it to 0. Truncation there is a condition to **report, not repair**.
-- `one_shot_extractor` is the interpreter's own edge; both the product and the eval use it, since an eval on a different edge measures the wrong thing.
-- `_first_json_object` finds the first *balanced* object anywhere in the reply, so fences, reasoning traces and trailing pleasantries stop costing us a good reading. The balance check matters more than the leniency: **a truncated reply is refused rather than half-read**, because a cut-off reading is not partial, it is unknown, and guessing the rest is how a wrong ruling gets written and then generalized.
-- `max_tokens` raised to 1024 — headroom for models that think out loud, which now costs tokens but never costs the reading.
-
-### The prompt: bank-shaped, and outside the library
-
-Two problems, both spotted by Vishnu on reading the rendered prompt (2026-07-25).
-
-**It assumed a bank.** *"one payment from their bank account"*, *"the counterparty on the statement"* — but the vault already holds cards, brokerages and retirement accounts, and will hold loan accounts and wallets. That framing quietly mis-describes every one of them, and it is the same I5 failure the project has caught before in other places: an assumption baked into universal code instead of arriving as data. `interpret-v1` now says *"ONE movement of their money"*, names the actual instrument through a `{source}` placeholder the service fills from the account's own kind, and states explicitly that the movement may come from any instrument in any country.
-
-**It was a module constant, not a versioned prompt.** The doc-type registry established prompts as **retained, addressable, append-only data**, with a frozen-hash test enforcing that a released version's text can never change. `INTERPRET_PROMPT` lived in `listen.py` as a plain string — rewritable in place. Tuning it would have silently reinterpreted every ruling recorded before the change, with no way to recover what the model had actually been told, and would have made eval runs incomparable across time. It now lives in `prompt_library.py` as `interpret-v1` with named placeholders, and **every ruling stamps its `prompt_version`** so a stored ruling resolves to the exact instructions that read it (T8).
-
-The general shape, again: a discipline the project already had, not applied to new code because the new code arrived from a different direction. Worth a habit — *when a slice makes a model call, its prompt goes in the library and its version goes on the event.*
-
-### The ATM answer: four defects in one exchange
-
-The question: *"2 transactions with ATM Withdrawal … totalling USD 1,000.00. I've treated those as money moved rather than spent, because they look like 'atm'. Is that right?"*
-The answer: *"spent on playing poker, add it to poker category."*
-What came back: *"I'd record USD 1000.00 across 2 payments as: spent — the money is gone. **Your no would let me prove this** — it isn't needed to save it."*
-
-**1. Half the sentence was silently dropped.** The person said two things — the major *and* a label — and only the major reached the ledger. Nothing indicated the rest had been ignored, which is the worst kind of silence: it looks like it worked. `interpret-v2` asks for the label the person named ("copy their word; do not invent one"), the Proposal carries it, and applying writes it through the category writers that already existed. The summary now says *"I'll file it under 'poker'."*
-
-> _**In force is `interpret-v3`, not `interpret-v2` (recorded 2026-08-14, by the doc lint's first run).** v1 and v2 above are the build story and are correct as history. v3 is the generalization the typed-slot queue required: it stops being a prompt about *one movement of money* and becomes a prompt about *any question a person was asked*, taking the question itself, a `{context}` block and the `{slots}` the question declares, and it says in its own first line that it is turning language into structure rather than deciding anything. The rule this section earned — copy their word, do not invent one — carries forward into it._
-
-**2. Nonsense reached the person.** v1 asked the model for a `corroborates` value with no guidance; it answered `"no"`, and the surface rendered *"Your no would let me prove this."* **The field is gone.** The model reports `kind`; deterministic code maps kind → document. Nonsense in a finance app is a trust failure even when the ledger underneath is perfectly correct — arguably *especially* then, since the number was right and the sentence still made the product look like it wasn't listening. This is the same boundary as everywhere else: a model reads meaning, and *deciding which document proves a claim is ours.*
-
-**3. Account sprawl actually started.** Ordinary spending minted `Expenses:Other:Unnamed`, because `resolve_account` proposed an account for every leg. Only a major meaning *"you now own it"* or *"you now owe it"* can bring an account into being; expense and income go to the Uncategorized bucket the ledger already has, where the **category** does the descriptive work. This is exactly the sprawl the spec named as the failure mode — and it appeared on the third real answer.
-
-**4. An evening's cash was about to be listed beside a car** in "things you hold", because `_leading_account` fell back to an expense bucket. Expense and income are now absent from that priority list entirely.
-
-Defects 3 and 4 are one idea stated twice: **not every answer brings a thing into being.** The slice was designed around the answers that create accounts — a car, a mortgage, a loan — and the ordinary case, which is most cases, had no path that didn't create one.
-
-### "mortgage payments" → *"I couldn't read that one"*
-
-A clear, short, on-topic answer came back unread. Two defects, and the second is the one that matters.
-
-**One sentence for four different failures.** `unreachable` (the model is down), `unparseable` (it answered, we couldn't read it), `empty` (we read it, it said nothing usable) and "no model configured" all produced *"I couldn't read that one — the buttons still work."* Neither the person nor the log could tell them apart, so a broken connection and a genuine limit looked identical — and there was nothing to debug from. Each now says something different and true, the reason is returned as `why`, and the **raw reply is logged**. Saying which failure it was is the difference between a product that admits a limit and one that just seems broken.
-
-**The nested-reply gap.** `_first_json_object` took the *first* balanced object, but some providers and `json_mode` wrappers nest the answer — `{"response": {"legs": [...]}}`. The outer object has no legs, so a perfectly good reading was discarded as "couldn't read". It now searches for the object that actually **carries** `legs`, up to two levels down, and a leading object without them no longer beats a later one that has them.
-
-`--probe --say "<the sentence that failed>"` now replays exactly one call with nothing swallowed: the prompt version, the raw reply, the parsed legs, the category, and the failure reason. That is the tool to reach for the moment a real answer comes back unread — the eval deliberately degrades, and this deliberately does not.
-
-**Honest note:** the nesting fix addresses a *plausible* cause, not a confirmed one. The logging is what will actually identify it next time — which is itself the lesson. Two rounds of this slice's debugging were slowed by failures that had been swallowed on purpose.
-
-### Conduits: one question that could only take one answer
-
-Two checks came up as a single question — one had been earnest money that became a house down payment, the other an initial deposit to open an account — and there was room for one sentence.
-
-The cause is exact and was hiding in plain sight: **every check in a vault normalizes to the single token `check`.** So does the next one, and the one after. The merchant catalog treated that as a counterparty, the queue grouped by it, and one answer settled all of them.
-
-A check is not a counterparty. Neither is an ATM withdrawal, a wire, a teller deposit, a money order — they say **how** the money moved, not **who** got it, and the ledger has no idea what was on the other side. So a new notion sits beside `is_shareable` in merchantcore (impersonal, so it belongs there):
-
-**A conduit never generalizes.** It is asked about one transaction at a time, it never enters the shared catalog — `check` is not knowledge anyone can use — and `propose` **refuses** to rule on one without being told which transaction, rather than quietly settling the bucket. Conduit questions are also asked *before* the merchant path can claim them and without waiting for a category, because a conduit will never have a useful one.
-
-This is the same insight as the Zelle case from the design phase — *one payment to a friend is a gift, the next a loan* — and it generalizes: **the descriptor sometimes names the pipe, not the payee.** The spec had it for peers and missed it for instruments.
-
-### The recurring `unparseable`, and its real name
-
-`too_long` is now its own failure. The one-shot extractor marks a reply that hit the token limit, so *"I got an answer but couldn't make sense of it"* is no longer said when the truth is *"my reader went on far longer than this needs and never finished"*. Those have different causes and different fixes — a clearer sentence versus a less chatty model — and telling someone the first when it was the second sends them to rewrite a sentence that was never the problem. A truncated reply that nonetheless contains a complete object is still accepted: the model rambling *after* answering costs tokens, not correctness.
-
-Six live failures, all of the same shape: **a design shaped by its hard cases, then meeting an ordinary one — and a habit of degrading silently where it should have degraded loudly.** Errors swallowed, a bounded answer stitched, a prompt assuming a bank, an account minted for a night out, four failures wearing one sentence, two checks sharing one answer. Graceful degradation is right in the product and wrong in everything that reports on it. Reading a 40-page statement and reading a six-word sentence are not the same problem — but they are the same *project*, and its rules apply to both.
-
-### Not done yet
-
-**No real-document run.** Every slice is supposed to meet real statements before being called done, and this one has met only fixtures. The standing practice says that is when concept errors surface — positions and investments was declared done without one and had two defects. Until a real mortgage or car purchase goes through the sentence path, treat this as built but unproven.
+**State:** built
+**Rules:** A1, A2, A3, PROJ-26, PROJ-27, PROJ-28, PROJ-29, PROJ-30, PROJ-31, PROJ-32, PROJ-33, PROJ-59
+
+## Rules
+
+### A1 — one generic scoped ruling event
+**State:** enforced
+**Code:** product/viva/ledger/events.py:516
+**Test:** product/tests/test_ruling.py::test_a_person_outranks_a_model_and_the_ruling_generalizes
+
+1. A ruling is a single `RulingRecorded` event carrying its own scope — movement, merchant, account, category, tag, attribute or rhythm.
+2. A ruling under an unknown scope, or with an empty subject, raises where it is built.
+3. A movement-scoped ruling outranks a merchant-scoped one on the same movement.
+
+### A2 — an account born from a sentence lives in the same registry
+**State:** enforced
+**Code:** product/viva/listen.py:318
+**Test:** product/tests/test_listen.py::test_an_account_a_document_opened_is_one_the_vault_already_holds
+
+1. There is one account registry; an account a person named and an account a document opened are candidates in the same match.
+2. The account matcher, sprawl control and merge-later work unchanged over both.
+
+### A3 — every account records who says it exists
+**State:** enforced
+**Code:** product/viva/ledger/events.py:155
+**Test:** product/tests/test_ruling.py::test_an_account_records_who_says_it_exists
+
+1. Every account carries `origin`, one of `issued` or `asserted`; anything else raises where the event is built.
+2. `issued` means a document from an issuer attests the account exists; `asserted` means only the person says so.
+3. A vault written before the field existed reads as `issued`.
+4. Only issued accounts enter the own-account token index, so an asserted account named after a counterparty can never be read as evidence of an internal transfer.
+
+### PROJ-26 — the model parses meaning and never supplies a figure
+**State:** enforced
+**Code:** product/viva/ledger/events.py:611 (a ruling leg carrying an amount raises), :600 (a reading may not supply a number the sentence did not carry), product/viva/listen.py:17
+**Test:** product/tests/test_ruling.py::test_a_ruling_can_never_carry_a_figure, product/tests/test_listen.py::test_the_model_never_supplies_a_figure
+
+1. A ruling leg carries no amount; the amount comes from the movement.
+2. A recorded value may contain no number the person's own sentence did not carry.
+3. A leg whose major is outside the closed vocabulary raises rather than being written.
+4. The model parses intent into a structured proposal, does no arithmetic, never sees the ledger and never chooses an account.
+
+### PROJ-27 — four majors, fixed at the top and free below
+**State:** enforced
+**Code:** product/viva/ledger/postings.py:45
+**Test:** product/tests/test_ruling.py::test_the_major_is_fixed_code_and_everything_below_it_is_data
+
+1. Every counter-leg is one of four majors: expense, asset, liability, income.
+2. The major's root is fixed code and every level beneath it is free data.
+3. A `:` inside a name is collapsed, so a name can never inject a level into the hierarchy.
+4. Equity is absent from the vocabulary: for a person, equity is net worth, so it is derived and never asserted.
+
+### PROJ-28 — the chart of accounts is materialized by the projection
+**State:** enforced
+**Code:** product/viva/ledger/postings.py:40
+**Test:** product/tests/test_ruling.py::test_i_bought_a_car_stops_being_spending_with_no_reingest
+
+1. The posted counter-leg stays an Uncategorized bucket; a ruled path such as `Assets:Vehicles:<name>` is never written into a posting.
+2. A ruling changes what aggregates say without a re-ingest.
+
+### PROJ-29 — an unknown split is its own nature
+**State:** enforced
+**Code:** product/viva/ledger/projection/movements.py:108
+**Test:** product/tests/test_ruling.py::test_a_compound_payment_is_neither_counted_nor_dropped
+
+1. A ruling whose legs imply more than one nature gives `MIXED`, which is neither counted as spending nor dropped from the account of where money went.
+2. A mixed movement is marked provisional, and `undecomposed` reports the total, the count, the accounts and the document that would resolve it.
+3. A missing document never blocks a ruling: the cash is posted because cash leaving is a measured fact, and only the decomposition waits.
+
+### PROJ-30 — only a major that brings a thing into being opens an account
+**State:** enforced
+**Code:** product/viva/listen.py:255
+**Test:** product/tests/test_listen.py::test_ordinary_spending_creates_no_account
+
+1. An expense or income leg with no named thing goes to the Uncategorized bucket the ledger already has, where the category does the descriptive work.
+2. An answer saying the person now owns or owes something without saying *what* returns the verdict `unnamed`, which is a question, not a path built from a placeholder.
+3. Expense and income never enter the priority list that decides what a person is shown as holding.
+
+### PROJ-31 — resolution asks only when ambiguous
+**State:** enforced
+**Code:** product/viva/listen.py:255
+**Test:** product/tests/test_listen.py::test_resolution_asks_only_when_ambiguous
+
+1. One exact match posts silently; more than one, or a substring match either way, returns `ambiguous` with the candidate named.
+2. Exact matches are counted by account, not by name pair, so one account answering to two names does not read as two accounts.
+3. Nothing matching returns `new` with a proposed path, and creating an account is the one verdict this path always confirms.
+
+### PROJ-32 — confirmation is scoped to the account, not to every parse
+**State:** enforced
+**Code:** product/viva/listen.py:658
+**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written
+
+1. Nothing is written without an explicit yes; `listen` produces a reviewable Proposal and applying is a separate act.
+2. An answer that would bring an account into being is not applied in the request that raised it; it comes back as a proposal.
+3. After the binding is confirmed, the learned ruling applies silently and the question that prompted it is retired.
+
+### PROJ-33 — every asserted account invites the document that would prove it
+**State:** enforced
+**Code:** product/viva/questions.py:514
+**Test:** product/tests/test_listen.py::test_the_corroboration_ask_is_the_path_from_asserted_to_issued
+
+1. An account this path creates raises a corroboration question — invoice, closing disclosure, 1098, loan statement.
+2. The ask is never a gate: the account exists and the posting is already made.
+3. The ask is ranked with every other question by consequence, and the arriving document upgrades the account's origin from `asserted` to `issued`.
+
+### PROJ-59 — free text is an addition, never a dependency
+**State:** enforced
+**Code:** product/viva/reply.py:1
+**Test:** product/tests/test_reply.py::test_with_no_reader_a_plain_answer_still_lands_and_a_loose_one_does_not
+
+1. With no model configured, each declared scalar slot is offered the sentence as typed and the same deterministic checks decide.
+2. A plainly-written reply still lands on a machine with nothing configured, and anything else is refused rather than guessed.
+3. A sentence produces the same events the buttons would, with the same grade and reversibility.
+
+## Why
+
+The question queue offered three answers — spending, transfer, settlement — and
+a real vault immediately produced two questions none of them fit: a mortgage
+payment, which is three things at once, and a car purchase, which is something
+you now own and the ledger could not represent. Answering more questions in that
+vocabulary produces more wrong answers, and any net worth built on top inherits
+them.
+
+The diagnosis: **`nature` was an impoverished stand-in for what the counter-leg
+*is*.** The ledger already posts to `Assets:`, `Income:`, `Expenses:` and
+`Equity:` internally — double-entry's own vocabulary, complete and centuries old
+— but the surface collapsed it to three words, and there was not even a
+`Liabilities:` root, which is why *"I paid off debt"* was unsayable. That
+vocabulary has many members and compound cases, so **it cannot go behind buttons
+— but it fits in a sentence.** Free text is not a convenience here; it is the
+only practical interface to a complete ontology.
+
+**The four majors are the whole vocabulary.** An expense is money spent and
+gone. An asset is something you still have, in another form — a car, cash
+withdrawn, escrow, money lent to a friend, another of your own accounts. A
+liability is a change in what you owe. Income is money that arrived. Equity is
+deliberately absent, because for a person equity *is* net worth, so it is
+derived rather than asserted. Everything below the four is data (I5), which is
+the same shape as the primary categories with a free subcategory.
+
+**Six steps, one model call.** Frame the question; suggest answers; *interpret*;
+resolve the account; propose the posting; confirm and apply. The model touches
+step three only. It never sees the ledger, never picks an account and never
+emits an amount — any number in its output is discarded, because amounts come
+from the movement.
+
+**Account resolution is the account matcher.** Answering *which account does
+this belong to?* is the same problem as *is this the same account as one I've
+seen?*, which account identity resolution already solves: signals, graded match,
+ask only when ambiguous, learn the ruling, never ask again. That reuse is what
+made the slice cheap, and it is why A2 keeps one registry rather than opening a
+second namespace for accounts nobody issued.
+
+**Three cases shaped this.** *"I bought a car"* is one asset leg, and it records
+**cost**, not value: what you paid is a measured fact, what it is worth now is
+unknown, so the account carries cost basis and an `estimated` valuation class.
+*"This is my mortgage"* is three legs — interest, principal and escrow — whose
+proportions are unknown to the person as well, because they are printed on a
+statement neither party has. *"This paid my car loan"* is one liability leg whose
+balance is unknown until a loan statement arrives, and that is an honest state:
+payments known, outstanding unknown, coverage says so.
+
+**A missing document must not block the account.** Create the account now, post
+the cash — cash leaving is a measured fact (M1) — and mark *the decomposition*
+provisional rather than the movement. Spending stops being overstated, and the
+liability balance derived from these payments is flagged unreliable so net worth
+cannot quietly treat interest as debt reduction. The 1098 then arrives as a
+suggestion for corroboration rather than a precondition.
+
+**Big purchases have paperwork; ask for it, never to unblock, always to prove.**
+Provenance is the product, so every account this path creates invites the
+document that vouches for it. This turned out to be more than a nicety: the
+invoice or the 1098 is literally the path from `asserted` to `issued`, which is
+the mechanism by which a personal ledger becomes something another party can
+trust. A3 is the expensive-to-miss decision because the distinction is only
+capturable at write time; miss it and the ledger quietly becomes un-vouchable
+with no way to reconstruct which accounts a third party could rely on.
+
+**Plain English on the surface, always.** The person is never asked "is this an
+asset?"; they are asked whether they still have it, in another form. The majors
+are stored and never spoken. That also makes locally-phrased questions a
+surface-only change later: phrasing touches no figure and no account, so it sits
+entirely outside the T2 boundary.
+
+**Confirmation is per account, not per parse.** The expensive,
+sprawl-creating, hard-to-reverse act is binding money to an account for the first
+time, and that is exactly what gets the explicit yes. Once *"Harborline is my
+mortgage"* is confirmed, the next twelve payments post without a question. The
+default, after the first answer, is silence — and **account sprawl is the failure
+mode**, so the disciplines that tamed merchant descriptors apply: normalize the
+name, suggest existing accounts before offering new, let the matcher offer
+merges later.
+
+**What the build falsified, kept because a log that only reports its wins would
+refute this project's thesis.** A fifth nature was forced into existence: the
+spec said an unknown compound payment "posts nothing it cannot justify", but
+counting the whole mortgage payment as spending restates the exact overstatement
+honest aggregates fixed, and dropping it understates. Neither is true, so it is
+neither. The ruling rung was promoted above the own-account rung, because a
+ruling is a person telling us what something is and the own-account rung is a
+heuristic over description text. A ruling's new account then matched its own
+movements as an internal transfer, which is why only issued accounts are
+indexed. A model's reply turned out to be untrusted input rather than a
+contract. An account was minted for an ordinary night out, which is what PROJ-30
+exists to stop. And ordinary spending nearly appeared beside a car in "things you
+hold".
+
+**Graceful degradation is right in the product and wrong in everything that
+reports on it.** The eval harness failed its own test on its first real run: all
+sixty-six calls errored before reaching the model, and the report said *"0%
+ruin, clean, safe but weak"* — every failure swallowed by `interpret`'s
+degrade-never-raise behaviour and scored in the safe bucket. The tell was a p50
+latency of 0.01s, two orders of magnitude too fast for local inference. An eval
+that cannot distinguish *the model declined* from *we never reached the model* is
+worse than no eval, because it is reassuring. The general rule: a component that
+degrades gracefully must still report the difference between "I handled it" and
+"it broke", and the confidently-wrong rate is `None` rather than `0` when nothing
+was measured.
+
+**A bounded answer must not be stitched.** The continuation driver, lifted into
+the model layer because a truncated document read was silently losing
+transactions, was doing its job where its job is wrong. Reading a statement,
+truncation means the list was genuinely too long. Reading a sentence, the answer
+is short by construction: hitting the limit means the model is rambling, and
+stitching six more chunks onto a runaway reply turns one cheap recoverable
+failure into unparseable garbage. A call whose output is short and bounded sets
+its continuations to zero, and a truncated reply is refused rather than
+half-read, because a cut-off reading is not partial — it is unknown, and guessing
+the rest is how a wrong ruling gets written and then generalized.
+
+**Nonsense in a finance app is a trust failure even when the ledger underneath is
+correct** — arguably especially then, since the number was right and the sentence
+still made the product look like it was not listening. The model reports what
+kind of thing this is; deterministic code maps kind to document. Deciding which
+document proves a claim is ours.
+
+**The descriptor sometimes names the pipe, not the payee.** Every check in a
+vault normalizes to the single token `check`, and so does the next one. A check
+is not a counterparty; neither is an ATM withdrawal, a wire, a teller deposit or
+a money order. So a conduit never generalizes: it is asked about one transaction
+at a time, it never enters the shared catalog, and a ruling on one refuses
+without being told which transaction. This is the same insight as *one payment to
+a friend is a gift, the next a loan* — the design had it for peers and missed it
+for instruments.
+
+**A prompt is a file, and a slice that makes a model call puts its prompt in the
+library and its version on the event.** The interpreter reads under
+`interpret-v3`, which is a prompt about *any question a person was asked* rather
+than about one movement of money: it takes the question, a context block and the
+typed slots that question declares, and turns language into structure without
+deciding anything. Its instructions began as a
+module constant, rewritable in place; tuning it would have silently
+reinterpreted every ruling recorded before the change with no way to recover what
+the model had been told, and would have made eval runs incomparable across time.
+The same prompt also assumed a bank — *"one payment from their bank account"*,
+*"the counterparty on the statement"* — while the vault already held cards,
+brokerages and retirement accounts. That framing is the same I5 failure the
+project has caught elsewhere: an assumption baked into universal code instead of
+arriving as data.
+
+**The interpreter has its own model configuration**, overriding the document
+reader's field by field. The split earns its place because these are not the same
+task: reading a statement is a vision problem over dense tables that wants the
+strongest model available, and reading *"this is my mortgage"* is a short text
+problem a small model handles well. It is also the seam where a local model plugs
+in — point the interpreter at a local server and no sentence a person types
+leaves the machine, while document reading keeps whatever capability it needs.
+
+Invariants this leans on: T2/ADR-010 (the model parses meaning; it never
+supplies a figure, picks an account or posts), T3 (the sentence and the parse are
+captured verbatim), T4 (a confirmed ruling is an append-only event), T8 (a
+recorded `prompt_version` resolves to the exact text that produced the reading),
+X2 (a proposal states what it changes, how much money it moves, and what it does
+not know), X3 (nothing applied without an explicit yes), I5, and M1 (a created
+asset records what you paid, not what it is worth). The proposal type and the
+answering surface are
+[viva-listens-and-speaks.md](viva-listens-and-speaks.md); the corroboration asks
+route into [document-coverage.md](document-coverage.md); the failure taxonomy is
+[eval-harness-design.md](eval-harness-design.md).
+
+## Open
+
+- **T3 is unmet on the interpretation edge.** There is no `interpret` capture
+  phase and never was: the only phases in the codebase are `classify`, `extract`
+  and `speak`. The model's parse is held for one retry and discarded, so a
+  sentence that never reaches a write — and any answer to an identity, transfer,
+  merchant, corroboration or expectation question — leaves no verbatim record. A
+  better model cannot re-derive a reading from what a vault holds. This is on the
+  one path whose own risk register says a mis-parse persists and generalizes, and
+  `speak.py` already shows how to capture a read with no document behind it.
+- No real-document run. Every slice is supposed to meet real statements before
+  being called done, and this one has met only fixtures. Until a real mortgage or
+  car purchase goes through the sentence path, treat it as built and unproven.
+- `listen.py` is no longer the default reader for every free-text box: a question
+  declares the typed slots an answer to it has, and `interpret` fills those slots
+  rather than always reading a sentence as a ruling about the four majors. The
+  four majors and the six steps are unchanged; how the two paths divide questions
+  between them is not written down anywhere but the code.
+- Splitting a mortgage by real amortization ratios, once a statement supplying
+  them is ingested. `split_transaction` requires split magnitudes summing to the
+  movement total, so it cannot express *three legs, proportions unknown* — it
+  waits for real ratios rather than being made to accept invented ones.
+- Asset *valuation* over time, as opposed to cost at acquisition.
+- Open-world free text with no question attached, and proposal unification across
+  sources.
+- Locally-phrased questions: the templates are fixed strings, and a small
+  in-house model phrasing them in the person's own language and tone is a
+  surface-only change nobody has taken.
+- A pointer from the merchant catalog to an account, so a ruling generalizes
+  without re-resolving.

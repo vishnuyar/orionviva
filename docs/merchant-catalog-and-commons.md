@@ -1,154 +1,191 @@
 # Merchant Catalog & the Categorization Commons — categorize the merchant, once, for everyone
 
-**Status:** Implemented · **Amended 2026-08-13** (the seed subcategory vocabulary and the growing anchor; the shipped-catalog precedence, learned first; the sync filter) · **Superseded-in-part by:** [merchantcore-package.md](merchantcore-package.md) (the merchantcore package lifts normalization + enrichment + the catalog/commons into the standalone `merchantcore` package; this doc remains the design of *how the product applies* merchant knowledge to its ledger). · **Last updated:** 2026-07-24 · **Origin:** the category overlay ships per-transaction categorization, and real use immediately showed the flaw: you categorize one Amazon charge and the next Amazon charge (a different transaction) asks again — twenty Amazon purchases, twenty asks. The fix is to categorize the **merchant**, not the transaction. A vault has thousands of transactions but ~hundreds of distinct merchants; a merchant→category mapping is the small, *impersonal* unit — so batching turns categorization from an O(transactions) model cost into an O(new-merchants) one, and the mapping is exactly the artifact a **commons** can share. This is Vishnu's batched-catalog idea, refined.
+**State:** partial — the catalog and its derivation are built; the commons registry is not
+**Rules:** MER-40, MER-41, MER-42, MER-43, MER-44, MER-45, MER-46, MER-47, MER-48, MER-49, MER-59
 
-**Invariants touched:** T1 (a derived category carries a grade + points to the merchant rule behind it), T4 (merchant rulings are append-only events; the catalog is a *projection* over them, the source of truth stays the encrypted log), **T5 (personal data never leaves the encrypted layer — the raw descriptor, with its order-ids and peer names, stays encrypted; only an impersonal, privacy-linted merchant→category catalog is ever unencrypted or shared)**, T6 (contributing to the commons is an opt-in *decision*, never silent), T8 (the batched categorizer is a pinned, injected model edge), I3/I5/I6 (merchants are locale-sharded, categories are open data, the commons is pack-extensible). Principle 2 (a merchant category is a *graded prior*, always overridable), principle 7 (known merchants auto-fill safely and reversibly; unknown ones wait and are shown as unknown).
+## Rules
 
-## The architecture (decisions locked with Vishnu, 2026-07-24)
+### MER-40 — Categorize the merchant, not the transaction
+**State:** enforced
+**Code:** product/viva/ledger/projection/categories.py:36 (`derived_category`), product/viva/ingest/categorize.py:190
+**Test:** product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions, product/tests/test_merchants.py::test_merchant_ruling_survives_a_replay
 
-**1. Categorize the merchant, not the transaction.** The unit of categorization becomes the normalized merchant. A transaction's category is *derived*: a per-transaction override if you set one, else the merchant catalog's category, else `Uncategorized`. So one ruling on "Amazon" categorizes every Amazon transaction, past and future.
+1. The unit of categorization is the normalized merchant; a transaction's category is derived, never stored on the transaction.
+2. The derivation is: a per-transaction override, else the strongest catalog record the merchant is filed under, else `Uncategorized`.
+3. Because it is a projection, one ruling categorizes every transaction from that merchant, past and future.
+4. A merchant rule is an append-only event; the catalog is a projection over the encrypted log, so it survives a replay.
 
-**2. The catalog is a *prior*; your per-transaction ruling still wins.** The per-transaction category overlay is not wasted — it becomes the **override** layer ("this particular Amazon charge was groceries, not shopping"). The grade ladder for a transaction's category: `verified` (you confirmed this exact transaction) → `corroborated` (a merchant rule filled it — your confirmed merchant, the commons, or a model batch) → `unverified` (a lone unconfirmed model guess) → `Uncategorized` (unknown merchant). A prior can be wrong; the override is how you say so.
+### MER-41 — The catalog is a prior; the override wins
+**State:** enforced
+**Code:** product/viva/ledger/projection/categories.py:28 (`_record_for`), product/viva/ledger/projection/merchants.py:96 (`merchant_graded`), merchant/merchantcore/catalog.py:26 (`_GRADE_RANK`)
+**Test:** product/tests/test_merchants.py::test_per_transaction_override_beats_the_merchant_rule, product/tests/test_merchant_enrich.py::test_human_override_beats_the_synced_enrichment
 
-**3. Split what is unencrypted — the load-bearing privacy decision.** Raw descriptors carry PII ("VENMO TO JOHN SMITH", "AMZN … order 111-897345"), so **the raw descriptor stays in the encrypted ledger** (T5). The only thing ever written unencrypted or shared is a **privacy-linted merchant→category catalog** — canonical *commercial* merchants and their categories, with no amounts, dates, or transaction links. This keeps the personal/format-knowledge split (the doc-type registry, decision 5) exact and is the only version safe to put in a public repo.
+1. The grade ladder is `verified` > `corroborated` > `unverified` > `Uncategorized`.
+2. A per-transaction ruling is `verified` and beats any merchant-level prior.
+3. A model batch and a commons prior both enter as `corroborated`, never as fact.
 
-**4. Deterministic normalization + model grouping — never fuzzy string-matching.** Fuzzy matching merges the wrong things ("Costco" vs "Costa Coffee", "Chase" vs "Chevron"). Instead a **deterministic, versioned** normalizer strips the noisy tail (store numbers `#0664`, order ids `US*RA30Z3BP0`, phone numbers, POS/TST*/SQ* prefixes) to a canonical key, shrinking the list; then the **model** categorizes the deduped list and reliably maps "COSTCO WHSE #0664" and "COSTCO PLANO" to Costco → shopping. Location does *not* fragment the category (both are shopping); it rides along as an attribute for later per-location analytics. The normalizer is versioned like `RULES_VERSION`, so catalog keys are portable across users (a precondition for the commons).
+### MER-42 — Every lookup considers both keys
+**State:** enforced
+**Code:** product/viva/ledger/projection/merchants.py:59 (`merchant_keys_of`), :96 (`merchant_graded`)
+**Test:** product/tests/test_merchant_keys.py::test_a_descriptor_keyed_answer_still_reads, product/tests/test_merchant_keys.py::test_the_brand_wins_a_tie, product/tests/test_merchant_keys.py::test_a_persons_answer_beats_a_models_whichever_key_it_is_under
 
-**5. Batched, threshold-triggered, retrospective — the cost win.** On ingest, descriptors normalize; a **known** merchant auto-categorizes instantly and for free (a catalog lookup, no model call); an **unknown** merchant goes "plain vanilla" (`Uncategorized`) and joins a pending set. When the pending set crosses a threshold (or on demand), **one** batched model call categorizes them all, they enter the catalog, and every past *and* future transaction from them is filled in retrospectively. New merchants are honestly shown as unknown until the next pass (X2).
+1. A movement's candidate keys are the brand a resolver named and the normalized descriptor, in that order.
+2. The highest-graded record among the candidates answers; ties go to the brand.
+3. Knowledge recorded before grammars existed sits under the descriptor and is not stranded by a lookup that only knew the brand.
 
-**6. The commons falls out of the catalog.** Because the catalog is already the impersonal, shareable unit, contributing it is a content-addressed export (Vishnu's hash idea): the linted commercial subset → a hashed file → an opt-in PR to a merchant registry. Import merges others' entries as `corroborated` priors. Confidence is **corroborated-by-count** (independent contributors agreeing). Your local override always beats an imported prior. This is the first concrete network effect: your Amazon ruling means the next user never categorizes Amazon.
+### MER-43 — The sync reaches only merchants this vault holds
+**State:** enforced
+**Code:** product/viva/ingest/categorize.py:270-283
+**Test:** product/tests/test_merchant_enrich.py::test_a_record_about_a_merchant_this_vault_never_paid_is_not_synced
 
-## The mechanism, concretely
+1. Only keys this vault offered, plus keys its ledger already carries a record for, are synced into the ledger.
+2. A catalog record about a merchant this vault never paid appends no event to this vault's append-only log.
 
-- **Events (encrypted, the source of truth + the moat):** `MerchantCategorized(normalized_merchant, category, grade, by)` — a model batch writes these `unverified`/`corroborated`; a human "categorize this merchant everywhere" writes `verified`. The category overlay's `CategoryAssigned(movement_key, …)` stays as the per-transaction override.
-- **The catalog (a projection):** `{normalized_merchant → {category, grade, source, locale}}`, built by replaying `MerchantCategorized` + human merchant confirmations, then merging imported commons priors (lowest precedence). Regenerated from events — no model call is ever repeated.
-- **Derivation:** `category(transaction) = override(movement_key) ?? catalog[merchant_key(line)] ?? "Uncategorized"`. `spending_by_category` consults this. Retrospective by construction (a projection). **Amended 2026-08-01:** the key is the normalized *brand* a resolution layer named, not the normalized raw descriptor. Enrichment had always filed under the brand while every read looked under the descriptor, so a vault could hold a full catalog and read as though it held none. A lookup now considers both candidates and the higher-graded record answers, so knowledge recorded before grammars existed is not stranded.
-- **The record is a bag, and it grew (2026-08-12).** Enrichment now also files
-  **`billing`** and **`billing_period`** — how the merchant charges everyone who
-  deals with them. Impersonal by the same test category passes, and shareable for
-  the same reason: nothing about it is derived from a vault. What a person
-  arranged with that merchant is the other half, is personal, and never crosses
-  into `merchantcore`. A record written by a superseded prompt can now be
-  returned to the pending queue (`Catalog.restage`), so a new field reaches the
-  merchants a vault already holds rather than only new ones.
-- **The subcategory is seeded, and the anchor grows (2026-08-13).** The finer
-  label was an open value a model invented per call, and a run told call N+1
-  nothing about what call N had decided — so one idea came back under three
-  spellings, with the split falling on a call boundary. Two halves of one fix.
-  A vocabulary of 156 labels ships with the package at `data/cat-v3.json`,
-  named for the taxonomy version it *is*, so a record's stamp resolves to the
-  exact list that produced it (T8); it is authored against the sixteen
-  primaries from world knowledge, never from a vault (T9). And the list a chunk
-  is shown grows by whatever the previous chunk minted. The seed leads and a
-  vault's own labels follow, deduped under a separator identity, so a seed
-  label wins on *spelling* only and never removes a label already in use.
-  Minting stays allowed; the run reports how many labels it minted.
-  **Measured on a real vault:** seed labels went from 23.2% to 98.6% of
-  distinct labels and from 35.1% to 99.5% of merchants, with **one** label
-  minted beyond the 156. Of 190 keys in both catalogs, 124 moved minted→seed
-  and none moved the other way. **The honest limit:** the file groups labels
-  under a primary and glosses each, the loader validates both and then returns
-  a flat tuple, so the model sees 156 bare words. At `(primary, label)`
-  granularity the same run reads 31.7% → 87.5%, with 12% of records landing on
-  a seed word under a primary the seed does not file it under. Showing the
-  grouping, or the gloss, is a free experiment nobody has run.
-- **A seed record is a base layer, not a first value (2026-08-13).** `Catalog`
-  took a `shipped` path, had no `_load_file` to serve it, and a `load()` that
-  replaced its record dict wholesale — so the day a file landed in `data/`,
-  construction would raise, and a correct loader would have been erased by the
-  first learned catalog anyway. Both repaired, under the precedence `home`
-  already states for every store: **learned first, shipped second, per key and
-  outright**, whatever grade either record carries. A shipped record is marked
-  `source="shipped"` so it stays distinguishable once the first save copies it
-  into the learned file. No `catalog.json` is shipped; this disarms a trap
-  rather than enabling a feature.
-- **The sync reaches only merchants this vault holds (2026-08-13).**
-  `enrich_merchants` synced *every* record in the catalog into the ledger. The
-  catalog is shared by every vault on the machine and may one day be seeded, so
-  that would write `MerchantEnriched` events about merchants this person never
-  paid into an append-only log that has no delete. It now syncs only the keys
-  this vault offered or already carries a record for. A no-op today, which is
-  exactly why it was cheap to close.
-- **The batched categorizer:** an injected model edge (like the reader) — `categorize_merchants(list) -> {merchant: category}` — offline-testable, pinned model, run on the pending set at a threshold.
-- **The unencrypted export:** a linted snapshot of the catalog for the commons; contribution opt-in (T6), popular-biased, PII-filtered.
+### MER-44 — The subcategory vocabulary is seeded, and grows without displacing
+**State:** enforced
+**Code:** merchant/merchantcore/taxonomy.py:91 (`read_subcategory_seed`), :157 (`seed_subcategories`), :170 (`subcategory_vocabulary`), merchant/merchantcore/enrich.py:299, :309 (`_new_labels`)
+**Test:** merchant/tests/test_subcategory_seed.py::test_the_seed_leads_and_a_vault_label_follows, ::test_a_vault_label_the_seed_does_not_hold_is_never_removed, ::test_the_second_chunk_is_shown_what_the_first_one_minted, ::test_a_run_reports_the_labels_it_minted, product/tests/test_category_identity.py::test_a_seed_label_never_displaces_one_a_person_minted
 
-## The privacy line (get this right)
+1. The shipped seed leads the list a model is shown and the vault's own labels follow, deduped under the separator identity.
+2. A seed label wins on *spelling* only; it never removes a label already in use.
+3. The list grows across a run: a label chunk N minted is in the list chunk N+1 is shown.
+4. Minting is never blocked; the run reports how many labels it minted beyond the list it was shown.
+5. A file whose faults would corrupt the vocabulary raises rather than loading quietly — a version that is not its filename, a group under a name that is not a primary, a label that is also a primary, a label with no gloss, two labels that are one label under the fold.
 
-The raw descriptor never leaves the encrypted ledger. The unencrypted catalog holds only `merchant → category` for **commercial** merchants — no amounts, no dates, no per-transaction linkage. Even so, the *set* of merchants you frequent is mildly identifying, so: local-unencrypted is fine (on your device), but **contribution is opt-in and biased to popular merchants** — share "Amazon", never "Joe's Corner Store, Plano" which could fingerprint you. Same privacy-lint discipline as format profiles; a peer-payment or person-name descriptor is filtered out entirely.
+### MER-45 — The primary category set is controlled and is the single source
+**State:** enforced
+**Code:** merchant/merchantcore/taxonomy.py:34 (`PRIMARY_CATEGORIES`), :53 (`FALLBACK_CATEGORY`), :60 (`canonical_primary`); product/viva/ingest/categorize.py:29 (assertion 3 — the product imports that same list and builds `SEED_CATEGORIES` from it)
+**Test:** merchant/tests/test_merchantcore.py::test_sixteen_primary_categories
 
-## Implementation status (as built, 2026-07-24)
+1. There are sixteen controlled primary buckets plus one fallback.
+2. A proposed category outside the set becomes the fallback rather than being stored as offered.
+3. `merchantcore.taxonomy.PRIMARY_CATEGORIES` is the one list the product's category picker also reads.
 
-- ⚠️ **Superseded 2026-07-28 — the privacy lint.** `is_shareable` was the
-  last of the nine raw-text keyword tables this project deleted, surviving
-  because it was filed under privacy rather than classification. It now
-  applies only where no induced grammar exists.
-- ✅ **Deterministic, versioned normalizer.** `ledger/merchants.py`
-  `normalize_merchant` (strips store #, order-ids `US*…`, phones, POS prefixes,
-  punctuation; `NORMALIZER_VERSION`) + `is_shareable` (peer-payment / PII lint).
-  Not fuzzy matching. Lives in the ledger layer so the projection derives through
-  it; re-exported from ingest.
-- ✅ **Catalog projection + derivation.** `MerchantCategorized` event;
-  `projection._merchant_categories` (highest-grade ruling wins);
-  `derived_category(m) = override ?? catalog[merchant_key(m)] ?? None`, where
-  the key is the brand where a layer could name one and the normalized
-  descriptor where none could.
-  `spending_by_category` and `uncategorized_expenses` derive through it, so a
-  merchant ruling fills every transaction **retrospectively** — proven by test.
-  Survives a replay (content-keyed).
-- ✅ **Prior vs override.** The per-transaction category overlay is the override
-  (`verified`); a merchant rule is the prior (`corroborated` from a batch,
-  `verified` from a human "categorize everywhere"). Override wins — tested.
-- ✅ **Batched, retrospective categorizer.** `ingest.categorize_merchants_batch`
-  makes ONE injected `categorize_fn` call over the deduped unknown-merchant set
-  above a threshold, recording `corroborated` merchant rules; offline-testable,
-  live model edge swappable. `uncategorized_merchants()` is the pending set +
-  the surface's unit.
-- ✅ **The linted export.** `export_catalog` returns commercial merchants only
-  (peer-payment filtered), `{merchant: {category, grade}}` — no amounts, dates,
-  or transaction links — the content a commons contribution is hashed from
-  (T5/T6). Tested that PII is filtered and no financial data leaks.
-- ✅ **Surface.** The categorization card is now per-**merchant** ("N merchants to
-  categorize", "categorize everywhere"), `/api/merchants` + `/api/assign-merchant`;
-  private (peer) merchants are marked. `debug.vault` shows catalog size + unknowns.
+### MER-46 — The unencrypted catalog carries no money
+**State:** enforced
+**Code:** merchant/merchantcore/catalog.py:161 (`export`), :187 (`_save`), product/viva/ingest/categorize.py:298 (`export_catalog`)
+**Test:** product/tests/test_merchants.py::test_export_catalog_is_linted_and_carries_no_amounts
 
-Honest edges (deferred): the actual commons *registry* (git repo, corroborated-by-count, import/merge,
-self-healing) — `export_catalog` is its input; merchant-as-Party + per-location
-analytics. Tests: `test_merchants.py` (7); full suite 234 green.
+1. The raw descriptor never leaves the encrypted ledger.
+2. What is written unencrypted or shared holds merchant knowledge only: no amounts, no dates, no transaction links.
+3. A peer-payment or person-name key is filtered out of the export entirely.
 
-## Where the catalog lives, and why that is load-bearing
+### MER-47 — The taxonomy is a versioned data pack
+**State:** enforced
+**Code:** merchant/merchantcore/versions.json (`taxonomy` family), merchant/merchantcore/data/cat-v3.json, merchant/merchantcore/taxonomy.py:31 (`TAXONOMY_VERSION`), :111 (the file declares its own version)
+**Test:** merchant/tests/test_merchantcore_versions.py::test_the_manifest_and_the_files_agree, merchant/tests/test_subcategory_seed.py::test_a_file_whose_version_is_not_its_name_is_refused
 
-> **Moved 2026-07-28.** "Beside the vaults" was right about the reason and
-> wrong about the address: it sat under the *product's* home. It is
-> merchantcore's — a shipped seed inside the package, and learned data at
-> `~/.merchantcore`, outside any working tree. See
-> [merchantcore-package.md](merchantcore-package.md).
+1. The seed vocabulary ships in a file named for the taxonomy version it is, so a record's stamped version resolves to the exact list that produced it (T8).
+2. The version in force is read from the manifest, never written as a literal.
+3. The vocabulary is authored against the primaries from world knowledge, never from a vault (T9).
 
+### MER-48 — Normalization is deterministic and versioned, never fuzzy string-matching
+**State:** enforced
+**Code:** merchant/merchantcore/normalize.py:21 (`NORMALIZER_VERSION`), :49 (`normalize_merchant` — a fixed sequence of strips: processor prefix, date fragment, phone, order id, store number, long number, punctuation)
+**Test:** merchant/tests/test_merchantcore.py::test_normalize_is_deterministic_and_versioned, merchant/tests/test_merchantcore.py::test_a_date_fragment_does_not_become_part_of_the_key, product/tests/test_merchants.py::test_normalizer_is_deterministic_and_versioned
 
-The catalog sits beside the vaults, not inside one. It began inside the vault directory, which quietly contradicted the reason it exists: merchant knowledge is impersonal and cumulative, so a catalog scoped to a single vault made every rebuild start from zero and pay the model again for knowledge already bought — the network effect this design was built for, running in reverse. The enrichment run now also reports which catalog it loaded and how much is in it, because a shared store that silently loads the wrong file is worse than no sharing at all.
+1. A raw descriptor becomes a canonical key by deterministic rules that strip the tail varying transaction to transaction; nothing is merged by fuzzy string similarity.
+2. The normalizer carries a version, so a catalog key is portable across users — the precondition for the commons.
 
-## Notes for future slices (read these when you build them)
+### MER-49 — An unknown merchant is shown as unknown, not guessed
+**State:** enforced
+**Code:** product/viva/ledger/projection/categories.py:36 (`derived_category` returns `None` where no override and no catalog record answer), :232 (the `Uncategorized` bucket), :296 (`uncategorized_merchants`, the batched enricher's pending set), product/viva/ingest/categorize.py:33 (`UNCATEGORIZED`)
+**Test:** product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions
 
-- **The full commons registry (later):** a git repo of `merchant → category` keyed by normalizer version and locale, corroborated-by-count, self-healing as merchants rebrand. Same lifecycle as [format-commons](format-commons.md); this catalog is its seed.
-- **Merchant as a Party (later):** the canonical merchant is a **Party**; per-location detail (Costco Plano vs Frisco) and merchant-level analytics attach here, and external counterparty attribution (a payment to a person vs a business) reuses the same normalization.
-- **Amount-splits + tags (deferred from the category overlay):** compose over the derived category unchanged.
+1. A merchant no record covers derives no category and is shown as `Uncategorized`; nothing fills one in on its behalf (X2).
+2. Unknown merchants join the pending set that a later batched pass resolves retrospectively, so waiting costs a visible unknown rather than a guess.
 
----
+### MER-59 — The enrichment run names the catalog it loaded
+**State:** by-review
+**Code:** product/viva/enrich.py:141 (`known`), :145 (the file), :146 (how many merchants it already holds, and the empty-catalog warning)
+**Test:** none
 
-## Merchant catalog & the categorization commons
+1. The run reports which catalog file it loaded and how much is in it, before anything is spent.
+2. An empty catalog says so, because every merchant below it will then cost a model call.
 
-**Block(s) seeded:** the **merchant catalog** (a normalized merchant → category projection, the categorization prior) + the **deterministic merchant normalizer** (versioned, portable) + the **batched merchant-categorization edge** + the **unencrypted, content-addressed commons export**. Reuses correction-as-event, grade + provenance, the entity-resolution instinct, and the category overlay (now the override layer) — genuinely new is the normalizer, the merchant-level event + catalog projection, the batch edge, and the linted export.
+## Why
 
-**Open state:** categorization is per-transaction, so the same merchant is asked repeatedly and every categorization costs attention (and, at scale, a model call per line). *Proof (red test):* categorizing one Amazon transaction leaves every other Amazon transaction uncategorized.
+Normalization, enrichment and the catalog store itself live in the standalone
+package — [merchantcore-package.md](merchantcore-package.md). This document is the
+design of how the product *applies* that knowledge to its ledger.
 
-**Implementation:**
-- A deterministic, versioned normalizer (raw descriptor → canonical merchant), PII/peer-payment filtered.
-- `MerchantCategorized` event + a catalog projection; `category(transaction) = override ?? catalog ?? Uncategorized`; `spending_by_category` derives through it (retrospective).
-- A batched, injected `categorize_merchants` model edge run on the pending (unknown-merchant) set at a threshold; known merchants auto-fill free; unknown ones are shown as unknown with a caveat.
-- A "categorize this merchant everywhere" confirmation (`verified` merchant rule) alongside the per-transaction override.
-- An unencrypted, linted, content-addressed catalog **export** for the commons; opt-in contribution; import merges as `corroborated` priors.
+The category overlay shipped per-transaction categorization, and real use showed
+the flaw within a day: you categorize one Amazon charge and the next Amazon
+charge asks again — twenty purchases, twenty asks. A vault holds thousands of
+transactions but a few hundred distinct merchants, so categorizing the *merchant*
+turns an O(transactions) model cost into an O(new-merchants) one. The same move
+produces the artifact a commons can share, because a merchant→category mapping is
+the small impersonal unit.
 
-**Final state:** you categorize a merchant once and every transaction from it — past and future — is filled in; new merchants wait for a cheap batched pass and are honestly shown as unknown meanwhile; model spend scales with *new merchants*, not transactions; and your rulings become a shareable merchant→category commons that spares the next person the same work.
+Splitting what is unencrypted is the load-bearing privacy decision. Raw
+descriptors carry order ids and peer names, so they stay in the encrypted ledger;
+only a privacy-linted merchant→category catalog is ever unencrypted or shared.
+Even then, the *set* of merchants you frequent is mildly identifying, so local
+plaintext is fine and contribution is opt-in and popular-biased.
 
-**Done criteria / tests:** categorizing "Amazon" fills every Amazon transaction (retrospective) at `corroborated`, while a per-transaction override stays `verified` and wins; the normalizer maps known variants ("COSTCO #0664", "COSTCO PLANO") to one merchant deterministically and is versioned; an unknown merchant is `Uncategorized` with a visible "not yet known" state until a batched pass categorizes it; the batched edge is one call over the deduped pending set (injected/offline-testable); the exported catalog contains **no** amounts/dates/transaction links and **no** PII-filtered (peer-payment) merchants; importing a commons entry applies it as a `corroborated` prior that a local override beats; spending stays correct through the derivation.
+Normalization is deterministic and versioned, never fuzzy matching, because fuzzy
+merges the wrong things — "Costco" against "Costa Coffee", "Chase" against
+"Chevron". The normalizer strips the tail that varies transaction to transaction
+and leaves the merchant words as read; a model then groups the deduped list.
+Location does not fragment the category, and versioning the normalizer is what
+makes keys portable across users, which is a precondition for the commons.
 
-**Why now + future use:** it's what makes categorization usable on a real vault (the thing that just bit) and it's the first real **network effect** — the merchant→category commons — realized cleanly out of the personal/format-knowledge split and the descriptors the category overlay already captured, with model cost amortized toward the near-zero-cost local endgame. It seeds the Party (merchant) primitive and the commons registry, and every later categorization-adjacent feature composes over the derived category.
+Batching is what makes it cheap and honest at once. A known merchant
+auto-categorizes for free on a catalog lookup; an unknown one is shown as
+unknown — not guessed — and joins a pending set that a later batched pass
+resolves retrospectively. Honest unknowns are X2 doing its job. The run also
+reports which catalog it loaded and how much is in it, because a shared store
+that silently loads the wrong file is worse than no sharing at all.
+
+The key had to move. Enrichment always filed under the brand while every read
+looked under the descriptor, so a vault could hold a full catalog and read as
+though it held none. Considering both candidates and letting the higher-graded
+record answer is what stops knowledge recorded before grammars existed from being
+stranded — and a person's own answer is the most trustworthy record in the vault,
+so losing it to a key change would be the worst possible failure.
+
+The subcategory was an open value a model invented per call, and a run told call
+N+1 nothing about what call N had decided, so one idea came back under three
+spellings with the split falling on a call boundary. Two halves of one fix: ship a
+vocabulary as a versioned pack, and let the list a chunk is shown grow by what the
+previous chunk minted. The seed leads and the vault follows, so a seed label wins
+on spelling only and never removes a label already in use — which is the general
+rule that a model may propose a fold and may never apply one (T9; MON-82–MON-84 in
+[categories-and-tags.md](categories-and-tags.md)).
+
+Two traps were disarmed rather than features added. `Catalog` took a `shipped`
+path with no loader to serve it and a `load()` that replaced its record dict
+wholesale, so the day a file landed in `data/` construction would raise, and a
+correct loader would have been erased by the first learned catalog anyway. And
+`enrich_merchants` synced *every* record in the catalog into the ledger; since the
+catalog is shared by every vault on the machine and may one day be seeded, that
+would write events about merchants this person never paid into an append-only log
+that has no delete. Both were no-ops on the day they were closed, which is exactly
+why they were cheap to close.
+
+Measured on a real vault, the seed took subcategory labels from 23.2% to 98.6% of
+distinct labels and from 35.1% to 99.5% of merchants, with one label minted beyond
+the shipped list; of 190 keys in both catalogs, 124 moved minted→seed and none
+moved the other way. The honest limit is that the file groups labels under a
+primary and glosses each, but the loader returns a flat tuple, so the model sees
+bare words: at `(primary, label)` granularity the same run reads 31.7% → 87.5%,
+with 12% of records landing on a seed word under a primary the seed does not file
+it under.
+
+## Open
+
+- The commons *registry* itself: a git repo of `merchant → category` keyed by
+  normalizer version and locale, corroborated-by-count, self-healing as merchants
+  rebrand. `export` is its input; the registry, the PR flow and the merge
+  semantics beyond `Catalog.merge` do not exist. Same lifecycle as
+  [format-commons.md](format-commons.md), and this catalog is its seed.
+- Merchant as a Party, and per-location analytics (Costco Plano versus Frisco)
+  attaching to the same key.
+- Amount-splits and tags, deferred from the category overlay; both compose over
+  the derived category unchanged.
+- Showing the model the seed's grouping, or its glosses, rather than a flat list.
+  It is a free experiment nobody has run, and the `(primary, label)` figure is the
+  measurement it would move.
+- The privacy lint `is_shareable` remains the fallback wherever no grammar exists;
+  it over-blocks by design and is retired per institution by inducing one. See
+  MER-13 in [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md).

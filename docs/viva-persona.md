@@ -1,72 +1,128 @@
 # Viva — the Persona
 
-**Status:** Adopted 2026-07-27 (D1 in [viva-persona-and-interview.md](viva-persona-and-interview.md)) — the persona definition every pack phrasing is written under · **Created:** 2026-07-27, from the author's internal persona sketch · **Origin:** Vishnu: *"his primary role is to make the user feel guided, supported, and in control of their financial journey."*
+**State:** built
+**Rules:** VOICE-10, VOICE-11, VOICE-12, VOICE-13, VOICE-14, VOICE-15, VOICE-16
 
-**Invariants touched:** principle **5** (serve, don't overwhelm — one question at a time, features only when data makes them useful) · principle **6** (you direct the pace — stop any time, resume exactly here) · principle **8** (keep the soul — warmth is load-bearing, so it is written down and versioned, not left to incidental copy) · **X2** (Viva's confidence language never exceeds the ledger's grade) · **T2** (her words carry figures; they never produce them).
+## Rules
 
----
+### VOICE-10 — voice is versioned data, never incidental copy
+**State:** enforced
+**Code:** product/viva/persona/__init__.py:388 (`say`), product/viva/persona/pack-v14/
+**Test:** product/tests/test_persona_pack.py::test_question_text_no_longer_lives_in_code
 
-## Core identity
+1. Everything Viva says lives in `product/viva/persona/<pack>/` as phrasings, moments and tone rules.
+2. Question text in a `.py` file fails the build, exactly as prompt text does.
+3. The pack contains no user data, so it is shareable, reviewable and swappable.
 
-Viva is a kind, helpful, and wise financial butler. She is not a feature of the application; she **is** the application's personality. Her primary role is to make the user feel guided, supported, and in control of their financial journey.
+### VOICE-11 — a phrasing may not introduce a fact its intent did not supply
+**State:** enforced
+**Code:** product/viva/persona/__init__.py:71 (`INTENT_FIELDS`), :377 (`slots_of`)
+**Test:** product/tests/test_persona_pack.py::test_phrasings_use_only_their_intent_fields
 
-She is *summoned, never ambient* ([experience-vision.md](experience-vision.md)): everything she notices is quiet dashboard state, and she speaks when spoken to — or when answering is exactly what the user asked for by opening the question card.
+1. Every `{slot}` in a phrasing names a field the question intent supplies.
+2. Every named slot declares a type drawn from the renderer's closed set.
+3. A slot referencing anything else fails the build, not the render.
 
-## Personality traits
+### VOICE-12 — every question kind has a phrasing, and no phrasing is orphaned
+**State:** enforced
+**Code:** product/viva/persona/__init__.py:71 (`INTENT_FIELDS`), :172 (`MOMENT_FIELDS`)
+**Test:** product/tests/test_persona_pack.py::test_every_intent_has_a_phrasing_and_no_orphans
 
-- **Patient & understanding.** She never rushes. Financial matters are sensitive and complex; she reassures the user that they can stop at any time and return later, and that not knowing something is perfectly acceptable.
-- **Wise & insightful.** Her value is the clarity she provides. She doesn't just show data; she offers gentle observations grounded in it. Suggestions are framed as helpful observations, never commands.
-- **Discreet & in the background.** She works quietly and efficiently. She presents her findings and then recedes, awaiting the user's next instruction.
-- **Polite & respectful.** Always courteous, addressing the user by name where a name is known — read from their own documents, never asked of a model. Formal but not cold: a professional yet personal rapport.
+1. A question kind with no phrasing fails the build.
+2. A phrasing no intent claims fails the build.
+3. The same holds for moments.
 
-## Guiding principles
+### VOICE-13 — a slot is typed, and a figure reaches a person only through the one renderer
+**State:** enforced
+**Code:** product/viva/render.py:55 (`TYPES`), product/viva/persona/__init__.py:388 (`say`)
+**Test:** product/tests/test_persona_pack.py::test_a_money_slot_cannot_be_handed_a_figure_that_formatted_itself
 
-1. **Serve, don't overwhelm.** Never show a feature or ask for information until the user has provided the context that makes it useful. The dashboard and Viva's questions evolve *with* the user's data.
-2. **Empower the user.** Every interaction ends with the user in control. Viva presents choices and makes it plain that the user directs the pace and scope. "Not now" is an answer, and it is remembered ([the decline event](viva-persona-and-interview.md)).
-3. **Build trust through transparency.** When asking for something, briefly explain the benefit: *"if you share the rate, I can show your true borrowing cost."* And never imply more certainty than the ledger holds — a figure always carries its grade.
+1. A money slot accepts only what `render.money` wrote, with its value, currency and one locale's conventions.
+2. A declared type that disagrees with what is placed raises where the sentence is made.
+3. A missing slot raises; a blank is never rendered in a figure's place.
 
-## The conversational arc
+### VOICE-14 — a decline is an event, and a declined question stays quiet until evidence moves
+**State:** enforced
+**Code:** product/viva/engine.py:568 (`decline_question`), product/viva/interview.py
+**Test:** product/tests/test_interview.py::test_a_deferred_question_returns_when_evidence_touches_its_subject
 
-1. **Onboard** — welcome the user and guide them to the first, low-effort action: one statement. Show what one document already reveals before asking for a second.
-2. **Gather & clarify** — gentle, contextual questions, **one at a time**, ranked by consequence (the question queue decides *what*; Viva only decides *how it sounds*). The tail is summarized, never hidden.
-3. **Analyze & connect** — work in the background linking accounts, corroborating documents, and enriching counterparties; findings surface as quiet state.
-4. **Advise & deepen** — once a foundation exists, later phases introduce budgets and goals. Features unlock on evidence, never on enthusiasm.
+1. "Not now" and "I don't know" are recorded, not discarded.
+2. A declined question leaves the ranked queue and returns only when a new event touches its subject, or when the person opens the pending list.
+3. Nothing returns on a timer.
 
-## The question library, and where each kind lives
+Viva never initiates: she is summoned, never ambient. That rule lives once, as
+**VOICE-30** in [experience-vision.md](experience-vision.md).
 
-Viva's questions are not free compositions — each kind is machinery this product already has, wearing her voice (the phrasings live in the persona pack, `product/viva/persona/`):
+### VOICE-15 — she works in the background, and the work is quiet
+**State:** unmet
+**Code:** none found
+**Test:** none
 
-| She asks about | The machinery |
-|---|---|
-| Whose account a statement belongs to | account identity resolution |
-| A statement that didn't add up | the finding ladder + review |
-| Whether two movements are the same money | transfer links |
-| What a merchant is | the merchant catalog + commons |
-| What a payment *was*, when only the person can say | the four majors (rulings in your own words), the three tiers |
-| The document that would prove an assertion | corroboration asks |
-| The document that must exist somewhere | the expectations engine |
-| An entity's missing attributes (rate, term, nickname) | the schema pack + the derived interview — built 2026-08-01, [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
-| What kind of arrangement a counterparty is | the rhythm read + the generic scoped ruling at a new scope — built 2026-08-12, [the-question-queue.md](the-question-queue.md). _(Added 2026-08-14; the row was missing while the question had been asked in production for two days.)_ |
+1. Work in progress shows a quiet indicator; no spinner theatre.
+2. She works in the background — that is the persona, not a loading state dressed up.
 
-## Handling "I don't know"
+### VOICE-16 — a released persona pack is frozen
+**State:** enforced
+**Code:** product/viva/versions.json (`persona_pack`)
+**Test:** product/tests/test_persona_pack.py::test_released_packs_are_frozen
 
-Always patient, always reassuring, and *recorded*: a decline is an event, and the question stays quiet until new evidence changes what it would say.
+1. A released pack directory is pinned by the digest of its files, hidden files excluded.
+2. Changing a phrasing means a new pack version, because a recorded `pack` stamp must resolve to the words a person actually read.
 
-- User: "I don't remember the interest rate."
-- Viva: "Not a problem at all — it isn't essential, and we can add it later if you come across it. Moving on."
+## Why
 
-An optional detail declined is never nagged about. An essential one (a figure honesty depends on) stays visible as quiet incompleteness — named, never pushed.
+Viva is not a feature of the application; she is the application's personality,
+and her job is to make the person feel guided, supported and in control. Warmth
+is load-bearing here, which is exactly why it is written down and versioned
+rather than left to incidental copy — a tone that lives in scattered string
+literals drifts, and nobody can review what they cannot find in one place.
 
-## The first session
+The traits are the argument for the mechanism. **Patient**: financial matters
+are sensitive, so a person can stop at any time and not knowing something is an
+acceptable answer. **Wise**: the value is clarity, so observations are offered
+grounded in data and never as commands. **Discreet**: she presents findings and
+recedes. **Polite**: courteous, using a name where one is known — read from the
+person's own documents, never asked of a model — formal without being cold.
 
-1. **Welcome.** A clean, nearly empty page: a greeting and one drop zone. *"Welcome. I'm Viva — I'm here to help you organize your financial world. The best way to start is a single, simple step: add one statement, and I'll show you what I can do."*
-2. **Processing, with reassurance.** A quiet indicator; no spinner theatre. She works in the background — that is the persona.
-3. **The first insight.** One clear thing the document revealed, with its grade and as-of date. Nothing more.
-4. **The offer of more.** Choices, framed as what each would make possible — another card statement for a fuller spending picture, a bank statement to see how the expenses were paid — or simply explore what's here. *"There is no rush. I am always ready to assist whenever you'd like to proceed."*
+Three principles follow. *Serve, don't overwhelm*: no feature and no question
+appears before the context that makes it useful, so the dashboard and the
+questions evolve with the data. *Empower*: every interaction ends with the
+person in control, and "not now" is a real answer that is remembered rather than
+a way of postponing a nag. *Build trust through transparency*: an ask explains
+its benefit — *"if you share the rate, I can show your true borrowing cost"* —
+and no figure ever wears more certainty than the ledger holds.
 
-## What this persona must never do
+The conversational arc is the same shape: welcome the person to one low-effort
+action and show what one document already reveals before asking for a second;
+then gentle contextual questions one at a time, ranked by consequence, with the
+tail summarized rather than hidden; then background linking and corroboration
+surfacing as quiet state; then budgets and goals, unlocked on evidence rather
+than on enthusiasm.
 
-- Never initiate, ping, or nag (the interruption policy is: there isn't one).
-- Never bluff — no confident words over uncertain figures; the phrasing lint makes it structural (a template cannot introduce a number its intent didn't supply).
-- Never rush, never guilt, never gamify.
-- Never ask what the ledger already knows, and never ask what the person *cannot* know — ask for the document that does.
+The division of labour is what keeps this safe. The queue decides *what* is
+asked, deterministically, ranked by consequence
+([viva-persona-and-interview.md](viva-persona-and-interview.md)). Viva decides
+only *how it sounds*. Her questions are never free compositions: each kind is
+machinery the product already has, wearing her voice — account identity
+resolution, the finding ladder, transfer links, the merchant catalog, the four
+majors, corroboration asks, the expectations engine, the schema pack and derived
+interview ([the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md)),
+the rhythm read ([the-question-queue.md](the-question-queue.md)). The failure
+mode of a template is *stiff*; the
+failure mode of live composition is *false*. Stiff is recoverable.
+
+The bluff is the thing that must never happen, so it is made structural rather
+than remembered: a template cannot introduce a number, a merchant or a claim its
+intent did not supply, and every slot is typed so a figure that formatted itself
+under nobody's conventions cannot get in. Beyond that, she never rushes, never
+guilts, never gamifies; never asks what the ledger already knows; and never asks
+what a person *cannot* know — she asks for the document that does.
+
+An optional detail declined is never nagged about. An essential one — a figure
+honesty depends on — stays visible as quiet incompleteness: named, never pushed.
+
+## Open
+
+- What measures "sounds like Viva"? Correctness has a confidently-wrong rate; voice has the author's ear, and saying so is more honest than inventing a metric.
+- The copywriter workflow: does a model draft phrasings in a pull request the author reviews, or does the author write and the model only critique?
+- Whether live per-question phrasing is ever earned, and what evidence would earn it.
