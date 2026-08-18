@@ -144,6 +144,35 @@ Three things it settles about the queue itself:
   figure, and a projected one would put a claim about the future into the
   ordering with nothing saying so.
 
+## The sixth question type, chartered and unbuilt (2026-08-17)
+
+**Ruled by Vishnu, 2026-08-17.** A cash withdrawal is a spend unless he says
+otherwise. It is the same shape as money moving to a card to settle what a card
+purchase incurred — except that with no statement on the other side there is
+nothing for it to be the settlement *of*, so it stays a spend. What may reopen
+it is evidence, and the evidence runs backwards: **an asset declared that no card
+spend and no bank withdrawal explains.** Then, and only then, past cash
+withdrawals are looked at again as that asset's acquisition, after confirming
+with him. See M1 in [design-invariants.md](design-invariants.md).
+
+Nothing here is built. What the charter fixes, so the cycle that builds it is not
+choosing these afresh:
+
+- **The trigger is an unexplained asset, never a withdrawal.** The queue does not
+  ask about cash because cash is uncertain; it asks because something concrete
+  arrived that nothing accounts for. A question raised per withdrawal would be the
+  chore list rule 3 forbids.
+- **It proposes and never applies** (T9). The machine may say *this asset appeared
+  and nothing explains it; was it one of these withdrawals?* and may not re-read a
+  movement on its own word. The answer is a `RulingRecorded` on the movement,
+  which already outranks the heuristic rung that defaulted it — so no new event
+  type, and answering is idempotent, as the fifth type established.
+- **It reaches backwards, which no existing type does.** Every question so far is
+  raised about what has just been read. This one is raised about movements already
+  posted, already counted, and possibly already spoken in an answer. The cycle that
+  builds it owes an answer to what that costs a person who was told a spending
+  figure that later moves — M1 names the consequence and does not settle it.
+
 ## Deferred
 
 The generic `Ruling` event and category-scoped rules — **since arrived** as the generic scoped ruling (`RulingRecorded` with `scope` + `same_as`). Model-phrased questions (Slice 9). Proactive *timing* — deciding when to interrupt rather than wait to be opened (Slice 8's trigger). Learned auto-apply for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)).
