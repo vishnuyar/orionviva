@@ -99,6 +99,10 @@ desktop/src-tauri/binaries/
 desktop/src-tauri/target/
 desktop/src-tauri/tauri.release.generated.json
 
+# Local package cache and scratch output
+.pnpm-store/
+output/
+
 # The Cowork device bridge cannot delete files; deletions are parked here for manual removal.
 _to_delete/
 
