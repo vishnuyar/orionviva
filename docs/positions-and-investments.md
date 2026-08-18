@@ -111,7 +111,7 @@ Cost basis: a single graded figure per position, captured when the statement sho
 - A real brokerage statement reconciles on `Σ market_value + cash = total` and posts; a misread position (units or value) fails the internal tally and is **held with a localized Finding**, never guessed.
 - A `PositionObserved` carries units + market_value + currency + `as_of` + `class=measured` + grade + provenance; the answer/surface shows a holding as "as of {date}," never "current."
 - Cost basis is stored when the statement shows it and absent (not invented) when it doesn't.
-- The account's composed value = cash + Σ measured positions on its latest statement _(corrected 2026-08-15 from "Σ latest measured positions" — the snapshot is the unit, not the instrument)_; registering a *synthetic* investment type via a profile row alone routes to the brokerage parser/identity (the divergent-profile proof holds).
+- The account's composed value = cash + Σ measured positions on its latest statement _(corrected 2026-08-15 from "Σ latest measured positions" — the snapshot is the unit, not the instrument)_, and it carries the halves a value needs to be stated at all: it is **dated by the oldest measurement it rests on**, because a sum is only as current as the stalest thing in it; **graded by the weakest of them**, cash included, because a grade is inherited from what a figure was computed out of and never declared by whoever computed it; and it says when the parts were **not measured on one day**. A term nothing graded leaves the total with no grade at all rather than a weak one, which is a guard: nothing the ingest path records reaches it. Holdings in a currency the cash is not in stay their own figure — what cannot be summed is not summed. The composition lives in one function and every read that states an account's value calls it, so the balances read, the provenance read and a point on the net-worth curve state one account one way. Registering a *synthetic* investment type via a profile row alone routes to the brokerage parser/identity (the divergent-profile proof holds).
 
 **Stage 2 (flow):** _(all green)_
 - The cash flow reconciles (`opening + Σ activity = closing`) and recognizes dividend + realized capital gain as income, a fee as an expense, and buys/sells as invested-capital moves; a statement whose activity doesn't reconcile the cash is **held**.
@@ -122,7 +122,7 @@ Existing balance-family, pay-stub, transfer, and categorization tests stay green
 
 ## Deferred (explicitly not now)
 
-Live price feeds (`valued`) and any "current" valuation; per-lot cost basis; instrument entity-resolution; options/derivatives and non-equity instruments beyond a priced line; FX on foreign holdings (Slice 11); net-worth composition; performance/return analytics.
+Live price feeds (`valued`) and any "current" valuation; per-lot cost basis; instrument entity-resolution; options/derivatives and non-equity instruments beyond a priced line; FX on foreign holdings (Slice 11); performance/return analytics.
 
 ## Why now + future use
 

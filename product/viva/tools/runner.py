@@ -39,7 +39,19 @@ A stated figure's boundary is placed the same way, and for the same reason. A
 figure carries the set it was taken over and whether that set is everything it
 claims to measure; where it is not, the run says so beside the number, out of
 the reads' own declarations. A boundary is a property of the claim, so it is
-placed by the machine rather than left to whoever wrote the sentence around it.
+placed by the machine rather than left to whoever wrote the sentence around it —
+and beside the thing it is a property of, which is the clause that bound the
+figure. Each of those sentences begins with a word pointing at what was just
+read, so a pool of them at the end points at nothing, and two clauses making the
+identical claim make it twice rather than once: collapsed into one, a claim
+about two figures reads as a claim about whichever the person takes it for.
+
+How many of the accounts a person holds an answer covers is the one such
+statement that is not a figure's. It is a claim about the answer, computed over
+what every stated figure declares, said once, and worded as being about the
+answer — because a count true of one figure and placed at answer level is a
+number about something else, and two of them in one answer are two counts of
+one thing.
 
 How well what was said is stood behind is placed the same way, third of the
 three. One reviewed sentence states the weakest grade among every money figure
@@ -60,6 +72,15 @@ claim — a gross sum of postings offered where the sentence says spending, a
 count of documents offered where it says a proportion. It is code comparing the
 tool's declaration with the shape's, both drawn from one closed list. No model
 is asked to check another model's work.
+
+Two further comparisons run off that same vocabulary. A quotient of two unlike
+kinds carries the name the vocabulary gives to having no name, and every hole
+that could hold one writes a proportion in a unit: a number no name is true of
+has no unit, so picking one would invent the claim the sentence is read as
+making, and the binding is refused. And a quantity whose own name asserts which
+way the money goes says so where the vocabulary is declared; a value denying
+that name fills no hole asking for it, so a card paid past its balance is not
+spoken as a debt of that size. Neither reads a word of the sentence.
 
 The scope check is that move made a second time, over what a number is a number
 OF. A figure declares every axis it was cut by and a hole declares every axis
@@ -110,7 +131,7 @@ from decimal import Decimal, InvalidOperation
 
 from vivacore import promptstore, versions
 
-from .. import render
+from .. import quantity, render
 from ..persona import STOOD_BEHIND_MOMENT, moment
 from .compute import numbers_said
 from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_MERCHANT,
@@ -730,6 +751,35 @@ def _figure_bound(slot, fig: dict, locale: str):
             f"{fig['what']!r} measures {fig['quantity']} — the number is real "
             "and it is not a number about that.")
 
+    # One name in that list is the name for having no name: what the vocabulary
+    # calls a quotient of two unlike kinds, where no kind is true of the
+    # result. Every hole that could hold one writes a proportion in a unit, and
+    # a number no name is true of has no unit to be written in, so choosing one
+    # would be inventing the claim the sentence is then read as making. The
+    # two declarations compared are the figure's own and what the kind of hole
+    # writes; the words around the hole are read by nothing.
+    if fig["quantity"] == quantity.RATIO:
+        return None, "wrong_kind", (
+            f"The hole {slot.name!r} wants a proportion, and {fig['what']!r} "
+            "compares two unlike kinds — no kind is true of the result, so "
+            "there is no unit it can be written in.")
+
+    # Direction, read the same way and out of the same module. The vocabulary
+    # says which quantities assert which way the money goes by their own name,
+    # and each of those is carried positive where its name is true of the
+    # value. A hole asking for one of them is a sentence asserting that
+    # direction, so a value denying it fills no such hole — a sign written in
+    # front of a number whose sentence says the opposite is a claim nothing
+    # here could check and a person has no way to read as anything but the
+    # sentence.
+    if (slot.quantity in quantity.ASSERTS_DIRECTION and value is not None
+            and value < 0):
+        return None, "wrong_quantity", (
+            f"The hole {slot.name!r} asks for {slot.quantity}, and "
+            f"{fig['what']!r} carries a value running the other way — the "
+            "number is real and the sentence asserting that direction is not "
+            "true of it.")
+
     # And the second pair, the same way. The tool declared every slice the
     # figure is the intersection of; the shape declared every axis its sentence
     # narrows on; the two sets are equal or the figure is not what the sentence
@@ -991,17 +1041,18 @@ def _boundary(fig: dict, *, cut: bool = True) -> tuple[list, list]:
     taken over, which is not the same as a read stating that the set was
     everything.
 
-    ``cut`` is whether what THIS figure alone covers is among the statements:
-    the slices it was taken over, and how many of the accounts held those
-    slices are one of. Both are said wherever the figure is stated as a number
-    in a sentence. Neither is said where the figure is a line of a block,
-    because there the slice is already written beside the number as the line's
-    own name, and a count of what one line covers — said once however many
-    lines make the same one — reads as a claim about the answer rather than
-    about the line, which it is not.
+    ``cut`` is whether the slices THIS figure alone was taken over are among
+    the statements. They are said wherever the figure is stated as a number in
+    a sentence, and not where the figure is a line of a block, because there
+    the slice is already written beside the number as the line's own name.
 
     What the read as a whole was narrowed to is said either way, because that
     is a fact about the call rather than about one line of it.
+
+    How many of the accounts a person holds are covered is not here. It is one
+    claim about the whole answer, computed over every figure the answer stated,
+    because a count said once for one figure reads as being about the answer —
+    and where the answer states two such figures, it is.
 
     What would settle a gap stays on the figure and is not said."""
     bound = fig.get("boundary") or {}
@@ -1015,10 +1066,6 @@ def _boundary(fig: dict, *, cut: bool = True) -> tuple[list, list]:
         if statement not in said:
             said.append(statement)
 
-    counts = bound.get("accounts") or {}
-    if cut and counts and counts["counted"] < counts["held"]:
-        say(("boundary_accounts",
-             {"counted": counts["counted"], "held": counts["held"]}))
     for item in bound.get("selected") or []:
         say((SELECTED_TERMS[item["kind"]][0], dict(item)))
     if cut:
@@ -1035,32 +1082,33 @@ def _boundary(fig: dict, *, cut: bool = True) -> tuple[list, list]:
 def _said(statement, ground: _Ground) -> str:
     """One statement about how a set was narrowed, in the pack's words."""
     key, fields = statement
-    if key == "boundary_accounts":
-        return moment(key, counted=render.count(fields["counted"]),
-                      held=render.count(fields["held"]))
     if key == "boundary_unposted":
         return moment(key, count=render.count(fields["count"]))
     _key, name, written = SELECTED_TERMS[fields["kind"]]
     return moment(key, **{name: written(fields, ground)})
 
 
-def _boundaries(cited, ground: _Ground, in_rows=()) -> list:
-    """Where the whole answer's claims end, once each.
+def _boundaries(stated, ground: _Ground) -> list:
+    """Where the claims of ONE clause end, once each within it.
 
-    Statements about narrowing are gathered in the order the figures were
-    stated and said once however many figures make the same one. What the
-    answer leaves out is one set across every figure it stated, said in a
-    single sentence however many figures carry overlapping gaps.
+    ``stated`` is what that clause said, in the order it said it: each figure
+    with whether the clause stated it as a line of a block rather than as a
+    number in a sentence.
 
-    ``in_rows`` names the figures the answer stated as lines of a block rather
-    than as numbers in a sentence. Those have already said which slice they
-    cover, and nothing about the reach of one line is restated as though it
-    were the answer's; what the read as a whole was narrowed to is still said,
-    once, the same as for any other figure."""
+    The clause is the unit because the word these sentences begin with points
+    at what was just read: a statement gathered from every figure in the answer
+    and placed at the end refers to nothing in particular, and two figures
+    making the identical statement about different clauses are two claims
+    rather than one.
+
+    So a statement is said once within a clause, where two figures in one
+    sentence genuinely make one claim, and again under the next clause that
+    makes it. What that clause leaves out is one set across its own figures,
+    said in a single sentence however many of them carry overlapping gaps."""
     statements: list = []
     left_out: list = []
-    for fig in cited:
-        said, gaps = _boundary(fig, cut=fig["id"] not in in_rows)
+    for fig, as_rows in stated:
+        said, gaps = _boundary(fig, cut=not as_rows)
         for statement in said:
             if statement not in statements:
                 statements.append(statement)
@@ -1072,6 +1120,49 @@ def _boundaries(cited, ground: _Ground, in_rows=()) -> list:
         lines.append(moment("boundary_unmeasured",
                             account=_accounts_written(left_out, ground)))
     return lines
+
+
+def _covered(cited) -> tuple[int, int] | None:
+    """Which of the accounts a person holds the whole answer covers, as how
+    many of them and how many they hold, or None where the answer cannot say.
+
+    One claim about the answer, computed from what every stated figure declares
+    rather than said once per figure and deduplicated as though two figures
+    over an account each were one. The accounts are the ones the figures name —
+    a slice a figure is, or a narrowing its read was given — so the count is of
+    a set the code can list, and two figures naming one account between them
+    are one account.
+
+    How many accounts are held is whichever figure says so; it is a fact about
+    the vault rather than about the answer, so any figure that carries it
+    carries the same number.
+
+    A figure counts towards this only where it declares, as data, exactly which
+    accounts it covers: its boundary carries a count of accounts, and that
+    count is the number of accounts the figure names. Any other figure is one
+    the answer cannot enumerate — one counted over more accounts than it names
+    reached accounts nothing here can list, and one declaring nothing about
+    accounts at all, whatever it says about being the whole of what it
+    measures, came from a read that ranged over accounts and said nothing about
+    which. Either leaves every account this could count fewer than the answer
+    covered, so a shortfall said in words about the whole answer would be a
+    shortfall the answer does not have, and None is returned instead. What
+    narrowed each read is still said under its own clause. Two declarations
+    compared: how many accounts a figure says it counted, against the accounts
+    that figure names."""
+    named: set = set()
+    held = 0
+    for fig in cited:
+        bound = fig.get("boundary") or {}
+        counts = bound.get("accounts") or {}
+        names = {item["value"] for item
+                 in (bound.get("cut") or []) + (bound.get("selected") or [])
+                 if item["kind"] == BY_ACCOUNT}
+        if not counts or counts.get("counted", 0) != len(names):
+            return None
+        held = max(held, counts.get("held", 0))
+        named |= names
+    return len(named), held
 
 
 # ------------------------------------------------------------------- the gate
@@ -1243,32 +1334,42 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # One figure can fill more than one hole — the same balance named in two
     # clauses of one answer. It is one figure and it is cited once.
     said = [s.name for c in spoken for s in c.slots]
-    cited, seen, in_rows, as_numbers = [], set(), set(), set()
-    for name in said:
-        reference = references[name]
-        as_rows = "read" in reference
-        # A block of rows states every figure it wrote a line for, and those are
-        # answerable exactly as a figure named in a sentence is: for their
-        # records, for their caveats and for the answer's grade. The figures of
-        # that read it wrote no line for — the read's own total and its count —
-        # are not stated and are not cited.
-        if as_rows:
-            stated = [fid for fid in ground.readings[str(reference["read"])]
-                      if _line_of(ground.book[fid])]
-        elif "figure" in reference:
-            stated = [str(reference["figure"])]
-        else:
-            continue
-        for fid in stated:
-            (in_rows if as_rows else as_numbers).add(fid)
-            if fid in seen:
+    # And which figures each clause stated, in the order it stated them, so a
+    # statement about where a figure's claim ends is placed under the sentence
+    # that made it rather than in a pool at the end.
+    per_clause: list = []
+    cited, seen, as_numbers = [], set(), set()
+    for clause in spoken:
+        here: dict = {}
+        for slot in clause.slots:
+            reference = references[slot.name]
+            as_rows = "read" in reference
+            # A block of rows states every figure it wrote a line for, and
+            # those are answerable exactly as a figure named in a sentence is:
+            # for their records, for their caveats and for the answer's grade.
+            # The figures of that read it wrote no line for — the read's own
+            # total and its count — are not stated and are not cited.
+            if as_rows:
+                stated = [fid for fid in ground.readings[str(reference["read"])]
+                          if _line_of(ground.book[fid])]
+            elif "figure" in reference:
+                stated = [str(reference["figure"])]
+            else:
                 continue
-            seen.add(fid)
-            cited.append(ground.book[fid])
-    # A figure stated as a number of its own says its own scope in that
-    # sentence, however many blocks it also appears in; one stated only as a
-    # line has already said it, as the line's name.
-    in_rows -= as_numbers
+            for fid in stated:
+                if not as_rows:
+                    as_numbers.add(fid)
+                # A figure stated as a number of its own says its own slices in
+                # that sentence, however many blocks of the same clause it also
+                # appears in; one stated only as a line has already said them,
+                # as the line's name.
+                here[fid] = here[fid] and as_rows if fid in here else as_rows
+                if fid in seen:
+                    continue
+                seen.add(fid)
+                cited.append(ground.book[fid])
+        per_clause.append([(ground.book[fid], as_rows)
+                           for fid, as_rows in here.items()])
 
     for fig in cited:
         # A money figure with no record behind it is refused. The other kinds
@@ -1290,10 +1391,19 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
             if cid not in owed:
                 owed.append(cid)
 
-    # And where the answer's claims end, in the order the figures were stated.
-    # It goes ahead of the limits: a boundary says what the claim is a claim
-    # about, and what the claim does not cover is read against that.
-    boundary = _boundaries(cited, ground, in_rows)
+    # How many of the accounts a person holds this answer covers, over every
+    # figure the answer stated. It is one claim about the answer, so it is said
+    # once and after the clauses, where the answer is what a person has just
+    # read: two of these would be two counts of one thing, and one placed under
+    # a clause would be a count of what that clause covers written in words
+    # that are about the whole of it. An answer naming no account says nothing
+    # here rather than saying it covers none, and an answer that cannot
+    # enumerate what it covers says nothing here rather than a number it
+    # cannot stand behind.
+    #
+    # It goes ahead of the limits: how far a claim reaches says what the claim
+    # is about, and what the claim does not cover is read against that.
+    covered, held = _covered(cited) or (0, 0)
 
     # How well what the answer stated is stood behind: the weakest grade among
     # every money figure it stated, lines of a block included, said in the
@@ -1314,11 +1424,16 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     stood_behind = weakest(f["grade"] for f in graded)
     stated_in_a_sentence = any(f["id"] in as_numbers for f in graded)
 
-    parts = [(clause.written(written),
-              any(isinstance(written[s.name], render.Rows)
-                  for s in clause.slots))
-             for clause in spoken]
-    parts += [(line, False) for line in boundary]
+    parts: list = []
+    for clause, figures in zip(spoken, per_clause):
+        parts.append((clause.written(written),
+                      any(isinstance(written[s.name], render.Rows)
+                          for s in clause.slots)))
+        parts += [(line, False) for line in _boundaries(figures, ground)]
+    if covered and covered < held:
+        parts.append((moment("boundary_accounts",
+                             counted=render.count(covered),
+                             held=render.count(held)), False))
     if stood_behind and stated_in_a_sentence:
         parts.append((moment(STOOD_BEHIND_MOMENT + stood_behind), False))
     if owed:

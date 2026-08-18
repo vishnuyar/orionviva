@@ -382,3 +382,61 @@ halves are closed in the 2026-08-05 amendment below._
 > was. No tools version is claimed — nothing about what a read is asked for
 > changed. See the closing amendment of
 > [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)._
+
+> _Amended 2026-08-18 (reachability — what the model is told). **The prompt
+> states what day it is.** Nothing in this product had ever told the model the
+> date, so *last month*, *this year* and *the last ninety days* were unaskable:
+> the only date parser is a structural `YYYY-MM-DD` check, and a model with no
+> today cannot compute one. `speak-v12` is `speak-v11` plus one sentence
+> carrying the date as a template field, filled where the system message is
+> built. What it does not license is stating the date to a person as a value —
+> a date reaches someone through a hole bound to a figure, and that is
+> unchanged. The residual is named rather than hidden: nothing checks a window
+> the model computed, because the vocabulary holds no entity for a span, so a
+> wrong window is **disclosed** by the sentence the machine places beside the
+> figure and is not refused.
+>
+> **`list_movements` is described by what it returns, not by what it costs.**
+> Its description told the model to prefer the summary read "with a fraction of
+> the words", beside a `query_ledger` description claiming one call of it is the
+> whole answer — one verb claiming primacy and the other conceding it, over a
+> question the person had already asked in plain words. The split above is
+> unchanged and neither verb moves: what changed is that the two are now told
+> apart by what comes back, rows or a total. Beside it, two smaller things.
+> `LIST_MOVEMENTS_PARAMS` **declares that it takes filters**, so a call naming
+> nothing is refused where the arguments are validated rather than after the
+> read has been entered; which filters are narrow enough remains the read's own
+> rule, and `currency` — honoured, and not one of them — is now named in the
+> description as the trap it was. And the two true sentences about **ids and
+> keys** gain the word that tells them apart: an id is what a binding refers
+> to, a key or a label is what a filter takes. `tools-v13`._
+
+> _Amended 2026-08-18 again (reachability — a new way to find a thing). **A
+> person can now name a counterparty and have it found.** There were two ways
+> to discover one and both were windows onto an alphabet: the largest by spend,
+> and the first page of the vocabulary read. On a ledger holding a few hundred
+> counterparties, a shop someone visits weekly could sit outside both, and the
+> descriptions then forbade the one move that would sometimes have worked. The
+> `vocabulary` mode gains one optional argument, `matching`: a name to look for.
+> It is an argument and not a fourteenth verb — *what do I hold* and *which of
+> what I hold is this* are the same question, and splitting them across a mode
+> and a verb would manufacture the ambiguity the entry above is about — so the
+> verb count is unchanged.
+>
+> **What is found is generous; what is narrowed by stays exact.** A name is
+> compared with each label three ways, in order: the label whose key is that
+> name, then the labels whose keys begin with it, then the labels carrying it as
+> a whole word. Both sides go through the vault's own key function first, so
+> every comparison is between two strings that function produced, and a run of
+> characters buried inside a word reaches nothing. What comes back is labels the
+> vault holds, which the caller then puts in a filter as the exact value it
+> always was — so no figure is ever taken over a pattern, and nothing here
+> learns a new way of narrowing. The lookup emits no figure of its own: the
+> count it returns is the whole vocabulary's size, as it was, because a count
+> of what a name reached would be a number over a set nothing can name. Beside
+> it, the counterparty filter now passes the caller's own value through the same
+> key function, so a name written in a person's capitals reaches the key their
+> statements were filed under; a name that resolves to no held key is refused as
+> it always was. And where a refusal's list of what the vault does hold is
+> truncated, its last line names the lookup rather than offering more names.
+> `tools-v14`._

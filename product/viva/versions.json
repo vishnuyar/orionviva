@@ -2,7 +2,7 @@
   "in_force": {
     "speak": {
       "in": "prompts",
-      "active": "speak-v11"
+      "active": "speak-v12"
     },
     "speak_final": {
       "in": "prompts",
@@ -26,7 +26,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v12"
+      "active": "tools-v14"
     },
     "classify": {
       "in": "prompts",
@@ -42,7 +42,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v13"
+      "active": "pack-v14"
     },
     "schema_pack": {
       "in": "schemas",
@@ -54,7 +54,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v10"
+      "active": "speak-shape-v11"
     },
     "shape_committed": {
       "in": "prompts",
@@ -85,6 +85,7 @@
     "pack-v11": "7471eab0aededb29",
     "pack-v12": "104c77379c2cbd5f",
     "pack-v13": "717eb1d405220c17",
+    "pack-v14": "0c59abe74d83d887",
     "pack-v2": "7e8f38e3db15c2f9",
     "pack-v3": "62a56a4b9b7c1b5e",
     "pack-v4": "ab13c947b9ee4086",
@@ -129,6 +130,7 @@
     "speak-retry-v3": "ec6b6369a6c02300",
     "speak-shape-v1": "6dc9f1a9279a5a76",
     "speak-shape-v10": "1e12c41a720d2507",
+    "speak-shape-v11": "881ce46193a436cd",
     "speak-shape-v2": "c1eb515f0f44f510",
     "speak-shape-v3": "86cdfecaf82680e9",
     "speak-shape-v4": "b1414ddd20442800",
@@ -140,6 +142,7 @@
     "speak-v1": "8f65a0d62c9f73cb",
     "speak-v10": "7bbe5d04dda5875f",
     "speak-v11": "84c0ff0b9959fd85",
+    "speak-v12": "baf7f8ac398dd1a9",
     "speak-v2": "f2154bf11552432d",
     "speak-v3": "c898f122b4069899",
     "speak-v4": "aed70cdb9970d43b",
@@ -152,6 +155,8 @@
     "tools-v10": "19f816684098f058",
     "tools-v11": "85684b079dfc0723",
     "tools-v12": "f0b37107e4aeff5f",
+    "tools-v13": "23e6eb58d0e4f750",
+    "tools-v14": "05d0cf5cc6042c03",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",

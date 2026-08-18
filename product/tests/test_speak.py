@@ -1,5 +1,6 @@
 """Viva speaks: the planners, the session, the capture, and their refusals."""
 
+import datetime
 import hashlib
 import json
 
@@ -73,6 +74,8 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-shape-v10": "1e12c41a720d2507",
     "speak-final-v12": "a7915d70695b4b4f",
     "speak-final-v13": "95e287a51e143dec",
+    "speak-v12": "baf7f8ac398dd1a9",
+    "speak-shape-v11": "881ce46193a436cd",
 }
 
 
@@ -259,6 +262,71 @@ def test_every_repair_a_check_can_name_has_reviewed_words():
     # reviewed template with two fields.
     template = promptstore.load(PROMPTS, RETRY_VERSION)
     assert "{problem}" in template and "{repair}" in template
+
+
+# --------------------------------------------------------------- what day it is
+
+def test_the_day_a_turn_is_asked_on_reaches_the_model(registry):
+    """The system message states today's date, and states it as a field of the
+    pinned template rather than as text appended to it.
+
+    Both modalities get it, because both build their system message from the
+    same loader."""
+    from viva.speak import _speak_prompt
+
+    assert "{today}" in promptstore.load(PROMPTS, SPEAK_VERSION)
+    filled = _speak_prompt("2026-03-04")
+    assert "2026-03-04" in filled and "{today}" not in filled
+
+    today = datetime.date.today().isoformat()
+    clause = ("Your checking holds {balance}.",
+              [("balance", "money", "balance", "account")])
+    read = {"entity": "balances", "filters": {"account": "chk"}}
+    binding = {"balance": {"figure": "f1"}}
+
+    script = ChatScript([
+        _turn([_shape_call(clause)]),
+        _turn([_call("query_ledger", read, call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": binding}, call_id="c2")]),
+    ])
+    run("what is my checking balance?", NativePlanner(script), registry)
+    assert today in script.seen[0]["messages"][0]["content"]
+
+    text = TextScript([
+        _shape_block(clause),
+        '```json\n' + json.dumps({"tool": "query_ledger", "args": read}) + '\n```',
+        _bind_block(binding),
+    ])
+    run("what is my checking balance?", TextPlanner(text), registry)
+    assert today in text.prompts[0]
+
+
+def test_a_question_in_relative_words_reaches_a_read_narrowed_by_days(registry):
+    """Everything a turn needs to turn *so far this year* into days is in its
+    context before it calls anything, and the read it enables is narrowed by
+    those days and says so in the answer.
+
+    The scripted model stands in for one that reads the date off the system
+    message; what this holds is that the date is there to be read, that a read
+    narrowed by it answers, and that the span it was narrowed by is stated back
+    to the person rather than left implied."""
+    today = datetime.date.today().isoformat()
+    since = f"{today[:4]}-01-01"
+    script = ChatScript([
+        _turn([_shape_call(("You have spent {total} in that time.",
+                            [("total", "money", "spending", "period")]))]),
+        _turn([_call("query_ledger",
+                     {"entity": "aggregate", "metric": "spending",
+                      "filters": {"window": {"from": since, "to": today}}},
+                     call_id="c1")]),
+        _turn([_call(FINAL_TOOL, {"bindings": {"total": {"figure": "f2"}}},
+                     call_id="c2")]),
+    ])
+    result = run("what have I spent so far this year?",
+                 NativePlanner(script), registry)
+    assert today in script.seen[0]["messages"][0]["content"]
+    assert result.answered, result.refusal
+    assert f"{since} to {today}" in result.text
 
 
 # ------------------------------------------------------------ native planner

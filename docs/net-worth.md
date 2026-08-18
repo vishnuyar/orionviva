@@ -35,8 +35,20 @@ That dissolves the problem rather than answering it. There is no *the* net worth
 | account kind | the measurement | why this and not something else |
 |---|---|---|
 | depository, liability (card) | the **observed closing balance** | the issuer attests it; summing our own postings would be *our* arithmetic over a possibly incomplete run |
-| investment | `Σ(market_value)` over **one snapshot** — the holdings measured on the latest statement at or before `D` — plus the account's cash | a holding is a dated measurement (positions and investments, M1) |
+| investment | **one line**: the account's cash plus `Σ(market_value)` over **one snapshot** — the holdings measured on the latest statement at or before `D` — dated by the oldest measurement under it, graded by the weakest of them, and saying so where they were not all measured on one day | a holding is a dated measurement (positions and investments, M1), and a brokerage account is one thing a person owns, so its value is one figure with one date and one grade |
 | asserted (`Assets:` / `Liabilities:` from a ruling) | **cost at the ruling's date** | what you paid, never what it is now worth |
+
+_**Amended.** The investment row described a point that carried a brokerage
+account as **two or more** lines — its cash, and a separate line per currency
+under a sub-account path `⟨account⟩:Holdings` that exists nowhere else. That
+shape is gone. One account contributes one line, because a person owns one
+account and its value is its cash plus what it holds; the composition is
+computed in one place and every read that states an account's value asks there,
+so the balances read, the provenance read and the curve cannot describe one
+account differently. The sub-account went with it: the point used to cite an
+identifier the same read could not resolve, which is one of the things that
+made asking where a number came from fail. Holdings in a currency the cash is
+not in still keep a line of their own, because nothing here converts._
 
 _**Corrected 2026-08-15.** The investment row said `Σ(market_value)` of **each
 holding's** latest observation ≤ `D`, which is a composition across instruments,
@@ -136,7 +148,8 @@ Market **valuation** of asserted assets (a car's worth today — needs a source 
 
 - A vault with one checking statement returns a curve with one point, `complete = True`.
 - Adding a card statement dated later adds a point; the earlier point is **unchanged**.
-- An investment account contributes `Σ(market_value)` over the holdings of the latest statement at or before `D`, and a *later* observation does not alter an earlier point. _(Corrected 2026-08-15: this read "at the latest observation ≤ `D`" per instrument — see the note under the table above. The snapshot is the unit, not the instrument.)_
+- An investment account contributes **one line** — its cash plus `Σ(market_value)` over the holdings of the latest statement at or before `D` — carrying the oldest date of the measurements under it, the weakest of their grades, and the fact when they were not all measured on one day; and a *later* observation does not alter an earlier point. _(Amended: the account used to contribute a cash line plus a separate holdings line per currency, the latter under a sub-account path nothing else in the system holds. Corrected 2026-08-15: the holdings half read "at the latest observation ≤ `D`" per instrument — see the note under the table above. The snapshot is the unit, not the instrument.)_
+- A brokerage account whose securities are unverified makes the **whole** account value unverified, cash included: one value, one grade, inherited from what it was computed out of.
 - An account whose first statement is after `D` contributes nothing to that point — no zero, no guess.
 - An asserted car appears at cost, badged `asserted`, from its ruling date onward.
 - A `reliable_balance = False` liability keeps `complete = False` and appears in `missing` with its corroborating document named.

@@ -481,10 +481,10 @@ def test_a_caveat_a_result_wrote_about_its_own_number_cannot_be_dropped(registry
                  registry)
     assert result.answered, result.detail
     assert result.text.startswith("You spent USD 400.00.")
-    assert "Own-account transfers" in result.text, (
+    assert "money that left your life" in result.text, (
         "the shape says nothing about limits, and the run places them anyway")
     # Once, however many results wrote it, and introduced in Viva's own words.
-    assert result.text.count("Own-account transfers") == 1
+    assert result.text.count("money that left your life") == 1
     assert moment("answer_limits", limits="").split("{")[0].strip() in result.text
 
 
@@ -727,24 +727,27 @@ def test_a_card_someone_owes_on_is_spoken_as_what_is_owed():
     assert "balance is" not in result.text
 
 
-def test_an_overpaid_cards_sign_survives_into_what_is_spoken():
-    """What is checked here is the sign and nothing more.
+def test_a_credit_on_a_card_never_fills_a_hole_that_asserts_a_debt():
+    """A card paid past its balance owes the person, and its magnitude is
+    negative in the owed convention. A hole asking for what is owed is a
+    sentence saying a debt is there, so that figure does not fill it: the turn
+    refuses rather than writing a sign in front of a number the words around it
+    deny.
 
-    A card paid past its balance owes the person, and its magnitude is negative
-    in the owed convention. The figure carries that sign the whole way, so the
-    amount reaching the person is written as a negative and the debt clause is
-    not filled with a positive one.
-
-    The wording is not fixed and this test does not claim it is: the live path
-    says "You owe -USD 50.00 on ...", which is a credit spoken as a negative
-    debt. That is an open defect, recorded rather than tested away — the shape
-    is authored before the read, and which clauses a live model writes is not
-    something anything here can establish."""
+    The sign convention is untouched: the figure still carries the negative
+    the bill prints. What the rule governs is where such a figure may be
+    spoken."""
     result = _spoken_about_the_card(_card_events("-50.00", OVERPAID))
+    assert not result.answered and result.refusal == "wrong_quantity"
+    assert render.money(Decimal("-50.00"), "USD") not in result.text
+
+
+def test_a_debt_that_is_a_debt_still_fills_the_hole_that_asserts_one():
+    """The direction rule is a rule about the value and not about the kind of
+    account: the same card, owing money, fills the same hole it always did."""
+    result = _spoken_about_the_card(_card_events("1000.00", OWING))
     assert result.answered, result.detail
-    written = render.money(Decimal("-50.00"), "USD")
-    assert written in result.text and written.startswith("-")
-    assert f"owe {render.money(Decimal('50.00'), 'USD')}" not in result.text
+    assert render.money(Decimal("1000.00"), "USD") in result.text
 
 
 def test_what_is_owed_cannot_fill_a_hole_that_asked_for_what_is_held():
@@ -1585,9 +1588,67 @@ def test_an_incomplete_total_cannot_be_stated_without_its_gap(several):
 
 
 
-def test_a_boundary_is_said_once_however_many_figures_say_it(several):
-    """The same discipline a caveat is held to. Two figures over the same set
-    are one boundary between them, not two sentences a person reads twice."""
+def test_a_boundary_is_said_once_inside_the_clause_that_made_it(several):
+    """The same discipline a caveat is held to, inside one sentence. Two
+    figures a clause states over the same set are one boundary between them,
+    not two sentences a person reads twice."""
+    shape = _shape(("You hold {a} across {n} account(s).",
+                    [("a", "money", "balance", "account"),
+                     ("n", "count", "count", "account")]))
+    result = run("what is on my checking account?",
+                 _script(shape, ("query_ledger",
+                                 {"entity": "balances",
+                                  "filters": {"account": "chk"}}),
+                         bind=lambda r: {
+                             "a": {"figure": _figure_id(r, "Everyday Checking")},
+                             "n": {"figure": _figure_id(r,
+                                                        "accounts holding")}}),
+                 several)
+    assert result.answered, result.detail
+    said = moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[]))
+    assert result.text.count(said) == 1
+
+
+def test_a_boundary_two_clauses_make_is_said_under_each_of_them(several):
+    """And it stops at the clause. Two clauses each narrowed to the same
+    account make that claim twice, once each, because the word each of these
+    sentences begins with points at the sentence just read — a statement said
+    once for two clauses is a statement about whichever of them the person
+    takes it for."""
+    shape = _shape(("You hold {a}.",
+                    [("a", "money", "balance", "account")]),
+                   ("That is spread over {n} account(s).",
+                    [("n", "count", "count", "account")]))
+    result = run("what is on my checking account?",
+                 _script(shape, ("query_ledger",
+                                 {"entity": "balances",
+                                  "filters": {"account": "chk"}}),
+                         bind=lambda r: {
+                             "a": {"figure": _figure_id(r, "Everyday Checking")},
+                             "n": {"figure": _figure_id(r,
+                                                        "accounts holding")}}),
+                 several)
+    assert result.answered, result.detail
+    said = moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[]))
+    assert result.text.count(said) == 2
+    # And each of them sits under its own clause rather than in a pool at the
+    # end: the second sentence begins before the second statement does.
+    assert result.text.find(said) < result.text.find("That is spread over")
+
+
+def test_an_answer_covering_two_accounts_never_says_it_covers_one(several):
+    """The reach sentence counts the accounts the answer covers, not the
+    accounts one of its figures covers.
+
+    Two per-account figures each cover one of the accounts the person holds,
+    and each says so identically. Over the answer that is two accounts covered
+    of two held, so there is no shortfall and the sentence is not placed."""
     shape = _shape(("You hold {a} and owe {b}.",
                     [("a", "money", "balance", "account"),
                      ("b", "money", "owed", "account")]))
@@ -1598,9 +1659,164 @@ def test_a_boundary_is_said_once_however_many_figures_say_it(several):
                              "b": {"figure": _figure_id(r, "Signature Card")}}),
                  several)
     assert result.answered, result.detail
+    for counted in (1, 2):
+        assert moment("boundary_accounts", counted=render.count(counted),
+                      held=render.count(2)) not in result.text
+
+
+def test_an_answer_over_some_of_the_accounts_says_so_once_about_itself(
+        several):
+    """And where the answer really does fall short of the accounts a person
+    holds, it says so — once, and as a claim about the answer rather than
+    about whichever figure happened to be first."""
+    shape = _shape(("You hold {a}.",
+                    [("a", "money", "balance", "account")]),
+                   ("That is what one of them holds: {b}.",
+                    [("b", "money", "balance", "account")]))
+    result = run("what is on my checking account?",
+                 _script(shape, ("query_ledger", {"entity": "balances"}),
+                         bind=lambda r: {
+                             "a": {"figure": _figure_id(r, "Everyday Checking")},
+                             "b": {"figure": _figure_id(r,
+                                                        "Everyday Checking")}}),
+                 several)
+    assert result.answered, result.detail
     said = moment("boundary_accounts", counted=render.count(1),
                   held=render.count(2))
     assert result.text.count(said) == 1
+    # Last of what the answer says about its own reach, after both clauses have
+    # had their say.
+    assert result.text.find(said) > result.text.find("one of them holds")
+
+
+def test_an_answer_naming_no_account_makes_no_claim_about_how_many_it_covers(
+        several):
+    """What the count is computed from, said as what happens when there is
+    nothing to compute it from.
+
+    A figure that covers several accounts and names none says how many it
+    covers and nothing about which. That is a true thing about the figure and
+    no basis for a claim about the answer, so the answer makes none — while
+    what narrowed the read is still said under the clause that used it. The
+    cost is named rather than hidden: an answer made only of such a figure
+    states nothing about how many accounts the person holds."""
+    shape = _shape(("This many of your accounts in that currency hold "
+                    "something: {n}.",
+                    [("n", "count", "count", "currency")]))
+    result = run("how many of my accounts hold anything?",
+                 _script(shape, ("query_ledger",
+                                 {"entity": "balances",
+                                  "filters": {"currency": "USD"}}),
+                         bind=lambda r: {
+                             "n": {"figure": _figure_id(r,
+                                                        "accounts holding")}}),
+                 several)
+    assert result.answered, result.detail
+    for counted in (1, 2):
+        assert moment("boundary_accounts", counted=render.count(counted),
+                      held=render.count(2)) not in result.text
+    assert moment("boundary_selected_currency",
+                  currency=render.label("USD")) in result.text
+
+
+def test_an_answer_reaching_more_accounts_than_it_names_states_no_reach(
+        several):
+    """The other half of the same rule, and the one that keeps a false count
+    out of the answer.
+
+    One clause states a figure over a single account; the next states a figure
+    counted over every account the read ranged over and naming none of them.
+    The accounts the answer can list are fewer than the accounts it reached, so
+    a shortfall counted from the names would be a shortfall the answer does not
+    have — and there is nothing else to count it from. So the answer makes no
+    claim about its own reach at all, and each clause still says what narrowed
+    the figure it stated."""
+    shape = _shape(("You hold {a}.", [("a", "money", "balance", "account")]),
+                   ("That is spread over {n} account(s).",
+                    [("n", "count", "count", "whole")]))
+    result = run("where do I stand?",
+                 _script(shape, ("query_ledger", {"entity": "balances"}),
+                         bind=lambda r: {
+                             "a": {"figure": _figure_id(r, "Everyday Checking")},
+                             "n": {"figure": _figure_id(r,
+                                                        "accounts holding")}}),
+                 several)
+    assert result.answered, result.detail
+    for counted in (1, 2):
+        assert moment("boundary_accounts", counted=render.count(counted),
+                      held=render.count(2)) not in result.text
+    assert moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[])) in result.text
+
+
+def test_an_answer_stating_a_total_over_the_whole_ledger_states_no_reach(
+        several):
+    """A figure declaring nothing about accounts is one the answer cannot
+    account for either.
+
+    One clause states a balance on a single account; the next states a spending
+    total taken over everything, which reached both accounts and declared
+    nothing about which. Counting the answer's reach from the accounts its
+    figures name would count one of two over an answer that reached both, so
+    the answer makes no claim about its own reach at all, and each clause still
+    says what narrowed the figure it stated."""
+    shape = _shape(("You hold {a}.", [("a", "money", "balance", "account")]),
+                   ("You spent {b} in all.",
+                    [("b", "money", "spending", "whole")]))
+    result = run("where do I stand?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "balances"}),
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending",
+                                           "group_by": "category"}),
+                         bind=lambda r: {
+                             "a": {"figure": _figure_id(r,
+                                                        "Everyday Checking")},
+                             "b": {"figure": _figure_id(
+                                 r, "total spending by category")}}),
+                 several)
+    assert result.answered, result.detail
+    for counted in (1, 2):
+        assert moment("boundary_accounts", counted=render.count(counted),
+                      held=render.count(2)) not in result.text
+    assert moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[])) in result.text
+
+
+def test_an_answer_stating_a_total_cut_to_a_category_states_no_reach(several):
+    """The same, where the figure that names no account declares it is not the
+    whole of what it measures.
+
+    A spending total cut to one category names the category and no account,
+    over movements on every account. What a figure declares about being the
+    whole of its quantity decides nothing here: a figure that does not declare
+    which accounts it covers is one the answer cannot enumerate, however
+    narrow it is."""
+    shape = _shape(("You hold {a}.", [("a", "money", "balance", "account")]),
+                   ("You spent {b} on that.",
+                    [("b", "money", "spending", "category")]))
+    result = run("what is on my checking, and what did I spend on groceries?",
+                 _script(shape,
+                         ("query_ledger", {"entity": "balances"}),
+                         ("query_ledger", {"entity": "aggregate",
+                                           "metric": "spending",
+                                           "group_by": "category"}),
+                         bind=lambda r: {
+                             "a": {"figure": _figure_id(r,
+                                                        "Everyday Checking")},
+                             "b": {"figure": _figure_id(
+                                 r, "spending \u2014 category 'groceries'")}}),
+                 several)
+    assert result.answered, result.detail
+    for counted in (1, 2):
+        assert moment("boundary_accounts", counted=render.count(counted),
+                      held=render.count(2)) not in result.text
+    assert moment("boundary_selected_category",
+                  category=render.category("groceries")) in result.text
 
 
 def test_a_figures_boundary_comes_before_what_it_does_not_cover(several):

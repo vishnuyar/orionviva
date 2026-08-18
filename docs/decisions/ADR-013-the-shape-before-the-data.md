@@ -202,6 +202,38 @@ over a different set, one for a figure of a different thing, because what
 each asks of the model differs — so it stands at twenty-one tags.
 `speak-shape-v10`, `speak-repairs-v3`, `speak-final-v13`, `pack-v13`.
 
+**Amended 2026-08-18 again — §4's list gains two more comparisons, and both are
+about the number rather than the set.** A binding now also fails where the
+figure's quantity is the vocabulary's own name for having no name — a quotient
+of two unlike kinds — because every hole that could hold one writes a proportion
+in a unit, and a number no kind is true of has no unit to be written in, so
+choosing one would invent the claim the sentence is read as making. And it fails
+where the hole asks for a quantity that asserts by its own name which way the
+money goes and the figure's value denies it: an overpaid card is a negative
+amount of what is owed, so a hole asserting a debt is not a sentence that figure
+can fill. Which quantities assert a direction is a closed declaration in the
+module that owns the vocabulary, alongside which are comparable and which are
+ratios; it is not a rule about cards, and it changes no sign anything writes.
+Both are §5's move again — two declarations the code itself put there, compared
+as data — and neither reads a word of a clause. What they cost is named: *how
+does my spending compare to my income* is no longer answerable at all, and a
+turn about an overpaid card refuses its debt clause rather than speaking a
+negative debt, which leaves the answer resting on whatever other clause the
+shape carried. `speak-shape-v11`.
+
+**And the machine-placed sentences gain a placement rule.** *A property of a
+figure that the machine holds is placed by the machine* was silent about where,
+and silence was a claim: every boundary statement was pooled after the last
+clause and deduplicated across the whole answer, while each begins with a word
+pointing at what was just read. A statement drawn from one figure's boundary now
+goes under the clause that bound that figure, said once within that clause and
+again under the next clause that makes it. One statement is not a figure's — how
+many of the accounts a person holds the answer covers — and it is computed over
+the answer, placed once after the clauses, and placed **only** where every
+stated figure declares, as data, exactly which accounts it covers; where one
+does not, the answer says nothing about its reach rather than a shortfall it may
+not have. `pack-v14`.
+
 ---
 
 ## What this costs, honestly — the residuals

@@ -158,8 +158,15 @@ MAX_CORRECTIONS = 1
 _FENCED = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 
-def _speak_prompt() -> str:
-    return promptstore.load(PROMPTS, SPEAK_VERSION)
+def _speak_prompt(today: str = "") -> str:
+    """The system message: the pinned persona file with today's date filled in.
+
+    The date is a `str.format` field of the template, so the version recorded
+    against a turn still resolves to the bytes that were sent. ``today``
+    defaults to the day the call is made, and is a parameter so a test does not
+    depend on the day it runs."""
+    return promptstore.load(PROMPTS, SPEAK_VERSION).format(
+        today=today or datetime.date.today().isoformat())
 
 
 def _final_schema(tool: str = FINAL_TOOL, version: str = "") -> dict:

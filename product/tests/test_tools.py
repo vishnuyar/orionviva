@@ -1081,6 +1081,151 @@ def test_a_fabricated_total_is_refused_before_it_can_be_said(registry):
     assert count["record_ids"] and count["grade"]
 
 
+def _earning_and_spending():
+    """A vault holding one attributed income and one purchase, in one
+    currency: the pair of whole-ledger totals the commonest comparison of two
+    unlike kinds is made of."""
+    evs = [account_opened("acct-0", "depository", "Account", "USD",
+                          "2026-01-01"),
+           document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                             "2026-02-01"),
+           transaction_recorded([Posting("acct-0", Decimal("500.00"), VERIFIED),
+                                 Posting("Income:Salary", Decimal("-500.00"),
+                                         VERIFIED)],
+                                "PAYROLL", "2026-01-10",
+                                provenance=_p("doc-one")),
+           transaction_recorded([Posting("acct-0", Decimal("-120.00"),
+                                         VERIFIED),
+                                 Posting("Expenses:Groceries",
+                                         Decimal("120.00"), VERIFIED)],
+                                "NORTHWIND MARKET", "2026-01-12",
+                                provenance=_p("doc-one"))]
+    return default_registry(LedgerProjection(evs))
+
+
+def _spending_over_income(shape):
+    """One turn dividing a whole-ledger spending total by a whole-ledger
+    income total and binding the quotient into `shape`'s one hole."""
+    registry = _earning_and_spending()
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending"}}
+        if len(done) == 1:
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "income"}}
+        if len(done) == 2:
+            return {"tool": "compute",
+                    "args": {"expression": "spent / earned",
+                             "inputs": {
+                                 "spent": _fig(context["results"],
+                                               "total spending"),
+                                 "earned": _fig(context["results"],
+                                                "attributed income")}}}
+        return {"bindings": {"share": {"figure": _fig(context["results"],
+                                                      "result of")}}}
+    return run("how does my spending compare to my income?", planner, registry)
+
+
+def test_a_comparison_of_two_unlike_kinds_fills_no_hole_and_is_written_nowhere():
+    """Spending over income is a real quotient of two real figures, and the
+    vocabulary's own name for it says no kind is true of the result.
+
+    A proportion is written in a unit — per hundred — so writing this one picks
+    a unit for a number that has none, and the sentence around it then means
+    whatever the words happened to say. The binding is refused instead, and
+    nothing of the quotient reaches the page.
+
+    The comparison is made over one set: both totals are whole, so the scope
+    check has nothing to catch and this is the check that fires."""
+    quotient = _spending_over_income(
+        _shape(("Your spending comes to {share} of what you earn.",
+                [("share", "rate", quantity.RATIO, "whole")])))
+    assert not quotient.answered and quotient.refusal == "wrong_kind"
+    assert "%" not in quotient.text
+
+
+def test_a_proportion_of_one_kind_of_thing_still_fills_a_proportion_hole():
+    """The other side of the same rule, so it reads as a refusal of numbers
+    with no name rather than a refusal of proportions.
+
+    A quotient of two figures measuring one kind is a proportion OF that kind,
+    the vocabulary names it, and it is written per hundred as it always was."""
+    registry = _earning_and_spending()
+    shape = _shape(("That is {share} of what you spend.",
+                    [("share", "rate", quantity.ratio_of(quantity.SPENDING),
+                      "whole")]))
+
+    def planner(context):
+        if not context["shaped"]:
+            return {"shape": shape}
+        done = [r for r in context["results"] if r["tool"] != "commit_shape"]
+        if not done:
+            return {"tool": "query_ledger",
+                    "args": {"entity": "aggregate", "metric": "spending"}}
+        if len(done) == 1:
+            total = _fig(context["results"], "total spending")
+            return {"tool": "compute",
+                    "args": {"expression": "a / a",
+                             "inputs": {"a": total}}}
+        return {"bindings": {"share": {"figure": _fig(context["results"],
+                                                      "result of")}}}
+    spoken = run("what share of my spending is that?", planner, registry)
+    assert spoken.answered, spoken.detail
+    assert "%" in spoken.text
+
+
+def test_what_refuses_a_comparison_is_the_figures_own_name_for_itself():
+    """The refusal reads two declarations and no words.
+
+    The quotient's own quantity is the bare name the vocabulary gives a
+    comparison of unlike kinds; the hole's type is the kind of thing written
+    per hundred. Neither is a sentence, and the clause's words are the same in
+    the case that is refused and the case that is not."""
+    quotient = _spending_over_income(
+        _shape(("Your spending comes to {share} of what you earn.",
+                [("share", "rate", quantity.RATIO, "whole")])))
+    assert quotient.refusal == "wrong_kind"
+    computed = [r for r in quotient.transcript if r["tool"] == "compute"]
+    assert computed and computed[0]["ok"]
+    (result,) = [f for r in computed for f in (r.get("figures") or [])]
+    assert result["quantity"] == quantity.RATIO
+
+
+def test_which_quantities_assert_a_direction_is_declared_with_the_vocabulary():
+    """The rule has one home, and it is the module that owns the words.
+
+    A quantity asserting which way the money goes is a fact about the word,
+    not about a kind of account, so it is declared beside the word and the
+    binding check reads that declaration. Adding the next one is an edit to
+    this list and to nothing else."""
+    assert quantity.OWED in quantity.ASSERTS_DIRECTION
+    assert set(quantity.ASSERTS_DIRECTION) <= set(quantity.KINDS)
+
+
+def test_a_negative_value_of_a_quantity_asserting_no_direction_still_speaks(
+        registry):
+    """What the direction rule is not: a rule about signs.
+
+    What a set of movements came to nets one way or the other, and its own
+    name asserts neither, so a negative one fills the hole asking for it and is
+    written with the sign it carries."""
+    shape = _shape(("Your accounts moved {net} over that stretch.",
+                    [("net", "money", quantity.NET_MOVEMENT, "whole")]))
+    spoken = run("what did my accounts do?",
+                 _script(shape, ("query_ledger", {"entity": "transactions"}),
+                         bind=lambda results: {
+                             "net": {"figure": _fig(results,
+                                                    "net movement over")}}),
+                 registry)
+    assert spoken.answered, spoken.detail
+    assert str(render.money(Decimal("-100.00"), "USD")) in spoken.text
+
+
 def test_scaling_a_figure_leaves_it_standing_where_it_stood(registry):
     """Multiplying or dividing by a plain magnitude changes the units, not the
     evidence: the result keeps the records and the grade of what was scaled.
@@ -1337,16 +1482,22 @@ def _approximate_run(registry, shape, bind, expression="a / 7",
     return run("how much a week?", planner, registry)
 
 
-def _over_one_account_of_three() -> str:
-    """What an answer says about the reach of a figure taken over one account
-    of the three the fixture holds: how many of them it covers, and which one
-    it is."""
-    return (moment("boundary_accounts", counted=render.count(1),
-                   held=render.count(3)) + " "
-            + moment("boundary_selected_account",
-                     account=render.account({"account": "chk",
-                                             "name": "Everyday Checking"},
-                                            among=[])))
+def _on_one_account() -> str:
+    """What a clause says beside a figure taken over one account: which
+    account it is. It is a claim about that figure, so it lands under the
+    clause that stated it."""
+    return moment("boundary_selected_account",
+                  account=render.account({"account": "chk",
+                                          "name": "Everyday Checking"},
+                                         among=[]))
+
+
+def _covering_one_of_three() -> str:
+    """And what the answer says about itself once it is assembled: how many of
+    the three accounts the fixture holds it covers. One claim about the whole
+    answer, said once and after the clauses."""
+    return moment("boundary_accounts", counted=render.count(1),
+                  held=render.count(3))
 
 
 def test_an_approximate_value_never_reaches_the_person_bare(registry):
@@ -1368,7 +1519,8 @@ def test_an_approximate_value_never_reaches_the_person_bare(registry):
         lambda results: {"weekly": {"figure": _fig(results, "result of")}})
     assert spoken.answered, spoken.detail
     assert spoken.text == ("You spend about USD 85.71 a week. "
-                           + _over_one_account_of_three() + " "
+                           + _on_one_account() + " "
+                           + _covering_one_of_three() + " "
                            + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     # The figure itself is unchanged; only what was written from it is hedged.
     assert spoken.figures[0]["value"] == "85.71"
@@ -1413,7 +1565,8 @@ def test_an_approximate_proportion_never_reaches_the_person_bare(registry):
     # operands of the share were taken over the same one account, and dividing
     # by a bare number leaves it over that account, so the answer says which.
     assert spoken.text == ("That is about 14.2857% of it. "
-                           + _over_one_account_of_three() + " "
+                           + _on_one_account() + " "
+                           + _covering_one_of_three() + " "
                            + moment(STOOD_BEHIND_MOMENT + spoken.grade))
     assert spoken.figures[0]["exactness"] == "rounded"
 
@@ -1441,7 +1594,8 @@ def test_a_figure_over_everything_is_hedged_the_same_way(registry):
     assert spoken.written["each"] == moment(
         "approx_count", count=render.count(Decimal(stated["value"])))
     # Whole, so nothing about where the claim ends is placed under it.
-    assert _over_one_account_of_three() not in spoken.text
+    assert _on_one_account() not in spoken.text
+    assert _covering_one_of_three() not in spoken.text
 
 
 def test_only_the_value_that_was_rounded_is_hedged(registry):
@@ -2356,6 +2510,22 @@ def test_a_detailed_read_refuses_to_dump_the_whole_ledger(registry):
                                                      "window"}
     assert registry.call("list_movements",
                          {"filters": {"account": "chk"}}).ok
+
+
+def test_the_detailed_read_declares_in_its_schema_that_it_takes_filters(registry):
+    """A call naming no filters at all is refused where the arguments are
+    validated, not after the read has been entered.
+
+    A schema in which every field is optional says an empty call is well
+    formed, and the model reads the schema before it calls. So the requirement
+    is in the schema the model is shown, and the refusal names the field rather
+    than the read's own narrowing rule."""
+    result = registry.call("list_movements", {})
+    assert not result.ok and result.refusal == "invalid_arguments"
+    assert "filters" in result.text
+    assert "required" in ledger_tools.LIST_MOVEMENTS_PARAMS
+    schemas = {s["name"]: s for s in registry.schemas()}
+    assert schemas["list_movements"]["parameters"]["required"] == ["filters"]
 
 
 def test_a_capped_read_says_how_many_it_did_not_show(monkeypatch, registry):
@@ -3952,6 +4122,99 @@ def test_a_tag_group_is_never_the_whole_however_few_tags_there_are():
                                   "cut": [{"kind": "tag", "value": "pantry"}]}
 
 
+def test_what_a_spending_total_counts_is_said_only_where_it_counted_something():
+    """A caveat is a sentence about a number, so a read that produced no
+    number to talk about says nothing.
+
+    The sentence names what is left out by what it is — money settling between
+    two accounts the person holds — rather than by a label they may have been
+    shown beside a figure, so it is true of a total that contains a category
+    the vault happens to call `transfers`."""
+    evs = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()))
+    counted = ledger_tools.query_ledger(
+        LedgerProjection(evs),
+        {"entity": "aggregate", "metric": "spending"})
+    assert ledger_tools.COUNTS_WHAT_LEFT in counted.caveats
+
+    empty = ledger_tools.query_ledger(
+        LedgerProjection(evs),
+        {"entity": "aggregate", "metric": "spending",
+         "filters": {"window": {"from": "2027-01-01"}}})
+    assert empty.ok, empty.text
+    assert not any("left your life" in c for c in empty.caveats)
+
+
+def test_overlapping_tags_are_disclosed_where_the_read_found_a_tag():
+    """The condition belongs to the vault and not to the call.
+
+    Grouping by tag is a fact about how the read was asked; carrying tags is a
+    fact about the person's records. A vault with no tag has no per-tag figures
+    that could fail to sum to anything, so there is nothing to disclose."""
+    untagged = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()))
+    silent = ledger_tools.query_ledger(
+        LedgerProjection(untagged),
+        {"entity": "aggregate", "metric": "spending", "group_by": "tag"})
+    assert silent.ok, silent.text
+    assert not any("Tags overlap" in c for c in silent.caveats)
+
+    tagged = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries",
+         ("pantry",)))
+    spoken = ledger_tools.query_ledger(
+        LedgerProjection(tagged),
+        {"entity": "aggregate", "metric": "spending", "group_by": "tag"})
+    assert spoken.ok, spoken.text
+    assert any("Tags overlap" in c for c in spoken.caveats)
+
+
+def _measured_on(*days):
+    """A vault of one account per day named, each last measured on its own
+    day, so a point over them rests on as many dates as there are days."""
+    evs = [document_captured("doc-one", "one.pdf", 100, "bank_statement", 0.9,
+                             "2026-06-01")]
+    for n, day in enumerate(days):
+        evs += [account_opened(f"acct-{n}", "depository", f"Account {n}",
+                               "USD", "2026-01-01"),
+                closing_balance_observed(f"acct-{n}", "100.00", day,
+                                         _p("doc-one"))]
+    return LedgerProjection(evs)
+
+
+def test_a_point_says_it_rests_on_several_dates_only_where_it_does():
+    """The staleness sentence gains the condition its own words imply, and
+    loses the pointer at fields nobody reading an answer can see.
+
+    A point every line of which was measured on one day is as current as that
+    day, and saying it is only as current as its stalest input tells a person
+    nothing they can act on. Where the lines really were measured on different
+    days, that is a fact about the value and it is said."""
+    one_day = ledger_tools.query_ledger(
+        _measured_on("2026-01-31"),
+        {"entity": "aggregate", "metric": "net_worth"})
+    assert one_day.ok, one_day.text
+    assert one_day.caveats == []
+
+    several = ledger_tools.query_ledger(
+        _measured_on("2026-01-31", "2026-05-31"),
+        {"entity": "aggregate", "metric": "net_worth"})
+    assert several.ok, several.text
+    assert several.caveats == [ledger_tools.MIXED_VINTAGE]
+    assert "staleness fields" not in ledger_tools.MIXED_VINTAGE
+
+
+def test_when_a_value_rests_on_several_dates_is_one_rule_with_one_sentence():
+    """Both halves of the disclosure have one home, so a second reader
+    composing a value from measurements of several days places the same
+    sentence on the same condition rather than writing a rival one."""
+    assert ledger_tools._mixed_vintage(["2026-01-31", "2026-05-31"])
+    assert not ledger_tools._mixed_vintage(["2026-01-31", "2026-01-31"])
+    # A day nothing recorded is a gap rather than a second vintage.
+    assert not ledger_tools._mixed_vintage(["2026-01-31", ""])
+    assert not ledger_tools._mixed_vintage([])
+
+
 def test_a_grouping_the_vault_names_nothing_for_still_names_its_slice():
     """A subcategory pair is a group key and not a thing the vault holds. What
     it can still be is the scope of the number beside it — which slice of the
@@ -4787,6 +5050,201 @@ def test_a_vocabulary_read_needs_to_be_told_which_vocabulary():
     assert not result.ok and result.refusal == "missing_group_by"
     for name in ledger_tools._VOCABULARIES:
         assert name in result.text
+
+
+# ----------------------------------------- finding the label a name reaches
+
+def _counterparty_vault():
+    """One vault whose counterparty keys separate the tiers a lookup has.
+
+    Under the key function the four descriptors below become `havenmart`,
+    `cedar haven market`, `sunhaven bakery` and `brightline transit`. Against
+    the name `haven` the first begins with it, the second holds it as a whole
+    word, the third merely contains it and the fourth has nothing to do with
+    it."""
+    return LedgerProjection(_spending_events(
+        ("2026-01-05", "HAVENMART", "-40.00", "", ()),
+        ("2026-01-06", "CEDAR HAVEN MARKET", "-50.00", "", ()),
+        ("2026-01-07", "SUNHAVEN BAKERY", "-60.00", "", ()),
+        ("2026-01-08", "BRIGHTLINE TRANSIT", "-70.00", "", ())))
+
+
+def _looked_up(proj, name, group_by="merchant"):
+    return ledger_tools.query_ledger(
+        proj, {"entity": "vocabulary", "group_by": group_by, "matching": name})
+
+
+def test_a_name_reaches_the_label_it_is_exactly():
+    """The first tier: what the caller wrote keys to a label the vault holds,
+    and only that label comes back."""
+    result = _looked_up(_counterparty_vault(), "Havenmart")
+    assert result.ok
+    assert result.data["labels"] == ["havenmart"]
+
+
+def test_a_name_reaches_the_labels_that_begin_with_it_and_hold_it_as_a_word():
+    """The other two tiers, and the order they come back in.
+
+    A label whose key begins with the name is nearer than one merely carrying
+    it as a word, so the beginnings come first. Both are labels this vault
+    holds, which is what the caller then narrows by."""
+    result = _looked_up(_counterparty_vault(), "Haven")
+    assert result.ok
+    assert result.data["labels"] == ["havenmart", "cedar haven market"]
+
+
+def test_a_name_buried_inside_a_label_reaches_nothing():
+    """The line the tiers draw, and the reason the search may be generous at
+    all: a run of characters inside a word is not a thing the caller named, so
+    it is not found. Generosity that went this far would be a pattern, and a
+    pattern is not something the vault holds."""
+    reached = _looked_up(_counterparty_vault(), "Haven").data["labels"]
+    assert "sunhaven bakery" not in reached
+    assert "brightline transit" not in reached
+
+
+def test_a_name_that_reaches_nothing_still_answers_with_the_size_held():
+    """A lookup that found nothing establishes no thing and still establishes
+    the one number it always did — how many labels the vault holds — so it
+    cites what it read rather than what it failed to find."""
+    result = _looked_up(_counterparty_vault(), "nothing-by-that-name")
+    assert result.ok and result.data["labels"] == []
+    assert result.data["count"] == 4
+
+
+def test_a_lookup_counts_the_whole_vocabulary_and_never_its_matches():
+    """The count is the same number matched or not, and it declares the whole.
+
+    A number over the labels a name reached would be a number about a set the
+    narrowing vocabulary cannot name, so no such figure exists and the one
+    that does says what it always said."""
+    proj = _counterparty_vault()
+    whole = ledger_tools.query_ledger(
+        proj, {"entity": "vocabulary", "group_by": "merchant"})
+    matched = _looked_up(proj, "Haven")
+    for result in (whole, matched):
+        stated = [f for f in result.figures if f["quantity"] == quantity.COUNT]
+        assert len(stated) == 1
+        assert stated[0]["value"] == "4"
+        assert stated[0]["boundary"]["whole"] is True
+    assert matched.data["count"] == whole.data["count"]
+
+
+def test_a_capped_lookup_counts_what_it_reached_rather_than_what_is_held(
+        monkeypatch):
+    """The cap sentence says how many of what came back are named.
+
+    Capping a lookup after it has narrowed makes the whole vocabulary's size
+    the wrong number for that sentence: it would say a hundred labels were cut
+    to forty when the name reached three."""
+    monkeypatch.setattr(ledger_tools, "MAX_LABELS", 1)
+    result = _looked_up(_counterparty_vault(), "Haven")
+    assert result.data["labels"] == ["havenmart"]
+    assert result.caveats == [
+        "The first 1 of 2 merchant label(s) a name reached are named here, "
+        "closest match first; the count is the whole count."]
+
+
+def test_a_lookup_answers_for_every_vocabulary_the_read_offers():
+    """A mode gains an argument, not a mode of its own: whatever a vocabulary
+    read can be asked for, it can be asked for by name."""
+    proj = _counterparty_vault()
+    for group_by in sorted(ledger_tools._VOCABULARIES):
+        held = ledger_tools.query_ledger(
+            proj, {"entity": "vocabulary", "group_by": group_by})
+        assert held.ok
+        by_name = _looked_up(proj, "nothing-by-that-name", group_by)
+        assert by_name.ok, group_by
+        assert by_name.data["labels"] == []
+        assert by_name.data["count"] == held.data["count"]
+
+
+def test_a_name_reaches_a_label_outside_the_counterparty_vocabulary():
+    """The lookup is an argument to the vocabulary read rather than a mode of
+    its own, so every vocabulary that read offers answers by name — not only
+    the one whose labels are counterparties.
+
+    A name written in the caller's own capitals reaches the label the vault
+    holds, and so does one that is the start of a label. What comes back is
+    labels this vault holds, which is what a follow-up then narrows on
+    exactly."""
+    proj = LedgerProjection(_spending_events(
+        ("2026-01-05", "HAVENMART", "-40.00", "groceries", ("pantry",)),
+        ("2026-01-06", "BRIGHTLINE TRANSIT", "-70.00", "transport",
+         ("commute",))))
+    for group_by, name, reached in (("category", "Groceries", ["groceries"]),
+                                    ("category", "groc", ["groceries"]),
+                                    ("tag", "pantry", ["pantry"]),
+                                    ("account", "chk", ["chk"]),
+                                    ("currency", "usd", ["USD"])):
+        result = _looked_up(proj, name, group_by)
+        assert result.ok, (group_by, name)
+        assert result.data["labels"] == reached, (group_by, name)
+
+
+def test_looking_a_name_up_is_refused_where_a_read_would_narrow_instead():
+    """The lookup belongs to the read of labels. A read of money is not quietly
+    made to do it, because what it would have to do is narrow on a pattern."""
+    proj = _counterparty_vault()
+    result = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "spending",
+               "matching": "Haven"})
+    assert not result.ok and result.refusal == "matching_unsupported"
+    assert "vocabulary" in result.text
+
+
+def test_a_counterparty_filter_takes_the_key_however_the_name_was_written():
+    """The caller's value goes through the vault's own key function, so a name
+    written in a person's own capitals and punctuation reaches the key their
+    statements were filed under. This is not a search: it resolves to one key,
+    and the read then narrows on that key exactly."""
+    proj = _counterparty_vault()
+    for written in ("havenmart", "Havenmart", "HAVENMART", "Havenmart."):
+        result = ledger_tools.query_ledger(
+            proj, {"entity": "aggregate", "metric": "spending",
+                   "filters": {"merchant": written}})
+        assert result.ok, (written, result.text)
+        assert result.data["by_group"] == {"Uncategorized": "40.00"}
+
+
+def test_a_counterparty_filter_refuses_a_name_that_is_not_a_key():
+    """The generosity stops at discovery. A name that reaches two labels in a
+    lookup narrows nothing: the filter is refused, and what the vault holds is
+    named back."""
+    result = ledger_tools.query_ledger(
+        _counterparty_vault(), {"entity": "aggregate", "metric": "spending",
+                                "filters": {"merchant": "Haven"}})
+    assert not result.ok and result.refusal == "unknown_merchant"
+    assert "havenmart" in result.data["known_merchants"]
+
+
+def test_a_read_narrowed_by_a_counterparty_states_the_key_it_counted():
+    """What is stated is what was counted. The narrowing a figure declares is
+    the key the vault holds, never the spelling the filter arrived as, so the
+    thing named beside a number and the thing the number was taken over are one
+    string."""
+    result = ledger_tools.query_ledger(
+        _counterparty_vault(), {"entity": "transactions",
+                                "filters": {"merchant": "Havenmart."}})
+    assert result.ok
+    selected = [item for f in result.figures
+                for item in (f["boundary"] or {}).get("selected") or []
+                if item["kind"] == ledger_tools.BY_MERCHANT]
+    assert selected and {item["value"] for item in selected} == {"havenmart"}
+
+
+def test_a_truncated_remedy_list_says_how_to_find_the_one_that_was_meant():
+    """Where the list fits it is the whole answer and says nothing else. Where
+    it does not, forty names in any order are not the useful thing — how to
+    find the one that was meant is — so the last entry names the lookup and
+    carries no value the caller supplied."""
+    short = ledger_tools._known(["one", "two"], cap=2)
+    assert short == ["one", "two"]
+
+    long = ledger_tools._known([f"label-{n:03d}" for n in range(5)], cap=2)
+    assert long[:2] == ["label-000", "label-001"]
+    assert len(long) == 3
+    assert "matching" in long[-1] and "vocabulary" in long[-1]
 
 
 def test_how_many_labels_a_vault_holds_is_not_how_many_its_spending_uses():
@@ -6495,23 +6953,23 @@ def test_a_clause_that_names_no_thing_of_a_slices_kind_states_it_freely(
     assert result.answered, result.refusal
 
 
-def test_a_slice_this_run_holds_no_thing_for_is_held_to_no_name(registry):
-    """A figure taken over a set no read of this run established a thing for
-    says nothing this comparison can catch, and it is not made to.
+def test_every_account_a_point_cuts_by_is_one_a_sentence_can_name(registry):
+    """A figure taken over a set no read established a thing for can be bound
+    by no sentence, so nothing can check what is said beside it. The point read
+    produces no such figure.
 
-    The point read splits one brokerage account into what it holds in cash and
-    what it holds in securities, and names the second half by a path that is
-    not an account anyone can refer to. No sentence can bind that thing,
-    because a sentence only names what exists; so nothing can be bound beside
-    that figure wrongly, and the comparison stays silent rather than refusing a
-    sentence for naming the nearest thing there is."""
+    One account is one line, so every slice the point cuts by is a thing the
+    same read hands over, and a sentence naming one beside its own figure is
+    checked rather than merely tolerated."""
     point = registry.call("query_ledger", {"entity": "aggregate",
                                            "metric": "net_worth"})
-    split = [f for f in point.figures
-             if [c["kind"] for c in f["boundary"].get("cut") or []] == ["account"]
-             and f["record_ids"][0] not in
-             {i["account"] for i in point.identifiers}]
-    assert split, "the point named every slice it cut by, so nothing is silent"
+    per_account = [f for f in point.figures
+                   if [c["kind"] for c in f["boundary"].get("cut") or []]
+                   == ["account"]]
+    assert per_account, "the point cut by no account, so this proves nothing"
+    named = {i["account"] for i in point.identifiers}
+    assert all(f["record_ids"][0] in named for f in per_account), (
+        "a figure names a slice this run holds no thing for")
 
     said = ("Your {which} holds {amount}.",
             [("which", "account"), ("amount", "money", "balance", "account")])

@@ -36,7 +36,9 @@ class NetWorthLine:
     account's KIND rather than by the sign of the number (see `_side`).
 
     `as_of` is the date this figure was measured, usually earlier than the point
-    it belongs to."""
+    it belongs to. Where the line composes several measurements it is the
+    oldest of them, and `mixed_vintage` says that they were not all taken on
+    one day — a fact about the figure rather than a doubt about it."""
     account: str
     amount: Decimal
     currency: str
@@ -45,6 +47,7 @@ class NetWorthLine:
     origin: str
     kind: str
     proves: str = ""          # the document behind the figure
+    mixed_vintage: bool = False
 
     @property
     def provable(self) -> bool:
@@ -105,7 +108,8 @@ class NetWorthPoint:
             "lines": [{"account": ln.account, "amount": str(ln.amount),
                        "currency": ln.currency, "as_of": ln.as_of,
                        "grade": ln.grade, "origin": ln.origin, "kind": ln.kind,
-                       "provable": ln.provable, "proves": ln.proves}
+                       "provable": ln.provable, "proves": ln.proves,
+                       "mixed_vintage": ln.mixed_vintage}
                       for ln in sorted(self.lines, key=lambda l: l.account)],
             "missing": self.missing, "skipped": self.skipped,
             "held": self.held}
@@ -121,45 +125,6 @@ def _side(kind: str, balance: Decimal) -> Decimal:
 
 
 # --- the pieces of one point -------------------------------------------------
-
-def _closing_at(state, as_of: str):
-    """The latest `(date, amount, grade, doc_id)` closing observed at or before
-    `as_of`, or None when the account had no measurement by then.
-
-    A None caller contributes NOTHING to the point, not zero: an account not yet
-    seen is not an account worth nothing."""
-    best = None
-    for date, amount, grade, doc in state.closings:
-        if date <= as_of and (best is None or date >= best[0]):
-            best = (date, amount, grade, doc)
-    return best
-
-
-def _holdings_at(state, as_of: str) -> dict:
-    """Holdings at `as_of`, summed per currency: ``{currency: {value, as_of,
-    grade}}``. A later revaluation never moves an earlier point on the curve,
-    which is why the projection keeps the whole observation history."""
-    out: dict[str, dict] = {}
-    # One snapshot, not a composition: the holdings that count at this date are
-    # the ones on the latest statement at or before it, so an earlier point
-    # still uses the statement that was current then and a holding the newest
-    # statement no longer lists is no longer held.
-    observed = [ob for history in state.position_history.values() for ob in history
-                if ob.get("as_of") and ob["as_of"] <= as_of]
-    if not observed:
-        return out
-    newest = max(ob["as_of"] for ob in observed)
-    for best in (ob for ob in observed if ob["as_of"] == newest):
-        cur = best["currency"] or state.currency
-        row = out.setdefault(cur, {"value": Decimal("0"), "as_of": "",
-                                   "grade": CORROBORATED})
-        row["value"] += best["market_value"]
-        row["as_of"] = max(row["as_of"], best["as_of"])
-        # A line's grade is the weakest grade among the holdings it sums.
-        if best["grade"] and best["grade"] != CORROBORATED:
-            row["grade"] = best["grade"]
-    return out
-
 
 def _asserted_lines(proj, as_of: str):
     """Accounts a person's rulings brought into being. Returns
@@ -398,8 +363,14 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
         if info.kind not in ("depository", "liability", "investment"):
             continue
 
-        closing = _closing_at(st, as_of)
-        if closing is None and not _holdings_at(st, as_of):
+        # One account is one line. A brokerage's cash and its securities are
+        # one thing a person owns, so they compose into one value, dated by the
+        # oldest measurement under it and graded by the weakest — the same rule
+        # every other read of that account states it by. Holdings in a currency
+        # the cash is not in stay a line of their own, because nothing here
+        # converts between currencies.
+        composed = proj.composed_values(account, as_of)
+        if not composed:
             # An account held but not valuable at this date: named in `skipped`
             # so the point says what it does not include.
             later = min((d for d, *_ in st.closings if d > as_of), default="")
@@ -410,19 +381,13 @@ def net_worth(proj, as_of: str | None = None) -> NetWorthPoint:
                         "no balance has ever been observed for this account; if "
                         "its statements were held (parked or unreconciled), they "
                         "are not in your net worth")})
-        if closing is not None:
-            date, amount, grade, doc = closing
+            continue
+        for value in composed:
             point.lines.append(NetWorthLine(
-                account=account, amount=_side(info.kind, amount),
-                currency=info.currency,
-                as_of=date, grade=grade or CORROBORATED,   # pre-grade events
-                origin=info.origin or ISSUED, kind=info.kind, proves=doc))
-
-        for currency, row in _holdings_at(st, as_of).items():
-            point.lines.append(NetWorthLine(
-                account=f"{account}:Holdings", amount=row["value"],
-                currency=currency, as_of=row["as_of"], grade=row["grade"],
-                origin=info.origin or ISSUED, kind="holdings"))
+                account=account, amount=_side(info.kind, value.amount),
+                currency=value.currency, as_of=value.as_of, grade=value.grade,
+                origin=info.origin or ISSUED, kind=info.kind,
+                proves=value.proves, mixed_vintage=value.mixed_vintage))
 
     asserted, missing = _asserted_lines(proj, as_of)
     point.lines.extend(asserted)

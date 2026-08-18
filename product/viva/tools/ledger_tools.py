@@ -29,10 +29,12 @@ from __future__ import annotations
 
 import calendar
 from decimal import Decimal
+from functools import lru_cache
 
 from .. import quantity, render
 from ..ledger import networth
 from ..ledger.identity import masked
+from ..ledger.merchants import normalize_merchant
 from ..ledger.projection import UnknownAccountError
 from ..ledger.projection.categories import subcategory_group_key
 from ..ledger.projection import movements as movements_view
@@ -79,6 +81,34 @@ MAX_LABELS = 40
 # counterparty normalises onto this label.
 UNNAMED_MERCHANT = "Unnamed"
 
+# What a spending total counts and what it leaves out, said beside a total of
+# something. It names the thing left out by what it is — money settling between
+# two accounts the person holds — rather than by a label they have been shown
+# beside a figure, so a category the vault happens to call `transfers` and the
+# settlements this excludes are two different things and read as two.
+COUNTS_WHAT_LEFT = (
+    "This counts money that left your life. A movement recognised as settling "
+    "between two of your own accounts is not counted, whatever category it "
+    "carries; card purchases are counted.")
+
+# What a value standing on measurements of several days owes a person. It
+# points at nothing only a payload carries: how current the value is is said as
+# a fact about what it rests on, in words that are as true of one account's
+# composed value as of a point built from many.
+MIXED_VINTAGE = ("This rests on records of more than one date: each part is "
+                 "only as current as the record behind it.")
+
+
+def _mixed_vintage(dates) -> bool:
+    """Whether these measurements were taken on more than one day.
+
+    The condition `MIXED_VINTAGE` is said on, so every caller placing that
+    sentence places it on one rule. Days nothing recorded are not days, and a
+    value resting on one day and one unknown says nothing here: the unknown is
+    a gap and not a second vintage."""
+    return len({str(day) for day in dates if str(day)}) > 1
+
+
 QUERY_LEDGER_PARAMS = {
     "type": "object",
     "properties": {
@@ -91,6 +121,7 @@ QUERY_LEDGER_PARAMS = {
                      "enum": ["category", "subcategory", "tag", "merchant",
                               "account", "currency"]},
         "as_of": {"type": "string"},
+        "matching": {"type": "string"},
         "filters": {
             "type": "object",
             "properties": {
@@ -158,6 +189,48 @@ def _merchant_key(proj, m) -> str:
     return str(proj.merchant_key_of(m) or m.description or "").strip()
 
 
+@lru_cache(maxsize=512)
+def _merchant_filter_key(value: str) -> str:
+    """The counterparty key a caller's value names, under the vault's own key
+    function.
+
+    Every key this vault holds was minted by that function, so asking it what
+    the caller's string keys to is asking which held key was named rather than
+    matching one string against another. What the read compares, refuses
+    against and declares as its narrowing is that key, so the narrowing stays
+    an exact comparison with a value the vault holds.
+
+    Memoized: a read asks this once per movement, and the function is a run of
+    regular expressions."""
+    return normalize_merchant(value)
+
+
+# The ways a candidate label can answer a lookup, strongest first. Each is a
+# comparison between two strings the vault's own key function produced, so what
+# is found is generous about how a person wrote a name and exact about which
+# held label it names.
+MATCH_EXACT, MATCH_PREFIX, MATCH_TOKEN = 1, 2, 3
+
+
+def _match_tier(wanted: str, label: str) -> int:
+    """Which tier `label` answers `wanted` at, or 0 where it does not.
+
+    Both sides are keyed before they are compared, and the token tier splits on
+    the key function's own separator, so a token is a whole word of the key
+    rather than any run of characters inside it. A candidate matching at no
+    tier is not one the caller named."""
+    key = _merchant_filter_key(label)
+    if not wanted or not key:
+        return 0
+    if key == wanted:
+        return MATCH_EXACT
+    if key.startswith(wanted):
+        return MATCH_PREFIX
+    if wanted in key.split():
+        return MATCH_TOKEN
+    return 0
+
+
 def _merchants(keys) -> list:
     """The counterparties this read spoke about, each as an entity.
 
@@ -207,11 +280,19 @@ def _is_iso_date(value: str) -> bool:
 
 def _known(values, cap: int = 40) -> list:
     """A refusal's 'here is what I do have' list, capped so a large vocabulary
-    stays readable; the count says what the cap hid."""
+    stays readable; the count says what the cap hid.
+
+    Where it fits, the list is the whole answer and says nothing else. Where it
+    does not, the useful thing is not more names in some order but how to find
+    the one that was meant, so the last entry names the lookup. It carries no
+    value the caller supplied: what was asked for is what was just refused."""
     out = sorted(v for v in values if v)
     if len(out) <= cap:
         return out
-    return out[:cap] + [f"... and {len(out) - cap} more"]
+    return out[:cap] + [
+        f"... and {len(out) - cap} more; query_ledger with entity 'vocabulary', "
+        "the group_by for this kind and a 'matching' argument returns the ones "
+        "a name reaches"]
 
 
 # The machine tag a refusal carries when more than one filter is wrong. Each
@@ -257,7 +338,7 @@ def _check_filters(proj, filters: dict) -> ToolResult | None:
                  in ({proj.merchant_key_of(m) for m in proj.movements()}
                      | set(proj.merchant_categories()))
                  if str(key or "").strip()}
-        if filters["merchant"] not in known:
+        if _merchant_filter_key(filters["merchant"]) not in known:
             faults.append((
                 "unknown_merchant",
                 f"No counterparty '{filters['merchant']}' is on file under "
@@ -300,7 +381,9 @@ def _movement_passes(proj, m, filters: dict) -> bool:
         return False
     if "currency" in filters and m.currency != filters["currency"]:
         return False
-    if "merchant" in filters and proj.merchant_key_of(m) != filters["merchant"]:
+    if ("merchant" in filters
+            and proj.merchant_key_of(m) != _merchant_filter_key(
+                filters["merchant"])):
         return False
     if "window" in filters and not _in_window(m.date, filters["window"]):
         return False
@@ -458,16 +541,28 @@ def _query_balances(proj, filters: dict) -> ToolResult:
     # list, so the two cannot disagree: `bounded` refuses a figure that claims
     # to cover everything while also naming what it leaves out.
     narrowed = _narrowed_to(proj, filters)
-    rows, record_ids = [], []
+    rows, record_ids, values = [], [], []
+    # The accounts that came back as more than one value.
+    in_parts: set = set()
     for info in infos:
         ba = proj.balance(info.account)
         row = ba.to_dict()
         row.update({"record_id": info.account, "name": info.name,
-                    "kind": info.kind, "value": str(proj.account_value(info.account))})
+                    "kind": info.kind})
         rows.append(row)
         record_ids.append(info.account)
         if ba.provenance.doc_id:
             record_ids.append(ba.provenance.doc_id)
+        # What the account is worth as one figure. An investment account's cash
+        # and the holdings its latest statement measured are one thing a person
+        # owns, so they are one value, dated by the oldest measurement under it
+        # and graded by the weakest of them rather than by its cash alone.
+        # Holdings in a currency the cash is not in stay a figure of their own,
+        # because nothing here converts between currencies.
+        composed = proj.composed_values(info.account)
+        if len(composed) > 1:
+            in_parts.add(info.account)
+        values.extend((row, value) for value in composed)
     if not rows:
         return refusal(TOOL, "no_accounts",
                        "I don't have any balance-holding accounts on file yet.")
@@ -480,23 +575,29 @@ def _query_balances(proj, filters: dict) -> ToolResult:
     # account someone is owed on measures what is owed rather than what is
     # held, and both the word it is written under and the kind it declares say
     # so.
-    figures = [figure(r["value"],
+    #
+    # An account that came back as more than one value is not the whole of what
+    # any one of them ranges over: each is a part of the account, so none of
+    # them declares itself the whole however few accounts are held.
+    figures = [figure(value.amount,
                       f"{r['name'] or r['record_id']} — {_measure_of(r['kind'])}",
                       quantity=_measure_of(r["kind"]),
-                      grade=r["grade"], dated=r["dated"], currency=r["currency"],
+                      grade=value.grade, dated=value.as_of,
+                      currency=value.currency,
                       record_ids=[r["record_id"]]
-                      + ([r["provenance"]["doc_id"]]
-                         if r["provenance"].get("doc_id") else []),
-                      boundary=bounded(whole=not narrowed and holds == 1,
+                      + ([value.proves] if value.proves else []),
+                      boundary=bounded(whole=(not narrowed and holds == 1
+                                              and r["record_id"]
+                                              not in in_parts),
                                        counted=1, held=holds,
                                        selected=narrowed,
                                        cut=cut_set(narrowed,
                                                    {"kind": BY_ACCOUNT,
                                                     "value": r["record_id"]})))
-               for r in rows]
+               for r, value in values]
     figures.append(figure(len(rows), "accounts holding a balance",
                           quantity=quantity.COUNT,
-                          grade=weakest(r["grade"] for r in rows),
+                          grade=weakest(value.grade for _r, value in values),
                           record_ids=sorted({r["record_id"] for r in rows}),
                           boundary=bounded(
                               whole=not narrowed and len(rows) == holds,
@@ -511,14 +612,18 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         # this is, and why its grade is what it is.
         data={"balances": [{k: v for k, v in r.items()
                             if k not in ("amount", "currency", "grade",
-                                         "dated", "value", "as_of")}
+                                         "dated", "as_of")}
                            for r in rows]},
-        grade=weakest(r["grade"] for r in rows),
-        dated=min((r["dated"] for r in rows if r["dated"]), default=""),
+        grade=weakest(value.grade for _r, value in values),
+        dated=min((value.as_of for _r, value in values if value.as_of),
+                  default=""),
         record_ids=sorted(set(record_ids)),
+        caveats=([MIXED_VINTAGE]
+                 if any(_mixed_vintage(value.dates) for _r, value in values)
+                 else []),
         coverage=("Included: " + "; ".join(
-            f"{r['name'] or r['record_id']} (as of {r['dated'] or 'unknown'}, "
-            f"{r['grade']})" for r in rows)),
+            f"{r['name'] or r['record_id']} (as of {value.as_of or 'unknown'}, "
+            f"{value.grade})" for r, value in values)),
         text=f"{len(rows)} account balance(s), each with its grade and source.")
 
 
@@ -633,11 +738,15 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
               "individual rows, narrowed to what you want to see."))
 
 
+# `filters` is required, so a call that names nothing at all is refused where
+# the arguments are validated rather than after the read has been entered.
+# Which filters are narrow enough is the read's own rule, in `NARROWING`.
 LIST_MOVEMENTS_PARAMS = {
     "type": "object",
     "properties": {
         "filters": QUERY_LEDGER_PARAMS["properties"]["filters"],
     },
+    "required": ["filters"],
 }
 
 # What one row says: what identifies the movement and what it was ruled to be.
@@ -895,14 +1004,18 @@ _PARTITIONING = ("category", "subcategory", "merchant", "account", "currency")
 def _narrowed_to(proj, filters: dict) -> list:
     """How the filters narrowed this read, as the things they named.
 
-    A category is named in the vault's own word for it rather than in the word
-    the filter arrived as: what is stated is what was counted. A window is
-    named by which of its edges were given, so a half-open one is still said
-    rather than dropped."""
+    A category and a counterparty are each named in the vault's own word for it
+    rather than in the word the filter arrived as: what is stated is what was
+    counted. A window is named by which of its edges were given, so a half-open
+    one is still said rather than dropped."""
     out = []
     for name in sorted(set(filters) & set(_FILTER_NAMES)):
-        value = (proj.canonical_category(filters[name])
-                 if name == "category" else filters[name])
+        if name == "category":
+            value = proj.canonical_category(filters[name])
+        elif name == "merchant":
+            value = _merchant_filter_key(filters[name])
+        else:
+            value = filters[name]
         out.append({"kind": _FILTER_NAMES[name], "value": value})
     window = filters.get("window") or {}
     start, end = (window.get("from") or "")[:10], (window.get("to") or "")[:10]
@@ -987,13 +1100,21 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
             "by_group": {k: str(v) for k, v in sorted(named.items())},
             "groups": {"named": len(named), "total": len(grouped)},
             "total": str(extras["total"]), "count": extras["count"]}
-    caveats = ["Own-account transfers and settlements are excluded by nature; "
-               "card purchases are included."] + span_caveats
+    # What the total counted and what it did not, said where there is a total
+    # of something: a read that counted no movement has nothing for this
+    # sentence to be about. It names no word the person has been shown as a
+    # label, so the category called `transfers` and the settlements this leaves
+    # out are not one word doing two jobs.
+    caveats = ([COUNTS_WHAT_LEFT] if extras["count"] else []) + span_caveats
     if group_by == "tag":
         data["untagged"] = str(extras["untagged"])
         data["overlaps"] = True
-        caveats.append("Tags overlap: the per-tag figures do not sum to the "
-                       "total, and untagged money appears in no line.")
+        # Said of the tags the read found rather than of the grouping it was
+        # asked for: on a vault carrying no tag there are no per-tag figures
+        # for them to fail to sum to.
+        if grouped:
+            caveats.append("Tags overlap: the per-tag figures do not sum to "
+                           "the total, and untagged money appears in no line.")
     # An amount inside a caveat is an amount, and is written by the one
     # renderer that writes every other one. A caveat is passed on verbatim, so
     # a figure it spelled for itself would be the sentence under the answer
@@ -1344,8 +1465,14 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
         grade=weakest(_grades_in(data)),
         dated=as_of,
         record_ids=record_ids,
-        caveats=["Each line is only as current as its stalest input; see the "
-                 "point's own staleness fields."],
+        # A point rests on records of more than one date two ways: its lines
+        # were measured on different days, or one line composes days of its
+        # own. The sentence is as true of the second as of the first, and a
+        # point of one line is the case where only the second can happen.
+        caveats=([MIXED_VINTAGE]
+                 if _mixed_vintage(line.get("as_of", "") for line in lines)
+                 or any(line.get("mixed_vintage") for line in lines)
+                 else []),
         text=f"Net worth as of {as_of or 'unknown'}.")
 
 
@@ -1375,7 +1502,7 @@ _VOCABULARIES = {
 }
 
 
-def _vocabulary(proj, group_by: str) -> ToolResult:
+def _vocabulary(proj, group_by: str, matching: str = "") -> ToolResult:
     """What labels this vault holds under one of its own vocabularies, and how
     many.
 
@@ -1386,16 +1513,36 @@ def _vocabulary(proj, group_by: str) -> ToolResult:
     nothing posted against it yet. Answering "how many do I have" from that
     count is a real number about one thing put in a sentence about another —
     the failure the quantity vocabulary exists to prevent, one level up, at
-    which read was called."""
+    which read was called.
+
+    ``matching`` asks which of the vocabulary a name reaches. It narrows which
+    labels are named and nothing else: the count is the whole vocabulary's size
+    either way, because a count over the labels a name reached would be a
+    number about a set nothing can name. What comes back is labels this vault
+    holds, so a follow-up narrows on one of them exactly, and the generosity
+    stops here."""
     labels = [str(label) for label in _VOCABULARIES[group_by](proj)]
-    # Alphabetical, because a vocabulary has no size to rank by and two reads of
-    # one ledger must name the same labels.
-    named = sorted(labels)[:MAX_LABELS]
+    if matching:
+        wanted = _merchant_filter_key(matching)
+        # By tier and then alphabetically: closest first, and one ledger read
+        # twice orders the same labels the same way.
+        reached = [(_match_tier(wanted, label), label) for label in labels]
+        found = [label for tier, label in sorted(reached) if tier]
+    else:
+        # Alphabetical, because a vocabulary has no size to rank by and two
+        # reads of one ledger must name the same labels.
+        found = sorted(labels)
+    named = found[:MAX_LABELS]
     caveats = []
-    if len(named) < len(labels):
-        caveats.append(f"The first {len(named)} of {len(labels)} {group_by} "
-                       f"label(s) are named here, in alphabetical order; the "
-                       f"count is the whole count.")
+    if len(named) < len(found):
+        # The numbers are about what came back, so a capped lookup says how
+        # many of the labels it reached are named rather than how many the
+        # vault holds; the count figure states the whole either way.
+        caveats.append(
+            f"The first {len(named)} of {len(found)} {group_by} label(s) "
+            + ("a name reached are named here, closest match first"
+               if matching else "are named here, in alphabetical order")
+            + "; the count is the whole count.")
     return ToolResult(
         tool=TOOL, ok=True,
         data={"vocabulary": group_by, "labels": named, "count": len(labels)},
@@ -1415,7 +1562,10 @@ def _vocabulary(proj, group_by: str) -> ToolResult:
                      else []),
         caveats=caveats,
         coverage=f"{len(labels)} {group_by} label(s) this vault holds.",
-        text=f"The {group_by} vocabulary holds {len(labels)} label(s).")
+        text=(f"The {group_by} vocabulary holds {len(labels)} label(s)."
+              if not matching else
+              f"{len(found)} of {len(labels)} {group_by} label(s) are reached "
+              f"by that name."))
 
 
 # Which filters each read honors. A filter an entity would ignore is refused,
@@ -1479,6 +1629,15 @@ def query_ledger(proj, args: dict, locale: str = "",
             return refusal(TOOL, "as_of_unsupported",
                            "as_of applies to the net_worth metric; other "
                            "reads answer from the latest evidence.")
+    if "matching" in args and entity != "vocabulary":
+        # Asking which of a vocabulary a name reaches is a question about
+        # labels. A read of money answers it by narrowing, on a value the
+        # vocabulary read hands back, so the two are refused apart rather than
+        # one quietly doing the other's work.
+        return refusal(TOOL, "matching_unsupported",
+                       "matching applies to entity 'vocabulary', which is "
+                       "where a name is looked up; a read of money narrows by "
+                       "a filter instead.")
     if entity == "balances":
         return _query_balances(proj, filters)
     if entity == "transactions":
@@ -1492,7 +1651,7 @@ def query_ledger(proj, args: dict, locale: str = "",
                            "entity 'vocabulary' needs a group_by naming which "
                            "vocabulary: " + ", ".join(sorted(_VOCABULARIES))
                            + ".")
-        return _vocabulary(proj, group_by)
+        return _vocabulary(proj, group_by, str(args.get("matching") or ""))
     # aggregate
     metric = args.get("metric")
     if not metric:
@@ -1603,18 +1762,30 @@ def get_provenance(proj, args: dict) -> ToolResult:
         ba = proj.balance(rid)
         ids = [rid] + ([ba.provenance.doc_id] if ba.provenance.doc_id else [])
         measures = _measure_of(proj.account_info(rid).kind)
+        # What the account is worth, composed once and the same way every other
+        # read of it composes: cash plus the holdings its latest statement
+        # measured, dated by the oldest measurement under it and graded by the
+        # weakest, with holdings in a second currency kept as a second figure.
+        values = proj.composed_values(rid)
         # One account's balance, named as the account it is of: this read
         # reaches one record and knows nothing about how many others there
         # are, so it never claims to be the whole of what a balance measures.
         return ToolResult(
-            tool="get_provenance", ok=True, grade=ba.grade, dated=ba.dated,
-            figures=[figure(proj.account_value(rid), f"{rid} — {measures}",
+            tool="get_provenance", ok=True,
+            grade=weakest(value.grade for value in values),
+            dated=min((value.as_of for value in values if value.as_of),
+                      default=""),
+            figures=[figure(value.amount, f"{rid} — {measures}",
                             quantity=measures,
-                            grade=ba.grade, dated=ba.dated,
-                            currency=ba.currency, record_ids=ids,
+                            grade=value.grade, dated=value.as_of,
+                            currency=value.currency, record_ids=ids,
                             boundary=bounded(whole=False,
                                              cut=[{"kind": BY_ACCOUNT,
-                                                   "value": rid}]))],
+                                                   "value": rid}]))
+                     for value in values],
+            caveats=([MIXED_VINTAGE]
+                     if any(_mixed_vintage(value.dates) for value in values)
+                     else []),
             identifiers=_identifiers(proj, [rid]),
             record_ids=[rid] + ([ba.provenance.doc_id]
                                 if ba.provenance.doc_id else []),

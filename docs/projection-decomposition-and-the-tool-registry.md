@@ -1214,3 +1214,97 @@ differs — so the tag vocabulary goes from nineteen to **twenty-one**, and four
 new repairs bring those to twenty-three. `speak-shape-v9`, `speak-repairs-v2`, `speak-final-v12` and `pack-v12`
 were in force until this cycle. No tools version is claimed: nothing about what
 a read is asked for changed._
+
+_**Amended 2026-08-18 (reachability — what the model is told). A description's
+job is to say what a read returns.** These entries record what each read is
+asked for; the descriptions file records what a model is told about asking. The
+rule they are now written to is that a description names what comes back, not
+what it costs to get: a sentence steering a model away from a verb on grounds of
+tokens is a cost decision made where a capability decision belongs, and it made
+the only path to rows unreachable in ordinary words. Two consequences worth
+having in one place. A read's requirement belongs in the schema the model is
+shown rather than only in the body that refuses — the same rule that makes
+`figure()` refuse a defaulted quantity, one layer out, so a fault lands where
+the call is written rather than after a call is spent. And a filter a read
+honours but that does not narrow it is a trap unless the description says so;
+`currency` is that filter on the detailed read. `tools-v13`._
+
+_**Amended 2026-08-18 again (reachability — a new way to find a thing). A
+search is generous and a narrowing is exact, because a figure's scope may only
+name a thing the vault holds.** That sentence decides this cycle's question and
+the next ones of its shape, so it belongs beside the closed narrowing vocabulary
+it is a rule about. The question was how a person names a counterparty they can
+see and this product cannot find. The tempting answer is a `contains` filter,
+and it is the wrong one for a reason that generalises: a filter accepting a
+pattern makes the narrowing a pattern, and then a figure's boundary must either
+name the pattern — a member the closed vocabulary does not have and cannot be
+given, since no entity in the vault corresponds to it — or name the resolved
+labels, which the caller never named and the entity join has nothing coherent to
+compare against. Either way an answer becomes true of a set the person did not
+describe, disclosed only if somebody remembers to write a sentence for it.
+
+Putting the generosity in **discovery** costs none of that. A lookup returns
+labels the vault holds; the caller picks one and passes it as the exact filter
+value it always was. The matching rule can then be as generous as the evidence
+wants, because its output is a set of held labels rather than a number: a
+generous match cannot produce a wrong figure, only a longer list. The rule is
+three ordered comparisons — key equality, key prefix, whole token of the key —
+with the vault's own key function applied to both sides, so nothing here is a
+substring test, a similarity score or a list of words. The same function is now
+applied to a filter's own value, which is the same move read the other way:
+asking the vault what the caller's string keys to, and then narrowing on that
+key alone. `tools-v14`._
+
+_**Amended 2026-08-18 (the wording tail — a sentence is placed where its
+referent is).** The rule this document already carries — a property of a figure
+that the machine holds is placed by the machine, never asked for through a hole
+— was silent about **where**, and silence turned out to be a claim. Every
+statement a boundary produced was gathered from every figure the answer stated,
+deduplicated across the whole answer, and appended after the last clause, each
+one beginning with a word that points at what was just read. Pooled, that word
+pointed at nothing; deduplicated, two figures over one account each and both
+saying so became one sentence stating a count of one over an answer covering
+two. So the rule gains its second half: **placed beside the thing it is a
+property of.** A statement drawn from one figure's boundary goes under the
+clause that bound that figure, and is said once within that clause and again
+under the next clause that makes it. A three-clause answer is wordier, and that
+is the price of a word meaning something.
+
+One statement is not a figure's and never was. How many of the accounts a
+person holds an answer covers is a claim about the answer, so it is computed
+over every figure the answer stated — the distinct accounts those figures name,
+which is a set the code can list — placed once, and worded as being about the
+answer. That is the nested-rather-than-disjoint remedy, applied where two
+adjacent counts could otherwise disagree. `pack-v14`.
+
+_**Corrected within the same cycle, twice, and the second correction is the
+rule.** The paragraph above first said that a figure covering several accounts
+and naming none simply contributes nothing to the count. That is not enough:
+such a figure reached accounts the count then leaves out, so the answer states
+a shortfall it does not have — "This answer covers 1 of the 2 accounts you
+hold" over an answer that reached both. The general rule replaces it. **A
+stated figure contributes to the answer's coverage count only where it
+declares, as data, exactly which accounts it covers** — its boundary carries a
+count of accounts equal to the number of accounts it names — and any stated
+figure failing that test, including one carrying no accounts block at all
+whatever it declares about being the whole, makes the answer place no coverage
+sentence at all. Only the balances read declares accounts today, so what goes
+silent is every answer mixing a per-account balance with anything else: a
+spending total, a category total, a count, a computed figure not descended from
+a balance. That loss is taken deliberately. A false disclosure is worse than a
+missing one, and the alternative — making other reads emit an accounts block so
+a sentence can be placed — would put a count over a set nothing can list back
+in by the front door. What each read was narrowed to is still said, under the
+clause that used it._
+
+And the same cycle answered the other half of the mechanism, where a machine's
+magnitude sits inside a model's words. A quotient of two unlike kinds carries
+the vocabulary's own name for having no name, and every hole that could hold
+one writes a proportion per hundred; a number no name is true of has no unit,
+so writing it picks one, and the binding is refused instead. *How does my
+spending compare to my income* is removed by that, knowingly. A quantity whose
+own name asserts which way the money goes is declared as such in the module
+that owns the vocabulary, and a value contradicting it fills no hole asking for
+it — so a card paid past its balance no longer reaches a person as a debt of
+that size. Neither check reads a word of a clause: both compare declarations
+the code itself wrote. `speak-shape-v11`._
