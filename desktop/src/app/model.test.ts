@@ -21,7 +21,13 @@ describe("minimal shell model", () => {
     expect(demoState.reviewCount).toBe(2);
     expect(demoState.documents.map((doc) => doc.state)).toEqual(["Verified", "Verified", "Verified", "Held", "Pending"]);
     expect(demoState.queue.map((item) => item.type)).toEqual(["Document review", "Merchant", "Transfer"]);
+    expect(demoState.queue.map((item) => item.disposition)).toEqual(["proposal", "answer", "confirm"]);
     expect(demoState.recent.map((item) => item.tone)).toEqual(["inflow", "outflow", "neutral"]);
+    expect(demoState.captureQueue.map((item) => item.state)).toEqual(["captured", "processing", "held", "ready"]);
+    expect(demoState.processingJobs.map((job) => job.state)).toEqual(["running", "paused", "done"]);
+    expect(demoState.outboundRecords.map((record) => record.state)).toEqual(["sent", "queued", "blocked"]);
+    expect(demoState.conversationTurns.map((turn) => turn.state)).toEqual(["prompt", "citation", "prompt", "refusal"]);
+    expect(demoState.conversationPrompts.map((prompt) => prompt.state)).toEqual(["ready", "refusal", "citation"]);
     expect(demoState.trustNotes).toHaveLength(3);
   });
 

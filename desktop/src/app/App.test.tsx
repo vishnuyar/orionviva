@@ -13,6 +13,18 @@ describe("minimal shell", () => {
     expect(getByText("Fixture boundary")).toBeInTheDocument();
   });
 
+  it("lets the overview spotlight select an account and open its detail", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText, getAllByText } = render(<App />);
+
+    await user.click(getAllByText("Long view savings").find((node) => node.closest("button")?.classList.contains("account-card-button"))!.closest("button")!);
+
+    expect(getByText("Selected account")).toBeInTheDocument();
+    expect(getByRole("button", { name: /open accounts/i })).toBeInTheDocument();
+    expect(getByText("Long view savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
+    expect(getByText("Savings statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+  });
+
   it("moves through shell destinations without leaving the page", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = render(<App />);
@@ -49,10 +61,47 @@ describe("minimal shell", () => {
     expect(getByText(/A proposal will always wait for an explicit yes/)).toBeInTheDocument();
   });
 
+  it("opens the Viva conversation drawer with cited turns and refusal states", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText, getAllByRole } = render(<App />);
+
+    await user.click(getByRole("button", { name: /ask viva/i }));
+
+    expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
+    expect(getByText("This preview is synthetic and local-only. Viva can surface cited turns and refusals, but there is no live model connection yet.")).toBeInTheDocument();
+    expect(getByText("Source: Brokerage statement, page 4")).toBeInTheDocument();
+    expect(getByText("I can point to the question and the evidence, but the category still needs your answer.")).toBeInTheDocument();
+    expect(getByRole("button", { name: /what changed this month\?/i })).toBeInTheDocument();
+
+    await user.click(getAllByRole("button", { name: /show the evidence/i })[0]);
+    expect(getByRole("button", { name: /show the evidence/i })).toHaveClass("active");
+
+    await user.click(getByRole("button", { name: /close viva conversation/i }));
+    expect(getByRole("button", { name: /ask viva/i })).toBeInTheDocument();
+  });
+
+  it("keeps the overview selected account spotlight in sync with selection", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText, container } = render(<App />);
+
+    expect(getByText("Everyday checking", { selector: ".coverage-account-title" })).toBeInTheDocument();
+    expect(getByText("Checking statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+
+    await user.click(container.querySelectorAll(".account-card-button")[4] as HTMLElement);
+
+    expect(getByText("Taxable Brokerage", { selector: ".coverage-account-title" })).toBeInTheDocument();
+    expect(getByText("Brokerage statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByRole("button", { name: /open accounts/i })).toBeInTheDocument();
+  });
+
   it("shows the selected document detail inside documents", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = render(<App />);
     await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
+    expect(getByRole("heading", { name: "Capture before reading" })).toBeInTheDocument();
+    expect(getByText("Capture queue")).toBeInTheDocument();
+    expect(getByText("Processing and recovery")).toBeInTheDocument();
+    expect(getByText("Outbound records")).toBeInTheDocument();
     await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
     expect(getByText("Generated locally")).toBeInTheDocument();
     expect(getByText("2 pages")).toBeInTheDocument();
@@ -78,7 +127,25 @@ describe("minimal shell", () => {
     await user.click(getByRole("button", { name: /merchant category/i }));
     expect(getByText("Merchant")).toBeInTheDocument();
     expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
-    expect(getByText("proposal")).toBeInTheDocument();
+    expect(getByText("proposal", { selector: ".review-action-outcome" })).toBeInTheDocument();
+    expect(getByText("answer", { selector: ".review-action-state" })).toBeInTheDocument();
+    expect(getByRole("status")).toHaveTextContent("No action taken yet.");
+  });
+
+  it("refreshes the review surface after an action", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText } = render(<App />);
+
+    await user.click(getByRole("button", { name: "ReviewWhat needs you2" }));
+    await user.click(getByRole("button", { name: /merchant category/i }));
+    await user.click(getByRole("button", { name: /^Answer$/i }));
+
+    expect(getByRole("status")).toHaveTextContent("Answer for Merchant category recorded.");
+    expect(getByText("Refresh 1")).toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: /^Confirm$/i }));
+    expect(getByRole("status")).toHaveTextContent("Confirmation for Merchant category recorded.");
+    expect(getByText("Refresh 2")).toBeInTheDocument();
   });
 
   it("keeps the selected document when navigation moves away and back", async () => {
@@ -95,6 +162,20 @@ describe("minimal shell", () => {
     expect(getByRole("button", { name: /open page review/i })).toBeInTheDocument();
   });
 
+  it("keeps the selected account when navigation moves away and back", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText, container } = render(<App />);
+
+    await user.click(container.querySelectorAll(".account-card-button")[1] as HTMLElement);
+    await user.click(getByRole("button", { name: /open accounts/i }));
+    expect(getByRole("heading", { name: "5 accounts in the demo vault" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Long view savings" })).toBeInTheDocument();
+    expect(getByText("Savings statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: /overview.*your picture/i }));
+    expect(getByText("Long view savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
+  });
+
   it("keeps the selected review question when navigation moves away and back", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = render(<App />);
@@ -107,6 +188,23 @@ describe("minimal shell", () => {
     await user.click(getByRole("button", { name: /review.*what needs you2/i }));
     expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
     expect(getByRole("button", { name: /open document review/i })).toBeInTheDocument();
+  });
+
+  it("keeps the accounts detail panel focused on the selected account", async () => {
+    const user = userEvent.setup();
+    const { getByRole, getByText, container } = render(<App />);
+
+    await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
+    expect(getByRole("heading", { name: "5 accounts in the demo vault" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Everyday checking" })).toBeInTheDocument();
+    expect(getByText("Checking statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByText("Grade")).toBeInTheDocument();
+
+    await user.click(container.querySelectorAll(".detail-row-button")[4] as HTMLElement);
+
+    expect(getByRole("heading", { name: "Taxable Brokerage" })).toBeInTheDocument();
+    expect(getByText("Brokerage statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByText("Quarterly statements with holdings")).toBeInTheDocument();
   });
 
   it("lets the local capture notice be dismissed", async () => {

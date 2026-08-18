@@ -38,6 +38,11 @@ export function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(surface.documents[0].name);
   const [selectedQueue, setSelectedQueue] = useState(surface.queue[0].label);
+  const [selectedAccount, setSelectedAccount] = useState(surface.accounts[0].id);
+  const [reviewFeedback, setReviewFeedback] = useState("No action taken yet.");
+  const [reviewRefresh, setReviewRefresh] = useState(0);
+  const [conversationOpen, setConversationOpen] = useState(false);
+  const [conversationPrompt, setConversationPrompt] = useState(surface.conversationPrompts[0].label);
 
   useEffect(() => {
     let alive = true;
@@ -48,6 +53,8 @@ export function App() {
       setSurface(nextSurface);
       setSelectedDocument(nextSurface.documents[0]?.name ?? "");
       setSelectedQueue(nextSurface.queue[0]?.label ?? "");
+      setSelectedAccount(nextSurface.accounts[0]?.id ?? "");
+      setConversationPrompt(nextSurface.conversationPrompts[0]?.label ?? "");
     }).catch(() => {
       if (alive) {
         setNotice("The local vault opened, but its surface data could not be loaded.");
@@ -64,7 +71,7 @@ export function App() {
   }
 
   function addDocument() {
-    setNotice("Document capture is ready for the local bridge. Nothing has left this device.");
+    setNotice("Document capture is staged locally. Nothing has left this device.");
     setDestination("documents");
   }
 
@@ -72,6 +79,11 @@ export function App() {
     setVaultSource(syntheticSurfaceData);
     setDestination("overview");
     setNotice("Demo vault reset to the checked-in fixture snapshot.");
+  }
+
+  function refreshReviewFeedback(action: string) {
+    setReviewRefresh((value) => value + 1);
+    setReviewFeedback(`${action} recorded. The queue refreshed from the synthetic surface.`);
   }
 
   async function openVault(event: FormEvent<HTMLFormElement>) {
@@ -218,7 +230,7 @@ export function App() {
             <ChevronRight size={14} />
             <strong>{pageCopy[destination].title}</strong>
           </div>
-          <button className="ask-button" onClick={() => setNotice("Viva will open here when the local conversation bridge is connected.")}>
+          <button className="ask-button" onClick={() => setConversationOpen(true)}>
             <Sparkles size={16} />
             Ask Viva
           </button>
@@ -248,23 +260,63 @@ export function App() {
             </div>
           </div>
 
-          {destination === "overview" && <Overview state={surface} onNavigate={navigate} />}
-          {destination === "accounts" && <Accounts state={surface} />}
+          {destination === "overview" && (
+            <Overview
+              state={surface}
+              selectedAccount={selectedAccount}
+              onSelectAccount={setSelectedAccount}
+              onNavigate={navigate}
+            />
+          )}
+          {destination === "accounts" && (
+            <Accounts
+              state={surface}
+              selectedAccount={selectedAccount}
+              onSelectAccount={setSelectedAccount}
+            />
+          )}
           {destination === "documents" && (
             <Documents state={surface} selectedDocument={selectedDocument} onSelectDocument={setSelectedDocument} />
           )}
           {destination === "review" && (
-            <Review state={surface} selectedQueue={selectedQueue} onSelectQueue={setSelectedQueue} onNavigate={navigate} />
+            <Review
+              state={surface}
+              selectedQueue={selectedQueue}
+              onSelectQueue={setSelectedQueue}
+              onNavigate={navigate}
+              reviewFeedback={reviewFeedback}
+              reviewRefresh={reviewRefresh}
+              onReviewAction={refreshReviewFeedback}
+            />
           )}
           {destination === "activity" && <Activity state={surface} onNavigate={navigate} />}
           {destination === "trust" && <Trust state={surface} />}
         </div>
+        {conversationOpen && (
+          <ConversationDrawer
+            state={surface}
+            selectedPrompt={conversationPrompt}
+            onSelectPrompt={setConversationPrompt}
+            onClose={() => setConversationOpen(false)}
+          />
+        )}
       </main>
     </div>
   );
 }
 
-function Overview({ state, onNavigate }: { state: DemoState; onNavigate: (destination: Destination) => void }) {
+function Overview({
+  state,
+  selectedAccount,
+  onSelectAccount,
+  onNavigate,
+}: {
+  state: DemoState;
+  selectedAccount: string;
+  onSelectAccount: (name: string) => void;
+  onNavigate: (destination: Destination) => void;
+}) {
+  const activeAccount = state.accounts.find((account) => account.id === selectedAccount) ?? state.accounts[0];
   return (
     <>
       <section className="hero-grid">
@@ -305,9 +357,54 @@ function Overview({ state, onNavigate }: { state: DemoState; onNavigate: (destin
             <span />
           </div>
           <p>{state.corpusCoverage}. The surface is useful, but it does not pretend the vault is complete.</p>
+          <div className="coverage-account">
+            <div className="detail-panel-label">Selected account</div>
+            <button className="coverage-account-title" onClick={() => onNavigate("accounts")}>
+              {activeAccount.name}
+            </button>
+            <div className="coverage-account-meta">
+              <span>{activeAccount.kind}</span>
+              <span>{activeAccount.gradeLabel}</span>
+              <span>{activeAccount.asOf}</span>
+            </div>
+            <p>{activeAccount.coverage}</p>
+          </div>
           <button className="text-button" onClick={() => onNavigate("documents")}>
             See document status <ArrowUpRight size={14} />
           </button>
+        </div>
+      </section>
+
+      <section className="section-block">
+        <div className="section-heading">
+          <div>
+            <div className="section-kicker">One clean picture</div>
+            <h2>Account spotlight</h2>
+          </div>
+          <button className="text-button" onClick={() => onNavigate("accounts")}>
+            Open accounts <ArrowUpRight size={14} />
+          </button>
+        </div>
+        <div className="account-grid">
+          {state.accounts.map((account) => (
+            <button
+              className={selectedAccount === account.name ? "account-card account-card-button active" : "account-card account-card-button"}
+              key={account.name}
+              onClick={() => onSelectAccount(account.id)}
+            >
+              <div className="account-icon">{account.name.slice(0, 1)}</div>
+              <div className="account-copy">
+                <div className="account-name">{account.name}</div>
+                <div className="account-kind">{account.kind}</div>
+                <div className="account-note">
+                  <span className={`mini-dot ${account.grade}`} />
+                  {account.note}
+                </div>
+                <div className="account-date">As of {account.asOf}</div>
+              </div>
+              <div className="account-amount">{account.display}</div>
+            </button>
+          ))}
         </div>
       </section>
 
@@ -332,10 +429,12 @@ function Overview({ state, onNavigate }: { state: DemoState; onNavigate: (destin
                 </div>
                 <p>{item.detail}</p>
               </div>
-              <button className="secondary-button">{item.action}</button>
-            </div>
-          ))}
+          <button className="secondary-button" onClick={() => onSelectAccount(state.accounts[index % state.accounts.length].name)}>
+            {item.action}
+          </button>
         </div>
+      ))}
+      </div>
       </section>
 
       <section className="section-block">
@@ -406,15 +505,28 @@ function Overview({ state, onNavigate }: { state: DemoState; onNavigate: (destin
   );
 }
 
-function Accounts({ state }: { state: DemoState }) {
+function Accounts({
+  state,
+  selectedAccount,
+  onSelectAccount,
+}: {
+  state: DemoState;
+  selectedAccount: string;
+  onSelectAccount: (name: string) => void;
+}) {
+  const activeAccount = state.accounts.find((account) => account.id === selectedAccount) ?? state.accounts[0];
   return (
     <section className="feature-panel">
       <div className="feature-icon">◎</div>
-      <h2>Two accounts in the demo vault</h2>
+      <h2>{state.accounts.length} accounts in the demo vault</h2>
       <p>Each account keeps its own meaning and measurement date. A liability would speak as owed, never as a balance.</p>
       <div className="account-detail-list">
         {state.accounts.map((account) => (
-          <div className="detail-row" key={account.name}>
+          <button
+            className={selectedAccount === account.name ? "detail-row detail-row-button active" : "detail-row detail-row-button"}
+            key={account.name}
+            onClick={() => onSelectAccount(account.id)}
+          >
             <div>
               <strong>{account.name}</strong>
               <span>
@@ -425,8 +537,31 @@ function Accounts({ state }: { state: DemoState }) {
               <strong>{account.display}</strong>
               <span>{account.asOf}</span>
             </div>
-          </div>
+          </button>
         ))}
+      </div>
+      <div className="detail-panel">
+        <div className="detail-panel-label">Selected account</div>
+        <h3>{activeAccount.name}</h3>
+        <p>{activeAccount.coverage}</p>
+        <div className="detail-panel-grid">
+          <div>
+            <span>Kind</span>
+            <strong>{activeAccount.kind}</strong>
+          </div>
+          <div>
+            <span>Grade</span>
+            <strong>{activeAccount.gradeLabel}</strong>
+          </div>
+          <div>
+            <span>Measured</span>
+            <strong>{activeAccount.asOf}</strong>
+          </div>
+          <div>
+            <span>Note</span>
+            <strong>{activeAccount.note}</strong>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -448,8 +583,61 @@ function Documents({
       <div className="feature-icon">
         <FilePlus2 size={22} />
       </div>
-      <h2>Capture before reading</h2>
-      <p>Originals are saved privately first. This preview has no reader or network connection, so processing waits honestly.</p>
+          <h2>Capture before reading</h2>
+      <p>Originals are saved privately first. This preview shows the capture, processing, recovery, and outbound steps separately, so nothing is blurred together.</p>
+      <div className="journey-band">
+        <div className="journey-card">
+          <div className="detail-panel-label">Capture queue</div>
+          <div className="journey-list">
+            {state.captureQueue.map((item) => (
+              <div className={`journey-row ${item.state}`} key={item.id}>
+                <div>
+                  <strong>{item.label}</strong>
+                  <span>{item.detail}</span>
+                </div>
+                <div className="journey-meta">
+                  <span>{item.source}</span>
+                  <small>{item.note}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="journey-card">
+          <div className="detail-panel-label">Processing and recovery</div>
+          <div className="journey-list">
+            {state.processingJobs.map((job) => (
+              <div className={`journey-row ${job.state}`} key={job.id}>
+                <div>
+                  <strong>{job.label}</strong>
+                  <span>{job.detail}</span>
+                </div>
+                <div className="journey-meta">
+                  <span>{job.progress}</span>
+                  <small>{job.state === "paused" ? "Recovery resumes on relaunch" : job.state === "done" ? "Finished" : "Running"}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="journey-card">
+          <div className="detail-panel-label">Outbound records</div>
+          <div className="journey-list">
+            {state.outboundRecords.map((record) => (
+              <div className={`journey-row ${record.state}`} key={record.id}>
+                <div>
+                  <strong>{record.label}</strong>
+                  <span>{record.detail}</span>
+                </div>
+                <div className="journey-meta">
+                  <span>{record.destination}</span>
+                  <small>{record.state}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
       <div className="detail-split">
         <div className="document-list">
           {state.documents.map((doc) => (
@@ -520,11 +708,17 @@ function Review({
   selectedQueue,
   onSelectQueue,
   onNavigate,
+  reviewFeedback,
+  reviewRefresh,
+  onReviewAction,
 }: {
   state: DemoState;
   selectedQueue: string;
   onSelectQueue: (label: string) => void;
   onNavigate: (destination: Destination) => void;
+  reviewFeedback: string;
+  reviewRefresh: number;
+  onReviewAction: (action: string) => void;
 }) {
   const activeQueue = state.queue.find((item) => item.label === selectedQueue) ?? state.queue[0];
 
@@ -559,6 +753,10 @@ function Review({
           <div className="detail-panel-label">Selected question</div>
           <h3>{activeQueue.label}</h3>
           <p>{activeQueue.detail}</p>
+          <div className="review-action-strip">
+            <span className={`review-action-state ${activeQueue.disposition}`}>{activeQueue.disposition}</span>
+            <span className={`review-action-outcome ${activeQueue.outcome}`}>{activeQueue.outcome}</span>
+          </div>
           <div className="detail-panel-grid">
             <div>
               <span>Type</span>
@@ -576,6 +774,24 @@ function Review({
               <span>Outcome</span>
               <strong>{activeQueue.outcome}</strong>
             </div>
+          </div>
+          <div className="review-feedback" role="status" aria-live="polite">
+            <strong>Refresh {reviewRefresh}</strong>
+            <span>{reviewFeedback}</span>
+          </div>
+          <div className="review-actions">
+            <button className="secondary-button" onClick={() => onReviewAction(`Answer for ${activeQueue.label}`)}>
+              Answer
+            </button>
+            <button className="secondary-button" onClick={() => onReviewAction(`Decline for ${activeQueue.label}`)}>
+              Decline
+            </button>
+            <button className="secondary-button" onClick={() => onReviewAction(`Proposal for ${activeQueue.label}`)}>
+              Proposal
+            </button>
+            <button className="secondary-button" onClick={() => onReviewAction(`Confirmation for ${activeQueue.label}`)}>
+              Confirm
+            </button>
           </div>
           <button className="secondary-button" onClick={() => onNavigate("documents")}>
             Open document review <ArrowUpRight size={15} />
@@ -600,8 +816,8 @@ function Activity({ state, onNavigate }: { state: DemoState; onNavigate: (destin
             <div className={`signal-icon ${item.tone}`}>{item.tone === "inflow" ? "↑" : item.tone === "outflow" ? "↓" : "!"}</div>
             <div>
               <strong>{item.label}</strong>
-                <span>{item.detail}</span>
-                <small>{item.measure} · {item.provenance}</small>
+              <span>{item.detail}</span>
+              <small>{item.measure} · {item.provenance}</small>
             </div>
             <strong className={`signal-value ${item.tone}`}>{item.display}</strong>
           </div>
@@ -625,6 +841,92 @@ function Trust({ state }: { state: DemoState }) {
         </div>
       ))}
     </section>
+  );
+}
+
+function ConversationDrawer({
+  state,
+  selectedPrompt,
+  onSelectPrompt,
+  onClose,
+}: {
+  state: DemoState;
+  selectedPrompt: string;
+  onSelectPrompt: (label: string) => void;
+  onClose: () => void;
+}) {
+  const activePrompt = state.conversationPrompts.find((prompt) => prompt.label === selectedPrompt) ?? state.conversationPrompts[0];
+  return (
+    <div className="conversation-drawer" role="dialog" aria-modal="true" aria-label="Viva conversation">
+      <div className="conversation-topline">
+        <div>
+          <div className="detail-panel-label">Viva conversation</div>
+          <h2>Ask Viva</h2>
+        </div>
+        <button className="icon-button conversation-close" onClick={onClose} aria-label="Close Viva conversation">
+          <X size={18} />
+        </button>
+      </div>
+      <p className="conversation-intro">
+        This preview is synthetic and local-only. Viva can surface cited turns and refusals, but there is no live model connection yet.
+      </p>
+      <div className="conversation-layout">
+        <div className="conversation-thread">
+          {state.conversationTurns.map((turn) => (
+            <div className={turn.speaker === "viva" ? `conversation-turn ${turn.state}` : "conversation-turn user"} key={turn.id}>
+              <div className="conversation-turn-meta">
+                <strong>{turn.speaker === "viva" ? "Viva" : "You"}</strong>
+                <span>{turn.state}</span>
+              </div>
+              <p>{turn.text}</p>
+              {turn.citation && <small>Source: {turn.citation}</small>}
+            </div>
+          ))}
+        </div>
+        <aside className="conversation-panel">
+          <div className="detail-panel-label">Synthetic prompts</div>
+          <div className="conversation-prompt-list">
+            {state.conversationPrompts.map((prompt) => (
+              <button
+                className={selectedPrompt === prompt.label ? "conversation-prompt active" : "conversation-prompt"}
+                key={prompt.id}
+                onClick={() => onSelectPrompt(prompt.label)}
+              >
+                <strong>{prompt.label}</strong>
+                <span>{prompt.detail}</span>
+                <small>{prompt.state}</small>
+              </button>
+            ))}
+          </div>
+          <div className="detail-panel">
+            <div className="detail-panel-label">Selected prompt</div>
+            <h3>{activePrompt.label}</h3>
+            <p>{activePrompt.detail}</p>
+            <div className="review-action-strip">
+              <span className={`review-action-state ${activePrompt.state}`}>{activePrompt.state}</span>
+            </div>
+            <div className="detail-panel-grid">
+              <div>
+                <span>State</span>
+                <strong>{activePrompt.state}</strong>
+              </div>
+              <div>
+                <span>Turns</span>
+                <strong>{state.conversationTurns.length}</strong>
+              </div>
+              <div>
+                <span>Mode</span>
+                <strong>Local preview</strong>
+              </div>
+              <div>
+                <span>Safety</span>
+                <strong>Refusals stay visible</strong>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }
 

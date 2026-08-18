@@ -1,7 +1,7 @@
 # OrionViva User Interface Implementation Status
 
 **Status:** Current branch snapshot  
-**Checked:** 2026-08-17  
+**Checked:** 2026-08-18  
 **Branch:** `codex-ui-surface-refinement`  
 **Guiding document:** [User Interface Architecture and Delivery](user-interface-architecture-and-delivery.md)
 
@@ -17,10 +17,10 @@ planned.
 |---|---|---|
 | Slice 0: surface contract and parity machinery | **Complete** | Versioned Python surface contracts, capability registry, deterministic fixture gate, capability coverage, import boundaries, impact gate, and CI wiring are implemented and tested. |
 | Slice 1: installable shell and demo vault | **Partial** | The React shell detects the scaffolded Tauri host, presents a directory/passphrase open-vault form with native folder selection when available, and reads live surfaces with fixture fallback. Reproducible target-sidecar packaging, Tauri build commands, and CI build ordering now exist; installer artifacts, signing/update metadata, and packaged lifecycle validation remain. |
-| Slice 2: document journey | **Partial** | Document list/detail states and lifecycle presentation exist, and live document reads can now reach the desktop through the bridge. Drag/drop, processing jobs, restart recovery, and outbound records are not wired. |
-| Slice 3: financial picture | **Partial** | The desktop can map live overview/account reads from an opened vault when a host transport is injected. Full financial surface coverage, formatting parity, and host packaging remain incomplete. |
-| Slice 4: review and learning | **Partial** | The desktop can receive a live review queue from an opened vault when a host transport is injected. Queue answer/decline/confirm actions and post-action refreshes are not connected. |
-| Slice 5: ask Viva | **Not started in the UI** | Backend ask/speak capabilities exist, but there is no desktop conversation surface or live turn/read integration. |
+| Slice 2: document journey | **Partial** | Document list/detail states, lifecycle presentation, capture queue, processing jobs, restart recovery, and outbound record placeholders exist, and live document reads can now reach the desktop through the bridge. Drag/drop, real background jobs, and outbound posting are not wired. |
+| Slice 3: financial picture | **Partial** | The desktop can map live overview/account reads from an opened vault when a host transport is injected, and the preview now has a selectable account spotlight with an evidence-style detail drawer. Full financial surface coverage, formatting parity, and host packaging remain incomplete. |
+| Slice 4: review and learning | **Partial** | The desktop can receive a live review queue from an opened vault when a host transport is injected, and the preview now shows explicit answer/decline/proposal/confirmation states with post-action refresh feedback. Queue answer/decline/confirm actions are still synthetic, and live post-action refreshes are not connected. |
+| Slice 5: ask Viva | **Partial** | The desktop now has a synthetic Viva conversation drawer with cited turns, prompt cards, and visible refusal states, but it still has no live turn/read integration. |
 | Slice 6: activity and organization | **Partial** | Cross-document evidence and transaction-oriented surface groundwork exist. Filters, corrections, categories, tags, transfer actions, and live totals are not complete. |
 | Slice 7: trust and maintenance | **Not started** | Capability dispositions classify maintenance and trust destinations, but there is no trust/maintenance UI, outbound history, or build identity view. |
 | Slice 8: distribution and capture comfort | **Partial** | Target-aware release workflow, updater metadata hooks, installer bundle targets, and signing-secret validation are implemented. Signed installer publication, update recovery, watched-folder capture, and diagnostic export remain unverified or incomplete. |
@@ -87,8 +87,12 @@ The current desktop includes:
   pull-request jobs;
 - synthetic four-year statement data;
 - overview and account-oriented read models;
+- selectable account spotlight and account detail drawer;
 - explicit document lifecycle states;
 - document and review detail presentation;
+- document capture, processing, recovery, and outbound record placeholders;
+- review action states and refresh feedback;
+- synthetic Viva conversation drawer with cited turns and refusal states;
 - cross-document evidence navigation;
 - surface graph regression coverage;
 - focused desktop tests and a production build.
