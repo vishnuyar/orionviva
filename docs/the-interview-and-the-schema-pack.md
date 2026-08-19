@@ -61,11 +61,12 @@ Governed by [ADR-012](decisions/ADR-012-the-interview-model-boundary.md).
 4. A stated cost is a line at cost and *replaces* any cash-derived line for that account rather than adding to it.
 
 ### VOICE-128 — tags gain account scope, and the model copies the person's word
-**State:** contradicted-by-code
-**Code:** product/viva/ledger/events.py:732
-**Test:** none
+**State:** unmet
+**Code:** product/viva/prompts/interpret-v3.txt (a label is the person's own word, copied, never coined), product/viva/ledger/events.py:732 (a tag assertion is restricted to `SCOPE_MOVEMENT` or `SCOPE_MERCHANT`), :382 (`SCOPE_ACCOUNT` exists in the scopes tuple and the constructor refuses it)
+**Test:** none — the account-scope half is not built, and the copied-word half is held by the prompt in force rather than by a test.
 
-**Contradiction:** the doc says a tag gains account scope and flows to every movement touching the account. `product/viva/ledger/events.py:732` restricts a tag assertion to `SCOPE_MOVEMENT` or `SCOPE_MERCHANT` and refuses anything else, so account-scope tags cannot be written at all. The half that holds is that no model coins a tag: the interpret prompt in force, `interpret-v3`, tells the model a label is *their own short word for a thing they named, copied from their* sentence, and to invent no name — and [categories-and-tags.md](categories-and-tags.md) MON-76 is unchanged.
+1. No model coins a tag: a label is the person's own short word for a thing they named, copied from their sentence, and the interpret prompt in force tells the model to invent no name ([categories-and-tags.md](categories-and-tags.md), MON-76).
+2. A tag asserted on an account flows to every movement touching it, union with movement and merchant scope. *This half is not implemented: account scope is refused at the constructor, so an account-scope tag cannot be written at all.*
 
 ### VOICE-129 — cycle 1 is deterministic, and a model selector must beat it on measured grounds
 **State:** enforced

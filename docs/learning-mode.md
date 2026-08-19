@@ -38,13 +38,13 @@ arithmetic (T2). That rule lives once, as
 3. The parse proposes and cannot write; deterministic code applies a ruling, exactly as it applies one made by clicking a button.
 
 ### MER-64 — The interim answer for a capital purchase
-**State:** contradicted-by-code
-**Code:** product/viva/ledger/projection/movements.py:44, :110-114, :262
+**State:** enforced
+**Code:** product/viva/ledger/projection/movements.py:44 (`MIXED`), :108-114 (`nature_of_legs`), :262 (flagged `provisional`), product/viva/ledger/projection/rulings.py:45-47 (`reliable_balance` False, valuation `estimated`), product/viva/ledger/networth.py:157-168 (a figure refused and the gap named)
 **Test:** product/tests/test_ruling.py::test_a_compound_payment_is_neither_counted_nor_dropped
 
-1. This document says that until the Asset primitive exists, such a payment is ruled `settlement`, which keeps spending correct and leaves net worth understated, and that this should be said rather than silently done.
-
-**Contradiction:** the doc prescribes ruling a compound or capital payment `settlement` as the better of two wrong answers (this file, MER-64 above). The code does not: a ruling with several majors produces the `MIXED` nature (product/viva/ledger/projection/movements.py:110-114), which is neither counted as spending nor dropped, is flagged `provisional` (:262), and is carried as a named caveat into net worth (product/viva/ledger/networth.py:152). Not resolved here.
+1. Until the Asset primitive exists, a payment whose legs imply more than one nature is given the `MIXED` nature rather than forced onto one of them.
+2. A `MIXED` movement is neither counted as spending nor dropped: it gets its own named line and is flagged `provisional`.
+3. The interim answer is said, never silently done — an account any of whose movements is `MIXED` carries no reliable balance, and net worth refuses a figure for it and names the gap rather than adjusting one silently (X2).
 
 ## Why
 
@@ -101,14 +101,12 @@ text, but the parse must stay powerless — it proposes, it cannot write.
 
 ## Open
 
-- Splitting a mortgage payment into interest, principal and escrow. The ratios come
-  from the loan statement, and amortization is what makes the split derivable.
+- Splitting a mortgage payment into interest, principal and escrow, which is what
+  retires `MIXED`. The ratios come from the loan statement, and amortization is what
+  makes the split derivable.
 - Estimated present-day valuation for an asserted asset. An asserted asset can be
   created with a name its owner gave it, interviewed against a schema, and carried
   at cost or disclosed as a gap ([the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md));
   the estimated valuation is not built.
 - Recognizing that a document *implies* another document, as an askable question in
   its own right.
-- The discrepancy in MER-64: this note's interim prescription and the code's
-  `MIXED` nature are two different answers to one question, and nothing has
-  reconciled them.

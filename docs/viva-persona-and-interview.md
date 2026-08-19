@@ -23,14 +23,13 @@
 3. Live per-question phrasing is unbuilt, and when it arrives it enters probated, evaluated and guarded like any other model surface.
 
 ### VOICE-27 — one question at a time, with the tail summarized
-**State:** contradicted-by-code
+**State:** enforced
 **Code:** product/viva/ask.py:175 (`run`), product/viva/questions.py:41
-**Test:** product/tests/test_interview.py::test_an_account_with_a_schema_is_asked_one_thing_at_a_time
+**Test:** product/tests/test_interview.py::test_an_account_with_a_schema_is_asked_one_thing_at_a_time, product/tests/test_questions.py::test_the_tail_is_summarized_never_dropped, product/tests/test_questions.py::test_the_queue_carries_no_instructions_for_a_surface, product/tests/test_ask.py::test_a_blank_line_ends_the_sitting
 
 1. The question surface shows the top-ranked question.
 2. The remaining questions are summarized, never hidden.
-
-**Contradiction:** assertions about *options* and about *"next" and "not now"* describe the debug surface that was deleted. `product/viva/questions.py:41` says the queue carries no buttons, no actions and no arguments for any surface, and `product/tests/test_questions.py:278` asserts that `options=`, `"action"`, `"label"` and `"args"` are absent from the module. Every question is answered in language, so there is no box *beside its options*; `product/viva/ask.py` has no "next" and no "not now" affordance at all — a blank line ends the sitting.
+3. Every question is answered in language. The surface offers no options, no *next* and no *not now*: a blank line ends the sitting.
 
 What the queue itself does — rank by consequence, summarize the tail, introduce
 no event type — lives once, in [the-question-queue.md](the-question-queue.md):
