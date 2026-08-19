@@ -1,0 +1,367 @@
+{
+  "artifact": "orionviva.overview-parity-v1",
+  "locale": "en-US",
+  "protocol": "2.0",
+  "reads": {
+    "documents": {
+      "ok": true,
+      "protocol": "2.0",
+      "request_id": "parity-documents",
+      "result": {
+        "data": {
+          "documents": [
+            {
+              "doc_type": "credit_card_statement",
+              "id": "0ea3d7d4441eef067e35c39ec91898390d8e9b973585de8c741d737a96d00660",
+              "raw_available": true,
+              "resolved": true
+            },
+            {
+              "doc_type": "brokerage_statement",
+              "id": "3782cf884917f3d2794075b6c084cf994e0cd59f7c4a94b46657599682a5d7bd",
+              "raw_available": true,
+              "resolved": true
+            },
+            {
+              "doc_type": "bank_statement",
+              "id": "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1",
+              "raw_available": true,
+              "resolved": true
+            },
+            {
+              "doc_type": "bank_statement",
+              "id": "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+              "raw_available": true,
+              "resolved": true
+            },
+            {
+              "doc_type": "credit_card_statement",
+              "id": "a4f4a08820d946b4a77974e840ac16fc66a7462f6102eb539026a80eb6ccc7ef",
+              "raw_available": true,
+              "resolved": true
+            },
+            {
+              "doc_type": "bank_statement",
+              "id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+              "raw_available": true,
+              "resolved": true
+            },
+            {
+              "doc_type": "bank_statement",
+              "id": "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+              "raw_available": true,
+              "resolved": true
+            },
+            {
+              "doc_type": "bank_statement",
+              "id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
+              "raw_available": true,
+              "resolved": true
+            }
+          ],
+          "holds": [],
+          "raw_document_count": 8,
+          "state": "ready"
+        },
+        "job_id": "parity-documents",
+        "surface": "documents"
+      }
+    },
+    "overview": {
+      "ok": true,
+      "protocol": "2.0",
+      "request_id": "parity-overview",
+      "result": {
+        "data": {
+          "account_count": 8,
+          "accounts": [
+            {
+              "account": "acct:abroad-current",
+              "balance": {
+                "as_of": "2026-06-30",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": "This figure is over Abroad Current alone. It is good as of 2026-06-30.",
+                "currency": "EUR",
+                "display": "EUR 642.10",
+                "exact_value": "642.10",
+                "exactness": "exact",
+                "grade": "verified",
+                "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                "grade_label": "verified",
+                "id": "acct:abroad-current",
+                "measure": "balance",
+                "provenance": "",
+                "record_ids": [
+                  "acct:abroad-current",
+                  "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1"
+                ]
+              },
+              "currency": "EUR",
+              "kind": "depository",
+              "name": "Abroad Current",
+              "number": "\u2022\u2022\u2022\u20227745"
+            },
+            {
+              "account": "acct:dormant-savings",
+              "balance": {
+                "as_of": "2025-11-30",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": "This figure is over Dormant Savings alone. It is good as of 2025-11-30.",
+                "currency": "USD",
+                "display": "USD 1,250.00",
+                "exact_value": "1250.00",
+                "exactness": "exact",
+                "grade": "verified",
+                "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                "grade_label": "verified",
+                "id": "acct:dormant-savings",
+                "measure": "balance",
+                "provenance": "",
+                "record_ids": [
+                  "acct:dormant-savings",
+                  "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
+                ]
+              },
+              "currency": "USD",
+              "kind": "depository",
+              "name": "Dormant Savings",
+              "number": "\u2022\u2022\u2022\u20221038"
+            },
+            {
+              "account": "acct:everyday-checking",
+              "balance": {
+                "as_of": "2026-06-30",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": "This figure is over Everyday Checking alone. It is good as of 2026-06-30.",
+                "currency": "USD",
+                "display": "USD 3,081.45",
+                "exact_value": "3081.45",
+                "exactness": "exact",
+                "grade": "corroborated",
+                "grade_description": "Read this answer as corroborated: independent records agree on what it rests on, and no document from an issuer attests it directly.",
+                "grade_label": "corroborated",
+                "id": "acct:everyday-checking",
+                "measure": "balance",
+                "provenance": "",
+                "record_ids": [
+                  "acct:everyday-checking",
+                  "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6"
+                ]
+              },
+              "currency": "USD",
+              "kind": "depository",
+              "name": "Everyday Checking",
+              "number": "\u2022\u2022\u2022\u20224417"
+            },
+            {
+              "account": "acct:growth-portfolio",
+              "balance": {
+                "as_of": "2026-05-31",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "3782cf884917f3d2794075b6c084cf994e0cd59f7c4a94b46657599682a5d7bd",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": "This figure is over Growth Portfolio alone. It is good as of 2026-05-31.",
+                "currency": "USD",
+                "display": "USD 12,500.00",
+                "exact_value": "12500.00",
+                "exactness": "exact",
+                "grade": "corroborated",
+                "grade_description": "Read this answer as corroborated: independent records agree on what it rests on, and no document from an issuer attests it directly.",
+                "grade_label": "corroborated",
+                "id": "acct:growth-portfolio",
+                "measure": "balance",
+                "provenance": "",
+                "record_ids": [
+                  "acct:growth-portfolio",
+                  "3782cf884917f3d2794075b6c084cf994e0cd59f7c4a94b46657599682a5d7bd"
+                ]
+              },
+              "currency": "USD",
+              "kind": "investment",
+              "name": "Growth Portfolio",
+              "number": "\u2022\u2022\u2022\u20223311"
+            },
+            {
+              "account": "acct:household-card",
+              "balance": {
+                "as_of": "2026-06-30",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "a4f4a08820d946b4a77974e840ac16fc66a7462f6102eb539026a80eb6ccc7ef",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": "This figure is over Household Card alone. It is good as of 2026-06-30.",
+                "currency": "USD",
+                "display": "USD 400.00",
+                "exact_value": "400.00",
+                "exactness": "exact",
+                "grade": "corroborated",
+                "grade_description": "Read this answer as corroborated: independent records agree on what it rests on, and no document from an issuer attests it directly.",
+                "grade_label": "corroborated",
+                "id": "acct:household-card",
+                "measure": "owed",
+                "provenance": "",
+                "record_ids": [
+                  "acct:household-card",
+                  "a4f4a08820d946b4a77974e840ac16fc66a7462f6102eb539026a80eb6ccc7ef"
+                ]
+              },
+              "currency": "USD",
+              "kind": "liability",
+              "name": "Household Card",
+              "number": "\u2022\u2022\u2022\u20228802"
+            },
+            {
+              "account": "acct:joint-checking",
+              "balance": {
+                "as_of": "2026-06-30",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": "This figure is over Joint Checking alone. It is good as of 2026-06-30.",
+                "currency": "USD",
+                "display": "USD 980.00",
+                "exact_value": "980.00",
+                "exactness": "exact",
+                "grade": "conflicted",
+                "grade_description": "Read this answer as a discrepancy rather than as fact: at least one figure in it disagrees with its own evidence.",
+                "grade_label": "conflicted",
+                "id": "acct:joint-checking",
+                "measure": "balance",
+                "provenance": "",
+                "record_ids": [
+                  "acct:joint-checking",
+                  "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73"
+                ]
+              },
+              "currency": "USD",
+              "kind": "depository",
+              "name": "Joint Checking",
+              "number": "\u2022\u2022\u2022\u20222264"
+            },
+            {
+              "account": "acct:rainy-day-savings",
+              "balance": {
+                "as_of": "2026-06-01",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                    "label": "",
+                    "page": "",
+                    "relation": "same_account"
+                  }
+                ],
+                "coverage": "This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.",
+                "currency": "USD",
+                "display": "USD 5,012.50",
+                "exact_value": "5012.50",
+                "exactness": "exact",
+                "grade": "unverified",
+                "grade_description": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+                "grade_label": "unverified",
+                "id": "acct:rainy-day-savings",
+                "measure": "balance",
+                "provenance": "",
+                "record_ids": [
+                  "acct:rainy-day-savings",
+                  "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599"
+                ]
+              },
+              "currency": "USD",
+              "kind": "depository",
+              "name": "Rainy Day Savings",
+              "number": "\u2022\u2022\u2022\u20226723"
+            },
+            {
+              "account": "acct:travel-card",
+              "balance": {
+                "as_of": "2026-06-30",
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "0ea3d7d4441eef067e35c39ec91898390d8e9b973585de8c741d737a96d00660",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": "This figure is over Travel Card alone. It is good as of 2026-06-30.",
+                "currency": "USD",
+                "display": "-USD 75.00",
+                "exact_value": "-75.00",
+                "exactness": "exact",
+                "grade": "verified",
+                "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                "grade_label": "verified",
+                "id": "acct:travel-card",
+                "measure": "owed",
+                "provenance": "",
+                "record_ids": [
+                  "acct:travel-card",
+                  "0ea3d7d4441eef067e35c39ec91898390d8e9b973585de8c741d737a96d00660"
+                ]
+              },
+              "currency": "USD",
+              "kind": "liability",
+              "name": "Travel Card",
+              "number": "\u2022\u2022\u2022\u20225190"
+            }
+          ],
+          "as_of": null,
+          "caveats": [
+            "This rests on records of more than one date: each part is only as current as the record behind it."
+          ],
+          "issues": [],
+          "spending_by_currency": {
+            "USD": "438.55"
+          },
+          "state": "ready"
+        },
+        "job_id": "parity-overview",
+        "surface": "overview"
+      }
+    }
+  },
+  "today": "2026-09-30"
+}

@@ -7,7 +7,9 @@ from typing import Any
 
 from viva.questions import open_questions
 
+from ..env import locale_from_env
 from ..ingest.review import held_items, other_holds
+from ..surface.overview import overview
 from ..vault import Vault
 from .handlers import BridgeRequestError
 
@@ -38,29 +40,14 @@ class OpenedVaultSurfaceProvider:
         return self._review(params)
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        """Open the projection and hand it to the surface that composes it.
+
+        Which accounts are shown, what each is worth, how well it is stood
+        behind and what its figure covers are all decided in the surface, over
+        the same read a conversation makes. Nothing about them is decided
+        here."""
         projection = self._vault.ledger.projection_as_of(parameters.get("as_of"))
-        accounts = []
-        for info in projection.account_infos():
-            balance = projection.balance(info.account)
-            accounts.append({
-                "account": info.account,
-                "kind": info.kind,
-                "name": info.name,
-                "institution": info.institution,
-                "currency": info.currency,
-                "number": info.number,
-                "balance": balance.to_dict(),
-            })
-        return {
-            "state": "ready",
-            "as_of": projection.as_of,
-            "accounts": accounts,
-            "account_count": len(accounts),
-            "spending_by_currency": {
-                currency: str(amount)
-                for currency, amount in projection.spending_by_currency().items()
-            },
-        }
+        return overview(projection, locale_from_env())
 
     def _documents(self) -> dict[str, Any]:
         projection = self._vault.ledger.projection()

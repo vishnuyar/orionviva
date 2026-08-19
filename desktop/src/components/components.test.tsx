@@ -114,7 +114,7 @@ describe("shared surface components", () => {
     expect(getByText("Rounded")).toBeInTheDocument();
     expect(getByText("record-card-1")).toBeInTheDocument();
     expect(getByText("These are record identities, not document links.")).toBeInTheDocument();
-    expect(getByText("Caveats were not supplied by this read.")).toBeInTheDocument();
+    expect(getByText("No limits were stated for this figure.")).toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Open card.pdf" }));
     expect(open).toHaveBeenCalledWith(account.evidenceLinks[0]);
   });

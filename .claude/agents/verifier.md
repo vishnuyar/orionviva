@@ -47,6 +47,17 @@ extra refactor, a new dependency, a changed behavior, a new event type — gets
 flagged by name, even if it looks like an improvement. Decisions belong to
 Vishnu; a diff is not where they get made.
 
+## Gates are run, not read
+
+**A gate whose subject is another gate is run, not read.** When the diff adds or
+changes a check, do not satisfy yourself by reading it. Break the thing it
+guards — empty the manifest, put the forbidden import in a file, add the field
+to one side only — confirm it goes red, and restore. Reading a gate is how it
+was approved in the first place, so reading it again finds nothing.
+
+A gate in the diff that nobody has made fail by hand is not verified, and that
+is a finding. `WORKFLOW.md` carries the standard a gate is held to.
+
 ## Also sweep for the standing failure modes
 
 - prompt text as a Python literal; a released prompt file edited in place

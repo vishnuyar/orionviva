@@ -17,6 +17,7 @@ from scripts.prepare_native_release import release_override
 ROOT = Path(__file__).parents[2]
 DESKTOP = ROOT / "desktop"
 TAURI_CONFIG = DESKTOP / "src-tauri" / "tauri.conf.json"
+RELEASE_TARGETS = DESKTOP / "src-tauri" / "release-targets.json"
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 REQUIRED_TARGETS = {
@@ -35,6 +36,24 @@ def _release_workflows() -> list[Path]:
         if "tauri build" in workflow.read_text().lower()
         and any(trigger in workflow.read_text() for trigger in RELEASE_TRIGGERS)
     ]
+
+
+def _declared_release_targets() -> set[str]:
+    """Return the target triples the release matrix is actually built from."""
+    assert RELEASE_TARGETS.is_file(), (
+        f"the release matrix manifest is missing: {RELEASE_TARGETS}"
+    )
+    manifest = json.loads(RELEASE_TARGETS.read_text())
+    assert isinstance(manifest, dict), (
+        "the release matrix manifest must be an object with an include list, "
+        f"not {type(manifest).__name__}"
+    )
+    entries = manifest.get("include", [])
+    assert entries, (
+        "the release matrix manifest declares no entries, so a release would "
+        "build nothing at all"
+    )
+    return {entry["target"] for entry in entries if entry.get("target")}
 
 
 def _release_workflow_source() -> str:
@@ -77,10 +96,10 @@ def test_tauri_config_enables_updater_artifacts_and_public_update_metadata():
 def test_release_workflow_builds_every_supported_target_after_its_sidecar():
     source = _release_workflow_source()
 
-    targets = set(re.findall(r"(?:aarch64|x86_64)-[a-z0-9_-]+", source))
-    assert REQUIRED_TARGETS <= targets, (
-        "native release matrix must include Apple Silicon, Intel macOS, and "
-        "Windows x64 targets"
+    missing = REQUIRED_TARGETS - _declared_release_targets()
+    assert not missing, (
+        "the release matrix manifest must include Apple Silicon, Intel macOS "
+        f"and Windows x64 targets; missing: {', '.join(sorted(missing))}"
     )
     assert "matrix.target" in source, (
         "sidecar and Tauri build commands must share the release matrix target"

@@ -1,4 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
+import { BRIDGE_PROTOCOL } from "./bridge/contracts";
 import type { BridgeRequest, BridgeResponse, BridgeTransport } from "./bridge/contracts";
 
 type TauriInternals = {
@@ -21,7 +22,7 @@ export function installTauriBridge(): boolean {
     request: async <T>(frame: BridgeRequest) => {
       const response = await invoke<string>("bridge_request", {
         frame: JSON.stringify({
-          protocol: "1.0",
+          protocol: BRIDGE_PROTOCOL,
           request_id: frame.requestId,
           operation: frame.operation,
           payload: frame.payload,

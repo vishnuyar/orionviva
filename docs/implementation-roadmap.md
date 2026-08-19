@@ -31,19 +31,22 @@
 
 ### PROG-4 — The surface gates run in CI
 **State:** by-review
-**Code:** .github/workflows/quality.yml:17-22, scripts/check_surface_contract.py, scripts/check_surface_impact.py
-**Test:** product/tests/test_surface_contract.py, product/tests/test_surface_capability_coverage.py, product/tests/test_surface_gate_scripts.py
+**Code:** .github/workflows/quality.yml:22-27, scripts/check_surface_contract.py, scripts/check_surface_impact.py
+**Test:** product/tests/test_surface_contract.py, product/tests/test_surface_capability_coverage.py, product/tests/test_surface_gate_scripts.py, product/tests/test_workflows_are_loadable.py
 
 1. A deliberate contract drift fails the contract gate, and schema and fixture regeneration is deterministic.
 2. Every user-facing and command capability has a surface destination or an explicit developer-only, internal or deferred disposition with a reason, and every command entry point is classified exactly once.
 3. A backend change that touches the interface must declare its impact.
+4. Every package suite — product, core, merchant and bench — runs in the build from the repository root, with no path narrowing, no selection filter and no tolerated failure. The frontend architecture boundary runs there too.
+5. Every workflow file parses and declares jobs that run something. A build definition that cannot be parsed is rejected whole, so every gate named inside it stops running with no signal anywhere — the same failure as a gate that cannot report one, a level up.
 
 The import boundaries between product, surface, bridge and desktop are
 **VOICE-101** in
 [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md),
-where the rule and its live contradiction are recorded once. This document's
-Slice 0 audit recorded those tests as present *and verified*; two of the six are
-red, so that line of the audit was wrong.
+where the rule records which gate holds which half and what the Node checker
+does not cover. This document's Slice 0 audit recorded those tests as present
+*and verified* while two of the six were red, so that line of the audit was
+wrong when it was written.
 
 ## Why
 
@@ -91,7 +94,7 @@ The approach is data-first: every slice seeds a reusable block rather than a fea
 
 ## Open
 
-- Two of the six surface import-boundary tests fail on `main` (VOICE-101), and nobody owns them. What the interface currently does render is tracked in [user-interface-implementation-status.md](user-interface-implementation-status.md).
+- What the interface currently does render is tracked in [user-interface-implementation-status.md](user-interface-implementation-status.md).
 - The desktop bridge gates and the live desktop transport are deferred by design until a bridge consumer exists; adding empty machinery ahead of one would be worse than the gap.
 - The packages require Python 3.11 or newer while the local default interpreter is older, so integration checks must run under the declared supported runtime or they prove nothing.
 - Existing desktop fixtures are synthetic interface data rather than generated surface fixtures; treating them as parity evidence bypasses the contract gate.

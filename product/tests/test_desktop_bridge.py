@@ -21,7 +21,7 @@ from viva.surface.models import FigureGrade
 
 def frame(**overrides):
     payload = {
-        "protocol": "1.0",
+        "protocol": "2.0",
         "request_id": "req-1",
         "operation": "bridge.handshake",
         "payload": {},
@@ -34,10 +34,10 @@ def test_handshake_is_versioned_and_framed():
     response = json.loads(dispatch_frame(frame(), default_handlers().handlers))
 
     assert response == {
-        "protocol": "1.0",
+        "protocol": "2.0",
         "request_id": "req-1",
         "ok": True,
-        "result": {"protocol": "1.0", "transport": "json-lines"},
+        "result": {"protocol": "2.0", "transport": "json-lines"},
     }
 
 
@@ -150,7 +150,7 @@ def test_newer_minor_protocol_is_rejected_without_calling_handler():
 
     response = json.loads(
         dispatch_frame(
-            frame(protocol="1.1", operation="viva.surface.snapshot"),
+            frame(protocol="2.1", operation="viva.surface.snapshot"),
             {"viva.surface.snapshot": handler},
         )
     )
@@ -172,9 +172,9 @@ def test_allowlist_snapshot_cannot_be_mutated_after_dispatcher_creation():
 @pytest.mark.parametrize(
     "payload, message",
     [
-        ({"protocol": "1.0", "operation": "bridge.handshake"}, "request_id"),
-        ({"protocol": "1.0", "request_id": "x", "operation": ""}, "operation"),
-        ({"protocol": "2.0", "request_id": "x", "operation": "bridge.handshake"}, "major"),
+        ({"protocol": "2.0", "operation": "bridge.handshake"}, "request_id"),
+        ({"protocol": "2.0", "request_id": "x", "operation": ""}, "operation"),
+        ({"protocol": "3.0", "request_id": "x", "operation": "bridge.handshake"}, "major"),
     ],
 )
 def test_malformed_or_incompatible_frames_fail_closed(payload, message):
@@ -347,6 +347,8 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
 
     assert overview == {
         "state": "ready",
+        "issues": [],
+        "caveats": [],
         "as_of": None,
         "accounts": [],
         "account_count": 0,

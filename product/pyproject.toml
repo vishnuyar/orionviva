@@ -13,7 +13,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+# PyYAML loads the workflow files, so a build definition that cannot be
+# parsed fails a test rather than disappearing silently from the build.
+dev = ["pytest>=8.0", "PyYAML>=6.0"]
 # Only needed for the live document reader (a real model run). The whole tested
 # core runs without these — they render a real PDF's pages and read its text.
 reader = ["pypdfium2>=4.28", "Pillow>=10.0"]
@@ -27,6 +29,11 @@ include = ["viva*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A test in this package depends on a repository-level script, and that
+# dependency is real and should stay visible. Declaring the repository root on
+# the import path makes the module collect however the runner is invoked, so a
+# developer typing `pytest` here gets the same answer as the build.
+pythonpath = [".."]
 # Vaults are minted at a cheap scrypt cost suite-wide (see tests/conftest.py).
 # This marker opts a file back out and pays the real, interactive-login-grade
 # cost, for the tests whose subject is the vault itself.

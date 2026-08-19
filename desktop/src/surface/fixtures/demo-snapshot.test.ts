@@ -73,7 +73,7 @@ describe("minimal shell model", () => {
   });
 
   it("keeps evidence links explicit and navigable by document identity", () => {
-    const brokerage = documentById(documents.documents, "demo-doc-fidelity-brokerage-2026-05-to-2026-07");
+    const brokerage = documentById(documents.documents, "demo-doc-northgate-brokerage-2026-05-to-2026-07");
     expect(brokerage?.evidenceLinks).toHaveLength(1);
     expect(brokerage?.evidenceLinks[0]).toMatchObject({
       targetDocumentId: "demo-doc-north-river-savings-2026-05-to-2026-07",

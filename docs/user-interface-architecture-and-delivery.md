@@ -22,16 +22,18 @@ on the current branch is recorded in
 **Exception:** assertion 3 is the *design*, not a fact about anything shipped. Tauri compilation, installer creation, signing, packaged offline startup and packaged bridge injection are all outstanding ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open), and X1 is `unmet` for the same reason. The cited test covers one handshake frame; nothing asserts assertion 2 either.
 
 ### VOICE-101 — the dependency direction is one-way, and a test enforces it
-**State:** contradicted-by-code
-**Code:** product/viva/desktop_bridge/handlers.py, product/viva/desktop_bridge/rpc.py, desktop/src/tauri-host.ts
-**Test:** product/tests/test_surface_import_boundaries.py::test_product_engine_does_not_depend_on_surface_or_desktop (failing), ::test_desktop_consumes_local_surface_boundary_without_python_imports (failing)
+**State:** enforced-with-exception
+**Code:** product/viva/desktop_bridge/handlers.py, product/viva/desktop_bridge/rpc.py, desktop/scripts/check-ui-boundaries.mjs
+**Test:** product/tests/test_surface_import_boundaries.py::test_product_tiers_import_only_along_permitted_edges, ::test_every_declared_tier_has_modules_in_it, ::test_core_does_not_depend_on_product_surface_or_desktop; `npm run check:architecture` in the desktop CI job
 
 1. The desktop depends on the surface contract, never on event bodies or arbitrary projection methods.
 2. `viva.surface` may depend on the engine, projections, the renderer and persona data; the engine and ledger never import the surface, the bridge or frontend code.
 3. The bridge depends on `viva.surface`; `viva.surface` knows nothing about the bridge and imports no frontend dependency.
 4. No Node, React, Tauri or browser dependency enters `core/`, `merchant/`, or the financial modules of `product/`.
 
-**Contradiction:** two of the six boundary tests are red. `product/viva/desktop_bridge/handlers.py` and `product/viva/desktop_bridge/rpc.py` both import `viva.surface`, which `product/tests/test_surface_import_boundaries.py:58` forbids for every file under `product/viva` outside `product/viva/surface/` — so assertion 3, as written, states what that test forbids. `desktop/src/tauri-host.ts` imports `@tauri-apps/plugin-dialog`, which `product/tests/test_surface_import_boundaries.py:76` forbids. Either the rule or the test is wrong, and until that is ruled the boundary is not enforced.
+**Which gate holds which half.** The Python half is a declared three-tier map: the engine, `viva.surface` and `viva.desktop_bridge` are named tiers, each module belongs to exactly one of them, and the permitted edges between them are declared as a set. The test parses every module in the product package into a syntax tree, resolves relative imports to the module names they name, and reports any edge that is not declared. The frontend tier is decided by resolution rather than by a name prefix: a module belongs to it when its top-level name resolves to a path inside the desktop tree, and the test refuses to run if that tree is not there. Assertion 3 is now the map rather than something it forbids: the bridge may import the surface and the engine, the surface may import the engine, and the engine may import neither. The TypeScript half belongs entirely to `desktop/scripts/check-ui-boundaries.mjs`, which drives the TypeScript compiler's own tokenizer, carries its own declared map of what each directory may import, and runs in the desktop CI job. No Python test reads TypeScript to decide an import boundary. Two protocol tests in `product/tests/test_surface_contract.py` do read `desktop/src/bridge/contracts.ts` and `desktop/src/tauri-host.ts`, on a different subject: each host declares the frame protocol version once, and those tests compare that declaration against the version the sidecar speaks. Comparing two declarations is not a boundary rule, and it belongs to the protocol rule rather than to this one.
+
+**Exception:** the Node checker's map closes the import list for `desktop/src/features/**`, `components/**`, `surface/adapters/**`, `bridge/**` and `surface/fixtures/**`, forbids the native dialog import by name in the app shell and the documents feature, and permits `window` only under `bridge/` and at `tauri-host.ts`. It does not cover files sitting directly in `desktop/src/app/` other than the app shell, the top level of `desktop/src/surface/`, or root-level modules such as `main.tsx`; one of those could import a native plugin and no gate would say so. Nothing checks that the TypeScript client sends the operation names and payload fields the sidecar serves, which is the other half of assertion 1. Both gaps are the Node checker's to close, by extending the map it already has.
 
 ### VOICE-102 — the interface renders values and computes no financial fact
 **State:** enforced-with-exception
@@ -55,14 +57,16 @@ on the current branch is recorded in
 4. Currency is present for money and absent for counts and rates; a blank currency is refused.
 5. The model never supplies a number from its own head; it only ever routes numbers from the ledger, and an answer's confidence language inherits the weakest grade it stands on.
 
-**Exception:** only the second clause of assertion 4 is enforced. `product/viva/surface/models.py:48` refuses a currency that is present and blank, and nothing ties currency presence to what the figure measures — which it cannot, while `measure` is an unvalidated string (VOICE-104).
+**Exception:** only the second clause of assertion 4 is enforced. `product/viva/surface/models.py` refuses a currency that is present and blank, and nothing ties currency presence to what the figure measures, though the measure it declares is now a word from the closed vocabulary (VOICE-104).
 
 ### VOICE-104 — the `measures` vocabulary a figure declares is closed
-**State:** contradicted-by-code
-**Code:** product/viva/surface/models.py:34
-**Test:** none
+**State:** enforced
+**Code:** product/viva/quantity.py:138 (`MEASURES`), product/viva/surface/models.py (`FigureView.__post_init__`)
+**Test:** product/tests/test_surface_contract.py::test_figure_declares_a_measure_the_vocabulary_holds
 
-**Contradiction:** the contract says the `measures` vocabulary is closed — the same rule the answer path already uses, so a debt cannot arrive declaring itself a balance and a raw sum cannot arrive declaring itself spending. `product/viva/surface/models.py:34` declares the field as `measure: str` (singular) and validates only that it is non-empty (`:45`), so any string is accepted. The closed vocabulary exists in `product/viva/quantity.py:100` (`KINDS`) and the surface does not consult it.
+1. A figure crossing to an interface declares what it measures from the closed vocabulary the answer path uses, so a debt cannot arrive declaring itself a balance and a raw sum cannot arrive declaring itself spending.
+2. A figure declares from `MEASURES` and a magnitude hole asks from `KINDS`; `MEASURES` is `KINDS` plus `unmeasured`, which is why a figure may declare that nothing measured it and no hole may ask for it.
+3. A word outside the vocabulary fails where the figure is built, not where it is read.
 
 ### VOICE-105 — every read model declares one explicit panel state
 **State:** enforced
@@ -94,22 +98,26 @@ on the current branch is recorded in
 
 ### VOICE-108 — every capability has a destination or a recorded reason for not having one
 **State:** enforced
-**Code:** product/viva/surface/capabilities.py:54 (`CapabilitySpec`)
-**Test:** product/tests/test_surface_capability_coverage.py::test_non_surface_capabilities_have_explicit_disposition_and_reason
+**Code:** product/viva/surface/capabilities.py (`CapabilitySpec`), product/viva/surface/operations.py
+**Test:** product/tests/test_surface_capability_coverage.py::test_non_surface_capabilities_have_explicit_disposition_and_reason, ::test_maturity_is_read_from_the_operation_table_and_never_typed
 
 1. A surfaced capability requires a destination and a contract, and may not carry a reason.
 2. A non-surfaced capability requires an explicit `developer_only`, `internal` or `deferred` disposition *and* a reason.
 3. Every command entry point is classified, so a new command cannot enter unnoticed.
 4. Each capability declares its trust effect: reads data, writes an event, may call a model, may egress.
+5. A capability's maturity is what the operation table says and nobody types one. One declared table of bridge operations lives in the surface package; the bridge builds its handler map from it and the registry reads it to derive maturity. A capability whose contract is served by an operation in the table is `stable`; one whose contract is not served is `preview`. Reachable is the only thing maturity means — a capability that is reachable but not yet trustworthy would be a second reason, and a second reason is a second field.
+6. Reachability is what the sidecar serves, never what a desktop client calls, because the registry may not depend on reading frontend source.
 
 ### VOICE-109 — the bridge is transport and nothing else
-**State:** enforced
+**State:** enforced-with-exception
 **Code:** product/viva/desktop_bridge/handlers.py:17 (`BridgeDispatcher`)
 **Test:** product/tests/test_desktop_bridge.py::test_unknown_operations_are_refused_by_the_allowlist
 
-1. The bridge validates a protocol version, dispatches an allowlisted operation, streams job state and serializes the result.
+1. The bridge validates a protocol version, dispatches an allowlisted operation, emits job-state frames and serializes the result.
 2. It computes no total, infers no grade, decides no movement's direction and manufactures no user-facing caveat.
 3. The allowlist snapshot cannot be mutated after the dispatcher is created, and handler failures return safe error frames rather than raising.
+
+**Exception:** the job-state frames assertion 1 names reach no subscriber. The sidecar writes them, the native host returns only the frame whose request id matches and which carries no event key, and every event frame is dropped — so the channel is severed above the bridge and nothing in the window has received one. The bridge's own half is unchanged on purpose; the channel's shape is fixed in [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) and is built with its first real producer. Separately, `bridge.open_vault` is intercepted as a branch before dispatch, so that one operation is neither protocol-checked nor in any allowlist ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open).
 
 ### VOICE-110 — compiled frontend output is never committed
 **State:** by-review-with-exception

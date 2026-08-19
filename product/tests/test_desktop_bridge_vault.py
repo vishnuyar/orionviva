@@ -21,7 +21,7 @@ from viva.vault import Vault
 
 def _frame(*, operation: str, payload: dict[str, Any] | None = None) -> str:
     return json.dumps({
-        "protocol": "1.0",
+        "protocol": "2.0",
         "request_id": "vault-read-1",
         "operation": operation,
         "payload": payload or {},

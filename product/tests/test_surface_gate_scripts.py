@@ -10,7 +10,8 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-GATES = ("check_surface_contract.py", "check_surface_impact.py")
+GATES = ("check_surface_contract.py", "check_surface_impact.py",
+         "generate_overview_parity_fixture.py")
 
 
 def _run(script: str, *args: str) -> subprocess.CompletedProcess[str]:

@@ -282,6 +282,18 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # A gap no account can name: a document read and not posted may be about an
     # account that does not exist yet, so it is said as a number of documents.
     "boundary_unposted":           frozenset({"count"}),
+    # The same declaration where a figure stands beside the account it is
+    # about rather than after a clause about it. The lines above open with a
+    # word pointing back at what was just said; a figure on a surface of its
+    # own is read under nothing, so it states what it is over and what day it
+    # is good for.
+    "card_boundary_selected_account": frozenset({"account"}),
+    "card_boundary_as_of":            frozenset({"day"}),
+    # What is said about an account whose figure was kept back: one line per
+    # way a figure can fail to be whole, each naming the account it is about.
+    "card_withheld_incomplete":       frozenset({"account"}),
+    "card_withheld_in_parts":         frozenset({"account"}),
+    "card_withheld_unsayable":        frozenset({"account"}),
     # How well a set of figures is stood behind: one whole reviewed line per word
     # on the ladder, chosen by that word, so no sentence anywhere is a frame with
     # a machine's word dropped into it. Not one takes a slot. Each is worded as

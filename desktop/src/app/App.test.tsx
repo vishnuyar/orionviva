@@ -420,7 +420,7 @@ describe("minimal shell", () => {
     expect(getByRole("heading", { name: "A sample document journey" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Sample lifecycle" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Sample documents" })).toBeInTheDocument();
-    await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
+    await user.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
     expect(getByText("2 pages")).toBeInTheDocument();
     expect(getAllByText("Waiting for a reader").length).toBeGreaterThan(0);
     expect(getByText("Synthetic PDF · brokerage statement · pages 1–2")).toBeInTheDocument();
@@ -430,7 +430,7 @@ describe("minimal shell", () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = render(<App />);
     await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
+    await user.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
     await user.click(getByRole("button", { name: /north river savings statement/i }));
     expect(getByRole("heading", { name: "north-river-savings-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
     expect(getByText("Synthetic PDF · savings statement · page 1")).toBeInTheDocument();
@@ -545,7 +545,7 @@ describe("minimal shell", () => {
     try {
       const { container, getByRole } = render(<App />);
       fireEvent.click(container.querySelector(".hero-card .proof-link") as HTMLElement);
-      fireEvent.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
+      fireEvent.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
       fireEvent.click(getByRole("button", { name: /silverline-checking-2026-07\.pdf/i }));
       getByRole("heading", { name: "Documents" }).focus();
       frames.runCaptured();
@@ -596,7 +596,7 @@ describe("minimal shell", () => {
     expect(getByRole("heading", { name: "Duplicate subscription" })).toBeInTheDocument();
     expect(getByText("Decline / set aside boundary")).toBeInTheDocument();
     expect(getByText("Card statement, page 1")).toBeInTheDocument();
-    expect(getByRole("button", { name: /chase sapphire card statement.*page 1/i })).toBeInTheDocument();
+    expect(getByRole("button", { name: /harborline signature card statement.*page 1/i })).toBeInTheDocument();
   });
 
   it("opens and focuses an exact review question from Overview", async () => {
@@ -672,12 +672,12 @@ describe("minimal shell", () => {
     const { getByRole } = render(<App />);
 
     await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-    await user.click(getByRole("button", { name: /fidelity-brokerage-2026-05-to-2026-07\.pdf/i }));
-    expect(getByRole("heading", { name: "fidelity-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
+    expect(getByRole("heading", { name: "northgate-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
 
     await user.click(getByRole("button", { name: /overview.*your picture/i }));
     await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-    expect(getByRole("heading", { name: "fidelity-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "northgate-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
     expect(getByRole("button", { name: /open page review/i })).toBeInTheDocument();
   });
 

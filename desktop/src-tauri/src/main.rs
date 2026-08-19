@@ -8,6 +8,11 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use tauri::{Manager, RunEvent, State};
 
+// The protocol version every frame this host sends is stamped with. The
+// sidecar refuses a frame whose major version is not its own, so this moves
+// with the sidecar's own constant and never on its own.
+const BRIDGE_PROTOCOL: &str = "2.0";
+
 const BRIDGE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const BRIDGE_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(25);
 
@@ -274,7 +279,7 @@ fn bridge_request(state: State<'_, BridgeState>, frame: String) -> Result<String
     let object = request
         .as_object_mut()
         .ok_or_else(|| "bridge request must be an object".to_string())?;
-    object.entry("protocol").or_insert_with(|| json!("1.0"));
+    object.entry("protocol").or_insert_with(|| json!(BRIDGE_PROTOCOL));
     let response = request_bridge(&state, request)?;
     serde_json::to_string(&response)
         .map_err(|error| format!("unable to encode OrionViva bridge response: {error}"))

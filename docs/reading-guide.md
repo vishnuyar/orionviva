@@ -85,6 +85,8 @@ Read these together; they are one argument, running extraction → merchants →
 
 - [experience-vision.md](experience-vision.md) — a day with Viva: dashboard-first, speak-only-when-spoken-to, four capture surfaces, text and voice.
 - [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) — the durable starting point for the real presentation layer: an installed desktop app over a packaged Python sidecar, a transport-independent `viva.surface` module, and a sliced path beginning with contracts rather than chrome. Its second half is the anti-staleness design.
+- [user-interface-implementation-status.md](user-interface-implementation-status.md) — the architecture document's status counterpart: what is actually true of the interface on this branch, written so it fails rather than rots. Every gap opens with a direction and an address at which the measurement can be re-taken; a gap no machine here can hold says so and is counted on the document's face.
+- [backend-capability-gaps.md](backend-capability-gaps.md) — what the surface is waiting on the backend for, split into capabilities that exist and cannot be reached and capabilities that do not exist, each naming the symbol its claim is about. Design-only by declaration: it holds the priority order for what the interface is owed, and never the sentence *this is broken today*.
 - [the-maintenance-agent.md](the-maintenance-agent.md) — what Viva does when nobody asked: the observe → plan → perform → record loop, the `AgentActed` event, the stake that keeps a refusal quiet until evidence or machinery moves, and a budget denominated in calls.
 - [agent-toolset.md](agent-toolset.md) — the verbs Viva may ever use, the forbidden list that makes her safe, and the scaling law: tools grow with verbs, never with accounts.
 - [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) — the projection split into a core fold plus per-family view modules behind an unchanged facade, and the registry on top: honest tools, the `ToolResult` envelope with refusal first-class, filter vocabulary validated against the vault's own learned values, and the modality-neutral runner. Also the record of how a sentence is composed from shapes with typed holes.
@@ -99,6 +101,7 @@ Read these together; they are one argument, running extraction → merchants →
 - [adoption-and-distribution.md](adoption-and-distribution.md) — local-first without the friction tax: the onboarding ladder, model access without API keys, and the verified-private-cloud pattern.
 - [multi-device-and-remote-access.md](multi-device-and-remote-access.md) — the ledger follows you, documents stay put: blind-relay sync, browser access with a passkey, and the one hosted architecture never to build.
 - [the-suggestions-channel.md](the-suggestions-channel.md) — what Viva offers when she cannot answer. The refusal stays clean and what is useful moves to a separate, labelled channel, because a chosen thing arriving in an answer's authority is the risk. The channel exists on both sides and the risks differ: while Viva speaks the risk is misreading, while she asks it is leading.
+- [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) — the shape a long piece of work reports itself in, fixed before anything produces one. Five constraints bind whoever builds the first producer: who mints a job's identity, why an event goes to a subscriber rather than through a filter, when a state may join the vocabulary, that a fraction ships only from a producer that knows its denominator, and that nothing on this channel is ever appended to the event log.
 - [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) — an approved direction, not current state. The K1/K2/K3 knowledge vocabulary and the behavioural-classification design that sits on top of the merchant layer.
 
 **5b · What has been decided**
@@ -133,4 +136,4 @@ This guide describes what each document *is* and when to return to it. It does n
 
 - Nothing checks that a new document is slotted into this guide, so a document can exist unreferenced.
 - Nothing checks that a link here resolves, or that the archived banner is present on every file under `archived/`.
-- Several documents in this folder have no entry here.
+- Four documents in this folder have no entry here: `README.md`, `TODO.md`, `phases.md` and `account-connection-research.md`.

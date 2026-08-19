@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { gradePresentation } from "../evidence";
-import { adaptOverview } from "./overview";
+import { adaptOverview, adaptOverviewPanel } from "./overview";
 
 describe("overview adapter", () => {
   it("rejects malformed payloads", () => {
@@ -22,15 +22,49 @@ describe("overview adapter", () => {
     expect(result?.accounts.map((account) => account.id)).toEqual(["b", "a"]);
   });
 
-  it("withholds incomplete raw amounts", () => {
-    const result = adaptOverview({ accounts: [{ account: "a", balance: { amount: "101.25", display: "SHOULD NOT RENDER", grade: "verified" } }] });
-    expect(result?.accounts[0]).toMatchObject({ exactValue: "101.25", display: "" });
+  it("carries each supplied field on its own and leaves an absent one empty", () => {
+    const result = adaptOverview({ accounts: [{ account: "a", balance: { exact_value: "101.25", display: "USD 101.25", grade: "verified" } }] });
+    expect(result?.accounts[0]).toMatchObject({ exactValue: "101.25", display: "USD 101.25", currency: "", coverage: null, provenance: null, measure: null });
   });
 
   it("keeps a complete canonical display byte-for-byte", () => {
     const display = "Canonical backend display — USD 202.50";
-    const result = adaptOverview({ accounts: [{ account: "a", balance: { amount: "202.50", display, measure: "balance", currency: "USD", dated: "2026-08-18", coverage: "Statement period", provenance: "document live-doc, page 7", grade: "verified" } }] });
-    expect(result?.accounts[0].display).toBe(display);
+    const result = adaptOverview({ accounts: [{ account: "a", balance: { exact_value: "202.50", display, measure: "balance", currency: "USD", as_of: "2026-08-18", coverage: "Statement period", provenance: "Attested closing balance.", grade: "verified" } }] });
+    expect(result?.accounts[0]).toMatchObject({ display, exactValue: "202.50", measure: "balance", currency: "USD", asOf: "2026-08-18", coverage: "Statement period", provenance: "Attested closing balance." });
+  });
+
+  it("carries a citation through as a route to its document", () => {
+    const result = adaptOverview({ accounts: [{ account: "a", balance: { citations: [
+      { document_id: "doc-1", page: "7", label: "closing balance", relation: "attests" },
+      { document_id: "doc-2", page: "", label: "", relation: "invented_relation" },
+      { document_id: "", page: "3", label: "no identity", relation: "attests" },
+    ] } }] });
+    expect(result?.accounts[0].evidenceLinks).toEqual([{ targetDocumentId: "doc-1", page: "7", label: "closing balance", relation: "attests" }]);
+  });
+
+  it("carries exactness, record ids and caveats instead of dropping them", () => {
+    const result = adaptOverview({ accounts: [{ account: "a", balance: { exactness: "rounded", record_ids: ["acct:a", "doc-1", ""], caveats: ["One limit."] } }] });
+    expect(result?.accounts[0]).toMatchObject({ exactness: "rounded", recordIds: ["acct:a", "doc-1"], caveats: ["One limit."] });
+  });
+
+  it("never composes the reviewed grade sentence out of the ladder word", () => {
+    const sentence = "Read this answer as verified: the reviewed sentence the backend wrote.";
+    const result = adaptOverview({ accounts: [{ account: "a", balance: { grade: "verified", grade_label: "verified", grade_description: sentence } }] });
+    expect(result?.accounts[0]).toMatchObject({ gradeLabel: "verified", gradeDescription: sentence, note: sentence });
+    expect(result?.accounts[0].gradeDescription).not.toContain(gradePresentation("verified").description);
+  });
+
+  it("marks a row whose figure the read withheld", () => {
+    const result = adaptOverview({ accounts: [{ account: "a", balance: null }, { account: "b", balance: { exact_value: "1.00" } }] });
+    expect(result?.accounts.map((account) => account.state)).toEqual(["partial", "ready"]);
+    expect(result?.accounts[0].display).toBe("");
+  });
+
+  it("reads the panel state the read declares instead of assuming one", () => {
+    expect(adaptOverviewPanel({ accounts: [] })).toEqual({ state: "ready", issues: [] });
+    expect(adaptOverviewPanel({ state: "ready", issues: [] })).toEqual({ state: "ready", issues: [] });
+    expect(adaptOverviewPanel({ state: "partial", issues: [{ code: "incomplete_figure", message: "Named reason." }, { code: "", message: "unnamed" }] }))
+      .toEqual({ state: "partial", issues: [{ code: "incomplete_figure", message: "Named reason." }] });
   });
 
   it("prefers a non-empty reviewed grade label", () => {
