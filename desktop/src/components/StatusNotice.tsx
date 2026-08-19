@@ -1,0 +1,2 @@
+import type { ReactNode } from "react";
+export function StatusNotice({ notice, onDismiss, statusIcon, dismissIcon }: { notice: string | null; onDismiss: () => void; statusIcon: ReactNode; dismissIcon: ReactNode }) { return notice ? <div className="notice" role="status">{statusIcon}<span>{notice}</span><button className="notice-close" onClick={onDismiss} aria-label="Dismiss notice">{dismissIcon}</button></div> : null; }

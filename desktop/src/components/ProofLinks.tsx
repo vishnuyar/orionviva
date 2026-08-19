@@ -1,0 +1,2 @@
+import type { EvidenceLink } from "../surface/types";
+export function ProofLinks({ label, links, onOpen }: { label: string; links: EvidenceLink[]; onOpen: (link: EvidenceLink) => void }) { if (!links.length) return null; return <div className="proof-links"><span className="proof-links-label">{label}</span>{links.map((link) => <button className="proof-link" key={`${link.targetDocumentId}-${link.relation}-${link.page}`} onClick={() => onOpen(link)}>{link.label} · {link.page}</button>)}</div>; }

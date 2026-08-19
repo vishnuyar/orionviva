@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import type { BridgeRequest, BridgeResponse, BridgeTransport } from "./app/bridge-client";
+import type { BridgeRequest, BridgeResponse, BridgeTransport } from "./bridge/contracts";
 
 type TauriInternals = {
   invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
