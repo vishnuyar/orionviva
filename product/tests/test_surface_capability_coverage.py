@@ -6,15 +6,18 @@ developer-only, internal, or deferred.
 """
 
 import json
+from dataclasses import fields
+from importlib import import_module
 
 import pytest
 
+from viva.surface.operations import BRIDGE_OPERATIONS
 from viva.surface.capabilities import (
     CapabilitySpec,
     Destination,
     Disposition,
     Maturity,
-    TRUST_EFFECTS,
+    TrustEffect,
     capabilities,
     command_classifications,
     serialize_registry,
@@ -34,7 +37,37 @@ def test_registered_capabilities_have_unique_ids_and_complete_contracts():
         assert entry.destination in Destination
         assert entry.availability
         assert entry.contract
-        assert entry.trust_effect in TRUST_EFFECTS
+        for effect in entry.trust_effect:
+            assert isinstance(effect, TrustEffect), f"{entry.id} declares {effect!r}"
+
+
+def test_maturity_is_read_from_the_operation_table_and_never_typed(monkeypatch):
+    """Maturity is neither a field a person fills in nor a constant.
+
+    Restating the derivation here would only compare the formula with itself.
+    Instead the table is answered twice, and the reviewed contract artifact —
+    regenerated and compared byte for byte — is what holds the values.
+    """
+    typed = [field.name for field in fields(CapabilitySpec) if field.name == "maturity"]
+
+    assert not typed, (
+        "maturity is derived from the operation table; a constructor field "
+        "would let someone type one again"
+    )
+    assert BRIDGE_OPERATIONS, "the operation table must not be empty"
+
+    entry = next(iter(capabilities()))
+    assert entry.maturity is Maturity.PREVIEW, (
+        "no operation serves this contract, so it is not reachable"
+    )
+    monkeypatch.setattr(
+        import_module("viva.surface.capabilities"),
+        "served_contracts",
+        lambda: frozenset({entry.contract}),
+    )
+    assert entry.maturity is Maturity.STABLE, (
+        "maturity does not answer the operation table"
+    )
 
 
 def test_surface_capabilities_have_destinations():
@@ -91,20 +124,21 @@ def test_registry_serialization_is_json_safe_and_deterministic():
         {"disposition": "surface", "destination": "none"},
         {"disposition": "deferred", "destination": "overview", "reason": ""},
         {"disposition": "surface", "destination": "overview", "reason": "not needed"},
-        {"trust_effect": "invented effect"},
+        {"trust_effect": ("invented effect",)},
+        {"trust_effect": "reads data"},
+        {"trust_effect": ("reads_data",)},
     ],
 )
 def test_malformed_capability_contracts_fail(changes):
     values = dict(
         id="overview.read",
         owner="overview",
-        maturity="stable",
         disposition="surface",
         destination="overview",
         availability="synthetic vault is open",
         contract="OverviewReadV1",
         actions=(),
-        trust_effect="reads data",
+        trust_effect=(TrustEffect.READS_DATA,),
         reason=None,
         fixture_ids=("overview-ready",),
     )

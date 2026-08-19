@@ -1,15 +1,156 @@
-"""Acceptance checks for the native Tauri-to-sidecar boundary."""
+"""Acceptance checks for the sidecar's declared operation contract.
+
+The subject is the Python sidecar and the Rust host that speaks to it. Nothing
+here reads TypeScript, so nothing here can say whether the frontend client
+sends the operation names and payload fields the sidecar serves; that half of
+the boundary belongs to the Node checker.
+"""
 
 from __future__ import annotations
 
+import ast
+import io
 import json
+import re
 from pathlib import Path
+
+import pytest
+
+from viva.desktop_bridge.__main__ import Sidecar, _open_vault
+from viva.desktop_bridge.handlers import default_handlers, handlers_with_surface_provider
+from viva.desktop_bridge.rpc import dispatch_frame
+from viva.desktop_bridge.surface_read import _read_request
+from viva.surface import (
+    BRIDGE_HANDSHAKE,
+    BRIDGE_OPEN_VAULT,
+    CURRENT_PROTOCOL,
+    SURFACE_CAPABILITIES,
+    SURFACE_READ,
+    operation_names,
+)
 
 
 ROOT = Path(__file__).parents[2]
 TAURI_DIR = ROOT / "desktop" / "src-tauri"
 TAURI_CONFIG = TAURI_DIR / "tauri.conf.json"
+HOST_SOURCE = TAURI_DIR / "src" / "main.rs"
+BRIDGE_PACKAGE = ROOT / "product" / "viva" / "desktop_bridge"
 SIDECAR_NAME = "viva-desktop-bridge"
+
+# The reviewed payload contract: what each operation accepts from a caller.
+PAYLOAD_FIELDS: dict[str, set[str]] = {
+    BRIDGE_HANDSHAKE: set(),
+    BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase"},
+    SURFACE_CAPABILITIES: set(),
+    SURFACE_READ: {"surface", "parameters", "job_id"},
+}
+
+# Where the sidecar declares the fields it will accept, per operation.
+PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
+    BRIDGE_OPEN_VAULT: (BRIDGE_PACKAGE / "__main__.py", "_open_vault"),
+    SURFACE_READ: (BRIDGE_PACKAGE / "surface_read.py", "_read_request"),
+}
+
+# The reviewed request contract: what the protocol decoder reads off a frame.
+REQUEST_FRAME_FIELDS = {"protocol", "request_id", "operation", "payload"}
+REQUIRED_REQUEST_FIELDS = ("protocol", "request_id", "operation")
+
+# A complete, valid payload for each operation. A probe adds one undeclared
+# field to these, so nothing but the allowlist can refuse it.
+UNDECLARED_FIELD = "unexpected_field"
+COMPLETE_PAYLOADS: dict[str, dict[str, object]] = {
+    BRIDGE_HANDSHAKE: {},
+    SURFACE_CAPABILITIES: {},
+    SURFACE_READ: {"surface": "overview", "parameters": {}, "job_id": "job-id"},
+}
+
+# The host declares which operations survive a sidecar restart here.
+RETRY_DECLARATION = "let may_recover = matches!("
+RETRY_PATTERN = "Some("
+
+
+class _StubSurfaceProvider:
+    def read_surface(self, surface, parameters):
+        return {}
+
+
+def _served_operations() -> set[str]:
+    """Return every operation a fully opened sidecar answers."""
+    dispatcher = handlers_with_surface_provider(_StubSurfaceProvider())
+    return set(dispatcher.handlers) | {BRIDGE_OPEN_VAULT}
+
+
+def _declared_payload_fields(module: Path, function: str) -> set[str]:
+    """Return the payload field names one sidecar validator accepts."""
+    tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name != function:
+            continue
+        for statement in ast.walk(node):
+            if (
+                isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and statement.targets[0].id == "allowed"
+            ):
+                return {ast.literal_eval(element) for element in statement.value.elts}
+    raise AssertionError(
+        f"{module.name}:{function} no longer declares an accepted payload field set"
+    )
+
+
+def _frame(operation: str, **payload) -> str:
+    return json.dumps({
+        "protocol": CURRENT_PROTOCOL.wire(),
+        "request_id": "request-id",
+        "operation": operation,
+        "payload": payload,
+    })
+
+
+def _response_frame_fields() -> set[str]:
+    """Return every field name the protocol puts on a frame it sends back."""
+    handlers = default_handlers().handlers
+    answered = json.loads(dispatch_frame(_frame(BRIDGE_HANDSHAKE), handlers))
+    refused = json.loads(dispatch_frame("{}", handlers))
+    buffer = io.StringIO()
+    Sidecar(buffer)._write_event("request-id", {"status": "started"})
+    progress = json.loads(buffer.getvalue())
+    return set(answered) | set(refused) | set(progress)
+
+
+def _host_source() -> str:
+    assert HOST_SOURCE.is_file(), f"the native host source is missing: {HOST_SOURCE}"
+    return HOST_SOURCE.read_text(encoding="utf-8")
+
+
+def _host_retry_operations() -> set[str]:
+    """Return the operations the host declares safe to replay after a restart."""
+    source = _host_source()
+    start = source.find(RETRY_DECLARATION)
+    assert start != -1, (
+        f"{HOST_SOURCE.name} no longer declares which operations may be replayed "
+        "after the sidecar dies, so retry safety cannot be checked"
+    )
+    block = source[start : source.index(");", start)]
+    arm = block.find(RETRY_PATTERN)
+    assert arm != -1, (
+        f"{HOST_SOURCE.name} declares replayable operations in a shape this gate "
+        "cannot read, so retry safety cannot be checked"
+    )
+    opening = arm + len(RETRY_PATTERN)
+    return set(re.findall(r'"([^"]+)"', block[opening : block.index(")", opening)]))
+
+
+def _host_frame_fields() -> set[str]:
+    """Return every frame field name the host reads or writes.
+
+    The pattern accepts any identifier spelling, so a field renamed to the
+    casing used on the other side of this boundary is still seen.
+    """
+    return set(
+        re.findall(r'\.(?:get|entry)\("([A-Za-z_][A-Za-z0-9_]*)"\)', _host_source())
+    )
 
 
 def test_native_host_declares_tauri_configuration_and_named_sidecar():
@@ -23,7 +164,7 @@ def test_native_host_declares_tauri_configuration_and_named_sidecar():
 
 
 def test_named_sidecar_maps_to_the_python_module_entrypoint():
-    entrypoint = ROOT / "product" / "viva" / "desktop_bridge" / "__main__.py"
+    entrypoint = BRIDGE_PACKAGE / "__main__.py"
     assert entrypoint.is_file()
     source = entrypoint.read_text()
     assert 'if __name__ == "__main__":' in source
@@ -31,13 +172,88 @@ def test_named_sidecar_maps_to_the_python_module_entrypoint():
     assert "sys.stdout" in source
 
 
-def test_native_host_boundary_names_match_frontend_operations():
-    bridge_client = ROOT / "desktop" / "src" / "app" / "bridge-client.ts"
-    source = bridge_client.read_text()
+def test_the_operation_table_the_allowlist_and_the_payload_fields_agree():
+    served = _served_operations()
 
-    assert 'request("bridge.open_vault"' in source
-    assert 'request<SurfaceReadResult>("viva.surface.read"' in source
-    assert 'vault_directory: vaultDirectory' in source
-    assert 'passphrase' in source
-    assert 'surface,' in source
-    assert 'job_id:' in source
+    assert served, "the sidecar serves no operations; this gate has lost its grip"
+    assert served == operation_names(), (
+        "the declared operation table and the operations the sidecar serves "
+        f"disagree: {sorted(served ^ operation_names())}"
+    )
+    assert set(PAYLOAD_FIELDS) == served, (
+        "every operation the sidecar serves declares a payload field set: "
+        f"{sorted(set(PAYLOAD_FIELDS) ^ served)}"
+    )
+
+    for operation, (module, function) in PAYLOAD_VALIDATORS.items():
+        assert module.is_file(), f"sidecar validator is missing: {module}"
+        assert _declared_payload_fields(module, function) == PAYLOAD_FIELDS[operation], (
+            f"{operation} enforces a different payload field set than the "
+            "contract declares"
+        )
+
+
+def test_the_sidecar_refuses_a_payload_field_no_operation_declares(tmp_path):
+    """Each probe is a payload that is valid but for one undeclared field.
+
+    A payload that is otherwise incomplete would be refused by the required
+    field checks, which would satisfy this test while the allowlist did
+    nothing.
+    """
+    handlers = default_handlers().handlers
+    for operation in (BRIDGE_HANDSHAKE, SURFACE_CAPABILITIES):
+        with pytest.raises(ValueError):
+            handlers[operation]({**COMPLETE_PAYLOADS[operation], UNDECLARED_FIELD: "v"})
+
+    with pytest.raises(ValueError) as refusal:
+        _read_request({**COMPLETE_PAYLOADS[SURFACE_READ], UNDECLARED_FIELD: "v"})
+    assert UNDECLARED_FIELD in str(refusal.value), (
+        "the refusal must name the field it rejected"
+    )
+
+    with pytest.raises(ValueError) as refusal:
+        _open_vault({
+            "vault_directory": str(tmp_path),
+            "passphrase": "synthetic-passphrase",
+            UNDECLARED_FIELD: "v",
+        })
+    assert UNDECLARED_FIELD in str(refusal.value), (
+        "the refusal must name the field it rejected"
+    )
+
+
+def test_the_host_only_retries_operations_the_sidecar_serves():
+    """The replay set is a claim about crash recovery, not about contract parity.
+
+    A renamed operation would leave the host's arm matching nothing, and
+    recovery would stop working with no other signal.
+    """
+    retried = _host_retry_operations()
+
+    assert retried, (
+        "the host declares no replayable operations; either recovery was "
+        "removed or this gate stopped finding the declaration"
+    )
+    unserved = retried - _served_operations()
+    assert not unserved, (
+        "the host would replay operations the sidecar does not serve: "
+        f"{sorted(unserved)}"
+    )
+
+
+def test_every_frame_field_the_host_names_is_one_the_protocol_defines():
+    handlers = default_handlers().handlers
+    for field in REQUIRED_REQUEST_FIELDS:
+        frame = json.loads(_frame(BRIDGE_HANDSHAKE))
+        del frame[field]
+        response = json.loads(dispatch_frame(json.dumps(frame), handlers))
+        assert not response["ok"], f"the decoder accepted a frame with no {field}"
+
+    named = _host_frame_fields()
+    assert named, "the host names no frame fields; this gate has lost its grip"
+
+    defined = REQUEST_FRAME_FIELDS | _response_frame_fields()
+    unknown = named - defined
+    assert not unknown, (
+        f"the host names frame fields the protocol does not define: {sorted(unknown)}"
+    )

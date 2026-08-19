@@ -658,3 +658,325 @@ def test_an_invariant_a_document_cites_is_one_that_exists():
 
     assert not dangling, "a document cites an invariant that does not exist:\n  " + \
         "\n  ".join(dangling)
+
+
+# ---------------------------------------------------------------------------
+# Anchored gaps. A status document's job is to say what is not yet true, and a
+# sentence saying so goes out of date silently. So each gap opens with an
+# anchor: a direction and an address at which the claim can be re-taken. The
+# guard performs one operation per direction and never reads what an address is
+# called, so no vocabulary of subjects lives here — the document supplies every
+# address, exactly as it supplies the test names a rule block cites.
+#
+# Scoped to `docs/`, the folder that records what is true. A proposal describes
+# a world that does not exist yet, and evaluating one would make every design
+# document red by construction.
+# ---------------------------------------------------------------------------
+
+# `| `has-file path/to/thing` | why it matters |`. The five directions are the
+# whole grammar: two about a path, two about a name a Python file declares, and
+# one honest refusal that is accepted and counted.
+_ANCHOR_ROW = re.compile(
+    r"^\|\s*`(?P<direction>no-file|has-file|no-name|has-name|unaddressable)"
+    r"\s+(?P<address>[^`|]+)`\s*\|")
+
+
+def _anchor_documents() -> list[pathlib.Path]:
+    """Every document that may carry an anchored gap — found, not listed."""
+    return sorted(p for p in (REPO / "docs").rglob("*.md")
+                  if not _HISTORICAL & set(p.parts))
+
+
+def _anchored_rows() -> list[tuple[pathlib.Path, int, str, str]]:
+    """Every anchored row any document states, found by shape."""
+    rows = []
+    for path in _anchor_documents():
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            row = _ANCHOR_ROW.match(line)
+            if row:
+                rows.append((path, line_no, row.group("direction"),
+                             row.group("address").strip()))
+    return rows
+
+
+def _declared_names(path: pathlib.Path) -> set[str]:
+    """Every name a Python file binds, at any level.
+
+    Definitions, assignment targets and imports all count, because all three
+    are ways the file comes to declare the name a document is pointing at.
+    """
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), filename=str(path))):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            names.add(node.id)
+        elif isinstance(node, ast.alias):
+            names.add((node.asname or node.name).split(".")[0])
+    return names
+
+
+def _anchor_failure(direction: str, address: str) -> str | None:
+    """What is wrong with one anchor, or nothing."""
+    if direction == "unaddressable":
+        if not address.strip(" —-"):
+            return "refuses an address and gives no reason"
+        return None
+
+    if direction in ("no-file", "has-file"):
+        exists = (REPO / address).exists()
+        if direction == "has-file" and not exists:
+            return f"names {address}, which does not exist"
+        if direction == "no-file" and exists:
+            return f"says nothing exists at {address}, and something does"
+        return None
+
+    file_part, marker, name = address.partition("#")
+    if not marker or not name.strip():
+        return f"reads {address!r}, which is not path#name"
+    if not file_part.endswith(".py"):
+        return (f"points at {file_part}, whose language this guard does not "
+                f"read — say unaddressable and give the reason")
+    target = REPO / file_part
+    if not target.is_file():
+        return f"names {file_part}, which does not exist"
+    declared = _declared_names(target)
+    if direction == "has-name" and name not in declared:
+        return f"names {name}, which {file_part} does not declare"
+    if direction == "no-name" and name in declared:
+        return f"says {file_part} declares no {name}, and it does"
+    return None
+
+
+def test_an_anchored_gap_resolves_at_the_address_it_names():
+    """A gap states a direction and an address; the guard re-takes the
+    measurement there.
+
+    The row carries no result — only the place a result can be got — so the
+    document satisfies its own rule against carrying a measurement forward and
+    becomes checkable at the same time. A gap closed by work lands as a red
+    anchor rather than as a sentence nobody re-read.
+    """
+    rows = _anchored_rows()
+    assert rows, ("no document states an anchored gap — the record this holds "
+                  "has been deleted, and a guard that walks an empty set is a "
+                  "guard that cannot fail")
+
+    wrong = []
+    for path, line_no, direction, address in rows:
+        problem = _anchor_failure(direction, address)
+        if problem:
+            wrong.append(f"{path.relative_to(REPO)}:{line_no} ({direction}) {problem}")
+
+    assert not wrong, ("a gap's anchor no longer resolves — the work may have "
+                       "landed, or the address moved:\n  " + "\n  ".join(wrong))
+
+
+def test_a_gap_states_an_anchor_and_a_refusal_is_counted_as_one():
+    """Every row of the gap table opens with an anchor, and every refusal sits
+    in the table that counts refusals.
+
+    Without this the grammar is opt-out: a row whose first cell is ordinary
+    prose is simply not matched, so the document could regrow the unanchored
+    sentences it was rewritten to remove, and a refusal parked among the gaps
+    would leave the count of refusals on the document's face understating the
+    truth.
+    """
+    problems = []
+    for header, refusals_only in ((_GAP_TABLE, False), (_REFUSAL_TABLE, True)):
+        path, _, rows = _one_table(header)
+        assert rows, (f"{path.relative_to(REPO)} carries the table headed "
+                      f"{header!r} with no rows in it")
+        for cells in rows:
+            row = _ANCHOR_ROW.match("| " + cells[0] + " |")
+            if row is None:
+                problems.append(f"{header}: {cells[0][:60]!r} states no anchor")
+                continue
+            refusal = row.group("direction") == "unaddressable"
+            if refusal != refusals_only:
+                problems.append(
+                    f"{header}: {row.group('direction')} row {cells[0][:60]!r} "
+                    f"belongs in the other table")
+
+    assert not problems, ("a gap is written outside the grammar its document "
+                          "declares:\n  " + "\n  ".join(problems))
+
+
+# ---------------------------------------------------------------------------
+# Coverage tables. The strongest checks available are not about the prose at
+# all: they compare a table in the record against a registry the code already
+# holds, so the record goes red on the day the work lands rather than on the
+# day somebody remembers. Both tables are found by their own header row, the
+# same way the rule index's two kinds of table are told apart.
+# ---------------------------------------------------------------------------
+
+# The two tables a gap may sit in. They are told apart by their own header row,
+# so a refusal moved among the gaps — or a gap moved among the refusals — is a
+# structural change the guard sees rather than a wording change it cannot.
+_GAP_TABLE = "| Anchor | Gap |"
+_REFUSAL_TABLE = "| Refusal | Gap |"
+
+_DESTINATION_TABLE = ("| Destination | Live read | Registry destination | "
+                      "Claimed by a surfaced capability | Shipped in the interface |")
+_OPERATION_TABLE = ("| Operation | Allowlisted | Where it is served | "
+                    "Consumed by the desktop |")
+# The table's spelling of a yes-or-no column. A cell saying anything else is
+# reported rather than guessed at.
+_MARKS = {"yes": True, "no": False}
+
+
+def _tables(header: str) -> list[tuple[pathlib.Path, list[str], list[list[str]]]]:
+    """Every table any document carries under exactly this header row."""
+    found = []
+    for path in _anchor_documents():
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if line.strip() != header:
+                continue
+            rows = []
+            for candidate in lines[index + 1:]:
+                if not candidate.startswith("|"):
+                    break
+                cells = [cell.strip() for cell in candidate.strip().strip("|").split("|")]
+                if set("".join(cells)) <= set("-: "):
+                    continue
+                rows.append(cells)
+            found.append((path, _cells(header), rows))
+    return found
+
+
+def _cells(row: str) -> list[str]:
+    return [cell.strip() for cell in row.strip().strip("|").split("|")]
+
+
+def _one_table(header: str):
+    """The single document carrying this table, or an explanation of why not."""
+    found = _tables(header)
+    assert len(found) == 1, (
+        f"exactly one document carries the table headed {header!r}; "
+        f"{len(found)} do — this comparison has nothing to hold, or holds two "
+        f"records that will disagree")
+    return found[0]
+
+
+def _stated(columns: list[str], rows: list[list[str]], column: str) -> tuple[set[str], list[str]]:
+    """The subjects a yes-or-no column says yes to, and every unreadable cell."""
+    index = columns.index(column)
+    said_yes, unreadable = set(), []
+    for cells in rows:
+        subject = cells[0].strip("`")
+        if len(cells) <= index or cells[index] not in _MARKS:
+            unreadable.append(f"{subject}: {column} reads "
+                              f"{(cells[index] if len(cells) > index else '')!r}")
+        elif _MARKS[cells[index]]:
+            said_yes.add(subject)
+    return said_yes, unreadable
+
+
+def _subjects(rows: list[list[str]]) -> set[str]:
+    """What each row of a coverage table is about."""
+    return {cells[0].strip("`") for cells in rows}
+
+
+def _duplicates(rows: list[list[str]]) -> list[str]:
+    """A subject holding two rows, whose second row nothing would ever read."""
+    seen, twice = set(), set()
+    for cells in rows:
+        subject = cells[0].strip("`")
+        twice.add(subject) if subject in seen else seen.add(subject)
+    return [f"{subject} has more than one row" for subject in sorted(twice)]
+
+
+def _disagreement(column: str, stated: set[str], derived: set[str]) -> list[str]:
+    missing = sorted(derived - stated)
+    extra = sorted(stated - derived)
+    problems = []
+    if missing:
+        problems.append(f"{column}: the code says yes to {missing} and the table does not")
+    if extra:
+        problems.append(f"{column}: the table says yes to {extra} and the code does not")
+    return problems
+
+
+def test_a_destination_table_is_the_destinations_the_registry_holds():
+    """Three of the destinations table's columns are derived, not restated: the
+    surfaces an opened vault will read, the destinations the capability
+    registry declares, and the destinations a surfaced capability claims.
+
+    The day a surface becomes live-readable, or a destination is declared, or a
+    capability's destination moves, the table disagrees with the code and the
+    record has to be rewritten before the build passes. Which destinations the
+    interface ships is not here: its source is TypeScript, and no guard in this
+    repository reads TypeScript.
+    """
+    from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
+    from viva.surface.capabilities import (CapabilityDestination,
+                                           CapabilityDisposition,
+                                           capability_registry)
+
+    path, columns, rows = _one_table(_DESTINATION_TABLE)
+    derived = {
+        "Live read": set(OpenedVaultSurfaceProvider._SURFACES),
+        "Registry destination": {str(value) for value in CapabilityDestination},
+        "Claimed by a surfaced capability": {
+            str(spec.destination) for spec in capability_registry()
+            if spec.disposition == CapabilityDisposition.SURFACE},
+    }
+
+    problems = []
+    for column, expected in derived.items():
+        said_yes, unreadable = _stated(columns, rows, column)
+        problems.extend(unreadable)
+        problems.extend(_disagreement(column, said_yes, expected))
+
+    # The rows themselves, not only the marks on them. A destination the code
+    # declares and the table omits is the drift this exists to catch; a row
+    # that answers no to everything derived is invisible to the marks alone, so
+    # it has to earn its place by claiming the one column that is stated.
+    listed, shipped = _subjects(rows), _stated(columns, rows, "Shipped in the interface")[0]
+    problems.extend(_duplicates(rows))
+    declared = set().union(*derived.values())
+    for name in sorted(declared - listed):
+        problems.append(f"the code declares {name} and the table has no row for it")
+    for name in sorted(listed - declared - shipped):
+        problems.append(f"the table lists {name}, which the code does not declare "
+                        f"and which the table does not claim the interface ships")
+
+    assert not problems, (f"{path.relative_to(REPO)} no longer describes the "
+                          f"destinations the code holds:\n  " + "\n  ".join(problems))
+
+
+def test_a_bridge_operation_table_is_the_operations_the_sidecar_serves():
+    """Every operation the sidecar will answer is in the record, and the record
+    says which of them an allowlist admits.
+
+    Both sets are built rather than listed: the declared operations from the
+    table the bridge builds its handlers from, and the allowlist by building
+    the dispatchers a sidecar actually runs. An operation served outside every
+    allowlist is a fact the record states, so the day it joins one the record
+    goes red for still saying it is outside.
+    """
+    from viva.desktop_bridge.handlers import (default_handlers,
+                                              handlers_with_surface_provider)
+    from viva.surface import operation_names
+
+    path, columns, rows = _one_table(_OPERATION_TABLE)
+    served = set(operation_names())
+    allowlisted = set(default_handlers().handlers) | set(
+        handlers_with_surface_provider(object()).handlers)
+
+    listed = _subjects(rows)
+    problems = _duplicates(rows)
+    if listed != served:
+        if served - listed:
+            problems.append(f"the sidecar serves {sorted(served - listed)}, "
+                            f"which the table does not list")
+        if listed - served:
+            problems.append(f"the table lists {sorted(listed - served)}, "
+                            f"which the sidecar does not serve")
+    said_yes, unreadable = _stated(columns, rows, "Allowlisted")
+    problems.extend(unreadable)
+    problems.extend(_disagreement("Allowlisted", said_yes, allowlisted))
+
+    assert not problems, (f"{path.relative_to(REPO)} no longer describes the "
+                          f"operations the sidecar serves:\n  " + "\n  ".join(problems))

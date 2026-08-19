@@ -42,6 +42,16 @@
       "state": "ready"
     },
     {
+      "capability_id": "overview.accounts",
+      "contract": "AccountOverview.v1",
+      "id": "overview.accounts.ready",
+      "payload": {
+        "capability_id": "overview.accounts",
+        "contract": "AccountOverview.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "review.questions",
       "contract": "QuestionQueue.v1",
       "id": "review.questions.ready",
@@ -70,8 +80,10 @@
       "exactness",
       "as_of",
       "coverage",
+      "grade_description",
       "record_ids",
       "provenance",
+      "citations",
       "caveats"
     ],
     "PanelState": [
@@ -83,7 +95,7 @@
       "failed"
     ]
   },
-  "protocol": "1.0",
+  "protocol": "2.0",
   "registry": [
     {
       "actions": [],
@@ -94,7 +106,7 @@
       "entrypoint": "viva.diff_rulings",
       "fixture_ids": [],
       "id": "advanced.diff_rulings",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.diff_rulings",
       "reason": "ruling comparison is rebuild evaluation tooling, not a user-facing action",
       "trust_effect": [
@@ -110,7 +122,7 @@
       "entrypoint": "viva.export_rulings",
       "fixture_ids": [],
       "id": "advanced.export_rulings",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.export_rulings",
       "reason": "ruling export contains personal data and requires an explicit advanced privacy warning",
       "trust_effect": [
@@ -127,7 +139,7 @@
       "entrypoint": "viva.rebuild",
       "fixture_ids": [],
       "id": "advanced.rebuild",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.rebuild",
       "reason": "rebuild creates a new vault and belongs to the advanced vault laboratory",
       "trust_effect": [
@@ -144,7 +156,7 @@
       "entrypoint": "viva.reingest",
       "fixture_ids": [],
       "id": "advanced.reingest",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.reingest",
       "reason": "reingest is an advanced migration operation requiring a fresh vault",
       "trust_effect": [
@@ -162,7 +174,7 @@
       "entrypoint": "viva.reset_categorization",
       "fixture_ids": [],
       "id": "advanced.reset_categorization",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.reset_categorization",
       "reason": "categorization reset rewrites a derived vault and is not ordinary settings",
       "trust_effect": [
@@ -181,7 +193,7 @@
         "conversation.viva.ready"
       ],
       "id": "conversation.viva",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.speak",
       "reason": null,
       "trust_effect": [
@@ -199,7 +211,7 @@
       "entrypoint": "viva.debug.categories",
       "fixture_ids": [],
       "id": "diagnostic.categories",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.categories",
       "reason": "category diagnostics inspect engine projections and are not a product read model",
       "trust_effect": [
@@ -215,7 +227,7 @@
       "entrypoint": "viva.debug.claim",
       "fixture_ids": [],
       "id": "diagnostic.claim",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.claim",
       "reason": "claim inspection exposes internal evidence and is reserved for development",
       "trust_effect": [
@@ -231,7 +243,7 @@
       "entrypoint": "viva.debug.descriptors",
       "fixture_ids": [],
       "id": "diagnostic.descriptors",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.descriptors",
       "reason": "descriptor diagnostics expose raw recognition details outside the product surface",
       "trust_effect": [
@@ -247,7 +259,7 @@
       "entrypoint": "viva.debug.gaps",
       "fixture_ids": [],
       "id": "diagnostic.gaps",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.gaps",
       "reason": "debug diagnostic output is not a product read model",
       "trust_effect": [
@@ -263,7 +275,7 @@
       "entrypoint": "viva.debug.networth",
       "fixture_ids": [],
       "id": "diagnostic.networth",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.networth",
       "reason": "debug diagnostic output is not the canonical financial picture",
       "trust_effect": [
@@ -279,7 +291,7 @@
       "entrypoint": "viva.pattern_report",
       "fixture_ids": [],
       "id": "diagnostic.pattern_report",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.pattern_report",
       "reason": "diagnostic report; it describes recurrence but does not decide a user-facing finding",
       "trust_effect": [
@@ -295,7 +307,7 @@
       "entrypoint": "viva.debug.read",
       "fixture_ids": [],
       "id": "diagnostic.read",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.read",
       "reason": "document reader trace is a development diagnostic, not a rendered journey",
       "trust_effect": [
@@ -312,7 +324,7 @@
       "entrypoint": "viva.debug.speak",
       "fixture_ids": [],
       "id": "diagnostic.speak",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.speak",
       "reason": "conversation trace is a development diagnostic, not a second conversation surface",
       "trust_effect": [
@@ -329,7 +341,7 @@
       "entrypoint": "viva.streams_report",
       "fixture_ids": [],
       "id": "diagnostic.stream_report",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.streams_report",
       "reason": "diagnostic report for engine development; selected findings may later feed Activity",
       "trust_effect": [
@@ -345,7 +357,7 @@
       "entrypoint": "viva.debug.tiers",
       "fixture_ids": [],
       "id": "diagnostic.tiers",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.tiers",
       "reason": "tier diagnostics explain engine question states and are not the Review contract",
       "trust_effect": [
@@ -361,7 +373,7 @@
       "entrypoint": "viva.transfer_report",
       "fixture_ids": [],
       "id": "diagnostic.transfer_report",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.transfer_report",
       "reason": "diagnostic report for transfer matching and repair review",
       "trust_effect": [
@@ -378,7 +390,7 @@
       "entrypoint": "viva.debug.vault",
       "fixture_ids": [],
       "id": "diagnostic.vault",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.debug.vault",
       "reason": "vault inspection exposes internal storage details unsuitable for the ordinary UI",
       "trust_effect": [
@@ -399,11 +411,14 @@
         "documents.ingest.ready"
       ],
       "id": "documents.ingest",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.ingest",
       "reason": null,
       "trust_effect": [
-        "writes_event"
+        "reads_data",
+        "writes_event",
+        "may_call_model",
+        "may_egress"
       ]
     },
     {
@@ -417,7 +432,7 @@
         "documents.rescan.ready"
       ],
       "id": "documents.rescan",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.rescan",
       "reason": null,
       "trust_effect": [
@@ -434,7 +449,7 @@
       "entrypoint": "viva.eval_listen",
       "fixture_ids": [],
       "id": "evaluation.listen",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.eval_listen",
       "reason": "model evaluation is CI and developer tooling only",
       "trust_effect": [
@@ -454,7 +469,7 @@
         "maintenance.agent.ready"
       ],
       "id": "maintenance.agent",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.agent",
       "reason": null,
       "trust_effect": [
@@ -472,7 +487,7 @@
       "entrypoint": "viva.induce_profile",
       "fixture_ids": [],
       "id": "maintenance.grammar_induction",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.induce_profile",
       "reason": "private maintenance is audited by the engine and is not an ordinary product destination",
       "trust_effect": [
@@ -490,7 +505,7 @@
       "entrypoint": "viva.enrich",
       "fixture_ids": [],
       "id": "maintenance.merchant_enrichment",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.enrich",
       "reason": "model-bound merchant enrichment needs a reviewed privacy boundary before it is surfaced",
       "trust_effect": [
@@ -498,6 +513,24 @@
         "writes_event",
         "may_call_model",
         "may_egress"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "when a vault is open",
+      "contract": "AccountOverview.v1",
+      "destination": "overview",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "overview.accounts.ready"
+      ],
+      "id": "overview.accounts",
+      "maturity": "preview",
+      "owner": "viva.surface.overview",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
       ]
     },
     {
@@ -514,7 +547,7 @@
         "review.questions.ready"
       ],
       "id": "review.questions",
-      "maturity": "stable",
+      "maturity": "preview",
       "owner": "viva.ask",
       "reason": null,
       "trust_effect": [

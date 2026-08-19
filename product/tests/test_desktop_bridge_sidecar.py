@@ -9,7 +9,7 @@ from viva.desktop_bridge.__main__ import Sidecar
 
 def _frame(operation: str, payload: dict | None = None, request_id: str = "req-1") -> str:
     return json.dumps({
-        "protocol": "1.0",
+        "protocol": "2.0",
         "request_id": request_id,
         "operation": operation,
         "payload": payload or {},

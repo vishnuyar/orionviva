@@ -44,7 +44,6 @@ def test_capability_spec_rejects_unreviewed_dispositions():
         CapabilitySpec(
             id="unreviewed",
             owner="test",
-            maturity="stable",
             disposition=CapabilityDisposition.DEVELOPER_ONLY,
             destination=CapabilityDestination.NONE,
             availability="available",

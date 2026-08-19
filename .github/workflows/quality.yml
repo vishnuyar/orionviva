@@ -9,6 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The impact gate measures a change against the commit before the
+          # tip. With only that tip fetched there is no such commit, and the
+          # gate falls back to comparing the tree against itself.
+          fetch-depth: 2
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -20,6 +25,18 @@ jobs:
         run: PYTHONPATH=.:product:core:merchant python scripts/check_surface_impact.py --check
       - name: Run surface contract and boundary tests
         run: PYTHONPATH=.:product:core:merchant pytest product/tests/test_surface_contract.py product/tests/test_surface_capability_coverage.py product/tests/test_surface_gate_scripts.py product/tests/test_surface_import_boundaries.py product/viva/surface/test_contracts.py
+
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install every package with its development dependencies
+        run: python -m pip install -e core -e merchant -e product[dev] -e bench[dev]
+      - name: Run every package suite
+        run: PYTHONPATH=.:product:core:merchant:bench python -m pytest product core merchant bench -q
 
   desktop:
     runs-on: macos-latest
@@ -39,9 +56,14 @@ jobs:
       - name: Install product and sidecar build dependencies
         run: python -m pip install -e ../core -e ../merchant -e ../product -r ../product/requirements-sidecar-build.txt
       - run: npm ci
+      - name: Check frontend architecture boundaries
+        run: npm run check:architecture
       - run: npm test
       - run: npm run build
       - name: Build desktop sidecar
-        run: python ../scripts/build_desktop_sidecar.py --output-dir src-tauri/binaries --target "$(rustc -vV | sed -n 's/^host: //p')"
+        run: |
+          python ../scripts/build_desktop_sidecar.py \
+            --output-dir src-tauri/binaries \
+            --target "$(rustc -vV | sed -n 's/^host: //p')"
       - name: Build Tauri desktop bundle
         run: npx tauri build

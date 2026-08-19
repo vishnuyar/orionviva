@@ -10,7 +10,6 @@ from .capabilities import (
     CapabilityMaturity,
     CapabilitySpec,
     TrustEffect,
-    TRUST_EFFECTS,
     capabilities,
     capability_for,
     capability_registry,
@@ -18,11 +17,29 @@ from .capabilities import (
     serialize_registry,
     validate_registry,
 )
-from .models import ActionOutcome, FigureView, PanelState
+from .operations import (
+    BRIDGE_HANDSHAKE,
+    BRIDGE_OPEN_VAULT,
+    BRIDGE_OPERATIONS,
+    SURFACE_CAPABILITIES,
+    SURFACE_READ,
+    BridgeOperation,
+    operation_names,
+    served_contracts,
+    validate_operations,
+)
+from .models import (ActionOutcome, Citation, CitationRelation, FigureView,
+                     PanelState)
 from .protocol import CURRENT_PROTOCOL, ProtocolVersion, ProtocolVersionError
 
 __all__ = [
     "ActionOutcome",
+    "Citation",
+    "CitationRelation",
+    "BRIDGE_HANDSHAKE",
+    "BRIDGE_OPEN_VAULT",
+    "BRIDGE_OPERATIONS",
+    "BridgeOperation",
     "CAPABILITIES",
     "Destination",
     "Disposition",
@@ -36,12 +53,16 @@ __all__ = [
     "PanelState",
     "ProtocolVersion",
     "ProtocolVersionError",
+    "SURFACE_CAPABILITIES",
+    "SURFACE_READ",
     "TrustEffect",
-    "TRUST_EFFECTS",
     "capabilities",
     "capability_for",
     "capability_registry",
     "command_classifications",
+    "operation_names",
     "serialize_registry",
+    "served_contracts",
+    "validate_operations",
     "validate_registry",
 ]

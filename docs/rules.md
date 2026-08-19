@@ -514,15 +514,15 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-95** | autonomy is earned statistically and revoked automatically | **unmet** | [model-trust-policy.md](model-trust-policy.md) | — |
 | **VOICE-96** | every call names its model, and every version resolves | enforced *(exception)* | [model-trust-policy.md](model-trust-policy.md) | `test_every_version_the_code_can_emit_resolves` |
 | **VOICE-100** | the product is an installed desktop application, not a server | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_handshake_is_versioned_and_framed` |
-| **VOICE-101** | the dependency direction is one-way, and a test enforces it | **contradicted** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_product_engine_does_not_depend_on_surface_or_desktop` +1 *(failing)* |
+| **VOICE-101** | the dependency direction is one-way, and a test enforces it | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_product_tiers_import_only_along_permitted_edges` +2 |
 | **VOICE-102** | the interface renders values and computes no financial fact | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_no_module_that_speaks_to_a_person_formats_money_itself` |
 | **VOICE-103** | every figure crossing the boundary proves itself | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_figure_rejects_float_values` |
-| **VOICE-104** | the `measures` vocabulary a figure declares is closed | **contradicted** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
+| **VOICE-104** | the `measures` vocabulary a figure declares is closed | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_figure_declares_a_measure_the_vocabulary_holds` |
 | **VOICE-105** | every read model declares one explicit panel state | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_panel_states_and_action_outcomes_are_closed` |
 | **VOICE-106** | an action returns what happened, never a bare `ok` | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_panel_states_and_action_outcomes_are_closed` |
 | **VOICE-107** | the protocol refuses rather than guesses | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_protocol_accepts_additive_minor_changes_only` |
-| **VOICE-108** | every capability has a destination or a recorded reason for not having one | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_non_surface_capabilities_have_explicit_disposition_and_reason` |
-| **VOICE-109** | the bridge is transport and nothing else | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_unknown_operations_are_refused_by_the_allowlist` |
+| **VOICE-108** | every capability has a destination or a recorded reason for not having one | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_non_surface_capabilities_have_explicit_disposition_and_reason` +1 |
+| **VOICE-109** | the bridge is transport and nothing else | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_unknown_operations_are_refused_by_the_allowlist` |
 | **VOICE-110** | compiled frontend output is never committed | by-review *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
 | **VOICE-111** | every direction shown comes from the account's kind, never a posted sign | **unmet** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
 | **VOICE-112** | the surface never claims machinery the product does not have | **unmet** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
@@ -540,6 +540,7 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-129** | cycle 1 is deterministic, and a model selector must beat it on measured grounds | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_account_with_a_schema_is_asked_one_thing_at_a_time` |
 | **VOICE-130** | jurisdiction is an attribute of the account, and the country tag is derived | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_jurisdiction_scoped_question_does_not_travel` |
 | **VOICE-131** | the sentence and the parse are captured verbatim | **unmet** | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | — |
+| **VOICE-132** | a gap carries the address its measurement is re-taken at | enforced | [user-interface-implementation-status.md](user-interface-implementation-status.md) | `test_an_anchored_gap_resolves_at_the_address_it_names` +3 |
 
 ## PROG — the programme: benchmarks, evals, storage, distribution
 
@@ -620,7 +621,7 @@ not been. Grouped by why the gap exists.
 
 ### Built, or partly built, and pinned by nothing
 
-53 rules.
+52 rules.
 
 | Rule | Name | State | Doc |
 | --- | --- | --- | --- |
@@ -675,7 +676,6 @@ not been. Grouped by why the gap exists.
 | **PROJ-55** | induced grammars are held outside any working tree until a person promotes them | by-review | [orionviva-transaction-intelligence-spec.md](orionviva-transaction-intelligence-spec.md) |
 | **PROJ-60** | a small core with view modules behind a facade | by-review | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) |
 | **T6** | Nothing leaves silently | by-review | [design-invariants.md](design-invariants.md) |
-| **VOICE-104** | the `measures` vocabulary a figure declares is closed | contradicted-by-code | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |
 | **VOICE-110** | compiled frontend output is never committed | by-review-with-exception | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |
 
 ### Nothing to test — the mechanism is not built
@@ -771,7 +771,7 @@ not been. Grouped by why the gap exists.
 
 ## Rules the code contradicts
 
-Eleven rules diverge from the code. Each row names where the rule is written
+Ten rules diverge from the code. Each row names where the rule is written
 and where the code disagrees with it. A contradiction is a ruling owed, not a
 bug report: for several of these the code is right and the sentence is stale.
 
@@ -783,8 +783,6 @@ bug report: for several of these the code is right and the sentence is stale.
 | **ING-4** — a claim's identity is its value and position, never its label<br>[extraction-and-confidence.md:47](extraction-and-confidence.md) | Two extractions are matched on printed value and page position; a model-authored label is an annotation, never a join key. | `bench/vivabench/keybuild.py:113` indexes drafts on `(type, normalized label)` and merges with `setdefault`, so the label *is* the join key and later claims in a bucket are dropped silently. `core/vivacore/claims.py:30` returns that same tuple from `Claim.key()`. |
 | **ING-13** — ingestion processes a page at a time<br>[document-preprocessing.md:36](document-preprocessing.md) | A document is extracted page by page, so one bad page is one bad page and no read is capped by a whole-document output ceiling. | `product/viva/ingest/reader.py:118` passes the whole `pages` list to one `adapter.extract` call; the ceiling is handled by continuation (`core/vivacore/models/anthropic_adapter.py:42`). Only the classify pass is bounded to one page (`product/viva/ingest/reader.py:70`). The bench does read page-at-a-time (`bench/vivabench/runner.py:118`), so exam and product differ. |
 | **ING-71** — document content reaches the model as delimited, untrusted data<br>[threat-model-and-ingestion-security.md:17](threat-model-and-ingestion-security.md) | Spotlighting is adopted: the document is delivered inside clear bounds marking it as content to read, never concatenated into the instruction channel. | `product/viva/ingest/reader.py:57` appends the untrusted text to the prompt string behind a provenance hint, with no opening or closing delimiter. Neither `product/viva/prompts/extract-base-v1.txt` nor `classify-v2.txt` carries untrusted-content framing. |
-| **VOICE-101** — the dependency direction is one-way, and a test enforces it<br>[user-interface-architecture-and-delivery.md:24](user-interface-architecture-and-delivery.md) | The bridge depends on `viva.surface`; the desktop consumes the contract only. | Two of six boundary tests are red. `product/viva/desktop_bridge/handlers.py` and `product/viva/desktop_bridge/rpc.py` import `viva.surface`, which `product/tests/test_surface_import_boundaries.py:58` forbids for every file under `product/viva` outside `product/viva/surface/`; `desktop/src/tauri-host.ts` imports `@tauri-apps/plugin-dialog`, which `:76` forbids. |
-| **VOICE-104** — the `measures` vocabulary a figure declares is closed<br>[user-interface-architecture-and-delivery.md:60](user-interface-architecture-and-delivery.md) | A figure crossing to an interface declares what it measures from the same closed vocabulary the answer path uses. | `product/viva/surface/models.py:34` declares `measure: str` and `:45` validates only non-emptiness, so any string is accepted. The closed vocabulary at `product/viva/quantity.py:100` is never consulted by the surface. |
 | **PROG-9** — a claim's identity is its value, page and region<br>[benchmark-harness-design.md:34](benchmark-harness-design.md) | A claim is identified by `(value, page, region)`; the label is an annotation. | Same site as ING-4: `core/vivacore/claims.py:30` and `bench/vivabench/keybuild.py:113`. Page, region and page-namespaced group are written onto every claim by the runner and read by nothing. |
 | **PROG-17** — a frozen key's hash is stable<br>[benchmark-harness-design.md:111](benchmark-harness-design.md) | Freezing twice yields the identical key and hash, so a re-run can prove it used the same key. | `bench/vivabench/cli.py:183` re-reads the audit worksheet and appends every resolved row to `key.entries` on every invocation; `bench/vivabench/keybuild.py:158` only sets the flag and hashes what it is handed. Entries grow each pass and each pass commits a different hash. |
 | **PROG-23** — `viva-bench report` emits the scorecards<br>[benchmark-harness-architecture.md:42](benchmark-harness-architecture.md) | `report` writes scorecards as markdown and JSON per (model, doc type, locale). | `bench/vivabench/cli.py:287` registers `report` as a bare alias of `cmd_score` without the `--mode` flag `cmd_score` reads (`:233`), so every invocation raises `AttributeError` before a record is read. `bench/tests/` has no CLI coverage. `score` works. |

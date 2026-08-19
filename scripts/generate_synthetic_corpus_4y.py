@@ -7,8 +7,8 @@ and multiple account families:
 - monthly checking
 - quarterly savings
 - quarterly brokerage
-- monthly Chase card
-- monthly Citi card
+- monthly Harborline card
+- monthly Meridian card
 
 The intent is to mirror the backend statement shapes and merchant vocabulary
 already present in the repo, while remaining deterministic and local.
@@ -126,18 +126,18 @@ def build_four_year_specs(
 
     checking_balance = Decimal("8420.18")
     chase_balance = Decimal("1842.77")
-    citi_balance = Decimal("620.14")
+    meridian_balance = Decimal("620.14")
     savings_balance = Decimal("40000.00")
     brokerage_total = Decimal("68420.44")
 
     checking_merchants = [
-        ("patel brothers", "Groceries"),
+        ("saffron grocers", "Groceries"),
         ("wal mart", "Household"),
-        ("amazon com", "Online shopping"),
+        ("riverbend market", "Online shopping"),
         ("starbucks store", "Coffee"),
         ("racetrac", "Fuel"),
         ("panera bread", "Lunch"),
-        ("uber trip", "Ride"),
+        ("cityhop ride", "Ride"),
         ("walgreens", "Pharmacy"),
         ("kohl s", "Clothing"),
         ("the ups store", "Shipping"),
@@ -149,11 +149,11 @@ def build_four_year_specs(
         ("chevron", "Fuel"),
     ]
     chase_merchants = [
-        ("patel brothers", "Groceries"),
-        ("amazon com", "Online order"),
-        ("tesla supercharger u", "Charging"),
+        ("saffron grocers", "Groceries"),
+        ("riverbend market", "Online order"),
+        ("voltway charging", "Charging"),
         ("starbucks store", "Coffee"),
-        ("uber trip", "Ride share"),
+        ("cityhop ride", "Ride share"),
         ("burger king", "Dinner"),
         ("lowes", "Home project"),
         ("jcpenney", "Household"),
@@ -162,12 +162,12 @@ def build_four_year_specs(
         ("kohl s", "Shopping"),
         ("walgreens", "Pharmacy"),
     ]
-    citi_merchants = [
-        ("schoolcafe", "School meals"),
-        ("kumon learning", "Tutoring"),
+    meridian_merchants = [
+        ("lunchline", "School meals"),
+        ("brightpath tutoring", "Tutoring"),
         ("choice home warranty", "Warranty"),
-        ("spectrum", "Internet"),
-        ("eqt dental", "Dental"),
+        ("clearwave", "Internet"),
+        ("elmwood dental", "Dental"),
         ("whoop", "Subscription"),
         ("ross stores", "Clothing"),
         ("jcpenney", "Household"),
@@ -185,7 +185,7 @@ def build_four_year_specs(
         payroll = Decimal("4550") + Decimal((idx % 6) * 65) + Decimal((idx // 12) * 45)
         mortgage = Decimal("1720") + Decimal((idx % 4) * 10)
         chase_pay = Decimal("920") + Decimal((idx % 5) * 12)
-        citi_pay = Decimal("690") + Decimal((idx % 3) * 18)
+        meridian_pay = Decimal("690") + Decimal((idx % 3) * 18)
         savings_xfer = Decimal("320") + Decimal((idx % 3) * 25)
         brokerage_xfer = Decimal("180") if idx % 3 == 2 else Decimal("0")
         spend = [
@@ -198,16 +198,16 @@ def build_four_year_specs(
         checking_txns = [
             _txn(period_end, "Payroll Deposit", payroll, "Employer payroll credit"),
             _txn(date(month_end.year, month_end.month, 26),
-                 _catalog_merchant(catalog, "newrez shellpoin ach"),
+                 _catalog_merchant(catalog, "ridgeline svcg ach"),
                  -mortgage, "Mortgage payment"),
             _txn(date(month_end.year, month_end.month, 22),
-                 _catalog_merchant(catalog, "payment to chase card ending in"),
+                 _catalog_merchant(catalog, "payment to harborline card ending in"),
                  -chase_pay, "Card payment"),
             _txn(date(month_end.year, month_end.month, 21),
-                 _catalog_merchant(catalog, "citi card online"),
-                 -citi_pay, "Card payment"),
+                 _catalog_merchant(catalog, "meridian card online"),
+                 -meridian_pay, "Card payment"),
             _txn(date(month_end.year, month_end.month, 14),
-                 _catalog_merchant(catalog, "online transfer to prosperityviva transaction"),
+                 _catalog_merchant(catalog, "online transfer to keystone transaction"),
                  -savings_xfer, "Transfer to savings"),
         ]
         if brokerage_xfer:
@@ -244,7 +244,7 @@ def build_four_year_specs(
                 "Payroll, mortgage, card payments, and household spend repeat across the four-year span.",
                 "This series is designed to exercise cross-document references to card and savings statements.",
             ],
-            merchants=["Newrez", "Chase", "Citi", "Patel Brothers", "Walmart", "Amazon Marketplace", "Tesla Supercharger", "Uber Trip"],
+            merchants=["Ridgeline Servicing", "Harborline", "Meridian", "Saffron Grocers", "Valuemart", "Riverbend Market", "Voltway Charging", "Cityhop Ride"],
         ))
         checking_balance = checking_closing
 
@@ -266,17 +266,17 @@ def build_four_year_specs(
                  Decimal("28") + Decimal((idx % 6) * 4),
                  chase_merchants[(idx + 7) % len(chase_merchants)][1]),
             _txn(period_end.replace(day=23),
-                 _catalog_merchant(catalog, "payment to chase card ending in"),
+                 _catalog_merchant(catalog, "payment to harborline card ending in"),
                  -(Decimal("900") + Decimal((idx % 5) * 15)),
                  "Payment from checking"),
         ]
         chase_closing = (chase_balance + _txns_total(chase_txns)).quantize(TWOPLACES)
         specs.append(StatementSpec(
-            file_name=f"chase-card-{month.strftime('%Y-%m')}.pdf",
+            file_name=f"harborline-card-{month.strftime('%Y-%m')}.pdf",
             kind="credit_card_statement",
-            family="chase-card-monthly",
-            institution="Chase",
-            account="Chase Sapphire",
+            family="harborline-card-monthly",
+            institution="Harborline",
+            account="Harborline Signature",
             statement_title="Credit Card Statement",
             period=period,
             opening=_money(chase_balance),
@@ -286,51 +286,51 @@ def build_four_year_specs(
                 "Charges and a matching payment are carried forward month to month.",
                 "These statements intentionally reuse the same merchants as the checking series.",
             ],
-            merchants=["Chase", "Patel Brothers", "Amazon Marketplace", "Tesla Supercharger", "Uber Trip"],
+            merchants=["Harborline", "Saffron Grocers", "Riverbend Market", "Voltway Charging", "Cityhop Ride"],
         ))
         chase_balance = chase_closing
 
-        citi_txns = [
+        meridian_txns = [
             _txn(period_end.replace(day=4),
-                 _catalog_merchant(catalog, citi_merchants[(idx + 1) % len(citi_merchants)][0]),
+                 _catalog_merchant(catalog, meridian_merchants[(idx + 1) % len(meridian_merchants)][0]),
                  Decimal("168") + Decimal((idx % 4) * 10),
-                 citi_merchants[(idx + 1) % len(citi_merchants)][1]),
+                 meridian_merchants[(idx + 1) % len(meridian_merchants)][1]),
             _txn(period_end.replace(day=8),
-                 _catalog_merchant(catalog, citi_merchants[(idx + 3) % len(citi_merchants)][0]),
+                 _catalog_merchant(catalog, meridian_merchants[(idx + 3) % len(meridian_merchants)][0]),
                  Decimal("94") + Decimal((idx % 5) * 8),
-                 citi_merchants[(idx + 3) % len(citi_merchants)][1]),
+                 meridian_merchants[(idx + 3) % len(meridian_merchants)][1]),
             _txn(period_end.replace(day=15),
-                 _catalog_merchant(catalog, citi_merchants[(idx + 5) % len(citi_merchants)][0]),
+                 _catalog_merchant(catalog, meridian_merchants[(idx + 5) % len(meridian_merchants)][0]),
                  Decimal("54") + Decimal((idx % 6) * 5),
-                 citi_merchants[(idx + 5) % len(citi_merchants)][1]),
+                 meridian_merchants[(idx + 5) % len(meridian_merchants)][1]),
             _txn(period_end.replace(day=20),
-                 _catalog_merchant(catalog, citi_merchants[(idx + 7) % len(citi_merchants)][0]),
+                 _catalog_merchant(catalog, meridian_merchants[(idx + 7) % len(meridian_merchants)][0]),
                  Decimal("32") + Decimal((idx % 4) * 4),
-                 citi_merchants[(idx + 7) % len(citi_merchants)][1]),
+                 meridian_merchants[(idx + 7) % len(meridian_merchants)][1]),
             _txn(period_end.replace(day=24),
-                 _catalog_merchant(catalog, "citi card online"),
+                 _catalog_merchant(catalog, "meridian card online"),
                  -(Decimal("650") + Decimal((idx % 4) * 20)),
                  "Payment from checking"),
         ]
-        citi_closing = (citi_balance + _txns_total(citi_txns)).quantize(TWOPLACES)
+        meridian_closing = (meridian_balance + _txns_total(meridian_txns)).quantize(TWOPLACES)
         specs.append(StatementSpec(
-            file_name=f"citi-card-{month.strftime('%Y-%m')}.pdf",
+            file_name=f"meridian-card-{month.strftime('%Y-%m')}.pdf",
             kind="credit_card_statement",
-            family="citi-card-monthly",
-            institution="Citi",
-            account="Citi Double Cash",
+            family="meridian-card-monthly",
+            institution="Meridian",
+            account="Meridian Everyday",
             statement_title="Credit Card Statement",
             period=period,
-            opening=_money(citi_balance),
-            closing=_money(citi_closing),
-            transactions=citi_txns,
+            opening=_money(meridian_balance),
+            closing=_money(meridian_closing),
+            transactions=meridian_txns,
             notes=[
                 "Monthly household, school, and subscription spend with a single payment line.",
                 "The merchant vocabulary is drawn from the repository's catalog seed.",
             ],
-            merchants=["Citi", "SchoolCafe", "Kumon", "Spectrum", "EQT Dental"],
+            merchants=["Meridian", "Lunchline", "Brightpath", "Clearwave", "Elmwood Dental"],
         ))
-        citi_balance = citi_closing
+        meridian_balance = meridian_closing
 
         if (idx + 1) % 3 == 0:
             q_start = _add_months(start, idx - 2)
@@ -339,7 +339,7 @@ def build_four_year_specs(
 
             savings_txns = [
                 _txn(q_end.replace(day=3),
-                     _catalog_merchant(catalog, "online transfer to prosperityviva transaction"),
+                     _catalog_merchant(catalog, "online transfer to keystone transaction"),
                      Decimal("2500") + Decimal(q_index * 35),
                      "Transfer from checking"),
                 _txn(q_end.replace(day=15), "Interest",
@@ -402,15 +402,15 @@ def build_four_year_specs(
                 brokerage_txns.insert(
                     2,
                     _txn(q_end.replace(day=22),
-                         _catalog_merchant(catalog, "venmo"),
+                         _catalog_merchant(catalog, "cashlink"),
                          -brokerage_withdrawal,
                          "Transfer to checking"),
                 )
             specs.append(StatementSpec(
-                file_name=f"fidelity-brokerage-{q_start.strftime('%Y-%m')}-to-{q_end.strftime('%Y-%m')}.pdf",
+                file_name=f"northgate-brokerage-{q_start.strftime('%Y-%m')}-to-{q_end.strftime('%Y-%m')}.pdf",
                 kind="brokerage_statement",
                 family="brokerage-quarterly",
-                institution="Fidelity Investments",
+                institution="Northgate Investments",
                 account="Taxable Brokerage",
                 statement_title="Brokerage Statement",
                 period=q_period,
@@ -423,12 +423,12 @@ def build_four_year_specs(
                 ],
                 holdings=[
                     ["Security", "Shares", "Price", "Market Value"],
-                    ["VTI", f"{Decimal('120') + Decimal(q_index) * Decimal('1.125'):.3f}", f"${Decimal('210.12') + Decimal(q_index) * Decimal('2.14'):.2f}", f"${vti:,.2f}"],
+                    ["GBLX", f"{Decimal('120') + Decimal(q_index) * Decimal('1.125'):.3f}", f"${Decimal('210.12') + Decimal(q_index) * Decimal('2.14'):.2f}", f"${vti:,.2f}"],
                     ["AAPL", f"{Decimal('48') + Decimal(q_index) * Decimal('0.75'):.3f}", f"${Decimal('198.44') + Decimal(q_index) * Decimal('1.83'):.2f}", f"${aapl:,.2f}"],
                     ["VXUS", f"{Decimal('95') + Decimal(q_index) * Decimal('0.5'):.3f}", f"${Decimal('57.28') + Decimal(q_index) * Decimal('0.58'):.2f}", f"${vxus:,.2f}"],
                     ["Cash", "-", "-", f"${holdings_cash:,.2f}"],
                 ],
-                merchants=["Fidelity Brokerage Services", "Venmo", "Dividend"],
+                merchants=["Northgate Brokerage Services", "Cashlink", "Dividend"],
             ))
             brokerage_total = brokerage_closing
 

@@ -133,12 +133,13 @@ from vivacore import promptstore, versions
 
 from .. import quantity, render
 from ..persona import STOOD_BEHIND_MOMENT, moment
+from .boundary import SELECTED_TERMS, accounts_written, named_slice
+from .boundary import said as _said
+from .boundary import statements as _boundary
 from .compute import numbers_said
-from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_MERCHANT,
-                       BY_PERIOD, BY_SINCE, BY_SUBCATEGORY, BY_TAG, BY_UNTIL,
-                       ENTITY_ACCOUNT, ENTITY_MARKS, EXACT, HYPOTHETICAL,
-                       MONEY_KINDS, SPEAKABLE_REFUSALS, ToolResult, _named,
-                       weakest)
+from .envelope import (BY_ACCOUNT, BY_PERIOD, ENTITY_ACCOUNT, ENTITY_MARKS,
+                       EXACT, HYPOTHETICAL, MONEY_KINDS, SPEAKABLE_REFUSALS,
+                       ToolResult, _named, weakest)
 from .registry import PACKAGE, PROMPTS, Registry
 from .shape import WHOLE, Shape
 
@@ -254,6 +255,14 @@ class _Ground:
     # Which caveats stand behind each figure, so an answer that states a
     # number has to state what the number does not cover.
     owed: dict = field(default_factory=dict)      # figure id -> (caveat id, ...)
+
+    def accounts(self) -> dict:
+        """The accounts this run established, by ledger path.
+
+        What an account is written from, handed to whatever writes one, so the
+        name in a boundary sentence is the name every other sentence uses."""
+        return {item["account"]: item for item in self.entities.values()
+                if item.get("kind") == ENTITY_ACCOUNT and item.get("account")}
 
     def stamp(self, result: ToolResult) -> None:
         """Absorb one ok result: give an identity to every figure, entity,
@@ -847,43 +856,6 @@ def _figure_bound(slot, fig: dict, locale: str):
 
 # -------------------------------------------------------- where a claim ends
 
-# How each way of narrowing a set is said: the pack's line for it, the name
-# that line places it by, and how the thing becomes words. One entry per member
-# of the vocabulary, so a way of narrowing with nowhere to say what it selected
-# is a build failure rather than a figure that reaches a person looking like a
-# total.
-SELECTED_TERMS = {
-    BY_ACCOUNT: ("boundary_selected_account", "account",
-                 lambda item, ground: _account_written(item["value"], ground)),
-    BY_CATEGORY: ("boundary_selected_category", "category",
-                  lambda item, ground: render.category(item["value"])),
-    BY_MERCHANT: ("boundary_selected_merchant", "merchant",
-                  lambda item, ground: render.merchant({"key": item["value"]})),
-    BY_PERIOD: ("boundary_selected_period", "period",
-                lambda item, ground: render.period(item["value"], item["to"])),
-    BY_SINCE: ("boundary_selected_since", "day",
-               lambda item, ground: render.date(item["value"])),
-    BY_UNTIL: ("boundary_selected_until", "day",
-               lambda item, ground: render.date(item["value"])),
-    # The three the vault holds no thing for. Each is written as the label it is
-    # held under, which says what a figure's scope is and offers nothing to ask
-    # a follow-up with.
-    BY_SUBCATEGORY: ("boundary_selected_subcategory", "subcategory",
-                     lambda item, ground: render.label(item["value"])),
-    BY_TAG: ("boundary_selected_tag", "tag",
-             lambda item, ground: render.label(item["value"])),
-    BY_CURRENCY: ("boundary_selected_currency", "currency",
-                  lambda item, ground: render.label(item["value"])),
-}
-
-
-def _named_slice(item: dict, ground: _Ground):
-    """What one cut of a set is written as: the thing it was cut to, in
-    whichever form that kind of thing is written in. The same writer the
-    sentence about a boundary uses, so a slice named beside a number and a
-    slice named in a scope clause are never written two ways."""
-    return SELECTED_TERMS[item["kind"]][2](item, ground)
-
 
 def _line_of(fig: dict):
     """The slice this figure is a line of its read for, or None.
@@ -980,7 +952,8 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
                 f"The hole {slot.name!r} wants rows, and {fig['what']!r} is a "
                 "slice of that read holding no magnitude anything can write.")
         written = _MAGNITUDE_WRITERS[kind](value, fig, locale)
-        lines.append((_named_slice(cut, ground), _hedged(written, fig, kind)))
+        lines.append((named_slice(cut, ground.accounts()),
+                      _hedged(written, fig, kind)))
         cited.append(fig)
     if not lines:
         return None, "wrong_kind", (
@@ -1000,92 +973,6 @@ _MAGNITUDE_WRITERS = {
     render.COUNT: lambda value, fig, locale: render.count(value),
     render.RATE: lambda value, fig, locale: render.rate(value, locale=locale),
 }
-
-
-def _known_account(path: str, ground: _Ground) -> dict:
-    """One account as this run established it, or as its path alone gives it.
-
-    An account the reads already spoke about carries the name a person is shown
-    everywhere else, so the name in a boundary is the name in the sentence."""
-    return next((e for e in ground.entities.values()
-                 if e["kind"] == ENTITY_ACCOUNT and e.get("account") == path),
-                {"account": path})
-
-
-def _account_written(path: str, ground: _Ground) -> render.Account:
-    """One account, written among the others of its kind this run
-    established, so two accounts are never written identically."""
-    company = [e for e in ground.entities.values()
-               if e["kind"] == ENTITY_ACCOUNT]
-    known = _known_account(path, ground)
-    return render.account(known, among=company or [known])
-
-
-def _accounts_written(paths, ground: _Ground) -> render.Account:
-    """Several accounts in one place, each told apart from the others beside
-    it."""
-    return render.accounts([_known_account(path, ground) for path in paths])
-
-
-def _boundary(fig: dict, *, cut: bool = True) -> tuple[list, list]:
-    """Where one figure's claim ends, as ``(statements, accounts left out)``.
-
-    The two halves merge differently. A statement about how a set was narrowed
-    is compared whole; accounts left out are returned as a list for the caller
-    to gather across every figure the answer stated.
-
-    Both empty where the set is everything the figure claims to measure, and
-    where a figure declares it is not whole without naming anything it was
-    narrowed to. A figure carrying no boundary has nothing to say here either,
-    and says nothing for the other reason: no read has stated what set it was
-    taken over, which is not the same as a read stating that the set was
-    everything.
-
-    ``cut`` is whether the slices THIS figure alone was taken over are among
-    the statements. They are said wherever the figure is stated as a number in
-    a sentence, and not where the figure is a line of a block, because there
-    the slice is already written beside the number as the line's own name.
-
-    What the read as a whole was narrowed to is said either way, because that
-    is a fact about the call rather than about one line of it.
-
-    How many of the accounts a person holds are covered is not here. It is one
-    claim about the whole answer, computed over every figure the answer stated,
-    because a count said once for one figure reads as being about the answer —
-    and where the answer states two such figures, it is.
-
-    What would settle a gap stays on the figure and is not said."""
-    bound = fig.get("boundary") or {}
-    if bound.get("whole", False):
-        return [], []
-    said = []
-
-    def say(statement):
-        # A figure's cuts include what narrowed its read, so the two halves
-        # name some of the same slices. One slice is one sentence.
-        if statement not in said:
-            said.append(statement)
-
-    for item in bound.get("selected") or []:
-        say((SELECTED_TERMS[item["kind"]][0], dict(item)))
-    if cut:
-        for item in bound.get("cut") or []:
-            say((SELECTED_TERMS[item["kind"]][0], dict(item)))
-    if bound.get("unposted"):
-        # A gap no account names is still said. It is a number of documents,
-        # because a document read and not posted may be about an account that
-        # does not exist yet and there is nothing else to call it.
-        say(("boundary_unposted", {"count": bound["unposted"]}))
-    return said, [item["account"] for item in bound.get("unmeasured") or []]
-
-
-def _said(statement, ground: _Ground) -> str:
-    """One statement about how a set was narrowed, in the pack's words."""
-    key, fields = statement
-    if key == "boundary_unposted":
-        return moment(key, count=render.count(fields["count"]))
-    _key, name, written = SELECTED_TERMS[fields["kind"]]
-    return moment(key, **{name: written(fields, ground)})
 
 
 def _boundaries(stated, ground: _Ground) -> list:
@@ -1115,10 +1002,11 @@ def _boundaries(stated, ground: _Ground) -> list:
         for account in gaps:
             if account not in left_out:
                 left_out.append(account)
-    lines = [_said(statement, ground) for statement in statements]
+    accounts = ground.accounts()
+    lines = [_said(statement, accounts) for statement in statements]
     if left_out:
         lines.append(moment("boundary_unmeasured",
-                            account=_accounts_written(left_out, ground)))
+                            account=accounts_written(left_out, accounts)))
     return lines
 
 

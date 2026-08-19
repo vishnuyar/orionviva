@@ -7,7 +7,14 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Any
 
-from viva.surface import CURRENT_PROTOCOL, serialize_registry
+from viva.surface import (
+    BRIDGE_HANDSHAKE,
+    CURRENT_PROTOCOL,
+    SURFACE_CAPABILITIES,
+    SURFACE_READ,
+    operation_names,
+    serialize_registry,
+)
 
 
 class BridgeRequestError(ValueError):
@@ -18,6 +25,12 @@ class BridgeDispatcher:
     """Own an immutable operation allowlist for one sidecar instance."""
 
     def __init__(self, handlers: Mapping[str, Callable[[dict[str, Any]], Any]]) -> None:
+        undeclared = sorted(set(handlers) - operation_names())
+        if undeclared:
+            raise ValueError(
+                "the bridge may only serve declared operations; undeclared: "
+                + ", ".join(undeclared)
+            )
         self._handlers = MappingProxyType(dict(handlers))
 
     @property
@@ -27,7 +40,7 @@ class BridgeDispatcher:
 
 def _handshake(payload: dict[str, Any]) -> dict[str, str]:
     if payload:
-        raise BridgeRequestError("bridge.handshake does not accept payload fields")
+        raise BridgeRequestError(f"{BRIDGE_HANDSHAKE} does not accept payload fields")
     return {"protocol": CURRENT_PROTOCOL.wire(), "transport": "json-lines"}
 
 
@@ -35,7 +48,9 @@ def _surface_capabilities(payload: dict[str, Any]) -> dict[str, Any]:
     """Read the reviewed surface registry without crossing into vault code."""
 
     if payload:
-        raise BridgeRequestError("viva.surface.capabilities does not accept payload fields")
+        raise BridgeRequestError(
+            f"{SURFACE_CAPABILITIES} does not accept payload fields"
+        )
     return {
         "protocol": CURRENT_PROTOCOL.wire(),
         "capabilities": json.loads(serialize_registry()),
@@ -46,8 +61,8 @@ def default_handlers() -> BridgeDispatcher:
     """Return the safe baseline allowlist for a newly started sidecar."""
 
     return BridgeDispatcher({
-        "bridge.handshake": _handshake,
-        "viva.surface.capabilities": _surface_capabilities,
+        BRIDGE_HANDSHAKE: _handshake,
+        SURFACE_CAPABILITIES: _surface_capabilities,
     })
 
 
@@ -62,7 +77,7 @@ def handlers_with_surface_provider(
     reader = VaultSurfaceReader(provider, progress_sink)
     return BridgeDispatcher({
         **default_handlers().handlers,
-        "viva.surface.read": reader.read,
+        SURFACE_READ: reader.read,
     })
 
 

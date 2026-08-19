@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from .operations import served_contracts
+
 
 class CapabilityMaturity(StrEnum):
     PREVIEW = "preview"
@@ -41,13 +43,6 @@ class TrustEffect(StrEnum):
 Maturity = CapabilityMaturity
 Disposition = CapabilityDisposition
 Destination = CapabilityDestination
-TRUST_EFFECTS = frozenset({
-    *(effect.value for effect in TrustEffect),
-    "reads data",
-    "writes event",
-    "may call model",
-    "may egress",
-})
 
 
 @dataclass(frozen=True)
@@ -56,7 +51,6 @@ class CapabilitySpec:
 
     id: str
     owner: str
-    maturity: CapabilityMaturity
     disposition: CapabilityDisposition
     destination: CapabilityDestination
     availability: str
@@ -88,11 +82,20 @@ class CapabilitySpec:
 
         if any(not action.strip() for action in self.actions):
             raise ValueError("capability actions must be non-empty")
-        if isinstance(self.trust_effect, str):
-            if self.trust_effect not in TRUST_EFFECTS:
-                raise ValueError("unknown trust effect")
-        elif not all(isinstance(effect, TrustEffect) for effect in self.trust_effect):
-            raise TypeError("trust_effect must contain TrustEffect values")
+        if not isinstance(self.trust_effect, tuple) or not all(
+            isinstance(effect, TrustEffect) for effect in self.trust_effect
+        ):
+            raise TypeError("trust_effect must be a tuple of TrustEffect values")
+
+    @property
+    def maturity(self) -> CapabilityMaturity:
+        """Return `stable` when an operation serves this contract, else `preview`.
+
+        Reachability is the only input; nothing else moves this value.
+        """
+        if self.contract and self.contract in served_contracts():
+            return CapabilityMaturity.STABLE
+        return CapabilityMaturity.PREVIEW
 
 
 def _surface(
@@ -104,13 +107,11 @@ def _surface(
     actions: tuple[str, ...],
     trust_effect: tuple[TrustEffect, ...],
     *,
-    maturity: CapabilityMaturity = CapabilityMaturity.STABLE,
     entrypoint: str | None = None,
 ) -> CapabilitySpec:
     return CapabilitySpec(
         id=id,
         owner=owner,
-        maturity=maturity,
         disposition=CapabilityDisposition.SURFACE,
         destination=destination,
         availability=availability,
@@ -134,7 +135,6 @@ def _classified(
     return CapabilitySpec(
         id=id,
         owner=owner,
-        maturity=CapabilityMaturity.STABLE,
         disposition=disposition,
         destination=CapabilityDestination.NONE,
         availability="available to the local engine",
@@ -146,6 +146,16 @@ def _classified(
 
 
 CAPABILITIES: tuple[CapabilitySpec, ...] = (
+    _surface(
+        "overview.accounts",
+        "viva.surface.overview",
+        CapabilityDestination.OVERVIEW,
+        "when a vault is open",
+        "AccountOverview.v1",
+        (),
+        # This read writes no event, calls no model and sends nothing outward.
+        (TrustEffect.READS_DATA,),
+    ),
     _surface(
         "review.questions",
         "viva.ask",
@@ -173,7 +183,12 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         "when a local document is selected or dropped",
         "DocumentIngestResult.v1",
         ("upload", "cancel"),
-        (TrustEffect.WRITES_EVENT,),
+        (
+            TrustEffect.READS_DATA,
+            TrustEffect.WRITES_EVENT,
+            TrustEffect.MAY_CALL_MODEL,
+            TrustEffect.MAY_EGRESS,
+        ),
     ),
     _surface(
         "documents.rescan",
@@ -357,13 +372,6 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
     ),
 )
 
-# Include the tuple form used by multi-effect capabilities in the public
-# allowlist while retaining the readable scalar spellings accepted by callers.
-TRUST_EFFECTS = frozenset({
-    *TRUST_EFFECTS,
-    *(capability.trust_effect for capability in CAPABILITIES),
-})
-
 
 def capability_registry() -> tuple[CapabilitySpec, ...]:
     """Return the immutable, reviewed capability inventory."""
@@ -399,9 +407,7 @@ def serialize_registry() -> str:
             "availability": capability.availability,
             "contract": capability.contract,
             "actions": list(capability.actions),
-            "trust_effect": [effect.value for effect in capability.trust_effect]
-            if not isinstance(capability.trust_effect, str)
-            else capability.trust_effect,
+            "trust_effect": [effect.value for effect in capability.trust_effect],
             "reason": capability.reason,
             "entrypoint": capability.entrypoint,
             "fixture_ids": list(capability.fixture_ids),

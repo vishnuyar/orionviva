@@ -162,6 +162,26 @@ Roles are prompts; anything that must never happen is enforced by code:
 - The test suites, including the guards that fail the build on prompt
   literals. The suite is green at every checkpoint 2.
 
+### What makes a gate a gate
+
+A gate that cannot report a failure is not a gate. It asserts the path it reads
+exists; it asserts the set it walks is non-empty; it is never defined in terms
+of the thing it is checking; it reads structure rather than text where structure
+is available; and it runs in the build. A check that reports a clean bill it
+could not have withheld is worse than no check, because a missing check is
+visible and a false green is not.
+
+The fourth clause is the one that costs something to hold. Matching text is
+always the cheaper way to write a check, and it fails in two directions at
+once: a comment satisfies it, and a line break defeats it. Where a syntax tree,
+a manifest or a running interface is available, the gate reads that instead.
+
+And the practice that finds violations: **a gate whose subject is another gate
+is run, not read.** Break the thing it guards, watch it go red, restore. Reading
+a gate is how it was approved in the first place, so reading it again finds
+nothing; every gate that turned out to be incapable of failing was caught by
+executing it against a counterfactual.
+
 ## Working practice
 
 - **One cycle per session.** A session carries one brief from idea to commit
