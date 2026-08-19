@@ -7,16 +7,14 @@
 ## Rules
 
 ### ING-40 — Classification is a claim, not a fact
-**State:** contradicted-by-code
+**State:** unmet
 **Code:** product/viva/ledger/events.py:241 (`document_captured` stores the type and its confidence as a claim), product/viva/ingest/reader.py:248 (`_peek_classification` yields `unknown` at 0.0 when the reply does not parse)
 **Test:** product/tests/test_reader_two_phase.py::test_classify_unreadable_is_unknown_not_a_guess, product/tests/test_pipeline.py::test_unreconciled_statement_is_conflict_not_posted
 
 1. A document's type comes from a model, carries a confidence, and can be wrong.
-2. `unknown` is a first-class type: generic claim extraction still runs, fewer checks apply, and answers standing on such documents say so (X2).
+2. `unknown` is a first-class type: the document is captured, stored raw and parked rather than discarded, and re-read once a projector exists. *The extraction half is not implemented: a type with no projector is parked straight after the classify pass (product/viva/ingest/reader.py:100-107) and only a projectable type is routed onward (product/viva/ingest/pipeline.py:813), so no generic claim extraction runs, there are no claims for fewer checks to apply to, and no answer stands on one to say so (X2).*
 3. A misclassification degrades to a visible conflict — the wrong checks fail loudly — and never to silent corruption.
 4. Which checks run for a type is a registry row, not code.
-
-**Contradiction:** assertion 2 is the commitment this document made, and the code does the opposite half of it. `product/viva/ingest/reader.py:100-107` parks a document whose type has no projector immediately after the classify pass — "no projector for this type: park after the classify pass rather than paying for an extraction nothing can use" — and `product/viva/ingest/pipeline.py:813` routes only a projectable type onward. So no generic claim extraction runs on an `unknown` document; there are no claims for fewer checks to apply to, and no answer stands on one to say so. What the code has is the *capture* half: the document is stored raw and parked, and re-reads later once a projector exists. The extraction half was abandoned, not met. Recorded, not resolved.
 
 ### ING-41 — Three layers: claims, facts, projection
 **State:** enforced
@@ -203,3 +201,4 @@ plus per-type checks, never by a per-region schema.
 - Vesting: owned versus vested is either a position attribute or a provision, and no real document has settled it.
 - Joint accounts and households: Party exists so another person's card is representable, but the product stays single-user with multi-party data, and the shared product is a door the schema declines to close.
 - Asset, Obligation and Provision have no implementation; the ontology above is ahead of the ledger on those three.
+- Generic claim extraction on an `unknown` document (ING-40's second half). Today a type with no projector is parked after the classify pass, so nothing is extracted for fewer checks to apply to.
