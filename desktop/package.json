@@ -14,7 +14,8 @@
     "release:build": "npm run build:native && tauri build --config src-tauri/tauri.release.generated.json",
     "tauri:build": "npm run desktop:build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:architecture": "node scripts/check-ui-boundaries.mjs"
   },
   "dependencies": {
     "@tauri-apps/plugin-dialog": "^2.0.0",
