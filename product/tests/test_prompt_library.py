@@ -227,7 +227,13 @@ def test_no_prompt_text_lives_in_code():
             if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
                 continue
             text = node.value
-            if len(text) < 200 or "\n" not in text:
+            # 200 was too generous by half: the hint that framed a document's
+            # own text for the model sat at about a hundred characters and was
+            # therefore invisible here — unversioned, and unrecoverable from a
+            # recorded prompt_version. 100 catches it. Below about 100 the hits
+            # are log lines and CLI help, and a gate that cries wolf is a gate
+            # somebody adds an exclusion list to.
+            if len(text) < 100 or "\n" not in text:
                 continue
             if id(text) in docstrings or text is ast.get_docstring(tree, clean=False):
                 continue
@@ -269,3 +275,96 @@ def test_the_other_packages_keep_their_prompts_in_files_too():
     # enrich-v2 is retained, so reads recorded under it stay explainable rather
     # than pointing at nothing.
     assert "enrich-v2" in promptstore.ids(MERCH)
+
+
+# The modules that assemble what a model is sent. Membership is derived, not
+# listed: importing the prompt loader is what makes a file one of these.
+_PROMPT_LOADERS = ("promptstore", "prompt_library")
+
+
+def _composes_prompts(tree) -> bool:
+    import ast
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = [node.module or ""] + [a.name for a in node.names]
+        else:
+            continue
+        if any(any(loader in n for loader in _PROMPT_LOADERS) for n in names):
+            return True
+    return False
+
+
+def _literal_text(node):
+    """The model-facing text a node spells out, or None.
+
+    An f-string is where prompt text hides most comfortably: the walker sees
+    `ast.Constant` and an f-string is an `ast.JoinedStr` whose pieces are each
+    too short to notice on their own. Interpolations are counted as the one
+    thing they always are — a value that will be dropped in — so the sentence is
+    measured whole rather than in fragments."""
+    import ast
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else None
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for piece in node.values:
+            if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+                parts.append(piece.value)
+            else:
+                parts.append("{}")
+        return "".join(parts)
+    return None
+
+
+def test_a_prompt_composing_module_holds_no_model_facing_literal():
+    """In a module that assembles model-facing text, a long literal is prompt
+    text — no phrase-matching required.
+
+    `test_no_prompt_text_lives_in_code` asks whether a literal *looks like* an
+    instruction, against seven phrases. That is what a hint framing a document's
+    own text escaped through: ninety-two characters, matching none of the seven,
+    sitting in the one function that composes what the reader sends. It was
+    model-facing text living in code for as long as the reader has existed, and
+    no length threshold would have found it, because length was never why it
+    was missed.
+
+    So this asks a structural question instead. A file that imports the prompt
+    loader is a file that builds prompts, and a multi-line literal of any real
+    size in one is the thing the rule forbids, whatever it happens to say."""
+    import ast
+
+    offenders = []
+    for path in _python_files():
+        # Tests only, and deliberately: a test scripts what a model *replies*,
+        # which is the opposite direction. A fenced JSON block standing in for a
+        # model's answer is not text this product sends anyone.
+        if path.name.startswith("test_") or "tests" in path.parts:
+            continue
+        if path.name == "promptstore.py":
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        if not _composes_prompts(tree):
+            continue
+        docstrings = {id(ast.get_docstring(n, clean=False))
+                      for n in ast.walk(tree)
+                      if isinstance(n, (ast.Module, ast.ClassDef,
+                                        ast.FunctionDef, ast.AsyncFunctionDef))}
+        for node in ast.walk(tree):
+            text = _literal_text(node)
+            if text is None or len(text) < 80 or "\n" not in text:
+                continue
+            if id(text) in docstrings or text is ast.get_docstring(tree, clean=False):
+                continue
+            offenders.append(f"{path.relative_to(_repo_root())}:{node.lineno} "
+                             f"({len(text)} chars)")
+
+    assert not offenders, (
+        "a module that composes prompts holds a long string literal at "
+        + ", ".join(offenders) + ".\n"
+        "If it is model-facing, it belongs in <package>/prompts/<id>.txt with a "
+        "version. If it is not, it wants to be a comment or a shorter string.")
