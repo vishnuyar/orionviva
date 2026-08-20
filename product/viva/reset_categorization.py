@@ -46,7 +46,7 @@ import time
 
 from .crypto import open_sealed, open_vault_header, seal
 from .env import load_dotenv
-from .ledger.store import GENESIS, _canonical, _record_hash
+from .ledger.store import GENESIS, _canonical, _record_hash, write_head
 from .logs import configure as configure_logging
 
 # The overlay event types categorization is made of — the only things removed.
@@ -132,6 +132,11 @@ def rebuild_log(src_events: pathlib.Path, dst_events: pathlib.Path,
                       "record_hash": rec_hash}
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             prev = rec_hash
+
+    # A rebuilt log is a new log: its length and its head have both moved, so
+    # the head record beside it is rewritten too. Without this the destination
+    # would carry a header declaring a head and no head to check against.
+    write_head(dst_events, key, len(survivors), prev)
 
     return counts_in, counts_out
 

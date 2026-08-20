@@ -32,12 +32,13 @@
 
 ### PROG-45 — The log is append-only, hash-chained, and verifiable without the key
 **State:** enforced
-**Code:** product/viva/ledger/store.py:44 (`_record_hash`), product/viva/ledger/store.py:153 (`verify_chain`)
-**Test:** product/tests/test_store.py::test_the_chain_verifies_without_the_passphrase, product/tests/test_store.py::test_chain_detects_tampering
+**Code:** product/viva/ledger/store.py:55 (`_record_hash`), product/viva/ledger/store.py:312 (`verify_chain`), product/viva/ledger/store.py:75 (`write_head`)
+**Test:** product/tests/test_store.py::test_the_chain_verifies_without_the_passphrase, product/tests/test_store.py::test_chain_detects_tampering, product/tests/test_store.py::test_records_removed_from_the_end_are_caught, product/tests/test_store.py::test_deleting_the_head_record_is_refused
 
 1. Each record embeds the hash of the record before it, so dropping, reordering or splicing records breaks the chain visibly.
 2. Chain verification needs no passphrase, so integrity is checkable by someone who cannot read the contents.
 3. A record's sequence number and previous hash are bound into the GCM aad, so a ciphertext moved to another slot no longer decrypts.
+4. The length of the log and the hash of its last record are recorded beside it, because the chain alone cannot see a truncation: a log with its final records removed is a shorter log that verifies. The record is written in the clear so clause 2 survives, and authenticated with a key derived from the vault key so it cannot be rewritten to agree with a truncation. A header that declares one and has none is refused, so deleting it is not a way out.
 
 ### PROG-46 — Original documents are encrypted, immutable, content-addressed blobs
 **State:** enforced
