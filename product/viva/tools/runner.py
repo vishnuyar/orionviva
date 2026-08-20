@@ -449,6 +449,20 @@ def run(question: str, planner, registry: Registry,
                                   "shape.", [t.to_dict() for t in transcript],
                                   len(transcript), shape)
                 continue
+            if final_call:
+                # The planner was shown only the terminator and re-shaped
+                # instead. A shape costs a call exactly as a read does, and an
+                # identical re-shape does not weaken, so it is accepted and the
+                # turn comes back here — nothing in this branch ever ends it.
+                # Without this the run spends without bound, and each pass costs
+                # more than the last as the planner's messages accumulate.
+                result = _refused(
+                    "call_budget_exhausted",
+                    f"No answer after {max_calls} tool calls; refusing rather "
+                    "than answering without grounds.",
+                    [t.to_dict() for t in transcript], len(transcript), shape,
+                    diagnosis=_diagnosed(transcript, registry.names()))
+                continue
             problem = _committable(shape, proposed, ground)
             transcript.append(_noted(SHAPE_TOOL, not problem,
                                      problem or _shape_taken()))
