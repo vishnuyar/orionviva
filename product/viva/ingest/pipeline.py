@@ -401,6 +401,69 @@ def _try_corroboration(ledger: Ledger, facts: StatementFacts) -> IngestResult | 
     return res
 
 
+def _period_already_posted(ledger: Ledger, proj, account: str,
+                           facts) -> IngestResult | None:
+    """Whether this account's period is already on the ledger, and what to do.
+
+    The byte-hash guard in `capture_and_ingest` only catches a file that is
+    byte-identical to one already captured, and banks do not re-serve identical
+    PDFs — producer metadata and creation timestamps differ, so a re-downloaded
+    statement arrives with a new doc_id and posts its transactions a second
+    time. The balance chain catches most of those by accident, because a second
+    copy opens where the first one opened and no longer continues from the
+    balance held; it does not catch a period whose movements net to zero, and it
+    does not exist at all for a brokerage snapshot.
+
+    A document is identified here by whose account it is and the day its period
+    ends. On a collision the closing figure decides what happened:
+
+      - **same closing** → the same statement arriving twice. Skipped.
+      - **different closing** → the issuer re-issued the period with different
+        numbers. Held, because which one is true is not ours to decide.
+
+    The closing figure is a sound discriminator precisely because posting is
+    gated on `opening + Σ(effect) = closing`: a re-issue that changes any
+    movement's amount must change the closing too, or it would not have
+    reconciled. A re-issue that changes only wording leaves every figure this
+    ledger holds identical, and skipping it changes nothing.
+    """
+    seen = proj.posted_period(account, facts.period_end)
+    if seen is None:
+        return None
+    prior_doc, prior_closing = seen
+    closing = getattr(facts, "closing_amount", None)
+    if closing is None:                       # a snapshot: its total is its figure
+        closing = getattr(facts, "total", None)
+
+    if str(closing) == str(prior_closing):
+        log.info("post: %s already posted for %s period ending %s — skipping",
+                 prior_doc[:12], account, facts.period_end)
+        return IngestResult(
+            doc_id=facts.doc_id, action=DUPLICATE, doc_type=facts.doc_type,
+            account=account,
+            message=("Already posted — this is the same statement for "
+                     f"{facts.period_end}, which I read on an earlier copy. "
+                     "Nothing was counted twice."))
+
+    log.info("post: period %s on %s already posted by %s at %s; this copy closes "
+             "at %s — holding as a re-issue", facts.period_end, account,
+             prior_doc[:12], prior_closing, closing)
+    ledger.append(statement_held(
+        facts.doc_id, facts.to_dict(),
+        {"kind": "reissue", "prior_doc_id": prior_doc,
+         "prior_closing": str(prior_closing), "closing": str(closing),
+         "period_end": facts.period_end,
+         "message": "another statement already covers this period"},
+        "reissue", facts.period_end, Provenance(doc_id=facts.doc_id)))
+    return IngestResult(
+        doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
+        account=account, grade="conflicted",
+        message=(f"I already hold a statement for {facts.period_end} on this "
+                 f"account closing at {prior_closing}; this one closes at "
+                 f"{closing}. One of them supersedes the other and I will not "
+                 "guess which — held for your review."))
+
+
 def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
                      finding: ReconciliationFinding | None,
                      auto_corrected: bool, confirmed_by: str = "") -> IngestResult:
@@ -426,6 +489,12 @@ def _post_reconciled(ledger: Ledger, facts: StatementFacts, recon: CheckResult,
             message=(f"I read this statement, but whose account it is is unclear: "
                      f"{res.reason}. Held for you to confirm."))
     account = res.account_id
+
+    # Whose account and which period are both known only here, which is why the
+    # duplicate guard lives at the post gate rather than at capture.
+    already = _period_already_posted(ledger, proj, account, facts)
+    if already is not None:
+        return already
 
     if not proj.is_seeded(account):
         kind = account_kind_for(facts.doc_type)   # depository | liability, from the registry
@@ -558,6 +627,23 @@ def post_paystub(ledger: Ledger, facts: PayStubFacts) -> IngestResult:
             message=f"Not posted; held for your review. {finding.message}")
 
     proj = ledger.projection()
+
+    # A stub decomposes a deposit; it does not stitch onto a balance chain, so
+    # neither the chain nor the period register can see a second copy of one.
+    # Two copies posted two decompositions and doubled the income — the deposit
+    # is not marked in any way that the second copy would notice. What it is
+    # recognised by is the decomposition it would write.
+    description = f"Pay from {facts.employer or 'employer'}"
+    if proj.is_pay_decomposed(description, when, str(facts.gross)):
+        log.info("post_paystub: pay from %s on %s already decomposed — "
+                 "this stub is a duplicate", facts.employer, when)
+        return IngestResult(
+            doc_id=facts.doc_id, action=DUPLICATE, doc_type=facts.doc_type,
+            message=(f"Already broken down — I hold this pay from "
+                     f"{facts.employer or 'your employer'} "
+                     f"({facts.currency} {facts.net} net) and its deposit. "
+                     "Nothing was counted twice."))
+
     deposit = _net_pay_deposit(proj, facts.net, facts.currency, facts.pay_date)
     if deposit is None:
         log.info("post_paystub: no matching net-pay deposit for %s — awaiting",
@@ -667,6 +753,13 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     # — the forward-stitching rule applied to brokerage cash.
     proj0 = ledger.projection()
     account0 = account_id_for(facts)
+
+    # A snapshot has no balance chain to fall foul of, so a second copy of one
+    # posts its whole activity again with nothing to stop it. This is that stop.
+    already = _period_already_posted(ledger, proj0, account0, facts)
+    if already is not None:
+        return already
+
     opening_cash, opening_from = facts.opening_cash, "the statement"
     if opening_cash is None and proj0.seen_account(account0):
         held_dated = proj0.balance(account0).dated

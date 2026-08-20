@@ -142,6 +142,14 @@ class LedgerProjection:
     def is_resolved(self, doc_id: str) -> bool:
         return _coverage.is_resolved(self._core, doc_id)
 
+    def posted_period(self, account: str, period_end: str) -> tuple | None:
+        return _coverage.posted_period(self._core, account, period_end)
+
+    def is_pay_decomposed(self, description: str, pay_date: str,
+                          gross: str) -> bool:
+        return _coverage.is_pay_decomposed(self._core, description, pay_date,
+                                           gross)
+
     def posted_doc_ids(self) -> set[str]:
         return _coverage.posted_doc_ids(self._core)
 

@@ -106,6 +106,14 @@ class BrokerageFacts:
     opening_cash: Decimal | None = None
     activity: list[BrokerageActivity] = field(default_factory=list)
 
+    @property
+    def period_end(self) -> str:
+        """The day this document's period closes.
+
+        Each facts type answers for itself, so the duplicate guard asks the
+        document rather than switching on its type."""
+        return self.as_of
+
     def provenance(self, note: str = "") -> Provenance:
         return Provenance(doc_id=self.doc_id, note=note)
 

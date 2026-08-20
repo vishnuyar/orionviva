@@ -477,3 +477,35 @@ def test_cash_flow_mismatch_is_held(tmp_path):
     proj = ledger.projection()
     assert proj.positions() == []                  # nothing recorded on a bad flow
     assert len(proj.open_holds()) == 1
+
+
+def test_a_redownloaded_brokerage_statement_does_not_post_its_activity_twice(tmp_path):
+    """A snapshot has no balance chain to fall foul of, so — unlike a bank
+    statement, which a second copy usually fails to stitch onto — a second copy
+    of a brokerage statement reconciles identically and posts its whole activity
+    again. It needs no coincidence; every re-download double-counted."""
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+
+    def facts():
+        return BrokerageFacts(
+            doc_id="", doc_type="brokerage_statement", doc_type_confidence=0.97,
+            account_ref="Fidelity Roth", currency="USD", as_of="2026-03-31",
+            cash=Decimal("1100.00"), total=Decimal("1100.00"), positions=[],
+            opening_cash=Decimal("1000.00"),
+            activity=[BrokerageActivity("2026-03-15", "dividend",
+                                        Decimal("100.00"))],
+            account_number="3311", institution="Fidelity")
+
+    first = capture_and_ingest(raw, ledger, b"march-as-downloaded",
+                               lambda d, i: _stamp(facts(), i),
+                               captured_at="2026-04-02")
+    second = capture_and_ingest(raw, ledger, b"march-redownloaded",
+                                lambda d, i: _stamp(facts(), i),
+                                captured_at="2026-04-09")
+
+    assert first.action == "posted"
+    assert second.action == "duplicate"
+    moves = [e for e in ledger.store.events()
+             if e.event_type == "TransactionRecorded"]
+    assert len(moves) == 1, "the dividend was counted twice"

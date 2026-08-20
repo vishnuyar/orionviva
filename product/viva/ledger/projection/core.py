@@ -122,6 +122,14 @@ class ProjectionCore:
         # first ask and dropped whenever a new reading arrives.
         self._statements: dict | None = None
         self._posted: set[str] = set()           # doc_ids with posting events
+        # (account, period end) -> (doc_id, closing amount). A statement is
+        # identified by whose account it is and the day its period ends; this is
+        # what a second copy of one is recognised against.
+        self._periods: dict[tuple[str, str], tuple[str, str]] = {}
+        # Pay decompositions already on the ledger, as (description, pay date,
+        # gross). A stub has no balance and no closing figure, so it is
+        # recognised by the decomposition it would write.
+        self._decomposed: set[tuple[str, str, str]] = set()
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
         self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
         # Transfer overlay: links between two movement keys, and unresolved
@@ -340,6 +348,8 @@ class ProjectionCore:
                 # figure when a person ruled on one.
                 self._doc_closing[did] = (event.body["amount"],
                                           event.occurred_at)
+                self._periods.setdefault((acct, event.occurred_at),
+                                         (did, event.body["amount"]))
             # Across stitched months the latest-dated closing is the current
             # balance to answer with; earlier closings were true when written.
             if st.closing is None or event.occurred_at >= st.closing_date:
@@ -400,6 +410,10 @@ class ProjectionCore:
         elif et == "TransactionRecorded":
             if did:
                 self._posted.add(did)
+            for _p in postings_of(event):
+                if _p.account == "Income:Salary":
+                    self._decomposed.add((event.body.get("description", ""),
+                                          event.occurred_at, str(-_p.amount)))
             # A new descriptor may resolve differently once the ACH corpus
             # grows, so the key map is dropped rather than extended.
             self._mkeys, self._mkeys_of = None, {}

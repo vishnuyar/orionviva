@@ -161,3 +161,29 @@ def test_balance_statements_still_work(tmp_path):
         return ReadResult("checking_statement", 0.98, jan)
     res = capture_and_ingest(raw, ledger, b"s", rf, captured_at="2026-02-01")
     assert res.action == POSTED
+
+
+def test_a_second_copy_of_a_stub_is_named_a_duplicate_not_a_missing_deposit(tmp_path):
+    """Two copies of one stub decomposed the deposit twice and doubled the
+    income — 5000 became 10000. Nothing marked the deposit as spoken for, so the
+    second copy found it as readily as the first. A stub is recognised by the
+    decomposition it would write, since it has no balance and no closing figure
+    to be recognised by."""
+    from viva.ingest import DUPLICATE
+    from viva.vault import Vault
+    v = Vault.open(tmp_path / "vault", "pw")
+    _checking_with_deposit(v.ledger, "3800")
+    stub = lambda doc: _paystub("5000", "3800",
+                                [("Fed Tax", "700", "tax"),
+                                 ("401k", "400", "retirement"),
+                                 ("Health", "100", "insurance")], doc_id=doc)
+
+    first = post_paystub(v.ledger, stub("P1"))
+    second = post_paystub(v.ledger, stub("P2"))
+
+    assert first.action == POSTED
+    assert second.action == DUPLICATE
+    assert "Already broken down" in second.message
+    assert second.action != AWAITING
+    # The income is still counted exactly once.
+    assert v.ledger.projection().income_by_currency() == {"USD": Decimal("5000")}

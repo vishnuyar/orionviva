@@ -537,3 +537,75 @@ def test_two_readable_numbers_are_two_accounts_and_nobody_is_asked(tmp_path):
     depo = [i for i in ledger.projection().account_infos() if i.kind == "depository"]
     assert len(depo) == 2
     assert held_items(ledger.projection()) == []
+
+
+# A period whose movements net to zero: a payment in and the same amount out.
+# The balance chain cannot see a second copy of one, because its opening, its
+# closing and the balance already held are all the same number.
+NET_ZERO = _facts("1000.00", [("2026-01-10", "Payroll", "500.00"),
+                              ("2026-01-15", "Rent", "-500.00")], "1000.00")
+
+
+def _ingest(raw, store, data, facts, doc_type="checking_statement"):
+    import copy
+    return capture_and_ingest(
+        raw, store, data,
+        _reader({data: ReadResult(doc_type, 0.98, copy.deepcopy(facts))}),
+        filename="stmt.pdf", captured_at="2026-02-01")
+
+
+def test_a_redownloaded_statement_does_not_post_its_transactions_twice(tmp_path):
+    """A bank does not re-serve a byte-identical PDF, so the capture-time hash
+    misses a re-download entirely. The balance chain catches most of them by
+    accident; it cannot catch a period that nets to zero, which is an ordinary
+    month — a card paid in full, a transfer in and straight out."""
+    raw, store = _stores(tmp_path)
+    first = _ingest(raw, store, b"monday-download", NET_ZERO)
+    second = _ingest(raw, store, b"tuesday-redownload-same-statement", NET_ZERO)
+
+    assert first.action == POSTED
+    assert second.action == DUPLICATE
+    assert second.doc_id != first.doc_id          # different bytes, different id
+    posted = [e for e in store.store.events()
+              if e.event_type == "TransactionRecorded"]
+    assert len(posted) == 2, "the period's two movements were counted twice"
+
+
+def test_a_reissued_statement_for_a_posted_period_is_held_not_posted(tmp_path):
+    """A corrected re-issue carries the same period and different numbers. It is
+    not a duplicate and it is not a second month; which of the two is true is
+    not the product's call, so it is held rather than added."""
+    raw, store = _stores(tmp_path)
+    _ingest(raw, store, b"as-first-issued", NET_ZERO)
+    corrected = _facts("1000.00", [("2026-01-10", "Payroll", "500.00"),
+                                   ("2026-01-15", "Rent", "-450.00")], "1050.00")
+    res = _ingest(raw, store, b"as-reissued-corrected", corrected)
+
+    assert res.action == CONFLICT
+    assert "1050.00" in res.message and "1000.00" in res.message
+    posted = [e for e in store.store.events()
+              if e.event_type == "TransactionRecorded"]
+    assert len(posted) == 2, "the re-issue posted alongside the original"
+    assert any(h.get("reason") == "reissue" for h in store.projection().open_holds())
+
+    # And what a person is told about it. The generic held-statement sentence
+    # says the statement "didn't add up" and asks them to check the figure —
+    # false here, and it would send them hunting an error that is not there.
+    from viva.questions import _held_questions
+    asked = [q for q in _held_questions(store.projection())]
+    assert len(asked) == 1
+    assert "counting the period twice" in asked[0].text
+    assert "didn't add up" not in asked[0].text
+
+
+def test_a_different_account_may_share_a_period_end(tmp_path):
+    """The guard keys on the account as well as the period, so two accounts
+    closing on the same day are two statements, not a collision."""
+    raw, store = _stores(tmp_path)
+    a = _ingest(raw, store, b"account-a", NET_ZERO)
+    other = _facts("2000.00", [("2026-01-11", "Payroll", "300.00"),
+                               ("2026-01-16", "Rent", "-300.00")], "2000.00",
+                   ref="Chase Savings 9876")
+    b = _ingest(raw, store, b"account-b", other)
+
+    assert (a.action, b.action) == (POSTED, POSTED)
