@@ -4,17 +4,21 @@ on:
   push:
   pull_request:
 
+# Neither job writes anything back to the repository.
+permissions:
+  contents: read
+
 jobs:
   surface:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The impact gate measures a change against the commit before the
           # tip. With only that tip fetched there is no such commit, and the
           # gate falls back to comparing the tree against itself.
           fetch-depth: 2
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install product development dependencies
@@ -29,8 +33,8 @@ jobs:
   suite:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install every package with its development dependencies
@@ -44,13 +48,13 @@ jobs:
       run:
         working-directory: desktop
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install product and sidecar build dependencies
@@ -67,3 +71,33 @@ jobs:
             --target "$(rustc -vV | sed -n 's/^host: //p')"
       - name: Build Tauri desktop bundle
         run: npx tauri build
+
+  showcase:
+    # The denylist is a list of the exact strings that must not appear in this
+    # repository, so it cannot live in this repository. It arrives as a secret,
+    # is written to a file outside the tree, and is deleted whether the scan
+    # passes or fails.
+    #
+    # Skipped rather than faked for a pull request from a fork, which cannot be
+    # given secrets: a run that quietly reports clean without a pattern list is
+    # the failure this job exists to end, so the script exits non-zero when it
+    # is handed nothing and the job is not run at all when there is nothing to
+    # hand it.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Scan every tracked file for a denylisted name
+        env:
+          DENYLIST: ${{ secrets.DENYLIST }}
+        run: |
+          set -euo pipefail
+          list="$(mktemp)"
+          trap 'rm -f "$list"' EXIT
+          printf '%s\n' "$DENYLIST" > "$list"
+          python scripts/check_denylist.py --patterns "$list"
