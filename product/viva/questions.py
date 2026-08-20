@@ -144,6 +144,13 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
             why = say("reconciliation_gap_why",
                       opening_money=render_money(abs(f.opening_amount),
                                                  f.currency, locale=locale))
+        elif h.reason == "reissue":
+            # It reconciled. It is held because the period is already posted, so
+            # "your statement didn't add up" would send a person looking for an
+            # arithmetic error that is not there.
+            text = say("reconciliation_reissue",
+                       account_ref=render_account({"name": f.account_ref}))
+            why = (h.finding or {}).get("message", "")
         elif h.reason == "identity":
             text = say("identity",
                        account_ref=render_account({"name": f.account_ref}))

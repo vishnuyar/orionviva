@@ -75,6 +75,10 @@ INTENT_FIELDS: dict[str, dict[str, str]] = {
                                     "closing_date": DATE},
     "reconciliation_gap_why":      {"opening_money": MONEY},
     "reconciliation_flagged":      {"account_ref": ACCOUNT},
+    # A statement whose period is already posted with a different closing
+    # figure. It reconciled; it is held because it would count the period
+    # twice, which is a different thing to say than "it didn't add up".
+    "reconciliation_reissue":      {"account_ref": ACCOUNT},
     # A document held for review, and the same sentence where the account it
     # belongs to is known. The account slot holds an account; the words around
     # it, preposition included, are the pack's.
