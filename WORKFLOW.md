@@ -1,6 +1,11 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-08-19 (the Interface Designer added
+**Status:** Living · **Last updated:** 2026-08-20 (the Director added to the
+crew and its warrant written down, because a stand-in was already ruling at the
+checkpoints in practice while this file said only the product owner ever does —
+a contract describing a loop nobody is running is worse than no contract.
+Checkpoint 3 gains its one bounded exception with it. Before that, 2026-08-19:
+the Interface Designer added
 beside the Verifier, because every existing role answers whether the work is
 correct and none answered whether it is good to use — a gap that was survivable
 while the interface was a debug tool and stops being survivable at the gate that
@@ -22,6 +27,13 @@ roles live as files in `.claude/agents/`; each file is the full instruction
 set for that role, and this document says when each role runs.
 
 ## The crew
+
+**Director** — a stand-in for the product owner at the checkpoints of a
+delegated run, so a long cycle is not blocked on one person being at the
+keyboard. It rules; it never builds. Its authority is bounded by the warrant
+below and by [docs/surface-charter.md](docs/surface-charter.md), and its own
+instruction set is `.claude/agents/director.md`, which this repository does not
+track.
 
 **Design Partner** — turns an idea or a diagnosed bug into a design brief:
 options with detailed viewpoints in prose, invariants touched, doors named,
@@ -91,7 +103,8 @@ later as its own full-lane cycle ("design phase: issue #N").
      too, and every coded id glossed. Its tables join the brief at checkpoint 1.
      It reports; it never approves.
 2. **Checkpoint 1 — approve the brief.** The product owner reads the options,
-   decides, amends. Nothing is built from an unapproved brief. **Amendments
+   decides, amends — or, in a delegated run, the Director does, inside the
+   warrant below. Nothing is built from an unapproved brief. **Amendments
    are absorbed, not annotated:** once the rulings are taken, the Design
    Partner reissues the brief clean — the rulings recorded once at the top in
    the owner's own words, every superseded sentence gone. The Builder builds
@@ -117,7 +130,10 @@ later as its own full-lane cycle ("design phase: issue #N").
    back to the brief.
 6. Steward runs the rituals → presents the commit message and stops.
 7. **Checkpoint 3 — the commit gate.** Only the product owner says commit.
-   No commit happens without those words, ever.
+   No commit happens without those words, ever — with one bounded exception:
+   in a delegated run the Director may authorise a `wip(...)` commit to that
+   run's own branch. Never main, never a push, never a merge, never anything
+   that leaves this machine. Everything else about this sentence stands.
 
 Every bug found in use goes through this full lane. Its intake is the
 Reporter: the bug becomes a scrubbed public issue first, so known problems
@@ -137,6 +153,74 @@ response is to hold the draft and ask him. That rule cost a role a round trip
 once and is written down so it costs nothing to hold to next time. The same
 applies in reverse: an issue already public is a commitment, so correcting one
 is itself a filing and waits for the same word.
+
+## The Director's warrant
+
+A delegated run is one where the Director stands in for the product owner at
+the checkpoints. This is what it may decide, and — at greater length, because
+that is the half that matters — what it may not. _Ruled 2026-08-20._
+
+**What it rules, unattended.** At Checkpoint 1: the option choice, every open
+question the brief raises, amendments to the brief, the scope fence, and what
+would make it reject the result — written down before the code exists, so the
+standard is set by something other than the diff that turns up. At Checkpoint
+2: accept or bounce, on the three questions its role file asks. At Checkpoint
+3: the bounded `wip(...)` commit above, and nothing else.
+
+**What it escalates.** It parks the question in one paragraph and moves to
+other work rather than blocking. Twelve limits stand:
+
+1. Anything that changes a promise in VISION.md, or a design invariant.
+2. Any new or amended rule **not already ratified in the charter**.
+   [docs/surface-charter.md](docs/surface-charter.md) is the ceiling of this
+   warrant's authority.
+3. Anything needing the real vault or real money — routed to the Witness
+   queue, never decided.
+4. Anything public or irreversible: filing an issue, a push, a merge to main,
+   a release. The issue gate is a fourth checkpoint and it is the product
+   owner's.
+5. A brief the Fact-checker found materially false about the code — bounced to
+   the Design Partner, never ruled on.
+6. A test case encoding a claim about a real financial life that the ledger
+   does not settle. The standing ruling below reserves this by name: *where
+   the ledger does not settle what should happen, stop and ask before the test
+   is written.*
+7. A brief turning on one of the interface unknowns nobody has settled: where
+   model configuration lives and whether configuring a reader is a recorded
+   event; whether a conversation turn is a blocking request or a job; how a
+   proposal crosses the bridge; a pre-baked demo conversation versus a live
+   one; and whether the review, activity and documents surfaces read through
+   the surface module directly or through the conversation's block — the last
+   of which the architecture document explicitly declines to take.
+8. **Anything drawing on the item order of the outside interface review.** The
+   charter does not ratify it and the re-sequencing cycle is owed; a stand-in
+   may not rule on the strength of an order nobody adopted.
+9. **A fence may be narrowed and never widened.** A stand-in that can enlarge
+   a fence can approve anything in two steps.
+10. **A gate the cycle built that the Builder did not demonstrate failing is
+    bounced.** A gate whose subject is another gate is run, not read.
+11. **A cycle leaving any document claiming something the cycle made false is
+    bounced**, as a defect rather than a suggestion. The standing question
+    *what did this cycle make untrue?* has the answer "nothing" available, and
+    it is usually wrong; making it a bounce condition is what closes it.
+12. **A stand-in never approves a brief it also shaped.** True by construction
+    while design and ruling are separate agents; false the first time someone
+    collapses two phases into one session to save an invocation.
+
+**Two standing clauses.** The Director never edits code, never edits a
+document, and never runs a command that writes — and the enforcement is the
+role's read-only tool set rather than this paragraph, so nobody widens it as a
+convenience. And every ruling is written as a Director ruling, in the
+Director's name, with its grounds; never as "the product owner approved". A
+ruling that binds one cycle may live in the run's own untracked files. **A
+ruling a later cycle stands on goes through the Steward into a tracked
+document**, for the same reason the charter exists at all.
+
+**One thing this warrant cannot fix, recorded rather than smoothed.** The
+Director's instruction set is not tracked, so this section points at a file no
+clone, no build, no Verifier and no Fact-checker can read. That is half a rule
+until it is published, and more pressing now that the role may authorise a
+commit at all.
 
 ## When a brief is sliced
 

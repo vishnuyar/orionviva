@@ -147,6 +147,7 @@ on the current branch is recorded in
 2. A Documents surface does not paper over T3 being met on originals and unmet on the ingest request.
 3. Passphrase recovery is stated as it exists: today, losing the passphrase loses the vault.
 4. Outbound accounting is not claimed complete before it is.
+5. The interface names no capability a later phase will have, including as a coming-soon.
 
 ### VOICE-113 — these options are removed from future consideration
 **State:** untestable

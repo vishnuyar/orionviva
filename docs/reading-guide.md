@@ -38,7 +38,7 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 **2 · The process spine — how things are decided**
 
 - [design-invariants.md](design-invariants.md) — the standing checklist (trust, internationalization, accounting model, experience) every design doc and ADR answers to.
-- [`../WORKFLOW.md`](../WORKFLOW.md) (repo root) — the lanes a change travels down, the roles that carry it, and which checkpoints belong to the author alone.
+- [`../WORKFLOW.md`](../WORKFLOW.md) (repo root) — the lanes a change travels down, the roles that carry it, the checkpoints that are the product owner's, and the warrant under which a stand-in may hold them in a delegated run.
 - [`../STYLE-COMMENT-PASS.md`](../STYLE-COMMENT-PASS.md) (repo root) — what a comment may say: behaviour, never provenance, argument or incident. A rule that must not be undone is a named test, not a paragraph.
 
 **3 · Design stances — how the core works**
@@ -87,6 +87,12 @@ Read these together; they are one argument, running extraction → merchants →
 - [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) — the durable starting point for the real presentation layer: an installed desktop app over a packaged Python sidecar, a transport-independent `viva.surface` module, and a sliced path beginning with contracts rather than chrome. Its second half is the anti-staleness design.
 - [user-interface-implementation-status.md](user-interface-implementation-status.md) — the architecture document's status counterpart: what is actually true of the interface on this branch, written so it fails rather than rots. Every gap opens with a direction and an address at which the measurement can be re-taken; a gap no machine here can hold says so and is counted on the document's face.
 - [the-words-the-interface-uses.md](the-words-the-interface-uses.md) — the language authority beside the architecture one: which word names which layer — the desktop application, the shell, the interface, the surface, the bridge — and why a person is shown a *receipt* while the contract keeps `Citation`. Read it before naming a component or writing screen copy.
+- [surface-charter.md](surface-charter.md) — the interface rules and decisions taken from an
+  outside review of this product's surface, written down because that review is not
+  tracked here and nothing in the build could check a claim made from it. Six rules with
+  their arguments beneath them, the deferrals and what would bring each back, the
+  sequencing it declines to ratify, and a register of what the review got wrong. Read it
+  before proposing an interface rule: it is also the ceiling of what a stand-in may decide.
 - [backend-capability-gaps.md](backend-capability-gaps.md) — what the surface is waiting on the backend for, split into capabilities that exist and cannot be reached and capabilities that do not exist, each naming the symbol its claim is about. Design-only by declaration: it holds the priority order for what the interface is owed, and never the sentence *this is broken today*.
 - [the-maintenance-agent.md](the-maintenance-agent.md) — what Viva does when nobody asked: the observe → plan → perform → record loop, the `AgentActed` event, the stake that keeps a refusal quiet until evidence or machinery moves, and a budget denominated in calls.
 - [agent-toolset.md](agent-toolset.md) — the verbs Viva may ever use, the forbidden list that makes her safe, and the scaling law: tools grow with verbs, never with accounts.

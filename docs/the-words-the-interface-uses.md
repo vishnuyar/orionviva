@@ -31,12 +31,12 @@ layers may import, and what a figure must carry to cross between them, stay in
 2. `Citation`, `provenance` and the `attests`/`corroborates` relation do not move. The rename is interface copy and interface component names only, and it does not cross the boundary.
 3. A panel that opens onto a figure's sources is named for what it shows rather than for the contract behind it.
 
-### VOICE-135 — `disabled` says a control is not here; `aria-disabled` says it is busy
+### VOICE-135 — `disabled` is reserved for nothing; `aria-disabled` says a control is busy
 **State:** contradicted
-**Code:** `desktop/src/features/documents/Documents.tsx:13` marks a capture control `disabled`, because nothing behind that screen captures anything. `desktop/src/features/review/Review.tsx:66` marks the set-aside controls `aria-disabled` while the vault answers the last request. `desktop/src/app/App.tsx:243` sets `disabled` on the two vault-opening controls while a vault is opening, which is the busy case wearing the other attribute.
+**Code:** `desktop/src/features/documents/Documents.tsx:13` renders a capture control and marks it `disabled`, where a control with nothing behind it should not render at all. `desktop/src/app/App.tsx:243` sets `disabled` on the two vault-opening controls while a vault is opening, which is the busy case wearing an attribute this rule reserves for nothing. `desktop/src/features/review/Review.tsx:66` marks the set-aside controls `aria-disabled` while the vault answers the last request, which is what the rule asks for.
 **Test:** none
 
-1. A control this screen cannot perform at all carries `disabled`. There is nothing behind it to reach, so it leaves the tab order.
+1. `disabled` is reserved for nothing. A control this screen cannot perform at all does not render, which is VOICE-136's business; a control that renders is one a person can reach.
 2. A control this screen can perform, and that is unavailable only while the vault answers the last request, carries `aria-disabled` and stays focusable. A focused element that becomes `disabled` is blurred to the document body, which empties a person's hands at the moment a refusal needs them full.
 3. A control carrying `aria-disabled` refuses the second press in its own handler and says in words that it did.
 
@@ -95,19 +95,39 @@ and the interface has not been changed yet. It is a copy and component pass on
 one side of a boundary, and it travels on its own rather than beside a change to
 behaviour.
 
-### Two ways for a control to be unavailable, and only one of them is permanent
+### A control that cannot act is not a disabled control; it is not a control
 
-A screen that cannot do a thing and a screen that is in the middle of doing it
-look the same to a person for a moment, and they are not the same. The first is
-a boundary: pressing it would never have worked, and the control is dead weight
-in the tab order. The second is a wait: it will work, it is working, and the
-person may well need that exact control again the instant the wait ends —
-which is what a refusal is. Taking focus away at that moment is the interface
-answering for them.
+This rule used to say that a control the screen cannot perform at all carries
+`disabled` and leaves the tab order, and that the attribute was how a person
+was told the difference between a boundary and a wait. That half is retired.
+Removing a dead control from the keyboard's reach does not remove it from the
+eye's. It still occupies space, still names an action, and still teaches a
+person that the product has a feature — one they will keep pressing, since
+nothing on the screen says whether it is unbuilt, unavailable for this account,
+or waiting on something they could go and do. A dead control is a promise the
+product has no intention of keeping, greyed out and left where the promise can
+be read.
 
-That is why the distinction is written down rather than decided per panel. The
-attribute is not a styling choice; it decides whether a keyboard reaches the
-control at all.
+The replacement is not a better attribute. It is that the control is not there:
+a screen renders what is served and nothing else, which is VOICE-136's
+business, and where the absence changes what the person should do next, one
+sentence says so, which is VOICE-137's. What that buys is a product that is
+small and entirely alive rather than large and mostly inert — and an empty
+vault stops looking like a broken application.
+
+The wait is the case that survives, and it is where the attribute distinction
+still earns its keep. A control that is busy will work, is working, and the
+person may well need that exact control again the instant the wait ends — which
+is what a refusal is. It stays under their hands, keeps its focus, and answers
+the second press in words rather than by going silent. That is why the
+distinction is written down rather than decided per panel: it is not a styling
+choice, it decides whether a keyboard reaches the control at all.
+
+Reversing this costs an audit of every control the product will ever ship,
+which makes it sticky rather than one-way. Its immediate price is visible in
+the **Code** field above: `Documents.tsx:13` used to be this rule's example of
+being honoured and is now a violation, with not one line of code having
+changed.
 
 ### Where the guidelines are thin, and it will show
 
@@ -122,3 +142,10 @@ habit, and nothing fails a build when the next panel forgets.
 
 The interface has an architecture gate and no craft gate. Naming it here is not
 the same as closing it, and no rule in this document pretends otherwise.
+
+That territory now carries a rule, though not a gate: VOICE-140 in
+[surface-charter.md](surface-charter.md) asks for a type scale, a spacing
+scale, motion rules, dark mode, iconography and keyboard reach as conditions a
+new surface ships against. It is unmet and neither of the checks it names is
+built, so every sentence above still stands — what changed is that the gap is
+indexed and has an owner rather than only being confessed here.
