@@ -104,3 +104,34 @@ def test_the_chain_verifies_without_the_passphrase(tmp_path):
     assert blind.verify_chain() == (True, 3)
     with pytest.raises(CryptoError):
         list(blind.events())
+
+
+def test_an_interrupted_write_is_not_reported_as_tampering(tmp_path):
+    """A process that dies mid-append leaves a line with no newline. Every
+    record before it is intact, and the repair is to drop it — so it is named as
+    an interrupted write rather than surfacing as a parse error the caller
+    cannot tell from a hostile edit."""
+    path = tmp_path / "ledger.jsonl"
+    _seed(EventStore.open(path, PW))
+    with path.open("a") as f:
+        f.write('{"seq": 3, "prev_ha')
+
+    with pytest.raises(CryptoError, match="partial record"):
+        EventStore.open(path, PW)
+
+
+def test_two_open_stores_appending_do_not_collide(tmp_path):
+    """The desktop sidecar holds a store open while the command-line scripts
+    write. Both compute `seq` from the tail, so without a lock both mint the
+    same one and the chain stops verifying."""
+    path = tmp_path / "ledger.jsonl"
+    first = EventStore.open(path, PW)
+    _seed(first)
+    second = EventStore.open(path, PW)
+
+    second.append(simple_transaction("chk", "-1.00", "SECOND", "2026-02-01"))
+    first.append(simple_transaction("chk", "-2.00", "FIRST", "2026-02-02"))
+
+    seqs = [json.loads(line)["seq"] for line in path.read_text().splitlines()[1:]]
+    assert seqs == [0, 1, 2, 3, 4]
+    assert EventStore.open(path, PW).verify_chain() == (True, 5)

@@ -22,9 +22,11 @@ File format (one JSON object per line):
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Iterator
@@ -63,6 +65,7 @@ class EventStore:
         for _seq, prev, sealed, rec_hash in self._iter_raw():
             self._last_hash = rec_hash
             self._count += 1
+        self._size = self.path.stat().st_size if self.path.exists() else 0
         log.debug("EventStore opened %s with %d events", self.path, self._count)
 
     # --------------------------------------------------------------- lifecycle
@@ -88,30 +91,68 @@ class EventStore:
         header, key = new_vault_header(passphrase)
         with path.open("w") as f:
             f.write(json.dumps(header, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
         return cls(path, key, KdfParams.from_dict(header["kdf"]))
 
     # ------------------------------------------------------------------ append
 
     def append(self, event: Event) -> dict:
-        """Seal, chain, and persist one event. Returns the record as written."""
-        seq = self._count
-        prev = self._last_hash
-        payload = {
-            "seq": seq,
-            "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "event": event.to_dict(),
-        }
-        aad = f"{seq}:{prev}".encode("utf-8")
-        sealed = seal(self._key, _canonical(payload).encode("utf-8"), aad)
-        rec_hash = _record_hash(seq, prev, sealed)
-        record = {"seq": seq, "prev_hash": prev, "sealed": sealed,
-                  "record_hash": rec_hash}
+        """Seal, chain, and persist one event. Returns the record as written.
+
+        Held under an exclusive lock for the whole read-modify-write, because
+        `seq` and `prev_hash` are read from the tail and then written back to
+        it. Two unlocked writers each read the same tail, mint the same `seq`,
+        and leave a chain that will not verify — reachable through ordinary use,
+        since the desktop sidecar holds a store open while the command-line
+        scripts write. The lock is advisory, so it binds every writer that goes
+        through this method and none that does not.
+
+        Durable before it returns: the line is flushed and fsynced, so a record
+        this method has returned is a record on the platter.
+        """
         with self.path.open("a") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        self._last_hash = rec_hash
-        self._count += 1
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                # Another writer may have appended since this store last looked.
+                # Size is the cheap witness: unchanged means the cached tail is
+                # still the tail, and a rescan is only paid for when it is not.
+                if self.path.stat().st_size != self._size:
+                    self._reread_tail()
+
+                seq = self._count
+                prev = self._last_hash
+                payload = {
+                    "seq": seq,
+                    "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "event": event.to_dict(),
+                }
+                aad = f"{seq}:{prev}".encode("utf-8")
+                sealed = seal(self._key, _canonical(payload).encode("utf-8"), aad)
+                rec_hash = _record_hash(seq, prev, sealed)
+                record = {"seq": seq, "prev_hash": prev, "sealed": sealed,
+                          "record_hash": rec_hash}
+
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
+
+                self._last_hash = rec_hash
+                self._count += 1
+                self._size = self.path.stat().st_size
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
         log.debug("append seq=%d type=%s", seq, event.event_type)
         return record
+
+    def _reread_tail(self) -> None:
+        """Recompute the cached tail from the file. Called under the lock when
+        the file has grown underneath this store."""
+        self._last_hash = GENESIS
+        self._count = 0
+        for _seq, _prev, _sealed, rec_hash in self._iter_raw():
+            self._last_hash = rec_hash
+            self._count += 1
 
     # ------------------------------------------------------------------- reads
 
@@ -122,13 +163,23 @@ class EventStore:
             return
         with self.path.open() as f:
             first = True
-            for line in f:
+            for line_no, line in enumerate(f):
+                complete = line.endswith("\n")
                 line = line.strip()
                 if not line:
                     continue
                 if first:                     # header line
                     first = False
                     continue
+                if not complete:
+                    # A line with no newline is the last one, and it was cut
+                    # short: the process died mid-append. Named as its own
+                    # failure so it is not read as tampering — every record
+                    # before it is intact, and the fix is to drop this one.
+                    raise CryptoError(
+                        f"{self.path} ends in a partial record at line "
+                        f"{line_no}: a write was interrupted. Every record "
+                        "before it is intact; remove the final line to reopen.")
                 rec = json.loads(line)
                 yield (rec["seq"], rec["prev_hash"], rec["sealed"],
                        rec["record_hash"])
