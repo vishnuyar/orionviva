@@ -20,8 +20,10 @@ which has no local source to check against.
 from __future__ import annotations
 
 import ast
+import functools
 import pathlib
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -36,21 +38,50 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 _HISTORICAL = {"archived", ".git", "node_modules", "__pycache__", "_to_delete"}
 
 
+@functools.cache
+def _tracked() -> frozenset[pathlib.Path]:
+    """Every path git tracks, as an absolute path.
+
+    Asked of git rather than of the filesystem. The two answers differ, and the
+    difference is the whole point: a gate that reads whatever happens to sit on
+    one disk is satisfied by a gitignored note, a local brief, or a dependency's
+    LICENSE.md inside a virtualenv — none of which anyone who clones this repo
+    can open. Such a gate passes here and fails in CI, and its verdict moves
+    when someone installs a package. Only what is tracked is the record.
+    """
+    listed = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z"],
+                            capture_output=True, text=True, check=True).stdout
+    return frozenset(REPO / name for name in listed.split("\0") if name)
+
+
+def _files(name: str, under: pathlib.Path | None = None) -> list[pathlib.Path]:
+    """Every tracked file matching `name`, optionally under one directory.
+
+    A leading dot means an extension (`.md`); anything else is an exact
+    filename (`pyproject.toml`), so a stray `old-pyproject.toml` is not read as
+    one.
+    """
+    root = under or REPO
+    matches = ((lambda p: p.suffix == name) if name.startswith(".")
+               else (lambda p: p.name == name))
+    return sorted(p for p in _tracked()
+                  if matches(p)
+                  and p.is_relative_to(root)
+                  and not _HISTORICAL & set(p.parts))
+
+
 def _prose() -> list[pathlib.Path]:
     """Every tracked markdown file whose claims are meant to be current."""
-    return sorted(p for p in REPO.rglob("*.md")
-                  if not _HISTORICAL & set(p.parts))
+    return _files(".md")
 
 
 def _package_roots() -> list[pathlib.Path]:
     """Every package that declares a manifest — found, not listed."""
-    return sorted(p.parent for p in REPO.rglob(versions.MANIFEST)
-                  if not _HISTORICAL & set(p.parts))
+    return sorted(p.parent for p in _files(versions.MANIFEST))
 
 
 def _pyprojects() -> list[pathlib.Path]:
-    return sorted(p for p in REPO.rglob("pyproject.toml")
-                  if not _HISTORICAL & set(p.parts))
+    return _files("pyproject.toml")
 
 
 # A token that could be a version id: starts with a letter, ends in a digit.
@@ -328,8 +359,7 @@ _TEST_NAME = re.compile(r"\btest_[A-Za-z0-9_]+")
 
 def _rule_documents() -> list[pathlib.Path]:
     """Every document that may define a rule — found, not listed."""
-    return sorted(p for p in (REPO / "docs").rglob("*.md")
-                  if not _HISTORICAL & set(p.parts) and p != _RULE_INDEX)
+    return [p for p in _files(".md", REPO / "docs") if p != _RULE_INDEX]
 
 
 def _canonical_state(raw: str) -> str:
@@ -485,8 +515,8 @@ def test_a_test_a_rule_cites_is_a_test_that_exists():
     """A rule pointing at a test nobody wrote is worse than one pointing at
     nothing: it reads as pinned. Every cited name is looked up in the suite."""
     written = set()
-    for path in REPO.rglob("test_*.py"):
-        if _HISTORICAL & set(path.parts) or ".venv" in path.parts:
+    for path in _files(".py"):
+        if not path.name.startswith("test_"):
             continue
         written.update(node.name for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
                        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"))
@@ -590,8 +620,8 @@ def test_a_document_names_no_date():
     history by construction.
     """
     dated = []
-    for path in (REPO / "docs").rglob("*.md"):
-        if _DATED_BY_DESIGN & set(path.parts) or _HISTORICAL & set(path.parts):
+    for path in _files(".md", REPO / "docs"):
+        if _DATED_BY_DESIGN & set(path.parts):
             continue
         for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             for found in _A_DATE.finditer(_LINK_TARGET.sub("", line)):
@@ -683,8 +713,7 @@ _ANCHOR_ROW = re.compile(
 
 def _anchor_documents() -> list[pathlib.Path]:
     """Every document that may carry an anchored gap — found, not listed."""
-    return sorted(p for p in (REPO / "docs").rglob("*.md")
-                  if not _HISTORICAL & set(p.parts))
+    return _files(".md", REPO / "docs")
 
 
 def _anchored_rows() -> list[tuple[pathlib.Path, int, str, str]]:

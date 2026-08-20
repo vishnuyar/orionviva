@@ -107,9 +107,9 @@ Rules about this folder: state, order, supersession, and when an ADR is owed.
 | **SPINE-4** | Authenticity uses no chain, token or on-chain mechanism | enforced | [README.md](README.md) | `test_chain_detects_tampering` |
 | **SPINE-5** | Document order lives here and nowhere else | **unmet** | [reading-guide.md](reading-guide.md) | — |
 | **SPINE-6** | Superseded stays, historical is fenced, neither is deleted | **unmet** | [reading-guide.md](reading-guide.md) | — |
-| **SPINE-7** | The eval harness ships before the first user who is not the author | **unmet** | [phases.md](phases.md) | `test_an_unreadable_confidence_or_direction_degrades_to_the_cautious_value` |
-| **SPINE-8** | The trust trial runs alongside breadth, never in front of it | untestable | [phases.md](phases.md) | — |
-| **SPINE-9** | The phases past the product are gated on earned trust, not on a calendar | untestable | [phases.md](phases.md) | — |
+| **SPINE-7** | The eval harness ships before the first user who is not the author | **unmet** | [implementation-roadmap.md](implementation-roadmap.md) | `test_an_unreadable_confidence_or_direction_degrades_to_the_cautious_value` |
+| **SPINE-8** | The trust trial runs alongside breadth, never in front of it | untestable | [implementation-roadmap.md](implementation-roadmap.md) | — |
+| **SPINE-9** | The phases past the product are gated on earned trust, not on a calendar | untestable | [implementation-roadmap.md](implementation-roadmap.md) | — |
 | **SPINE-10** | A one-way door gets an ADR before product code exists | **unmet** | [decisions/README.md](decisions/README.md) | — |
 | **SPINE-11** | A row in the index states a decision, never that it is built | **unmet** | [decisions/README.md](decisions/README.md) | — |
 | **SPINE-12** | An invariant joins the checklist by deliberate decision | **unmet** | [design-invariants.md](design-invariants.md) | — |
@@ -763,8 +763,8 @@ not been. Grouped by why the gap exists.
 | **PROG-34** | There is no setup phase distinct from use | untestable | [individual-as-enterprise.md](individual-as-enterprise.md) |
 | **PROG-35** | The required user skill is "can install an app" | untestable | [adoption-and-distribution.md](adoption-and-distribution.md) |
 | **SPINE-2** | An invariant is cited by the rule that bears on it | untestable | [README.md](README.md) |
-| **SPINE-8** | The trust trial runs alongside breadth, never in front of it | untestable | [phases.md](phases.md) |
-| **SPINE-9** | The phases past the product are gated on earned trust, not on a calendar | untestable | [phases.md](phases.md) |
+| **SPINE-8** | The trust trial runs alongside breadth, never in front of it | untestable | [implementation-roadmap.md](implementation-roadmap.md) |
+| **SPINE-9** | The phases past the product are gated on earned trust, not on a calendar | untestable | [implementation-roadmap.md](implementation-roadmap.md) |
 | **VOICE-30** | Viva is summoned, never ambient | untestable | [experience-vision.md](experience-vision.md) |
 | **VOICE-59** | no agent-memory framework | untestable | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) |
 | **VOICE-113** | these options are removed from future consideration | untestable | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |

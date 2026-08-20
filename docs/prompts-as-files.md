@@ -100,6 +100,13 @@ same stale-artifact failure a build step was reversed over. The declaration is
 the review gate. The problem was that it was made in eighteen places. What the
 lint removes is not the decision; it is the ability to forget you owed one.
 
+That example has dated itself, and the way it dated is the argument. `speak-v6`
+was the id in force when the paragraph above was written; the family in force
+today is `speak-v12`. So the first of those four failures is no longer
+hypothetical here — `speak-v12` sorts *below* `speak-v6`, and a build that
+resolved the highest version at run time would today put a six-promotion-old
+prompt in force and record it as current.
+
 Manifests are per package, not per repo, because the three ship as
 independently installable wheels. Package-data configuration matters for the
 same reason a packaging slip does: invisible in a checkout, fatal in an install.

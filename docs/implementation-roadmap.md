@@ -1,7 +1,7 @@
 # OrionViva — Implementation Roadmap
 
 **State:** partial
-**Rules:** PROG-1, PROG-2, PROG-3, PROG-4
+**Rules:** PROG-1, PROG-2, PROG-3, PROG-4, SPINE-7, SPINE-8, SPINE-9
 
 ## Rules
 
@@ -47,6 +47,32 @@ where the rule records which gate holds which half and what the Node checker
 does not cover. This document's Slice 0 audit recorded those tests as present
 *and verified* while two of the six were red, so that line of the audit was
 wrong when it was written.
+
+### SPINE-7 — The eval harness ships before the first user who is not the author
+**State:** unmet
+**Code:** product/viva/eval_listen.py:1
+**Test:** product/tests/test_eval_listen.py::test_an_unreadable_confidence_or_direction_degrades_to_the_cautious_value (the harness behaves; nothing tests that it shipped, which is what this rule asserts)
+
+1. No stranger tests the product until a continuous honesty harness exists, with the confidently-wrong rate as its headline.
+2. The eval corpus accumulates at zero marginal cost as a by-product of the build, from frozen answer keys and from the corrections a person gives.
+
+**Exception:** the harness exists on one surface only — `eval_listen` grades a single call, reading a sentence into a structured reading against a frozen synthetic key (product/viva/eval_listen.py:1). Nothing measures the confidently-wrong rate over a live vault, and shapes authored, holes unfilled and clauses dropped are counted by a debug reader (product/viva/debug/) rather than by the eval.
+
+### SPINE-8 — The trust trial runs alongside breadth, never in front of it
+**State:** untestable
+**Code:** none found
+**Test:** none
+
+1. Daily use with real finances runs concurrently with the breadth work, because breadth is what the trial keeps finding faults in.
+2. The trial closes on an event and not on a date: the author believes an answer without re-checking it.
+
+### SPINE-9 — The phases past the product are gated on earned trust, not on a calendar
+**State:** untestable
+**Code:** none found
+**Test:** none
+
+1. The first non-author user waits on the trust trial having closed, per the project's anti-goals.
+2. The trust-agent arc waits on the single-user agent having earned trust; a promise made before that is an aspirational promise and ADR-008 forbids one.
 
 ## Why
 
