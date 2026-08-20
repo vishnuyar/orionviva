@@ -1,7 +1,7 @@
 # Threat Model & Ingestion Security (B1 + B2)
 
 **State:** partial
-**Rules:** ING-70, ING-71, ING-72, ING-73, ING-74, ING-75, ING-76
+**Rules:** ING-70, ING-71, ING-72, ING-73, ING-74, ING-75, ING-76, ING-77, ING-78
 **Invariants touched:** T3 (raw capture aids forensics), T5 (encryption limits breach blast radius), T6 (zero exfiltration limits what an attacker can send out), T8 and the model-trust guardrails (the extraction model is powerless by design), X3 (irreversible actions gated)
 
 ## Rules
@@ -15,14 +15,17 @@
 2. A poisoned document can instruct the extraction model freely, because there is nothing for the instruction to actuate.
 
 ### ING-71 — Document content reaches the model as delimited, untrusted data
-**State:** contradicted-by-code
-**Code:** product/viva/ingest/reader.py:57 (`_with_embedded`)
-**Test:** none
+**State:** enforced
+**Code:** product/viva/ingest/reader.py:102 (`_with_embedded`), product/viva/prompts/extract-untrusted-frame-v1.txt (the frame itself)
+**Test:** product/tests/test_ingest_boundaries.py::test_the_documents_own_text_is_closed_off_and_the_last_word_is_ours, product/tests/test_ingest_boundaries.py::test_a_transcript_cannot_close_the_block_it_is_inside
 
 1. The document is delivered inside clear bounds that mark it as content to read, never as commands to follow.
 2. Untrusted document text is never concatenated into the instruction channel.
+3. The bounds close, and the trusted instruction is restated after them, so the last words a model reads are not the document's.
+4. A transcript that spells the closing bound itself cannot end the block early: the occurrence is defanged rather than passed through.
+5. The frame is a versioned prompt file and is named in the recorded `prompt_version`, so what enclosed a document is recoverable from the reading it produced.
 
-**Contradiction:** this doc states that spotlighting is adopted in the extraction prompt. `product/viva/ingest/reader.py:57` appends the issuer's embedded text to the prompt string behind the line *"[The issuer's own embedded text for these pages follows; use it together with the image(s).]"* — a hint about provenance, not a delimiter, with no closing bound and no instruction that the enclosed text is data rather than commands. Neither `product/viva/prompts/extract-base-v1.txt` nor `product/viva/prompts/classify-v2.txt` contains any untrusted-content framing. The untrusted text lands in the instruction channel.
+**Why it was contradicted, and what settled it:** the embedded text used to be appended behind a provenance hint with no closing bound, which left it in the last position the model reads — the strongest place an instruction can sit. Driving a 551-byte PDF through the reader showed why "it does not look like an instruction" is not something a person can check: a line in PDF text render mode 3 is painted with neither fill nor stroke, so it contributed **zero** dark pixels to the rendered page while extracting in full. Two things this document did not previously cover are now covered by clause 1: the **classify** pass reads embedded text too, so an injection could steer routing before extraction ran, and it is framed identically. Still uncovered: arithmetic backstops amounts, and nothing checks payee names, institution or account names against anything, so a rewritten name is caught by no gate.
 
 ### ING-72 — Deterministic verification is the reference monitor
 **State:** enforced
@@ -66,6 +69,28 @@
 1. Data at rest is sealed with a versioned authenticated envelope; tampering is detected on open, never silently accepted.
 2. The key is derived from the owner's passphrase with a memory-hard KDF and is never stored.
 3. There is no second wrap of the key and no recovery phrase.
+
+### ING-77 — Where a document is sent is decided by this process, not by its surroundings
+**State:** enforced
+**Code:** product/viva/env.py:42 (`env_file`), product/viva/env.py:61 (`load_dotenv`), core/vivacore/models/anthropic_adapter.py:75 (`trust_env=False`)
+**Test:** product/tests/test_ingest_boundaries.py::test_a_dotenv_in_the_working_directory_is_not_configuration, product/tests/test_ingest_boundaries.py::test_the_same_file_is_chosen_whatever_the_working_directory
+
+1. Configuration is read from a fixed search order — an explicitly named file, the user's config home, then the installed package and its source tree — derived from the code's own location and the user's home, never from the working directory.
+2. Which file configured a run is logged, because it decides where documents are sent.
+3. An outbound call does not trust the ambient environment, so a proxy variable cannot put a third party between this process and the model.
+
+**Why:** `load_dotenv` defaulted to the relative path `.env`, and 25 entry points called it with no argument. A file left in a cloned repository, an unpacked starter kit or a shared vault directory was therefore configuration: it could set the model base URL and `HTTPS_PROXY`, and every page image of every statement would be posted to a host of its author's choosing with the real API key in the header — with no prompt, no warning, and no line naming the file or the host. Both routes were live: the base URL is read from the environment, and `httpx` trusts `HTTPS_PROXY` by default, which reroutes even the hardcoded Anthropic URL.
+
+### ING-78 — A document may not cost unbounded work to read
+**State:** enforced
+**Code:** product/viva/ingest/reader.py:41 (the limits), product/viva/ingest/reader.py:46 (`_render_and_read_text`)
+**Test:** product/tests/test_ingest_boundaries.py::test_a_page_larger_than_any_statement_is_rendered_within_the_cap, product/tests/test_ingest_boundaries.py::test_too_many_pages_is_refused_rather_than_partly_read, product/tests/test_ingest_boundaries.py::test_a_file_over_the_byte_limit_never_reaches_the_parser
+
+1. Page count, file size and rendered page geometry are each bounded before the work is done, and the render scale is clamped before a bitmap is allocated rather than after one exists.
+2. Every document and page handle is closed on the way out, including when reading raises.
+3. Exceeding a limit refuses the document whole and parks it with the limit named. A prefix is never read: a statement posted over a subset of its own pages would reconcile against nothing and be graded like any other.
+
+**Why:** page *size* is not bounded by file size. A 263-byte PDF may declare the largest MediaBox the format allows, which at the render scale is a 28,800px square and 3.3 GB of bitmap; a 448 KB file may declare 5,000 pages, whose renders were all retained in one list. The process that runs out of memory is the one holding the vault key. `bench/vivabench/corpus.py` already capped its longest edge and closed its handles; the product copy had done neither.
 
 ## Why
 
