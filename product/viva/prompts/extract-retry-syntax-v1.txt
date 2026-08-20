@@ -1,0 +1,2 @@
+Your previous reply was NOT valid JSON ({err}). Return ONLY one valid JSON
+object: escape quotes and newlines inside strings, no trailing commas.

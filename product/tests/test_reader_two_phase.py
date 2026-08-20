@@ -36,7 +36,13 @@ def test_classify_uses_only_the_first_page_and_records_a_phase():
     doc_type, conf, phase = classify(adapter, _pages(5), "embedded text")
     assert doc_type == "credit_card_statement" and conf == 0.97
     assert adapter.image_counts == [1]            # cheap: one image, not all five
-    assert phase.phase == "classify" and phase.prompt_version == "classify-v2"
+    # The frame that holds the document's own text apart from the instructions
+    # is part of what produced the reading, so it is named in the recorded
+    # version and the whole id resolves back to the exact trusted text.
+    assert phase.phase == "classify"
+    assert phase.prompt_version == "classify-v2+untrusted-frame-v1"
+    from viva.ingest import prompt_library
+    assert prompt_library.resolve(phase.prompt_version)
     assert phase.parse_ok and phase.cost_usd == 0.01
 
 

@@ -68,6 +68,16 @@ def compose_extraction(base_version: str, fragment_version: str) -> tuple[str, s
     return text, f"extract:{base_version}+{fragment_version}"
 
 
+def fragment(version: str) -> str:
+    """The text of an extraction fragment — the frame that holds a document's
+    own text apart from the instructions, or a retry's re-ask.
+
+    A fragment rather than a family: it has no `active` pointer, because which
+    one a read used is recorded on that read as part of its composite version,
+    exactly as the extraction base and type fragment are."""
+    return promptstore.load(PROMPTS, _file_id(version))
+
+
 def resolve(version: str) -> str:
     """Reconstruct the exact prompt text for any recorded ``prompt_version``.
 

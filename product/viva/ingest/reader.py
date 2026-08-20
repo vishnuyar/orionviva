@@ -23,7 +23,8 @@ from vivacore.models.base import PageImage
 
 from .brokerage import from_brokerage_json
 from .paystub import from_paystub_json
-from .pipeline import ModelPhase, ReadResult
+from .pipeline import DocumentTooLarge, ModelPhase, ReadResult
+from . import prompt_library
 from .prompt_library import classify_prompt
 from .registry import (BROKERAGE_IDENTITY, PAYSTUB_IDENTITY,
                        extraction_prompt_for, profile_for)
@@ -32,31 +33,92 @@ from .statement import from_model_json
 log = logging.getLogger(__name__)
 
 
+# What a document may cost before it is refused. A page count and a byte count
+# bound the work; the edge cap bounds a single page, because page *size* is not
+# bounded by file size at all — a 263-byte PDF may declare the largest MediaBox
+# PDF allows, which at scale 2.0 is a 28,800px square and 3.3 GB of bitmap. The
+# process that runs out of memory is the one holding the vault key.
+MAX_PAGES = 200
+MAX_BYTES = 50 * 1024 * 1024
+MAX_EDGE_PX = 2000          # matches bench/vivabench/corpus.py
+
+
 def _render_and_read_text(pdf_bytes: bytes, scale: float = 2.0):
-    """Return (pages, embedded_text). Lazy pypdfium2 import (rendering is heavy)."""
+    """Return (pages, embedded_text). Lazy pypdfium2 import (rendering is heavy).
+
+    Bounded three ways, and every handle closed — the bytes are attacker-shaped
+    and reach PDFium's parser in this process."""
     import pypdfium2 as pdfium
 
+    if len(pdf_bytes) > MAX_BYTES:
+        raise DocumentTooLarge(
+            f"the file is {len(pdf_bytes) / 1e6:.1f} MB and the limit is "
+            f"{MAX_BYTES / 1e6:.0f} MB")
+
     pdf = pdfium.PdfDocument(pdf_bytes)
-    pages: list[PageImage] = []
-    texts: list[str] = []
-    for i in range(len(pdf)):
-        page = pdf[i]
-        bitmap = page.render(scale=scale)
-        png = bitmap.to_pil()
-        import io
-        buf = io.BytesIO()
-        png.save(buf, format="PNG")
-        data = buf.getvalue()
-        pages.append(PageImage(page_number=i + 1, png_bytes=data,
-                               sha256=hashlib.sha256(data).hexdigest()))
-        textpage = page.get_textpage()
-        texts.append(f"--- page {i + 1} ---\n{textpage.get_text_range()}")
-    return pages, "\n\n".join(texts)
+    try:
+        if len(pdf) > MAX_PAGES:
+            raise DocumentTooLarge(
+                f"the document has {len(pdf)} pages and the limit is {MAX_PAGES}")
+
+        pages: list[PageImage] = []
+        texts: list[str] = []
+        for i in range(len(pdf)):
+            page = pdf[i]
+            try:
+                # Clamped before the bitmap is allocated, not after it exists.
+                width, height = page.get_size()
+                longest = max(width, height) or 1
+                page_scale = min(scale, MAX_EDGE_PX / longest)
+                bitmap = page.render(scale=page_scale)
+                png = bitmap.to_pil()
+                import io
+                buf = io.BytesIO()
+                png.save(buf, format="PNG")
+                data = buf.getvalue()
+                pages.append(PageImage(page_number=i + 1, png_bytes=data,
+                                       sha256=hashlib.sha256(data).hexdigest()))
+                textpage = page.get_textpage()
+                texts.append(f"--- page {i + 1} ---\n{textpage.get_text_range()}")
+            finally:
+                page.close()
+        return pages, "\n\n".join(texts)
+    finally:
+        pdf.close()
 
 
-def _with_embedded(prompt: str, embedded_text: str) -> str:
-    return (prompt + "\n\n[The issuer's own embedded text for these pages follows; "
-            "use it together with the image(s).]\n" + embedded_text)
+# The frame that holds the document's own text apart from the instructions. Its
+# text is a prompt file like any other, so it is versioned, immutable once
+# released, and recoverable from a recorded `prompt_version`.
+EMBEDDED_FRAME = "untrusted-frame-v1"
+# Two failures, two asks: a syntax error asks for valid JSON; a value that would
+# not normalize means the JSON was fine and one field is wrong, so the re-ask
+# names that field.
+RETRY_SYNTAX = "retry-syntax-v1"
+RETRY_VALUE = "retry-value-v1"
+_SLOT = "{{DOCUMENT_TEXT}}"
+
+
+def _with_embedded(prompt: str, embedded_text: str) -> tuple[str, str]:
+    """Compose the trusted prompt with the document's own text, framed.
+
+    Returns (text, frame_version). The document's text arrives from a file
+    somebody else wrote and reaches the model verbatim; before this it was
+    appended behind a one-line hint with no closing delimiter, which left it in
+    the last position a model reads — the strongest place an instruction can
+    sit. A PDF can carry text that is invisible on the page and still extracts,
+    so "it does not look like an instruction" is not something a person can
+    check by looking.
+
+    The frame closes the block and re-states the task after it, so the last
+    words are the trusted ones. A transcript that contains the closing tag
+    itself would otherwise end the block early and put the rest back outside it,
+    so any occurrence is defanged rather than passed through."""
+    frame = prompt_library.fragment(EMBEDDED_FRAME)
+    before, after = frame.split(_SLOT, 1)
+    safe = embedded_text.replace("</untrusted_document_text>",
+                                 "<\u200b/untrusted_document_text>")
+    return prompt + "\n\n" + before + safe + after, EMBEDDED_FRAME
 
 
 def classify(adapter, pages: list[PageImage], embedded_text: str
@@ -70,7 +132,9 @@ def classify(adapter, pages: list[PageImage], embedded_text: str
     first_page = pages[:1]                    # cheap: one image, not the whole doc
     log.info("reader: classify (first page + %d chars text, prompt=%s) ...",
              len(embedded_text), version)
-    result = adapter.extract(first_page, _with_embedded(prompt, embedded_text))
+    framed, frame_version = _with_embedded(prompt, embedded_text)
+    version = f"{version}+{frame_version}"
+    result = adapter.extract(first_page, framed)
     doc_type, conf = _peek_classification(result.text)
     log.info("reader: classified %r (conf=%.2f, cost $%.4f)",
              doc_type, conf, result.cost_usd)
@@ -115,8 +179,9 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
                 BROKERAGE_IDENTITY: from_brokerage_json}.get(identity, from_model_json)
     log.info("reader: extract with profile prompt %s via %s (json_mode=%s) ...",
              prompt_version, spec.model, spec.json_mode)
-    rr = read_with_retry(lambda p: adapter.extract(pages, p),
-                         _with_embedded(prompt_text, embedded_text),
+    framed, frame_version = _with_embedded(prompt_text, embedded_text)
+    prompt_version = f"{prompt_version}+{frame_version}"
+    rr = read_with_retry(lambda p: adapter.extract(pages, p), framed,
                          doc_id, locale, currency, prompt_version=prompt_version,
                          parse_fn=parse_fn)
     # The extract prompt does not ask the model to re-decide the type, so the
@@ -189,6 +254,7 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
     facts, err = parse_fn(result.text, doc_id, locale, currency)
     total_cost = result.cost_usd
     tries = 0
+    used_versions: set[str] = set()
     while err is not None and tries < max_retries:
         tries += 1
         log.warning("reader: parse FAILED (%s); re-asking the model (retry %d)",
@@ -196,16 +262,13 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
         # Two failures, two asks. A syntax error asks for valid JSON; a value
         # that would not normalize means the JSON was fine and one field is
         # wrong, so the retry names that field.
-        if _is_syntax_error(err):
-            retry_prompt = (prompt + "\n\nYour previous reply was NOT valid JSON "
-                            f"({err}). Return ONLY one valid JSON object: escape "
-                            "quotes and newlines inside strings, no trailing commas.")
-        else:
-            retry_prompt = (
-                prompt + "\n\nYour previous reply was valid JSON, but one value "
-                f"could not be read: {err}. Return the SAME JSON with ONLY that "
-                "field corrected — copy it exactly as printed on the document, or "
-                "use \"\" if the document does not show it. Never invent a value.")
+        retry_id = (RETRY_SYNTAX if _is_syntax_error(err) else RETRY_VALUE)
+        retry_prompt = (prompt + "\n\n"
+                        + prompt_library.fragment(retry_id).replace("{err}", str(err)))
+        # The re-ask is what produced whatever comes back, so it is named on the
+        # reading. Without this the recorded version resolves to the first ask
+        # only, and a retry-produced figure cites text that did not produce it.
+        used_versions.add(retry_id)
         result = extract(retry_prompt)
         total_cost += result.cost_usd
         facts, err = parse_fn(result.text, doc_id, locale, currency)
@@ -214,6 +277,9 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
              result.resolved_model, len(result.text), total_cost, err is None,
              f", {tries} retr{'y' if tries == 1 else 'ies'}" if tries else "")
     log.debug("reader: RAW model output:\n%s", result.text)
+
+    for extra in sorted(used_versions):
+        prompt_version = f"{prompt_version}+{extra}"
 
     phase = ModelPhase(
         phase="extract", model=result.resolved_model,

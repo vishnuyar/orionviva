@@ -117,6 +117,14 @@ class IngestResult:
     message: str = ""
 
 
+
+class DocumentTooLarge(ValueError):
+    """A document costs more to read than any real statement should.
+
+    Raised rather than handled by reading part of it: a statement posted over a
+    subset of its own pages would reconcile against nothing and be graded like
+    any other. The document is captured and parked with this as the reason."""
+
 ReadFn = Callable[[bytes, str], ReadResult]
 
 
@@ -869,6 +877,20 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
 
     try:
         rr = read_fn(data, doc_id)               # (2) the model read (a proposal)
+    except DocumentTooLarge as e:
+        # Refused rather than failed, and refused for a reason no later arrival
+        # changes: the document is kept, and the message says so instead of
+        # promising it will be understood when some projector shows up.
+        log.info("ingest: refused doc_id=%s as too costly to read: %s",
+                 doc_id[:12], e)
+        ledger.append(document_captured(
+            doc_id, filename, len(data), "unknown", 0.0, captured_at,
+            Provenance(doc_id=doc_id)))
+        return IngestResult(
+            doc_id=doc_id, action=PARKED, doc_type="",
+            message=(f"Captured and kept, not read: {e}. Nothing was read from "
+                     "it, so nothing from it is on your books. Splitting it, or "
+                     "raising the limit, is what changes that."))
     except Exception as e:                       # a read that threw is recorded, not orphaned
         log.warning("ingest: read raised for doc_id=%s: %s", doc_id[:12], e)
         rr = ReadResult("unknown", 0.0, None, error=f"read failed: {e}",

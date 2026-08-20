@@ -1,0 +1,4 @@
+Your previous reply was valid JSON, but one value could not be read: {err}.
+Return the SAME JSON with ONLY that field corrected — copy it exactly as printed
+on the document, or use "" if the document does not show it. Never invent a
+value.
