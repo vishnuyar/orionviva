@@ -68,3 +68,51 @@ def test_ci_wires_sidecar_build_before_tauri_bundle():
     assert "build_desktop_sidecar.py" in source
     assert "tauri build" in source
     assert source.index("build_desktop_sidecar.py") < source.index("tauri build")
+
+
+def test_the_bundle_names_icons_that_exist():
+    """An empty `bundle.icon` does not fail the build — Tauri accepts it and
+    ships an application with no icon, so CI stays green over a defect a person
+    sees the moment they open the folder. The macOS and Windows bundlers need
+    the `.icns` and `.ico` specifically; a directory of PNGs is not enough."""
+    bundle = json.loads(TAURI_CONFIG.read_text())["bundle"]
+    icons = bundle.get("icon", [])
+    assert icons, (
+        "bundle.icon is empty, so the bundlers ship an iconless application "
+        "and nothing reports it"
+    )
+
+    missing = [name for name in icons
+               if not (TAURI_CONFIG.parent / name).is_file()]
+    assert not missing, f"bundle.icon names files that do not exist: {missing}"
+
+    suffixes = {Path(name).suffix for name in icons}
+    for required in (".icns", ".ico"):
+        assert required in suffixes, (
+            f"bundle.icon names no {required}; the "
+            f"{'macOS' if required == '.icns' else 'Windows'} bundler needs one"
+        )
+
+
+def test_the_release_ships_no_updater_it_cannot_honour():
+    """A signed `latest.json` beside the installers advertises an update channel.
+    Nothing compiles an updater plugin into this application, so no installed
+    copy can read that channel — the manifest would be a promise the binary
+    cannot keep. The two halves ship together or not at all."""
+    cargo = (DESKTOP / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
+    package = PACKAGE_JSON.read_text(encoding="utf-8")
+    has_plugin = "tauri-plugin-updater" in cargo or "plugin-updater" in package
+
+    release_script = (ROOT / "scripts" / "prepare_native_release.py").read_text()
+    release_workflow = (ROOT / ".github" / "workflows"
+                        / "release-desktop.yml").read_text()
+    publishes = ("createUpdaterArtifacts" in release_script
+                 or "uploadUpdaterJson" in release_workflow
+                 or "uploadUpdaterSignatures" in release_workflow)
+
+    assert has_plugin == publishes, (
+        "the release publishes updater artifacts but the application has no "
+        "updater plugin" if publishes else
+        "the application has an updater plugin but the release publishes no "
+        "updater artifacts"
+    )

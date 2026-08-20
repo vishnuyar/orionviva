@@ -65,32 +65,31 @@ def _release_workflow_source() -> str:
     return "\n".join(workflow.read_text() for workflow in workflows)
 
 
-def test_tauri_config_enables_updater_artifacts_and_public_update_metadata():
+def test_the_release_override_declares_no_update_channel():
+    """The sidecar is still bundled; the updater is not.
+
+    This test previously asserted the opposite — that the release generates a
+    signed `latest.json` and an updater public key. It was asserting a channel
+    no installed copy could read: nothing compiles an updater plugin into this
+    application, so the manifest and its signatures described a capability the
+    binary did not have. The contract now is that the release ships installers
+    and says so."""
     config = json.loads(TAURI_CONFIG.read_text())
     bundle = config.get("bundle", {})
     assert f"binaries/{'viva-desktop-bridge'}" in bundle.get("externalBin", [])
 
     override = release_override(
         "linux",
-        {
-            "ORIONVIVA_UPDATER_PUBLIC_KEY": "release-public-key",
-            "ORIONVIVA_UPDATER_ENDPOINT": "https://updates.orionviva.test/latest.json",
-        },
+        {"ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT": "unused-on-linux"},
     )
-    release_bundle = override["bundle"]
-    updater = override["plugins"]["updater"]
-    assert release_bundle.get("createUpdaterArtifacts") is True
-    assert isinstance(updater.get("pubkey"), str) and updater["pubkey"].strip(), (
-        "release updater config needs the public signing key"
+    assert "plugins" not in override, (
+        "the release override declares a plugin configuration; an updater "
+        "plugin is not compiled into the application"
     )
-    endpoints = updater.get("endpoints")
-    assert isinstance(endpoints, list) and endpoints, (
-        "Tauri updater config needs at least one HTTPS update endpoint"
+    assert not override["bundle"].get("createUpdaterArtifacts"), (
+        "the release would publish updater artifacts for an application with "
+        "no updater"
     )
-    assert all(
-        isinstance(endpoint, str) and endpoint.startswith("https://")
-        for endpoint in endpoints
-    ), "updater endpoints must use HTTPS"
 
 
 def test_release_workflow_builds_every_supported_target_after_its_sidecar():

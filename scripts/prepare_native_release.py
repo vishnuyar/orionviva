@@ -130,22 +130,19 @@ def sidecar_path(target: str) -> Path:
 
 
 def release_override(platform: str, values: dict[str, str]) -> dict[str, Any]:
-    bundle: dict[str, Any] = {"createUpdaterArtifacts": True}
+    # No updater artifacts. The application has no updater plugin compiled into
+    # it, so a signed `latest.json` beside the installers would advertise a
+    # channel that no installed copy can read — a promise on the release page
+    # the binary cannot keep. Ship installers, or ship an updater; not the
+    # signature of one without the other.
+    bundle: dict[str, Any] = {}
     if platform == "windows":
         bundle["windows"] = {
             "certificateThumbprint": values["ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT"],
             "digestAlgorithm": "sha256",
             "timestampUrl": values["ORIONVIVA_WINDOWS_TIMESTAMP_URL"],
         }
-    return {
-        "bundle": bundle,
-        "plugins": {
-            "updater": {
-                "pubkey": values["ORIONVIVA_UPDATER_PUBLIC_KEY"],
-                "endpoints": [values["ORIONVIVA_UPDATER_ENDPOINT"]],
-            }
-        },
-    }
+    return {"bundle": bundle}
 
 
 def main() -> int:
@@ -172,11 +169,8 @@ def main() -> int:
     common = required_environment(
         [
             "TAURI_SIGNING_PRIVATE_KEY",
-            "ORIONVIVA_UPDATER_PUBLIC_KEY",
-            "ORIONVIVA_UPDATER_ENDPOINT",
         ]
     )
-    validate_https_url("ORIONVIVA_UPDATER_ENDPOINT", common["ORIONVIVA_UPDATER_ENDPOINT"])
 
     platform_values: dict[str, str] = {}
     if target["platform"] == "macos":
