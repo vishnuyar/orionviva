@@ -31,7 +31,12 @@ def test_continuation_stitches_via_assistant_prefill(monkeypatch):
     seq = [_payload('{"a":1,', "max_tokens"), _payload('"b":2}', "end_turn")]
     calls = []
 
-    def fake_post(url, json=None, headers=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None, *,
+                  trust_env=True):
+        # Pinned here rather than merely tolerated: with trust_env left on, an
+        # ambient HTTPS_PROXY reroutes the call and a third party holds the API
+        # key and every page image.
+        assert trust_env is False, "an outbound call must not trust the environment"
         calls.append(json)
         return _FakeResp(seq[len(calls) - 1])
 
@@ -54,7 +59,12 @@ def test_continuation_stitches_via_assistant_prefill(monkeypatch):
 def test_no_continuation_when_first_reply_ends_the_turn(monkeypatch):
     calls = []
 
-    def fake_post(url, json=None, headers=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None, *,
+                  trust_env=True):
+        # Pinned here rather than merely tolerated: with trust_env left on, an
+        # ambient HTTPS_PROXY reroutes the call and a third party holds the API
+        # key and every page image.
+        assert trust_env is False, "an outbound call must not trust the environment"
         calls.append(json)
         return _FakeResp(_payload('{"done":true}', "end_turn"))
 

@@ -3,19 +3,73 @@
 The vault passphrase and model keys live in ``.env`` (git-ignored, never
 committed). Existing environment variables always win: an explicit ``export``
 overrides the file, and a secret already in the environment is never clobbered.
+
+**Where the file is looked for is a security property, not a convenience.** This
+used to default to the relative path ``.env``, which resolves against whatever
+directory the process was started in. A ``.env`` left in a cloned repository, an
+unpacked starter kit or a shared vault directory was therefore configuration: it
+could set the model base URL and ``HTTPS_PROXY``, and every page image of every
+statement would be posted to a host of its author's choosing with the real API
+key in the header — silently, with no line naming the file or the host. The
+search order below is fixed, does not include the working directory, and the
+source-tree entry is found by walking up from *this file* rather than from the
+cwd, so no caller's location can introduce a new candidate.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
 
+log = logging.getLogger(__name__)
 
-def load_dotenv(path: str = ".env") -> bool:
-    """Populate os.environ from a .env file if present. Returns True if loaded."""
-    p = pathlib.Path(path)
-    if not p.exists():
+CONFIG_HOME = pathlib.Path.home() / ".orionviva"
+
+# Marks the root of an OrionViva source tree. Tracked, and it sits beside the
+# `.env` it is an example of, so finding one is finding where the other belongs.
+_TREE_MARKER = ".env.example"
+
+
+def _source_tree_root() -> pathlib.Path | None:
+    """The source tree this module was imported from, or None once installed."""
+    for parent in pathlib.Path(__file__).resolve().parents:
+        if (parent / _TREE_MARKER).is_file():
+            return parent
+    return None
+
+
+def env_file() -> pathlib.Path | None:
+    """The one `.env` this process will read, or None when there is none.
+
+    In order: ``VIVA_ENV_FILE`` if it names one; then ``~/.orionviva/.env``,
+    which is where a packaged install keeps it; then the root of the source tree
+    this module lives in. The working directory is never consulted."""
+    explicit = os.environ.get("VIVA_ENV_FILE", "").strip()
+    candidates = [pathlib.Path(explicit).expanduser()] if explicit else []
+    candidates.append(CONFIG_HOME / ".env")
+    # Beside the installed package, which is where a source checkout keeps it
+    # today: `product/.env`, next to `product/viva/`. Derived from this file's
+    # own location, so it names one directory no matter who calls it.
+    candidates.append(pathlib.Path(__file__).resolve().parents[1] / ".env")
+    root = _source_tree_root()
+    if root is not None:
+        candidates.append(root / ".env")
+    return next((c for c in candidates if c.is_file()), None)
+
+
+def load_dotenv(path: str | os.PathLike | None = None) -> bool:
+    """Populate os.environ from the `.env` this process reads. True if loaded.
+
+    ``path`` names a file explicitly — the bench harness does this — and is
+    taken as given. With no argument the fixed search order in `env_file` is
+    used; the working directory is not part of it."""
+    p = pathlib.Path(path) if path is not None else env_file()
+    if p is None or not p.exists():
         return False
+    # Which file configured this run is worth saying out loud: it decides where
+    # documents are sent.
+    log.info("configuration loaded from %s", p)
     for line in p.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:

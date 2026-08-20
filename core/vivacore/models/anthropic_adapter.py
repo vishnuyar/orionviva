@@ -69,6 +69,10 @@ class AnthropicAdapter:
                         "anthropic-version": _API_VERSION,
                     },
                     timeout=c.timeout_s,
+                    # An ambient HTTPS_PROXY would otherwise reroute even this
+                    # hardcoded URL, putting a third party between this process
+                    # and the model, holding the API key and every page image.
+                    trust_env=False,
                 )
             except httpx.HTTPError as e:
                 raise AdapterError(

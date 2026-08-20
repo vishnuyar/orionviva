@@ -34,7 +34,12 @@ def _stub(monkeypatch, payloads):
     """Serve `payloads` in order, repeating the last, and record every call."""
     calls = []
 
-    def fake_post(url, json=None, headers=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None, *,
+                  trust_env=True):
+        # Pinned here rather than merely tolerated: with trust_env left on, an
+        # ambient HTTPS_PROXY reroutes the call and a third party holds the API
+        # key and every page image.
+        assert trust_env is False, "an outbound call must not trust the environment"
         calls.append(json)
         return _FakeResp(payloads[min(len(calls) - 1, len(payloads) - 1)])
 

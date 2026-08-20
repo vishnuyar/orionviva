@@ -1192,7 +1192,8 @@ def _wire_adapter(monkeypatch, responses):
 
     sent = []
 
-    def post(url, json=None, headers=None, timeout=None):
+    def post(url, json=None, headers=None, timeout=None, *, trust_env=True):
+        assert trust_env is False, "an outbound call must not trust the environment"
         # Snapshot at send time: the caller's message list lives on after the
         # call, and what was on the wire is the fact being asserted.
         import copy

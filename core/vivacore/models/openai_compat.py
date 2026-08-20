@@ -73,7 +73,8 @@ class OpenAICompatAdapter:
 
             started = time.monotonic()
             try:
-                resp = httpx.post(self.url, json=body, headers=headers, timeout=c.timeout_s)
+                resp = httpx.post(self.url, json=body, headers=headers,
+                              timeout=c.timeout_s, trust_env=False)
             except httpx.HTTPError as e:
                 # The message carries the elapsed time, the configured timeout,
                 # and which attempt failed.
@@ -166,8 +167,10 @@ class OpenAICompatAdapter:
 
         started = time.monotonic()
         try:
+            # trust_env=False — see the note in anthropic_adapter: an ambient
+            # proxy variable must not decide where a document is sent.
             resp = httpx.post(self.url, json=body, headers=headers,
-                              timeout=c.timeout_s)
+                              timeout=c.timeout_s, trust_env=False)
         except httpx.HTTPError as e:
             raise AdapterError(
                 f"[{c.name}] HTTP failure calling {self.url} after "
