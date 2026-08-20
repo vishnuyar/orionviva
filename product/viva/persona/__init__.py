@@ -211,6 +211,13 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # settled records nothing further — and says so, rather than reading as a
     # reply that could not be understood.
     "reply_already_linked":     frozenset(),
+    # What is said when a reply about an action can be read as no outcome
+    # word: one that does not say whether it was accepted, a refusal that
+    # names no reason, and a reply held for a confirmation, which is transient
+    # and does not cross a surface boundary.
+    "outcome_unstated":         frozenset(),
+    "outcome_unexplained":      frozenset(),
+    "outcome_held":             frozenset(),
     # A yes that says a thing exists has not said what it is called, and this
     # product does not name a person's accounts for them. The schema pack's own
     # words for the naming question nest inside Viva's.

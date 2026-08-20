@@ -132,7 +132,8 @@
   font-size: 12px;
   font-weight: 700;
 }
-.primary-button:disabled, .secondary-button:disabled { cursor: not-allowed; opacity: .58; }
+.primary-button:disabled, .secondary-button:disabled,
+.primary-button[aria-disabled="true"], .secondary-button[aria-disabled="true"] { cursor: not-allowed; opacity: .58; }
 .action-explanation { max-width: 220px; color: #7f8a83; font-size: 10px; line-height: 1.4; }
 .secondary-button {
   padding: 10px 13px;

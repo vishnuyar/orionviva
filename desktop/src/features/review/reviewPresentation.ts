@@ -1,4 +1,4 @@
-import type { ReviewSampleAnatomy, ReviewView } from "../../surface/types";
+import type { ActionResult, ReviewSampleAnatomy, ReviewVerb, ReviewView } from "../../surface/types";
 
 export type ReviewSelection =
   | { state: "empty"; reason: "queue_empty" | "no_selectable_identity" }
@@ -29,13 +29,55 @@ export type AnatomyPresentation =
 
 export function anatomyPresentation(value: string | null | undefined): AnatomyPresentation {
   switch (value) {
-    case "answer": return { state: "ready", anatomy: "answer", title: "Answer boundary", detail: "Answer entry is unavailable in this preview. This example does not collect or record an answer." };
-    case "decline": return { state: "ready", anatomy: "decline", title: "Decline / set aside boundary", detail: "Decline and set aside are unavailable in this preview. This example does not suppress, defer, or record the question." };
+    case "answer": return { state: "ready", anatomy: "answer", title: "Answer boundary", detail: "This fictional question wants a sentence back. Answering is not connected in this version, here or in a private vault, so nothing can be read into a slot, recorded, or sent." };
+    case "decline": return { state: "ready", anatomy: "decline", title: "Set-aside boundary", detail: "The sample vault takes a setting-aside and refuses it. Nothing here is suppressed, deferred, or recorded." };
     case "proposal": return { state: "ready", anatomy: "proposal", title: "Proposal — not applied", detail: "This fictional proposal describes a possible value. It remains unapplied and would require a separate explicit confirmation." };
     case "confirmation": return { state: "ready", anatomy: "confirmation", title: "Confirmation required", detail: "This is confirmation anatomy only. No yes is accepted and nothing is applied." };
     default:
       return value?.trim()
         ? { state: "unrecognized", title: "Sample action type unavailable", detail: "This fictional sample uses an action type this preview does not recognize. Nothing can be submitted, recorded, sent, or applied." }
         : { state: "missing", title: "Sample anatomy unavailable", detail: "This fictional sample does not supply action anatomy. Nothing can be submitted, recorded, sent, or applied." };
+  }
+}
+
+export type OutcomePresentation = { title: string; detail: string };
+
+// What each verb calls the thing it does, in the words its own controls used,
+// so a title never names an act the person did not perform.
+const verbWords: Record<ReviewVerb, { working: string; completed: string; refused: string; waiting: string }> = {
+  decline: { working: "Setting this question aside", completed: "Set aside", refused: "Not set aside", waiting: "Nothing set aside yet" },
+};
+
+export function workingPresentation(verb: ReviewVerb): OutcomePresentation {
+  return { title: verbWords[verb].working, detail: "Waiting for your vault to answer. Nothing else is being read while it does." };
+}
+
+// What one review verb came back as, in words. The vault's own sentence is
+// used wherever the vault answered; the machine reason a refusal carries is
+// not, and neither is a bridge error code's message.
+//
+// Only the vault's own refusal is titled as a refusal. The three channels that
+// never reached an answer are titled by what did not happen to the request,
+// because the code carrying a refused request also carries a handler that
+// raised, and a handler can raise after it has written.
+export function outcomePresentation(verb: ReviewVerb, result: ActionResult): OutcomePresentation {
+  const words = verbWords[verb];
+  if (result.state === "unserved") {
+    return { title: "Your vault would not take this request", detail: "Your vault refused the request as this screen sent it. Whether anything was recorded is not something this screen can tell you." };
+  }
+  if (result.state === "unanswered") {
+    return { title: "Your vault did not answer", detail: "Nothing came back, so this screen will not say whether anything was recorded." };
+  }
+  if (result.state === "unreadable") {
+    return { title: "The reply could not be read", detail: "Your vault answered in a way this screen does not recognise, so it will not say whether anything was recorded." };
+  }
+  const { kind, message } = result.outcome;
+  const detail = message || "Your vault recorded no sentence for this reply.";
+  switch (kind) {
+    case "completed": return { title: words.completed, detail };
+    case "refused": return { title: words.refused, detail };
+    case "waiting": return { title: words.waiting, detail };
+    case "proposal": return { title: "Held for a confirmation this screen cannot give", detail };
+    case "stale": return { title: "Out of date", detail };
   }
 }

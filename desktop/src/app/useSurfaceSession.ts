@@ -1,13 +1,27 @@
 import { useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { privateSource } from "../surface/sources";
-import type { Destination, EvidenceLink } from "../surface/types";
+import type { ActionResult, DeclineReason, Destination, EvidenceLink, ReviewActions, ReviewVerb } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 export function useSurfaceSession() {
   const [session, dispatch] = useReducer(sessionReducer, undefined, initialSession);
   const [hostBridge] = useState(createDetectedBridgeClient);
   const requestId = useRef(0);
+
+  // One review verb at a time. The sidecar answers one request before reading
+  // the next, so a second press while the first is in flight would queue behind
+  // it and report against a queue that has already moved.
+  async function runReviewVerb(verb: ReviewVerb, questionId: string, run: (actions: ReviewActions) => Promise<ActionResult>) {
+    const actions = session.source.reviewActions;
+    if (!questionId.trim() || session.reviewAction.state === "working") return;
+    const nextRequestId = requestId.current;
+    dispatch({ type: "review-acting", requestId: nextRequestId, questionId, verb });
+    const result = await run(actions);
+    const review = await actions.reread();
+    if (requestId.current !== nextRequestId) return;
+    dispatch({ type: "review-acted", requestId: nextRequestId, questionId, verb, result, review });
+  }
 
   return {
     session,
@@ -44,6 +58,9 @@ export function useSurfaceSession() {
     openEvidence(link: EvidenceLink) { dispatch({ type: "select-document", id: link.targetDocumentId }); dispatch({ type: "navigate", destination: "documents" }); },
     selectDocument(id: string) { dispatch({ type: "select-document", id }); },
     selectQueue(id: string) { dispatch({ type: "select-queue", id }); },
+    async declineQuestion(questionId: string, reason: DeclineReason) {
+      await runReviewVerb("decline", questionId, (actions) => actions.decline(questionId, reason));
+    },
     selectAccount(id: string) { dispatch({ type: "select-account", id }); },
     selectPrompt(id: string) { dispatch({ type: "select-prompt", id }); },
     setNotice(notice: string | null) { dispatch({ type: "notice", notice }); },

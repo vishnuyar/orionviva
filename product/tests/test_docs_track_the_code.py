@@ -957,13 +957,17 @@ def test_a_bridge_operation_table_is_the_operations_the_sidecar_serves():
     goes red for still saying it is outside.
     """
     from viva.desktop_bridge.handlers import (default_handlers,
+                                              handlers_for_opened_vault,
                                               handlers_with_surface_provider)
     from viva.surface import operation_names
 
     path, columns, rows = _one_table(_OPERATION_TABLE)
     served = set(operation_names())
-    allowlisted = set(default_handlers().handlers) | set(
-        handlers_with_surface_provider(object()).handlers)
+    allowlisted = set().union(*(set(dispatcher.handlers) for dispatcher in (
+        default_handlers(),
+        handlers_with_surface_provider(object()),
+        handlers_for_opened_vault(object()),
+    )))
 
     listed = _subjects(rows)
     problems = _duplicates(rows)

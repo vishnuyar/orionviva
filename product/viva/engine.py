@@ -571,15 +571,15 @@ def decline_question(vault: Vault, question_id: str,
 
     The stake snapshot (amount, count) is read from the live queue rather than
     taken from the caller, so a stale caller cannot record the wrong figures.
-    Declining a question that is no longer open is a no-op returning
-    `{"ok": False}` with a message, not an error."""
+    Declining a question that is no longer open is a no-op, not an error: it
+    returns `{"ok": False, "why": "not_open", "message": ...}`."""
     from .ledger.events import question_declined
     from .persona import ACTIVE_PACK
     from .questions import open_questions
     qs = open_questions(vault.ledger, limit=100000)
     q = next((x for x in qs["questions"] if x["id"] == question_id), None)
     if q is None:
-        return {"ok": False,
+        return {"ok": False, "why": "not_open",
                 "message": "That question is no longer open — nothing to set aside."}
     vault.ledger.append(question_declined(
         q["id"], q["kind"], _today(), reason=reason,
@@ -628,8 +628,8 @@ def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
 def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
     """Apply a person's ruling on an ambiguous account identity ('same' / 'new')."""
     res = apply_identity_ruling(vault.ledger, doc_id, decision)
-    return {"action": res.action, "grade": res.grade, "account": res.account,
-            "message": res.message}
+    return {"ok": True, "action": res.action, "grade": res.grade,
+            "account": res.account, "message": res.message}
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:

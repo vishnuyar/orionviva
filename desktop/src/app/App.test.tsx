@@ -594,7 +594,7 @@ describe("minimal shell", () => {
     await user.click(getByRole("button", { name: "ReviewWhat needs you" }));
     await user.click(getByRole("button", { name: /duplicate subscription/i }));
     expect(getByRole("heading", { name: "Duplicate subscription" })).toBeInTheDocument();
-    expect(getByText("Decline / set aside boundary")).toBeInTheDocument();
+    expect(getByText("Set-aside boundary")).toBeInTheDocument();
     expect(getByText("Card statement, page 1")).toBeInTheDocument();
     expect(getByRole("button", { name: /harborline signature card statement.*page 1/i })).toBeInTheDocument();
   });
@@ -1199,8 +1199,13 @@ describe("minimal shell", () => {
 
       await user.click(getByRole("button", { name: /review.*what needs you/i }));
       expect(getByRole("heading", { name: "Is this your account?" })).toBeInTheDocument();
-      expect(getByText("This screen can inspect the current review read. It cannot answer, decline, set aside, propose, confirm, correct, or write a vault event.")).toBeInTheDocument();
-      expect(queryByRole("button", { name: /^Answer$/i })).not.toBeInTheDocument();
+      expect(queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
+      expect(getByRole("button", { name: "Set aside for now" })).toBeInTheDocument();
+      expect(getByText("Setting a question aside is connected. Answering one in your own words is not, and neither is proposing a change, confirming one, or correcting a document.")).toBeInTheDocument();
+      // The read supplies an invitation to answer in a sentence. Nothing here
+      // can take one, so a real vault's invitation is never put to a person.
+      expect(queryByText("Write an answer")).not.toBeInTheDocument();
+      expect(queryByText(/invites an answer in a sentence/)).not.toBeInTheDocument();
 
       await user.click(getByRole("button", { name: "Open sample vault" }));
       expect(getByText("Sample vault")).toBeInTheDocument();
@@ -1400,6 +1405,147 @@ describe("minimal shell", () => {
       expect(getByRole("status")).toHaveTextContent("The local vault could not be opened.");
       expect(getByRole("status")).not.toHaveTextContent(secret);
       expect(getByLabelText("Passphrase")).toHaveValue("");
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("says what became of a question set aside and moves focus once the write has settled", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    let setAside = false;
+    const questions = () => (setAside
+      ? [{ id: "second-question", kind: "merchant", text: "What is this payment for?", why: "The merchant is unknown." }]
+      : [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." },
+         { id: "second-question", kind: "merchant", text: "What is this payment for?", why: "The merchant is unknown." }]);
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        if (operation === "viva.review.decline") {
+          setAside = true;
+          return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "completed", message: "Set aside until something changes.", state: null, reason: null } as T };
+        }
+        const surface = payload.surface;
+        const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
+          : surface === "documents" ? { documents: [] }
+            : { questions: questions(), total: setAside ? 1 : 2, invite: "Write an answer", answered_by_document: "A document answers this" };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+      },
+    };
+
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/vault");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByRole("button", { name: "Open local vault" }));
+      await waitFor(() => expect(getByRole("button", { name: /review.*what needs you/i })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: /review.*what needs you/i }));
+
+      await user.click(getByRole("button", { name: "Set aside for now" }));
+
+      // The question leaves the queue and the control that was pressed goes
+      // with it, so what happened is said where it can still be read and focus
+      // lands on the question the queue moved to.
+      await waitFor(() => expect(getByRole("heading", { name: "What is this payment for?" })).toBeInTheDocument());
+      await waitFor(() => expect(document.getElementById("selected-question-title")).toHaveFocus());
+      expect(getByRole("status")).toHaveTextContent("Set aside until something changes.");
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("never disables the pressed control, so a refusal leaves it under the person's hands", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    let answerDecline: () => void = () => {};
+    const declineAnswered = new Promise<void>((resolve) => { answerDecline = resolve; });
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        if (operation === "viva.review.decline") {
+          await declineAnswered;
+          return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "refused", message: "That question is no longer open.", state: null, reason: "not_open" } as T };
+        }
+        const surface = payload.surface;
+        const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
+          : surface === "documents" ? { documents: [] }
+            : { questions: [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+      },
+    };
+
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/vault");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByRole("button", { name: "Open local vault" }));
+      await waitFor(() => expect(getByRole("button", { name: /review.*what needs you/i })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: /review.*what needs you/i }));
+
+      const control = getByRole("button", { name: "Set aside for now" });
+      await user.click(control);
+
+      // The vault has not answered yet. A focused element that becomes disabled
+      // is blurred to the document body by the browser this ships in, and this
+      // test environment does not implement that blur — so what is asserted
+      // through the whole in-flight window is that the control was never
+      // disabled, which is observable in both.
+      await waitFor(() => expect(getByRole("status")).toHaveTextContent("Setting this question aside"));
+      expect(control).not.toBeDisabled();
+      expect(control).toHaveAttribute("aria-disabled", "true");
+      expect(control).toHaveFocus();
+
+      answerDecline();
+
+      // Nothing moved, so the control the person must use again is still under
+      // their hands and the screen does not take focus off it.
+      await waitFor(() => expect(getByRole("status")).toHaveTextContent("That question is no longer open."));
+      expect(control).not.toBeDisabled();
+      expect(control).toHaveFocus();
+    } finally {
+      answerDecline();
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("gives focus somewhere to land when the read after a write fails, and says the queue is unread", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    let setAside = false;
+    window.orionVivaBridge = {
+      request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+        if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
+        if (operation === "viva.review.decline") {
+          setAside = true;
+          return { protocol: "1.0", request_id: "decline", ok: true, result: { kind: "completed", message: "Set aside until something changes.", state: null, reason: null } as T };
+        }
+        const surface = payload.surface;
+        if (surface === "review" && setAside) throw new Error("bounded read failure");
+        const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
+          : surface === "documents" ? { documents: [] }
+            : { questions: [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" };
+        return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+      },
+    };
+
+    try {
+      const { getByLabelText, getByRole, getByText } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/vault");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByRole("button", { name: "Open local vault" }));
+      await waitFor(() => expect(getByRole("button", { name: /review.*what needs you/i })).toBeInTheDocument());
+      await user.click(getByRole("button", { name: /review.*what needs you/i }));
+
+      await user.click(getByRole("button", { name: "Set aside for now" }));
+
+      // The write took and the read that followed did not, so the panel and the
+      // control are both gone. What happened is still said, it says the queue
+      // was not read again, and focus lands on it rather than on the body.
+      await waitFor(() => expect(getByText("Review could not be read")).toBeInTheDocument());
+      expect(getByRole("status")).toHaveTextContent("Set aside until something changes.");
+      expect(getByRole("status")).toHaveTextContent("This screen could not read the queue afterwards, so it no longer knows what is still open.");
+      await waitFor(() => expect(document.getElementById("review-outcome-title")).toHaveFocus());
+      expect(document.activeElement).not.toBe(document.body);
     } finally {
       window.orionVivaBridge = previousBridge;
     }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BridgeRefusal, BridgeUnreadable } from "../bridge/contracts";
 import type { BridgeClient, SurfaceName } from "../bridge/contracts";
 import { loadPrivateSnapshot } from "./load-private-snapshot";
 import { demoSource, privateSource } from "./sources";
@@ -6,7 +7,7 @@ import { demoSource, privateSource } from "./sources";
 function client(data: Partial<Record<SurfaceName, unknown>> = {}): BridgeClient {
   const defaults: Record<SurfaceName, unknown> = { overview: { accounts: [] }, documents: { documents: [] }, review: { questions: [], total: 0 } };
   const read = async (surface: SurfaceName) => ({ surface, job_id: `test-${surface}`, data: surface in data ? data[surface] : defaults[surface] });
-  return { openVault: async () => undefined, readOverview: () => read("overview"), readDocuments: () => read("documents"), readReview: () => read("review") };
+  return { openVault: async () => undefined, readOverview: () => read("overview"), readDocuments: () => read("documents"), readReview: () => read("review"), declineQuestion: async () => ({ kind: "completed", message: "Set aside.", state: null, reason: null }) };
 }
 
 describe("surface loading boundary", () => {
@@ -114,5 +115,39 @@ describe("surface loading boundary", () => {
     const snapshot = await loadPrivateSnapshot(client({ overview: { accounts: [] }, documents: { documents: [] }, review: { questions: [], total: 0 } }));
     const serialized = JSON.stringify(snapshot);
     for (const marker of ["Everyday checking", "$48,240.18", "silverline-checking", "Synthetic PDF"]) expect(serialized).not.toContain(marker);
+  });
+
+  it("carries the review verb on every source a screen can be given", async () => {
+    const actions = privateSource(client()).reviewActions;
+    // No source is without the verbs, so no screen has a state where the
+    // controls are missing and none may carry copy describing one. A source
+    // that dropped them would fail here rather than reach a person as a panel
+    // saying actions are not connected.
+    for (const source of [demoSource, privateSource(client())]) {
+      expect(typeof source.reviewActions.decline).toBe("function");
+      expect(typeof source.reviewActions.reread).toBe("function");
+    }
+    // The sample vault records nothing, so its verb refuses and says so. That
+    // keeps the refusal a person may meet reachable with no vault open.
+    await expect(demoSource.reviewActions.decline("sample", "not_now")).resolves.toMatchObject({ state: "settled", outcome: { kind: "refused", reason: "sample_vault" } });
+    await expect(actions.decline("q-1", "not_now")).resolves.toEqual({ state: "settled", outcome: { kind: "completed", message: "Set aside.", reason: "" } });
+    await expect(actions.reread()).resolves.toEqual({ state: "ready", data: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } });
+  });
+
+  it("keeps four unlike replies to one verb in four channels", async () => {
+    const unanswered: BridgeClient = { ...client(), declineQuestion: async () => { throw new Error("sidecar gone"); } };
+    const unreadable: BridgeClient = { ...client(), declineQuestion: async () => ({ kind: "invented" }) };
+    const refused: BridgeClient = { ...client(), declineQuestion: async () => { throw new BridgeRefusal("invalid_request", "reason must be one of: dont_know, not_now"); } };
+    // A code that does not mean the request was refused carries machine text —
+    // here a Python exception's own repr — so it is read as a reply this screen
+    // cannot make sense of rather than as the vault saying no.
+    const raised: BridgeClient = { ...client(), declineQuestion: async () => { throw new BridgeRefusal("handler_failed", "'questions'"); } };
+    const empty: BridgeClient = { ...client(), declineQuestion: async () => { throw new BridgeUnreadable("viva.review.decline"); } };
+
+    await expect(privateSource(unanswered).reviewActions?.decline("q-1", "not_now")).resolves.toEqual({ state: "unanswered" });
+    await expect(privateSource(unreadable).reviewActions?.decline("q-1", "not_now")).resolves.toEqual({ state: "unreadable" });
+    await expect(privateSource(refused).reviewActions?.decline("q-1", "not_now")).resolves.toEqual({ state: "unserved" });
+    await expect(privateSource(raised).reviewActions?.decline("q-1", "not_now")).resolves.toEqual({ state: "unreadable" });
+    await expect(privateSource(empty).reviewActions?.decline("q-1", "not_now")).resolves.toEqual({ state: "unreadable" });
   });
 });

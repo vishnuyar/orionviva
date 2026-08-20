@@ -43,7 +43,7 @@
 
 ### MON-23 — a category exists by being used
 **State:** enforced
-**Code:** product/viva/listen.py:110 (`category_vocabulary`), product/viva/engine.py:605 (`assign_category_to`)
+**Code:** product/viva/listen.py:110 (`category_vocabulary`), product/viva/engine.py:606 (`assign_category_to`)
 **Test:** product/tests/test_category_identity.py::test_a_vault_with_no_seed_is_shown_exactly_what_it_uses, product/tests/test_reply.py::test_a_category_the_vault_does_not_know_is_refused_rather_than_minted
 
 1. The vocabulary is the seed labels plus every label already in the vault, with no two spellings of one name.

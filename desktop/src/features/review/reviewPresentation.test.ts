@@ -8,7 +8,7 @@ describe("review presentation", () => {
   it("maps all four static fictional anatomy types", () => {
     expect(["answer", "decline", "proposal", "confirmation"].map((value) => anatomyPresentation(value).state)).toEqual(["ready", "ready", "ready", "ready"]);
     expect(anatomyPresentation("answer")).toMatchObject({ title: "Answer boundary" });
-    expect(anatomyPresentation("decline")).toMatchObject({ title: "Decline / set aside boundary" });
+    expect(anatomyPresentation("decline")).toMatchObject({ title: "Set-aside boundary" });
     expect(anatomyPresentation("proposal")).toMatchObject({ title: "Proposal — not applied" });
     expect(anatomyPresentation("confirmation")).toMatchObject({ title: "Confirmation required" });
   });

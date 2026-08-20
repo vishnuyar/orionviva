@@ -522,7 +522,7 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-106** | an action returns what happened, never a bare `ok` | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_panel_states_and_action_outcomes_are_closed` |
 | **VOICE-107** | the protocol refuses rather than guesses | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_protocol_accepts_additive_minor_changes_only` |
 | **VOICE-108** | every capability has a destination or a recorded reason for not having one | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_non_surface_capabilities_have_explicit_disposition_and_reason` +1 |
-| **VOICE-109** | the bridge is transport and nothing else | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_unknown_operations_are_refused_by_the_allowlist` |
+| **VOICE-109** | the bridge is transport and nothing else | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_unknown_operations_are_refused_by_the_allowlist` +1 |
 | **VOICE-110** | compiled frontend output is never committed | by-review *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
 | **VOICE-111** | every direction shown comes from the account's kind, never a posted sign | **unmet** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
 | **VOICE-112** | the surface never claims machinery the product does not have | **unmet** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
@@ -541,6 +541,9 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-130** | jurisdiction is an attribute of the account, and the country tag is derived | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_jurisdiction_scoped_question_does_not_travel` |
 | **VOICE-131** | the sentence and the parse are captured verbatim | **unmet** | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | — |
 | **VOICE-132** | a gap carries the address its measurement is re-taken at | enforced | [user-interface-implementation-status.md](user-interface-implementation-status.md) | `test_an_anchored_gap_resolves_at_the_address_it_names` +3 |
+| **VOICE-133** | five words, five layers, and none of them is a synonym | untestable | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) | — |
+| **VOICE-134** | the interface says receipt; the contract keeps citation | **unmet** | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) | — |
+| **VOICE-135** | `disabled` says a control is not here; `aria-disabled` says it is busy | **contradicted** | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) | — |
 
 ## PROG — the programme: benchmarks, evals, storage, distribution
 
@@ -621,7 +624,7 @@ not been. Grouped by why the gap exists.
 
 ### Built, or partly built, and pinned by nothing
 
-52 rules.
+53 rules.
 
 | Rule | Name | State | Doc |
 | --- | --- | --- | --- |
@@ -677,10 +680,11 @@ not been. Grouped by why the gap exists.
 | **PROJ-60** | a small core with view modules behind a facade | by-review | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) |
 | **T6** | Nothing leaves silently | by-review | [design-invariants.md](design-invariants.md) |
 | **VOICE-110** | compiled frontend output is never committed | by-review-with-exception | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |
+| **VOICE-135** | `disabled` says a control is not here; `aria-disabled` says it is busy | contradicted-by-code | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) |
 
 ### Nothing to test — the mechanism is not built
 
-56 rules.
+57 rules.
 
 | Rule | Name | State | Doc |
 | --- | --- | --- | --- |
@@ -739,11 +743,12 @@ not been. Grouped by why the gap exists.
 | **VOICE-125** | no amounts and no currency in the interview envelope | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
 | **VOICE-128** | tags gain account scope, and the model copies the person's word | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
 | **VOICE-131** | the sentence and the parse are captured verbatim | unmet | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) |
+| **VOICE-134** | the interface says receipt; the contract keeps citation | unmet | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) |
 | **X1** | Target user skill: "can install an app" | unmet | [design-invariants.md](design-invariants.md) |
 
 ### Untestable by nature
 
-18 rules.
+19 rules.
 
 | Rule | Name | State | Doc |
 | --- | --- | --- | --- |
@@ -765,13 +770,14 @@ not been. Grouped by why the gap exists.
 | **VOICE-113** | these options are removed from future consideration | untestable | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |
 | **VOICE-120** | a slice is complete only against the live boundary it claims | untestable | [user-interface-implementation-status.md](user-interface-implementation-status.md) |
 | **VOICE-121** | a synthetic fixture proves rendering, never parity | untestable | [user-interface-implementation-status.md](user-interface-implementation-status.md) |
+| **VOICE-133** | five words, five layers, and none of them is a synonym | untestable | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) |
 
-**Total: 127 of 473 rules are pinned by no test.**
+**Total: 129 of 477 rules are pinned by no test.**
 ---
 
 ## Rules the code contradicts
 
-Ten rules diverge from the code. Each row names where the rule is written
+Eleven rules diverge from the code. Each row names where the rule is written
 and where the code disagrees with it. A contradiction is a ruling owed, not a
 bug report: for several of these the code is right and the sentence is stale.
 
@@ -786,3 +792,4 @@ bug report: for several of these the code is right and the sentence is stale.
 | **PROG-9** — a claim's identity is its value, page and region<br>[benchmark-harness-design.md:34](benchmark-harness-design.md) | A claim is identified by `(value, page, region)`; the label is an annotation. | Same site as ING-4: `core/vivacore/claims.py:30` and `bench/vivabench/keybuild.py:113`. Page, region and page-namespaced group are written onto every claim by the runner and read by nothing. |
 | **PROG-17** — a frozen key's hash is stable<br>[benchmark-harness-design.md:111](benchmark-harness-design.md) | Freezing twice yields the identical key and hash, so a re-run can prove it used the same key. | `bench/vivabench/cli.py:183` re-reads the audit worksheet and appends every resolved row to `key.entries` on every invocation; `bench/vivabench/keybuild.py:158` only sets the flag and hashes what it is handed. Entries grow each pass and each pass commits a different hash. |
 | **PROG-23** — `viva-bench report` emits the scorecards<br>[benchmark-harness-architecture.md:42](benchmark-harness-architecture.md) | `report` writes scorecards as markdown and JSON per (model, doc type, locale). | `bench/vivabench/cli.py:287` registers `report` as a bare alias of `cmd_score` without the `--mode` flag `cmd_score` reads (`:233`), so every invocation raises `AttributeError` before a record is read. `bench/tests/` has no CLI coverage. `score` works. |
+| **VOICE-135** — `disabled` says a control is not here; `aria-disabled` says it is busy<br>[the-words-the-interface-uses.md:34](the-words-the-interface-uses.md) | A control the screen cannot perform at all carries `disabled`; one it can perform and is only busy with carries `aria-disabled`, so the person keeps the control under their hands. | `desktop/src/app/App.tsx:243` sets `disabled` on the folder picker and the vault-open submit while a vault is opening, which is the busy case: both controls are what that screen is for, and a person waiting on them is blurred to the document body. The review screen's set-aside controls (`desktop/src/features/review/Review.tsx:66`) and the documents screen's unbuilt capture controls (`desktop/src/features/documents/Documents.tsx:13`) each carry the attribute the rule asks for. |

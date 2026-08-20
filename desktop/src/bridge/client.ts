@@ -1,11 +1,17 @@
-import type { BridgeClient, BridgeTransport, SurfaceName, SurfaceParameters, SurfaceReadResult } from "./contracts";
+import { BridgeRefusal, BridgeUnreadable } from "./contracts";
+import type { BridgeClient, BridgeTransport, DeclineReason, SurfaceName, SurfaceParameters, SurfaceReadResult } from "./contracts";
 
 export function createHostBridgeClient(transport: BridgeTransport): BridgeClient {
   let requestNumber = 0;
   async function request<T>(operation: string, payload: Record<string, unknown>): Promise<T> {
     const requestId = `desktop-${++requestNumber}`;
     const response = await transport.request<T>({ requestId, operation, payload });
-    if (!response.ok || response.result === undefined) throw new Error(response.error?.message ?? "desktop bridge request failed");
+    // Three unlike failures, kept apart: a sidecar that answered and said no,
+    // a sidecar that answered and sent nothing to read, and a sidecar that
+    // could not be reached. Only the last is a rejected transport call, and
+    // only it is a request that never arrived.
+    if (!response.ok) throw new BridgeRefusal(response.error?.code ?? "", response.error?.message ?? "");
+    if (response.result === undefined) throw new BridgeUnreadable(operation);
     return response.result;
   }
   function read(surface: SurfaceName, parameters: SurfaceParameters = {}): Promise<SurfaceReadResult> {
@@ -17,6 +23,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     readOverview: (parameters) => read("overview", parameters),
     readDocuments: () => read("documents"),
     readReview: (parameters) => read("review", parameters),
+    declineQuestion: (questionId, reason: DeclineReason) => request("viva.review.decline", { question_id: questionId, reason }),
   };
 }
 

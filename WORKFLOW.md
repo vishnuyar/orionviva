@@ -1,6 +1,10 @@
 # WORKFLOW — how this project is built
 
-**Status:** Living · **Last updated:** 2026-08-15 (the status-claim rule widens
+**Status:** Living · **Last updated:** 2026-08-19 (the Interface Designer added
+beside the Verifier, because every existing role answers whether the work is
+correct and none answered whether it is good to use — a gap that was survivable
+while the interface was a debug tool and stops being survivable at the gate that
+promises an app needing no manual. Before that, 2026-08-15: the status-claim rule widens
 to any claim a cycle makes false, and the Steward's ritual gains the standing
 question *what did this cycle make untrue?*, whose answer goes in the commit
 message. Earlier the same day, two standing rules move here
@@ -43,6 +47,17 @@ fixes nothing. The builder never grades its own work — that separation is the
 point. **It does not open the vault and does not spend money on a model**;
 where a claim can only be settled by real data it names the case and the
 Witness runs it.
+
+**Interface Designer** — a fresh context that did not build the code, running
+beside the Verifier on any diff that touches the interface. The Verifier asks
+whether the work is *correct*; this role asks whether it is *good to look at and
+good to use* — consistency with what already exists, every panel state rendered
+and legible rather than only the happy path, keyboard and screen reader held as
+a rule instead of a habit, colour and type and spacing coming from the token
+file and nowhere else, and whether the app sounds like the product the site
+promised. **It does not open the vault and does not spend money on a model**,
+and it does not re-check what the Verifier checks. Reports findings; changes
+nothing; never gates a commit.
 
 **Witness** — the only role that opens the real vault. It reads `.env`, runs
 the product against Vishnu's own money on a bounded budget of real model calls,
@@ -89,6 +104,14 @@ later as its own full-lane cycle ("design phase: issue #N").
      reach, or **the cases the Verifier named and could not run itself**. Not
      every cycle earns one; a cycle that changes what a person is *told* does.
      Its scrubbed report joins the walkthrough at checkpoint 2.
+   - **4c — Interface Designer, whenever the diff touches the interface:** a
+     second fresh context, running in parallel with the Verifier, reporting on
+     craft rather than correctness. Its findings join the Verifier's at
+     checkpoint 2. The two roles are deliberately separate: a diff can do
+     exactly what the brief said and still leave a person unable to reach a
+     control, or reading a refusal as a crash. Where craft can only be judged
+     against real data it names the case and the Witness runs it, exactly as
+     the Verifier does.
 5. **Checkpoint 2 — accept the work.** Walkthrough plus verification report,
    read together. Findings loop back to the Builder; scope-fence flags loop
    back to the brief.
@@ -199,10 +222,10 @@ executing it against a counterfactual.
   archaeology.
 - **In Claude Code**, the roles are native subagents (`/agents` lists them).
   **In Cowork**, say which phase you want — "design phase:", "fact-check the
-  brief", "build from the approved brief", "verify the diff", "ship it",
-  "tutor: explain…" — and the session reads the matching role file and runs it
-  as that role, spawning a fresh subagent for the fact-check and again for
-  verification.
+  brief", "build from the approved brief", "verify the diff", "review the
+  interface", "ship it", "tutor: explain…" — and the session reads the matching
+  role file and runs it as that role, spawning a fresh subagent for the
+  fact-check, and again for verification and for the interface review.
 - **A test case encodes a claim about what should happen in a real financial
   life, and where that claim is not obvious the product owner makes it.** Not
   the Builder's to invent and not the Verifier's to certify. A scenario built

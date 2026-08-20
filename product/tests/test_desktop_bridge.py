@@ -13,6 +13,7 @@ from viva.desktop_bridge import (
     handlers_with_surface_provider,
     OpenedVaultSurfaceProvider,
 )
+from viva.desktop_bridge.review_actions import UnreadableOutcome, outcome_of
 from viva.vault import Vault
 from viva.surface import CURRENT_PROTOCOL, serialize_registry
 from viva.surface import FigureView
@@ -390,3 +391,117 @@ def test_opened_vault_allowlist_dispatches_real_surface_reads(tmp_path):
     assert response["result"]["surface"] == "overview"
     assert response["result"]["job_id"] == "vault-job"
     assert response["result"]["data"]["account_count"] == 0
+
+
+def _review_frame(operation, payload):
+    return frame(operation=operation, payload=payload)
+
+
+def test_the_decline_verb_is_reachable_only_once_a_vault_is_open(tmp_path):
+    """The verb an opened vault serves is served there and nowhere else. Before
+    a vault is open the allowlist refuses it, which is the same refusal any
+    unserved operation gets."""
+    cold = json.loads(
+        dispatch_frame(
+            _review_frame("viva.review.decline",
+                          {"question_id": "q-1", "reason": "not_now"}),
+            default_handlers().handlers,
+        )
+    )
+
+    assert cold["ok"] is False
+    assert cold["error"]["code"] == "operation_not_allowed"
+
+    vault = Vault.open(tmp_path / "vault", "pw")
+    handlers = handlers_for_opened_vault(vault).handlers
+
+    assert "viva.review.decline" in handlers
+
+
+def test_an_action_the_registry_declares_without_a_handler_is_refused(tmp_path):
+    """Every declared action is an operation; only the ones this build serves
+    have a handler. The rest are refused by the allowlist rather than by
+    silence — including the review capability's own `answer`, which this build
+    declares and does not serve."""
+    vault = Vault.open(tmp_path / "vault", "pw")
+    handlers = handlers_for_opened_vault(vault).handlers
+
+    for operation in ("viva.documents.upload", "viva.review.answer"):
+        response = json.loads(
+            dispatch_frame(_review_frame(operation, {}), handlers))
+
+        assert response["ok"] is False, operation
+        assert response["error"]["code"] == "operation_not_allowed"
+
+
+def test_declining_a_question_that_is_not_open_refuses_with_a_reason(tmp_path):
+    """A refusal is an ordinary reply, not an error frame: the reply carries a
+    sentence for the person and a machine reason beside it. Setting aside
+    something no longer being asked records nothing and says so."""
+    vault = Vault.open(tmp_path / "vault", "pw")
+    response = json.loads(
+        dispatch_frame(
+            _review_frame("viva.review.decline",
+                          {"question_id": "no-such-question", "reason": "not_now"}),
+            handlers_for_opened_vault(vault).handlers,
+        )
+    )
+
+    assert response["ok"] is True
+    assert response["result"]["kind"] == "refused"
+    assert response["result"]["reason"] == "not_open"
+    assert response["result"]["message"]
+
+
+def test_review_action_payloads_are_fenced(tmp_path):
+    """A decline names a question and carries a reason out of the reviewed set
+    and nothing else. Anything further is refused before the engine is
+    called."""
+    vault = Vault.open(tmp_path / "vault", "pw")
+    handlers = handlers_for_opened_vault(vault).handlers
+
+    for operation, payload, message in (
+        ("viva.review.decline", {"question_id": "", "reason": "not_now"}, "question_id"),
+        ("viva.review.decline", {"question_id": "q", "reason": "bored"}, "reason must be one of"),
+        ("viva.review.decline", {"question_id": "q", "said": "no"}, "does not accept"),
+    ):
+        response = json.loads(dispatch_frame(_review_frame(operation, payload), handlers))
+        assert response["ok"] is False, (operation, payload)
+        assert response["error"]["code"] == "invalid_request"
+        assert message in response["error"]["message"]
+
+
+def test_an_outcome_says_what_happened_rather_than_carrying_a_bare_ok():
+    """Every branch reads a declaration the engine made, and never the shape of
+    the reply: whether it was accepted, whether accepting it recorded anything,
+    and the name it gave a refusal."""
+    assert outcome_of({"ok": True, "recorded": True}).kind == "completed"
+    assert outcome_of({"ok": True}).kind == "completed"
+    refused = outcome_of({"ok": False, "why": "not_open", "message": "That one closed."})
+    assert (refused.kind, refused.reason, refused.message) == (
+        "refused", "not_open", "That one closed.")
+    assert outcome_of({"ok": True, "recorded": False}).message, (
+        "an outcome always carries a sentence for the person")
+
+
+def test_an_answer_the_document_settles_is_not_reported_as_recorded():
+    """A reply the engine declares recorded nothing reads as `waiting`, not as
+    `completed`, and keeps the engine's own sentence."""
+    outcome = outcome_of({"ok": True, "recorded": False,
+                          "message": "The document itself settles this one."})
+
+    assert outcome.kind == "waiting"
+    assert outcome.message == "The document itself settles this one."
+
+
+def test_a_reply_this_vocabulary_has_no_word_for_raises_rather_than_guessing():
+    """Three shapes raise rather than mapping to the nearest word: a reply held
+    for a confirmation, a reply that does not say whether it was accepted, and
+    a refusal that names no reason."""
+    for unreadable in (
+        {"ok": True, "confirm": True, "proposal": {"scope": "attribute"}},
+        {"action": "posted", "message": "Posted."},
+        {"ok": False, "message": "No."},
+    ):
+        with pytest.raises(UnreadableOutcome):
+            outcome_of(unreadable)

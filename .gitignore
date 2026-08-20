@@ -113,3 +113,6 @@ _to_delete/
 # tree, so it cannot be committed by accident rather than merely should not be.
 !merchant/merchantcore/data/
 !merchant/merchantcore/data/**
+
+# Tauri codegen output
+desktop/src-tauri/gen/

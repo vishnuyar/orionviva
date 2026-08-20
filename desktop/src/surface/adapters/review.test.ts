@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adaptReview } from "./review";
+import { adaptActionOutcome, adaptReview } from "./review";
 
 describe("review adapter", () => {
   it("rejects malformed payloads", () => {
@@ -19,7 +19,7 @@ describe("review adapter", () => {
   });
 
   it("keeps live questions read only", () => {
-    expect(adaptReview({ questions: [{ id: "q", text: "Question" }], total: 1 })?.queue[0]).toMatchObject({ id: "q", readOnly: true, outcome: null, disposition: null });
+    expect(adaptReview({ questions: [{ id: "q", text: "Question" }], total: 1 })?.queue[0]).toMatchObject({ id: "q", outcome: null, disposition: null });
   });
 
   it("maps only actual summary fields", () => {
@@ -56,5 +56,23 @@ describe("review adapter", () => {
   it("deduplicates questions by stable id", () => {
     const result = adaptReview({ questions: [{ id: "q2" }, { id: "q1" }, { id: "q2" }], total: 3 });
     expect(result?.queue.map((question) => question.id)).toEqual(["q2", "q1"]);
+  });
+
+  it("reads only the closed vocabulary an action answers in", () => {
+    expect(adaptActionOutcome({ kind: "completed", message: "Recorded.", state: null, reason: null }))
+      .toEqual({ kind: "completed", message: "Recorded.", reason: "" });
+    expect(adaptActionOutcome({ kind: "refused", message: "Not now.", state: null, reason: "not_open" }))
+      .toEqual({ kind: "refused", message: "Not now.", reason: "not_open" });
+    for (const kind of ["proposal", "waiting", "stale"]) {
+      expect(adaptActionOutcome({ kind, message: "Held.", state: null, reason: null })?.kind).toBe(kind);
+    }
+    for (const raw of [null, "completed", [], {}, { kind: "ok" }, { kind: "" }, { kind: "completed " }]) {
+      expect(adaptActionOutcome(raw)).toBeNull();
+    }
+  });
+
+  it("refuses to read a refusal that carries no machine reason", () => {
+    expect(adaptActionOutcome({ kind: "refused", message: "Not recorded.", state: null, reason: null })).toBeNull();
+    expect(adaptActionOutcome({ kind: "refused", message: "Not recorded.", state: null, reason: "" })).toBeNull();
   });
 });

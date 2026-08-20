@@ -27,7 +27,8 @@ from viva.ledger import EventStore, Ledger
 from viva.ledger.events import account_opened
 from viva.listen import RULING_SLOTS
 from viva.persona import moment
-from viva.questions import INTERVIEW, MERCHANT, TRANSFER, open_questions
+from viva.questions import (IDENTITY, INTERVIEW, MERCHANT, TRANSFER,
+                            open_questions)
 from viva.reply import Slot, answer, read_reply
 from viva.schemas import ANSWER_CHOICE, ANSWER_MONEY
 from viva.vault import Vault
@@ -96,6 +97,30 @@ def transfer_question(tmp_path):
     return _Vault(ledger), question
 
 
+@pytest.fixture
+def identity_question(tmp_path):
+    """A vault holding a statement nothing identifies, and the question it asks.
+
+    The second statement prints no account number, and the one account already
+    held carries the same holder name — so whether it is that account or one of
+    its own is a thing only the person can say."""
+    raw = RawStore.open(tmp_path / "raw", "pw")
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    numbered = _facts("1000.00", [("2026-01-10", "DEPOSIT", "500.00")],
+                      "1500.00", ref="Everyday Checking 1111",
+                      doc_type="checking_statement", number="10001111")
+    numbered.account_names = ["Sample Holder"]
+    _up(raw, ledger, b"numbered", numbered)
+    unnumbered = _facts("200.00", [("2026-02-10", "DEPOSIT", "50.00")],
+                        "250.00", ref="Second Checking",
+                        doc_type="checking_statement", number="")
+    unnumbered.account_names = ["Sample Holder"]
+    unnumbered.opening_date, unnumbered.closing_date = "2026-02-01", "2026-02-28"
+    _up(raw, ledger, b"unnumbered", unnumbered)
+    qs = open_questions(ledger, as_of="2026-03-01")["questions"]
+    return _Vault(ledger), next(q for q in qs if q["kind"] == IDENTITY)
+
+
 # ------------------------------- half one: language reaches the right structure
 
 
@@ -129,6 +154,21 @@ def test_the_same_sentence_saying_no_records_the_other_ruling(
 
     assert out["ok"] is True and out["linked"] is False
     assert not vault.ledger.projection().linked_keys()
+
+
+def test_a_ruling_on_which_account_this_is_is_reported_as_taken(
+        identity_question, monkeypatch):
+    """A ruling that was written says it was written.
+
+    `ok` is how a caller learns whether what a person asked for happened, so a
+    ruling this path records reports `ok` true."""
+    vault, question = identity_question
+    _reader(monkeypatch, {"same_account": "no"})
+
+    out = engine.answer_question(vault, question["id"],
+                                 said="no, that one is an account of its own")
+
+    assert out["ok"] is True, out
 
 
 def test_an_amount_no_parser_reads_is_accepted_once_the_model_shapes_it(

@@ -12,9 +12,18 @@ from viva.surface import (
     CURRENT_PROTOCOL,
     SURFACE_CAPABILITIES,
     SURFACE_READ,
+    action_operations_for,
     operation_names,
     serialize_registry,
 )
+
+# The capability whose actions an opened vault may serve, mapped to the
+# operations they are reached by. The names come from the registry, so asking
+# for an action it no longer declares raises here. A declared action with no
+# handler below is not in the allowlist and is refused as an operation the
+# sidecar does not serve.
+REVIEW_CAPABILITY = "review.questions"
+REVIEW_OPERATIONS = action_operations_for(REVIEW_CAPABILITY)
 
 
 class BridgeRequestError(ValueError):
@@ -87,8 +96,14 @@ def handlers_for_opened_vault(
 ) -> BridgeDispatcher:
     """Build the allowlist for one concrete, already-open product vault."""
 
+    from .review_actions import ReviewActions
     from .vault_surface import OpenedVaultSurfaceProvider
 
-    return handlers_with_surface_provider(
+    reads = handlers_with_surface_provider(
         OpenedVaultSurfaceProvider(vault), progress_sink
     )
+    actions = ReviewActions(vault)
+    return BridgeDispatcher({
+        **reads.handlers,
+        REVIEW_OPERATIONS["decline"]: actions.decline,
+    })
