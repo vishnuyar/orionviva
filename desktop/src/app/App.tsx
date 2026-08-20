@@ -13,7 +13,7 @@ import { Overview } from "../features/overview/Overview";
 import { Review } from "../features/review/Review";
 import { Trust } from "../features/trust/Trust";
 import { resolveEvidenceTarget } from "../surface/evidence";
-import type { Destination, EvidenceLink, SurfaceMode } from "../surface/types";
+import type { DeclineReason, Destination, EvidenceLink, FeatureResult, ReviewActionState, ReviewData, SurfaceMode } from "../surface/types";
 import { destinations } from "./navigation";
 import { useResponsiveNavigation } from "./useResponsiveNavigation";
 import { useEvidenceDialog } from "./useEvidenceDialog";
@@ -33,6 +33,14 @@ type PendingDocumentFocus =
   | { target: "capture"; requestId: number; mode: SurfaceMode; nonce: number };
 type PendingReviewFocus = { requestId: number; mode: SurfaceMode; questionId: string; nonce: number };
 
+// Whether the question a verb was used on is still being asked. Only the
+// read's own states carry a queue; anything else cannot say either way, and
+// reports false so that focus is left where it is.
+function reviewQueueHolds(review: FeatureResult<ReviewData>, questionId: string): boolean {
+  if (review.state !== "ready" && review.state !== "partial" && review.state !== "needs_input") return false;
+  return review.data.queue.some((question) => question.id === questionId);
+}
+
 export function ConversationDialogShell({ mode, resetKey, drawerRef, closeRef, onDismiss, children }: { mode: SurfaceMode; resetKey: string; drawerRef: RefObject<HTMLElement | null>; closeRef: RefObject<HTMLButtonElement | null>; onDismiss: () => void; children: ReactNode }) {
   return <><div className="conversation-backdrop" aria-hidden="true" onClick={onDismiss} /><aside ref={drawerRef} id="viva-conversation-drawer" className="conversation-drawer" role="dialog" aria-modal="true" aria-labelledby="viva-conversation-title" aria-describedby="viva-conversation-description" tabIndex={-1}><header className="conversation-topline"><div><div className="detail-panel-label">{mode === "demo" ? "Sample conversation" : "Supplied conversation view"}</div><h2 id="viva-conversation-title">Viva conversation</h2><p id="viva-conversation-description">{mode === "demo" ? "These fictional turns demonstrate citations and refusals. Selecting a sample prompt does not send it." : "This read-only drawer shows only conversation fields supplied to the interface. It cannot accept or send a prompt."}</p></div><button ref={closeRef} className="conversation-close" type="button" onClick={onDismiss} aria-label="Close Viva conversation"><X size={18} /></button></header><FeatureBoundary resetKey={resetKey}>{children}</FeatureBoundary></aside></>;
 }
@@ -51,6 +59,7 @@ export function App() {
   const activePendingFocusNonce = useRef<number | null>(null);
   const reviewFocusNonce = useRef(0);
   const activeReviewFocusNonce = useRef<number | null>(null);
+  const settledReviewAction = useRef<ReviewActionState | null>(null);
   const mobileNav = overlay?.kind === "navigation";
   const isNarrow = useResponsiveNavigation();
   const navigationTriggerRef = useRef<HTMLButtonElement>(null);
@@ -111,6 +120,24 @@ export function App() {
       if (activeReviewFocusNonce.current === pendingReviewFocus.nonce) activeReviewFocusNonce.current = null;
     };
   }, [pendingReviewFocus, session.destination, session.requestId, session.selectedQueue, surface.mode]);
+
+  // A write that took leaves focus on a control that has gone with the
+  // question it belonged to. Focus therefore moves, one frame later once the
+  // read that followed the write has rendered, to the question the queue moved
+  // to, or to the empty state when the queue holds nothing more, or to what
+  // became of the write when that read failed and neither of those exists. A
+  // write that was refused moved nothing, so focus stays on the control the
+  // person must use again.
+  useEffect(() => {
+    const acted = session.reviewAction;
+    if (acted.state !== "settled" || settledReviewAction.current === acted) return undefined;
+    settledReviewAction.current = acted;
+    if (session.destination !== "review" || reviewQueueHolds(surface.review, acted.questionId)) return undefined;
+    const frame = requestAnimationFrame(() => {
+      (document.getElementById("selected-question-title") ?? document.getElementById("review-empty-title") ?? document.getElementById("review-outcome-title"))?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [session.destination, session.reviewAction, surface.review]);
 
   useEffect(() => {
     if (!isNarrow && mobileNav) {
@@ -176,6 +203,7 @@ export function App() {
     control.navigate("review");
     setPendingReviewFocus({ requestId: session.requestId, mode: surface.mode, questionId, nonce: ++reviewFocusNonce.current });
   }
+  function declineQuestion(questionId: string, reason: DeclineReason) { void control.declineQuestion(questionId, reason); }
   function openFigure(figureId: string) { setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId, mode: surface.mode } }); }
   function openEvidenceDocument(link: EvidenceLink, fromDrawer = false) {
     const target = resolveEvidenceTarget(surface.documents, link.targetDocumentId);
@@ -226,7 +254,7 @@ export function App() {
           {session.destination === "overview" && <Overview result={surface.overview} reviewResult={surface.review} mode={surface.mode} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={resetDemoVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} mode={surface.mode} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={resetDemoVault} />}
           {session.destination === "documents" && <Documents result={surface.documents} mode={surface.mode} selectedDocument={session.selectedDocument} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={resetDemoVault} />}
-          {session.destination === "review" && <Review result={surface.review} mode={surface.mode} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenEvidence={openEvidenceDocument} />}
+          {session.destination === "review" && <Review result={surface.review} mode={surface.mode} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenEvidence={openEvidenceDocument} actions={{ state: session.reviewAction, onDecline: declineQuestion }} />}
           {session.destination === "activity" && <Activity result={surface.activity} mode={surface.mode} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} />}
           {session.destination === "trust" && <Trust result={surface.trust} mode={surface.mode} />}
         </FeatureBoundary>}

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createDetectedBridgeClient, createHostBridgeClient, hasHostBridge } from "./client";
-import type { BridgeRequest, BridgeTransport } from "./contracts";
+import { BridgeRefusal, BridgeUnreadable } from "./contracts";
+import type { BridgeRequest, BridgeResponse, BridgeTransport } from "./contracts";
 
 describe("bridge transport framing", () => {
   afterEach(() => { delete window.orionVivaBridge; });
@@ -26,6 +27,35 @@ describe("bridge transport framing", () => {
     expect(frames[3].payload).toEqual({ surface: "review", parameters: { limit: 2 }, job_id: "desktop-review-4" });
   });
 
+  it("frames the review verb as its own operation", async () => {
+    const frames: BridgeRequest[] = [];
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { kind: "completed", message: "Set aside.", state: null, reason: null } as T };
+    } });
+
+    await client.declineQuestion("question-2", "dont_know");
+
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.review.decline"]);
+    expect(frames[0].payload).toEqual({ question_id: "question-2", reason: "dont_know" });
+  });
+
+  it("keeps three unlike failures apart at the transport", async () => {
+    const refusing = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => ({ protocol: "1.0", request_id: frame.requestId, ok: false, error: { code: "invalid_request", message: "reason must be one of: dont_know, not_now" } } as BridgeResponse<T>) });
+    const empty = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => ({ protocol: "1.0", request_id: frame.requestId, ok: true } as BridgeResponse<T>) });
+    const silent = createHostBridgeClient({ request: async () => { throw new Error("the sidecar went away"); } });
+
+    // A sidecar that said no, a sidecar that said yes and sent nothing to read,
+    // and a sidecar that was never reached. The second may have written, so it
+    // must never arrive looking like the third.
+    await expect(refusing.declineQuestion("question-1", "not_now")).rejects.toBeInstanceOf(BridgeRefusal);
+    await expect(refusing.declineQuestion("question-1", "not_now")).rejects.toMatchObject({ code: "invalid_request" });
+    await expect(empty.declineQuestion("question-1", "not_now")).rejects.toBeInstanceOf(BridgeUnreadable);
+    const unreached = await silent.declineQuestion("question-1", "not_now").catch((failure) => failure);
+    expect(unreached).not.toBeInstanceOf(BridgeRefusal);
+    expect(unreached).not.toBeInstanceOf(BridgeUnreadable);
+  });
+
   it("forwards the native folder picker without a sidecar frame", async () => {
     const frames: unknown[] = [];
     const client = createHostBridgeClient({
@@ -39,7 +69,7 @@ describe("bridge transport framing", () => {
   it("bounds missing results and failed bridge envelopes", async () => {
     const missing = createHostBridgeClient({ request: async () => ({ protocol: "1.0", request_id: "req", ok: true }) });
     const failed = createHostBridgeClient({ request: async () => ({ protocol: "1.0", request_id: "req", ok: false, error: { code: "vault_open_failed", message: "bounded failure" } }) });
-    await expect(missing.openVault("/vault", "secret")).rejects.toThrow("desktop bridge request failed");
+    await expect(missing.openVault("/vault", "secret")).rejects.toBeInstanceOf(BridgeUnreadable);
     await expect(failed.openVault("/vault", "secret")).rejects.toThrow("bounded failure");
   });
 

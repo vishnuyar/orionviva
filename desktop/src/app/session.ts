@@ -1,6 +1,6 @@
 import type { SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { Destination, FeatureResult, SurfaceSnapshot } from "../surface/types";
+import type { ActionResult, Destination, FeatureResult, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -15,6 +15,7 @@ export type SurfaceSession = {
   selectedAccount: string;
   selectedPrompt: string;
   notice: string | null;
+  reviewAction: ReviewActionState;
 };
 
 export type SessionAction =
@@ -29,6 +30,8 @@ export type SessionAction =
   | { type: "select-queue"; id: string }
   | { type: "select-account"; id: string }
   | { type: "select-prompt"; id: string }
+  | { type: "review-acting"; requestId: number; questionId: string; verb: ReviewVerb }
+  | { type: "review-acted"; requestId: number; questionId: string; verb: ReviewVerb; result: ActionResult; review: FeatureResult<ReviewData> }
   | { type: "notice"; notice: string | null };
 
 function dataOf<T>(result: FeatureResult<T>): T | null {
@@ -65,6 +68,7 @@ export function initialSession(): SurfaceSession {
     selectedAccount: ids.accounts[0] ?? "",
     selectedPrompt: ids.prompts[0] ?? "",
     notice: null,
+    reviewAction: { state: "idle" },
   };
 }
 
@@ -88,7 +92,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -102,6 +106,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedAccount: "",
         selectedPrompt: "",
         notice: "Reading available surfaces from this device…",
+        reviewAction: { state: "idle" },
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -127,9 +132,30 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       const reset = initialSession();
       return { ...reset, requestId: action.requestId, notice: "Sample vault reset to the fictional data stored with the app." };
     }
-    case "navigate": return { ...state, destination: action.destination };
+    // What was last done to the vault is said beside the question it was done
+    // to, so leaving a question or leaving the screen it was on clears it. A
+    // notice still standing after either would report an act on something the
+    // person is no longer looking at.
+    case "navigate": return { ...state, destination: action.destination, reviewAction: { state: "idle" } };
     case "select-document": return { ...state, selectedDocument: action.id };
-    case "select-queue": return { ...state, selectedQueue: action.id };
+    case "select-queue":
+      return { ...state, selectedQueue: action.id, reviewAction: { state: "idle" } };
+    case "review-acting":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, reviewAction: { state: "working", questionId: action.questionId, verb: action.verb } };
+    case "review-acted": {
+      if (action.requestId !== state.requestId) return state;
+      // The read that follows a write replaces only review. Nothing else was
+      // asked for, so nothing else is claimed to have been re-read.
+      const snapshot = { ...state.snapshot, review: action.review };
+      const ids = selectedIds(snapshot);
+      return {
+        ...state,
+        snapshot,
+        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
+        reviewAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result },
+      };
+    }
     case "select-account": return { ...state, selectedAccount: action.id };
     case "select-prompt": return { ...state, selectedPrompt: action.id };
     case "notice": return { ...state, notice: action.notice };

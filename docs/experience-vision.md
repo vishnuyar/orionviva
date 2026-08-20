@@ -56,7 +56,7 @@ Tap-to-source *region* highlighting is not built — see that document's Open.
 
 ### VOICE-36 — a correction is an event, permanently remembered
 **State:** enforced-with-exception
-**Code:** product/viva/ledger/events.py:341 (`category_assigned`), product/viva/engine.py:605 (`assign_category_to`)
+**Code:** product/viva/ledger/events.py:341 (`category_assigned`), product/viva/engine.py:606 (`assign_category_to`)
 **Test:** product/tests/test_reset_categorization.py::test_reset_drops_model_categorization_but_keeps_my_rulings, product/tests/test_category_identity.py::test_the_ruling_is_retroactive_and_rewrites_nothing
 
 1. One sentence — *"that's groceries, not dining"* — becomes an appended event, never an overwrite, keyed to the stable movement key so it survives a reingest.

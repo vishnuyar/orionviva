@@ -526,7 +526,7 @@
         "overview.accounts.ready"
       ],
       "id": "overview.accounts",
-      "maturity": "preview",
+      "maturity": "stable",
       "owner": "viva.surface.overview",
       "reason": null,
       "trust_effect": [
@@ -547,12 +547,14 @@
         "review.questions.ready"
       ],
       "id": "review.questions",
-      "maturity": "preview",
+      "maturity": "stable",
       "owner": "viva.ask",
       "reason": null,
       "trust_effect": [
         "reads_data",
-        "writes_event"
+        "writes_event",
+        "may_call_model",
+        "may_egress"
       ]
     }
   ]

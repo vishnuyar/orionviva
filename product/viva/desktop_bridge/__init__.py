@@ -8,6 +8,7 @@ from .handlers import (
     handlers_with_surface_provider,
 )
 from .rpc import BridgeProtocolError, decode_frame, dispatch_frame, encode_frame
+from .review_actions import ReviewActions
 from .surface_read import JobProgressEvent, VaultSurfaceProvider, VaultSurfaceReader
 from .vault_surface import OpenedVaultSurfaceProvider
 from .vault_provider import create_vault_surface_provider
@@ -23,6 +24,7 @@ __all__ = [
     "handlers_with_surface_provider",
     "handlers_for_opened_vault",
     "JobProgressEvent",
+    "ReviewActions",
     "VaultSurfaceProvider",
     "VaultSurfaceReader",
     "OpenedVaultSurfaceProvider",

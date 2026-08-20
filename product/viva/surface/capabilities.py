@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .operations import served_contracts
-
 
 class CapabilityMaturity(StrEnum):
     PREVIEW = "preview"
@@ -91,8 +89,12 @@ class CapabilitySpec:
     def maturity(self) -> CapabilityMaturity:
         """Return `stable` when an operation serves this contract, else `preview`.
 
-        Reachability is the only input; nothing else moves this value.
+        Reachability is the only input; nothing else moves this value. The
+        operation table is imported where the question is put rather than at
+        module level, because the table is derived from this registry.
         """
+        from .operations import served_contracts
+
         if self.contract and self.contract in served_contracts():
             return CapabilityMaturity.STABLE
         return CapabilityMaturity.PREVIEW
@@ -163,7 +165,12 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         "when the vault has open questions",
         "QuestionQueue.v1",
         ("answer", "decline"),
-        (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
+        # The effects are what this capability may do, not what one build of
+        # it serves. Its entrypoint reads a typed sentence with the extractor
+        # the environment configured, so a model may be called and bytes may
+        # leave the machine, whichever of its actions a surface reaches.
+        (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT,
+         TrustEffect.MAY_CALL_MODEL, TrustEffect.MAY_EGRESS),
         entrypoint="viva.ask",
     ),
     _surface(

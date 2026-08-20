@@ -1,9 +1,9 @@
 """Acceptance checks for the sidecar's declared operation contract.
 
-The subject is the Python sidecar and the Rust host that speaks to it. Nothing
-here reads TypeScript, so nothing here can say whether the frontend client
-sends the operation names and payload fields the sidecar serves; that half of
-the boundary belongs to the Node checker.
+The subject is the Python sidecar and the Rust host that speaks to it, plus one
+literal on the far side of the boundary: the refusal code the interface reads a
+reply by. Whether the interface sends the operation names and payload fields
+the sidecar serves is still the Node checker's half.
 """
 
 from __future__ import annotations
@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 from viva.desktop_bridge.__main__ import Sidecar, _open_vault
-from viva.desktop_bridge.handlers import default_handlers, handlers_with_surface_provider
+from viva.desktop_bridge.handlers import (REVIEW_OPERATIONS, default_handlers,
+                                           handlers_for_opened_vault)
 from viva.desktop_bridge.rpc import dispatch_frame
 from viva.desktop_bridge.surface_read import _read_request
 from viva.surface import (
@@ -35,7 +36,13 @@ TAURI_DIR = ROOT / "desktop" / "src-tauri"
 TAURI_CONFIG = TAURI_DIR / "tauri.conf.json"
 HOST_SOURCE = TAURI_DIR / "src" / "main.rs"
 BRIDGE_PACKAGE = ROOT / "product" / "viva" / "desktop_bridge"
+INTERFACE_CONTRACTS = ROOT / "desktop" / "src" / "bridge" / "contracts.ts"
 SIDECAR_NAME = "viva-desktop-bridge"
+
+# Where the interface declares the one refusal code it reads as the sidecar
+# having taken a request and said no. The value is read out rather than written
+# here, so this compares two declarations instead of restating one.
+REFUSAL_DECLARATION = re.compile(r'export const REQUEST_REFUSED = "([^"]+)"')
 
 # The reviewed payload contract: what each operation accepts from a caller.
 PAYLOAD_FIELDS: dict[str, set[str]] = {
@@ -43,12 +50,14 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase"},
     SURFACE_CAPABILITIES: set(),
     SURFACE_READ: {"surface", "parameters", "job_id"},
+    REVIEW_OPERATIONS["decline"]: {"question_id", "reason"},
 }
 
 # Where the sidecar declares the fields it will accept, per operation.
 PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     BRIDGE_OPEN_VAULT: (BRIDGE_PACKAGE / "__main__.py", "_open_vault"),
     SURFACE_READ: (BRIDGE_PACKAGE / "surface_read.py", "_read_request"),
+    REVIEW_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "review_actions.py", "_decline_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.
@@ -69,14 +78,12 @@ RETRY_DECLARATION = "let may_recover = matches!("
 RETRY_PATTERN = "Some("
 
 
-class _StubSurfaceProvider:
-    def read_surface(self, surface, parameters):
-        return {}
-
-
 def _served_operations() -> set[str]:
-    """Return every operation a fully opened sidecar answers."""
-    dispatcher = handlers_with_surface_provider(_StubSurfaceProvider())
+    """Return every operation a fully opened sidecar answers.
+
+    The vault is never touched: the handlers hold it and only reach for it when
+    a frame arrives, so an opened-vault allowlist can be built without one."""
+    dispatcher = handlers_for_opened_vault(object())
     return set(dispatcher.handlers) | {BRIDGE_OPEN_VAULT}
 
 
@@ -176,9 +183,13 @@ def test_the_operation_table_the_allowlist_and_the_payload_fields_agree():
     served = _served_operations()
 
     assert served, "the sidecar serves no operations; this gate has lost its grip"
-    assert served == operation_names(), (
-        "the declared operation table and the operations the sidecar serves "
-        f"disagree: {sorted(served ^ operation_names())}"
+    # The table declares one operation per action the registry names, which is
+    # more than any allowlist admits: an action with no handler is a declared
+    # operation the sidecar refuses. What must never happen is the other
+    # direction — a handler answering something the table never declared.
+    assert not served - operation_names(), (
+        "the sidecar answers operations the declared table does not hold: "
+        f"{sorted(served - operation_names())}"
     )
     assert set(PAYLOAD_FIELDS) == served, (
         "every operation the sidecar serves declares a payload field set: "
@@ -238,6 +249,36 @@ def test_the_host_only_retries_operations_the_sidecar_serves():
     assert not unserved, (
         "the host would replay operations the sidecar does not serve: "
         f"{sorted(unserved)}"
+    )
+
+
+def _refusing_handler(payload: dict[str, object]) -> object:
+    raise ValueError("synthetic refusal")
+
+
+def test_the_interface_reads_a_refusal_by_the_code_the_sidecar_emits():
+    """The code the sidecar emits for a request it will not take is the code
+    the interface declares it reads.
+
+    The interface tells a person their vault refused the request only for this
+    code, and shows a reply it could not read for every other, so the two
+    declarations are compared rather than restated.
+    """
+    source = INTERFACE_CONTRACTS.read_text(encoding="utf-8")
+    declared = REFUSAL_DECLARATION.search(source)
+    assert declared, (
+        f"{INTERFACE_CONTRACTS.name} declares no refusal code, so the interface "
+        "can no longer tell a request the sidecar refused from one it never served"
+    )
+
+    undecodable = json.loads(dispatch_frame("{}", {}))
+    raised = json.loads(dispatch_frame(
+        _frame("probe.refuses"), {"probe.refuses": _refusing_handler}))
+    emitted = {undecodable["error"]["code"], raised["error"]["code"]}
+
+    assert emitted == {declared.group(1)}, (
+        f"the sidecar refuses a request with {sorted(emitted)} and the "
+        f"interface reads {declared.group(1)!r}"
     )
 
 

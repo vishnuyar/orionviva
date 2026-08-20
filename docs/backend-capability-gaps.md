@@ -61,8 +61,9 @@ of synthetic statements: the engine's write functions all resolve and run, a
 document posted and a second one parked correctly with no reader configured, the
 reconciliation sweep returned identical counts on two consecutive runs and opened
 no network socket, and answering and declining questions moved the open-question
-count down and refused an unknown id cleanly. The functions are there. Nothing
-carries their results to a screen.
+count down and refused an unknown id cleanly. The functions are there. One of
+them now carries its result to a screen — setting a question aside — and the
+rest do not.
 
 **Synthetic state is not backend parity.** A preview that simulates a state
 locally proves the rendering and proves nothing about whether the backend and the
@@ -84,14 +85,15 @@ Trust is that a capability points at it and nothing serves its contract.
 Beside that registry there is now a declared table of the operations the sidecar
 serves and the contracts each delivers, and each capability's maturity is derived
 from it rather than typed by hand. Calling `served_contracts()` on that table
-returns an **empty** set, so every one of the six reads `preview`. That is worth
+returns `AccountOverview.v1` and `QuestionQueue.v1`, so `overview.accounts` and
+`review.questions` read `stable` and the other four read `preview`. That is worth
 saying plainly, because it makes the central claim of this document checkable
 without reading a word of prose: six capabilities are declared as things a person
-should be able to reach, and the table says no declared operation delivers any of
-their contracts. Both of those files belong to the capability-registry and gates
-cycle. They are named here as the reason this document does not keep its own copy
-of what exists: a checked record and a prose record of the same facts will drift,
-and the checked one should win.
+should be able to reach, and the table says a declared operation delivers the
+contracts of two of them. Both of those files belong to the capability-registry
+and gates cycle. They are named here as the reason this document does not keep
+its own copy of what exists: a checked record and a prose record of the same
+facts will drift, and the checked one should win.
 
 **Where the live surfaces stand today is not this document's claim to make, and
 anyone planning Financial picture work should read the other document first.**
@@ -145,23 +147,26 @@ only the reviewed model, once only a client method.
   those counts and a bridge operation. The registry names `RescanResult.v1` and
   the declared operations table lists no operation serving it.
 
-- **Review actions** — *Review and learning.*
+- **Review actions, less the one that shipped** — *Review and learning.*
   `product/viva/engine.py#answer_question`,
-  `product/viva/engine.py#decline_question`,
   `product/viva/engine.py#confirm_proposal`,
-  `product/viva/engine.py#apply_ruling`, the queue read
-  `product/viva/questions.py#open_questions`, and the reviewed result model
-  `product/viva/surface/models.py#ActionOutcome`. All resolve, though the last of
-  them is constructed nowhere in product code — searching for its constructor
-  finds only tests, so the reviewed shape an action's result is supposed to take
-  is waiting for its first caller. Driven end to end: a scratch vault opened two
-  questions; answering one with a value drawn from the
+  `product/viva/engine.py#apply_ruling`, and the queue read
+  `product/viva/questions.py#open_questions`. All resolve. Driven end to end: a
+  scratch vault opened two questions; answering one with a value drawn from the
   choice slot that question declared returned ok and left one open; declining the
   remaining one returned ok and left none; declining an id that is not open
   refused with a sentence for the person rather than doing something quiet. The
   confirmation gate is already a property of the shape rather than a rule to
-  remember, so exposing these actions does not require inventing a guard. The
-  declared operations table lists no operation serving `QuestionQueue.v1`.
+  remember, so exposing these actions does not require inventing a guard.
+
+  `product/viva/engine.py#decline_question` has left this list: it is reached by
+  `viva.review.decline`, and `product/viva/surface/models.py#ActionOutcome` has a
+  producer and a consumer, so the reviewed shape an action's result takes is no
+  longer waiting for its first caller. `viva.surface.read` now serves
+  `QuestionQueue.v1`. Answering is the item that remains, and what it waits on is
+  not transport: with no model configured a free-text answer accepts only a bare
+  vocabulary token, so it waits on the desktop application configuring its own
+  model, locale and currency — a capability this product does not have anywhere.
 
 - **Net worth on the live path** — *Financial picture.*
   `product/viva/ledger/networth.py#net_worth`. Resolves, and was called on a
@@ -414,15 +419,19 @@ It rests on one answer: the near-term first user starts with **no vault at all**
    passphrase recovery is stated as it exists, which today means losing the
    passphrase loses the vault; and outbound accounting is not claimed complete
    before it is. The registry today advertises six surfaced capabilities, and
-   the declared operations table says no operation delivers any of their
-   contracts. It ranks third because a product that overstates itself in its own
+   the declared operations table says an operation delivers the contracts of two
+   of them. It ranks third because a product that overstates itself in its own
    registry will overstate itself on a screen, and because it is cheap. That file
    belongs to the capability-registry and gates cycle.
 
 4. **Review actions.** Exposure work, proven end to end. It ranks here not
    because it is cheap but because the review queue is the loop by which every
    figure on every other surface gets better — a person answering a question is
-   the mechanism that moves a grade from unverified to verified.
+   the mechanism that moves a grade from unverified to verified. Setting a
+   question aside has landed. Answering has not, and it is now behind
+   configuration rather than behind transport, because an honest free-text
+   answer needs a model and configuring one has never existed in this
+   application.
 
 5. **The conversation.** Also exposure: session, turns, refusals, per-turn
    grounding and the recorded exchange all exist. It is the product's headline
@@ -451,16 +460,12 @@ It rests on one answer: the near-term first user starts with **no vault at all**
 
 ## Open
 
-- **This document has no slot in the reading guide, and that is a requirement of
-  the cycle that rewrites it.** It appears in no section of
-  [the reading guide](reading-guide.md), in no table of [the rules index](rules.md),
-  and no other document names it, so a reader following the recommended path
-  never arrives — which is why the standing rule that a status claim is checked
-  before it is repeated never ran on it. The guide's own rule is that a new
-  document is written under a plain name and slotted into the guide and nothing
-  else moves. That slotting is owed. Where it goes is the Steward's placement,
-  not this document's to decide, and the general question of how a document comes
-  to be slotted at all belongs to the guide's own Open section.
+- **This document's reading-guide slot is placed, and its other absences
+  stand.** [The reading guide](reading-guide.md) now lists it under the
+  interface section. It is still in no table of [the rules index](rules.md),
+  which is correct — it defines no rule — and no other document names it, so the
+  standing rule that a status claim is checked before it is repeated reaches it
+  only through the guide.
 
 - **A symbol-resolution guard is scheduled, not deferred: it is the first item of
   the next cycle, and the decision is taken rather than open.** This document

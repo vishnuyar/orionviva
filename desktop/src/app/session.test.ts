@@ -9,7 +9,7 @@ import { useSurfaceSession } from "./useSurfaceSession";
 import { destinations } from "./navigation";
 import { retainSelection } from "./selection";
 
-const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", boundary: "bridge-ready", mode: "live", load: async () => liveReadingSnapshot() };
+const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", boundary: "bridge-ready", mode: "live", load: async () => liveReadingSnapshot(), reviewActions: { decline: async () => ({ state: "unanswered" }), reread: async () => ({ state: "absent", reason: "not asked" }) } };
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason?: unknown) => void; const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; }); return { promise, resolve, reject }; }
 function ok<T>(requestId: string, result: T): BridgeResponse<T> { return { protocol: "1.0", request_id: requestId, ok: true, result }; }
 function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : { questions: [], total: 0 }; }
@@ -194,5 +194,117 @@ describe("surface session", () => {
     await act(async () => { await older; });
     expect(result.current.session.requestId).toBe(2);
     expect(result.current.session.notice).toBeNull();
+  });
+
+  it("setting a question aside sends the reason, re-reads review, and reports what happened", async () => {
+    const frames: BridgeRequest[] = [];
+    let declined = false;
+    const transport: BridgeTransport = { request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.review.decline") {
+        declined = true;
+        return ok(frame.requestId, { kind: "completed", message: "Set aside until something changes.", state: null, reason: null } as T);
+      }
+      const surface = frame.payload.surface as SurfaceName;
+      const review = declined
+        ? { questions: [], total: 0, pending: { count: 1 } }
+        : { questions: [{ id: "question-live" }], total: 1, pending: { count: 0 } };
+      const data = surface === "review" ? review : emptyPayload(surface);
+      return ok(frame.requestId, { surface, job_id: "job", data } as T);
+    } };
+    window.orionVivaBridge = transport;
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret"); });
+    expect(result.current.session.selectedQueue).toBe("question-live");
+
+    await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
+
+    const sent = frames.filter((frame) => frame.operation === "viva.review.decline");
+    expect(sent.map((frame) => frame.payload)).toEqual([{ question_id: "question-live", reason: "not_now" }]);
+    expect(result.current.session.reviewAction).toEqual({
+      state: "settled",
+      questionId: "question-live",
+      verb: "decline",
+      result: { state: "settled", outcome: { kind: "completed", message: "Set aside until something changes.", reason: "" } },
+    });
+    // The question is set aside, not destroyed: the read that followed says so.
+    if (result.current.session.snapshot.review.state === "ready") expect(result.current.session.snapshot.review.data.meta.pending).toEqual({ count: 1 });
+    expect(result.current.session.selectedQueue).toBe("");
+    // Only review was asked for again. Nothing else claims to have been re-read.
+    expect(frames.filter((frame) => frame.payload.surface === "overview")).toHaveLength(1);
+
+    act(() => result.current.selectQueue("another-question"));
+    expect(result.current.session.reviewAction).toEqual({ state: "idle" });
+  });
+
+  it("does not carry what was done on one screen to another", async () => {
+    const { result } = renderHook(() => useSurfaceSession());
+
+    await act(async () => { await result.current.declineQuestion("sample-question", "not_now"); });
+    expect(result.current.session.reviewAction).toMatchObject({ state: "settled" });
+
+    // Leaving the screen ends the account of what was done on it. A notice
+    // still standing on return reports an act on something the person is no
+    // longer looking at, minutes after it happened.
+    act(() => result.current.navigate("overview"));
+    expect(result.current.session.reviewAction).toEqual({ state: "idle" });
+    act(() => result.current.navigate("review"));
+    expect(result.current.session.reviewAction).toEqual({ state: "idle" });
+  });
+
+  it("the sample vault answers the verb with a refusal and records nothing", async () => {
+    const { result } = renderHook(() => useSurfaceSession());
+    const before = JSON.stringify(result.current.session.snapshot.review);
+
+    await act(async () => { await result.current.declineQuestion("sample-question", "not_now"); });
+
+    // The refusal a person may meet is reachable with no vault open, and the
+    // sample vault's honest answer to a verb is that nothing here is recorded.
+    expect(result.current.session.reviewAction).toMatchObject({ result: { state: "settled", outcome: { kind: "refused", reason: "sample_vault" } } });
+    expect(JSON.stringify(result.current.session.snapshot.review)).toBe(before);
+  });
+
+  it("a refusal reaches the session with its reason, and a bridge failure is bounded", async () => {
+    let call = 0;
+    const transport: BridgeTransport = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.review.decline") {
+        if (++call === 1) return ok(frame.requestId, { kind: "refused", message: "That question is no longer open.", state: null, reason: "not_open" } as T);
+        throw new Error("the sidecar went away");
+      }
+      const surface = frame.payload.surface as SurfaceName;
+      return ok(frame.requestId, { surface, job_id: "job", data: surface === "review" ? { questions: [{ id: "question-live" }], total: 1 } : emptyPayload(surface) } as T);
+    } };
+    window.orionVivaBridge = transport;
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret"); });
+    await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
+    expect(result.current.session.reviewAction).toMatchObject({ result: { state: "settled", outcome: { kind: "refused", reason: "not_open" } } });
+
+    act(() => result.current.selectQueue("question-live"));
+    await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
+    expect(result.current.session.reviewAction).toMatchObject({ result: { state: "unanswered" } });
+  });
+
+  it("does not carry a sidecar error's own words into the session", async () => {
+    const transport: BridgeTransport = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.review.decline") return { protocol: "1.0", request_id: frame.requestId, ok: false, error: { code: "invalid_request", message: "question_id must be a non-empty string" } };
+      const surface = frame.payload.surface as SurfaceName;
+      return ok(frame.requestId, { surface, job_id: "job", data: surface === "review" ? { questions: [{ id: "question-live" }], total: 1 } : emptyPayload(surface) } as T);
+    } };
+    window.orionVivaBridge = transport;
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret"); });
+    await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
+
+    // The sidecar read the request and would not take it, which is a state of
+    // its own; what it wrote about it names a payload field and is for a log.
+    expect(result.current.session.reviewAction).toMatchObject({ result: { state: "unserved" } });
+    expect(JSON.stringify(result.current.session.reviewAction)).not.toContain("question_id");
   });
 });

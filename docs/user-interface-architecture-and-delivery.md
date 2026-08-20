@@ -111,11 +111,12 @@ on the current branch is recorded in
 ### VOICE-109 — the bridge is transport and nothing else
 **State:** enforced-with-exception
 **Code:** product/viva/desktop_bridge/handlers.py:17 (`BridgeDispatcher`)
-**Test:** product/tests/test_desktop_bridge.py::test_unknown_operations_are_refused_by_the_allowlist
+**Test:** product/tests/test_desktop_bridge.py::test_unknown_operations_are_refused_by_the_allowlist, ::test_an_action_the_registry_declares_without_a_handler_is_refused
 
 1. The bridge validates a protocol version, dispatches an allowlisted operation, emits job-state frames and serializes the result.
 2. It computes no total, infers no grade, decides no movement's direction and manufactures no user-facing caveat.
 3. The allowlist snapshot cannot be mutated after the dispatcher is created, and handler failures return safe error frames rather than raising.
+4. Every action a capability declares reaches the sidecar as an operation of its own — `viva.review.decline`, not a generic `act` carrying an action name — derived from the registry rather than written by hand, so the operation table read on its own is the complete list of everything that can touch a vault. An action no handler serves is a declared operation the allowlist refuses.
 
 **Exception:** the job-state frames assertion 1 names reach no subscriber. The sidecar writes them, the native host returns only the frame whose request id matches and which carries no event key, and every event frame is dropped — so the channel is severed above the bridge and nothing in the window has received one. The bridge's own half is unchanged on purpose; the channel's shape is fixed in [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) and is built with its first real producer. Separately, `bridge.open_vault` is intercepted as a branch before dispatch, so that one operation is neither protocol-checked nor in any allowlist ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open).
 
@@ -246,6 +247,21 @@ registered action has a destination or a recorded non-user disposition with a
 reason, and every desktop feature consumes a registered capability and known
 contract — and the command inventory is checked mechanically so a new command
 cannot enter unnoticed.
+
+**Why an action is its own operation.** The question that decides this is not
+what the bridge should know but what a reader of the operation table can see.
+The interface is a webview running JavaScript and its dependency tree, so *what
+can be done to this person's vault?* has to be answerable from the sidecar's
+side alone. With one generic `act` verb the answer is *whatever the registry
+declares* — one indirection away, in a table that grows. With an operation per
+action, the table is the answer. The blast radius is identical either way, since
+the sidecar validates against declared actions in both; what differs is the
+legibility of the write surface, which is the property this product should be
+optimising. Deriving the operations from the registry rather than hand-writing
+them keeps what the generic verb was for: the registry stays the authority,
+adding an action stays a registry change, and a gate compares the two. It also
+keeps `serves` precise, where a generic verb would serve five contracts at once
+and tell the maturity signal nothing.
 
 **What each destination holds.** Seven of them, and the map is the part a
 reader needs before any of the rules above mean anything.
