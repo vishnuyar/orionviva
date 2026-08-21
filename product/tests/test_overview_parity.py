@@ -57,6 +57,47 @@ def test_the_committed_fixture_is_what_the_product_produces():
     )
 
 
+def test_the_writer_produces_the_same_bytes_on_any_machine(monkeypatch):
+    """One writer means one writer, which a generator reading the machine it
+    runs on is not.
+
+    Every setting the product reads that would move these bytes is stated by
+    the script and applied for the length of the run. A machine with reader
+    keys exported would otherwise write a different sentence about reading into
+    the same artifact, and the byte comparison above would fail for no drift.
+    """
+    monkeypatch.setenv("VIVA_MODEL_ADAPTER", "some-adapter")
+    monkeypatch.setenv("VIVA_MODEL", "some-pinned-model")
+    monkeypatch.setenv("VIVA_LOCALE", "de-DE")
+
+    assert FIXTURE.read_bytes() == _generator().encoded_artifact()
+
+
+def test_no_document_is_settled_without_a_reading_behind_it():
+    """A parity fixture may hold only combinations real ingest can reach.
+
+    Nothing posts through this product without a model having been asked, so a
+    row that is resolved and reads as never read is a state the ingest path
+    cannot produce. Rendering it would prove the presentation of something that
+    cannot happen, and teach the next reader a false thing about the words.
+    """
+    documents = None
+    for surface, frame in json.loads(FIXTURE.read_bytes())["reads"].items():
+        if surface == "documents":
+            documents = frame["result"]["data"]
+
+    assert documents["documents"]
+    for row in documents["documents"]:
+        if row["resolved"]:
+            assert row["reading"] == "read", row["id"]
+    # And the vault holds one nothing has read, because a fixture whose whole
+    # value is parity has to carry the state this read exists to say out loud.
+    unread = [row for row in documents["documents"]
+              if row["reading"] == "never_read"]
+    assert unread and not any(row["resolved"] for row in unread)
+    assert documents["reading_sentence"]
+
+
 def test_the_fixture_is_generated_and_never_authored():
     """A fixture somebody wrote by hand is a description of the contract its
     author wished for. This one is what a shell would receive: a whole

@@ -355,10 +355,13 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
         "account_count": 0,
         "spending_by_currency": {},
     }
-    assert documents["state"] == "ready"
+    # A panel earns its existence from data: an empty vault has no paperwork,
+    # and says so rather than reporting a successful read of nothing.
+    assert documents["state"] == "absent"
     assert documents["documents"] == []
     assert documents["holds"] == []
     assert documents["raw_document_count"] == 0
+    assert documents["reading_sentence"] == ""
     assert review["state"] == "ready"
     assert review["questions"] == []
     assert review["total"] == 0
@@ -416,17 +419,19 @@ def test_the_decline_verb_is_reachable_only_once_a_vault_is_open(tmp_path):
     handlers = handlers_for_opened_vault(vault).handlers
 
     assert "viva.review.decline" in handlers
+    assert "viva.documents.upload" in handlers
 
 
 def test_an_action_the_registry_declares_without_a_handler_is_refused(tmp_path):
     """Every declared action is an operation; only the ones this build serves
     have a handler. The rest are refused by the allowlist rather than by
     silence — including the review capability's own `answer`, which this build
-    declares and does not serve."""
+    declares and does not serve, and the documents capability's `cancel`,
+    which waits on there being a job to cancel."""
     vault = Vault.open(tmp_path / "vault", "pw")
     handlers = handlers_for_opened_vault(vault).handlers
 
-    for operation in ("viva.documents.upload", "viva.review.answer"):
+    for operation in ("viva.documents.cancel", "viva.review.answer"):
         response = json.loads(
             dispatch_frame(_review_frame(operation, {}), handlers))
 

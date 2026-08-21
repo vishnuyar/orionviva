@@ -7,7 +7,7 @@
 
 ### VOICE-10 — voice is versioned data, never incidental copy
 **State:** enforced
-**Code:** product/viva/persona/__init__.py:411 (`say`), product/viva/persona/pack-v17/
+**Code:** product/viva/persona/__init__.py:427 (`say`), product/viva/persona/pack-v18/
 **Test:** product/tests/test_persona_pack.py::test_question_text_no_longer_lives_in_code
 
 1. Everything Viva says lives in `product/viva/persona/<pack>/` as phrasings, moments and tone rules.

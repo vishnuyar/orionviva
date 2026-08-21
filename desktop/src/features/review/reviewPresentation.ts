@@ -1,3 +1,4 @@
+import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
 import type { ActionResult, ReviewSampleAnatomy, ReviewVerb, ReviewView } from "../../surface/types";
 
 export type ReviewSelection =
@@ -54,25 +55,13 @@ export function workingPresentation(verb: ReviewVerb): OutcomePresentation {
 
 // What one review verb came back as, in words. The vault's own sentence is
 // used wherever the vault answered; the machine reason a refusal carries is
-// not, and neither is a bridge error code's message.
-//
-// Only the vault's own refusal is titled as a refusal. The three channels that
-// never reached an answer are titled by what did not happen to the request,
-// because the code carrying a refused request also carries a handler that
-// raised, and a handler can raise after it has written.
+// not, and neither is a bridge error code's message. A channel that never
+// reached an answer is said in the words every screen uses for it.
 export function outcomePresentation(verb: ReviewVerb, result: ActionResult): OutcomePresentation {
   const words = verbWords[verb];
-  if (result.state === "unserved") {
-    return { title: "Your vault would not take this request", detail: "Your vault refused the request as this screen sent it. Whether anything was recorded is not something this screen can tell you." };
-  }
-  if (result.state === "unanswered") {
-    return { title: "Your vault did not answer", detail: "Nothing came back, so this screen will not say whether anything was recorded." };
-  }
-  if (result.state === "unreadable") {
-    return { title: "The reply could not be read", detail: "Your vault answered in a way this screen does not recognise, so it will not say whether anything was recorded." };
-  }
+  if (result.state !== "settled") return channelPresentation(result);
   const { kind, message } = result.outcome;
-  const detail = message || "Your vault recorded no sentence for this reply.";
+  const detail = message || UNSPOKEN_REPLY;
   switch (kind) {
     case "completed": return { title: words.completed, detail };
     case "refused": return { title: words.refused, detail };

@@ -156,6 +156,15 @@ class LedgerProjection:
     def captured_docs(self) -> dict[str, str]:
         return _coverage.captured_docs(self._core)
 
+    def captured_filenames(self) -> dict[str, str]:
+        return _coverage.captured_filenames(self._core)
+
+    def read_attempted_docs(self) -> set[str]:
+        return _coverage.read_attempted_docs(self._core)
+
+    def read_parsed_docs(self) -> set[str]:
+        return _coverage.read_parsed_docs(self._core)
+
     def open_holds(self) -> list[dict]:
         return _coverage.open_holds(self._core)
 

@@ -27,6 +27,22 @@ const documents: FeatureResult<DocumentsData> = { state: "ready", data: adaptDoc
 const MEASURES = ["balance", "owed"];
 const LADDER = ["verified", "corroborated", "unverified", "conflicted"];
 
+describe("the documents a real vault produces, read by the real adapter", () => {
+  const rows = (documentsPayload as { documents: Array<Record<string, unknown>> }).documents;
+  const sentence = (documentsPayload as { reading_sentence: string }).reading_sentence;
+
+  it("carries the panel sentence the backend wrote, and writes none of its own", () => {
+    expect(documents.state).toBe("ready");
+    expect(documents.state === "ready" && documents.data.readingSentence).toBe(sentence);
+  });
+
+  it("names each row by the file the vault recorded, and carries its reading word unchanged", () => {
+    expect(documents.state === "ready" && documents.data.documents.map((document) => document.name)).toEqual(rows.map((row) => row.filename));
+    expect(documents.state === "ready" && documents.data.documents.map((document) => document.reading)).toEqual(rows.map((row) => row.reading));
+    expect(documents.state === "ready" && documents.data.documents.map((document) => document.id)).toEqual(rows.map((row) => row.id));
+  });
+});
+
 describe("the overview a real vault produces, read by the real adapter", () => {
   it("is the artifact this contract is written over", () => {
     expect(artifact.artifact).toBe("orionviva.overview-parity-v1");

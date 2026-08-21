@@ -12,6 +12,37 @@ const expectedSkips = [];
 // Both halves of the parity test read these same bytes; the adapter tests are
 // the one place on this side permitted to import it.
 const backendParityFixture = "../../../../product/viva/surface/fixtures/overview-parity-v1.json";
+// The persona pack the product ships. A test that asserts what a person is
+// told reads the sentence from here; one that types the sentence out passes
+// against words nobody shipped. No production module reads it: the sentences
+// reach a screen through the bridge, in the reply that carried them.
+const personaPackMoments = /^\.\.\/.*\/product\/viva\/persona\/pack-v\d+\/moments\.json$/;
+// Every sentence the shipped persona pack holds. A module or a test carrying
+// one as a literal is asserting or composing words that already exist
+// somewhere they can be changed; the pack is read, never copied.
+function packSentences(moments) {
+  const sentences = Object.entries(moments).filter(([key]) => key !== "_comment").map(([, value]) => value).filter((value) => typeof value === "string" && value.trim());
+  if (!sentences.length) throw new Error("persona pack holds no sentences: the shipped-sentence check would walk an empty set and report a clean bill it could not withhold");
+  return sentences;
+}
+
+function shippedSentences(productRoot) {
+  const versions = JSON.parse(readFileSync(join(productRoot, "viva", "versions.json"), "utf8"));
+  const pack = versions.in_force.persona_pack.active;
+  const moments = JSON.parse(readFileSync(join(productRoot, "viva", "persona", pack, "moments.json"), "utf8"));
+  return { pack, sentences: packSentences(moments) };
+}
+
+function shippedSentenceViolations(name, text, sentences) {
+  const shipped = new Set(sentences);
+  const violations = [];
+  for (const token of scanTypeScript(name, text)) {
+    if (token.kind !== SyntaxKind.StringLiteral && token.kind !== SyntaxKind.NoSubstitutionTemplateLiteral) continue;
+    if (shipped.has(token.value)) violations.push(`shipped sentence typed out: ${name}:${token.start}`);
+  }
+  return [...new Set(violations)];
+}
+
 const legacyPaths = ["app/model.ts", "app/bridge-client.ts", "app/data.ts", "app/synthetic.ts"];
 const legacyIdentifiers = ["DemoState", "demoState", "snapshotFromBridge", "createLiveLoadingSnapshot", "readStatus", "partialReadFailure"];
 
@@ -25,6 +56,10 @@ function isTestLibrary(specifier) { return specifier === "vitest" || specifier =
 const surfaceMatrixImports = new Set(["./surfaceScenarios", "../features/accounts/Accounts", "../features/overview/Overview", "../surface/types"]);
 function ownerTestImportAllowed(name, specifier) {
   if (isTestLibrary(specifier)) return true;
+  if (personaPackMoments.test(specifier)) return true;
+  // The shim's own test may reach the same two host packages the shim may, and
+  // no others, so the published event type checks the shape the test builds.
+  if (name === hostShimTest) return specifier.startsWith("./") || hostShimPackages.has(specifier);
   if (name === "test/SurfaceMatrix.test.tsx") return surfaceMatrixImports.has(specifier);
   if (name.startsWith("bridge/")) return specifier.startsWith("./");
   if (name.startsWith("components/")) return specifier.startsWith("./") || specifier === "../surface/types" || specifier === "../surface/evidence";
@@ -40,12 +75,26 @@ const globalVitestApis = new Set(["it", "test", "describe", "suite", "xit", "xte
 const disabledVitestApis = new Set(["xit", "xtest", "xdescribe", "xsuite"]);
 const focusedVitestApis = new Set(["fit", "fdescribe"]);
 
+// What this checker cannot read, said in full wherever it bites. The scanner
+// this fence drives has no parser above it and cannot advance through a
+// regular-expression literal, so a module under src writes its patterns with
+// `new RegExp`.
+const TOKENIZER_REFUSAL = "tokenizer stopped advancing: this checker cannot read a regular-expression literal. Write the pattern as new RegExp(\"…\") instead.";
+
 function scanTypeScript(name, text) {
   const scanner = createScanner(true, name.endsWith(".tsx") ? LanguageVariant.JSX : LanguageVariant.Standard, text);
   const tokens = [];
   let inTemplate = false;
   let templateBraceDepth = 0;
+  let read = -1;
+  // The scanner reads without a parser above it, so a construct it cannot
+  // decide — a regular-expression literal among them — can leave it standing
+  // on the same character. Standing still is refused loudly rather than looped
+  // over, because a check that never returns is a check that never reports.
+  // The refusal names the file, the construct and what to write instead.
   for (let kind = scanner.scan(); kind !== SyntaxKind.EndOfFile; kind = scanner.scan()) {
+    if (scanner.getTokenEnd() <= read) throw new Error(`${TOKENIZER_REFUSAL}\n  ${name}:${scanner.getTokenStart()} at ${JSON.stringify(text.slice(scanner.getTokenStart(), scanner.getTokenStart() + 32))}`);
+    read = scanner.getTokenEnd();
     if (inTemplate && kind === SyntaxKind.CloseBraceToken && templateBraceDepth === 0) {
       kind = scanner.reScanTemplateToken(false);
       inTemplate = kind !== SyntaxKind.LastTemplateToken;
@@ -61,8 +110,15 @@ function scanTypeScript(name, text) {
   return tokens;
 }
 
+// The packages the host shim may reach for, named one by one. The shim is the
+// only module allowed to speak to the operating system at all, so what it may
+// speak to is a list rather than a pattern.
+const hostShim = "tauri-host.ts";
+const hostShimTest = "tauri-host.test.ts";
+const hostShimPackages = new Set(["@tauri-apps/plugin-dialog", "@tauri-apps/api/webview"]);
+
 function capturePrimitiveViolations(name, text) {
-  if (name !== "app/App.tsx" && !name.startsWith("features/documents/")) return [];
+  if (name !== "app/App.tsx" && name !== hostShim && !name.startsWith("features/documents/")) return [];
   const violations = [];
   const tokens = scanTypeScript(name, text);
   const forbiddenExecutables = new Set(["FileReader", "DataTransfer", "FormData", "XMLHttpRequest", "showOpenFilePicker", "showSaveFilePicker", "fetch"]);
@@ -85,7 +141,14 @@ function capturePrimitiveViolations(name, text) {
     if (token.text === "import") {
       let cursor = index + 1;
       while (cursor < tokens.length && tokens[cursor].text !== ";" && tokens[cursor].text !== "import") {
-        if (tokens[cursor].kind === SyntaxKind.StringLiteral && (tokens[cursor].value.includes("@tauri-apps") || tokens[cursor].value.includes("plugin-dialog"))) violations.push(`capture dialog import forbidden: ${name}`);
+        if (tokens[cursor].kind === SyntaxKind.StringLiteral) {
+          const specifier = tokens[cursor].value;
+          if (name === hostShim) {
+            if (!specifier.startsWith(".") && !hostShimPackages.has(specifier)) violations.push(`capture host package forbidden: ${name} -> ${specifier}`);
+          } else if (specifier.includes("@tauri-apps") || specifier.includes("plugin-dialog")) {
+            violations.push(`capture dialog import forbidden: ${name}`);
+          }
+        }
         cursor += 1;
       }
     }
@@ -101,6 +164,62 @@ function capturePrimitiveViolations(name, text) {
     }
   }
   return [...new Set(violations)];
+}
+
+// The `disabled` attribute, wherever it would be written: an attribute
+// position inside a JSX opening tag. A string selector, a property read and
+// `aria-disabled` all pass by untouched, because none of them is one.
+function disabledAttributeViolations(name, text) {
+  const tokens = scanTypeScript(name, text);
+  const violations = [];
+  const opensElement = (index) => {
+    if (tokens[index].kind !== SyntaxKind.LessThanToken) return false;
+    const next = tokens[index + 1];
+    if (!next || !tokenIsIdentifierOrKeyword(next.kind)) return false;
+    const before = tokens[index - 1];
+    return !before || !(before.kind === SyntaxKind.Identifier || before.kind === SyntaxKind.NumericLiteral || before.kind === SyntaxKind.StringLiteral || before.kind === SyntaxKind.CloseParenToken || before.kind === SyntaxKind.CloseBracketToken);
+  };
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (!opensElement(index)) continue;
+    let depth = 0;
+    for (let cursor = index + 2; cursor < tokens.length; cursor += 1) {
+      const token = tokens[cursor];
+      if (token.kind === SyntaxKind.OpenBraceToken) { depth += 1; continue; }
+      if (token.kind === SyntaxKind.CloseBraceToken) { depth -= 1; continue; }
+      if (depth > 0) continue;
+      if (token.kind === SyntaxKind.GreaterThanToken || token.kind === SyntaxKind.LessThanToken) break;
+      if (token.text !== "disabled") continue;
+      const before = tokens[cursor - 1];
+      if (before && (before.kind === SyntaxKind.MinusToken || before.kind === SyntaxKind.DotToken || before.kind === SyntaxKind.QuestionDotToken)) continue;
+      violations.push(`disabled attribute forbidden: ${name}:${token.start}`);
+    }
+  }
+  return [...new Set(violations)];
+}
+
+// The window's own drag-drop capture, which is what keeps a dropped file out
+// of the webview: while it is on, the native layer takes the drop and no
+// browser drop event fires at all. Switching it off would hand the gesture
+// back to the page, so the setting is stated rather than inherited, and it is
+// read here from the configuration the packaged application is built with.
+function dragDropCaptureViolations(source) {
+  let configuration;
+  try {
+    configuration = JSON.parse(source);
+  } catch {
+    return ["window drag-drop capture unreadable: the Tauri configuration is not JSON"];
+  }
+  const windows = configuration?.app?.windows;
+  if (!Array.isArray(windows) || windows.length === 0) return ["window drag-drop capture unstated: the Tauri configuration declares no window"];
+  const violations = [];
+  windows.forEach((entry, index) => {
+    const named = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : null;
+    const label = typeof named?.label === "string" && named.label.trim() ? named.label : `window ${index}`;
+    if (!named) { violations.push(`window drag-drop capture unstated: ${label}`); return; }
+    if (!Object.prototype.hasOwnProperty.call(named, "dragDropEnabled")) { violations.push(`window drag-drop capture unstated: ${label}`); return; }
+    if (named.dragDropEnabled !== true) violations.push(`window drag-drop capture disabled: ${label}`);
+  });
+  return violations;
 }
 
 function vitestBindings(tokens) {
@@ -290,7 +409,7 @@ function auditVitestCalls(name, text) {
   return { disabled, violations };
 }
 
-export function collectViolations(inputFiles) {
+export function collectViolations(inputFiles, sentences = []) {
   const files = inputFiles instanceof Map ? inputFiles : new Map(Object.entries(inputFiles));
   const violations = [];
   const code = [...files.entries()].filter(([name]) => /\.(ts|tsx)$/.test(name));
@@ -303,6 +422,8 @@ export function collectViolations(inputFiles) {
     const specs = importSpecifiers(text);
     if (name.startsWith("test/") && !isTest(name) && !isTestSupport(name)) for (const specifier of specs) if (!isTestLibrary(specifier) && !specifier.startsWith("./")) violations.push(`test production import forbidden: ${name} -> ${specifier}`);
     if (!isTest(name) && !isTestSupport(name)) violations.push(...capturePrimitiveViolations(name, text));
+    violations.push(...disabledAttributeViolations(name, text));
+    violations.push(...shippedSentenceViolations(name, text, sentences));
     if (text.includes("WP-01 temporary compatibility export")) violations.push(`compatibility marker remains: ${name}`);
     for (const identifier of legacyIdentifiers) if (new RegExp(`\\b${identifier}\\b`).test(text)) violations.push(`legacy alias or builder remains: ${identifier} in ${name}`);
     if (isTest(name)) {
@@ -318,6 +439,7 @@ export function collectViolations(inputFiles) {
 
     if (!isTest(name) && !isTestSupport(name)) {
     if (/\bexactValue\b/.test(text) && name !== "surface/types.ts" && !name.startsWith("surface/adapters/") && !name.startsWith("surface/fixtures/")) violations.push(`exactValue crossed the render boundary: ${name}`);
+    if (specs.some((specifier) => personaPackMoments.test(specifier))) violations.push(`persona pack read outside a test: ${name}`);
     if (name === "app/App.tsx" && specs.some((specifier) => importsSegment(specifier, "bridge") || importsSegment(specifier, "adapters") || importsSegment(specifier, "contracts") || importsSegment(specifier, "fixtures"))) violations.push(`App crosses a boundary: ${name}`);
     if (name.startsWith("features/")) {
       for (const specifier of specs) {
@@ -376,20 +498,63 @@ function selfCheckFiles() {
 }
 
 function assertViolation(label, mutate, expected) {
+  selfCheckCases.push(label);
   const files = selfCheckFiles();
   mutate(files);
   const violations = collectViolations(files);
   if (!violations.some((violation) => violation.includes(expected))) throw new Error(`architecture self-check failed (${label}): ${JSON.stringify(violations)}`);
 }
 
+const selfCheckSentences = ["Saved privately. Reading will wait until you choose a reader."];
+
+const selfCheckCases = [];
+
+function assertSentenceViolation(label, mutate) {
+  selfCheckCases.push(label);
+  const files = selfCheckFiles();
+  mutate(files);
+  const violations = collectViolations(files, selfCheckSentences);
+  if (!violations.some((violation) => violation.includes("shipped sentence typed out"))) throw new Error(`architecture self-check failed (${label}): ${JSON.stringify(violations)}`);
+}
+
+function assertSentenceValid(label, mutate) {
+  selfCheckCases.push(label);
+  const files = selfCheckFiles();
+  mutate(files);
+  const violations = collectViolations(files, selfCheckSentences);
+  if (violations.length) throw new Error(`architecture self-check failed (${label}): ${JSON.stringify(violations)}`);
+}
+
+function assertConfigurationViolation(label, source, expected) {
+  selfCheckCases.push(label);
+  const violations = dragDropCaptureViolations(source);
+  if (!violations.some((violation) => violation.includes(expected))) throw new Error(`architecture self-check failed (${label}): ${JSON.stringify(violations)}`);
+}
+
+function assertConfigurationValid(label, source) {
+  selfCheckCases.push(label);
+  const violations = dragDropCaptureViolations(source);
+  if (violations.length) throw new Error(`architecture self-check failed (${label}): ${JSON.stringify(violations)}`);
+}
+
 function assertValid(label, mutate) {
+  selfCheckCases.push(label);
   const files = selfCheckFiles();
   mutate(files);
   const violations = collectViolations(files);
   if (violations.length) throw new Error(`architecture self-check failed (${label}): ${JSON.stringify(violations)}`);
 }
 
+function assertThrows(label, run) {
+  selfCheckCases.push(label);
+  let threw = false;
+  try { run(); } catch { threw = true; }
+  if (!threw) throw new Error(`architecture self-check failed (${label}): it returned where it should have refused`);
+}
+
 function runSelfChecks() {
+  selfCheckCases.length = 0;
+  selfCheckCases.push("the unmutated graph is clean");
   const valid = collectViolations(selfCheckFiles());
   if (valid.length) throw new Error(`architecture self-check failed (valid graph): ${JSON.stringify(valid)}`);
   assertValid("unmodified parameterized tests and chains", (files) => files.set("surface/types.test.ts", "import { it as spec } from 'vitest'; import * as v from 'vitest'; spec.each([])('allowed each', () => {}); v.it.for([])('allowed for', () => {}); it.concurrent.sequential('allowed chain', () => {});"));
@@ -456,7 +621,7 @@ function runSelfChecks() {
   assertViolation("legacy identifier", (files) => files.set("app/alias.ts", "export const demoState = {};"), "legacy alias or builder remains");
   assertViolation("exact value render boundary", (files) => files.set("surface/evidence.ts", "export const leak = (value: { exactValue: string }) => value.exactValue;"), "exactValue crossed the render boundary");
   assertValid("exact value stays in adapters and fixtures", (files) => { files.set("surface/adapters/overview.ts", "export const raw = { exactValue: '1' };"); files.set("surface/fixtures/demo-snapshot.ts", "export const demo = { exactValue: '1' };"); });
-  assertValid("capture prose and static disabled control", (files) => files.set("features/documents/Documents.tsx", "const prose = \"The @tauri-apps/plugin-dialog package, FileReader, fetch, onDrop, and type=file stay unavailable.\"; export const Documents = () => <><p>FileReader fetch onDrop type=file @tauri-apps/plugin-dialog</p><button disabled>{prose}</button></>;"));
+  assertValid("capture prose beside a control that waits in words", (files) => files.set("features/documents/Documents.tsx", "const prose = \"The @tauri-apps/plugin-dialog package, FileReader, fetch, onDrop, and type=file stay unavailable.\"; export const Documents = () => <><p>FileReader fetch onDrop type=file @tauri-apps/plugin-dialog</p><button aria-disabled={true}>{prose}</button></>;"));
   assertViolation("file input", (files) => files.set("features/documents/Documents.tsx", "export const Documents = () => <input type='file' />;"), "file input forbidden");
   assertViolation("braced file input", (files) => files.set("features/documents/Documents.tsx", "export const Documents = () => <input type={'file'} />;"), "file input forbidden");
   assertViolation("braced case-insensitive file input", (files) => files.set("features/documents/Documents.tsx", "export const Documents = () => <input type={\"FiLe\"} />;"), "file input forbidden");
@@ -493,8 +658,43 @@ function runSelfChecks() {
   assertViolation("adapter test reads another path beside the artifact", (files) => files.set("surface/adapters/primitives.test.ts", "import { it } from 'vitest'; import other from '../../../../product/viva/surface/fixtures/surface-v1.json'; it('reads another', () => other);"), "owner test import forbidden");
   assertViolation("non-adapter test reads the parity artifact", (files) => files.set("components/Thing.test.tsx", `import { it } from 'vitest'; import artifact from '../../${backendParityFixture}'; it('reads the artifact', () => artifact);`), "owner test import forbidden");
   assertViolation("adapter production reads the parity artifact", (files) => files.set("surface/adapters/primitives.ts", `import artifact from '${backendParityFixture}'; export const primitive = artifact;`), "adapter import forbidden");
+  assertThrows("a source the tokenizer cannot advance through is refused rather than looped over", () => scanTypeScript("probe.ts", "const found = value.match(/^#([0-9a-f]{6})$/i);"));
+  assertThrows("a pack holding no sentences is refused rather than walked", () => packSentences({ _comment: "a pack with its lines taken out" }));
+  assertThrows("a pack holding only blank sentences is refused", () => packSentences({ documents_saved_no_reader: "   " }));
+  assertSentenceViolation("a test types out a sentence the pack ships", (files) => files.set("features/overview/Overview.test.tsx", `import { it } from 'vitest'; it('says it', () => '${selfCheckSentences[0]}');`));
+  assertSentenceViolation("a component types out a sentence the pack ships", (files) => files.set("features/overview/Overview.tsx", `export const Overview = () => "${selfCheckSentences[0]}";`));
+  assertSentenceViolation("a sentence the pack ships written as a template literal", (files) => files.set("features/overview/Overview.tsx", "export const Overview = () => `" + selfCheckSentences[0] + "`;"));
+  assertSentenceValid("a sentence read from the pack rather than written out", (files) => files.set("features/overview/Overview.test.tsx", "import { it } from 'vitest'; import moments from '../../../../product/viva/persona/pack-v18/moments.json'; it('reads it', () => moments.documents_saved_no_reader);"));
+  assertSentenceValid("prose that is not one of the pack's sentences", (files) => files.set("features/overview/Overview.tsx", "export const Overview = () => 'Saved privately, and nothing more is claimed.';"));
+  assertValid("a test reads the sentences a person is told from the pack that ships them", (files) => { files.set("features/overview/Overview.test.tsx", "import { it } from 'vitest'; import moments from '../../../../product/viva/persona/pack-v18/moments.json'; import { Overview } from './Overview'; it('reads the pack', () => [moments, Overview]);"); files.set("app/App.test.tsx", `${files.get("app/App.test.tsx")}\nimport moments from '../../../product/viva/persona/pack-v19/moments.json';`); });
+  assertViolation("a production module reads the pack", (files) => files.set("features/overview/Overview.tsx", "import moments from '../../../../product/viva/persona/pack-v18/moments.json'; export const Overview = () => moments;"), "persona pack read outside a test");
+  assertViolation("a test reads something else from the product package", (files) => files.set("features/overview/Overview.test.tsx", "import { it } from 'vitest'; import other from '../../../../product/viva/persona/pack-v18/phrasings.json'; it('reads more', () => other);"), "owner test import forbidden");
+  assertViolation("a test reads the pack by an absolute-looking path", (files) => files.set("features/overview/Overview.test.tsx", "import { it } from 'vitest'; import moments from 'product/viva/persona/pack-v18/moments.json'; it('reads the pack', () => moments);"), "owner test import forbidden");
   assertViolation("forbidden import spread over four lines", (files) => files.set("surface/adapters/primitives.test.ts", "import { it } from 'vitest';\nimport\n  {\n    session\n  }\n  from\n    '../../app/session';\nit('crosses', () => session);"), "owner test import forbidden");
-  return 110;
+  assertValid("the shim's test reaches the same two packages the shim may", (files) => files.set(hostShimTest, "import { it } from 'vitest'; import type { DragDropEvent } from '@tauri-apps/api/webview'; import { open } from '@tauri-apps/plugin-dialog'; import './tauri-host'; it('types the payload', () => [null as DragDropEvent | null, open]);"));
+  assertViolation("the shim's test reaches a package the shim may not", (files) => files.set(hostShimTest, "import { it } from 'vitest'; import { readFile } from '@tauri-apps/plugin-fs'; it('reads', () => readFile);"), "owner test import forbidden");
+  assertViolation("another test reaches a host package", (files) => files.set("features/overview/Overview.test.tsx", "import { it } from 'vitest'; import type { DragDropEvent } from '@tauri-apps/api/webview'; it('types', () => null as DragDropEvent | null);"), "owner test import forbidden");
+  assertValid("host shim reaches only its two named packages", (files) => files.set(hostShim, "import { open } from '@tauri-apps/plugin-dialog'; import { getCurrentWebview } from '@tauri-apps/api/webview'; import type { BridgeClient } from './bridge/contracts'; export const host = [open, getCurrentWebview] as unknown as BridgeClient;"));
+  for (const primitive of ["FileReader", "DataTransfer", "FormData", "XMLHttpRequest", "showOpenFilePicker", "showSaveFilePicker", "fetch"]) assertViolation(`host shim capture primitive ${primitive}`, (files) => files.set(hostShim, `export const read = () => { ${primitive}(); };`), "capture primitive forbidden");
+  assertViolation("host shim clipboard primitive", (files) => files.set(hostShim, "export const copy = () => { navigator.clipboard.writeText('x'); };"), "capture clipboard primitive forbidden");
+  assertViolation("host shim drag handler", (files) => files.set(hostShim, "export const element = { onDrop: null }; element.onDrop = () => {};"), "capture drag handler forbidden");
+  assertViolation("host shim reaches an unnamed host package", (files) => files.set(hostShim, "import { readFile } from '@tauri-apps/plugin-fs'; export const read = readFile;"), "capture host package forbidden");
+  assertViolation("host shim reaches a package root rather than the named entry", (files) => files.set(hostShim, "import { getCurrentWebview } from '@tauri-apps/api'; export const webview = getCurrentWebview;"), "capture host package forbidden");
+  assertViolation("host shim reaches an ordinary dependency", (files) => files.set(hostShim, "import { useState } from 'react'; export const state = useState;"), "capture host package forbidden");
+  assertViolation("disabled attribute with no value", (files) => files.set("features/documents/Documents.tsx", "export const Documents = () => <button disabled>Choose a file</button>;"), "disabled attribute forbidden");
+  assertViolation("disabled attribute bound to a state", (files) => files.set("app/App.tsx", "export const App = () => <button disabled={true}>Open</button>;"), "disabled attribute forbidden");
+  assertViolation("disabled attribute on a self-closing element", (files) => files.set("components/Thing.tsx", "export const Thing = () => <input disabled />;"), "disabled attribute forbidden");
+  assertViolation("disabled attribute on a composed component", (files) => files.set("features/overview/Overview.tsx", "export const Overview = () => <Thing disabled={false} />;"), "disabled attribute forbidden");
+  assertViolation("disabled attribute inside a test render", (files) => files.set("surface/types.test.ts", "import { it } from 'vitest'; it('renders', () => <button disabled>x</button>);"), "disabled attribute forbidden");
+  assertValid("aria-disabled, disabled selectors and disabled properties", (files) => files.set("components/Thing.tsx", "export const Thing = (props: { busy: boolean; node: HTMLButtonElement }) => { const focusable = 'button:not([disabled]), input:not([disabled])'; props.node.setAttribute('disabled', ''); const flag = props.node.disabled; return <button aria-disabled={props.busy} data-focusable={focusable} data-flag={flag}>Choose a file</button>; };"));
+  assertConfigurationValid("window drag-drop capture stated on", JSON.stringify({ app: { windows: [{ title: "OrionViva", dragDropEnabled: true }] } }));
+  assertConfigurationViolation("window drag-drop capture switched off", JSON.stringify({ app: { windows: [{ title: "OrionViva", dragDropEnabled: false }] } }), "window drag-drop capture disabled");
+  assertConfigurationViolation("window drag-drop capture left to the default", JSON.stringify({ app: { windows: [{ title: "OrionViva" }] } }), "window drag-drop capture unstated");
+  assertConfigurationViolation("window drag-drop capture written in the alias spelling", JSON.stringify({ app: { windows: [{ "drag-drop-enabled": true }] } }), "window drag-drop capture unstated");
+  assertConfigurationViolation("one window states it and a second does not", JSON.stringify({ app: { windows: [{ label: "main", dragDropEnabled: true }, { label: "second", dragDropEnabled: false }] } }), "window drag-drop capture disabled: second");
+  assertConfigurationViolation("no window at all", JSON.stringify({ app: { windows: [] } }), "window drag-drop capture unstated");
+  assertConfigurationViolation("a configuration that is not JSON", "{ this is not configuration", "window drag-drop capture unreadable");
+  return selfCheckCases.length;
 }
 
 function filesAt(directory) {
@@ -505,7 +705,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const src = join(root, "src");
 const liveFiles = new Map(filesAt(src).filter((file) => /\.(ts|tsx)$/.test(file)).map((file) => [relative(src, file).replaceAll("\\", "/"), readFileSync(file, "utf8")]));
 const selfChecks = runSelfChecks();
-const violations = collectViolations(liveFiles);
+const shipped = shippedSentences(resolve(root, "..", "product"));
+const violations = [...collectViolations(liveFiles, shipped.sentences), ...dragDropCaptureViolations(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"))];
 if (violations.length) {
   for (const violation of violations) console.error(violation);
   process.exit(1);
@@ -513,3 +714,5 @@ if (violations.length) {
 const productionCount = [...liveFiles.keys()].filter((name) => !isTest(name) && !isTestSupport(name)).length;
 console.log(`UI architecture self-checks passed (${selfChecks} cases).`);
 console.log(`UI architecture boundaries passed (${productionCount} production modules, ${expectedSkips.length} authorized skips).`);
+console.log(`UI architecture sentences passed (${shipped.sentences.length} shipped by ${shipped.pack}, none written out under src).`);
+console.log(`UI architecture read ${liveFiles.size} modules with a scanner that refuses a regular-expression literal; write new RegExp("…") until it handles one.`);

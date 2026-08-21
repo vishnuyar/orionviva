@@ -140,8 +140,8 @@ on the current branch is recorded in
 
 ### VOICE-112 — the surface never claims machinery the product does not have
 **State:** unmet
-**Code:** none found
-**Test:** none
+**Code:** assertion 3 only. `desktop/src/app/App.tsx:246` states the consequence beside the passphrase field on the vault-open form, which is also the form that creates a vault, and states it in the open rather than behind a disclosure so it is read before the button is pressed. The other four assertions are met by nothing: a search for anything stating what is and is not anchored, what T3 covers on the ingest request, or how complete the outbound record is, finds no such text on any surface.
+**Test:** none — the rule index collects test names by parsing Python, and what holds assertion 3 is a desktop test asserting the sentence and its accessible description.
 
 1. Trust shows what is and is not externally anchored, rather than claiming anchoring: T4's chain is hash-chained but not anchored.
 2. A Documents surface does not paper over T3 being met on originals and unmet on the ingest request.
@@ -159,14 +159,16 @@ on the current branch is recorded in
 
 ### VOICE-114 — with no reader configured, a document is saved privately and reading waits
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/reader.py:133 (`_parking_reader`), :139 (`build_reader`), product/viva/ingest/pipeline.py:769 (capture first, always)
-**Test:** product/tests/test_reader_config.py::test_reader_factory_gates_on_env, ::test_a_parked_document_carries_the_reason_it_was_not_read
+**Code:** product/viva/ingest/reader.py:198 (`_parking_reader`), :204 (`parking_reader`), :230 (`build_reader`), product/viva/ingest/pipeline.py:870 (capture first, always), product/viva/surface/documents.py (the sentence, composed from the pack)
+**Test:** product/tests/test_reader_config.py::test_reader_factory_gates_on_env, ::test_a_parked_document_carries_the_reason_it_was_not_read; product/tests/test_capture_first.py::test_the_raw_blob_is_stored_before_the_reader_is_called, ::test_a_reader_that_raises_does_not_take_the_document_with_it; product/tests/test_surface_documents.py::test_a_document_nothing_has_looked_at_says_so_once_on_the_panel, ::test_a_document_that_was_read_and_yielded_nothing_is_not_one_nobody_read; product/tests/test_document_actions.py::test_a_captured_document_is_sealed_and_the_reply_says_reading_waits
 
 1. With no reader configured, Documents says: "Saved privately. Reading will wait until you choose a reader."
 2. The file is captured before anything reads it, then parked unread, and nothing leaves the machine.
 3. A parked document names the reason it was not read, so one that never left the machine is not mistaken for one that was read and yielded nothing.
 
-**Exception:** assertion 1 is the wording a Documents surface owes and no Documents surface exists to say it ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open). Assertions 2 and 3 are what the cited tests hold: `build_reader()` returns `(_parking_reader, False)` unless both `VIVA_MODEL_ADAPTER` and `VIVA_MODEL` are set, and the parked result carries `no model configured for live reading`.
+**Exception:** assertion 3 is held to the width of three words and no further. The vault records no reason a document went unread — `DocumentCaptured` carries an id, a name, a length, a type and a confidence, and nothing about why nothing looked — so what a row can say is derived from whether any reading was ever recorded against it: nothing looked, something looked and yielded nothing, something looked and made something of it. That separates the two states the assertion is about, which is what it asks for. It does not name a reason: a document nothing looked at because it was over the size ceiling and one nothing looked at because no reader has been chosen carry the same word, and only the panel's own sentence says which of those the vault is in.
+
+Assertions 1 and 2 are held. The sentence is the persona pack's, composed in `product/viva/surface/documents.py` and rendered once per panel rather than once per row. The ordering is held by a named test that drives the capture path with a reader inspecting the raw store at the moment it is called, and by a second one whose reader throws; before those existed the whole suite stayed green with the capture moved after the read.
 
 ## Why
 
@@ -396,7 +398,7 @@ Steward has answered the question above.
 ## Open
 
 - The decisions this direction still needs before a first build brief: approve or reject the Tauri/React/sidecar shape; approve or reject `viva.surface` as the presentation boundary; decide whether macOS is the first Preview platform; approve the capability registry and its explicit non-surface dispositions; approve the *interface impact: none* escape hatch as verified rather than automatically trusted; approve amending `WORKFLOW.md` with the interface duties and the Steward question; and name the identities that own surface and desktop review.
-- Whether Review, Activity and Documents read list-shaped projections through `viva.surface` directly, or through the conversation's own block. Not a capability question — a question of which is the source of a list a person sees. This document does not take it.
+- Whether Review and Activity read list-shaped projections through `viva.surface` directly, or through the conversation's own block. Not a capability question — a question of which is the source of a list a person sees. This document does not take it. **Documents is settled, in a delegated run and reversible by the product owner.** The ruling: the documents read is composed by a module in the surface package, as a pure function of a projection, the set of originals the vault still holds, and whether this machine names a reader — not through the tool registry the overview goes through, and not through the conversation's block, which exists nowhere in this tree. The grounds are the difference between the two reads. The overview goes through the registry because it composes a **figure**, and a number on a screen has to be the number a conversation would say. The documents read composes no figure; it lists the agent's own paperwork. Routing it through the registry would mean inventing a new entity in a closed vocabulary. Whether the same answer holds for Review, where a queue is neither a figure nor paperwork, is left open above. A projection can be re-pointed later where an event schema could not be un-written, so this is a two-way door and reversing it costs one call site. **This is a ruling taken in a delegated run in the product owner's absence, not an approval by him.**
 - The M2 site: `implication_of` still derives direction from a posted sign. Activity's direction filters and transaction detail must not ship before it closes.
 - The `measure` field on the surface contract accepts any string while the doc claims a closed vocabulary.
 - What a breakdown looks like on a screen. A turn can enumerate in text — a name and an amount per line, the set's grade above, the read's tail sentence below — and that decides nothing about the visual form.

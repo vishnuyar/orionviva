@@ -168,10 +168,19 @@ thing, in the ordinary way. That the job reached its end is not.
 
 ## Open
 
-- **The channel has no producer.** The first is document ingest, and it is
-  designed there. Until then the wire remains as it is: the sidecar writes
-  frames, the native host reads and discards them, and nothing in the window
-  subscribes. None of the constraints above is implemented anywhere.
+- **The channel has no producer, and the first document action landed without
+  becoming one.** `viva.documents.upload` is served: it takes one path, opens
+  the file, seals it and answers. It emits no progress frame and mints no job
+  id, because the work is finished by the time the call returns — an identity
+  nothing consumes and a state nothing can produce are the two defects this
+  document names, and a synchronous capture would have produced both. The
+  identity constraint is nevertheless kept, and kept structurally: the request
+  accepts exactly one field, so a caller has nowhere to assert a name for work
+  it did not do. The wire is unchanged and the major version step is still
+  owed, by whichever cycle first mints an identity that outlives its call. Until
+  then the sidecar writes frames, the native host reads and discards them, and
+  nothing in the window subscribes. None of the constraints above is
+  implemented anywhere.
 - **Whether a job that outlives the call that started it needs a registry** —
   somewhere to look up a job by its id after the request has returned — is
   undecided. It is the obvious next question once identity is minted by the

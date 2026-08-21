@@ -34,6 +34,24 @@ DEFAULT_ARTIFACT = (ROOT / "product" / "viva" / "surface" / "fixtures"
 TODAY = "2026-09-30"
 LOCALE = "en-US"
 
+# Every setting the product reads that would otherwise move these bytes, stated
+# here and applied for the length of the run. The locale decides how amounts
+# are written; the two reader settings decide which sentence the documents read
+# says about reading, so a machine with them exported would generate a
+# different artifact from the same product. A generator whose output depends on
+# whose machine ran it is not a single writer of anything. `None` means the
+# setting is removed rather than given a value.
+STATED_ENVIRONMENT: dict[str, str | None] = {
+    "VIVA_LOCALE": LOCALE,
+    "VIVA_MODEL_ADAPTER": None,
+    "VIVA_MODEL": None,
+}
+
+# What read the fixture's documents. Named so the artifact says a reading
+# happened and says plainly that it was not a real one.
+READER_MODEL = "fixture-reader"
+READER_PROMPT = "fixture-read-v1"
+
 # The passphrase the fixture vault is minted under. It opens nothing that
 # outlives this run: the vault is built in a temporary directory and deleted.
 PASSPHRASE = "fixture-vault-passphrase"
@@ -52,18 +70,23 @@ def _import_path() -> None:
 
 
 @contextlib.contextmanager
-def _stated_locale(locale: str = LOCALE):
-    """Run under the conventions the fixture declares, whatever the machine's
-    own are, and restore the caller's locale on the way out."""
-    before = os.environ.get("VIVA_LOCALE")
-    os.environ["VIVA_LOCALE"] = locale
+def _stated_environment(settings: dict = STATED_ENVIRONMENT):
+    """Run under the settings the fixture declares, whatever the machine's own
+    are, and restore the caller's on the way out."""
+    before = {name: os.environ.get(name) for name in settings}
     try:
+        for name, value in settings.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
         yield
     finally:
-        if before is None:
-            os.environ.pop("VIVA_LOCALE", None)
-        else:
-            os.environ["VIVA_LOCALE"] = before
+        for name, value in before.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def build_vault(directory: Path):
@@ -71,20 +94,59 @@ def build_vault(directory: Path):
     _import_path()
     from viva.ledger import (Provenance, account_opened,
                              closing_balance_observed, document_captured,
-                             opening_balance_observed, simple_transaction)
+                             opening_balance_observed, read_recorded,
+                             simple_transaction)
     from viva.ledger.events import position_observed
     from viva.vault import Vault
 
     vault = Vault.open(directory, PASSPHRASE)
 
-    def document(body: str, doc_type: str, captured_at: str) -> str:
-        """One document as this vault holds it: captured first, always, and
-        identified by its own content."""
+    def document(body: str, doc_type: str, captured_at: str,
+                 declares: dict | None = None) -> str:
+        """One document as this vault holds it: captured first, always,
+        identified by its own content, and carrying the reading that settled it.
+
+        Every document in this vault posts, and a document cannot post through
+        this product without something having read it — so a reading is written
+        for each one. Without it the artifact would hold a document that is
+        settled and that nothing ever read, which is a combination the ingest
+        path cannot produce; a parity fixture encoding one proves the rendering
+        of something that cannot happen.
+
+        `declares` is what the document said about itself, written into the
+        reading verbatim the way a real reply is. The two boxes that bound a
+        statement's period are the part of it anything downstream reads, so a
+        document carrying both declares both and one carrying neither declares
+        neither, exactly as the vault's own events have it."""
         doc_id = vault.raw.put(body.encode("utf-8"))
         vault.ledger.append(document_captured(
             doc_id, f"{doc_type}.txt", len(body.encode("utf-8")), doc_type,
             0.98, captured_at, Provenance(doc_id=doc_id)))
+        reply = {"doc_type": doc_type, "doc_type_confidence": 0.98,
+                 **(declares or {})}
+        vault.ledger.append(read_recorded(
+            doc_id, READER_MODEL, READER_PROMPT, "text+image",
+            json.dumps(reply, sort_keys=True), 0.0, 0, 0, True, None,
+            captured_at, Provenance(doc_id=doc_id)))
         return doc_id
+
+    def parked(body: str, filename: str, captured_at: str) -> str:
+        """A document the vault holds and nothing has read.
+
+        Captured and nothing else: no reading, and no account event standing on
+        it. It is the ordinary outcome of adding a file with no reader chosen,
+        so the artifact holds a row carrying that word and the panel's sentence
+        about it — the states the documents read exists to tell apart."""
+        doc_id = vault.raw.put(body.encode("utf-8"))
+        vault.ledger.append(document_captured(
+            doc_id, filename, len(body.encode("utf-8")), "unknown", 0.0,
+            captured_at, Provenance(doc_id=doc_id)))
+        return doc_id
+
+    def period(opening: tuple[str, str], closing: tuple[str, str]) -> dict:
+        """The two boxes a statement prints its period between."""
+        return {"opening": {"amount_raw": opening[0], "date_raw": opening[1]},
+                "closing": {"amount_raw": closing[0], "date_raw": closing[1]}}
 
     def opening(account: str, amount: str, day: str, doc: str, page: int):
         return opening_balance_observed(
@@ -101,7 +163,9 @@ def build_vault(directory: Path):
     # One account reconciles: an issuer's closing figure and the period's own
     # movements arrive at the same number.
     checking_doc = document("everyday checking, sixth month", "bank_statement",
-                            "2026-07-02")
+                            "2026-07-02",
+                            period(("1000.00", "2026-06-01"),
+                                   ("3081.45", "2026-06-30")))
     vault.ledger.append(account_opened(
         "acct:everyday-checking", "depository", "Everyday Checking", "USD",
         "2026-06-01", institution="Sample Mutual",
@@ -117,7 +181,9 @@ def build_vault(directory: Path):
 
     # One is owed on, and the bill prints what is owed as a positive number.
     card_doc = document("household card, sixth month", "credit_card_statement",
-                        "2026-07-02")
+                        "2026-07-02",
+                        period(("240.00", "2026-06-01"),
+                               ("400.00", "2026-06-30")))
     vault.ledger.append(account_opened(
         "acct:household-card", "liability", "Household Card", "USD",
         "2026-06-01", institution="Sample Card Company",
@@ -172,7 +238,9 @@ def build_vault(directory: Path):
     # One disagrees with itself: the issuer's figure and the movements do not
     # meet, and the read says so rather than averaging them.
     joint_doc = document("joint checking, sixth month", "bank_statement",
-                         "2026-07-02")
+                         "2026-07-02",
+                         period(("800.00", "2026-06-01"),
+                                ("980.00", "2026-06-30")))
     vault.ledger.append(account_opened(
         "acct:joint-checking", "depository", "Joint Checking", "USD",
         "2026-06-01", institution="Sample Mutual",
@@ -206,6 +274,11 @@ def build_vault(directory: Path):
         account_number="000000001038", account_names=["SAMPLE HOLDER"]))
     vault.ledger.append(closing("acct:dormant-savings", "1250.00", "2025-11-30",
                                 dormant_doc, 1))
+
+    # And one the vault simply holds. Nothing has read it, so it stands behind
+    # no account and no figure cites it.
+    parked("a document this vault holds and has not read", "unread-note.txt",
+           "2026-07-02")
     return vault
 
 
@@ -220,6 +293,10 @@ def read_surfaces(vault) -> dict[str, Any]:
     from viva.desktop_bridge.vault_provider import create_vault_surface_provider
     from viva.surface import CURRENT_PROTOCOL
 
+    if not SURFACES:
+        raise SystemExit("the artifact declares no surface to read; a byte "
+                         "comparison over nothing passes without checking "
+                         "anything")
     dispatcher = handlers_with_surface_provider(
         create_vault_surface_provider(vault))
     reads = {}
@@ -235,17 +312,24 @@ def read_surfaces(vault) -> dict[str, Any]:
 
 
 def build_artifact() -> dict[str, Any]:
-    """The artifact both languages read, built by running the product."""
+    """The artifact both languages read, built by running the product.
+
+    Refuses to produce an artifact that holds nothing. A gate whose subject is
+    a byte comparison passes over an empty set as readily as over a correct
+    one, so the set it walks is checked to be non-empty rather than assumed."""
     _import_path()
     from viva.surface import CURRENT_PROTOCOL
 
     directory = Path(tempfile.mkdtemp(prefix="orionviva-parity-"))
     try:
-        with _stated_locale():
+        with _stated_environment():
             vault = build_vault(directory / "vault")
             reads = read_surfaces(vault)
     finally:
         shutil.rmtree(directory, ignore_errors=True)
+    if not reads or any(not frame.get("ok") for frame in reads.values()):
+        raise SystemExit("a surface did not answer; the artifact is not "
+                         "written from a failed read")
     return {
         "artifact": "orionviva.overview-parity-v1",
         "protocol": CURRENT_PROTOCOL.wire(),

@@ -31,6 +31,34 @@ def captured_docs(core: ProjectionCore) -> dict[str, str]:
     return dict(core._captured)
 
 
+def captured_filenames(core: ProjectionCore) -> dict[str, str]:
+    """What each captured document was called where it came from.
+
+    Empty for a document captured without a name — the capture records what it
+    was given, and a name nobody supplied is not invented here."""
+    return dict(core._captured_names)
+
+
+def read_attempted_docs(core: ProjectionCore) -> set[str]:
+    """Every document some model was asked about, whatever it answered.
+
+    Membership says a read happened, not that it worked: a reply that never
+    parsed is still a reading, and it is what separates a document that was
+    read and yielded nothing from one nothing has ever looked at."""
+    return set(core._read_attempted)
+
+
+def read_parsed_docs(core: ProjectionCore) -> set[str]:
+    """Every document whose reading declared itself usable.
+
+    Read off the reading's own ``parse_ok`` on the pass that produces facts,
+    which is what the vault recorded about that reading. Whether the ledger
+    then posted it, held it or had nowhere to put it is a separate fact and is
+    asked for separately: a document can reach a terminal state without any
+    reading behind it, and one can be read perfectly and reach none."""
+    return set(core._read_parsed)
+
+
 def open_holds(core: ProjectionCore) -> list[dict]:
     """StatementHeld bodies for documents not since posted."""
     return [b for did, b in core._held.items() if did not in core._posted]

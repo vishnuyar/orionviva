@@ -1,0 +1,60 @@
+/* The one sentence a panel says about a capture or about reading, what a
+   passphrase costs, and how a notice that reports a refusal is dressed. Every
+   value here is a token; a raw value does not belong in this file.
+
+   Each selector names an ancestor as well as the element, so that a rule in a
+   stylesheet predating the token set cannot outrank it on an element this one
+   paints. */
+
+.documents-surface .document-capture-answer {
+  display: grid;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xl);
+}
+
+.documents-surface .document-capture-answer strong {
+  color: var(--ink);
+  font-size: var(--text-fine);
+  font-weight: var(--weight-strong);
+  line-height: var(--leading-body);
+}
+
+.documents-surface .document-capture-answer p {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-fine);
+  line-height: var(--leading-loose);
+}
+
+/* The sentence a person has to read before the button is pressed, and cannot
+   read anywhere else afterwards: ordinary ink at body size on paper. */
+.vault-open-form .vault-passphrase-consequence {
+  margin: 0;
+  padding-block: var(--space-sm);
+  padding-inline: var(--space-sm);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: var(--text-body);
+  line-height: var(--leading-loose);
+  background: var(--paper);
+}
+
+/* A notice that reports something that did not happen, dressed the way the
+   review screen already dresses one: the border carries the signal, the words
+   stay in ordinary ink, and no glyph is added. The rule is selected by the
+   kind the notice declares, never by what its sentence says. */
+.notice.notice-refused {
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--rust);
+}
+
+.notice.notice-refused .notice-close {
+  color: var(--ink);
+}
+
+/* A notice's mark is measured in the same vocabulary as its text. */
+.notice svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}

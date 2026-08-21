@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 from viva.desktop_bridge.__main__ import Sidecar, _open_vault
-from viva.desktop_bridge.handlers import (REVIEW_OPERATIONS, default_handlers,
+from viva.desktop_bridge.handlers import (DOCUMENTS_OPERATIONS,
+                                           REVIEW_OPERATIONS, default_handlers,
                                            handlers_for_opened_vault)
 from viva.desktop_bridge.rpc import dispatch_frame
 from viva.desktop_bridge.surface_read import _read_request
@@ -51,6 +52,10 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     SURFACE_CAPABILITIES: set(),
     SURFACE_READ: {"surface", "parameters", "job_id"},
     REVIEW_OPERATIONS["decline"]: {"question_id", "reason"},
+    # One field, and that is the whole fence: a caller with nowhere to put an
+    # identity cannot assert one, so the constraint is kept by the shape of the
+    # request rather than by a check that could be relaxed.
+    DOCUMENTS_OPERATIONS["upload"]: {"path"},
 }
 
 # Where the sidecar declares the fields it will accept, per operation.
@@ -58,6 +63,7 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     BRIDGE_OPEN_VAULT: (BRIDGE_PACKAGE / "__main__.py", "_open_vault"),
     SURFACE_READ: (BRIDGE_PACKAGE / "surface_read.py", "_read_request"),
     REVIEW_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "review_actions.py", "_decline_request"),
+    DOCUMENTS_OPERATIONS["upload"]: (BRIDGE_PACKAGE / "document_actions.py", "_upload_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

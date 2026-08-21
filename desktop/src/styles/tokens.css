@@ -14,6 +14,84 @@
   --moss: #5d7968;
   --rust: #a96d4f;
   --gold: #b68a49;
+
+  /* Type. Eight steps, closed: a size that is not one of these is not a size
+     this product has. Only the largest step responds to viewport width. */
+  --text-caption: 11px;
+  --text-fine: 12px;
+  --text-body: 14px;
+  --text-lead: 16px;
+  --text-title: 19px;
+  --text-section: 24px;
+  --text-page: 30px;
+  --text-display: clamp(34px, 5vw, 48px);
+
+  --leading-tight: 1.2;
+  --leading-body: 1.45;
+  --leading-loose: 1.7;
+
+  --weight-regular: 400;
+  --weight-medium: 600;
+  --weight-strong: 700;
+
+  /* Space. A four-pixel rhythm with one half step for optical corrections. */
+  --space-hair: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+
+  /* Radius. Four rectangles, one pill, one circle. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+
+  /* Motion. Three durations and three curves. Durations collapse to zero when
+     the system asks for reduced motion, so a transition written against them
+     needs no second rule to be suppressed. */
+  --duration-quick: 120ms;
+  --duration-settle: 200ms;
+  --duration-drift: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Icon. Five sizes, so an icon is measured in the same vocabulary as text. */
+  --icon-xs: 14px;
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --icon-lg: 20px;
+  --icon-xl: 24px;
+}
+
+/* The dark palette is defined and nothing turns it on. It carries the same
+   nine colour names and no others, so switching it on later is a change of
+   which block wins and not a change of vocabulary. Nothing in this build sets
+   the attribute that selects it. */
+:root[data-theme="dark"] {
+  --ink: #e6ebe6;
+  --muted: #97a49b;
+  --line: #2e3a34;
+  --paper: rgba(24, 31, 28, 0.9);
+  --panel: #1b231f;
+  --sage: #2b3a31;
+  --moss: #8eb29b;
+  --rust: #d09274;
+  --gold: #d2aa68;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-quick: 0s;
+    --duration-settle: 0s;
+    --duration-drift: 0s;
+  }
 }
 
 * { box-sizing: border-box; }

@@ -109,6 +109,7 @@ export const demoSnapshot: SurfaceSnapshot = {
     { id: "demo-doc-unresolved-tax-form-2026", name: "unresolved-tax-form-2026.pdf", state: "Needs resolution", phase: "unresolved", phaseLabel: "Needs resolution", detail: "Synthetic corpus · an identity field remains unresolved", source: "Generated locally", pages: "2 pages", provenance: "Synthetic PDF · tax form · page 1", docType: "Tax form", resolved: false, rawAvailable: true, sample: { region: "Page 1 · identity field", waitReason: "The sample says an issue remains unresolved." }, evidenceLinks: [] },
     { id: "demo-doc-read-complete-insurance-2026", name: "read-complete-insurance-2026.pdf", state: "Read complete", phase: "read_ready", phaseLabel: "Read complete", detail: "Synthetic corpus · a fictional read result is available", source: "Generated locally", pages: "3 pages", provenance: "Synthetic PDF · insurance summary · pages 1–3", docType: "Insurance summary", resolved: true, rawAvailable: true, sample: { region: "Pages 1–3 · policy summary", contribution: "Fictional policy summary." }, evidenceLinks: [] },
   ],
+  readingSentence: "",
   captureQueue: [],
   processingJobs: [],
   outboundRecords: [] } },

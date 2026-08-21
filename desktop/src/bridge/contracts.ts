@@ -36,13 +36,27 @@ export class BridgeUnreadable extends Error {
     this.name = "BridgeUnreadable";
   }
 }
-export type BridgeTransport = { request: <T>(frame: BridgeRequest) => Promise<BridgeResponse<T>>; pickVaultDirectory?: () => Promise<string | null> };
+// A dropped file is handed over as a path and nothing else. The bytes are
+// opened by the sidecar, so nothing about the file's contents ever enters this
+// window.
+export type DroppedPathsListener = (paths: readonly string[]) => void;
+export type BridgeTransport = {
+  request: <T>(frame: BridgeRequest) => Promise<BridgeResponse<T>>;
+  pickVaultDirectory?: () => Promise<string | null>;
+  pickDocumentPaths?: () => Promise<readonly string[]>;
+  subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
+};
 export type BridgeClient = {
   openVault: (vaultDirectory: string, passphrase: string) => Promise<void>;
   pickVaultDirectory?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;
   readReview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
+  // One path per call. Several files are several frames, one after another,
+  // because the sidecar answers one request before it reads the next.
+  uploadDocument: (path: string) => Promise<unknown>;
+  pickDocumentPaths?: () => Promise<readonly string[]>;
+  subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
   // An action answers with an outcome. It arrives unread, like a surface read:
   // the transport carries the frame and something above it decides what it says.
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;

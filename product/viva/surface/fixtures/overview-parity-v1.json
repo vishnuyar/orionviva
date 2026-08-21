@@ -12,55 +12,80 @@
           "documents": [
             {
               "doc_type": "credit_card_statement",
+              "filename": "credit_card_statement.txt",
               "id": "0ea3d7d4441eef067e35c39ec91898390d8e9b973585de8c741d737a96d00660",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             },
             {
               "doc_type": "brokerage_statement",
+              "filename": "brokerage_statement.txt",
               "id": "3782cf884917f3d2794075b6c084cf994e0cd59f7c4a94b46657599682a5d7bd",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             },
             {
               "doc_type": "bank_statement",
+              "filename": "bank_statement.txt",
               "id": "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             },
             {
               "doc_type": "bank_statement",
+              "filename": "bank_statement.txt",
               "id": "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             },
             {
               "doc_type": "credit_card_statement",
+              "filename": "credit_card_statement.txt",
               "id": "a4f4a08820d946b4a77974e840ac16fc66a7462f6102eb539026a80eb6ccc7ef",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             },
             {
               "doc_type": "bank_statement",
+              "filename": "bank_statement.txt",
               "id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             },
             {
               "doc_type": "bank_statement",
+              "filename": "bank_statement.txt",
               "id": "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             },
             {
+              "doc_type": "unknown",
+              "filename": "unread-note.txt",
+              "id": "c4b30db9c250ee34f809d73f593104dd43f9b55f70ece5f822a6c1a786d2363d",
+              "raw_available": true,
+              "reading": "never_read",
+              "resolved": false
+            },
+            {
               "doc_type": "bank_statement",
+              "filename": "bank_statement.txt",
               "id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
               "raw_available": true,
+              "reading": "read",
               "resolved": true
             }
           ],
           "holds": [],
-          "raw_document_count": 8,
+          "raw_document_count": 9,
+          "reading_sentence": "Saved privately. Reading will wait until you choose a reader.",
           "state": "ready"
         },
         "job_id": "parity-documents",

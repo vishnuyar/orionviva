@@ -34,8 +34,8 @@
 
 ### T3 — Capture-first
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/raw_store.py:51 · product/viva/ledger/events.py:271
-**Test:** product/tests/test_raw_store.py::test_put_is_content_addressed
+**Code:** product/viva/ingest/raw_store.py:51 · product/viva/ledger/events.py:271 · product/viva/ingest/pipeline.py:870
+**Test:** product/tests/test_raw_store.py::test_put_is_content_addressed · product/tests/test_capture_first.py::test_the_raw_blob_is_stored_before_the_reader_is_called, ::test_a_reader_that_raises_does_not_take_the_document_with_it
 
 1. Every original document is written, encrypted and content-addressed, before anything parses it.
 2. Every model response is captured verbatim with the model and the prompt version that produced it.

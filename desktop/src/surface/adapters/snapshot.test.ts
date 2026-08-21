@@ -3,7 +3,7 @@ import { buildLiveSnapshot } from "./snapshot";
 
 describe("snapshot adapter", () => {
   it("builds a live snapshot with unsupported features unavailable", () => {
-    const snapshot = buildLiveSnapshot({ state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "", netWorth: null, accounts: [], recent: [] } }, { state: "ready", data: { documents: [], captureQueue: [], processingJobs: [], outboundRecords: [] } }, { state: "ready", data: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } });
+    const snapshot = buildLiveSnapshot({ state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "", netWorth: null, accounts: [], recent: [] } }, { state: "ready", data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, { state: "ready", data: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } });
     expect(snapshot.mode).toBe("live");
     expect(snapshot.activity.state).toBe("unavailable");
     expect(snapshot.conversation.state).toBe("unavailable");

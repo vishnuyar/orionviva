@@ -113,7 +113,19 @@ class ProjectionCore:
         self._acct: dict[str, _AccountState] = {}
         # Ingest read-model, maintained incrementally alongside balances.
         self._captured: dict[str, str] = {}     # doc_id -> model's doc_type
+        # What the file was called where it came from, kept beside the type so a
+        # document can be listed under a name its owner recognises rather than
+        # under the address its own bytes decide.
+        self._captured_names: dict[str, str] = {}   # doc_id -> filename
         self._replies: dict[str, str] = {}      # doc_id -> latest extract reply
+        # Every document some model was asked about at all, whether or not the
+        # reply parsed. A document in this set was read; one outside it was
+        # never read, and the two are different things to tell a person.
+        self._read_attempted: set[str] = set()  # doc_ids with any ReadRecorded
+        # And those whose reading declared itself usable. The reading says so
+        # about itself; whether anything was later done with it is a different
+        # fact, recorded elsewhere and never read as this one.
+        self._read_parsed: set[str] = set()     # doc_ids whose extract parsed
         # What the ledger posted for a document's closing, which is the
         # corrected figure when a person ruled on one. The reply is what the
         # model read; this is what was accepted.
@@ -231,6 +243,8 @@ class ProjectionCore:
 
         elif et == "DocumentCaptured":
             self._captured[event.body["doc_id"]] = event.body.get("doc_type", "")
+            self._captured_names[event.body["doc_id"]] = event.body.get(
+                "filename", "")
 
         elif et == "ReadRecorded":
             # The reply a model gave for a document, kept verbatim so a reader
@@ -238,10 +252,15 @@ class ProjectionCore:
             # itself. Later replies win, so a document re-read after a prompt
             # change is described by the newer reading. Text only: this layer
             # parses nothing and knows no document format.
-            if (event.body.get("phase", "extract") == "extract"
-                    and event.body.get("parse_ok")):
-                doc = event.body.get("doc_id", "")
-                if doc:
+            doc = event.body.get("doc_id", "")
+            if doc:
+                # That a model was asked is recorded for every phase and
+                # whatever came back; what it said is kept only where the
+                # extract pass parsed. A read that yielded nothing happened.
+                self._read_attempted.add(doc)
+                if (event.body.get("phase", "extract") == "extract"
+                        and event.body.get("parse_ok")):
+                    self._read_parsed.add(doc)
                     self._replies[doc] = event.body.get("response_text", "")
 
         elif et == "StatementHeld":

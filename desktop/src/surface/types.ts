@@ -28,6 +28,24 @@ export type ReviewActionState =
   | { state: "working"; questionId: string; verb: ReviewVerb }
   | { state: "settled"; questionId: string; verb: ReviewVerb; result: ActionResult };
 export type DeclineReason = "not_now" | "dont_know";
+// What kind of thing a notice is, as a closed word the notice carries. How a
+// notice is dressed follows this word; nothing reads the sentence itself to
+// decide, because a mark that has only ever meant benign must not be able to
+// arrive on a sentence saying something did not happen.
+export type NoticeKind = "acknowledged" | "refused";
+export type Notice = { kind: NoticeKind; text: string };
+// What is known about whether a document was read, as a closed set of three
+// words derived from what the vault already recorded. The word is the
+// backend's; nothing here turns one into a sentence.
+export type DocumentReading = "never_read" | "read_yielded_nothing" | "read";
+// What became of the last capture a person asked for. One gesture captures one
+// document, so one answer is what there is to hold. A capture in flight
+// carries what the one before it answered, so a receipt is not taken off the
+// screen by the next request.
+export type CaptureActionState =
+  | { state: "idle" }
+  | { state: "working"; result: ActionResult | null }
+  | { state: "settled"; result: ActionResult };
 
 export type FeatureIssue = { code: string; message: string };
 export type FeatureResult<T> =
@@ -45,7 +63,7 @@ export type EvidenceRelation = "attests" | "corroborates" | "same_period" | "sam
 export type EvidenceLink = { targetDocumentId: string; label: string; relation: EvidenceRelation; page: string };
 export type FigureView = { id: string; display: string; exactValue: string; currency: string; measure: "balance" | "owed" | "spending" | "income"; grade: FigureGrade; gradeLabel: string; gradeDescription: string; asOf: string; coverage: string; caveats: string[]; evidenceLinks: EvidenceLink[]; exactness?: string | null; recordIds?: readonly string[] };
 export type DocumentPhase = "captured" | "queued" | "reading" | "held" | "parked" | "read_ready" | "verified" | "unresolved";
-export type SurfaceDocument = { id: string; name: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; sample?: { region?: string; contribution?: string; waitReason?: string } };
+export type SurfaceDocument = { id: string; name: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; sample?: { region?: string; contribution?: string; waitReason?: string } };
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
 export type DocumentJob = { id: string; label: string; state: "running" | "paused" | "done"; detail: string; progress: string };
 export type OutboundRecord = { id: string; label: string; state: "queued" | "sent" | "blocked"; detail: string; destination: string };
@@ -61,7 +79,10 @@ export type ConversationTurn = { id: string; speaker: "you" | "viva"; text: stri
 export type ConversationPrompt = { id: string; label: string; detail: string; state: "ready" | "refusal" | "citation" };
 
 export type OverviewData = { currentThrough: string; coverage: string; corpusCoverage: string; corpusSource: string; netWorth: FigureView | null; accounts: AccountView[]; recent: ActivityView[] };
-export type DocumentsData = { documents: SurfaceDocument[]; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
+// One reviewed sentence for the whole panel, written by the backend, empty
+// when the panel has nothing to say. It is never composed here and never
+// repeated per row.
+export type DocumentsData = { documents: SurfaceDocument[]; readingSentence: string; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
 export type ReviewData = { queue: ReviewView[]; count: number; meta: { total: number; tail: { count: number; amount: string } | null; pending: { count: number } | null; invite: string; answeredByDocument: string } };
 export type ActivityData = { items: ActivityView[]; sample?: { readonly filters?: SampleActivityFilterCatalog } };
 export type ConversationData = { turns: ConversationTurn[]; prompts: ConversationPrompt[]; sample?: { turns: ConversationTurn[]; prompts: ConversationPrompt[] } };
@@ -76,5 +97,13 @@ export type TrustData = { notes: TrustNote[]; sample?: { capabilities: TrustSamp
 export type ReviewActions = {
   decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;
   reread: () => Promise<FeatureResult<ReviewData>>;
+};
+// The capture verb a screen may use, and the read that follows it. A source
+// that cannot capture carries none, so a screen with nothing behind the
+// control renders no control.
+export type DocumentActions = {
+  upload: (path: string) => Promise<ActionResult>;
+  // One document per call, and one call per gesture.
+  reread: () => Promise<FeatureResult<DocumentsData>>;
 };
 export type SurfaceSnapshot = { mode: SurfaceMode; disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; review: FeatureResult<ReviewData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> };

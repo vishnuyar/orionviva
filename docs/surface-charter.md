@@ -36,7 +36,7 @@ not cross, and this document is that boundary.
 
 ### VOICE-136 — a destination and a control render only when the registry and a served read say so
 **State:** contradicted
-**Code:** `desktop/src/app/navigation.ts:3` hand-writes six destinations as a literal list and derives none of them from anything. The destinations table in [user-interface-implementation-status.md](user-interface-implementation-status.md) derives that `accounts` has no live read and no claiming capability, that `activity` has no claiming capability, and that `trust` has no live read — and all three ship. `desktop/src/features/documents/Documents.tsx:13` renders a capture control whose operation is served by nothing, as the operation table in the same document derives.
+**Code:** `desktop/src/app/navigation.ts:3` hand-writes six destinations as a literal list and derives none of them from anything. The destinations table in [user-interface-implementation-status.md](user-interface-implementation-status.md) derives that `accounts` has no live read and no claiming capability, that `activity` has no claiming capability, and that `trust` has no live read — and all three ship.
 **Test:** none — the subject is what the interface renders, whose tests are TypeScript, and the rule index collects test names by parsing Python. The gate this rule wants is a comparison between the shipped destination list and the registry, and it belongs to the registry cycle.
 
 1. Navigation is a projection of the capability registry. A destination appears when a surfaced capability claims it **and** its live read is served for this vault and this build.
@@ -195,8 +195,8 @@ demo is a vault the sidecar opens, and not before.
 
 ### VOICE-140 — craft is a gate: tokens, and keyboard reach
 **State:** unmet
-**Code:** `desktop/src/styles/tokens.css` holds nine custom properties and every one of them is a colour. There is no type scale, no spacing scale, no radius, no motion rule and no dark-mode token. The two stylesheets beside it carry 148 raw `font-size` declarations between them — 30 in `desktop/src/styles/shell.css` and 118 in `desktop/src/styles/surfaces.css`. One literal `◎` stands in for an icon at `desktop/src/features/accounts/Accounts.tsx:34`.
-**Test:** none — this rule names two gates that do not exist. Neither is built by the cycle that writes this rule.
+**Code:** The two stylesheets beside `desktop/src/styles/tokens.css` carry 148 raw `font-size` declarations between them — 30 in `desktop/src/styles/shell.css` and 118 in `desktop/src/styles/surfaces.css`. One literal `◎` stands in for an icon at `desktop/src/features/accounts/Accounts.tsx:34`.
+**Test:** none the rule index can name — the index collects test names by parsing Python, and both gates this rule wants read the interface. The token gate exists: `desktop/scripts/check-style-tokens.mjs` runs in the desktop CI job, holds a stylesheet written against the token set to zero raw values, ratchets the two legacy stylesheets by a count that may fall and may not rise, and carries self-checks that each break one of its rules and assert it goes red. The keyboard check does not exist.
 
 1. A type scale, a spacing scale, motion rules — including where motion is forbidden, which is near money and near grades — dark mode and iconography exist as tokens before a new surface ships against them.
 2. A screen using a value its token system does not hold fails the interface check.
@@ -204,12 +204,16 @@ demo is a vault the sidecar opens, and not before.
 4. Focus is not lost when a control becomes busy.
 
 **This is the words document's confession made checkable.** That document ends
-by saying the interface *"has an architecture gate and no craft gate"*, and
-that naming it is not the same as closing it. Nothing in the rule index covers
+on the craft gap and says that naming it is not the same as closing it; now
+that half the gate exists, it says which half. Nothing in the rule index covers
 tokens, type, spacing, motion, dark mode, iconography or accessibility. This
 rule is the whole of that territory, which is why it is the most expensive rule
-in this document: it is unmet against a nine-colour token file and 148
-declarations that would each have to find a token to come from.
+in this document. The token file now holds a type scale, a spacing scale,
+radii, motion durations and easings, a reduced-motion block, icon sizes and a
+dark-mode block; what keeps the rule unmet is its second clause, because the
+legacy stylesheets still carry raw values that would each have to find a token
+to come from, and the gate reports how many rather than claiming the migration
+is done.
 
 **What was narrowed, and why the un-narrowed sentence is not a rule.** The
 proposal was that *a surface a keyboard cannot fully drive fails*. That cannot

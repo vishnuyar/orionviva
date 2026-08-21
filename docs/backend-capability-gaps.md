@@ -61,9 +61,9 @@ of synthetic statements: the engine's write functions all resolve and run, a
 document posted and a second one parked correctly with no reader configured, the
 reconciliation sweep returned identical counts on two consecutive runs and opened
 no network socket, and answering and declining questions moved the open-question
-count down and refused an unknown id cleanly. The functions are there. One of
-them now carries its result to a screen — setting a question aside — and the
-rest do not.
+count down and refused an unknown id cleanly. The functions are there. Two of
+them now carry a result to a screen — setting a question aside, and capturing a
+document — and the rest do not.
 
 **Synthetic state is not backend parity.** A preview that simulates a state
 locally proves the rendering and proves nothing about whether the backend and the
@@ -128,14 +128,15 @@ only the reviewed model, once only a client method.
   corroborated grade and a reconciled closing balance. `build_reader()` was
   exercised in all three of its configurations: neither environment setting,
   adapter alone, and adapter with a pinned model — only the third returns a live
-  reader. What is missing is transport: the declared operations table lists no
-  operation serving `DocumentIngestResult.v1`. Three things nonetheless keep this
-  a design cycle rather than plumbing. The sentence a parked document owes a person exists as a
-  rule and on no screen. A configured reader may call a model and therefore may
-  send bytes off the machine, which the standing invariant that nothing leaves
-  silently makes a decision rather than an implementation detail. And `upload` is
-  synchronous while the sidecar's loop reads standard input one line at a time,
-  so a naive exposure freezes the bridge for the length of a real read.
+  reader. Capture has transport and posting does not: `viva.documents.upload` is
+  served, and the declared operations table still lists no operation serving
+  `DocumentIngestResult.v1`. Two things nonetheless keep the rest of this a
+  design cycle rather than plumbing. A configured reader may call a model and
+  therefore may send bytes off the machine, which the standing invariant that
+  nothing leaves silently makes a decision rather than an implementation detail.
+  And `upload` is synchronous while the sidecar's loop reads standard input one
+  line at a time, so a naive exposure freezes the bridge for the length of a
+  real read.
 
 - **Rescan** — *Document journey.* `product/viva/ingest/pipeline.py#sweep`,
   `product/viva/rescan.py#main`. Both resolve. `sweep` was run twice over one

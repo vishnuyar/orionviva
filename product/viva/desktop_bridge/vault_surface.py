@@ -8,7 +8,8 @@ from typing import Any
 from viva.questions import open_questions
 
 from ..env import locale_from_env
-from ..ingest.review import held_items, other_holds
+from ..ingest.reader import live_reading_configured
+from ..surface.documents import documents
 from ..surface.overview import overview
 from ..vault import Vault
 from .handlers import BridgeRequestError
@@ -50,24 +51,17 @@ class OpenedVaultSurfaceProvider:
         return overview(projection, locale_from_env())
 
     def _documents(self) -> dict[str, Any]:
-        projection = self._vault.ledger.projection()
-        holds = [item.to_dict() for item in held_items(projection)]
-        holds.extend(other_holds(projection))
-        captured = projection.captured_docs()
-        return {
-            "state": "ready",
-            "documents": [
-                {
-                    "id": doc_id,
-                    "doc_type": doc_type,
-                    "resolved": projection.is_resolved(doc_id),
-                    "raw_available": self._vault.raw.has(doc_id),
-                }
-                for doc_id, doc_type in sorted(captured.items())
-            ],
-            "holds": holds,
-            "raw_document_count": len(self._vault.raw.doc_ids()),
-        }
+        """Open the projection and the blob store, and hand both to the surface
+        that composes them.
+
+        Which documents are listed, what each is called, how far its reading
+        got and what the panel says about reading are all decided in the
+        surface. What is decided here is only what the surface cannot see for
+        itself: which originals the vault still holds, and whether this machine
+        names a reader at all."""
+        return documents(self._vault.ledger.projection(),
+                         frozenset(self._vault.raw.doc_ids()),
+                         live_reading_configured())
 
     def _review(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         projection = self._vault.ledger.projection()

@@ -6,6 +6,10 @@ import { EvidenceDrawer } from "./EvidenceDrawer";
 import { FeatureBoundary } from "./FeatureBoundary";
 import { Figure } from "./Figure";
 import { accountEvidenceFigure } from "../surface/evidence";
+import { UNSPOKEN_REPLY, channelPresentation } from "./actionChannel";
+
+const noAction = () => {};
+const noticeIcons = { acknowledged: <span>acknowledged-mark</span>, refused: <span>refused-mark</span> };
 import { PanelStateView, type PanelStateCopy } from "./PanelStateView";
 import { ProofLinks } from "./ProofLinks";
 import { SourceDisclosure } from "./SourceDisclosure";
@@ -104,7 +108,7 @@ describe("shared surface components", () => {
 
   it("renders the complete evidence drawer in reviewed section order", () => {
     const account = { id: "account", name: "Card", kind: "card", measure: "owed" as const, exactValue: "101", currency: "USD", display: "$101", grade: "verified" as const, gradeLabel: "Verified", gradeDescription: "Verified", note: null, asOf: "today", coverage: "monthly", provenance: "Statement page 1", evidenceLinks: [{ targetDocumentId: "doc", label: "Card statement", relation: "same_account" as const, page: "page 1" }], state: "ready" as const, exactness: "rounded", recordIds: ["record-card-1"] };
-    const snapshot: SurfaceSnapshot = { mode: "demo", disclosure: sampleDisclosure, overview: { state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "", netWorth: null, accounts: [account], recent: [] } }, documents: { state: "ready", data: { documents: [{ id: "doc", name: "card.pdf", state: "Verified", phaseLabel: "Verified", detail: "", source: "", pages: "1", provenance: "", evidenceLinks: [] }], captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { mode: "demo", disclosure: sampleDisclosure, overview: { state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "", netWorth: null, accounts: [account], recent: [] } }, documents: { state: "ready", data: { documents: [{ id: "doc", name: "card.pdf", state: "Verified", phaseLabel: "Verified", detail: "", source: "", pages: "1", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const open = vi.fn();
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByRole, getByText, getAllByRole } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "account:account" }} onDismiss={vi.fn()} onOpenDocument={open} renderEvidenceBadge={badge} />);
@@ -140,7 +144,7 @@ describe("shared surface components", () => {
     const customLabel = "Backend attested — custom";
     const customDescription = "Verified by the private-vault attestation service.";
     const account = { id: "live-custom", name: "Attested account", kind: "deposit", measure: "balance" as const, exactValue: "101", currency: "USD", display: "Canonical account display", grade: "unavailable" as const, gradeLabel: customLabel, gradeDescription: customDescription, note: null, asOf: "2026-08-18", coverage: "Statement period", provenance: "Private statement page 1", evidenceLinks: [], state: "ready" as const };
-    const snapshot: SurfaceSnapshot = { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "", netWorth: null, accounts: [account], recent: [] } }, documents: { state: "ready", data: { documents: [], captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "", netWorth: null, accounts: [account], recent: [] } }, documents: { state: "ready", data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
 
     const { getByLabelText, getByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "account:live-custom" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
@@ -198,9 +202,54 @@ describe("shared surface components", () => {
 
   it("renders and dismisses status notice controls", () => {
     const dismiss = vi.fn();
-    const { getByRole } = render(<StatusNotice notice="Status copy" onDismiss={dismiss} statusIcon={<span>i</span>} dismissIcon={<span>x</span>} />);
+    const { getByRole } = render(<StatusNotice notice={{ kind: "acknowledged", text: "Status copy" }} onDismiss={dismiss} icons={noticeIcons} dismissIcon={<span>x</span>} />);
     expect(getByRole("status")).toHaveTextContent("Status copy");
     fireEvent.click(getByRole("button", { name: "Dismiss notice" }));
     expect(dismiss).toHaveBeenCalledOnce();
+  });
+
+  // The mark a notice wears follows the word it declares. A sentence saying
+  // something did not happen cannot reach the mark that means it did, whatever
+  // the sentence says.
+  // A refusal carries no mark: the universal glyph for something went wrong is
+  // a third signal where the screen that already ships a refusal uses one.
+  it("gives a refusal no mark of its own", () => {
+    const marks = { acknowledged: <span>acknowledged-mark</span>, refused: null };
+    const { getByRole } = render(<StatusNotice notice={{ kind: "refused", text: "Nothing was added." }} onDismiss={noAction} icons={marks} dismissIcon={<span>x</span>} />);
+    const notice = getByRole("status");
+    expect(notice).toHaveTextContent("Nothing was added.");
+    // The sentence and the dismiss control, and nothing standing before them.
+    expect([...notice.children].map((child) => child.textContent)).toEqual(["Nothing was added.", "x"]);
+  });
+
+  it("dresses a notice by the kind it declares and never by what it says", () => {
+    const said = "Nothing was added.";
+    const acknowledged = render(<StatusNotice notice={{ kind: "acknowledged", text: said }} onDismiss={noAction} icons={noticeIcons} dismissIcon={<span>x</span>} />);
+    expect(acknowledged.getByRole("status")).toHaveAttribute("data-kind", "acknowledged");
+    expect(acknowledged.getByRole("status").className).toBe("notice");
+    expect(acknowledged.getByText("acknowledged-mark")).toBeInTheDocument();
+    acknowledged.unmount();
+
+    const refused = render(<StatusNotice notice={{ kind: "refused", text: said }} onDismiss={noAction} icons={noticeIcons} dismissIcon={<span>x</span>} />);
+    expect(refused.getByRole("status")).toHaveAttribute("data-kind", "refused");
+    expect(refused.getByRole("status").className).toBe("notice notice-refused");
+    expect(refused.queryByText("acknowledged-mark")).not.toBeInTheDocument();
+  });
+});
+
+describe("the words every screen uses for a request that never reached an answer", () => {
+  it("names each channel by what did not happen to the request, and names no verb", () => {
+    expect(channelPresentation({ state: "unserved" })).toEqual({ title: "Your vault would not take this request", detail: "Your vault refused the request as this screen sent it. Whether anything was recorded is not something this screen can tell you." });
+    expect(channelPresentation({ state: "unanswered" })).toEqual({ title: "Your vault did not answer", detail: "Nothing came back, so this screen will not say whether anything was recorded." });
+    expect(channelPresentation({ state: "unreadable" })).toEqual({ title: "The reply could not be read", detail: "Your vault answered in a way this screen does not recognise, so it will not say whether anything was recorded." });
+    expect(UNSPOKEN_REPLY).toBe("Your vault recorded no sentence for this reply.");
+  });
+
+  it("leaves no channel without words", () => {
+    for (const state of ["unserved", "unanswered", "unreadable"] as const) {
+      const said = channelPresentation({ state });
+      expect(said.title.trim()).not.toBe("");
+      expect(said.detail.trim()).not.toBe("");
+    }
   });
 });

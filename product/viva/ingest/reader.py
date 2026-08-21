@@ -201,6 +201,32 @@ def _parking_reader(data, doc_id):
     return ReadResult("unknown", 0.0, None, "no model configured for live reading")
 
 
+def parking_reader():
+    """The read function for a path that captures and does not read.
+
+    A caller that must not read asks for this rather than building a reader and
+    discarding the live half: discarding is one line away from not discarding,
+    and a function with no branch that could return a live reader is not. What
+    comes back opens no connection and names no model, whatever the environment
+    holds.
+    """
+    return _parking_reader
+
+
+def live_reading_configured() -> bool:
+    """Whether this environment names both halves of a live reader.
+
+    A caller that parks by construction still has two true things it might say
+    about why nothing was read, and this is the one that tells them apart. It
+    asks the same question :func:`build_reader` asks and builds nothing, so
+    knowing the answer costs no adapter, no key and no call.
+    """
+    import os
+
+    return bool(os.environ.get("VIVA_MODEL_ADAPTER")
+                and os.environ.get("VIVA_MODEL"))
+
+
 def build_reader():
     """The document reader the environment configures, as `(read_fn, is_live)`.
 
@@ -220,10 +246,10 @@ def build_reader():
 
     from ..env import currency_from_env, locale_from_env
 
+    if not live_reading_configured():
+        return parking_reader(), False
     adapter = os.environ.get("VIVA_MODEL_ADAPTER")
     model = os.environ.get("VIVA_MODEL")
-    if not (adapter and model):
-        return _parking_reader, False
 
     spec = ModelSpec(
         name="viva-reader", adapter=adapter, model=model,

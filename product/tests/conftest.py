@@ -58,3 +58,25 @@ def _cheap_vault_kdf(request, monkeypatch):
         return cls(salt=os.urandom(crypto.SALT_LEN), n=TEST_SCRYPT_N)
 
     monkeypatch.setattr(crypto.KdfParams, "new", classmethod(cheap_new))
+
+
+# The two settings that decide whether a live reader can be built at all. What
+# they hold changes what the product says about a document that has not been
+# read, so a machine where they are set would run a different suite from one
+# where they are not — including the generated parity artifact, whose bytes are
+# compared exactly.
+_READER_ENV = ("VIVA_MODEL_ADAPTER", "VIVA_MODEL")
+
+
+@pytest.fixture(autouse=True)
+def _no_reader_configured_unless_a_test_says_so(monkeypatch):
+    """Start every test on a machine that names no reader.
+
+    A test whose subject is a configured environment sets these itself, and its
+    own setting lands after this one. Everything else runs from a known floor
+    rather than from whatever the developer's shell happens to export — a suite
+    that passes only where the environment is unset is not a gate, and one
+    whose verdict moves with a shell variable is worse.
+    """
+    for name in _READER_ENV:
+        monkeypatch.delenv(name, raising=False)

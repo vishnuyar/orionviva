@@ -40,6 +40,45 @@ describe("bridge transport framing", () => {
     expect(frames[0].payload).toEqual({ question_id: "question-2", reason: "dont_know" });
   });
 
+  it("frames a capture as one path per request and asserts no job identity", async () => {
+    const frames: BridgeRequest[] = [];
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      return { protocol: "1.0", request_id: frame.requestId, ok: true, result: { kind: "completed", message: "Saved privately.", state: null, reason: null } as T };
+    } });
+
+    await client.uploadDocument("/chosen/first.pdf");
+    await client.uploadDocument("/chosen/second.pdf");
+
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.documents.upload", "viva.documents.upload"]);
+    expect(frames[0].payload).toEqual({ path: "/chosen/first.pdf" });
+    expect(frames[1].payload).toEqual({ path: "/chosen/second.pdf" });
+    for (const frame of frames) expect(Object.keys(frame.payload)).toEqual(["path"]);
+  });
+
+  it("forwards the native file picker and the dropped-path subscription without a sidecar frame", async () => {
+    const frames: unknown[] = [];
+    let listener: ((paths: readonly string[]) => void) | null = null;
+    const client = createHostBridgeClient({
+      request: async <T>(frame: BridgeRequest) => { frames.push(frame); return { protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }; },
+      pickDocumentPaths: async () => ["/chosen/first.pdf", "/chosen/second.pdf"],
+      subscribeToDroppedPaths: async (listen) => { listener = listen; return () => { listener = null; }; },
+    });
+
+    await expect(client.pickDocumentPaths?.()).resolves.toEqual(["/chosen/first.pdf", "/chosen/second.pdf"]);
+    const stop = await client.subscribeToDroppedPaths?.(() => {});
+    expect(listener).not.toBeNull();
+    stop?.();
+    expect(listener).toBeNull();
+    expect(frames).toEqual([]);
+  });
+
+  it("offers no capture verbs when the host transport carries none", async () => {
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) });
+    expect(client.pickDocumentPaths).toBeUndefined();
+    expect(client.subscribeToDroppedPaths).toBeUndefined();
+  });
+
   it("keeps three unlike failures apart at the transport", async () => {
     const refusing = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => ({ protocol: "1.0", request_id: frame.requestId, ok: false, error: { code: "invalid_request", message: "reason must be one of: dont_know, not_now" } } as BridgeResponse<T>) });
     const empty = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => ({ protocol: "1.0", request_id: frame.requestId, ok: true } as BridgeResponse<T>) });

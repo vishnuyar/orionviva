@@ -15,9 +15,11 @@
     "tauri:build": "npm run desktop:build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check:architecture": "node scripts/check-ui-boundaries.mjs"
+    "check:architecture": "node scripts/check-ui-boundaries.mjs",
+    "check:styles": "node scripts/check-style-tokens.mjs"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",

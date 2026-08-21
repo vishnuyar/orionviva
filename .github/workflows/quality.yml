@@ -62,6 +62,7 @@ jobs:
       - run: npm ci
       - name: Check frontend architecture boundaries
         run: npm run check:architecture
+      - run: npm run check:styles
       - run: npm test
       - run: npm run build
       - name: Build desktop sidecar

@@ -9,7 +9,7 @@ import { useSurfaceSession } from "./useSurfaceSession";
 import { destinations } from "./navigation";
 import { retainSelection } from "./selection";
 
-const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", boundary: "bridge-ready", mode: "live", load: async () => liveReadingSnapshot(), reviewActions: { decline: async () => ({ state: "unanswered" }), reread: async () => ({ state: "absent", reason: "not asked" }) } };
+const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", boundary: "bridge-ready", mode: "live", load: async () => liveReadingSnapshot(), reviewActions: { decline: async () => ({ state: "unanswered" }), reread: async () => ({ state: "absent", reason: "not asked" }) }, documentActions: null };
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason?: unknown) => void; const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; }); return { promise, resolve, reject }; }
 function ok<T>(requestId: string, result: T): BridgeResponse<T> { return { protocol: "1.0", request_id: requestId, ok: true, result }; }
 function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : { questions: [], total: 0 }; }
@@ -17,7 +17,7 @@ function readyLive(): SurfaceSnapshot {
   return {
     ...liveReadingSnapshot(),
     overview: { state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "Opened local vault", netWorth: null, accounts: [{ id: "account-live", name: "Live", kind: "", measure: null, exactValue: "", currency: "", display: "", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "Unavailable", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }], recent: [] } },
-    documents: { state: "ready", data: { documents: [{ id: "document-live", name: "document-live", state: "Resolved", phaseLabel: "Not supplied", detail: "", source: "", pages: "", provenance: "", evidenceLinks: [] }], captureQueue: [], processingJobs: [], outboundRecords: [] } },
+    documents: { state: "ready", data: { documents: [{ id: "document-live", name: "document-live", state: "Resolved", phaseLabel: "Not supplied", detail: "", source: "", pages: "", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } },
     review: { state: "ready", data: { queue: [{ id: "question-live", label: "Question", detail: "", status: "Read only", action: "", type: "", evidence: "", state: "needs_input", outcome: null, disposition: null }], count: 1, meta: { total: 1, tail: null, pending: null, invite: "", answeredByDocument: "" } } },
   };
 }
@@ -104,14 +104,14 @@ describe("surface session", () => {
     const failed = sessionReducer(opening, { type: "open-failed", requestId: 1 });
     expect(failed.phase).toBe("settled");
     expect(failed.snapshot).toBe(before.snapshot);
-    expect(failed.notice).toContain("could not be opened");
+    expect(failed.notice).toEqual({ kind: "refused", text: "The local vault could not be opened. Check the directory and passphrase, then try again." });
   });
 
   it("reports the exact partial read notice after one failed result", () => {
     const snapshot = { ...readyLive(), documents: { state: "failed", reason: "read_failed" } as const };
     const current = { ...initialSession(), requestId: 1, source: liveSource, snapshot: liveReadingSnapshot() };
     const settled = sessionReducer(current, { type: "loaded", requestId: 1, snapshot });
-    expect(settled.notice).toBe("The private vault opened, but some surfaces could not be read. Your vault was not changed.");
+    expect(settled.notice).toEqual({ kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." });
   });
 
   it("reset during a pending open wins before the host resolves", async () => {
@@ -127,7 +127,7 @@ describe("surface session", () => {
     await act(async () => { await pending; });
     expect(result.current.session.source.mode).toBe("demo");
     expect(result.current.session.snapshot).toBe(sampleSnapshot);
-    expect(result.current.session.notice).toBe("Sample vault reset to the fictional data stored with the app.");
+    expect(result.current.session.notice).toEqual({ kind: "acknowledged", text: "Sample vault reset to the fictional data stored with the app." });
   });
 
   it("two opens resolving out of order keep the newest private request", async () => {

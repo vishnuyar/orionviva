@@ -22,6 +22,13 @@ export function lifecyclePresentation(value: string | null | undefined): Lifecyc
   return match ? { state: "ready", title: match.title, detail: match.detail } : { state: "unrecognized", title: "Lifecycle not recognized", detail: "This fictional sample supplies a lifecycle value this preview does not recognize. No later step is implied." };
 }
 
+// What a row calls a document: the name the vault recorded for the file where
+// there is one, and the kind of document where there is not. The identity stays
+// on the row beneath it, as a detail rather than as a title.
+export function documentRowLabel(document: SurfaceDocument): string {
+  return document.name.trim() || document.docType?.trim() || "Document type unavailable";
+}
+
 export type DocumentSelection =
   | { state: "empty" }
   | { state: "ready"; document: SurfaceDocument }

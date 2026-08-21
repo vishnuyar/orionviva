@@ -379,6 +379,26 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "diagnosis_unknown_tag":         frozenset(),
     "diagnosis_unknown_merchant":    frozenset(),
     "diagnosis_unknown_currency":    frozenset(),
+    # What is said about a document the vault has just taken in. Capture and
+    # reading are two different things, so the first three tell apart three
+    # states a person would otherwise read as one: nothing has been chosen to
+    # read it, something could read it and nothing on this path did, and
+    # something read it and came back with nothing usable. The last three are
+    # what is said where nothing was saved at all — the same file already held,
+    # a file past what the window will take, and a file that would not open.
+    # The size line places the limit rather than stating it, because the limit
+    # is one number the reader owns and a second copy of it would be free to
+    # drift away from the one being enforced.
+    "documents_saved_no_reader":       frozenset(),
+    "documents_saved_unread":          frozenset(),
+    "documents_read_yielded_nothing":  frozenset(),
+    "documents_already_held":          frozenset(),
+    "documents_too_large":             frozenset({"limit"}),
+    "documents_cannot_open":           frozenset(),
+    # And when the vault answers about a document in a way none of those
+    # describes. It names no queue and no next screen: a person who has just
+    # added a file is not standing anywhere those words would reach them.
+    "documents_outcome_unstated":      frozenset(),
 }
 
 

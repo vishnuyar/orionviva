@@ -13,11 +13,12 @@ import { Overview } from "../features/overview/Overview";
 import { Review } from "../features/review/Review";
 import { Trust } from "../features/trust/Trust";
 import { resolveEvidenceTarget } from "../surface/evidence";
-import type { DeclineReason, Destination, EvidenceLink, FeatureResult, ReviewActionState, ReviewData, SurfaceMode } from "../surface/types";
+import type { DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, ReviewActionState, ReviewData, SurfaceMode } from "../surface/types";
 import { destinations } from "./navigation";
 import { useResponsiveNavigation } from "./useResponsiveNavigation";
 import { useEvidenceDialog } from "./useEvidenceDialog";
 import { useSurfaceSession } from "./useSurfaceSession";
+import type { CaptureGesture } from "./useSurfaceSession";
 
 const pageCopy: Record<Destination, { title: string; intro: string }> = {
   overview: { title: "Your financial picture", intro: "A quiet view of what is known, what is pending, and what still needs a human decision." },
@@ -27,6 +28,11 @@ const pageCopy: Record<Destination, { title: string; intro: string }> = {
   review: { title: "Review", intro: "One quiet place to inspect questions returned by the current read." },
   trust: { title: "Trust", intro: "What this preview can establish, what is unavailable, and which capabilities are not connected." },
 };
+// One mark per kind of notice, chosen by the word the notice declares. The
+// tick is reachable only from the kind that means something happened, and a
+// refusal carries no mark at all: its border says what it is, as it does on
+// the review screen.
+const noticeIcons: Record<NoticeKind, ReactNode> = { acknowledged: <Check />, refused: null };
 type Overlay = null | { kind: "navigation" } | { kind: "conversation"; requestId: number; mode: SurfaceMode } | { kind: "evidence"; selection: { figureId: string; requestId: number; mode: SurfaceMode } };
 type PendingDocumentFocus =
   | { target: "document"; documentId: string; requestId: number; mode: SurfaceMode; nonce: number }
@@ -46,7 +52,7 @@ export function ConversationDialogShell({ mode, resetKey, drawerRef, closeRef, o
 }
 
 export function App() {
-  const control = useSurfaceSession();
+  const control = useSurfaceSession((gesture) => documentDropped(gesture));
   const { session } = control;
   const surface = session.snapshot;
   const [vaultDirectory, setVaultDirectory] = useState("");
@@ -191,9 +197,8 @@ export function App() {
   function closeNavigation(restoreFocus = true) { setOverlay(null); if (restoreFocus) requestAnimationFrame(() => navigationTriggerRef.current?.focus()); }
   function openNavigation() { if (!isNarrow) return; setOverlay({ kind: "navigation" }); }
   function navigate(destination: Destination) { const focusHeading = isNarrow && mobileNav; control.navigate(destination); if (mobileNav) setOverlay(null); if (focusHeading) requestAnimationFrame(() => pageTitleRef.current?.focus()); }
-  function addDocument() {
-    if (surface.mode !== "demo") return;
-    control.setNotice("Opened the fictional sample document journey. No file was selected, no vault event was written, no model call was made, and nothing was sent.");
+  function openDocuments() {
+    if (surface.mode === "demo") control.setNotice({ kind: "acknowledged", text: "Opened the fictional sample document journey. No file was selected, no vault event was written, no model call was made, and nothing was sent." });
     setPendingDocumentFocus({ target: "capture", requestId: session.requestId, mode: surface.mode, nonce: ++pendingFocusNonce.current });
     control.navigate("documents");
   }
@@ -204,21 +209,47 @@ export function App() {
     setPendingReviewFocus({ requestId: session.requestId, mode: surface.mode, questionId, nonce: ++reviewFocusNonce.current });
   }
   function declineQuestion(questionId: string, reason: DeclineReason) { void control.declineQuestion(questionId, reason); }
+  // A dropped file changed the screen without the person asking, so the move
+  // goes through the same navigation every other screen change goes through,
+  // any open drawer is dismissed so the receipt is neither inert nor hidden
+  // behind it, and the heading is focused so the move is announced.
+  // What a gesture carrying more than one document is told, wherever it came
+  // from. One sentence, one place.
+  function refuseSeveral() { control.setNotice({ kind: "refused", text: "This takes one document at a time. Nothing was added." }); }
+  function documentDropped(gesture: CaptureGesture) {
+    if (gesture === "none") return;
+    evidenceDialog.cancelPendingRestore();
+    conversationDialog.cancelPendingRestore();
+    setOverlay(null);
+    if (gesture === "several") { refuseSeveral(); return; }
+    navigate("documents");
+    requestAnimationFrame(() => pageTitleRef.current?.focus());
+  }
+  async function chooseDocuments() {
+    const gesture = await control.chooseDocuments();
+    if (gesture === "unopened") control.setNotice({ kind: "refused", text: "The file picker could not be opened, so nothing was chosen and nothing was added to this vault." });
+    if (gesture === "several") refuseSeveral();
+  }
   function openFigure(figureId: string) { setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId, mode: surface.mode } }); }
   function openEvidenceDocument(link: EvidenceLink, fromDrawer = false) {
     const target = resolveEvidenceTarget(surface.documents, link.targetDocumentId);
     const label = link.label.trim() || "Source label unavailable";
-    if (target.state === "missing_identity") { control.setNotice("This evidence reference does not include a document identity."); return; }
-    if (target.state === "documents_unavailable") { control.setNotice("Documents are not available in the current vault read."); return; }
-    if (target.state === "missing_document") { control.setNotice(`The source document “${label}” is not present in the current vault read.`); return; }
-    if (target.state === "conflicted_identity") { control.setNotice(`More than one document has the identity “${link.targetDocumentId}” in the current vault read. No document was opened.`); return; }
+    if (target.state === "missing_identity") { control.setNotice({ kind: "refused", text: "This evidence reference does not include a document identity." }); return; }
+    if (target.state === "documents_unavailable") { control.setNotice({ kind: "refused", text: "Documents are not available in the current vault read." }); return; }
+    if (target.state === "missing_document") { control.setNotice({ kind: "refused", text: `The source document “${label}” is not present in the current vault read.` }); return; }
+    if (target.state === "conflicted_identity") { control.setNotice({ kind: "refused", text: `More than one document has the identity “${link.targetDocumentId}” in the current vault read. No document was opened.` }); return; }
     control.selectDocument(target.document.id); control.navigate("documents");
     setPendingDocumentFocus({ target: "document", documentId: target.document.id, requestId: session.requestId, mode: surface.mode, nonce: ++pendingFocusNonce.current });
     if (fromDrawer) evidenceDialog.closeWithoutRestore();
   }
+  // This form creates a vault where the folder holds none, and the transport
+  // answers one request before it reads the next, so a second press while the
+  // vault is answering sends nothing. What the control says while it waits is
+  // the words beside it.
   async function openVault(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!control.hostAvailable || !vaultDirectory.trim() || !passphrase) { control.setNotice("Enter a vault directory and passphrase to open a local vault."); return; }
+    if (openingVault) return;
+    if (!control.hostAvailable || !vaultDirectory.trim() || !passphrase) { control.setNotice({ kind: "refused", text: "Enter a vault directory and passphrase to open a local vault." }); return; }
     control.setNotice(null);
     await control.openVault(vaultDirectory.trim(), passphrase);
     setPassphrase("");
@@ -227,7 +258,7 @@ export function App() {
     if (!control.pickerAvailable || pickingVaultDirectory || openingVault) return;
     setPickingVaultDirectory(true); control.setNotice(null);
     try { const selected = await control.pickVaultDirectory(); if (selected) setVaultDirectory(selected); }
-    catch { control.setNotice("The folder picker could not be opened. Enter the vault path manually."); }
+    catch { control.setNotice({ kind: "refused", text: "The folder picker could not be opened. Enter the vault path manually." }); }
     finally { setPickingVaultDirectory(false); }
   }
 
@@ -240,20 +271,20 @@ export function App() {
       <div className="vault-source-card">
         <div className="vault-source-topline"><span>Vault source</span><button className="text-button" onClick={resetDemoVault}>{session.source.mode === "demo" ? "Reset sample vault" : "Open sample vault"}</button></div>
         <strong>{session.source.label}</strong><span className="vault-source-subtitle">{session.source.mode === "demo" ? "Fictional sample data" : "Opened on this device"}</span><span className="vault-source-boundary">{session.source.mode === "demo" ? "Sample data boundary" : "Read-only vault surfaces"}</span><p>{session.source.description}</p>
-        {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} disabled={pickingVaultDirectory || openingVault}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" /></label><button className="secondary-button vault-open-button" type="submit" disabled={openingVault || pickingVaultDirectory}>{openingVault ? "Opening vault..." : "Open local vault"}</button></form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
+        {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" aria-describedby="vault-passphrase-consequence" /></label><p className="vault-passphrase-consequence" id="vault-passphrase-consequence">This opens a vault in the folder you name, and creates one there if none exists. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.</p><button className="secondary-button vault-open-button" type="submit" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-passphrase-consequence vault-open-waiting" : "vault-passphrase-consequence"}>{openingVault ? "Opening vault..." : "Open local vault"}</button>{openingVault ? <span className="action-explanation" id="vault-open-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}</form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
       </div>
       <nav id="primary-navigation" aria-label="Main navigation"><div className="nav-label">Navigate</div>{destinations.map((item) => <button key={item.id} className={session.destination === item.id ? "nav-item active" : "nav-item"} aria-current={session.destination === item.id ? "page" : undefined} onClick={() => navigate(item.id)}><span><strong>{item.label}</strong><small>{item.eyebrow}</small></span></button>)}</nav>
       <div className="sidebar-footer"><div className="privacy-lock"><Info aria-hidden="true" size={16} /><span>{surface.mode === "demo" ? "Fictional sample" : "Local source"}</span></div><p>{surface.mode === "demo" ? "This fictional sample is bundled with the app. Complete outbound history is not available." : "This vault was opened through the local desktop host. Complete outbound history is not available."}</p></div>
     </aside>
     <main className="main-content" inert={Boolean(evidenceSelection) || conversationOpen || (isNarrow && mobileNav) ? true : undefined}>
       <header className="topbar"><button ref={navigationTriggerRef} id="mobile-navigation-trigger" className="icon-button mobile-menu" onClick={openNavigation} aria-label="Open navigation" aria-controls="primary-navigation-drawer" aria-expanded={isNarrow ? mobileNav : false}><Menu size={20} /></button><div className="breadcrumbs"><span>OrionViva</span><ChevronRight size={14} /><strong>{pageCopy[session.destination].title}</strong></div><button className="ask-button" onClick={() => setOverlay({ kind: "conversation", requestId: session.requestId, mode: surface.mode })}><Sparkles size={16} />Ask Viva</button></header>
-      <StatusNotice notice={session.notice} onDismiss={() => control.setNotice(null)} statusIcon={<Check size={16} />} dismissIcon={<X size={15} />} />
-      <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div>{session.destination !== "trust" && <div className="page-actions"><button className="primary-button" onClick={addDocument} disabled={surface.mode === "live"} aria-describedby={surface.mode === "live" ? "document-add-unavailable" : undefined}><FilePlus2 size={17} />{surface.mode === "demo" ? "View sample document journey" : "Add document"}</button>{surface.mode === "live" && <span className="action-explanation" id="document-add-unavailable">Document capture is not connected for this vault.</span>}</div>}</div>
+      <StatusNotice notice={session.notice} onDismiss={() => control.setNotice(null)} icons={noticeIcons} dismissIcon={<X size={15} />} />
+      <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div>{session.destination !== "trust" && <div className="page-actions"><button className="primary-button" onClick={openDocuments}><FilePlus2 size={17} />{surface.mode === "demo" ? "View sample document journey" : "Go to documents"}</button></div>}</div>
         <SourceDisclosure mode={surface.mode} disclosure={surface.disclosure} />
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
           {session.destination === "overview" && <Overview result={surface.overview} reviewResult={surface.review} mode={surface.mode} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={resetDemoVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} mode={surface.mode} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={resetDemoVault} />}
-          {session.destination === "documents" && <Documents result={surface.documents} mode={surface.mode} selectedDocument={session.selectedDocument} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={resetDemoVault} />}
+          {session.destination === "documents" && <Documents result={surface.documents} mode={surface.mode} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={resetDemoVault} />}
           {session.destination === "review" && <Review result={surface.review} mode={surface.mode} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenEvidence={openEvidenceDocument} actions={{ state: session.reviewAction, onDecline: declineQuestion }} />}
           {session.destination === "activity" && <Activity result={surface.activity} mode={surface.mode} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} />}
           {session.destination === "trust" && <Trust result={surface.trust} mode={surface.mode} />}

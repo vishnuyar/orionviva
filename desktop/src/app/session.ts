@@ -1,6 +1,6 @@
 import type { SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { ActionResult, Destination, FeatureResult, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot } from "../surface/types";
+import type { ActionResult, CaptureActionState, Destination, DocumentsData, FeatureResult, Notice, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -14,8 +14,9 @@ export type SurfaceSession = {
   selectedQueue: string;
   selectedAccount: string;
   selectedPrompt: string;
-  notice: string | null;
+  notice: Notice | null;
   reviewAction: ReviewActionState;
+  captureAction: CaptureActionState;
 };
 
 export type SessionAction =
@@ -32,7 +33,9 @@ export type SessionAction =
   | { type: "select-prompt"; id: string }
   | { type: "review-acting"; requestId: number; questionId: string; verb: ReviewVerb }
   | { type: "review-acted"; requestId: number; questionId: string; verb: ReviewVerb; result: ActionResult; review: FeatureResult<ReviewData> }
-  | { type: "notice"; notice: string | null };
+  | { type: "capturing"; requestId: number }
+  | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
+  | { type: "notice"; notice: Notice | null };
 
 function dataOf<T>(result: FeatureResult<T>): T | null {
   return result.state === "ready" || result.state === "partial" || result.state === "needs_input" ? result.data : null;
@@ -69,6 +72,7 @@ export function initialSession(): SurfaceSession {
     selectedPrompt: ids.prompts[0] ?? "",
     notice: null,
     reviewAction: { state: "idle" },
+    captureAction: { state: "idle" },
   };
 }
 
@@ -92,7 +96,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -105,8 +109,9 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedQueue: "",
         selectedAccount: "",
         selectedPrompt: "",
-        notice: "Reading available surfaces from this device…",
+        notice: { kind: "acknowledged", text: "Reading available surfaces from this device…" },
         reviewAction: { state: "idle" },
+        captureAction: { state: "idle" },
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -119,23 +124,27 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
         selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
-        notice: hasReadFailure(action.snapshot) ? "The private vault opened, but some surfaces could not be read. Your vault was not changed." : null,
+        notice: hasReadFailure(action.snapshot) ? { kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." } : null,
       };
     }
     case "open-failed":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, phase: "settled", notice: "The local vault could not be opened. Check the directory and passphrase, then try again." };
+      return { ...state, phase: "settled", notice: { kind: "refused", text: "The local vault could not be opened. Check the directory and passphrase, then try again." } };
     case "load-failed":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, phase: "settled", notice: "The local vault opened, but its surface data could not be loaded." };
+      return { ...state, phase: "settled", notice: { kind: "refused", text: "The local vault opened, but its surface data could not be loaded." } };
     case "reset": {
       const reset = initialSession();
-      return { ...reset, requestId: action.requestId, notice: "Sample vault reset to the fictional data stored with the app." };
+      return { ...reset, requestId: action.requestId, notice: { kind: "acknowledged", text: "Sample vault reset to the fictional data stored with the app." } };
     }
-    // What was last done to the vault is said beside the question it was done
-    // to, so leaving a question or leaving the screen it was on clears it. A
-    // notice still standing after either would report an act on something the
-    // person is no longer looking at.
+    // What was last done to a review question is said beside the question it
+    // was done to, so leaving a question or leaving the screen it was on
+    // clears it. A notice still standing after either would report an act on
+    // something the person is no longer looking at.
+    //
+    // What became of a capture is not cleared. It is a receipt for something
+    // durable that was written to the vault, and it belongs to the session
+    // rather than to the screen a person happened to be on when it landed.
     case "navigate": return { ...state, destination: action.destination, reviewAction: { state: "idle" } };
     case "select-document": return { ...state, selectedDocument: action.id };
     case "select-queue":
@@ -154,6 +163,22 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         snapshot,
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         reviewAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result },
+      };
+    }
+    case "capturing":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, captureAction: { state: "working", result: state.captureAction.state === "idle" ? null : state.captureAction.result } };
+    case "captured": {
+      if (action.requestId !== state.requestId) return state;
+      // The read that follows a capture replaces only documents. Nothing else
+      // was asked for, so nothing else is claimed to have been read again.
+      const snapshot = { ...state.snapshot, documents: action.documents };
+      const ids = selectedIds(snapshot);
+      return {
+        ...state,
+        snapshot,
+        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        captureAction: { state: "settled", result: action.result },
       };
     }
     case "select-account": return { ...state, selectedAccount: action.id };

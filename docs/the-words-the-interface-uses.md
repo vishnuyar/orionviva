@@ -33,8 +33,10 @@ layers may import, and what a figure must carry to cross between them, stay in
 
 ### VOICE-135 — `disabled` is reserved for nothing; `aria-disabled` says a control is busy
 **State:** contradicted
-**Code:** `desktop/src/features/documents/Documents.tsx:13` renders a capture control and marks it `disabled`, where a control with nothing behind it should not render at all. `desktop/src/app/App.tsx:243` sets `disabled` on the two vault-opening controls while a vault is opening, which is the busy case wearing an attribute this rule reserves for nothing. `desktop/src/features/review/Review.tsx:66` marks the set-aside controls `aria-disabled` while the vault answers the last request, which is what the rule asks for.
-**Test:** none
+**Code:** The attribute appears in no JSX under `desktop/src`, and `desktop/scripts/check-ui-boundaries.mjs` holds it out of the whole tree with a self-check that puts one back and asserts the checker goes red. The busy controls carry `aria-disabled` instead and stay focusable — the set-aside controls in `desktop/src/features/review/Review.tsx` and the vault picker and vault-open submit in `desktop/src/app/App.tsx` — each refusing a second press in its own handler and each describing itself, while busy, with a sentence saying that pressing again does nothing until the vault has answered.
+**Test:** none — what holds this is a Node gate and tests written in TypeScript, and the rule index collects test names by parsing Python.
+
+**Why the state has not moved.** Nothing in the code contradicts the rule any longer. What the state still records is that no test this repository's rule index can read holds any of it, so `by-review` is the ceiling this rule can reach — and moving the word, even that far, is a judgement about how a rule is known rather than a change to the code, which is the product owner's to make and not a build cycle's.
 
 1. `disabled` is reserved for nothing. A control this screen cannot perform at all does not render, which is VOICE-136's business; a control that renders is one a person can reach.
 2. A control this screen can perform, and that is unavailable only while the vault answers the last request, carries `aria-disabled` and stays focusable. A focused element that becomes `disabled` is blurred to the document body, which empties a person's hands at the moment a refusal needs them full.
@@ -124,28 +126,35 @@ distinction is written down rather than decided per panel: it is not a styling
 choice, it decides whether a keyboard reaches the control at all.
 
 Reversing this costs an audit of every control the product will ever ship,
-which makes it sticky rather than one-way. Its immediate price is visible in
-the **Code** field above: `Documents.tsx:13` used to be this rule's example of
-being honoured and is now a violation, with not one line of code having
-changed.
+which makes it sticky rather than one-way. Its price has been paid rather than
+argued with. The page-review control with nothing behind it was deleted instead
+of re-attributed; the capture control renders because an operation now stands
+behind it; and the two vault-opening controls that went `disabled` while the
+vault answered carry `aria-disabled`, keep their focus and refuse the second
+press in words. The **Code** field above says where the rule stands.
 
 ### Where the guidelines are thin, and it will show
 
 The naming half is cheap. The craft half is where drift comes from, and this
-document does not close it. `desktop/src/styles/tokens.css` defines colour
-tokens and nothing else — no type scale, no spacing scale, no motion rule, no
-dark mode — and the screen-specific stylesheet beside it is an order of
-magnitude longer than the tokens it draws on. Accessibility is genuinely
+document does not close it. `desktop/src/styles/tokens.css` now holds a type
+scale, a spacing scale, radii, motion durations and easings, icon sizes and a
+dark palette nothing turns on — but the screen-specific stylesheets beside it
+are still an order of magnitude longer than the tokens they draw on, and still
+carry the raw values they were written with. Accessibility is genuinely
 practiced: aria attributes across the features and shared components,
-focus-management tests, role queries in most suites. But it is practiced by
-habit, and nothing fails a build when the next panel forgets.
+focus-management tests, role queries in most suites. What fails a build is
+narrower than that: a stylesheet declared to be written against the token set
+may hold no raw value, the two older stylesheets may not gain any, and the
+sentences the capture screen ships are measured against the contrast floor.
+Keyboard reach is still held by habit.
 
-The interface has an architecture gate and no craft gate. Naming it here is not
-the same as closing it, and no rule in this document pretends otherwise.
+The interface has an architecture gate and half a craft gate. Naming a gap here
+is not the same as closing it, and no rule in this document pretends otherwise.
 
-That territory now carries a rule, though not a gate: VOICE-140 in
-[surface-charter.md](surface-charter.md) asks for a type scale, a spacing
-scale, motion rules, dark mode, iconography and keyboard reach as conditions a
-new surface ships against. It is unmet and neither of the checks it names is
-built, so every sentence above still stands — what changed is that the gap is
-indexed and has an owner rather than only being confessed here.
+That territory carries a rule, VOICE-140 in
+[surface-charter.md](surface-charter.md), which asks for a type scale, a
+spacing scale, motion rules, dark mode, iconography and keyboard reach as
+conditions a new surface ships against. The token half is built and runs in the
+desktop job; the keyboard check is not, and the rule stays unmet on its second
+clause while the older stylesheets hold values no token names. What the gate
+reports is how many, so the shortfall is a number rather than a confession.

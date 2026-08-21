@@ -4,7 +4,7 @@ import { adaptDocuments } from "./adapters/documents";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, FeatureResult, OverviewData, ReviewActions, ReviewData, SurfaceSnapshot } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, FeatureResult, OverviewData, ReviewActions, ReviewData, SurfaceSnapshot } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -42,6 +42,22 @@ async function acted(call: Promise<unknown>): Promise<ActionResult> {
 async function readReviewFeature(client: BridgeClient): Promise<FeatureResult<ReviewData>> {
   const [read] = await Promise.allSettled([client.readReview()]);
   return settled(read, (value) => adaptReview(value.data));
+}
+
+async function readDocumentsFeature(client: BridgeClient): Promise<FeatureResult<DocumentsData>> {
+  const [read] = await Promise.allSettled([client.readDocuments()]);
+  return settled(read, (value) => adaptDocuments(value.data));
+}
+
+// The write side of the documents capability, and the read that follows it.
+// One path crosses per call and no bytes ever do; the vault is read again
+// afterwards so the list a person sees is the vault's own, not this screen's
+// idea of what it just did.
+export function privateDocumentActions(client: BridgeClient): DocumentActions {
+  return {
+    upload: (path) => acted(client.uploadDocument(path)),
+    reread: () => readDocumentsFeature(client),
+  };
 }
 
 // The write side of the review capability, and the read that follows it. An

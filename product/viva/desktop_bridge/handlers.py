@@ -24,6 +24,8 @@ from viva.surface import (
 # sidecar does not serve.
 REVIEW_CAPABILITY = "review.questions"
 REVIEW_OPERATIONS = action_operations_for(REVIEW_CAPABILITY)
+DOCUMENTS_CAPABILITY = "documents.ingest"
+DOCUMENTS_OPERATIONS = action_operations_for(DOCUMENTS_CAPABILITY)
 
 
 class BridgeRequestError(ValueError):
@@ -96,6 +98,7 @@ def handlers_for_opened_vault(
 ) -> BridgeDispatcher:
     """Build the allowlist for one concrete, already-open product vault."""
 
+    from .document_actions import DocumentActions
     from .review_actions import ReviewActions
     from .vault_surface import OpenedVaultSurfaceProvider
 
@@ -103,7 +106,9 @@ def handlers_for_opened_vault(
         OpenedVaultSurfaceProvider(vault), progress_sink
     )
     actions = ReviewActions(vault)
+    captures = DocumentActions(vault)
     return BridgeDispatcher({
         **reads.handlers,
         REVIEW_OPERATIONS["decline"]: actions.decline,
+        DOCUMENTS_OPERATIONS["upload"]: captures.upload,
     })
