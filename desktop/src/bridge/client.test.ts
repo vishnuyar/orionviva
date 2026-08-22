@@ -14,14 +14,14 @@ describe("bridge transport framing", () => {
       return { protocol: "1.0", request_id: frame.requestId, ok: true, result: result as T };
     } };
     const client = createHostBridgeClient(transport);
-    await client.openVault("/vault", "secret");
+    await client.openVault("/vault", "secret", false);
     await client.readOverview({ page: 1 });
     await client.readDocuments();
     await client.readReview({ limit: 2 });
 
     expect(frames.map((frame) => frame.requestId)).toEqual(["desktop-1", "desktop-2", "desktop-3", "desktop-4"]);
     expect(frames.map((frame) => frame.operation)).toEqual(["bridge.open_vault", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
-    expect(frames[0].payload).toEqual({ vault_directory: "/vault", passphrase: "secret" });
+    expect(frames[0].payload).toEqual({ vault_directory: "/vault", passphrase: "secret", create: false });
     expect(frames[1].payload).toEqual({ surface: "overview", parameters: { page: 1 }, job_id: "desktop-overview-2" });
     expect(frames[2].payload).toEqual({ surface: "documents", parameters: {}, job_id: "desktop-documents-3" });
     expect(frames[3].payload).toEqual({ surface: "review", parameters: { limit: 2 }, job_id: "desktop-review-4" });
@@ -108,8 +108,8 @@ describe("bridge transport framing", () => {
   it("bounds missing results and failed bridge envelopes", async () => {
     const missing = createHostBridgeClient({ request: async () => ({ protocol: "1.0", request_id: "req", ok: true }) });
     const failed = createHostBridgeClient({ request: async () => ({ protocol: "1.0", request_id: "req", ok: false, error: { code: "vault_open_failed", message: "bounded failure" } }) });
-    await expect(missing.openVault("/vault", "secret")).rejects.toBeInstanceOf(BridgeUnreadable);
-    await expect(failed.openVault("/vault", "secret")).rejects.toThrow("bounded failure");
+    await expect(missing.openVault("/vault", "secret", false)).rejects.toBeInstanceOf(BridgeUnreadable);
+    await expect(failed.openVault("/vault", "secret", false)).rejects.toThrow("bounded failure");
   });
 
   it("detects only the installed window transport", () => {

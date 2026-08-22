@@ -54,7 +54,10 @@ REFUSAL_DECLARATION = re.compile(r'export const REQUEST_REFUSED = "([^"]+)"')
 # The reviewed payload contract: what each operation accepts from a caller.
 PAYLOAD_FIELDS: dict[str, set[str]] = {
     BRIDGE_HANDSHAKE: set(),
-    BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase"},
+    # `create` is the person's own word for making a vault where they said to.
+    # It defaults to false, so a path typed with a letter wrong is refused
+    # rather than answered with a brand-new empty vault.
+    BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase", "create"},
     SURFACE_CAPABILITIES: set(),
     SURFACE_READ: {"surface", "parameters", "job_id"},
     REVIEW_OPERATIONS["answer"]: {"question_id", "said"},

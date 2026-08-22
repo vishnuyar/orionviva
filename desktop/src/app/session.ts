@@ -57,7 +57,7 @@ export type SessionAction =
   | { type: "opening"; requestId: number }
   | { type: "reading"; requestId: number; source: SurfaceSource; snapshot: SurfaceSnapshot }
   | { type: "loaded"; requestId: number; snapshot: SurfaceSnapshot }
-  | { type: "open-failed"; requestId: number }
+  | { type: "open-failed"; requestId: number; said: string }
   | { type: "load-failed"; requestId: number }
   | { type: "reset"; requestId: number }
   | { type: "navigate"; destination: Destination }
@@ -210,7 +210,11 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     }
     case "open-failed":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, phase: "settled", notice: { kind: "refused", text: "The local vault could not be opened. Check the directory and passphrase, then try again." } };
+      // The sidecar's own sentence stands where it gave one. It tells apart a
+      // folder holding no vault, a path that is not a folder, and a vault this
+      // passphrase will not open — three completely different next steps that
+      // one "could not be opened" made look like the same mistake.
+      return { ...state, phase: "settled", notice: { kind: "refused", text: action.said || "The local vault could not be opened. Check the directory and passphrase, then try again." } };
     case "load-failed":
       if (action.requestId !== state.requestId) return state;
       return { ...state, phase: "settled", notice: { kind: "refused", text: "The local vault opened, but its surface data could not be loaded." } };

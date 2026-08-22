@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // The sentence a person is told, read from the pack that ships it.
-import moments from "../../../../product/viva/persona/pack-v27/moments.json";
+import moments from "../../../../product/viva/persona/pack-v28/moments.json";
 import { adaptDocuments } from "./documents";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;

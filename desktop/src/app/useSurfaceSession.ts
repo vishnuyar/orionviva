@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
+import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource } from "../surface/sources";
 import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, TransferVerb, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
@@ -154,14 +155,19 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     captureAvailable: Boolean(documentActions),
     filePickerAvailable: Boolean(documentActions && hostBridge?.pickDocumentPaths),
     pickerAvailable: Boolean(hostBridge?.pickVaultDirectory),
-    async openVault(vaultDirectory: string, passphrase: string) {
+    async openVault(vaultDirectory: string, passphrase: string, create: boolean) {
       if (!hostBridge) return false;
       const nextRequestId = ++requestId.current;
       dispatch({ type: "opening", requestId: nextRequestId });
       try {
-        await hostBridge.openVault(vaultDirectory, passphrase);
-      } catch {
-        if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId });
+        await hostBridge.openVault(vaultDirectory, passphrase, create);
+      } catch (refused) {
+        // The sidecar's own sentence, and only from the codes whose message is
+        // a reviewed sentence about a folder. It is what tells a mistyped path
+        // apart from a wrong passphrase. Every other code carries machine text
+        // out of an engine, which is never repeated here.
+        const said = refused instanceof BridgeRefusal && OPEN_REFUSALS.includes(refused.code) ? refused.message : "";
+        if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId, said });
         return false;
       }
       if (requestId.current !== nextRequestId) return false;

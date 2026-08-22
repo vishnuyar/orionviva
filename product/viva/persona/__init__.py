@@ -590,6 +590,17 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "activity_transfer":               frozenset(),
     "activity_provisional":            frozenset(),
     "activity_unsettled":              frozenset(),
+    # What is said when a person names a folder. These are kept apart because
+    # they ask for completely different next steps: a folder holding no vault,
+    # a path that is not a folder at all, a vault this passphrase will not
+    # open, and a vault made on purpose. A mistyped path used to answer as an
+    # opened, brand-new empty vault, which reads to a person as their records
+    # having vanished.
+    "vault_absent":                    frozenset(),
+    "vault_not_a_folder":              frozenset(),
+    "vault_wrong_passphrase":          frozenset(),
+    "vault_created":                   frozenset(),
+    "vault_opened":                    frozenset(),
 }
 
 

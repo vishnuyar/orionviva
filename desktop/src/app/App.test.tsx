@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, ConversationDialogShell } from "./App";
 // The sentences a person is told, read from the pack that ships them.
-import moments from "../../../product/viva/persona/pack-v27/moments.json";
+import moments from "../../../product/viva/persona/pack-v28/moments.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const queryByRoleIn = (root: HTMLElement, role: string) => root.querySelector(`[role="${role}"]`);
@@ -1412,7 +1412,7 @@ describe("minimal shell", () => {
       expect(control).toHaveAttribute("aria-disabled", "true");
       // Both sentences reach the control: what a lost passphrase costs, which
       // is what this form is for, and why pressing again does nothing.
-      expect(control).toHaveAccessibleDescription("This opens a vault in the folder you name, and creates one there if none exists. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it. Your vault is answering the last request. Pressing again does nothing until it has.");
+      expect(control).toHaveAccessibleDescription("This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it. Your vault is answering the last request. Pressing again does nothing until it has.");
       resolveRequest?.();
       await waitFor(() => expect(getByRole("button", { name: "Open local vault" })).not.toHaveAttribute("aria-disabled", "true"));
     } finally {
@@ -1659,7 +1659,7 @@ describe("minimal shell", () => {
   it("names what a lost passphrase costs to the field and the control beside it", () => {
     const previousBridge = window.orionVivaBridge;
     window.orionVivaBridge = { request: async <T,>(frame: { requestId: string }) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) };
-    const consequence = "This opens a vault in the folder you name, and creates one there if none exists. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.";
+    const consequence = "This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.";
     try {
       const { container, getByLabelText, getByRole, getByText } = render(<App />);
       expect(getByText(consequence)).toBeInTheDocument();
@@ -1848,6 +1848,77 @@ describe("minimal shell", () => {
       expect(queryByRoleIn(container, "dialog")).toBeNull();
       await waitFor(() => expect(document.getElementById("page-title")).toHaveTextContent("Documents"));
       await waitFor(() => expect(document.getElementById("page-title")).toHaveFocus());
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+});
+
+describe("naming a folder", () => {
+  it("makes no vault unless a person said to, and repeats the vault's own sentence", async () => {
+    // A path typed with a letter wrong used to answer as an opened, brand-new
+    // empty vault, which reads to somebody as their records having vanished.
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    const sent: Array<Record<string, unknown>> = [];
+    window.orionVivaBridge = {
+      request: async <T,>(frame: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+        sent.push(frame.payload);
+        return { protocol: "2.0", request_id: frame.requestId, ok: false, error: { code: "vault_absent", message: moments.vault_absent } } as { protocol: string; request_id: string; ok: boolean; error: { code: string; message: string }; result?: T };
+      },
+    };
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/typo");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByRole("button", { name: "Open local vault" }));
+
+      expect(sent[0].create).toBe(false);
+      expect(getByRole("status")).toHaveTextContent(moments.vault_absent);
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("asks for a vault to be made only when the box is ticked, and says so on the control", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    const sent: Array<Record<string, unknown>> = [];
+    window.orionVivaBridge = {
+      request: async <T,>(frame: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+        if (frame.operation === "bridge.open_vault") sent.push(frame.payload);
+        const data = frame.payload.surface === "overview" ? { accounts: [] } : frame.payload.surface === "documents" ? { documents: [] } : frame.payload.surface === "trust" ? trustPayload : frame.payload.surface === "activity" ? activityPayload : { questions: [], total: 0 };
+        return { protocol: "2.0", request_id: frame.requestId, ok: true, result: (frame.operation === "bridge.open_vault" ? { state: "created" } : { surface: frame.payload.surface, job_id: "job", data }) as T };
+      },
+    };
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/new");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByLabelText("Make a new vault in that folder"));
+      expect(getByRole("button", { name: "Make and open vault" })).toBeInTheDocument();
+      await user.click(getByRole("button", { name: "Make and open vault" }));
+
+      expect(sent[0].create).toBe(true);
+    } finally {
+      window.orionVivaBridge = previousBridge;
+    }
+  });
+
+  it("never repeats machine text from a code whose message is not a reviewed sentence", async () => {
+    const user = userEvent.setup();
+    const previousBridge = window.orionVivaBridge;
+    window.orionVivaBridge = {
+      request: async <T,>() => ({ protocol: "2.0", request_id: "r", ok: false, error: { code: "handler_failed", message: "Everyday Checking has 1200.00" } } as { protocol: string; request_id: string; ok: boolean; error: { code: string; message: string }; result?: T }),
+    };
+    try {
+      const { getByLabelText, getByRole } = render(<App />);
+      await user.type(getByLabelText("Vault directory"), "/vault");
+      await user.type(getByLabelText("Passphrase"), "secret");
+      await user.click(getByRole("button", { name: "Open local vault" }));
+
+      expect(getByRole("status")).not.toHaveTextContent("Everyday Checking");
+      expect(getByRole("status")).toHaveTextContent("The local vault could not be opened.");
     } finally {
       window.orionVivaBridge = previousBridge;
     }

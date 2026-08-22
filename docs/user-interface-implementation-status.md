@@ -151,7 +151,7 @@ left in it.
 | Operation | Allowlisted | Where it is served | Consumed by the desktop |
 | --- | --- | --- | --- |
 | `bridge.handshake` | yes | the allowlist a sidecar starts with, before any vault is open; it names the build that answered, read from a file a packaging step writes or from the tree this module lives in | yes — asked once when a vault opens, and what it says about the build is shown on Trust. The desktop still never checks the `protocol` field the sidecar stamps on every response, so the version is asserted per frame and checked by nobody |
-| `bridge.open_vault` | no | intercepted by `Sidecar.handle` as a branch before dispatch runs, so it reaches no allowlist and has no protocol major validated | yes |
+| `bridge.open_vault` | no | intercepted by `Sidecar.handle` as a branch before dispatch runs, so it reaches no allowlist and has no protocol major validated; it makes no vault unless the request says to, and answers a folder holding no vault, a path that is not a folder, and a vault the passphrase will not open as three different refusals | yes |
 | `viva.surface.capabilities` | yes | the allowlist a sidecar starts with, before any vault is open; it answers with the reviewed registry and with which destinations a read reaches, derived where the rule lives | yes |
 | `viva.surface.read` | yes | added to the allowlist when a vault opens | yes |
 | `viva.review.answer` | yes | added to the allowlist when a vault opens; it is the single inbound door, and the question is looked up in the live queue rather than taken from the caller, so a stale screen cannot answer something that is no longer being asked | yes |

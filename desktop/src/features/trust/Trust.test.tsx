@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsView, TransferActionState, TrustData, TrustSampleCapability } from "../../surface/types";
 import { Trust } from "./Trust";
 import type { SettingsControls, TransferControls } from "./Trust";
-import moments from "../../../../product/viva/persona/pack-v27/moments.json";
+import moments from "../../../../product/viva/persona/pack-v28/moments.json";
 
 const note = (id: string, title = "Supplied title", detail = "Supplied detail") => ({ id, title, detail });
 const capability = (id: string, state: TrustSampleCapability["state"], label = `Capability ${id}`, detail = `Detail ${id}`): TrustSampleCapability => ({ id, group: "source", label, state, detail });

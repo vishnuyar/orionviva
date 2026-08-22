@@ -31,6 +31,12 @@ export class BridgeRefusal extends Error {
 // build does not answer, a protocol it cannot speak, or a handler that raised —
 // and each of those carries machine text where a sentence would be.
 export const REQUEST_REFUSED = "invalid_request";
+// The refusal codes whose message is a reviewed sentence about a folder, and
+// the only ones whose text this shell repeats. Every other code carries machine
+// text — a handler that raised puts its exception into that field, and an
+// exception raised inside the engine can carry an account name or an amount, so
+// vault text would reach a screen ungraded, uncited and through no read model.
+export const OPEN_REFUSALS: readonly string[] = ["vault_absent", "vault_not_a_directory", "vault_wrong_passphrase"];
 // The sidecar said it accepted the request and sent nothing to read. A handler
 // ran and may have written, so this is never told as a request that never
 // arrived.
@@ -61,7 +67,11 @@ export type BridgeTransport = {
   subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;
 };
 export type BridgeClient = {
-  openVault: (vaultDirectory: string, passphrase: string) => Promise<void>;
+  // `create` is the person's own word for making a vault where they said to.
+  // It is never inferred: a path typed with a letter wrong would otherwise be
+  // answered with a brand-new empty vault, which reads as their records having
+  // vanished.
+  openVault: (vaultDirectory: string, passphrase: string, create: boolean) => Promise<void>;
   pickVaultDirectory?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;

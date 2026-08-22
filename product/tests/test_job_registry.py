@@ -252,7 +252,8 @@ def test_the_pump_answers_a_stop_and_holds_everything_else(tmp_path):
     sidecar = Sidecar(output, source)
     sidecar.handle(json.dumps(_frame(
         "bridge.open_vault",
-        {"vault_directory": str(tmp_path / "vault"), "passphrase": "pw"})))
+        {"vault_directory": str(tmp_path / "vault"), "passphrase": "pw",
+         "create": True})))
     source.place(_frame("viva.documents.cancel", {"job_id": "nothing"}, "c1"))
     source.place(_frame("viva.surface.read", {"surface": "overview"}, "r2"))
 
@@ -271,7 +272,8 @@ def test_a_capture_can_be_stopped_by_a_frame_that_arrives_while_it_runs(
     sidecar = Sidecar(output, source)
     sidecar.handle(json.dumps(_frame(
         "bridge.open_vault",
-        {"vault_directory": str(tmp_path / "vault"), "passphrase": "pw"})))
+        {"vault_directory": str(tmp_path / "vault"), "passphrase": "pw",
+         "create": True})))
     document = tmp_path / "statement.pdf"
     document.write_bytes(b"%PDF-1.4 statement")
 

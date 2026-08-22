@@ -79,7 +79,7 @@ describe("surface session", () => {
     const current = sessionReducer(initialSession(), { type: "opening", requestId: 4 });
     expect(sessionReducer(current, { type: "reading", requestId: 3, source: liveSource, snapshot: liveReadingSnapshot() })).toBe(current);
     expect(sessionReducer(current, { type: "loaded", requestId: 3, snapshot: readyLive() })).toBe(current);
-    expect(sessionReducer(current, { type: "open-failed", requestId: 3 })).toBe(current);
+    expect(sessionReducer(current, { type: "open-failed", requestId: 3, said: "" })).toBe(current);
     expect(sessionReducer(current, { type: "load-failed", requestId: 3 })).toBe(current);
   });
 
@@ -101,7 +101,7 @@ describe("surface session", () => {
   it("current open failure retains the prior snapshot and settles", () => {
     const before = initialSession();
     const opening = sessionReducer(before, { type: "opening", requestId: 1 });
-    const failed = sessionReducer(opening, { type: "open-failed", requestId: 1 });
+    const failed = sessionReducer(opening, { type: "open-failed", requestId: 1, said: "" });
     expect(failed.phase).toBe("settled");
     expect(failed.snapshot).toBe(before.snapshot);
     expect(failed.notice).toEqual({ kind: "refused", text: "The local vault could not be opened. Check the directory and passphrase, then try again." });
@@ -119,7 +119,7 @@ describe("surface session", () => {
     window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => frame.operation === "bridge.open_vault" ? open.promise as Promise<BridgeResponse<T>> : ok(frame.requestId, { surface: frame.payload.surface, job_id: "job", data: emptyPayload(frame.payload.surface as SurfaceName) } as T) };
     const { result } = renderHook(() => useSurfaceSession());
     let pending!: Promise<boolean>;
-    act(() => { pending = result.current.openVault("/first", "secret"); });
+    act(() => { pending = result.current.openVault("/first", "secret", false); });
     await waitFor(() => expect(result.current.session.phase).toBe("opening"));
     act(() => result.current.resetDemo());
     expect(result.current.session.source.mode).toBe("demo");
@@ -142,7 +142,7 @@ describe("surface session", () => {
     window.orionVivaBridge = transport;
     const { result } = renderHook(() => useSurfaceSession());
     let firstPending!: Promise<boolean>; let secondPending!: Promise<boolean>;
-    act(() => { firstPending = result.current.openVault("/first", "secret"); secondPending = result.current.openVault("/second", "secret"); });
+    act(() => { firstPending = result.current.openVault("/first", "secret", false); secondPending = result.current.openVault("/second", "secret", false); });
     second.resolve(ok("open-2", { state: "opened" }));
     await act(async () => { await secondPending; });
     expect(result.current.session.requestId).toBe(2);
@@ -165,9 +165,9 @@ describe("surface session", () => {
     } };
     const { result } = renderHook(() => useSurfaceSession());
     let older!: Promise<boolean>; let newer!: Promise<boolean>;
-    act(() => { older = result.current.openVault("/old", "secret"); });
+    act(() => { older = result.current.openVault("/old", "secret", false); });
     await waitFor(() => expect(result.current.session.phase).toBe("reading"));
-    act(() => { newer = result.current.openVault("/new", "secret"); });
+    act(() => { newer = result.current.openVault("/new", "secret", false); });
     await act(async () => { await newer; });
     if (result.current.session.snapshot.overview.state === "ready") expect(result.current.session.snapshot.overview.data.accounts[0].id).toBe("new-private");
     oldReads[0].resolve(ok("old-0", { surface: "overview", job_id: "old", data: { accounts: [] } }));
@@ -188,7 +188,7 @@ describe("surface session", () => {
     } };
     const { result } = renderHook(() => useSurfaceSession());
     let older!: Promise<boolean>; let newer!: Promise<boolean>;
-    act(() => { older = result.current.openVault("/old", "secret"); newer = result.current.openVault("/new", "secret"); });
+    act(() => { older = result.current.openVault("/old", "secret", false); newer = result.current.openVault("/new", "secret", false); });
     await act(async () => { await newer; });
     first.reject(new Error("stale private details"));
     await act(async () => { await older; });
@@ -216,7 +216,7 @@ describe("surface session", () => {
     window.orionVivaBridge = transport;
 
     const { result } = renderHook(() => useSurfaceSession());
-    await act(async () => { await result.current.openVault("/vault", "secret"); });
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
     expect(result.current.session.selectedQueue).toBe("question-live");
 
     await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
@@ -280,7 +280,7 @@ describe("surface session", () => {
     window.orionVivaBridge = transport;
 
     const { result } = renderHook(() => useSurfaceSession());
-    await act(async () => { await result.current.openVault("/vault", "secret"); });
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
     await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
     expect(result.current.session.reviewAction).toMatchObject({ result: { state: "settled", outcome: { kind: "refused", reason: "not_open" } } });
 
@@ -299,7 +299,7 @@ describe("surface session", () => {
     window.orionVivaBridge = transport;
 
     const { result } = renderHook(() => useSurfaceSession());
-    await act(async () => { await result.current.openVault("/vault", "secret"); });
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
     await act(async () => { await result.current.declineQuestion("question-live", "not_now"); });
 
     // The sidecar read the request and would not take it, which is a state of

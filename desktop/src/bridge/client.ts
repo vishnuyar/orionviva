@@ -18,7 +18,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     return request("viva.surface.read", { surface, parameters, job_id: `desktop-${surface}-${requestNumber + 1}` });
   }
   return {
-    openVault: async (vaultDirectory, passphrase) => { await request("bridge.open_vault", { vault_directory: vaultDirectory, passphrase }); },
+    openVault: async (vaultDirectory, passphrase, create) => { await request("bridge.open_vault", { vault_directory: vaultDirectory, passphrase, create }); },
     ...(transport.pickVaultDirectory ? { pickVaultDirectory: transport.pickVaultDirectory } : {}),
     ...(transport.pickDocumentPaths ? { pickDocumentPaths: transport.pickDocumentPaths } : {}),
     ...(transport.subscribeToDroppedPaths ? { subscribeToDroppedPaths: transport.subscribeToDroppedPaths } : {}),

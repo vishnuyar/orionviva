@@ -57,6 +57,7 @@ export function App() {
   const surface = session.snapshot;
   const [vaultDirectory, setVaultDirectory] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [makeVault, setMakeVault] = useState(false);
   const [pickingVaultDirectory, setPickingVaultDirectory] = useState(false);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [pendingDocumentFocus, setPendingDocumentFocus] = useState<PendingDocumentFocus | null>(null);
@@ -248,16 +249,19 @@ export function App() {
     setPendingDocumentFocus({ target: "document", documentId: target.document.id, requestId: session.requestId, mode: surface.mode, nonce: ++pendingFocusNonce.current });
     if (fromDrawer) evidenceDialog.closeWithoutRestore();
   }
-  // This form creates a vault where the folder holds none, and the transport
-  // answers one request before it reads the next, so a second press while the
-  // vault is answering sends nothing. What the control says while it waits is
-  // the words beside it.
+  // This form opens a vault and never makes one unless a person ticked the box
+  // saying to. A path typed with a letter wrong used to answer as an opened,
+  // brand-new empty vault, which reads as their records having vanished.
+  //
+  // The transport answers one request before it reads the next, so a second
+  // press while the vault is answering sends nothing. What the control says
+  // while it waits is the words beside it.
   async function openVault(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (openingVault) return;
     if (!control.hostAvailable || !vaultDirectory.trim() || !passphrase) { control.setNotice({ kind: "refused", text: "Enter a vault directory and passphrase to open a local vault." }); return; }
     control.setNotice(null);
-    await control.openVault(vaultDirectory.trim(), passphrase);
+    await control.openVault(vaultDirectory.trim(), passphrase, makeVault);
     setPassphrase("");
   }
   async function pickVaultDirectory() {
@@ -277,7 +281,7 @@ export function App() {
       <div className="vault-source-card">
         <div className="vault-source-topline"><span>Vault source</span><button className="text-button" onClick={resetDemoVault}>{session.source.mode === "demo" ? "Reset sample vault" : "Open sample vault"}</button></div>
         <strong>{session.source.label}</strong><span className="vault-source-subtitle">{session.source.mode === "demo" ? "Fictional sample data" : "Opened on this device"}</span><span className="vault-source-boundary">{session.source.mode === "demo" ? "Sample data boundary" : "Read-only vault surfaces"}</span><p>{session.source.description}</p>
-        {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" aria-describedby="vault-passphrase-consequence" /></label><p className="vault-passphrase-consequence" id="vault-passphrase-consequence">This opens a vault in the folder you name, and creates one there if none exists. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.</p><button className="secondary-button vault-open-button" type="submit" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-passphrase-consequence vault-open-waiting" : "vault-passphrase-consequence"}>{openingVault ? "Opening vault..." : "Open local vault"}</button>{openingVault ? <span className="action-explanation" id="vault-open-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}</form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
+        {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" aria-describedby="vault-passphrase-consequence" /></label><label className="vault-create-choice"><input type="checkbox" checked={makeVault} onChange={(event) => setMakeVault(event.target.checked)} />Make a new vault in that folder</label><p className="vault-passphrase-consequence" id="vault-passphrase-consequence">This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.</p><button className="secondary-button vault-open-button" type="submit" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-passphrase-consequence vault-open-waiting" : "vault-passphrase-consequence"}>{openingVault ? "Opening vault..." : makeVault ? "Make and open vault" : "Open local vault"}</button>{openingVault ? <span className="action-explanation" id="vault-open-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}</form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
       </div>
       <nav id="primary-navigation" aria-label="Main navigation"><div className="nav-label">Navigate</div>{destinations.map((item) => {
         // What the engine's own registry says about this place, said beside

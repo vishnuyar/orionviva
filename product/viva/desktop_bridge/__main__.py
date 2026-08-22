@@ -37,6 +37,14 @@ from viva.desktop_bridge.rpc import CURRENT_PROTOCOL, dispatch_frame, encode_fra
 
 log = logging.getLogger(__name__)
 
+# The surfaces an opened vault answers for. Read off the provider that serves
+# them rather than written twice: a list here that fell behind would promise a
+# caller a read the sidecar no longer has.
+def _surface_names() -> frozenset[str]:
+    from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
+
+    return OpenedVaultSurfaceProvider._SURFACES
+
 # The operations a running job may be interrupted to serve. Every one of them
 # stops work; none of them starts any. A frame outside this set waits, because
 # serving it here would put a second handler on the vault while the first is
@@ -44,18 +52,33 @@ log = logging.getLogger(__name__)
 CANCEL_OPERATIONS = frozenset({"viva.documents.cancel"})
 
 
-def _open_vault(payload: dict[str, Any]) -> Vault:
-    allowed = {"vault_directory", "passphrase"}
+def _open_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
+    """Open the vault a person named, or make one where they said to.
+
+    ``create`` is the person's own word and defaults to false. A path typed
+    with a letter wrong used to answer as an opened, brand-new empty vault,
+    which reads to somebody as their records having vanished; nothing here
+    makes a vault unless somebody asked for one at that exact path.
+
+    Returns the vault and whether it was made, because a vault that was made is
+    a different thing to be told about than one that was opened."""
+    allowed = {"vault_directory", "passphrase", "create"}
     unexpected = set(payload) - allowed
     if unexpected:
         raise ValueError("bridge.open_vault does not accept fields: " + ", ".join(sorted(unexpected)))
     directory = payload.get("vault_directory")
     passphrase = payload.get("passphrase")
+    create = payload.get("create", False)
     if not isinstance(directory, str) or not directory.strip():
         raise ValueError("vault_directory must be a non-empty string")
     if not isinstance(passphrase, str) or not passphrase:
         raise ValueError("passphrase must be a non-empty string")
-    return Vault.open(Path(directory), passphrase)
+    if not isinstance(create, bool):
+        raise ValueError("create must be true or false")
+    from viva.vault import holds_a_vault
+
+    made = create and not holds_a_vault(Path(directory))
+    return Vault.open(Path(directory), passphrase, create=create), made
 
 
 class Sidecar:
@@ -141,14 +164,15 @@ class Sidecar:
 
     def _open(self, request_id: str, payload: dict[str, Any]) -> str:
         try:
-            vault = _open_vault(payload)
+            vault, made = _open_vault(payload)
         except Exception as exc:  # noqa: BLE001 - protocol must stay alive.
             log.debug("vault open failed: %s", exc)
+            code, said = _why_it_did_not_open(exc)
             return encode_frame({
                 "protocol": CURRENT_PROTOCOL.wire(),
                 "request_id": request_id,
                 "ok": False,
-                "error": {"code": "vault_open_failed", "message": "unable to open vault"},
+                "error": {"code": code, "message": said},
             })
         self._vault = vault
         self._dispatcher = handlers_for_opened_vault(
@@ -160,7 +184,10 @@ class Sidecar:
             "protocol": CURRENT_PROTOCOL.wire(),
             "request_id": request_id,
             "ok": True,
-            "result": {"state": "opened", "surfaces": ["overview", "documents", "review"]},
+            "result": {"state": "created" if made else "opened",
+                       "message": _moment("vault_created" if made
+                                          else "vault_opened"),
+                       "surfaces": sorted(_surface_names())},
         })
 
     def _write_event(self, request_id: str, event: dict[str, Any]) -> None:
@@ -171,6 +198,35 @@ class Sidecar:
             "result": event,
         }))
         self._output.flush()
+
+
+# Every way naming a folder can fail, against the code a caller reads and the
+# sentence a person does. They are kept apart because they ask for completely
+# different next steps — a folder holding no vault, a path that is not a folder,
+# and a vault this passphrase will not open — and a single "unable to open
+# vault" made all three look like the same mistake.
+def _why_it_did_not_open(exc: Exception) -> tuple[str, str]:
+    from viva.crypto import CryptoError
+    from viva.vault import VaultNotFound
+
+    if isinstance(exc, VaultNotFound):
+        return "vault_absent", _moment("vault_absent")
+    if isinstance(exc, NotADirectoryError):
+        return "vault_not_a_directory", _moment("vault_not_a_folder")
+    if isinstance(exc, CryptoError):
+        return "vault_wrong_passphrase", _moment("vault_wrong_passphrase")
+    # A request this handler would not take at all. Its own words travel,
+    # because they are about the shape of the frame rather than about anybody's
+    # money, and a caller needs to know which field it got wrong.
+    if isinstance(exc, ValueError):
+        return "invalid_request", str(exc)
+    return "vault_open_failed", _moment("vault_absent")
+
+
+def _moment(key: str) -> str:
+    from viva.persona import moment
+
+    return moment(key)
 
 
 def _is_cancel(frame: str) -> bool:

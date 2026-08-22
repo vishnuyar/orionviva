@@ -165,3 +165,7 @@
 .activity-movement-amount small { color: var(--muted); font-size: var(--text-caption); }
 .activity-movement-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
 .activity-beyond { margin: var(--space-md) 0 0; color: var(--muted); font-size: var(--text-fine); }
+
+/* Making a vault is a thing a person says to do, never something a mistyped
+   path does for them. */
+.vault-create-choice { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--text-caption); font-weight: var(--weight-medium); }
