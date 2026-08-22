@@ -17,9 +17,15 @@ consulted to route it, because a document is routed by what a read declares it
 to be and not by what its bytes look like from outside. Size is the one
 property read before opening, and it is read to refuse rather than to route.
 
-The documents capability also declares a ``cancel`` action, and no handler for
-it is registered. The operation is therefore declared and unserved: a frame
-naming it is refused by the allowlist rather than by silence.
+The documents capability also declares a ``cancel`` action, and it is served
+here, against the job registry rather than against the file: a person stops a
+job, not a document. Cancellation is honoured between steps and never inside
+one, so a cancelled capture leaves the vault at a step that finished rather
+than in the middle of one.
+
+The three steps a capture declares are the three it actually reaches — the
+file is checked, its bytes are opened, and the engine settles it. Naming a
+fourth would move a bar past a place nothing happens.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ from typing import Any
 from viva.surface import ActionOutcome
 
 from .handlers import BridgeRequestError
+from .jobs import JobCancelled, JobRegistry
 from .review_actions import UnreadableOutcome
 
 # Why a capture was refused, in the machine's own words. An outcome refuses to
@@ -41,33 +48,127 @@ NO_SUCH_FILE = "file_unavailable"
 NOT_A_FILE = "not_a_regular_file"
 TOO_LARGE = "file_over_size_limit"
 UNREADABLE = "file_unreadable"
+CANCELLED = "job_cancelled"
+NO_SUCH_JOB = "job_unknown"
+JOB_OVER = "job_already_settled"
+
+# The steps one capture declares, in the order it reaches them. Each is a thing
+# that happens: the file is checked against the limits, its bytes are opened,
+# and the engine says what became of it. The channel reports these and no
+# others, because a step nothing does is a bar moving for its own sake.
+CHECKED = "checked"
+OPENED = "opened"
+SETTLED = "settled"
+CAPTURE_STEPS = (CHECKED, OPENED, SETTLED)
 
 
 class DocumentActions:
     """Adapt one already-open vault into the allowlisted document handlers."""
 
-    def __init__(self, vault: Any) -> None:
+    def __init__(self, vault: Any, jobs: JobRegistry | None = None) -> None:
         self._vault = vault
+        self._jobs = jobs if jobs is not None else JobRegistry()
 
     def upload(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Capture one file into the vault, and read nothing.
 
-        The reply says what happened and carries no identity: this capture is
-        finished by the time it answers, and an id nothing consumes is a word
-        that looks like a capability."""
+        The reply carries the identity the sidecar minted for the work. It is
+        the sidecar's because a caller cannot mint one nothing else can
+        collide with, and it travels outward because a second frame — the
+        cancel — has to be able to name this job and no other.
+
+        The capture is finished by the time this answers on the transport as
+        it stands, which is a fact about the transport rather than about this
+        handler: the identity is what a channel able to deliver a frame
+        mid-job would use, and the checkpoints below are where it would land.
+        """
         from viva.engine import upload
         from viva.ingest.reader import live_reading_configured, parking_reader
 
+        from viva.persona import moment
+
         path = _upload_request(payload)
-        refusal = _refusal(path)
-        if refusal is not None:
-            return refusal.as_dict()
+        job = self._jobs.open("viva.documents.upload", CAPTURE_STEPS)
         try:
-            data = path.read_bytes()
-        except OSError:
-            return _refused(UNREADABLE, "documents_cannot_open").as_dict()
-        result = upload(self._vault, path.name, data, parking_reader())
-        return _outcome(result, live_reading_configured()).as_dict()
+            with job:
+                job.checkpoint()
+                refusal = _refusal(path)
+                if refusal is not None:
+                    job.fail(refusal.reason or "")
+                    return _with_job(refusal, job.job_id)
+                job.reached(CHECKED)
+                job.checkpoint()
+                try:
+                    data = path.read_bytes()
+                except OSError:
+                    unreadable = _refused(UNREADABLE, "documents_cannot_open")
+                    job.fail(UNREADABLE)
+                    return _with_job(unreadable, job.job_id)
+                job.reached(OPENED)
+                job.checkpoint()
+                result = upload(self._vault, path.name, data, parking_reader())
+                job.reached(SETTLED)
+                return _with_job(_outcome(result, live_reading_configured()),
+                                 job.job_id)
+        except JobCancelled:
+            # A person stopped this. It is an ordinary reply rather than a
+            # failure, and the sentence says what the vault holds now — which
+            # is whatever the last finished step left, and never a guess at
+            # what the step that did not run would have done.
+            return _with_job(
+                ActionOutcome("refused", moment("jobs_stopped_capture"),
+                              reason=CANCELLED),
+                job.job_id)
+
+    def cancel(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Ask one job to stop, and say what asking reached.
+
+        Three answers, and each is a different fact. A job the registry does
+        not hold is refused, because a cancel that quietly succeeds against an
+        identity nothing minted tells a person their work stopped when nothing
+        was ever asked. A job already over is refused too, and says which of
+        the two it is. Only a job the ask actually moved comes back completed.
+        """
+        from viva.persona import moment
+
+        job_id = _cancel_request(payload)
+        try:
+            before = self._jobs.record(job_id)
+        except KeyError:
+            return _refused(NO_SUCH_JOB, "jobs_unknown").as_dict()
+        from .jobs import TERMINAL
+        if before.state in TERMINAL:
+            return ActionOutcome("refused", moment("jobs_already_settled"),
+                                 reason=JOB_OVER,
+                                 state={"job": before.as_dict()}).as_dict()
+        record = self._jobs.cancel(job_id)
+        return ActionOutcome("completed", moment("jobs_stopped"),
+                             state={"job": record.as_dict()}).as_dict()
+
+
+def _with_job(outcome: ActionOutcome, job_id: str) -> dict[str, Any]:
+    """The outcome, carrying the identity of the job that produced it.
+
+    The identity goes beside the sentence rather than into it: a person reads
+    the sentence and a cancel names the identity, and a sentence a caller has
+    to parse to find one is a contract nobody wrote down."""
+    state = dict(outcome.state or {})
+    state["job_id"] = job_id
+    return ActionOutcome(outcome.kind, outcome.message, state=state,
+                         reason=outcome.reason).as_dict()
+
+
+def _cancel_request(payload: Mapping[str, Any]) -> str:
+    allowed = {"job_id"}
+    unexpected = set(payload) - allowed
+    if unexpected:
+        raise BridgeRequestError(
+            "viva.documents.cancel does not accept fields: "
+            + ", ".join(sorted(unexpected)))
+    job_id = payload.get("job_id")
+    if not isinstance(job_id, str) or not job_id.strip():
+        raise BridgeRequestError("job_id must be a non-empty string")
+    return job_id
 
 
 def _upload_request(payload: Mapping[str, Any]) -> Path:

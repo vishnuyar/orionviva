@@ -24,10 +24,11 @@ class OpenedVaultSurfaceProvider:
     bridge operations.
     """
 
-    _SURFACES = frozenset(("overview", "documents", "review"))
+    _SURFACES = frozenset(("overview", "documents", "review", "jobs"))
 
-    def __init__(self, vault: Vault) -> None:
+    def __init__(self, vault: Vault, jobs: Any = None) -> None:
         self._vault = vault
+        self._jobs = jobs
 
     def read_surface(
         self, surface: str, parameters: Mapping[str, Any]
@@ -39,6 +40,8 @@ class OpenedVaultSurfaceProvider:
             return self._overview(params)
         if surface == "documents":
             return self._documents()
+        if surface == "jobs":
+            return self._job_registry()
         return self._review(params)
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
@@ -69,6 +72,18 @@ class OpenedVaultSurfaceProvider:
         return documents(self._vault.ledger.projection(),
                          frozenset(self._vault.raw.doc_ids()),
                          live_reading_configured())
+
+    def _job_registry(self) -> dict[str, Any]:
+        """What the sidecar is doing, or has just done, for this vault.
+
+        The one read here that opens no projection: a job is work this process
+        is doing and is not a thing the ledger records, so nothing about it
+        survives the sidecar. A build with no registry answers absent rather
+        than with an empty list — there is a difference between a sidecar that
+        has run no job and one that cannot say."""
+        if self._jobs is None:
+            return {"state": "absent", "jobs": [], "running": []}
+        return self._jobs.read()
 
     def _review(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         projection = self._vault.ledger.projection()

@@ -1,7 +1,8 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { BRIDGE_PROTOCOL } from "./bridge/contracts";
-import type { BridgeRequest, BridgeResponse, BridgeTransport, DroppedPathsListener } from "./bridge/contracts";
+import { listen } from "@tauri-apps/api/event";
+import { BRIDGE_PROTOCOL, JOB_PROGRESS_EVENT } from "./bridge/contracts";
+import type { BridgeRequest, BridgeResponse, BridgeTransport, DroppedPathsListener, JobProgressFrame, JobProgressListener } from "./bridge/contracts";
 
 type TauriInternals = {
   invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -54,10 +55,16 @@ export function installTauriBridge(): boolean {
     // The window layer takes an operating-system drop before the page can see
     // it, which is why no browser drop event fires for one. What arrives here
     // instead is the list of paths that landed on the window.
-    subscribeToDroppedPaths: (listen: DroppedPathsListener) =>
+    subscribeToDroppedPaths: (listener: DroppedPathsListener) =>
       getCurrentWebview().onDragDropEvent((event) => {
-        if (event.payload.type === "drop") listen(event.payload.paths);
+        if (event.payload.type === "drop") listener(event.payload.paths);
       }),
+    // A progress frame reaches this window on an event rather than in a
+    // reply, because the reply arrives when the work is over. The host reads
+    // the frame off the sidecar's own output and hands it here unchanged;
+    // nothing between the two composes anything.
+    subscribeToJobProgress: (listener: JobProgressListener) =>
+      listen<JobProgressFrame>(JOB_PROGRESS_EVENT, (event) => listener(event.payload)),
   };
   window.orionVivaBridge = transport;
   return true;

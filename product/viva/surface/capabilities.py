@@ -198,6 +198,19 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         ),
     ),
     _surface(
+        "documents.jobs",
+        "viva.desktop_bridge.jobs",
+        CapabilityDestination.DOCUMENTS,
+        "while the sidecar holds an open vault",
+        "JobRegistry.v1",
+        (),
+        # The registry is a list of what this process is doing. It opens no
+        # projection, writes no event and reaches no model: the work it
+        # describes does all of that, and the description of work is not the
+        # work.
+        (TrustEffect.READS_DATA,),
+    ),
+    _surface(
         "documents.rescan",
         "viva.rescan",
         CapabilityDestination.DOCUMENTS,

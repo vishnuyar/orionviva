@@ -15,7 +15,11 @@ export function adaptActionOutcome(raw: unknown): ActionOutcomeView | null {
   // A refusal without its machine reason is the one shape the contract
   // forbids, so it is read as no outcome at all.
   if (kind === "refused" && !reason) return null;
-  return { kind, message, reason };
+  // The identity of the work this outcome came out of, where the reply named
+  // one. It sits under `state` because that is where a reply puts what it is
+  // reporting about, and it is read by name rather than by position.
+  const jobId = isRecord(raw.state) ? textValue(raw.state.job_id) : "";
+  return jobId ? { kind, message, reason, jobId } : { kind, message, reason };
 }
 
 export function adaptReview(raw: unknown): ReviewData | null {

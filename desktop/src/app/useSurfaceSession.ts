@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { privateSource } from "../surface/sources";
-import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, Notice, ReviewActions, ReviewVerb } from "../surface/types";
+import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
@@ -16,7 +16,24 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   dropped.current = onDropped;
   const capturing = useRef(false);
   const choosing = useRef(false);
+  const cancelling = useRef(false);
   const documentActions = session.source.documentActions;
+  const jobStream = session.source.jobStream;
+
+  // What the sidecar is doing, as it does it. It cannot arrive in a reply:
+  // the reply comes when the work is over, and a channel that only speaks
+  // after the fact reports nothing a person could act on. The source hands
+  // over rows that were already read; a source whose host cannot deliver one
+  // mid-job carries no stream, and nothing here waits for one.
+  useEffect(() => {
+    if (!jobStream) return undefined;
+    let stop: (() => void) | null = null;
+    let gone = false;
+    void jobStream((job) => dispatch({ type: "job-progress", requestId: requestId.current, job }))
+      .then((unlisten) => { if (gone) unlisten(); else stop = unlisten; })
+      .catch(() => undefined);
+    return () => { gone = true; stop?.(); };
+  }, [jobStream]);
 
   // One review verb at a time. The sidecar answers one request before reading
   // the next, so a second press while the first is in flight would queue behind
@@ -126,6 +143,24 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       catch { choosing.current = false; return "unopened"; }
       choosing.current = false;
       return captureGesture(documentActions, paths);
+    },
+    // One stop at a time, and the registry read back afterwards. What the stop
+    // reached is the sidecar's answer; which jobs are left is the registry's,
+    // and neither is worked out here from the other.
+    async cancelJob(jobId: string) {
+      const actions = documentActions;
+      if (!actions || !jobId.trim() || cancelling.current) return;
+      cancelling.current = true;
+      const nextRequestId = requestId.current;
+      dispatch({ type: "cancelling", requestId: nextRequestId, jobId });
+      try {
+        const result = await actions.cancel(jobId);
+        const read = await actions.readJobs();
+        const jobs: readonly JobView[] = read.state === "ready" ? read.data.jobs : [];
+        if (requestId.current === nextRequestId) dispatch({ type: "cancelled", requestId: nextRequestId, jobId, result, jobs });
+      } finally {
+        cancelling.current = false;
+      }
     },
     resetDemo() {
       const nextRequestId = ++requestId.current;

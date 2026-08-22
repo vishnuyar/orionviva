@@ -64,7 +64,7 @@ def test_native_host_discards_a_broken_child_and_supports_explicit_recovery():
     assert "shutdown_current(&mut process)" in request
     assert "bridge_restart" in source
     assert "shutdown_current(&mut process)" in restart
-    assert "request_process(ensure_bridge(&mut process)?" in request
+    assert "request_process(app, ensure_bridge(&mut process)?" in request
 
 
 def test_native_host_matches_only_the_current_non_event_response():
@@ -75,7 +75,11 @@ def test_native_host_matches_only_the_current_non_event_response():
     assert "loop" in request
     assert 'response.get("request_id")' in request
     assert "Some(request_id)" in request or "Some(request_id.as_str())" in request
-    assert 'response.get("event").is_none()' in request
+    # A progress frame is recognised, handed to the window that asked, and
+    # never returned as an answer. Before this it was recognised and dropped,
+    # which is a channel that reports nothing.
+    assert 'response.get("event").is_some()' in request
+    assert "app.emit(JOB_PROGRESS_EVENT" in request
     assert "return Ok(response)" in request
 
 

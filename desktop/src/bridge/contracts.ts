@@ -3,7 +3,7 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.0";
 
-export type SurfaceName = "overview" | "documents" | "review";
+export type SurfaceName = "overview" | "documents" | "review" | "jobs";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
@@ -36,6 +36,15 @@ export class BridgeUnreadable extends Error {
     this.name = "BridgeUnreadable";
   }
 }
+// One progress frame, as the host delivers it. The shell reads the frame and
+// nothing else about the transport: what a job is doing is the sidecar's to
+// say, and a shell that computed a step from a reply would be a second author
+// of the same fact.
+export type JobProgressFrame = { protocol: string; request_id: string; event: string; result: unknown };
+export type JobProgressListener = (frame: JobProgressFrame) => void;
+// The window event one progress frame arrives on. This is the page's half of
+// one constant and moves only when the native host's does.
+export const JOB_PROGRESS_EVENT = "orionviva://job-progress";
 // A dropped file is handed over as a path and nothing else. The bytes are
 // opened by the sidecar, so nothing about the file's contents ever enters this
 // window.
@@ -45,6 +54,7 @@ export type BridgeTransport = {
   pickVaultDirectory?: () => Promise<string | null>;
   pickDocumentPaths?: () => Promise<readonly string[]>;
   subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
+  subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;
 };
 export type BridgeClient = {
   openVault: (vaultDirectory: string, passphrase: string) => Promise<void>;
@@ -52,11 +62,20 @@ export type BridgeClient = {
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;
   readReview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
+  // What the sidecar is doing, or has just done. It is a read like any other
+  // and answers absent for a sidecar that has run no job — which is not the
+  // same fact as a sidecar that cannot say.
+  readJobs: () => Promise<SurfaceReadResult>;
   // One path per call. Several files are several frames, one after another,
   // because the sidecar answers one request before it reads the next.
   uploadDocument: (path: string) => Promise<unknown>;
   pickDocumentPaths?: () => Promise<readonly string[]>;
   subscribeToDroppedPaths?: (listen: DroppedPathsListener) => Promise<() => void>;
+  subscribeToJobProgress?: (listen: JobProgressListener) => Promise<() => void>;
+  // Stop one job, named by the identity the sidecar minted for it. A job is
+  // stopped, never a document: what the vault holds when a job stops is
+  // whatever its last finished step left there.
+  cancelJob: (jobId: string) => Promise<unknown>;
   // An action answers with an outcome. It arrives unread, like a surface read:
   // the transport carries the frame and something above it decides what it says.
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;

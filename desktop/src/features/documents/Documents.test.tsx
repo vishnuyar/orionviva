@@ -1,11 +1,11 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ActionResult, DocumentsData, FeatureResult, SurfaceDocument } from "../../surface/types";
+import type { ActionResult, DocumentsData, FeatureResult, JobView, SurfaceDocument } from "../../surface/types";
 import { Documents } from "./Documents";
 import type { CaptureControls } from "./Documents";
 // The sentences a person is told, read from the pack that ships them. A test
 // that types one out passes against words nobody shipped.
-import moments from "../../../../product/viva/persona/pack-v19/moments.json";
+import moments from "../../../../product/viva/persona/pack-v20/moments.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const ALREADY_HELD = moments.documents_already_held;
@@ -16,11 +16,16 @@ const document = (id: string, name = "sample.pdf"): SurfaceDocument => ({ id, na
 const data = (documents: SurfaceDocument[], readingSentence = ""): DocumentsData => ({ documents, readingSentence, captureQueue: [], processingJobs: [], outboundRecords: [] });
 const ready = (documents: SurfaceDocument[], readingSentence = ""): FeatureResult<DocumentsData> => ({ state: "ready", data: data(documents, readingSentence) });
 const noAction = () => {};
-const idle = (onChoose: () => void = noAction): CaptureControls => ({ state: { state: "idle" }, onChoose });
-const droppedOnly = (result: ActionResult): CaptureControls => ({ state: { state: "settled", result }, onChoose: null });
-const working = (onChoose: () => void = noAction): CaptureControls => ({ state: { state: "working", result: null }, onChoose });
-const settled = (message: string): CaptureControls => ({ state: { state: "settled", result: { state: "settled", outcome: { kind: "completed", message, reason: "" } } }, onChoose: noAction });
-const reply = (result: ActionResult): CaptureControls => ({ state: { state: "settled", result }, onChoose: noAction });
+// No job and no stop unless a test says so: a screen given nothing about a job
+// must render nothing about one, which is the state every case below but the
+// progress cases is in.
+const quiet = { job: null, cancel: { state: "idle" } as const, onStop: null };
+const idle = (onChoose: () => void = noAction): CaptureControls => ({ ...quiet, state: { state: "idle" }, onChoose });
+const droppedOnly = (result: ActionResult): CaptureControls => ({ ...quiet, state: { state: "settled", result }, onChoose: null });
+const working = (onChoose: () => void = noAction): CaptureControls => ({ ...quiet, state: { state: "working", result: null }, onChoose });
+const settled = (message: string): CaptureControls => ({ ...quiet, state: { state: "settled", result: { state: "settled", outcome: { kind: "completed", message, reason: "" } } }, onChoose: noAction });
+const reply = (result: ActionResult): CaptureControls => ({ ...quiet, state: { state: "settled", result }, onChoose: noAction });
+const runningJob = (over: Partial<JobView> = {}): JobView => ({ jobId: "viva.documents.upload-1", operation: "viva.documents.upload", state: "running", completed: 1, total: 3, message: "", step: "checked", attempt: 1, steps: ["checked", "opened", "settled"], cancellable: true, ...over });
 
 describe("document presentation", () => {
   it("maps every reviewed sample lifecycle without implying progression", () => {
@@ -274,5 +279,59 @@ describe("what this read says about reading", () => {
     expect(container.querySelector(".document-detail")).toHaveTextContent("quarter-close.pdf");
     expect(getAllByText("statement").length).toBeGreaterThan(0);
     expect(getByText("Document ID · named")).toBeInTheDocument();
+  });
+});
+
+describe("what the sidecar says it is doing", () => {
+  const props = { mode: "live" as const, selectedDocument: "", onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+
+  it("says nothing about a job when the sidecar has said nothing", () => {
+    const { queryByRole } = render(<Documents {...props} capture={idle()} result={ready([])} />);
+    expect(queryByRole("heading", { name: "viva.documents.upload" })).not.toBeInTheDocument();
+  });
+
+  it("names the step the sidecar named and counts the steps the job declared", () => {
+    const capture = { ...idle(), job: runningJob() };
+    const { getByText } = render(<Documents {...props} capture={capture} result={ready([])} />);
+    expect(getByText("Step 1 of 3 — checked")).toBeInTheDocument();
+  });
+
+  it("offers a stop only while the sidecar says the job can still be stopped", () => {
+    const stoppable = { ...idle(), job: runningJob(), onStop: noAction };
+    const running = render(<Documents {...props} capture={stoppable} result={ready([])} />);
+    expect(running.queryByRole("button", { name: "Stop" })).toBeInTheDocument();
+    running.unmount();
+
+    const over = { ...idle(), job: runningJob({ state: "completed" as const, completed: 3, cancellable: false }), onStop: noAction };
+    const finished = render(<Documents {...props} capture={over} result={ready([])} />);
+    expect(finished.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+    expect(finished.getByText("Finished at step 3 of 3")).toBeInTheDocument();
+  });
+
+  it("offers no stop where the source carries none, rather than one that would refuse", () => {
+    const capture = { ...idle(), job: runningJob(), onStop: null };
+    const { queryByRole } = render(<Documents {...props} capture={capture} result={ready([])} />);
+    expect(queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+  });
+
+  it("hands the stop the identity the sidecar minted, and nothing else", () => {
+    const stopped: string[] = [];
+    const capture = { ...idle(), job: runningJob(), onStop: (jobId: string) => stopped.push(jobId) };
+    const { getByRole } = render(<Documents {...props} capture={capture} result={ready([])} />);
+    fireEvent.click(getByRole("button", { name: "Stop" }));
+    expect(stopped).toEqual(["viva.documents.upload-1"]);
+  });
+
+  it("says which attempt this is rather than restarting a bar with no word for why", () => {
+    const capture = { ...idle(), job: runningJob({ attempt: 2, completed: 0, step: "" }) };
+    const { getByText } = render(<Documents {...props} capture={capture} result={ready([])} />);
+    expect(getByText("This is attempt 2. The earlier one did not finish.")).toBeInTheDocument();
+  });
+
+  it("keeps the stop in the tab order while the vault is answering it", () => {
+    const capture = { ...idle(), job: runningJob(), onStop: noAction, cancel: { state: "working" as const, jobId: "viva.documents.upload-1" } };
+    const { getByRole, getByText } = render(<Documents {...props} capture={capture} result={ready([])} />);
+    expect(getByRole("button", { name: "Stop" })).toHaveAttribute("aria-disabled", "true");
+    expect(getByText("Asking your vault to stop. What has already finished is kept.")).toBeInTheDocument();
   });
 });

@@ -457,12 +457,11 @@ def test_an_action_the_registry_declares_without_a_handler_is_refused(tmp_path):
     """Every declared action is an operation; only the ones this build serves
     have a handler. The rest are refused by the allowlist rather than by
     silence — including the review capability's own `answer`, which this build
-    declares and does not serve, and the documents capability's `cancel`,
-    which waits on there being a job to cancel."""
+    declares and does not serve."""
     vault = Vault.open(tmp_path / "vault", "pw")
     handlers = handlers_for_opened_vault(vault).handlers
 
-    for operation in ("viva.documents.cancel", "viva.review.answer"):
+    for operation in ("viva.review.answer",):
         response = json.loads(
             dispatch_frame(_review_frame(operation, {}), handlers))
 

@@ -95,20 +95,36 @@ def handlers_with_surface_provider(
 def handlers_for_opened_vault(
     vault: Any,
     progress_sink: Callable[[Any], None] | None = None,
+    pump: Callable[[], None] | None = None,
 ) -> BridgeDispatcher:
-    """Build the allowlist for one concrete, already-open product vault."""
+    """Build the allowlist for one concrete, already-open product vault.
+
+    One job registry is built here and handed to everything that needs it, so
+    the handler that starts a job, the handler that stops one and the read that
+    lists them are looking at the same jobs. Two registries would be two
+    answers to the same question, and the one a person could see would not be
+    the one their cancel reached.
+
+    ``pump`` is what a running job calls between its steps to let a frame that
+    arrived mid-job be read. The registry does not know what it does — the
+    sidecar owns the transport — and a registry with none still records what
+    happened, which is what makes this testable without a bridge.
+    """
 
     from .document_actions import DocumentActions
+    from .jobs import JobRegistry
     from .review_actions import ReviewActions
     from .vault_surface import OpenedVaultSurfaceProvider
 
+    jobs = JobRegistry(progress_sink, pump)
     reads = handlers_with_surface_provider(
-        OpenedVaultSurfaceProvider(vault), progress_sink
+        OpenedVaultSurfaceProvider(vault, jobs), progress_sink
     )
     actions = ReviewActions(vault)
-    captures = DocumentActions(vault)
+    captures = DocumentActions(vault, jobs)
     return BridgeDispatcher({
         **reads.handlers,
         REVIEW_OPERATIONS["decline"]: actions.decline,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
+        DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,
     })

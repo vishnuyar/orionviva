@@ -1,7 +1,7 @@
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
 import type { ChannelPresentation } from "../../components/actionChannel";
-import type { CaptureActionState, DocumentsData, EvidenceLink, FeatureResult, SurfaceDocument, SurfaceMode } from "../../surface/types";
+import type { CancelActionState, CaptureActionState, DocumentsData, EvidenceLink, FeatureResult, JobView, SurfaceDocument, SurfaceMode } from "../../surface/types";
 import { documentRowLabel, lifecyclePresentation, resolveDocumentSelection, sampleLifecycle } from "./documentPresentation";
 
 // What a screen needs to say what became of a capture, and — where the host
@@ -9,7 +9,12 @@ import { documentRowLabel, lifecyclePresentation, resolveDocumentSelection, samp
 // file at all carries none of this, so the control is absent rather than
 // present and refusing; a host that can receive a dropped file but offers no
 // picker carries the state without the control.
-export type CaptureControls = { state: CaptureActionState; onChoose: (() => void) | null };
+//
+// `job` is what the sidecar last said about the work this screen started, or
+// nothing. `onStop` is present only where the source can carry a stop, so a
+// screen with nothing behind the control renders no control rather than one
+// that would have to refuse.
+export type CaptureControls = { state: CaptureActionState; onChoose: (() => void) | null; job: JobView | null; cancel: CancelActionState; onStop: ((jobId: string) => void) | null };
 type DocumentsProps = { result: FeatureResult<DocumentsData>; mode: SurfaceMode; selectedDocument: string; capture: CaptureControls | null; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void };
 
 // The one sentence this panel says, and the only place it is said. What the
@@ -45,6 +50,26 @@ function CapturePanel({ state, onChoose }: { state: CaptureActionState; onChoose
   </section>;
 }
 
+// What the sidecar said it is doing, said back. Every number and every word
+// here came off a progress frame: the step is the sidecar's name for it, the
+// count is its own, and this renders them rather than deriving a percentage
+// nobody chose. A job on its second attempt says so, because a bar that
+// restarts with no word for why has told a person their work was lost.
+function JobProgress({ job, cancel, onStop }: { job: JobView; cancel: CancelActionState; onStop: ((jobId: string) => void) | null }) {
+  const stopping = cancel.state === "working" && cancel.jobId === job.jobId;
+  const running = job.state === "running" || job.state === "queued";
+  return <section className="document-job" aria-labelledby="document-job-title">
+    <div className="detail-panel-label">Progress</div>
+    <h2 id="document-job-title">{job.operation || "Work in progress"}</h2>
+    <p className="document-job-step" role="status" aria-live="polite">{running ? `Step ${job.completed} of ${job.total}${job.step ? ` — ${job.step}` : ""}` : `Finished at step ${job.completed} of ${job.total}`}</p>
+    {job.attempt > 1 ? <p className="document-job-attempt">This is attempt {job.attempt}. The earlier one did not finish.</p> : null}
+    {job.message ? <p className="document-job-message">{job.message}</p> : null}
+    <progress className="document-job-bar" value={job.completed} max={job.total || 1} aria-labelledby="document-job-title" />
+    {onStop && running && job.cancellable ? <button className="secondary-button" type="button" aria-disabled={stopping} aria-describedby={stopping ? "document-job-stopping" : undefined} onClick={() => { if (!stopping) onStop(job.jobId); }}>Stop</button> : null}
+    {stopping ? <span className="action-explanation" id="document-job-stopping">Asking your vault to stop. What has already finished is kept.</span> : null}
+  </section>;
+}
+
 function SampleCaptureBoundary() {
   return <section className="document-capture-status" id="document-capture-status" tabIndex={-1} aria-labelledby="document-capture-title">
     <div className="detail-panel-label">Fictional sample</div>
@@ -55,7 +80,7 @@ function SampleCaptureBoundary() {
 }
 
 function LiveScope() {
-  return <section className="document-scope"><h2>What this read can show</h2><p>This private-vault read supplies document identity, the name of the file where one was recorded, document type, resolution status, whether an original is available, and whether it has been read. Lifecycle steps, pages, source regions, provenance, contributions, wait reasons, jobs, progress, recovery, posting, and outbound history are not supplied.</p></section>;
+  return <section className="document-scope"><h2>What this read can show</h2><p>This private-vault read supplies document identity, the name of the file where one was recorded, document type, resolution status, whether an original is available, and whether it has been read. Lifecycle steps, pages, source regions, provenance, contributions, wait reasons, recovery, posting, and outbound history are not supplied. What a capture is doing while it runs is reported separately, by the sidecar doing it.</p></section>;
 }
 
 function SampleLifecycle() {
@@ -83,7 +108,7 @@ function RelatedEvidence({ mode, document, onOpenEvidence }: { mode: SurfaceMode
 }
 
 function Limitations() {
-  return <section className="document-limitations"><h4>Unavailable in this preview</h4><ul><li id="document-page-review-unavailable">Page and source-region review are not connected.</li><li>Focused correction is not connected.</li><li>Reader jobs, progress, cancellation, and restart recovery are not connected.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></section>;
+  return <section className="document-limitations"><h4>Unavailable in this preview</h4><ul><li id="document-page-review-unavailable">Page and source-region review are not connected.</li><li>Focused correction is not connected.</li><li>Restart recovery is not connected: a job does not survive the sidecar it ran in.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></section>;
 }
 
 function DocumentDetail({ mode, document, onOpenEvidence }: { mode: SurfaceMode; document: SurfaceDocument; onOpenEvidence: (link: EvidenceLink) => void }) {
@@ -129,9 +154,11 @@ function DocumentDetail({ mode, document, onOpenEvidence }: { mode: SurfaceMode;
 export function Documents({ result, mode, selectedDocument, capture, onSelectDocument, onOpenEvidence, onExploreSample }: DocumentsProps) {
   const said = capturePresentation(capture ? capture.state : { state: "idle" }, panelSentence(result));
   const captureRegion = capture?.onChoose ? <CapturePanel state={capture.state} onChoose={capture.onChoose} /> : mode === "demo" ? <SampleCaptureBoundary /> : null;
-  if (result.state === "absent" && !captureRegion && !said) return null;
+  const job = capture?.job ?? null;
+  if (result.state === "absent" && !captureRegion && !said && !job) return null;
   return <section className="feature-panel documents-surface">
     {captureRegion}
+    {capture && job ? <JobProgress job={job} cancel={capture.cancel} onStop={capture.onStop} /> : null}
     {capture ? <div className="visually-hidden" role="status" aria-live="polite">{said ? `${said.title ? `${said.title}. ` : ""}${said.detail}` : ""}</div> : null}
     {said ? <div className="document-capture-answer">{said.title ? <strong>{said.title}</strong> : null}<p>{said.detail}</p></div> : null}
     <PanelStateView result={result} copy={{ partial: "Some document details are unavailable. Available documents are shown below.", needsInput: "Some documents need review. Available document details are shown below.", unavailable: { title: "Documents unavailable", detail: "Document details are not available in this build." }, failed: { title: "Documents could not be read", detail: "The documents section could not be read. The private vault is still open." } }}>{(data) => {

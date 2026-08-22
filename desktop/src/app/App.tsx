@@ -77,6 +77,11 @@ export function App() {
   const conversationDrawerRef = useRef<HTMLElement>(null);
   const conversationCloseRef = useRef<HTMLButtonElement>(null);
   const openingVault = session.phase === "opening";
+  // The one job this screen has a control for: the newest capture the sidecar
+  // has said anything about. The registry holds more than one, and a screen
+  // that showed all of them would be showing work a person did not start from
+  // here; the stop belongs beside the thing they did start.
+  const capturedJob = [...session.jobs].reverse().find((job) => job.operation === "viva.documents.upload") ?? null;
   const evidenceSelection = overlay?.kind === "evidence" && overlay.selection.requestId === session.requestId && overlay.selection.mode === surface.mode ? overlay.selection : null;
   const conversationSelection = overlay?.kind === "conversation" && overlay.requestId === session.requestId && overlay.mode === surface.mode ? overlay : null;
   const conversationOpen = Boolean(conversationSelection);
@@ -284,7 +289,7 @@ export function App() {
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
           {session.destination === "overview" && <Overview result={surface.overview} reviewResult={surface.review} mode={surface.mode} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={resetDemoVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} mode={surface.mode} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={resetDemoVault} />}
-          {session.destination === "documents" && <Documents result={surface.documents} mode={surface.mode} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={resetDemoVault} />}
+          {session.destination === "documents" && <Documents result={surface.documents} mode={surface.mode} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={resetDemoVault} />}
           {session.destination === "review" && <Review result={surface.review} mode={surface.mode} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenEvidence={openEvidenceDocument} actions={{ state: session.reviewAction, onDecline: declineQuestion }} />}
           {session.destination === "activity" && <Activity result={surface.activity} mode={surface.mode} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} />}
           {session.destination === "trust" && <Trust result={surface.trust} mode={surface.mode} />}

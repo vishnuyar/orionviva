@@ -131,16 +131,17 @@ def test_a_captured_document_is_sealed_and_the_reply_says_reading_waits(
     assert vault.raw.get(RawStore.fingerprint(DOCUMENT)) == DOCUMENT
 
 
-def test_the_reply_carries_no_identity_for_work_nothing_is_tracking(
-        tmp_path, unplugged):
-    """A capture that is finished by the time it answers has nothing to hand
-    back an id for, and an id nothing consumes is a word that looks like a
-    capability."""
+def test_the_reply_carries_the_identity_the_sidecar_minted(tmp_path, unplugged):
+    """A capture answers with the identity of the job that did it, because a
+    second frame — the cancel — has to be able to name this job and no other.
+    The identity is beside the sentence rather than inside it: a sentence a
+    caller has to parse to find one is a contract nobody wrote down."""
     vault = _vault(tmp_path)
 
     result = _Sidecar(vault).send(UPLOAD, {"path": str(_file(tmp_path))})
 
-    assert result["state"] is None
+    assert result["state"]["job_id"].startswith("viva.documents.upload-")
+    assert result["state"]["job_id"] not in result["message"]
 
 
 def test_a_caller_cannot_assert_a_job_id_because_the_request_has_no_room_for_one(
@@ -329,9 +330,36 @@ def test_the_two_reachable_actions_each_have_their_own_sentence():
     assert parked.message != duplicate.message
 
 
-def test_the_cancel_action_is_declared_and_refused(tmp_path):
-    """Nothing tracks a capture, so nothing can be asked to stop one. The
-    action stays declared and unserved rather than answering emptily."""
-    refusal = _Sidecar(_vault(tmp_path)).rejected("viva.documents.cancel", {})
+def test_stopping_a_job_nothing_minted_is_refused_rather_than_answered(tmp_path):
+    """A cancel that quietly succeeds against an identity nothing minted tells
+    a person their work stopped when nothing was ever asked. It is a refusal
+    with a reason, which is an ordinary reply and not an error frame."""
+    result = _Sidecar(_vault(tmp_path)).send(
+        "viva.documents.cancel", {"job_id": "viva.documents.upload-404"})
 
-    assert refusal["error"]["code"] == "operation_not_allowed"
+    assert result["kind"] == "refused"
+    assert result["reason"] == "job_unknown"
+
+
+def test_stopping_a_capture_that_already_finished_says_so(tmp_path, unplugged):
+    """A job that finished a moment before the ask is not moved, and the reply
+    says which of the two unhappy things happened rather than reporting a
+    cancel that reached nothing as one that worked."""
+    sidecar = _Sidecar(_vault(tmp_path))
+    captured = sidecar.send(UPLOAD, {"path": str(_file(tmp_path))})
+
+    result = sidecar.send("viva.documents.cancel",
+                          {"job_id": captured["state"]["job_id"]})
+
+    assert result["kind"] == "refused"
+    assert result["reason"] == "job_already_settled"
+    assert result["state"]["job"]["state"] == "completed"
+
+
+def test_a_cancel_request_takes_a_job_and_nothing_else(tmp_path):
+    """The field set is the fence. A cancel naming a path would be a caller
+    asserting which work its identity stands for."""
+    refusal = _Sidecar(_vault(tmp_path)).rejected(
+        "viva.documents.cancel", {"job_id": "j", "path": "/tmp/x"})
+
+    assert refusal["error"]["code"] == "invalid_request"

@@ -88,7 +88,7 @@ A gap no machine in this repository can hold says so in place of an address and
 gives its reason. Those sit in their own table, counted, so "untestable" is a
 short list with reasons rather than a blanket over the whole document.
 
-### Destinations (10)
+### Destinations (11)
 
 Where the registry and the interface agree about where a capability lands, and
 where they do not. The first three marked columns are derived from the code on
@@ -105,6 +105,7 @@ the interface ships it, or it is rejected as invented.
 | `accounts` | no | no | no | yes |
 | `activity` | no | yes | no | yes |
 | `documents` | yes | yes | yes | yes |
+| `jobs` | yes | no | no | yes |
 | `review` | yes | yes | yes | yes |
 | `viva` | no | yes | yes | no |
 | `trust` | no | yes | yes | yes |
@@ -116,9 +117,13 @@ They do not even spell one destination the same way: the registry declares
 `account`, the interface ships `accounts`. `viva` and `settings` are registry
 destinations with no place in the interface; `accounts` and `activity` are
 shipped destinations no surfaced capability claims. `none` is how the registry
-says a capability has no destination at all. The day a surface becomes
-live-readable, or a destination is declared, or a capability's destination
-moves, this table is wrong and the build says so.
+says a capability has no destination at all. `jobs` is a live-readable surface
+name that is no registry destination and no screen of its own: what the sidecar
+is doing is shown on the documents screen, beside the work that started it,
+and the capability that declares the read is filed under `documents` for that
+reason. The day a surface becomes live-readable, or a destination is declared,
+or a capability's destination moves, this table is wrong and the build says
+so.
 
 ### Bridge operations (9)
 
@@ -129,8 +134,8 @@ cell reads `yes` or `no` and nothing else.
 
 The reads are declared; the actions are one per action the capability registry
 declares, so this table read on its own is the whole of what can touch a vault.
-An action with no handler is refused by the allowlist rather than by silence —
-three of the five actions here are in that state, `viva.review.answer` among
+An action with no handler is refused by the allowlist rather than by silence,
+and the ones in that state are marked below — `viva.review.answer` among
 them.
 
 | Operation | Allowlisted | Where it is served | Consumed by the desktop |
@@ -142,7 +147,7 @@ them.
 | `viva.review.answer` | no | derived from the action the review capability declares; no handler is registered for it, so an opened vault refuses it, and the interface offers no control that would call it | no |
 | `viva.review.decline` | yes | added to the allowlist when a vault opens | yes |
 | `viva.documents.upload` | yes | added to the allowlist when a vault opens; the handler takes one path, opens the file itself and captures it, and asks for the reader that cannot read, so no model runs on this route whatever the environment holds | yes |
-| `viva.documents.cancel` | no | derived from the action the documents capability declares; no handler is registered for it, so an opened vault refuses it | no |
+| `viva.documents.cancel` | yes | added to the allowlist when a vault opens; it names a job the registry minted, never a document, and is the one operation a running job may be interrupted to serve | yes |
 | `viva.maintenance.run` | no | derived from the action the maintenance capability declares; no handler is registered for it, so an opened vault refuses it | no |
 
 ### Gaps (33)

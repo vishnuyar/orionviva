@@ -56,6 +56,10 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # identity cannot assert one, so the constraint is kept by the shape of the
     # request rather than by a check that could be relaxed.
     DOCUMENTS_OPERATIONS["upload"]: {"path"},
+    # A stop names the work and nothing else. A cancel carrying a path would be
+    # a caller asserting which work an identity stands for, which is the same
+    # fence the upload's single field keeps from the other side.
+    DOCUMENTS_OPERATIONS["cancel"]: {"job_id"},
 }
 
 # Where the sidecar declares the fields it will accept, per operation.
@@ -64,6 +68,7 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     SURFACE_READ: (BRIDGE_PACKAGE / "surface_read.py", "_read_request"),
     REVIEW_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "review_actions.py", "_decline_request"),
     DOCUMENTS_OPERATIONS["upload"]: (BRIDGE_PACKAGE / "document_actions.py", "_upload_request"),
+    DOCUMENTS_OPERATIONS["cancel"]: (BRIDGE_PACKAGE / "document_actions.py", "_cancel_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

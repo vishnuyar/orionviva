@@ -1,6 +1,6 @@
 import type { SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { ActionResult, CaptureActionState, Destination, DocumentsData, FeatureResult, Notice, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot } from "../surface/types";
+import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -17,6 +17,16 @@ export type SurfaceSession = {
   notice: Notice | null;
   reviewAction: ReviewActionState;
   captureAction: CaptureActionState;
+  cancelAction: CancelActionState;
+  // What the sidecar last said it was doing, newest last. Every row here was
+  // written by the sidecar — a progress frame it produced, or the registry it
+  // holds — and nothing on this side counts a step or names one.
+  //
+  // It lives in the session rather than in the snapshot because it is not a
+  // read of the vault: it survives no restart, describes this process only,
+  // and a snapshot claiming to hold it would be claiming the vault said
+  // something it never said.
+  jobs: readonly JobView[];
 };
 
 export type SessionAction =
@@ -35,6 +45,9 @@ export type SessionAction =
   | { type: "review-acted"; requestId: number; questionId: string; verb: ReviewVerb; result: ActionResult; review: FeatureResult<ReviewData> }
   | { type: "capturing"; requestId: number }
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
+  | { type: "job-progress"; requestId: number; job: JobView }
+  | { type: "cancelling"; requestId: number; jobId: string }
+  | { type: "cancelled"; requestId: number; jobId: string; result: ActionResult; jobs: readonly JobView[] }
   | { type: "notice"; notice: Notice | null };
 
 function dataOf<T>(result: FeatureResult<T>): T | null {
@@ -73,7 +86,20 @@ export function initialSession(): SurfaceSession {
     notice: null,
     reviewAction: { state: "idle" },
     captureAction: { state: "idle" },
+    cancelAction: { state: "idle" },
+    jobs: [],
   };
+}
+
+// One job's row replaced by a newer statement about the same job, or appended
+// when this is the first word about it. A frame carries no step list, so a
+// frame about a job the registry already described keeps the list the registry
+// gave it: a later statement about a job's progress is not a retraction of
+// what it said it would do.
+function withJob(jobs: readonly JobView[], job: JobView): readonly JobView[] {
+  const held = jobs.find((candidate) => candidate.jobId === job.jobId);
+  const merged = held && !job.steps.length ? { ...job, steps: held.steps } : job;
+  return held ? jobs.map((candidate) => (candidate.jobId === job.jobId ? merged : candidate)) : [...jobs, merged];
 }
 
 export function liveReadingSnapshot(): SurfaceSnapshot {
@@ -96,7 +122,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [] };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -112,6 +138,8 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         notice: { kind: "acknowledged", text: "Reading available surfaces from this device…" },
         reviewAction: { state: "idle" },
         captureAction: { state: "idle" },
+        cancelAction: { state: "idle" },
+        jobs: [],
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -181,6 +209,22 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         captureAction: { state: "settled", result: action.result },
       };
     }
+    // A progress frame is the sidecar saying what it is doing right now, so it
+    // is taken whatever screen a person is on. Nothing here decides whether
+    // the job it names is the one a control belongs to; that is decided where
+    // the control is.
+    case "job-progress":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, jobs: withJob(state.jobs, action.job) };
+    case "cancelling":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, cancelAction: { state: "working", jobId: action.jobId } };
+    case "cancelled":
+      if (action.requestId !== state.requestId) return state;
+      // The registry read that followed the stop replaces the rows outright.
+      // A merge here would keep a job the registry has since forgotten, and a
+      // row nothing holds is a claim about work with no source.
+      return { ...state, jobs: action.jobs, cancelAction: { state: "settled", jobId: action.jobId, result: action.result } };
     case "select-account": return { ...state, selectedAccount: action.id };
     case "select-prompt": return { ...state, selectedPrompt: action.id };
     case "notice": return { ...state, notice: action.notice };

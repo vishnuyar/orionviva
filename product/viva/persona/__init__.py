@@ -473,6 +473,19 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # describes. It names no queue and no next screen: a person who has just
     # added a file is not standing anywhere those words would reach them.
     "documents_outcome_unstated":      frozenset(),
+    # What is said about a piece of work a person asked to stop. A job is
+    # stopped, not a document, so none of these names a file. The first two
+    # are the two places a stop can land — on work that was still running, and
+    # on the capture that was doing it — and each says what the vault holds
+    # now rather than what the step that did not run would have done. The
+    # other two are the ways a stop reaches nothing: work that had already
+    # finished, and an identity nothing ever minted. They are told apart
+    # because a stop that quietly succeeds against nothing tells a person
+    # their work ended when nothing was ever asked.
+    "jobs_stopped":                    frozenset(),
+    "jobs_stopped_capture":            frozenset(),
+    "jobs_already_settled":            frozenset(),
+    "jobs_unknown":                    frozenset(),
 }
 
 

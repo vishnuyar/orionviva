@@ -1,10 +1,11 @@
 import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
+import { adaptJobs, adaptProgress } from "./adapters/jobs";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, FeatureResult, OverviewData, ReviewActions, ReviewData, SurfaceSnapshot } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SurfaceSnapshot } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -49,6 +50,25 @@ async function readDocumentsFeature(client: BridgeClient): Promise<FeatureResult
   return settled(read, (value) => adaptDocuments(value.data));
 }
 
+async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<JobsData>> {
+  const [read] = await Promise.allSettled([client.readJobs()]);
+  return settled(read, (value) => adaptJobs(value.data));
+}
+
+// What the sidecar says it is doing, as it does it, already read into the
+// shape a screen holds. The frame is opened here rather than above this line
+// for the same reason every other payload is: nothing over the boundary reads
+// a raw shape, and a frame this side cannot read is dropped rather than
+// rendered under the nearest word.
+export function privateJobStream(client: BridgeClient): JobStream | null {
+  const subscribe = client.subscribeToJobProgress;
+  if (!subscribe) return null;
+  return (listen) => subscribe((frame) => {
+    const job = adaptProgress(frame.result);
+    if (job) listen(job);
+  });
+}
+
 // The write side of the documents capability, and the read that follows it.
 // One path crosses per call and no bytes ever do; the vault is read again
 // afterwards so the list a person sees is the vault's own, not this screen's
@@ -57,6 +77,8 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
   return {
     upload: (path) => acted(client.uploadDocument(path)),
     reread: () => readDocumentsFeature(client),
+    cancel: (jobId) => acted(client.cancelJob(jobId)),
+    readJobs: () => readJobsFeature(client),
   };
 }
 

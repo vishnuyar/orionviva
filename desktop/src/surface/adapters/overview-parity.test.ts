@@ -10,7 +10,7 @@ import fixture from "../../../../product/viva/surface/fixtures/overview-parity-v
 // against the other is a claim about provenance rather than a claim that two
 // strings this side wrote happen to agree: change a line here and these bytes
 // no longer match it.
-import moments from "../../../../product/viva/persona/pack-v19/moments.json";
+import moments from "../../../../product/viva/persona/pack-v20/moments.json";
 import { resolveEvidenceTarget } from "../evidence";
 import type { DocumentsData, FeatureResult } from "../types";
 import { adaptDocuments } from "./documents";

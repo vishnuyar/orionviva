@@ -6,12 +6,18 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use tauri::{Manager, RunEvent, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 
 // The protocol version every frame this host sends is stamped with. The
 // sidecar refuses a frame whose major version is not its own, so this moves
 // with the sidecar's own constant and never on its own.
 const BRIDGE_PROTOCOL: &str = "2.0";
+
+// The window event one progress frame is delivered on. The sidecar produces
+// these while a job runs; before this existed they were read off the transport
+// and dropped on the floor, which is a channel that reports nothing. The name
+// is the shell's half of one constant and moves only when the page's does.
+const JOB_PROGRESS_EVENT: &str = "orionviva://job-progress";
 
 const BRIDGE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const BRIDGE_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -195,6 +201,7 @@ fn ensure_bridge(process: &mut Option<BridgeProcess>) -> Result<&mut BridgeProce
 }
 
 fn request_process(
+    app: &AppHandle,
     bridge: &mut BridgeProcess,
     request_id: &str,
     encoded: &str,
@@ -226,15 +233,25 @@ fn request_process(
         }
         let response: Value = serde_json::from_str(line.trim())
             .map_err(|error| format!("OrionViva bridge returned invalid JSON: {error}"))?;
-        if response.get("request_id").and_then(Value::as_str) == Some(request_id)
-            && response.get("event").is_none()
-        {
+        if response.get("event").is_some() {
+            // A progress frame is not an answer to this request and never
+            // returns from here; it is handed to the window that asked, so
+            // the page can say what the job is doing while it is still doing
+            // it. A window that has gone is not an error worth failing the
+            // request over — the work is still running and its answer is
+            // still coming.
+            if let Err(error) = app.emit(JOB_PROGRESS_EVENT, &response) {
+                eprintln!("unable to deliver OrionViva job progress: {error}");
+            }
+            continue;
+        }
+        if response.get("request_id").and_then(Value::as_str) == Some(request_id) {
             return Ok(response);
         }
     }
 }
 
-fn request_bridge(state: &BridgeState, frame: Value) -> Result<Value, String> {
+fn request_bridge(app: &AppHandle, state: &BridgeState, frame: Value) -> Result<Value, String> {
     let request_id = frame
         .get("request_id")
         .and_then(Value::as_str)
@@ -249,7 +266,7 @@ fn request_bridge(state: &BridgeState, frame: Value) -> Result<Value, String> {
     let mut process = state.lock()?;
 
     for attempt in 0..2 {
-        let result = request_process(ensure_bridge(&mut process)?, &request_id, &encoded);
+        let result = request_process(app, ensure_bridge(&mut process)?, &request_id, &encoded);
         match result {
             Ok(response) => return Ok(response),
             Err(error) => {
@@ -273,14 +290,18 @@ fn request_bridge(state: &BridgeState, frame: Value) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn bridge_request(state: State<'_, BridgeState>, frame: String) -> Result<String, String> {
+fn bridge_request(
+    app: AppHandle,
+    state: State<'_, BridgeState>,
+    frame: String,
+) -> Result<String, String> {
     let mut request: Value = serde_json::from_str(&frame)
         .map_err(|error| format!("invalid bridge request: {error}"))?;
     let object = request
         .as_object_mut()
         .ok_or_else(|| "bridge request must be an object".to_string())?;
     object.entry("protocol").or_insert_with(|| json!(BRIDGE_PROTOCOL));
-    let response = request_bridge(&state, request)?;
+    let response = request_bridge(&app, &state, request)?;
     serde_json::to_string(&response)
         .map_err(|error| format!("unable to encode OrionViva bridge response: {error}"))
 }

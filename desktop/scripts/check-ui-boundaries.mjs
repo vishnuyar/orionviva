@@ -138,7 +138,11 @@ function scanTypeScript(name, text) {
 // speak to is a list rather than a pattern.
 const hostShim = "tauri-host.ts";
 const hostShimTest = "tauri-host.test.ts";
-const hostShimPackages = new Set(["@tauri-apps/plugin-dialog", "@tauri-apps/api/webview"]);
+// `@tauri-apps/api/event` joins the two the shim already reached because a
+// progress frame arrives on an event rather than in a reply: the reply comes
+// when the work is over, and a channel that only speaks after the fact reports
+// nothing a person could act on.
+const hostShimPackages = new Set(["@tauri-apps/plugin-dialog", "@tauri-apps/api/webview", "@tauri-apps/api/event"]);
 
 function capturePrimitiveViolations(name, text) {
   if (name !== "app/App.tsx" && name !== hostShim && !name.startsWith("features/documents/")) return [];

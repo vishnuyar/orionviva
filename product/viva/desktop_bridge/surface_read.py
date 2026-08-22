@@ -8,34 +8,24 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
 from .handlers import BridgeRequestError
+from .jobs import JobProgressEvent, ProgressStatus
 
-ProgressStatus = Literal["started", "completed", "failed"]
-
-
-@dataclass(frozen=True)
-class JobProgressEvent:
-    """A JSON-safe progress update emitted during one surface read."""
-
-    job_id: str
-    status: ProgressStatus
-    completed: int
-    total: int
-    message: str = ""
-
-    def __post_init__(self) -> None:
-        if not self.job_id.strip():
-            raise ValueError("job_id must be a non-empty string")
-        if self.completed < 0 or self.total < 0 or self.completed > self.total:
-            raise ValueError("completed must be between zero and total")
-        if self.status == "completed" and self.completed != self.total:
-            raise ValueError("completed events must reach total")
-
-    def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+# A read is one step, and it is finished by the time the frame it answers is
+# written. It therefore takes no registry entry: a row that appears and
+# vanishes before anything could show it is not a job a person can be told
+# about, and it would push the jobs a person *can* be told about out of a
+# bounded registry. What a read does carry is the pair of events that bracket
+# it, which is what a caller correlates against the identity it sent.
+__all__ = [
+    "JobProgressEvent",
+    "ProgressStatus",
+    "ProgressSink",
+    "VaultSurfaceProvider",
+    "VaultSurfaceReader",
+]
 
 
 class VaultSurfaceProvider(Protocol):

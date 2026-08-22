@@ -5,7 +5,13 @@ export type PanelState = "absent" | "ready" | "partial" | "needs_input" | "unava
 export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "stale";
 // What an action answered with: the kind of thing that happened, the sentence
 // Viva would say to the person, and the machine reason a refusal carries.
-export type ActionOutcomeView = { kind: ActionOutcome; message: string; reason: string };
+// `jobId` is the identity the sidecar minted for the work this outcome came
+// out of, and it is absent where the reply named none — most replies do, and
+// an empty string standing for that would be an identity nothing can hold. It
+// is carried beside the sentence rather than found inside it, because the one
+// thing a person can do to a job in flight — stop it — needs the identity and
+// not the words.
+export type ActionOutcomeView = { kind: ActionOutcome; message: string; reason: string; jobId?: string };
 // Four channels one verb can come back through. `settled` is the vault's own
 // answer in its own sentence, and the only one that tells a person the vault
 // said no. `unserved` is the sidecar reading the request and refusing to take
@@ -17,6 +23,21 @@ export type ActionResult =
   | { state: "unserved" }
   | { state: "unanswered" }
   | { state: "unreadable" };
+// Where one piece of the sidecar's work stands. The set is the sidecar's and
+// is closed on both sides; a word outside it is a job this interface has not
+// been taught to render, and is read as no job rather than as the nearest one.
+export type JobLifecycle = "queued" | "running" | "completed" | "failed" | "cancelled";
+// One job as the registry holds it. `steps` is what the job declared it would
+// do, in order, so a stalled job says which step it stopped at without being
+// told separately. Nothing here is composed on this side: the count, the step
+// and the sentence are all the sidecar's, and this interface neither counts a
+// step nor writes a word for one.
+export type JobView = { jobId: string; operation: string; state: JobLifecycle; completed: number; total: number; message: string; step: string; attempt: number; steps: readonly string[]; cancellable: boolean };
+export type JobsData = { jobs: readonly JobView[]; running: readonly string[] };
+// A subscription to what the sidecar is doing, already read into rows. A
+// source that carries none is one whose host cannot deliver a statement
+// mid-job, so nothing above it waits for one.
+export type JobStream = (listen: (job: JobView) => void) => Promise<() => void>;
 // The review actions a screen may reach. The registry declares `answer` too and
 // this build serves no handler for it, so nothing here can name it.
 export type ReviewVerb = "decline";
@@ -46,6 +67,14 @@ export type CaptureActionState =
   | { state: "idle" }
   | { state: "working"; result: ActionResult | null }
   | { state: "settled"; result: ActionResult };
+// What became of the last stop a person asked for. It is held apart from the
+// capture's own state: a stop is a second piece of work with its own answer,
+// and folding it into the capture's would leave one sentence standing for two
+// different things that happened.
+export type CancelActionState =
+  | { state: "idle" }
+  | { state: "working"; jobId: string }
+  | { state: "settled"; jobId: string; result: ActionResult };
 
 export type FeatureIssue = { code: string; message: string };
 export type FeatureResult<T> =
@@ -159,5 +188,11 @@ export type DocumentActions = {
   upload: (path: string) => Promise<ActionResult>;
   // One document per call, and one call per gesture.
   reread: () => Promise<FeatureResult<DocumentsData>>;
+  // Stop one job by the identity the sidecar minted for it, and read the
+  // registry back. The read is separate because a stop that reached nothing
+  // and a stop that worked both answer, and only the registry says which
+  // jobs are left.
+  cancel: (jobId: string) => Promise<ActionResult>;
+  readJobs: () => Promise<FeatureResult<JobsData>>;
 };
 export type SurfaceSnapshot = { mode: SurfaceMode; disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; review: FeatureResult<ReviewData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> };
