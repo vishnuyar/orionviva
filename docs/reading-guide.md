@@ -31,6 +31,8 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 **1 · Orientation — why this exists and where it is going**
 
 - [rules.md](rules.md) — **the index of what is true today.** Every rule this folder defines, in one table, with its state and the test that pins it, followed by every rule no test pins and every rule the code contradicts. It carries no argument and no date: the *why* for any rule is in the document named beside it, and history is in git and in the ADRs. Read it first if the question is what the product does; read the rest of this guide if the question is why.
+- [architecture-overview.md](architecture-overview.md) — the map of the machine: the package trees, the layers of the desktop application, the trust boundaries, and where the open seams are. A map that points at the authorities rather than restating them — the page to open first when arriving at the code.
+- [data-flow.md](data-flow.md) — the machine in motion: how a document becomes numbers, how an answer becomes a ruling, how a question becomes a cited answer, and what crosses the bridge. Reads beside the architecture overview.
 - [implementation-roadmap.md](implementation-roadmap.md) — the whole path after v0: fourteen data-first slices, each seeding a reusable block, written as fact statements (open state → implementation → final state → done-tests → why). From consolidating a full financial life, to Viva's voice, to proving a claim to a counterparty.
 - [`../README.md`](../README.md) (repo root) — what OrionViva is, and the principles everything else reasons from.
 - [`../ROADMAP.md`](../ROADMAP.md) — the product phases and what each one has to deliver.
