@@ -170,24 +170,10 @@ def test_a_tag_cannot_be_attached_to_something_that_is_not_money(tmp_path):
                         scope="account")
 
 
-def test_the_surface_offers_a_tag_input_separate_from_the_category_picker():
-    """Merging them in the UI would recreate the confusion the split removes.
+def test_activity_does_not_advertise_tag_writes_before_the_surface_exists():
+    """The old web UI disappeared, so its skipped source-text assertion could
+    never protect anything. Until the desktop exposes distinct category and tag
+    actions, the capability registry must not claim that either write exists."""
+    from viva.surface.capabilities import capability_for
 
-    The category picker answers "what kind of spending is this?" — exactly one,
-    so a spending report's parts sum to the whole. The tag input answers "what
-    was this for?" — as many as you like, overlapping, never summing. Two
-    questions, two controls.
-
-    Crude on purpose (it reads the source as text): the alternative is a browser
-    rig, and the honest trade is to catch CONTRACT drift cheaply here and verify
-    rendering by hand against a real vault."""
-    import pathlib
-    ui = pathlib.Path(__file__).resolve().parents[1] / "viva" / "web" / "static"
-    if not ui.is_dir():
-        import pytest
-        pytest.skip("UI source not present")
-    text = "\n".join(p.read_text() for p in ui.glob("*.js"))
-    assert "api.tag(" in text, "the surface must be able to write a tag"
-    assert "known" in text, "the existing vocabulary is offered before a new one"
-    # The two controls must remain distinguishable in the source.
-    assert "assignMerchant" in text, "the category path is untouched"
+    assert capability_for("activity.movements").actions == ()

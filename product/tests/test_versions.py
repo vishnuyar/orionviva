@@ -12,6 +12,7 @@ so every branch of the audit is watched going red.
 
 import json
 import pathlib
+import tomllib
 
 import pytest
 
@@ -68,6 +69,18 @@ def test_every_declared_file_is_packaged():
     working tree, where every declared file is present by construction."""
     left_behind = versions.unshipped(PACKAGE, PACKAGE.parent / "pyproject.toml")
     assert left_behind == [], "\n".join(left_behind)
+
+
+def test_the_builtin_listen_corpus_is_declared_as_wheel_data():
+    """The evaluation runner loads this corpus through package resources, so a
+    source checkout passing while an installed wheel omits it is a release
+    failure."""
+    pyproject = tomllib.loads(
+        (PACKAGE.parent / "pyproject.toml").read_text(encoding="utf-8"))
+    package_data = pyproject["tool"]["setuptools"]["package-data"]["viva"]
+
+    assert "evals/*.json" in package_data
+    assert (PACKAGE / "evals" / "listen_cases.json").is_file()
 
 
 def test_a_stamp_carries_the_version_and_its_digest():

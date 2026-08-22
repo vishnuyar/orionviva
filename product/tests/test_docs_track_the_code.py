@@ -26,6 +26,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from urllib.parse import unquote
 
 import pytest
 
@@ -40,7 +41,7 @@ _HISTORICAL = {"archived", ".git", "node_modules", "__pycache__", "_to_delete"}
 
 @functools.cache
 def _tracked() -> frozenset[pathlib.Path]:
-    """Every path git tracks, as an absolute path.
+    """Every tracked or commit-candidate path, as an absolute path.
 
     Asked of git rather than of the filesystem. The two answers differ, and the
     difference is the whole point: a gate that reads whatever happens to sit on
@@ -49,9 +50,15 @@ def _tracked() -> frozenset[pathlib.Path]:
     can open. Such a gate passes here and fails in CI, and its verdict moves
     when someone installs a package. Only what is tracked is the record.
     """
-    listed = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z"],
+    # `--others --exclude-standard` makes the gate useful before `git add`: a
+    # new document cannot hide from the reading-guide check during the change
+    # that creates it. Missing tracked paths are filtered so a rename is tested
+    # at its new address rather than failing while trying to open its old one.
+    listed = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z",
+                             "--cached", "--others", "--exclude-standard"],
                             capture_output=True, text=True, check=True).stdout
-    return frozenset(REPO / name for name in listed.split("\0") if name)
+    return frozenset(REPO / name for name in listed.split("\0")
+                     if name and (REPO / name).is_file())
 
 
 def _files(name: str, under: pathlib.Path | None = None) -> list[pathlib.Path]:
@@ -1011,5 +1018,68 @@ def test_a_bridge_operation_table_is_the_operations_the_sidecar_serves():
     problems.extend(unreadable)
     problems.extend(_disagreement("Allowlisted", said_yes, allowlisted))
 
+    client = (REPO / "desktop" / "src" / "bridge" / "client.ts").read_text(
+        encoding="utf-8")
+    consumed = set(re.findall(r'"((?:bridge|viva)\.[a-z_.]+)"', client))
+    said_yes, unreadable = _stated(columns, rows, "Consumed by the desktop")
+    problems.extend(unreadable)
+    problems.extend(_disagreement("Consumed by the desktop", said_yes, consumed))
+
     assert not problems, (f"{path.relative_to(REPO)} no longer describes the "
                           f"operations the sidecar serves:\n  " + "\n  ".join(problems))
+
+
+# ---------------------------------------------------------------------------
+# Navigation and links. A documentation spine that can silently omit a new
+# document or point at a moved one is another unversioned interface.
+# ---------------------------------------------------------------------------
+
+_MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
+
+
+def _relative_link_targets(path: pathlib.Path) -> list[str]:
+    targets = []
+    for raw in _MARKDOWN_LINK.findall(path.read_text(encoding="utf-8")):
+        target = raw.strip()
+        if target.startswith("<") and target.endswith(">"):
+            target = target[1:-1]
+        elif " " in target:
+            target = target.split(" ", 1)[0]
+        if not target or target.startswith(("#", "http://", "https://", "mailto:")):
+            continue
+        targets.append(unquote(target.split("#", 1)[0]))
+    return targets
+
+
+def test_every_relative_markdown_link_resolves():
+    broken = []
+    for path in _files(".md"):
+        for target in _relative_link_targets(path):
+            resolved = (path.parent / target).resolve()
+            if not resolved.exists():
+                broken.append(
+                    f"{path.relative_to(REPO)} -> {target} ({resolved})")
+    assert not broken, "relative Markdown links do not resolve:\n  " + "\n  ".join(broken)
+
+
+def test_every_live_document_is_slotted_into_the_reading_guide():
+    docs = REPO / "docs"
+    guide = docs / "reading-guide.md"
+    linked = {pathlib.Path(target).name
+              for target in _relative_link_targets(guide)}
+    structural = {"README.md", "TODO.md", "phases.md", "reading-guide.md",
+                  "rules.md"}
+    expected = {path.name for path in docs.glob("*.md")} - structural
+
+    assert expected <= linked, (
+        "live documents missing from docs/reading-guide.md: "
+        + ", ".join(sorted(expected - linked)))
+
+
+def test_every_archived_document_carries_the_historical_banner():
+    archive = REPO / "docs" / "archived"
+    missing = [path.name for path in sorted(archive.glob("*.md"))
+               if path.name != "README.md"
+               and "⛔ HISTORICAL RECORD" not in path.read_text(encoding="utf-8")]
+    assert not missing, "archived documents without the historical banner: " + \
+        ", ".join(missing)

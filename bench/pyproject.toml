@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "viva-bench — the admission exam for models that want to read your financial documents. Part of OrionViva."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Vishnu Yarmaneni" }]
 dependencies = [
     # Deliberately minimal — see docs/benchmark-harness-architecture.md.

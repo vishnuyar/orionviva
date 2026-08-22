@@ -40,6 +40,8 @@ Read in this order if arriving fresh. Each entry: what it is, and when you would
 - [design-invariants.md](design-invariants.md) — the standing checklist (trust, internationalization, accounting model, experience) every design doc and ADR answers to.
 - [`../WORKFLOW.md`](../WORKFLOW.md) (repo root) — the lanes a change travels down, the roles that carry it, the checkpoints that are the product owner's, and the warrant under which a stand-in may hold them in a delegated run.
 - [`../STYLE-COMMENT-PASS.md`](../STYLE-COMMENT-PASS.md) (repo root) — what a comment may say: behaviour, never provenance, argument or incident. A rule that must not be undone is a named test, not a paragraph.
+- [`../SECURITY.md`](../SECURITY.md) (repo root) — the private vulnerability-reporting route, supported-code policy, and the security boundaries a reporter must not overclaim.
+- [`../RELEASING.md`](../RELEASING.md) (repo root) — the desktop tag, signing environment, draft-release checks, clean-target smoke pass, and manual rollback procedure.
 
 **3 · Design stances — how the core works**
 
@@ -93,8 +95,8 @@ Read these together; they are one argument, running extraction → merchants →
   their arguments beneath them, the deferrals and what would bring each back, the
   sequencing it declines to ratify, and a register of what the review got wrong. Read it
   before proposing an interface rule: it is also the ceiling of what a stand-in may decide.
-- [backend-capability-gaps.md](backend-capability-gaps.md) — what the surface is waiting on the backend for, split into capabilities that exist and cannot be reached and capabilities that do not exist, each naming the symbol its claim is about. Design-only by declaration: it holds the priority order for what the interface is owed, and never the sentence *this is broken today*.
-- [the-work-order.md](the-work-order.md) — the build order for the rest of this run, re-derived from the gap ledger's priority list under the charter's stranger-first ruling. Every item names itself in full, names the tracked ground its placement rests on, and carries an acceptance class rather than acceptance criteria, because criteria belong to that item's own brief. It holds no priority order of its own — where it and the gap ledger disagree the ledger wins, and the ledger's order moving voids this document rather than amending it. Read it to know what the next cycle is, and read its register of inherited error before trusting a claim the gap ledger makes about itself.
+- [backend-capability-gaps.md](backend-capability-gaps.md) — the current complement to the live status record: capabilities still absent or intentionally incomplete, with executable registries left as the source of truth for what exists.
+- [the-work-order.md](the-work-order.md) — a superseded pointer: the desktop run is complete, its numbered plan is archived, and current work starts from the status and gap records rather than extending the old sequence.
 - [the-maintenance-agent.md](the-maintenance-agent.md) — what Viva does when nobody asked: the observe → plan → perform → record loop, the `AgentActed` event, the stake that keeps a refusal quiet until evidence or machinery moves, and a budget denominated in calls.
 - [agent-toolset.md](agent-toolset.md) — the verbs Viva may ever use, the forbidden list that makes her safe, and the scaling law: tools grow with verbs, never with accounts.
 - [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) — the projection split into a core fold plus per-family view modules behind an unchanged facade, and the registry on top: honest tools, the `ToolResult` envelope with refusal first-class, filter vocabulary validated against the vault's own learned values, and the modality-neutral runner. Also the record of how a sentence is composed from shapes with typed holes.
@@ -107,6 +109,7 @@ Read these together; they are one argument, running extraction → merchants →
 **4 · Deliberately open**
 
 - [adoption-and-distribution.md](adoption-and-distribution.md) — local-first without the friction tax: the onboarding ladder, model access without API keys, and the verified-private-cloud pattern.
+- [account-connection-research.md](account-connection-research.md) — the research record for aggregation as a future acquisition path alongside encrypted manual upload; it is not a current capability.
 - [multi-device-and-remote-access.md](multi-device-and-remote-access.md) — the ledger follows you, documents stay put: blind-relay sync, browser access with a passkey, and the one hosted architecture never to build.
 - [the-suggestions-channel.md](the-suggestions-channel.md) — what Viva offers when she cannot answer. The refusal stays clean and what is useful moves to a separate, labelled channel, because a chosen thing arriving in an answer's authority is the risk. The channel exists on both sides and the risks differ: while Viva speaks the risk is misreading, while she asks it is leading.
 - [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) — the shape a long piece of work reports itself in, fixed before anything produces one. Five constraints bind whoever builds the first producer: who mints a job's identity, why an event goes to a subscriber rather than through a filter, when a state may join the vocabulary, that a fraction ships only from a producer that knows its denominator, and that nothing on this channel is ever appended to the event log.
@@ -131,6 +134,10 @@ Documents from a closed phase live in [archived/](archived/README.md), each carr
 - [archived/the-repair-list-2026-07.md](archived/the-repair-list-2026-07.md) — the decision list drafted from that audit and the first real-money run, ruled item by item.
 - [archived/discovery-synthesis.md](archived/discovery-synthesis.md) — the discovery phase's closing map of the whole forest, written before anything was built. Read for the thesis, not for the state.
 - [archived/cold-read-audit-2026-07.md](archived/cold-read-audit-2026-07.md) — the line-level correctness read of all four packages by a reader arriving with no priors.
+- [archived/backend-capability-gaps-before-live-desktop.md](archived/backend-capability-gaps-before-live-desktop.md) — the backend handoff before the live bridge closed most of its exposure list.
+- [archived/the-work-order-before-live-desktop.md](archived/the-work-order-before-live-desktop.md) — the completed numbered desktop build plan.
+- [archived/user-interface-implementation-status-before-live-desktop.md](archived/user-interface-implementation-status-before-live-desktop.md) — the detailed pre-bridge gap measurement.
+- [archived/todo-before-live-desktop.md](archived/todo-before-live-desktop.md) — the long working handoff with old branch, suite, and work-order state preserved as context.
 
 ## Why
 
@@ -142,6 +149,7 @@ This guide describes what each document *is* and when to return to it. It does n
 
 ## Open
 
-- Nothing checks that a new document is slotted into this guide, so a document can exist unreferenced.
-- Nothing checks that a link here resolves, or that the archived banner is present on every file under `archived/`.
-- Four documents in this folder have no entry here: `README.md`, `TODO.md`, `phases.md` and `account-connection-research.md`.
+- `README.md`, `TODO.md`, and `phases.md` are folder-level navigation and working
+  registers rather than reading-path documents. Every other live top-level
+  document must be slotted here, and every relative Markdown link must resolve;
+  the documentation gate enforces both.

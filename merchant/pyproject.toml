@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "OrionViva merchant knowledge — a peer to vivacore: deterministic merchant normalization, the multi-attribute merchant record, a batched model enrichment engine, and the merchant→category commons. Holds and shares ONLY impersonal merchant knowledge; the personal ledger never crosses this boundary (T9)."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Vishnu Yarmaneni" }]
 dependencies = [
     "vivacore",          # the provider-agnostic model socket + grade schema

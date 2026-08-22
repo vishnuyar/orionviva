@@ -1,28 +1,18 @@
 import json
 import subprocess
+import sys
 from pathlib import Path
 
-import pytest
-
-
-PYTHON = "/Users/vishnu/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
-
-
-@pytest.mark.xfail(
-    reason=(
-        "Brief B — The Gates That Cannot Fail — owns this classification: "
-        "the test invokes the generator through an absolute interpreter "
-        "path and the generator reads its catalog from an absolute "
-        "home-directory path, so this has never been able to pass outside "
-        "one machine. The repair is fenced out of B and is owned by no "
-        "brief."
-    ),
-    strict=True,
-)
 def test_synthetic_statement_generator_creates_manifest_and_pdfs(tmp_path):
     out_dir = tmp_path / "synthetic"
-    subprocess.run([PYTHON, "scripts/generate_synthetic_statements.py"], cwd=Path(__file__).resolve().parents[2], check=True)
-    generated = Path("/Users/vishnu/orionviva-surface/output/pdf/synthetic_statements")
+    root = Path(__file__).resolve().parents[2]
+    subprocess.run(
+        [sys.executable, "scripts/generate_synthetic_statements.py",
+         "--output", str(out_dir)],
+        cwd=root,
+        check=True,
+    )
+    generated = out_dir
 
     pdfs = sorted(p.name for p in generated.glob("*.pdf"))
     assert len(pdfs) == 28

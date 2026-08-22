@@ -13,6 +13,7 @@ The output is a bundle of PDFs plus a JSON manifest that other tools can load.
 
 from __future__ import annotations
 
+import argparse
 import json
 from dataclasses import dataclass
 from datetime import date
@@ -30,11 +31,36 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / "output" / "pdf" / "synthetic_statements"
-CATALOG = Path("/Users/vishnu/Downloads/catalog.json")
+
+# The corpus must build in a clean checkout. These few display names are part
+# of its stable test vocabulary; every other synthetic key has a deterministic
+# title-cased fallback. A real catalog may still be supplied explicitly.
+SYNTHETIC_MERCHANT_NAMES = {
+    "fid bkg svc llc": "Northgate Brokerage Services",
+    "payment to harborline card ending in": "Harborline Card Payment",
+    "ridgeline svcg ach": "Ridgeline Servicing",
+    "riverbend market": "Riverbend Market",
+    "wal mart": "Valuemart",
+}
 
 
 def merchant_name(catalog: dict[str, dict], key: str) -> str:
-    return catalog[key]["canonical_name"]
+    record = catalog.get(key, {})
+    return str(record.get("canonical_name") or
+               SYNTHETIC_MERCHANT_NAMES.get(key) or key.title())
+
+
+def load_catalog(path: Path | None = None) -> tuple[dict[str, dict], str]:
+    """Load an explicitly supplied catalog or return the portable seed."""
+    if path is None:
+        return {}, "built-in synthetic merchant names"
+    if not path.is_file():
+        raise FileNotFoundError(f"merchant catalog not found: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    records = payload.get("records", payload)
+    if not isinstance(records, dict):
+        raise ValueError("merchant catalog must contain an object of records")
+    return records, str(path)
 
 
 @dataclass(frozen=True)
@@ -51,7 +77,6 @@ class StatementSpec:
     notes: list[str]
     holdings: list[list[str]] | None = None
     merchants: list[str] | None = None
-    family: str = ""
     family: str = ""
 
 
@@ -168,7 +193,7 @@ def add_holdings_page(path: Path, rows: list[list[str]]) -> None:
     buf.unlink(missing_ok=True)
 
 
-def manifest_for(specs: Iterable[StatementSpec]) -> dict:
+def manifest_for(specs: Iterable[StatementSpec], source_catalog: str) -> dict:
     docs = []
     for spec in specs:
         docs.append({
@@ -182,7 +207,7 @@ def manifest_for(specs: Iterable[StatementSpec]) -> dict:
         })
     return {
         "generated_at": "2026-08-17",
-        "source_catalog": str(CATALOG),
+        "source_catalog": source_catalog,
         "purpose": "synthetic statement set for local UI and document-processing tests",
         "documents": docs,
     }
@@ -233,7 +258,7 @@ def specs_from_catalog(catalog: dict[str, dict], years: int = 4) -> list[Stateme
                 (f"{year}-06-18", merchant_name(catalog, "riverbend market"), "-118.79", "Household and office order"),
             ],
             notes=[
-                "Memo: synthetic merchants are drawn from the merchant catalog for UI and parsing exercises.",
+                "Memo: deterministic synthetic merchant names exercise the UI and parser.",
                 "The balance history is illustrative only and intended for local testing.",
             ],
             merchants=["Saffron Grocers", "Cashlink", "Valuemart", "Lunchline", "Riverbend Market"],
@@ -333,7 +358,7 @@ def specs_from_catalog(catalog: dict[str, dict], years: int = 4) -> list[Stateme
                 (f"{year}-06-10", merchant_name(catalog, "payment to harborline card ending in"), "+1,200.00", "Payment received from checking"),
             ],
             notes=[
-                "Card payment and purchase activity reference merchants present in the merchant catalog.",
+                "Card payment and purchase activity use the corpus's stable merchant vocabulary.",
                 "Payments toward this card are shown as account reductions in the bank statement set.",
             ],
             merchants=["Saffron Grocers", "Valuemart", "Voltway Charging", "Riverbend Market", "Harborline"],
@@ -364,10 +389,8 @@ def specs_from_catalog(catalog: dict[str, dict], years: int = 4) -> list[Stateme
     return specs
 
 
-def main(out_dir: Path = DEFAULT_OUT) -> None:
-    if not CATALOG.exists():
-        raise FileNotFoundError(f"merchant catalog not found: {CATALOG}")
-    catalog = json.loads(CATALOG.read_text())["records"]
+def main(out_dir: Path = DEFAULT_OUT, catalog_path: Path | None = None) -> None:
+    catalog, source_catalog = load_catalog(catalog_path)
     out_dir.mkdir(parents=True, exist_ok=True)
     for pdf in out_dir.glob("*.pdf"):
         pdf.unlink()
@@ -378,10 +401,17 @@ def main(out_dir: Path = DEFAULT_OUT) -> None:
         build_statement_pdf(pdf, spec, styles)
         if spec.holdings:
             add_holdings_page(pdf, spec.holdings)
-    manifest = manifest_for(specs)
+    manifest = manifest_for(specs, source_catalog)
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(f"generated {len(specs)} pdfs and manifest in {out_dir}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Generate the compact synthetic statement set.")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--catalog", type=Path,
+        help="optional JSON merchant catalog; the built-in seed is the default")
+    args = parser.parse_args()
+    main(out_dir=args.output, catalog_path=args.catalog)

@@ -75,9 +75,9 @@ place to argue with an ADR):
 
 ## Reporting a security issue
 
-Please don't open a public issue for a vulnerability. Email the maintainer
-directly and give a reasonable window to fix it before disclosure. Security
-reports are welcome and will be credited unless you'd rather they weren't.
+Please don't open a public issue containing vulnerability details. Follow
+[SECURITY.md](SECURITY.md) to use the repository's private vulnerability report
+or request a private contact channel without disclosing the issue publicly.
 
 ## Where to read first
 

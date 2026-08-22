@@ -1,128 +1,91 @@
 # viva — the OrionViva product
 
-The trust core of OrionViva: an **encrypted, append-only, double-entry ledger**
-and the projections that answer questions about it honestly.
+`viva` is the local financial engine behind the desktop application. It owns
+the encrypted vault, append-only double-entry ledger, document pipeline,
+review queue, cited answer path, maintenance agent, and the typed sidecar
+boundary used by the interface.
 
-Two invariants hold from the first commit:
+## Trust boundaries
 
-- **Events are the source of truth** (ADR-004). Everything the ledger knows is an
-  append-only, hash-chained sequence of events. Balances and every other view are
-  *projections*, rebuilt by replaying the log. The chain is tamper-evident and can
-  be verified without the key.
-- **Encrypted at rest** (ADR-005). Every event body is sealed with AES-256-GCM
-  under a passphrase-derived key (scrypt), in a *versioned* envelope. The
-  passphrase is never stored. What cannot be decrypted cannot be leaked.
+- Raw documents are encrypted and captured before they are interpreted.
+- Events are encrypted, append-only, hash-chained, and projected into current
+  views; chain integrity can be checked without decrypting event bodies.
+- Verification is deterministic. A model may propose a read or interpret a
+  sentence, but it does not certify arithmetic or manufacture a cited figure.
+- Model access is optional. With no configured adapter and pinned model,
+  documents park locally. When access is configured and confirmed, relevant
+  bytes may leave through the single model boundary and the call is recorded.
+- The local chain is tamper-evident, not externally anchored or issuer-signed.
 
-No model sits in the v0 answer path. A balance is **arithmetic over attested
-records**, and every answer carries a **grade** (`verified` / `corroborated` /
-`unverified` / `conflicted`) and **provenance** (which document, page, region).
+The detailed decisions live in
+[the documentation guide](../docs/reading-guide.md), with current enforcement
+states in [rules.md](../docs/rules.md).
 
-## Layout
+## Repository packages
 
-- `viva/crypto.py` — the versioned AES-256-GCM + scrypt envelope.
-- `viva/ledger/events.py` — the event vocabulary and the `Posting` shape.
-- `viva/ledger/postings.py` — double-entry builders (single + amount-split).
-- `viva/ledger/store.py` — the encrypted, hash-chained `EventStore`.
-- `viva/ledger/projection.py` — `LedgerProjection.balance()` → figure + grade + source.
-- `viva/answer.py` — the answer path: `answer_balance` / `answer_total` / `coverage_summary`, with honest refusal (no LLM).
-- `viva/ingest/review.py` — held-statement review + human correction-as-event (posts at `verified`).
-- `viva/vault.py` — a vault: one directory + passphrase holding the event log and raw blobs.
-- `viva/engine.py` — what a person can do to a vault: `answer_question`, the one inbound door, and the write paths beneath it.
-- `viva/ask.py` — Viva asking you, at a terminal: the question queue, one question at a time.
-- `viva/speak.py` — you asking Viva, at a terminal: a question about your money, answered with what it stood on.
+The product imports three local packages:
 
-## Development setup
+- `../core` → `vivacore`, shared verification, claims, and model adapters;
+- `../merchant` → `merchantcore`, impersonal merchant normalization and
+  enrichment;
+- this directory → `viva`, the private financial product.
 
-Two packages, `vivacore` (in `../core`) and `viva` (here), that the product
-imports. Pick **one** way to make them importable, and be consistent:
+For development from the repository root:
 
-**Editable install (recommended for ongoing work).** From the repo root:
-
-```
-pip install -e core
-pip install -e product
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -e './core[dev]' -e './merchant[dev]' -e './product[dev,reader]'
 ```
 
-Editable (`-e`) links the installed package to your source, so every edit takes
-effect immediately with no rebuild. Then just `python3 -m viva.ask` / `pytest`
-work with no `PYTHONPATH`.
+Editable installs ensure source changes are used immediately. To confirm which
+copy Python imports:
 
-**Or run against the source path** without installing:
-
-```
-cd product && PYTHONPATH=../core:. python3 -m viva.ask
+```sh
+.venv/bin/python -c "import viva, vivacore, merchantcore; print(viva.__file__)"
 ```
 
-**Gotcha — a stale install shadows your edits.** If you ever ran a plain
-`pip install core` / `pip install product` (non-editable), a *copy* landed in
-site-packages and Python will import that, not your source — so a fix in the repo
-appears to have no effect (e.g. `parse_date() got an unexpected keyword argument`
-after the code already has it). Check which copy is live:
+## Main runtime paths
 
+- `viva/desktop_bridge/` — JSON-lines sidecar, allowlisted operations, and live
+  vault provider;
+- `viva/surface/` — versioned capabilities, read models, fixtures, and
+  operation declarations;
+- `viva/ingest/` — capture, classify, extract, reconcile, diagnose, and review;
+- `viva/ledger/` — events, postings, encrypted store, identity, and projections;
+- `viva/speak.py` — cited Ask Viva conversation engine;
+- `viva/ask.py` — review-question workflow;
+- `viva/configuration.py` — proposal-and-confirmation settings boundary;
+- `viva/vault_transfer.py` — verified export and restore into a new location.
+
+The terminal entry points remain useful for engine development, but the product
+presentation layer is the desktop application in `../desktop`.
+
+## Configuration
+
+Copy the repository root `.env.example` values you need into a git-ignored
+`.env`. `VIVA_PASSPHRASE` opens a private vault. A live reader additionally
+requires an accepted adapter (`anthropic` or `openai-compatible`), a pinned
+model id, and a key supplied through the named environment variable.
+
+Do not use aliases such as `latest`: the engine rejects model names that can
+change underneath a recorded read.
+
+## Useful commands
+
+From the repository root:
+
+```sh
+PYTHONPATH=.:product:core:merchant .venv/bin/python -m viva.desktop_bridge
+PYTHONPATH=.:product:core:merchant .venv/bin/python -m viva.ask --list
+PYTHONPATH=.:product:core:merchant .venv/bin/python -m viva.speak
+PYTHONPATH=.:product:core:merchant .venv/bin/python -m viva.reingest
 ```
-python3 -c "import vivacore; print(vivacore.__file__)"   # should be inside repo core/, not site-packages
+
+Run product tests with:
+
+```sh
+PYTHONPATH=.:product:core:merchant .venv/bin/python -m pytest product/tests -q
 ```
 
-If it points at site-packages, `pip uninstall -y vivacore viva` and use one of
-the two methods above. (Never `pip install` the non-editable way for dev — and
-`build/` and `dist/` are git-ignored so a stray build can't be committed.)
-
-## Running it
-
-```
-# put VIVA_PASSPHRASE and (optionally) the model vars in product/.env, then:
-PYTHONPATH=../core:. python3 -m viva.ask     # Viva asks; answer in your own words
-PYTHONPATH=../core:. python3 -m viva.ask --list   # the queue, answering nothing
-PYTHONPATH=../core:. python3 -m viva.speak   # you ask; she answers, with sources
-```
-
-Both entry points auto-load `./.env` (git-ignored), so you don't have to export
-anything — a `.env` with `VIVA_PASSPHRASE` (and, for live reading,
-`VIVA_MODEL_ADAPTER` / `VIVA_MODEL` / `VIVA_MODEL_KEY_ENV` / the key) is enough.
-Documents park until a model is configured, so nothing leaves the machine until
-you choose the real run. The reader uses **JSON mode** plus a one-shot
-parse-retry so long statements come back as valid JSON.
-
-There is no page: the presentation layer is an open design question, and a
-throwaway one was costing more than it taught. Everything a surface did reaches
-the same functions in `viva/engine.py`.
-
-Re-read every already-captured document into a fresh vault (e.g. after a prompt
-change) without re-uploading:
-
-```
-PYTHONPATH=../core:. python3 -m viva.reingest  [dest_dir]
-```
-- `viva/ingest/raw_store.py` — encrypted, content-addressed raw capture (every file, always).
-- `viva/ingest/statement.py` — a model read → canonical `StatementFacts` (or a refusal).
-- `viva/ingest/pipeline.py` — capture → classify → reconcile → post, or park (never discard).
-- `viva/ingest/diagnose.py` — when reconciliation fails, localize it deterministically into a typed finding (forced / suggested / unlocalized).
-- `viva/ingest/reader.py` — the one live model edge (text+image); left unrun until a real statement.
-
-## Ingest, in one line
-
-Every uploaded file is captured raw and encrypted first; a model *proposes* a
-read; a recognized checking statement is posted only if it reconciles to the
-cent (the gate), and everything else is *parked* — held and acknowledged, lit up
-later when a projector for its type arrives, with no re-upload.
-
-When a statement does not reconcile, deterministic diagnosis localizes it (no
-model call): a correction an independent identity *forces* (the running-balance
-chain) is auto-applied at `corroborated` and reported; a merely *suggested* one
-is held for the human, shown against the source. See
-[docs/verification-findings-and-correction.md](../docs/verification-findings-and-correction.md).
-
-## Categorization: two mechanisms (design, deferred to a later increment)
-
-A purchase is not one bucket. Splitting one purchase across categories *by amount*
-is native double-entry (`split_transaction`); attaching *overlapping labels* to
-the same money is the many-to-many `tags` overlay on a transaction. The ledger is
-built so both are already possible — v0 seeds neither.
-
-## Tests
-
-Run from the repo root against the in-tree packages (no install needed):
-
-```
-PYTHONPATH=core:product python3 -m pytest product/tests -q
-```
+The built-in listen evaluation corpus is package data and can be run from an
+installed wheel with `python -m viva.eval_listen`.

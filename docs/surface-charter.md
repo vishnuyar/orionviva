@@ -36,7 +36,7 @@ not cross, and this document is that boundary.
 
 ### VOICE-136 — a destination and a control render only when the registry and a served read say so
 **State:** contradicted
-**Code:** `desktop/src/app/navigation.ts:3` hand-writes six destinations as a literal list and derives none of them from anything. The destinations table in [user-interface-implementation-status.md](user-interface-implementation-status.md) derives that `accounts` has no live read and no claiming capability, that `activity` has no claiming capability, and that `trust` has no live read — and all three ship.
+**Code:** `desktop/src/app/navigation.ts:3` hand-writes six destination memberships. Runtime standing is derived from the capability registry, but membership is not. The destinations table in [user-interface-implementation-status.md](user-interface-implementation-status.md) shows that `accounts` has neither its own live read nor a claiming capability and still ships; Activity and Trust now have both.
 **Test:** none — the subject is what the interface renders, whose tests are TypeScript, and the rule index collects test names by parsing Python. The gate this rule wants is a comparison between the shipped destination list and the registry, and it belongs to the registry cycle.
 
 1. Navigation is a projection of the capability registry. A destination appears when a surfaced capability claims it **and** its live read is served for this vault and this build.
@@ -46,7 +46,8 @@ not cross, and this document is that boundary.
 5. The demo is a destination set of its own and does not widen the live product's navigation.
 
 **Why a hand-written list is the wrong shape.** Six destinations are typed into
-one array, and three of them lead to a room the product cannot furnish. A
+one array, and Accounts is not claimed as a destination by a surfaced
+capability even though it is furnished from the overview read. A
 person who opens Accounts is told the product has an accounts screen and then
 told it has no accounts to put on it — twice, once by the door and once by the
 room. Neither sentence is false and the pair is a lie about the product's size.
@@ -59,8 +60,8 @@ from data"*. That is the same argument one level down: it governs a panel
 inside a screen and says nothing about the screen. VOICE-108 requires every
 capability to have a destination or a recorded reason for not having one, and
 is satisfied by a *declared* destination — a destination can be declared,
-claimed by no capability, and shipped, which is exactly the state three of the
-six are in. So neither rule can be stretched to cover this without changing
+claimed by no capability, and shipped, which is exactly the state Accounts is
+in. So neither rule can be stretched to cover this without changing
 what it means; the assertion is new and needs its own id.
 
 **Why maturity is the wrong signal, stated as clause 3 so it cannot be lost.**

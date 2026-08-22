@@ -22,7 +22,8 @@ For what is actually built, in detail, see
 ## Phase 2 — Explain & advise
 - [ ] Ask-anything over the full financial picture, in plain language.
 - [ ] Volunteered insight: recurring charges, fees, anomalies, trends.
-- [ ] Honest-uncertainty surfacing in answers, not just internally. _(The answer path does this; every net-worth line carries its own derived grade and as-of date, but there is no presentation layer yet to show them — see `docs/implementation-roadmap.md`, "The surface".)_
+- [x] Honest-uncertainty surfacing in the desktop: figures and answers carry
+  their grades, dates, coverage, caveats, and evidence into the interface.
 
 ## Phase 3 — Take action
 - [ ] Drafts budgets and payoff plans; keeps things categorized.

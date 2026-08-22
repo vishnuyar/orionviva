@@ -3,8 +3,8 @@
 **State:** partial
 **Rules:** VOICE-100, VOICE-101, VOICE-102, VOICE-103, VOICE-104, VOICE-105, VOICE-106, VOICE-107, VOICE-108, VOICE-109, VOICE-110, VOICE-111, VOICE-112, VOICE-113, VOICE-114
 
-The direction is a recommendation; each implementation slice still travels
-through `WORKFLOW.md` and needs its own approved brief. What is actually built
+The Tauri/React/sidecar direction is implemented; future slices still travel
+through `WORKFLOW.md` and need their own approved brief. What is actually built
 on the current branch is recorded in
 [user-interface-implementation-status.md](user-interface-implementation-status.md).
 
@@ -19,7 +19,13 @@ on the current branch is recorded in
 2. No localhost HTTP server is opened.
 3. A person on a clean machine needs no terminal, no Python and no knowledge of API keys.
 
-**Exception:** assertion 3 is the *design*, not a fact about anything shipped. Tauri compilation, installer creation, signing, packaged offline startup and packaged bridge injection are all outstanding ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open), and X1 is `unmet` for the same reason. The cited test covers one handshake frame; nothing asserts assertion 2 either.
+**Exception:** the repository builds the Tauri application and packaged sidecar,
+and the release workflow builds, signs and notarizes the declared targets. A
+clean-target installed startup has not been observed by a machine in this
+repository, so assertion 3 remains a release validation claim rather than a
+source claim. The bridge uses standard input/output rather than localhost; the
+cited Python test covers the versioned handshake, while native packaging checks
+cover sidecar identity before release.
 
 ### VOICE-101 — the dependency direction is one-way, and a test enforces it
 **State:** enforced-with-exception
@@ -118,7 +124,13 @@ on the current branch is recorded in
 3. The allowlist snapshot cannot be mutated after the dispatcher is created, and handler failures return safe error frames rather than raising.
 4. Every action a capability declares reaches the sidecar as an operation of its own — `viva.review.decline`, not a generic `act` carrying an action name — derived from the registry rather than written by hand, so the operation table read on its own is the complete list of everything that can touch a vault. An action no handler serves is a declared operation the allowlist refuses; this build serves all of them, and declaring a new action without one fails a test rather than reaching a person as a button that says no.
 
-**Exception:** the job-state frames assertion 1 names reach no subscriber. The sidecar writes them, the native host returns only the frame whose request id matches and which carries no event key, and every event frame is dropped — so the channel is severed above the bridge and nothing in the window has received one. The bridge's own half is unchanged on purpose; the channel's shape is fixed in [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) and is built with its first real producer. Separately, `bridge.open_vault` is intercepted as a branch before dispatch, so that one operation is neither protocol-checked nor in any allowlist ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open).
+**Exception:** document work now has a live job registry, progress records,
+polling, and cancellation. The native request loop still does not subscribe to
+the sidecar's event-frame stream; the desktop obtains job state through the
+reviewed read instead. Separately, `bridge.open_vault` and
+`bridge.open_demo_vault` are explicit sidecar branches before dispatcher
+construction, so they are fenced operations but not members of a dispatcher
+allowlist.
 
 ### VOICE-110 — compiled frontend output is never committed
 **State:** by-review-with-exception
@@ -128,7 +140,10 @@ on the current branch is recorded in
 1. `desktop/dist/` is ignored and untracked; a generated bundle is never treated as source.
 2. Installers are built from clean source.
 
-**Exception:** the second half of the anti-staleness ruling — that the installed build exposes its UI and sidecar source revisions through an About or Trust view — has nowhere to live yet, because no Trust surface exists.
+**Exception:** Trust now shows the sidecar's reported revision and the lifecycle
+read repeats its origin. The frontend does not report a distinct UI source
+revision, so the two halves of an installed build cannot yet be compared by a
+person.
 
 ### VOICE-111 — every direction shown comes from the account's kind, never a posted sign
 **State:** enforced
@@ -141,14 +156,21 @@ on the current branch is recorded in
 
 ### VOICE-112 — the surface never claims machinery the product does not have
 **State:** unmet
-**Code:** assertion 3 only. `desktop/src/app/App.tsx:246` states the consequence beside the passphrase field on the vault-open form, which is also the form that creates a vault, and states it in the open rather than behind a disclosure so it is read before the button is pressed. The other four assertions are met by nothing: a search for anything stating what is and is not anchored, what T3 covers on the ingest request, or how complete the outbound record is, finds no such text on any surface.
-**Test:** none — the rule index collects test names by parsing Python, and what holds assertion 3 is a desktop test asserting the sentence and its accessible description.
+**Code:** desktop/src/features/trust/Trust.tsx, desktop/src/features/documents/Documents.tsx, desktop/src/app/App.tsx
+**Test:** none — the remaining gap is an end-to-end Documents claim rather than a Python symbol assertion.
 
 1. Trust shows what is and is not externally anchored, rather than claiming anchoring: T4's chain is hash-chained but not anchored.
 2. A Documents surface does not paper over T3 being met on originals and unmet on the ingest request.
 3. Passphrase recovery is stated as it exists: today, losing the passphrase loses the vault.
 4. Outbound accounting is not claimed complete before it is.
 5. The interface names no capability a later phase will have, including as a coming-soon.
+
+**Current condition:** Trust states that external anchoring is absent, renders
+the backend's bounded outbound record and its absences, and shows build and
+lifecycle identity. The vault-open path states passphrase loss plainly. The
+rule remains unmet because the Documents journey does not yet distinguish what
+the encrypted-original guarantee covers from what is and is not attested about
+the ingest request itself.
 
 ### VOICE-113 — these options are removed from future consideration
 **State:** untestable
@@ -398,11 +420,12 @@ Steward has answered the question above.
 
 ## Open
 
-- The decisions this direction still needs before a first build brief: approve or reject the Tauri/React/sidecar shape; approve or reject `viva.surface` as the presentation boundary; decide whether macOS is the first Preview platform; approve the capability registry and its explicit non-surface dispositions; approve the *interface impact: none* escape hatch as verified rather than automatically trusted; approve amending `WORKFLOW.md` with the interface duties and the Steward question; and name the identities that own surface and desktop review.
+- Release ownership, protected-path review, and the first publicly supported
+  platform still need explicit governance. The Tauri/React/sidecar shape,
+  `viva.surface` boundary, capability registry, and impact gates are implemented
+  decisions rather than pre-build questions.
 - Whether Review and Activity read list-shaped projections through `viva.surface` directly, or through the conversation's own block. Not a capability question — a question of which is the source of a list a person sees. This document does not take it. **Documents is settled, in a delegated run and reversible by the product owner.** The ruling: the documents read is composed by a module in the surface package, as a pure function of a projection, the set of originals the vault still holds, and whether this machine names a reader — not through the tool registry the overview goes through, and not through the conversation's block, which exists nowhere in this tree. The grounds are the difference between the two reads. The overview goes through the registry because it composes a **figure**, and a number on a screen has to be the number a conversation would say. The documents read composes no figure; it lists the agent's own paperwork. Routing it through the registry would mean inventing a new entity in a closed vocabulary. Whether the same answer holds for Review, where a queue is neither a figure nor paperwork, is left open above. A projection can be re-pointed later where an event schema could not be un-written, so this is a two-way door and reversing it costs one call site. **This is a ruling taken in a delegated run in the product owner's absence, not an approval by him.**
 - **Where a coverage claim belongs, settled for a figure that stands for the whole picture.** A figure over one account carries its own coverage line, naming the account it is over and the day it is good for. A figure standing for the whole picture is over none of the accounts it composed, so it may inherit none of their boundaries: it carries what the read itself declared — the currency it was cut to, how many accounts could not be valued, how many documents are not counted in it, the day the read was made and the oldest measurement beneath it — while **how far the picture reaches is one claim about the whole answer and is said once, at the panel, over the figures the panel actually shows.** That sentence answers *how many accounts* and a person reads it as *is this everything*, so where every account is counted it still says whether anything else is missing — chosen by the boolean the read declares about itself, and carrying its own resolution rather than handing off to the line after it — what else is short of whole is said on a figure, which is a different card and may be one of several, so a sentence that depends on what follows it depends on a layout it cannot see. What it is counted against is the union of the accounts the read ranged over and the accounts the vault holds, because a read is authoritative about what it valued and not about what a person has: an account a ruling brought into being that nothing has been posted to reaches no read at all. That panel sentence **counts and never names**: a list of account names is the one thing on that screen a person cannot un-share, and the names are already on the cards below it. MON-27 looks like it conflicts with that and does not — it requires that an account the point cannot value is named with the reason and never dropped, and it is: the unvalued accounts ride the figure's own declared boundary and reach the evidence drawer. **The point names and the sentence counts**, and that is the whole of the reconciliation, written here so a later cycle does not derive it again. The rule has one bound, and it is the ground the rule stands on rather than an exception to it: the panel counts rather than names **where the names are already on the screen**. An account no currency can be found for is beneath no figure, and so appears on no card, in no line and in no drawer — the redundancy the rule rests on does not reach it, and the panel names it, because a name nowhere is not privacy but concealment.
-- The M2 site: `implication_of` still derives direction from a posted sign. Activity's direction filters and transaction detail must not ship before it closes.
-- The `measure` field on the surface contract accepts any string while the doc claims a closed vocabulary.
 - What a breakdown looks like on a screen. A turn can enumerate in text — a name and an amount per line, the set's grade above, the read's tail sentence below — and that decides nothing about the visual form.
 - The pull-request template, CODEOWNERS, and branch protection over the surface, schema, bridge, desktop and impact maps.
 - Phone capture's design is separate and unheld.

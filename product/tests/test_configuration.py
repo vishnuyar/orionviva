@@ -129,6 +129,17 @@ def test_a_way_of_reaching_a_model_nobody_knows_is_refused():
     assert raised.value.reason == "adapter_unknown"
 
 
+def test_the_example_adapter_is_one_the_product_accepts():
+    """The copy-and-uncomment path in `.env.example` must configure a usable
+    adapter rather than fail only after somebody supplies a real key."""
+    example = Path(__file__).resolve().parents[2] / ".env.example"
+    line = next(line for line in example.read_text(encoding="utf-8").splitlines()
+                if line.startswith("#VIVA_MODEL_ADAPTER="))
+    adapter = line.partition("=")[2]
+
+    assert adapter in configuration.ADAPTERS
+
+
 # -------------------------------------------------------------------- the yes
 
 

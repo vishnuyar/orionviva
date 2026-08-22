@@ -31,3 +31,7 @@ reading guide's historical section records it. Nothing is ever deleted.
 - [the-repair-list-2026-07.md](the-repair-list-2026-07.md) — the ordered repair list the stocktake and the cold read produced.
 - [discovery-synthesis.md](discovery-synthesis.md) — the discovery phase's closing map of the whole forest, written before anything was built. _Archived 2026-08-04._
 - [cold-read-audit-2026-07.md](cold-read-audit-2026-07.md) — the line-level correctness read of all four packages by a reader with no priors. _Archived 2026-08-04._
+- [backend-capability-gaps-before-live-desktop.md](backend-capability-gaps-before-live-desktop.md) — the capability handoff before the live bridge closed most exposure gaps.
+- [the-work-order-before-live-desktop.md](the-work-order-before-live-desktop.md) — the completed numbered desktop build plan.
+- [user-interface-implementation-status-before-live-desktop.md](user-interface-implementation-status-before-live-desktop.md) — the detailed pre-bridge interface measurement.
+- [todo-before-live-desktop.md](todo-before-live-desktop.md) — the pre-desktop working handoff and witness register.

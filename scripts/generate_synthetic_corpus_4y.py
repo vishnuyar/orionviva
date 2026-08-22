@@ -1,4 +1,4 @@
-"""Generate a 4-year synthetic statement corpus from the merchant catalog.
+"""Generate a portable 4-year synthetic statement corpus.
 
 This reuses the existing PDF builders so the output stays visually consistent
 with the legacy synthetic statements, but scales the corpus across 48 months
@@ -34,13 +34,13 @@ from scripts.generate_synthetic_statements import (
     add_holdings_page,
     build_statement_pdf,
     build_styles,
+    load_catalog,
     merchant_name,
 )
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT = ROOT / "output" / "pdf" / "synthetic_statements_4y"
-CATALOG = Path("/Users/vishnu/Downloads/catalog.json")
 TWOPLACES = Decimal("0.01")
 
 
@@ -48,7 +48,7 @@ def _catalog_merchant(catalog: dict[str, dict], *keys: str) -> str:
     for key in keys:
         if key in catalog:
             return merchant_name(catalog, key)
-    raise KeyError(f"none of the catalog keys were found: {keys!r}")
+    return merchant_name(catalog, keys[0])
 
 
 def _money(value: Decimal) -> str:
@@ -92,10 +92,11 @@ def _txns_total(txns: Iterable[tuple[str, str, str, str]]) -> Decimal:
     return total.quantize(TWOPLACES)
 
 
-def _manifest(specs: list[StatementSpec], start: date, end: date) -> dict:
+def _manifest(specs: list[StatementSpec], start: date, end: date,
+              source_catalog: str) -> dict:
     return {
         "generated_at": "2026-08-17",
-        "source_catalog": str(CATALOG),
+        "source_catalog": source_catalog,
         "purpose": "four-year synthetic statement corpus for local UI and document-processing tests",
         "range": {"from": start.isoformat(), "to": end.isoformat()},
         "documents": [
@@ -326,7 +327,7 @@ def build_four_year_specs(
             transactions=meridian_txns,
             notes=[
                 "Monthly household, school, and subscription spend with a single payment line.",
-                "The merchant vocabulary is drawn from the repository's catalog seed.",
+                "The merchant vocabulary comes from the deterministic corpus seed.",
             ],
             merchants=["Meridian", "Lunchline", "Brightpath", "Clearwave", "Elmwood Dental"],
         ))
@@ -366,7 +367,7 @@ def build_four_year_specs(
                 closing=_money(savings_closing),
                 transactions=savings_txns,
                 notes=[
-                    "Quarterly sweep and interest activity drawn from the merchant catalog vocabulary.",
+                    "Quarterly sweep and interest activity uses the corpus vocabulary.",
                     "This account is intentionally quiet aside from recurring transfers and interest.",
                 ],
                 merchants=["Interest", "Transfer from checking", "Redemption Credit"],
@@ -435,10 +436,10 @@ def build_four_year_specs(
     return specs
 
 
-def main(out_dir: Path = DEFAULT_OUT, years: int = 4, start_year: int = 2022, start_month: int = 8) -> None:
-    if not CATALOG.exists():
-        raise FileNotFoundError(f"merchant catalog not found: {CATALOG}")
-    catalog = json.loads(CATALOG.read_text())["records"]
+def main(out_dir: Path = DEFAULT_OUT, years: int = 4,
+         start_year: int = 2022, start_month: int = 8,
+         catalog_path: Path | None = None) -> None:
+    catalog, source_catalog = load_catalog(catalog_path)
     out_dir.mkdir(parents=True, exist_ok=True)
     for path in out_dir.glob("*.pdf"):
         path.unlink()
@@ -453,7 +454,8 @@ def main(out_dir: Path = DEFAULT_OUT, years: int = 4, start_year: int = 2022, st
             add_holdings_page(pdf, spec.holdings)
     start = _month_start(start_year, start_month)
     end = _add_months(start, years * 12) - date.resolution
-    manifest.write_text(json.dumps(_manifest(specs, start, end), indent=2) + "\n")
+    manifest.write_text(
+        json.dumps(_manifest(specs, start, end, source_catalog), indent=2) + "\n")
     print(f"generated {len(specs)} pdfs and manifest in {out_dir}")
 
 
@@ -463,10 +465,14 @@ if __name__ == "__main__":
     parser.add_argument("--years", type=int, default=4)
     parser.add_argument("--start-year", type=int, default=2022)
     parser.add_argument("--start-month", type=int, default=8)
+    parser.add_argument(
+        "--catalog", type=Path,
+        help="optional JSON merchant catalog; the built-in seed is the default")
     args = parser.parse_args()
     main(
         out_dir=args.output,
         years=args.years,
         start_year=args.start_year,
         start_month=args.start_month,
+        catalog_path=args.catalog,
     )
