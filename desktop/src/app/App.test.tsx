@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, ConversationDialogShell } from "./App";
 // The sentences a person is told, read from the pack that ships them.
-import moments from "../../../product/viva/persona/pack-v26/moments.json";
+import moments from "../../../product/viva/persona/pack-v27/moments.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const queryByRoleIn = (root: HTMLElement, role: string) => root.querySelector(`[role="${role}"]`);
@@ -49,6 +49,10 @@ function installCapturedAnimationFrames() {
 // What a live trust read answers with. It is the shape the sidecar sends, so a
 // stub that omitted it would make every destination test in this file also a
 // test of what happens when Trust cannot be read.
+// What a live activity read answers with. A stub that omitted it would make
+// every destination test in this file also a test of what happens when Activity
+// cannot be read.
+const activityPayload = { state: "absent", sentence: moments.activity_empty, items: [], beyond: { count: 0 } };
 const trustPayload = { state: "ready", notes: [], outbound: { state: "ready", sentence: moments.outbound_none, call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [{ id: "scope", sentence: moments.outbound_scope }, { id: "anchoring", sentence: moments.outbound_no_anchor }] } };
 
 describe("minimal shell", () => {
@@ -655,7 +659,7 @@ describe("minimal shell", () => {
     window.orionVivaBridge = {
       request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
         if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
-        const data = payload.surface === "overview" ? { accounts: [] } : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : { questions: [], total: 0 };
+        const data = payload.surface === "overview" ? { accounts: [] } : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { questions: [], total: 0 };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
       },
     };
@@ -1052,7 +1056,7 @@ describe("minimal shell", () => {
         ok: true,
         result: (operation === "bridge.open_vault"
           ? { state: "opened" }
-          : { surface: payload.surface, job_id: "job-1", data: payload.surface === "overview" ? { accounts: [], as_of: "August 1, 2026" } : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : { questions: [], total: 0 } }) as T,
+          : { surface: payload.surface, job_id: "job-1", data: payload.surface === "overview" ? { accounts: [], as_of: "August 1, 2026" } : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { questions: [], total: 0 } }) as T,
       }),
     };
 
@@ -1088,6 +1092,8 @@ describe("minimal shell", () => {
             ? { documents: [] }
             : payload.surface === "trust"
               ? trustPayload
+              : payload.surface === "activity"
+                ? activityPayload
               : { questions: [], total: 0 };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
       },
@@ -1247,7 +1253,7 @@ describe("minimal shell", () => {
         }
         const data = payload.surface === "overview"
           ? { accounts: [{ account: "complete-account", name: "Complete account", balance: { amount: "202.50", display: canonicalDisplay, measure: "balance", currency: "USD", dated: "2026-08-18", coverage: "Statement period ending 2026-08-18", provenance: "document live-doc, page 7", grade: "verified" } }] }
-          : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : { questions: [], total: 0 };
+          : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { questions: [], total: 0 };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
       },
     };
@@ -1282,6 +1288,8 @@ describe("minimal shell", () => {
             ? { documents: [] }
             : payload.surface === "trust"
               ? trustPayload
+              : payload.surface === "activity"
+                ? activityPayload
               : { questions: [], total: 0 };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
       },
@@ -1307,7 +1315,9 @@ describe("minimal shell", () => {
       expect(getByText("Nothing needs you right now", { selector: "strong" })).toBeInTheDocument();
       expect(queryByRole("button", { name: "Explore fictional sample data" })).not.toBeInTheDocument();
       await user.click(getByRole("button", { name: /activity.*what moved/i }));
-      expect(getByText("Activity unavailable", { selector: "strong" })).toBeInTheDocument();
+      // Activity is a read now. A vault that knows of nothing moving says so,
+      // which is not the same as nothing having moved.
+      expect(getAllByText(moments.activity_empty).length).toBeGreaterThan(0);
       await user.click(getByRole("button", { name: /trust.*how it works/i }));
       // Trust is a read now, and a vault that has sent nothing says so with the
       // same prominence as one that has. That emptiness is the record.

@@ -579,6 +579,17 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "conversation_spoken_citation":    frozenset(),
     "conversation_spoken_withheld":    frozenset(),
     "conversation_voice_local_only":   frozenset(),
+    # What is said about what moved. The empty line refuses the reading that an
+    # empty list means nothing happened. The scope line says where the rows came
+    # from and where direction is read from, since a card purchase prints
+    # positive and a person reading a sign would have it backwards. The rest
+    # name the states a movement can be in that are not plain spending, each
+    # said as what it is rather than as an absence.
+    "activity_empty":                  frozenset(),
+    "activity_scope":                  frozenset(),
+    "activity_transfer":               frozenset(),
+    "activity_provisional":            frozenset(),
+    "activity_unsettled":              frozenset(),
 }
 
 

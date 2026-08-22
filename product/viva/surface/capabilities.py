@@ -210,6 +210,18 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         ),
     ),
     _surface(
+        "activity.movements",
+        "viva.surface.activity",
+        CapabilityDestination.ACTIVITY,
+        "when a vault is open",
+        "ActivityMovements.v1",
+        (),
+        # It reads the ledger and composes rows. It writes nothing, reaches no
+        # model and sends nothing: which way money went is arithmetic over what
+        # a document already said.
+        (TrustEffect.READS_DATA,),
+    ),
+    _surface(
         "documents.jobs",
         "viva.desktop_bridge.jobs",
         CapabilityDestination.DOCUMENTS,

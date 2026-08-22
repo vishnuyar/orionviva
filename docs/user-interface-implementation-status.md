@@ -102,7 +102,7 @@ the interface ships it, or it is rejected as invented.
 | --- | --- | --- | --- | --- |
 | `overview` | yes | yes | yes | yes |
 | `accounts` | no | yes | no | yes |
-| `activity` | no | yes | no | yes |
+| `activity` | yes | yes | yes | yes |
 | `documents` | yes | yes | yes | yes |
 | `jobs` | yes | no | no | yes |
 | `review` | yes | yes | yes | yes |
@@ -116,9 +116,11 @@ to declare `account` while the interface shipped `accounts`, and nothing but
 this table held the two together. They are one word now, and the interface
 derives what it says about a destination from the registry's own signal rather
 than from a vocabulary of its own. `viva` and `settings` are registry
-destinations with no place in the interface; `accounts` and `activity` are
-shipped destinations no surfaced capability claims, which the interface now
-marks on the destination itself. `trust` became live-readable when the outbound
+destinations with no place in the interface; `accounts` is a shipped
+destination no surfaced capability claims, which the interface now marks on the
+destination itself. `activity` became live-readable and claimed once the site
+that read direction off a posted sign was closed — until then, a row saying
+which way money went would have said it backwards on a card. `trust` became live-readable when the outbound
 record landed there, and it reads as ready for a vault that has sent nothing —
 that emptiness is the record rather than an absent panel. `settings` is now
 claimed by a surfaced capability and is still no place in the interface: the

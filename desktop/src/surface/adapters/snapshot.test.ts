@@ -3,7 +3,7 @@ import { buildLiveSnapshot } from "./snapshot";
 
 describe("snapshot adapter", () => {
   it("builds a live snapshot with unsupported features unavailable", () => {
-    const snapshot = buildLiveSnapshot({ state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [], recent: [] } }, { state: "ready", data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, { state: "ready", data: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } }, { state: "unavailable", reason: "not asked" });
+    const snapshot = buildLiveSnapshot({ state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [], recent: [] } }, { state: "ready", data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, { state: "ready", data: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } }, { state: "unavailable", reason: "not asked" }, { state: "unavailable", reason: "not asked" });
     expect(snapshot.mode).toBe("live");
     expect(snapshot.activity.state).toBe("unavailable");
     expect(snapshot.conversation.state).toBe("unavailable");
@@ -15,7 +15,7 @@ describe("snapshot adapter", () => {
     // Trust is a read now. A builder that decided its state would be a second
     // opinion about whether the vault answered.
     const trust = { state: "ready" as const, data: { notes: [], outbound: { sentence: "Nothing has left.", callCount: 0, phases: [], models: [], modelSentence: "", span: null, cost: null, absences: [] } } };
-    const snapshot = buildLiveSnapshot({ state: "absent", reason: "x" }, { state: "absent", reason: "x" }, { state: "absent", reason: "x" }, trust);
+    const snapshot = buildLiveSnapshot({ state: "absent", reason: "x" }, { state: "absent", reason: "x" }, { state: "absent", reason: "x" }, trust, { state: "absent", reason: "x" });
     expect(snapshot.trust).toBe(trust);
   });
 });

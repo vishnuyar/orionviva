@@ -28,6 +28,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     readReview: (parameters) => read("review", parameters),
     readJobs: () => read("jobs"),
     readTrust: () => read("trust"),
+    readActivity: () => read("activity"),
     handshake: () => request("bridge.handshake", {}),
     readCapabilities: () => request("viva.surface.capabilities", {}),
     cancelJob: (jobId: string) => request("viva.documents.cancel", { job_id: jobId }),

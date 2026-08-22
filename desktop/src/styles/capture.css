@@ -152,3 +152,16 @@
 .conversation-answer-grade, .conversation-answer-citation, .conversation-answer-withheld { color: var(--muted); font-size: var(--text-fine); }
 .conversation-answer-figures { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-caption); }
 .conversation-answer-figures div { display: flex; justify-content: space-between; gap: var(--space-sm); }
+
+/* What moved, on the live path. Direction is a word beside the amount rather
+   than a colour or a sign: a colour is not readable by everyone and a sign is a
+   second chance to disagree with the word. */
+.activity-movements { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-sm); }
+.activity-movement { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-md); align-items: baseline; padding: var(--space-md); border-bottom: 1px solid var(--line); }
+.activity-movement-when { color: var(--muted); font-size: var(--text-caption); }
+.activity-movement-what { display: grid; gap: var(--space-hair); }
+.activity-movement-what small { color: var(--muted); font-size: var(--text-caption); }
+.activity-movement-amount { display: grid; justify-items: end; gap: var(--space-hair); }
+.activity-movement-amount small { color: var(--muted); font-size: var(--text-caption); }
+.activity-movement-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.activity-beyond { margin: var(--space-md) 0 0; color: var(--muted); font-size: var(--text-fine); }

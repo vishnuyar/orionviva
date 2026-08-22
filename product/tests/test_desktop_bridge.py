@@ -84,9 +84,10 @@ def test_default_surface_read_returns_live_reviewed_registry():
     # "served" means lives here. Two derivations of one rule are two rules, and
     # the one a person would meet is the one nobody reviewed.
     assert response["result"]["destinations"]["overview"] is True
-    # A destination no surfaced capability reaches is reported false. `activity`
-    # is the one that has stayed that way through every cycle so far.
-    assert response["result"]["destinations"]["activity"] is False
+    # A destination no surfaced capability reaches is reported false. `viva` is
+    # one: the conversation answers over an action rather than a read, so
+    # nothing serves its contract and the signal says so.
+    assert response["result"]["destinations"]["viva"] is False
 
 
 def test_surface_read_rejects_payload_fields():

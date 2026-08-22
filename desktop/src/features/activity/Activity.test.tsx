@@ -1,7 +1,8 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ActivityData, ActivityView, FeatureResult, SampleActivityFilterCatalog } from "../../surface/types";
+import type { ActivityData, ActivityView, FeatureResult, MovementView, SampleActivityFilterCatalog } from "../../surface/types";
 import { Activity } from "./Activity";
+import moments from "../../../../product/viva/persona/pack-v27/moments.json";
 
 const item = (id: string, overrides: Partial<ActivityView> = {}): ActivityView => ({ id, label: "Returned movement", exactValue: "101.25", display: "Canonical display", measure: "income", detail: "Returned detail", tone: "inflow", state: "ready", provenance: "Returned provenance", evidenceLinks: [], grade: "not_applicable", recordIds: ["record-returned"], ...overrides });
 const filters: SampleActivityFilterCatalog = {
@@ -10,6 +11,9 @@ const filters: SampleActivityFilterCatalog = {
 const sample = (id: string, overrides: Partial<ActivityView> = {}): ActivityView => item(id, { label: `Sample ${id}`, sample: { date: filters.dates[0], account: filters.accounts[0], merchant: filters.merchants[0], category: filters.categories[0], tags: [filters.tags[0]], nature: filters.natures[0], direction: filters.directions[0] }, ...overrides });
 const data = (items: ActivityView[], includeFilters = true): ActivityData => ({ items, sample: includeFilters ? { filters } : undefined });
 const ready = (value: ActivityData): FeatureResult<ActivityData> => ({ state: "ready", data: value });
+// A live read: its own rows, its own sentence, and no sample shape at all.
+const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", sentence: "", decidedBy: "default", provisional: false, linked: false, ...over });
+const live = (movements: MovementView[]): ActivityData => ({ items: [], sentence: movements.length ? moments.activity_scope : moments.activity_empty, movements, beyond: { count: 0 } });
 const noAction = () => {};
 
 function captureAnimationFrames() {
@@ -46,23 +50,41 @@ describe("Activity surface", () => {
     expect(getByText("Some activity details are unavailable. Available movements are shown below.")).toBeInTheDocument();
     rerender(<Activity {...props} result={{ state: "needs_input", data: data([]), issues: [{ code: "input", message: "bounded" }] }} />);
     expect(getByText("Some activity details need more information. Available movements are shown below.")).toBeInTheDocument();
-    rerender(<Activity {...props} result={ready(data([]))} />);
-    expect(getByText("No activity yet")).toBeInTheDocument();
+    rerender(<Activity {...props} result={ready(live([]))} />);
+    // A live read composes its own sentence about knowing of nothing that
+    // moved, and it is not the same as nothing having moved.
+    expect(getByText(moments.activity_empty, { selector: "span" })).toBeInTheDocument();
     rerender(<Activity {...props} mode="demo" result={ready(data([]))} />);
     expect(getByText("No sample activity")).toBeInTheDocument();
   });
 
-  it("keeps malicious sample metadata out of a live ready surface", () => {
-    const malicious = item("live-id", { label: "", detail: "", provenance: "", recordIds: [], sample: { date: { id: "secret-date", label: "Secret sample date" }, category: { id: "secret-category", label: "Secret sample category" }, relationships: [{ targetActivityId: "secret-target", label: "Secret relation" }] } });
-    const { getByText, queryByText, queryByRole } = render(<Activity result={ready({ items: [malicious], sample: { filters } })} mode="live" onOpenEvidence={noAction} onOpenFigure={noAction} />);
-    expect(getByText("Current Activity view")).toBeInTheDocument();
-    expect(getByText("Movement label was not supplied by this view.", { selector: "h3" })).toBeInTheDocument();
-    expect(getByText("Movement detail was not supplied by this view.")).toBeInTheDocument();
-    expect(getByText("Provenance was not supplied for this movement.")).toBeInTheDocument();
-    expect(getByText("Record identities were not supplied for this movement.")).toBeInTheDocument();
-    expect(getByText("No source document link was supplied for this movement.")).toBeInTheDocument();
-    for (const secret of ["Secret sample date", "Secret sample category", "Secret relation"]) expect(queryByText(secret)).not.toBeInTheDocument();
+  it("renders a live read from its own rows and never from the sample shape", () => {
+    // The two are different models. A live read composes movements; a fixture
+    // composes items, and merging them would let a fixture field arrive on a
+    // row about real money.
+    const smuggled = item("live-id", { label: "SMUGGLED", sample: { date: { id: "secret-date", label: "Secret sample date" } } });
+    const { getByText, queryByText, queryByRole } = render(<Activity result={ready({ items: [smuggled], sentence: moments.activity_scope, movements: [movement()], beyond: { count: 0 }, sample: { filters } })} mode="live" onOpenEvidence={noAction} onOpenFigure={noAction} />);
+    expect(getByText("What moved")).toBeInTheDocument();
+    expect(getByText("a shop")).toBeInTheDocument();
+    for (const smuggledText of ["SMUGGLED", "Secret sample date"]) expect(queryByText(smuggledText)).not.toBeInTheDocument();
     expect(queryByRole("textbox", { name: "Search fictional activity" })).not.toBeInTheDocument();
+  });
+
+  it("says which way the money went in the read's own word, and shows no sign", () => {
+    const { getByText, queryByText } = render(<Activity result={ready(live([movement({ direction: "out", display: "USD 120.00" })]))} mode="live" onOpenEvidence={noAction} onOpenFigure={noAction} />);
+    expect(getByText("out")).toBeInTheDocument();
+    expect(getByText("USD 120.00")).toBeInTheDocument();
+    expect(queryByText("-USD 120.00")).not.toBeInTheDocument();
+  });
+
+  it("shows the read's own line for a row that is not plain spending", () => {
+    const { getByText } = render(<Activity result={ready(live([movement({ sentence: moments.activity_transfer })]))} mode="live" onOpenEvidence={noAction} onOpenFigure={noAction} />);
+    expect(getByText(moments.activity_transfer)).toBeInTheDocument();
+  });
+
+  it("says how many movements are in the vault and not in this list", () => {
+    const { getByText } = render(<Activity result={ready({ items: [], sentence: moments.activity_scope, movements: [movement()], beyond: { count: 6 } })} mode="live" onOpenEvidence={noAction} onOpenFigure={noAction} />);
+    expect(getByText("6 more are in this vault and not in this list.")).toBeInTheDocument();
   });
 
   it("uses the shared activity Figure identity and exact document proof", () => {

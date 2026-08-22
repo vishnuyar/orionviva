@@ -24,7 +24,8 @@ class OpenedVaultSurfaceProvider:
     bridge operations.
     """
 
-    _SURFACES = frozenset(("overview", "documents", "review", "jobs", "trust"))
+    _SURFACES = frozenset(("overview", "documents", "review", "jobs", "trust",
+                           "activity"))
 
     def __init__(self, vault: Vault, jobs: Any = None) -> None:
         self._vault = vault
@@ -44,6 +45,8 @@ class OpenedVaultSurfaceProvider:
             return self._job_registry()
         if surface == "trust":
             return self._trust()
+        if surface == "activity":
+            return self._activity(params)
         return self._review(params)
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
@@ -75,6 +78,18 @@ class OpenedVaultSurfaceProvider:
                          frozenset(self._vault.raw.doc_ids()),
                          live_reading_configured(),
                          locale_from_env())
+
+    def _activity(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        """Open the projection and hand it to the surface that composes it.
+
+        Which way each movement went, what it is where it is not plain
+        spending, and how it is written are all decided in the surface. What is
+        decided here is only the horizon the projection is cut at, because this
+        side of the boundary is where a caller's `as_of` is read."""
+        from ..surface.activity import activity
+
+        projection = self._vault.ledger.projection_as_of(parameters.get("as_of"))
+        return activity(projection, locale_from_env(), parameters["limit"])
 
     def _trust(self) -> dict[str, Any]:
         """What this vault has sent, and what nothing here can establish.

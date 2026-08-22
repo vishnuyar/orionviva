@@ -2,7 +2,7 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ActionOutcomeView, FeatureResult, QuestionSlot, ReviewActionState, ReviewData, ReviewView } from "../../surface/types";
 import { Review } from "./Review";
-import moments from "../../../../product/viva/persona/pack-v26/moments.json";
+import moments from "../../../../product/viva/persona/pack-v27/moments.json";
 
 const question = (id: string, overrides: Partial<ReviewView> = {}): ReviewView => ({ id, label: "Returned question", detail: "Returned reason", status: "Read only", action: "", type: "identity", evidence: "", state: "needs_input", outcome: null, disposition: null, scope: "account", count: 7, amount: "101.25", currency: "USD", ...overrides });
 const data = (queue: ReviewView[], meta: Partial<ReviewData["meta"]> = {}): ReviewData => ({ queue, count: 999, meta: { total: 42, tail: null, pending: null, invite: "", answeredByDocument: "", ...meta } });

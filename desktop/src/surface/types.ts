@@ -221,7 +221,13 @@ export type OverviewData = { picture: PictureView; corpusCoverage: string; accou
 // repeated per row.
 export type DocumentsData = { documents: SurfaceDocument[]; readingSentence: string; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
 export type ReviewData = { queue: ReviewView[]; count: number; meta: { total: number; tail: { count: number; amount: string } | null; pending: { count: number } | null; invite: string; answeredByDocument: string } };
-export type ActivityData = { items: ActivityView[]; sample?: { readonly filters?: SampleActivityFilterCatalog } };
+// One movement as the live read composed it. `direction` is the read's answer
+// and comes from the kind of account the money moved on; `amount` is unsigned
+// beside it, because a sign and a word saying the same thing are two chances to
+// disagree. `sentence` is empty on an ordinary spending row and is never
+// composed here.
+export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; sentence: string; decidedBy: string; provisional: boolean; linked: boolean };
+export type ActivityData = { items: ActivityView[]; sentence?: string; movements?: readonly MovementView[]; beyond?: { count: number }; sample?: { readonly filters?: SampleActivityFilterCatalog } };
 // One figure a spoken or written answer stated, and the route back to what it
 // rests on. `written` is the words the sentence wrote the figure as, so the
 // figure under the sentence is the figure in it — not a second rendering of the

@@ -2,6 +2,16 @@
   "artifact": "orionviva.surface-v1",
   "fixtures": [
     {
+      "capability_id": "activity.movements",
+      "contract": "ActivityMovements.v1",
+      "id": "activity.movements.ready",
+      "payload": {
+        "capability_id": "activity.movements",
+        "contract": "ActivityMovements.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "conversation.viva",
       "contract": "ConversationTurn.v1",
       "id": "conversation.viva.ready",
@@ -137,6 +147,24 @@
   },
   "protocol": "2.0",
   "registry": [
+    {
+      "actions": [],
+      "availability": "when a vault is open",
+      "contract": "ActivityMovements.v1",
+      "destination": "activity",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "activity.movements.ready"
+      ],
+      "id": "activity.movements",
+      "maturity": "stable",
+      "owner": "viva.surface.activity",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
     {
       "actions": [],
       "availability": "available to the local engine",

@@ -1,6 +1,7 @@
 import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
+import { adaptActivity } from "./adapters/activity";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
 import { adaptTurn } from "./adapters/conversation";
 import { isRecord } from "./adapters/primitives";
@@ -167,11 +168,12 @@ export function privateReviewActions(client: BridgeClient): ReviewActions {
 }
 
 export async function loadPrivateSnapshot(client: BridgeClient): Promise<SurfaceSnapshot> {
-  const [overviewRead, documentsRead, reviewRead, trustRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readReview(), client.readTrust()]);
+  const [overviewRead, documentsRead, reviewRead, trustRead, activityRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readReview(), client.readTrust(), client.readActivity()]);
   return buildLiveSnapshot(
     settledOverview(overviewRead),
     settled(documentsRead, (read) => adaptDocuments(read.data)),
     settled(reviewRead, (read) => adaptReview(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
+    settled(activityRead, (read) => adaptActivity(read.data)),
   );
 }

@@ -3,7 +3,7 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.0";
 
-export type SurfaceName = "overview" | "documents" | "review" | "jobs" | "trust";
+export type SurfaceName = "overview" | "documents" | "review" | "jobs" | "trust" | "activity";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
@@ -73,6 +73,9 @@ export type BridgeClient = {
   // The complete outbound record, and what nothing on this machine can
   // establish about it. Both are the read's; neither is composed here.
   readTrust: () => Promise<SurfaceReadResult>;
+  // What moved, and which way. Direction is the read's: on a card a purchase
+  // posts positive, and a shell reading the sign would have it backwards.
+  readActivity: () => Promise<SurfaceReadResult>;
   // Who answered and which build of it. Asked before a vault is open, because
   // the build that cannot open one is exactly the build somebody needs named.
   handshake: () => Promise<unknown>;

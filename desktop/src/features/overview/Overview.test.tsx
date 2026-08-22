@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 // The sentences the product ships, read from the pack that ships them. A
 // sentence typed out here would be an assertion about words nobody released.
-import moments from "../../../../product/viva/persona/pack-v26/moments.json";
+import moments from "../../../../product/viva/persona/pack-v27/moments.json";
 import { EvidenceDrawer } from "../../components/EvidenceDrawer";
 import type { FeatureResult, FigureView, OverviewData, PictureView, ReviewData, SurfaceSnapshot } from "../../surface/types";
 import { Overview } from "./Overview";
