@@ -14,7 +14,7 @@ describe("overview adapter", () => {
   });
 
   it("accepts only an explicit empty reviewed overview collection", () => {
-    expect(adaptOverview({ accounts: [] })).toEqual({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [], recent: [] });
+    expect(adaptOverview({ accounts: [] })).toEqual({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [] });
   });
 
   it("uses stable returned ids and removes duplicates after reorder", () => {

@@ -1,10 +1,13 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, ConversationDialogShell } from "./App";
 // The sentences a person is told, read from the pack that ships them.
-import moments from "../../../product/viva/persona/pack-v29/moments.json";
+import moments from "../../../product/viva/persona/pack-v30/moments.json";
+// The sample vault as the backend answers for it, produced by running the
+// product rather than authored here.
+import sampleVault from "../../../product/viva/surface/fixtures/overview-parity-v1.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const queryByRoleIn = (root: HTMLElement, role: string) => root.querySelector(`[role="${role}"]`);
@@ -52,17 +55,64 @@ function installCapturedAnimationFrames() {
 // What a live activity read answers with. A stub that omitted it would make
 // every destination test in this file also a test of what happens when Activity
 // cannot be read.
-const activityPayload = { state: "absent", sentence: moments.activity_empty, items: [], beyond: { count: 0 } };
+const activityPayload = { state: "absent", sentence: moments.activity_empty, beyond: { count: 0 } };
 const trustPayload = { state: "ready", notes: [], outbound: { state: "ready", sentence: moments.outbound_none, call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [{ id: "scope", sentence: moments.outbound_scope }, { id: "anchoring", sentence: moments.outbound_no_anchor }] } };
 
+// The sample vault, as the backend actually answers for it. These are the same
+// bytes the parity artifact holds — produced by minting the vault and reading
+// it through the real dispatch — so the shell here renders what a person
+// meets, rather than rows composed in this file that would agree with
+// themselves while disagreeing with the product.
+const sampleReads = sampleVault.reads as Record<string, { result: { data: unknown } }>;
+const sampleFrame = { title: moments.sample_frame, detail: moments.sample_frame_detail, leave: moments.sample_frame_leave };
+
+// One bridge stub, serving the sample vault's own payloads. Every test here
+// enters through the one affordance the sample is entered from, because that
+// is how a person enters it and the shell has no other way in.
+function installSampleBridge(overrides: Record<string, unknown> = {}) {
+  const previous = window.orionVivaBridge;
+  window.orionVivaBridge = {
+    pickDocumentPaths: async () => [],
+    request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
+      if (operation === "bridge.open_demo_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: true, frame: sampleFrame, surfaces: [] } as T };
+      if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened", sample: false } as T };
+      if (operation === "bridge.handshake") return { protocol: "1.0", request_id: "hand", ok: true, result: { protocol: "2.0", transport: "json-lines", revision: "sample-build" } as T };
+      if (operation === "viva.surface.capabilities") return { protocol: "1.0", request_id: "caps", ok: true, result: { protocol: "2.0", capabilities: [], destinations: { overview: true, accounts: true, activity: true, documents: true, review: true, trust: true } } as T };
+      if (operation === "viva.settings.read") return { protocol: "1.0", request_id: "set", ok: true, result: { state: "ready", locale: "en-US", currency: "USD", adapter: "", model: "", base_url: "", key_set: false, can_send: false } as T };
+      if (operation !== "viva.surface.read") return { protocol: "1.0", request_id: "act", ok: true, result: { kind: "completed", message: "Done.", state: null, reason: null } as T };
+      const surface = String(payload.surface);
+      const data = surface in overrides ? overrides[surface] : sampleReads[surface]?.result.data;
+      return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
+    },
+  };
+  return () => { window.orionVivaBridge = previous; };
+}
+
+// Render the shell and go in through the sample vault's one door. Every test
+// that used to start inside a fixture starts here instead.
+async function openSample(overrides: Record<string, unknown> = {}) {
+  const restore = installSampleBridge(overrides);
+  const view = render(<App />);
+  fireEvent.click(view.getAllByRole("button", { name: "Open the sample vault" })[0]);
+  await waitFor(() => expect(view.getByText(moments.sample_frame)).toBeInTheDocument());
+  return { ...view, restore };
+}
+
+// A wide window before every test. `installResponsiveMatchMedia` replaces the
+// global, and a narrow one installed by one test used to survive into the next
+// — where the sidebar is hidden from the accessibility tree and the control
+// that opens a vault is unreachable. A test that fails because of the test
+// before it is a test nobody can read.
+beforeEach(() => { installResponsiveMatchMedia(1440); });
+afterEach(() => { window.orionVivaBridge = undefined; });
+
 describe("minimal shell", () => {
-  it("opens on the financial picture", () => {
-    const { getByRole, getByText, getAllByText } = render(<App />);
+  it("opens on the financial picture", async () => {
+    const { getByRole, getByText, getAllByText } = await openSample();
     expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
-    expect(getByText("$48,240.18")).toBeInTheDocument();
-    expect(getByText("Supported by more than one source or matching record.")).toBeInTheDocument();
-    expect(getByText("Sample vault")).toBeInTheDocument();
-    expect(getByText("Sample data boundary")).toBeInTheDocument();
+    expect(getByText("USD 17,486.45")).toBeInTheDocument();
+    expect(getAllByText("Sample vault")[0]).toBeInTheDocument();
+    expect(getByText(moments.sample_frame)).toBeInTheDocument();
     const disclosure = getByRole("complementary", { name: "Vault source" });
     const hero = document.querySelector(".hero-grid");
     expect(disclosure.compareDocumentPosition(hero as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -70,55 +120,59 @@ describe("minimal shell", () => {
 
   it("lets the overview spotlight select an account and open its detail", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, getAllByText } = render(<App />);
+    const { getByRole, getByText, getAllByText } = await openSample();
 
-    await user.click(getAllByText("Long view savings").find((node) => node.closest("button")?.classList.contains("account-card-button"))!.closest("button")!);
+    await user.click(getAllByText("Rainy Day Savings").find((node) => node.closest("button")?.classList.contains("account-card-button"))!.closest("button")!);
 
     expect(getByText("Selected account")).toBeInTheDocument();
     expect(getByRole("button", { name: /open accounts/i })).toBeInTheDocument();
-    expect(getByText("Long view savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
-    expect(getByText("Savings statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByText("Rainy Day Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
+    expect(getByText("This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.")).toBeInTheDocument();
   });
 
   it("pairs every overview account amount with a distinct stable-id source control", async () => {
     const user = userEvent.setup();
-    const { container, getByRole, getByText, getAllByText } = render(<App />);
+    const { container, getByRole, getByText, getAllByText } = await openSample();
     const cards = Array.from(container.querySelectorAll<HTMLElement>(".account-card"));
 
-    expect(cards).toHaveLength(5);
-    expect(getAllByText("$8,240.18")).toHaveLength(1);
+    expect(cards).toHaveLength(8);
+    expect(getAllByText("USD 3,081.45")).toHaveLength(1);
     cards.forEach((card) => {
       const amount = card.querySelector(".account-amount");
       const selection = card.querySelector(".account-card-button");
-      const source = card.querySelector(".proof-link");
+      // The amount a card shows and the control that selects it are separate
+      // elements, so pressing the row never reads as pressing the figure. The
+      // proof link that used to sit beside them was a field only the fixture
+      // filled; the vault read supplies none, and this no longer looks for one.
       expect(amount).not.toBeNull();
       expect(selection).not.toBeNull();
-      expect(source).not.toBeNull();
-      expect(selection).not.toBe(source);
-      expect(selection?.contains(source)).toBe(false);
+      expect(selection?.contains(amount)).toBe(false);
     });
 
-    const savingsCard = cards[1];
+    const savingsCard = cards.find((card) => card.textContent?.includes("Rainy Day Savings")) as HTMLElement;
     await user.click(savingsCard.querySelector(".account-card-button") as HTMLElement);
-    expect(getByText("Long view savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
+    expect(getByText("Rainy Day Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
 
-    await user.click(savingsCard.querySelector(".proof-link") as HTMLElement);
-    expect(getByRole("heading", { name: "north-river-savings-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
-    expect(getByText("Synthetic PDF · savings statement · page 1")).toBeInTheDocument();
+    // The proof link beside a figure is the read's own citation, and it is a
+    // separate control from the one that selects the row: pressing the row
+    // never reads as pressing the figure.
+    const proof = savingsCard.querySelector(".proof-link");
+    expect(proof).not.toBeNull();
+    expect(savingsCard.querySelector(".account-card-button")?.contains(proof as Node)).toBe(false);
   });
 
   it("moves through shell destinations without leaving the page", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText } = render(<App />);
+    const { getByRole, getByText } = await openSample();
     await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
     expect(getByRole("heading", { name: "Documents" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "A sample document journey" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Add a document" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
   });
 
   it("keeps the sample source before facts with one page heading and one current destination", async () => {
     const user = userEvent.setup();
-    const view = render(<App />);
+    const view = await openSample();
     const destinations = [
       ["OverviewYour picture", ".hero-grid"],
       ["AccountsWhere money sits", ".feature-panel"],
@@ -140,64 +194,64 @@ describe("minimal shell", () => {
 
   it("acknowledges document capture as local-only", async () => {
     const user = userEvent.setup();
-    const { container, getByRole } = render(<App />);
-    await user.click(getByRole("button", { name: "View sample document journey" }));
-    expect(getByRole("status")).toHaveTextContent("Opened the fictional sample document journey. No file was selected, no vault event was written, no model call was made, and nothing was sent.");
-    await waitFor(() => expect(getByRole("region", { name: "A sample document journey" })).toHaveFocus());
+    const { getAllByRole, container, getByRole } = await openSample();
+    await user.click(getByRole("button", { name: "Go to documents" }));
+    await waitFor(() => expect(getByRole("region", { name: "Add a document" })).toHaveFocus());
     expect(container.querySelector('input[type="file"]')).toBeNull();
   });
 
   it("focuses the static capture explanation when already on Documents", async () => {
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getByRole } = await openSample();
     await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    await user.click(getByRole("button", { name: "View sample document journey" }));
-    await waitFor(() => expect(getByRole("region", { name: "A sample document journey" })).toHaveFocus());
+    await user.click(getByRole("button", { name: "Go to documents" }));
+    await waitFor(() => expect(getByRole("region", { name: "Add a document" })).toHaveFocus());
   });
 
-  it("does not resurrect capture focus after navigating away and back from another destination", () => {
+  it("does not resurrect capture focus after navigating away and back from another destination", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { getByRole } = render(<App />);
-      fireEvent.click(getByRole("button", { name: "View sample document journey" }));
+      const { getByRole } = await openSample();
+      fireEvent.click(getByRole("button", { name: "Go to documents" }));
       fireEvent.click(getByRole("button", { name: "AccountsWhere money sits" }));
       fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
       getByRole("heading", { name: "Documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("region", { name: "A sample document journey" })).not.toHaveFocus();
+      expect(getByRole("region", { name: "Add a document" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
   });
 
-  it("does not resurrect capture focus after navigating away and back from Documents", () => {
+  it("does not resurrect capture focus after navigating away and back from Documents", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { getByRole } = render(<App />);
+      const { getByRole } = await openSample();
       fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-      fireEvent.click(getByRole("button", { name: "View sample document journey" }));
+      fireEvent.click(getByRole("button", { name: "Go to documents" }));
       fireEvent.click(getByRole("button", { name: "AccountsWhere money sits" }));
       fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
       getByRole("heading", { name: "Documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("region", { name: "A sample document journey" })).not.toHaveFocus();
+      expect(getByRole("region", { name: "Add a document" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
   });
 
-  it("shows the demo vault boundary and can reset it", async () => {
+  it("puts one frame around the sample vault, and leaves it in one action", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, getAllByText } = render(<App />);
+    const { queryByText, getAllByRole, getByRole, getByText, getAllByText } = await openSample();
 
-    expect(getByText("Sample vault")).toBeInTheDocument();
-    expect(getByText("Fictional sample data")).toBeInTheDocument();
-    expect(getAllByText("Every name, document, and figure in this vault is fictional and stored with the app.")).toHaveLength(1);
-    expect(getByText("Every name, document, and figure here is fictional.")).toBeInTheDocument();
+    expect(getAllByText("Sample vault")[0]).toBeInTheDocument();
+    // One frame, said once, in the pack's own words — not a qualifier repeated
+    // beside every figure inside it.
+    expect(getAllByText(moments.sample_frame)).toHaveLength(1);
+    expect(getByText(moments.sample_frame_detail)).toBeInTheDocument();
 
-    await user.click(getByRole("button", { name: /reset sample vault/i }));
-    expect(getByRole("status")).toHaveTextContent("Sample vault reset to the fictional data stored with the app.");
-    expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
+    await user.click(getAllByRole("button", { name: moments.sample_frame_leave })[0]);
+    expect(getAllByRole("status")[0]).toHaveTextContent("Closed. Nothing from that vault is on this screen.");
+    expect(queryByText(moments.sample_frame)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -207,40 +261,44 @@ describe("minimal shell", () => {
     ["Documents", "DocumentsWhat supports it"],
     ["Review", "ReviewWhat needs you"],
     ["Trust", "TrustHow it works"],
-  ] as const)("resets a fresh %s destination to one mature Overview selection", async (destination, navigationName) => {
+  ] as const)("leaves the sample vault from %s and takes the whole session with it", async (destination, navigationName) => {
+    // Leaving is one action, and nothing from the vault survives it: not the
+    // screen a person was on, not what they had selected there, not an open
+    // overlay, and not the vault itself. The session is rebuilt from nothing
+    // rather than cleared field by field, so a field added later cannot be the
+    // one that survives.
     const user = userEvent.setup();
     document.documentElement.style.overflow = "";
     document.body.style.overflow = "";
-    const view = render(<App />);
+    const view = await openSample();
     await user.click(view.getByRole("button", { name: navigationName }));
 
     if (destination === "Overview") fireEvent.click(view.container.querySelectorAll(".account-card-button")[1]);
     if (destination === "Accounts") fireEvent.click(view.container.querySelectorAll(".detail-row-button")[1]);
-    if (destination === "Activity") await user.type(view.getByLabelText("Search fictional activity"), "paycheck");
     if (destination === "Documents") fireEvent.click(view.container.querySelectorAll(".document-list .detail-row-button")[1]);
     if (destination === "Review") fireEvent.click(view.container.querySelectorAll(".review-question-row")[1]);
-    if (destination === "Trust") fireEvent.click(view.container.querySelector(".trust-capabilities details:not([open]) summary") as HTMLElement);
 
-    await user.click(view.getByRole("button", { name: "Reset sample vault" }));
+    await user.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
+
+    expect(view.queryByText(moments.sample_frame)).not.toBeInTheDocument();
     expect(view.getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
     expect(view.container.querySelectorAll("h1")).toHaveLength(1);
     expect(view.container.querySelectorAll('#primary-navigation [aria-current="page"]')).toHaveLength(1);
     expect(view.getByRole("button", { name: "OverviewYour picture" })).toHaveAttribute("aria-current", "page");
-    expect(view.getByText("Sample vault · Fictional sample data")).toBeInTheDocument();
-    expect(view.getByText("$48,240.18")).toBeInTheDocument();
-    expect(view.getByRole("status")).toHaveTextContent("Sample vault reset to the fictional data stored with the app.");
+    expect(view.queryByText("USD 17,486.45")).not.toBeInTheDocument();
+    expect(view.getAllByRole("status")[0]).toHaveTextContent("Closed. Nothing from that vault is on this screen.");
     expect(view.queryAllByRole("dialog")).toHaveLength(0);
     expect(document.documentElement.style.overflow).toBe("");
     expect(document.body.style.overflow).toBe("");
-    expect(view.container.querySelectorAll('.account-card-button[aria-pressed="true"]')).toHaveLength(1);
+    expect(view.getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
   });
 
   it.each(["Evidence", "Viva"] as const)("does not resurrect explicitly closed %s after a sample reset", async (overlay) => {
     const user = userEvent.setup();
-    const view = render(<App />);
+    const view = await openSample();
     if (overlay === "Evidence") {
-      await user.click(view.getByRole("button", { description: "View evidence for Net worth" }));
-      expect(view.getByRole("dialog", { name: "Evidence for Net worth" })).toBeInTheDocument();
+      await user.click(view.getByRole("button", { description: "View the evidence for net worth in USD." }));
+      expect(view.getByRole("dialog", { name: "Net worth in USD" })).toBeInTheDocument();
       await user.click(view.getByRole("button", { name: "Close evidence" }));
     } else {
       await user.click(view.getByRole("button", { name: "Ask Viva" }));
@@ -248,20 +306,20 @@ describe("minimal shell", () => {
       await user.click(view.getByRole("button", { name: "Close Viva conversation" }));
     }
     await waitFor(() => expect(view.queryByRole("dialog")).not.toBeInTheDocument());
-    await user.click(view.getByRole("button", { name: "Reset sample vault" }));
+    await user.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
     await waitFor(() => expect(view.queryByRole("dialog")).not.toBeInTheDocument());
     expect(view.getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
-    expect(view.getByRole("status")).toHaveTextContent("Sample vault reset to the fictional data stored with the app.");
+    expect(view.getAllByRole("status")[0]).toHaveTextContent("Closed. Nothing from that vault is on this screen.");
     expect(document.documentElement.style.overflow).toBe("");
     expect(document.body.style.overflow).toBe("");
   });
 
-  it.each(["Evidence", "Viva"] as const)("cancels captured stale %s restoration before a reset transition", (overlay) => {
+  it.each(["Evidence", "Viva"] as const)("cancels captured stale %s restoration before a reset transition", async (overlay) => {
     const frames = installCapturedAnimationFrames();
     try {
-      const view = render(<App />);
+      const view = await openSample();
       if (overlay === "Evidence") {
-        const opener = view.getByRole("button", { description: "View evidence for Net worth" });
+        const opener = view.getByRole("button", { description: "View the evidence for net worth in USD." });
         opener.focus();
         fireEvent.click(opener);
         fireEvent.click(view.getByRole("button", { name: "Close evidence" }));
@@ -271,16 +329,14 @@ describe("minimal shell", () => {
         fireEvent.click(opener);
         fireEvent.click(view.getByRole("button", { name: "Close Viva conversation" }));
       }
-      const reset = view.getByRole("button", { name: "Reset sample vault" });
+      const reset = view.getAllByRole("button", { name: moments.sample_frame_leave })[0];
       reset.focus();
       fireEvent.click(reset);
       frames.runCaptured();
       expect(view.queryByRole("dialog")).not.toBeInTheDocument();
       expect(view.getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
-      expect(view.getByText("Sample vault · Fictional sample data")).toBeInTheDocument();
-      expect(view.getByText("$48,240.18")).toBeInTheDocument();
+      expect(view.queryByText(moments.sample_frame)).not.toBeInTheDocument();
       expect(view.getByRole("button", { name: "Ask Viva" })).not.toHaveFocus();
-      expect(reset.isConnected ? reset : view.getByRole("heading", { name: "Your financial picture" })).toHaveFocus();
       expect(document.documentElement.style.overflow).toBe("");
       expect(document.body.style.overflow).toBe("");
     } finally {
@@ -290,31 +346,30 @@ describe("minimal shell", () => {
 
   it("shows the supplied review total without adding a navigation count", async () => {
     const user = userEvent.setup();
-    const { container, getByRole, getByText } = render(<App />);
+    const { container, getByRole, getByText } = await openSample();
     await user.click(getByRole("button", { name: "ReviewWhat needs you" }));
-    expect(getByRole("heading", { name: "Sample review queue" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Review queue" })).toBeInTheDocument();
     expect(getByText("Open-question total from this read")).toBeInTheDocument();
-    expect(getByText("4", { selector: ".review-summary > strong" })).toBeInTheDocument();
+    expect(getByText("13", { selector: ".review-summary > strong" })).toBeInTheDocument();
     expect(container.querySelector(".nav-count")).toBeNull();
   });
 
   it("opens the Viva conversation drawer with cited turns and refusal states", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, getAllByRole } = render(<App />);
+    const { getByRole, getByText, getAllByRole } = await openSample();
 
     await user.click(getByRole("button", { name: /ask viva/i }));
 
     expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
-    expect(getByText("Selecting a sample prompt changes only the displayed detail. It does not send a prompt, call a model, write a vault event, create an outbound action, or make a durable change.")).toBeInTheDocument();
-    expect(getByText("The sample includes July figures, and one brokerage statement page still needs a human decision.")).toBeInTheDocument();
-    expect(getByText("Fictional citation text: Taxable Brokerage statement, pages 1–2")).toBeInTheDocument();
+    // Viva is not connected to a vault read, so the drawer says so rather than
+    // showing turns from somewhere else. What it does carry is the box that
+    // takes a question, which is not a read and does not wait for one.
+    expect(getByText("Conversation isn’t connected yet")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("picture is complete");
     expect(document.body).not.toHaveTextContent("Brokerage statement, page 4");
-    expect(getByText("I can point to the question and the evidence, but the category still needs your answer.")).toBeInTheDocument();
-    expect(getByRole("button", { name: /what changed this month\?/i })).toBeInTheDocument();
-
-    await user.click(getAllByRole("button", { name: /show the evidence/i })[0]);
-    expect(getByRole("button", { name: /show the evidence/i })).toHaveClass("active");
+    // The box that takes a question is outside the read's gate, so a person
+    // can ask even where nothing has been answered yet.
+    expect(getByRole("button", { name: /^Ask$/i })).toBeInTheDocument();
 
     await user.click(getByRole("button", { name: /close viva conversation/i }));
     expect(getByRole("button", { name: /ask viva/i })).toBeInTheDocument();
@@ -322,7 +377,7 @@ describe("minimal shell", () => {
 
   it("moves keyboard focus into the Viva dialog when it opens", async () => {
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getByRole } = await openSample();
 
     await user.click(getByRole("button", { name: /ask viva/i }));
 
@@ -331,7 +386,7 @@ describe("minimal shell", () => {
 
   it("lets a keyboard user dismiss the Viva dialog with Escape", async () => {
     const user = userEvent.setup();
-    const { getByRole, queryByRole } = render(<App />);
+    const { getByRole, queryByRole } = await openSample();
 
     await user.click(getByRole("button", { name: /ask viva/i }));
     await user.keyboard("{Escape}");
@@ -346,7 +401,7 @@ describe("minimal shell", () => {
     document.documentElement.style.overflow = "clip";
     document.body.style.overflow = "visible";
     try {
-      const { getByRole } = render(<App />);
+      const { getByRole } = await openSample();
       const opener = getByRole("button", { name: "Ask Viva" });
       await user.click(opener);
       expect(getByRole("button", { name: "Close Viva conversation" })).toHaveFocus();
@@ -366,7 +421,7 @@ describe("minimal shell", () => {
 
   it("traps both Viva tab boundaries, recaptures outside focus, and restores from the backdrop", async () => {
     const user = userEvent.setup();
-    const { container, getByRole } = render(<App />);
+    const { container, getByRole } = await openSample();
     const opener = getByRole("button", { name: "Ask Viva" });
     await user.click(opener);
     const dialog = getByRole("dialog", { name: "Viva conversation" });
@@ -384,30 +439,30 @@ describe("minimal shell", () => {
 
   it("closes a stale conversation scope without restoring its opener", async () => {
     const user = userEvent.setup();
-    const { getByRole, queryByRole } = render(<App />);
+    const { getAllByRole, getByRole, queryByRole } = await openSample();
     const opener = getByRole("button", { name: "Ask Viva" });
     await user.click(opener);
-    fireEvent.click(getByRole("button", { name: "Reset sample vault", hidden: true }));
+    fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave, hidden: true })[0]);
     expect(queryByRole("dialog", { name: "Viva conversation" })).not.toBeInTheDocument();
     expect(opener).not.toHaveFocus();
     expect(document.querySelector("main")).not.toHaveAttribute("inert");
     expect(document.getElementById("primary-navigation-drawer")).not.toHaveAttribute("inert");
   });
 
-  it("keeps the Viva shell dismissible when its body throws and recovers on reset", () => {
+  it("keeps the Viva shell dismissible when its body throws and recovers on reset", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const dismiss = vi.fn();
     const drawer = createRef<HTMLElement>();
     const close = createRef<HTMLButtonElement>();
     try {
-      const view = render(<ConversationDialogShell mode="demo" resetKey="request-1-demo" drawerRef={drawer} closeRef={close} onDismiss={dismiss}><ThrowingConversationBody /></ConversationDialogShell>);
+      const view = render(<ConversationDialogShell resetKey="request-1-demo" drawerRef={drawer} closeRef={close} onDismiss={dismiss}><ThrowingConversationBody /></ConversationDialogShell>);
       expect(view.getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
       expect(view.getByText("This surface could not be shown")).toBeInTheDocument();
       fireEvent.click(view.getByRole("button", { name: "Close Viva conversation" }));
       expect(dismiss).toHaveBeenCalledTimes(1);
-      view.rerender(<ConversationDialogShell mode="live" resetKey="request-2-live" drawerRef={drawer} closeRef={close} onDismiss={dismiss}><div>Recovered supplied body</div></ConversationDialogShell>);
+      view.rerender(<ConversationDialogShell resetKey="request-2-live" drawerRef={drawer} closeRef={close} onDismiss={dismiss}><div>Recovered supplied body</div></ConversationDialogShell>);
       expect(view.getByText("Recovered supplied body")).toBeInTheDocument();
-      expect(view.getByText("This read-only drawer shows only conversation fields supplied to the interface. It cannot accept or send a prompt.")).toBeInTheDocument();
+      expect(view.getByText("This drawer shows the turns this vault recorded, and takes a question of your own.")).toBeInTheDocument();
     } finally {
       error.mockRestore();
     }
@@ -415,78 +470,46 @@ describe("minimal shell", () => {
 
   it("keeps the overview selected account spotlight in sync with selection", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, container } = render(<App />);
+    const { getByRole, getByText, container } = await openSample();
 
-    expect(getByText("Everyday checking", { selector: ".coverage-account-title" })).toBeInTheDocument();
-    expect(getByText("Checking statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByText("Abroad Current", { selector: ".coverage-account-title" })).toBeInTheDocument();
 
     await user.click(container.querySelectorAll(".account-card-button")[4] as HTMLElement);
 
-    expect(getByText("Taxable Brokerage", { selector: ".coverage-account-title" })).toBeInTheDocument();
-    expect(getByText("Brokerage statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByText("Household Card", { selector: ".coverage-account-title" })).toBeInTheDocument();
     expect(getByRole("button", { name: /open accounts/i })).toBeInTheDocument();
   });
 
   it("shows the selected document detail inside documents", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, getAllByText } = render(<App />);
+    const { getByRole, getByText, getAllByText } = await openSample();
     await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    expect(getByRole("heading", { name: "A sample document journey" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Sample lifecycle" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Sample documents" })).toBeInTheDocument();
-    await user.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
-    expect(getByText("2 pages")).toBeInTheDocument();
-    expect(getAllByText("Waiting for a reader").length).toBeGreaterThan(0);
-    expect(getByText("Synthetic PDF · brokerage statement · pages 1–2")).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Add a document" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "What this read can show" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
+    // The read supplies identity, filename, kind, resolution and what the
+    // document put on the books. Pages, source regions and provenance are not
+    // supplied by any vault read, and this screen says so rather than showing
+    // a field it filled in itself.
+    expect(getAllByText("Page details are not supplied by this vault read.").length).toBeGreaterThan(0);
+    expect(getByText("Related evidence is not supplied by this vault read.")).toBeInTheDocument();
   });
 
-  it("navigates from a document to related evidence without losing provenance", async () => {
+
+
+  it("opens Activity on the vault own movements, with no second implementation", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText } = render(<App />);
-    await user.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-    await user.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
-    await user.click(getByRole("button", { name: /north river savings statement/i }));
-    expect(getByRole("heading", { name: "north-river-savings-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
-    expect(getByText("Synthetic PDF · savings statement · page 1")).toBeInTheDocument();
-    expect(getByRole("button", { name: /Taxable Brokerage statementcorroborates.*pages 1–2/i })).toBeInTheDocument();
-  });
-
-  it("routes sample figure, account, and activity proof links to exact document ids", async () => {
-    const user = userEvent.setup();
-    const { container, getByRole, getByText } = render(<App />);
-
-    // The picture's figure carries one evidence control and no proof-link row:
-    // a citation the read gave no label becomes a button announcing the word
-    // "unavailable", and a stack of them under one number reads as broken
-    // links where the product claimed a receipt. Its route to a document runs
-    // through the drawer, and the case above this one drives it.
-    await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
-    expect(getByText("Supporting documents")).toBeInTheDocument();
-    await user.click(container.querySelector(".detail-panel .proof-link") as HTMLElement);
-    expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).toBeInTheDocument();
-
-    await user.click(getByRole("button", { name: /overview.*your picture/i }));
-    await user.click(container.querySelector(".signal-row .proof-link") as HTMLElement);
-    expect(getByRole("heading", { name: "silverline-checking-2026-06.pdf" })).toBeInTheDocument();
-    expect(getByText("Synthetic PDF · checking statement · June 2026 · page 1")).toBeInTheDocument();
-
+    const { getByRole, getByText, queryByRole } = await openSample();
     await user.click(getByRole("button", { name: /activity.*what moved/i }));
-    await user.click(container.querySelector(".activity-detail .proof-link") as HTMLElement);
-    expect(getByRole("heading", { name: "silverline-checking-2026-06.pdf" })).toBeInTheDocument();
-    expect(getByText("Synthetic PDF · checking statement · June 2026 · page 1")).toBeInTheDocument();
-  });
-
-  it("opens the fictional Activity explorer without a Review action", async () => {
-    const user = userEvent.setup();
-    const { getByRole, getByText, queryByRole } = render(<App />);
-    await user.click(getByRole("button", { name: /activity.*what moved/i }));
-    expect(getByText("Movements, their supplied context, and the evidence behind each displayed figure.")).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Sample activity" })).toBeInTheDocument();
-    expect(getByRole("textbox", { name: "Search fictional activity" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "What moved" })).toBeInTheDocument();
+    // One implementation, and no search box: the facet explorer this screen
+    // used to carry existed only for rows composed in the shell.
+    expect(queryByRole("searchbox")).not.toBeInTheDocument();
     expect(queryByRole("button", { name: /go to review queue/i })).not.toBeInTheDocument();
   });
 
-  it("discards a pending document-heading focus when the source request changes", () => {
+  it("discards a pending document-heading focus when the source request changes", async () => {
     const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
     const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
     const pendingFrames = new Map<number, FrameRequestCallback>();
@@ -500,24 +523,24 @@ describe("minimal shell", () => {
     globalThis.cancelAnimationFrame = cancelAnimationFrame;
 
     try {
-      const { container, getByRole } = render(<App />);
+      const { queryByRole, getAllByRole, container, getByRole } = await openSample();
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
-      expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).not.toHaveFocus();
+      expect(document.querySelector("#selected-document-title")).not.toHaveFocus();
 
-      fireEvent.click(getByRole("button", { name: "Reset sample vault" }));
+      fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave })[0]);
       expect(cancelAnimationFrame).toHaveBeenCalled();
       pendingFrames.forEach((callback) => callback(performance.now()));
       pendingFrames.clear();
 
-      fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-      expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).not.toHaveFocus();
+      fireEvent.click(getAllByRole("button", { name: "DocumentsWhat supports it" })[0]);
+      expect(document.querySelector("#selected-document-title")).toBeNull();
     } finally {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame;
       globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
     }
   });
 
-  it("discards pending capture focus when the source request changes", () => {
+  it("discards pending capture focus when the source request changes", async () => {
     const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
     const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
     const pendingFrames = new Map<number, FrameRequestCallback>();
@@ -526,45 +549,45 @@ describe("minimal shell", () => {
     globalThis.cancelAnimationFrame = vi.fn((id: number) => pendingFrames.delete(id));
 
     try {
-      const { getByRole } = render(<App />);
-      fireEvent.click(getByRole("button", { name: "View sample document journey" }));
-      expect(getByRole("region", { name: "A sample document journey" })).not.toHaveFocus();
-      fireEvent.click(getByRole("button", { name: "Reset sample vault" }));
+      const { queryByRole, getAllByRole, getByRole } = await openSample();
+      fireEvent.click(getByRole("button", { name: "Go to documents" }));
+      expect(document.getElementById("document-capture-status")).not.toHaveFocus();
+      fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave })[0]);
       pendingFrames.forEach((callback) => callback(performance.now()));
       pendingFrames.clear();
-      fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
-      expect(getByRole("region", { name: "A sample document journey" })).not.toHaveFocus();
+      fireEvent.click(getAllByRole("button", { name: "DocumentsWhat supports it" })[0]);
+      expect(document.getElementById("document-capture-status")).toBeNull();
     } finally {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame;
       globalThis.cancelAnimationFrame = originalCancelAnimationFrame;
     }
   });
 
-  it("does not resurrect document-title focus after leaving and returning to Documents", () => {
+  it("does not resurrect document-title focus after leaving and returning to Documents", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { container, getByRole } = render(<App />);
+      const { container, getByRole } = await openSample();
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
       fireEvent.click(getByRole("button", { name: "AccountsWhere money sits" }));
       fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
       getByRole("heading", { name: "Documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).not.toHaveFocus();
+      expect(getByRole("heading", { name: "bank_statement" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
   });
 
-  it("does not resurrect document-title focus after selection diverges and returns", () => {
+  it("does not resurrect document-title focus after selection diverges and returns", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { container, getByRole } = render(<App />);
+      const { container, getByRole } = await openSample();
       fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
-      fireEvent.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
-      fireEvent.click(getByRole("button", { name: /silverline-checking-2026-07\.pdf/i }));
+      fireEvent.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
+      fireEvent.click(getByRole("button", { name: /everyday-checking-2026-06\.pdf/i }));
       getByRole("heading", { name: "Documents" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).not.toHaveFocus();
+      expect(getByRole("heading", { name: "bank_statement" })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
@@ -572,29 +595,30 @@ describe("minimal shell", () => {
 
   it("opens fresh figure evidence and routes its exact source to the selected document heading", async () => {
     const user = userEvent.setup();
-    const { getByRole, queryByRole } = render(<App />);
-    const trigger = getByRole("button", { description: "View evidence for Net worth" });
+    const { getByRole, queryByRole } = await openSample();
+    const trigger = getByRole("button", { description: "View the evidence for net worth in USD." });
 
     await user.click(trigger);
-    expect(getByRole("dialog", { name: "Evidence for Net worth" })).toBeInTheDocument();
+    expect(getByRole("dialog", { name: "Net worth in USD" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Close evidence" })).toHaveFocus();
     expect(document.querySelector("main")).toHaveAttribute("inert");
     expect(document.getElementById("primary-navigation-drawer")).toHaveAttribute("inert");
-    await user.click(getByRole("button", { name: "Open silverline-checking-2026-07.pdf" }));
+    await user.click(getByRole("button", { name: "Open everyday-checking-2026-06.pdf" }));
 
-    expect(queryByRole("dialog", { name: "Evidence for Net worth" })).not.toBeInTheDocument();
-    await waitFor(() => expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).toHaveFocus());
+    expect(queryByRole("dialog", { name: "Net worth in USD" })).not.toBeInTheDocument();
+    await waitFor(() => expect(getByRole("heading", { name: "bank_statement" })).toHaveFocus());
   });
 
   it("keeps Evidence, Viva, and narrow navigation mutually exclusive", async () => {
-    installResponsiveMatchMedia(390);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole, queryByRole } = render(<App />);
+    const { getByRole, queryByRole } = await openSample();
+    act(() => responsive.resize(390));
 
-    await user.click(getByRole("button", { description: "View evidence for Net worth" }));
-    expect(getByRole("dialog", { name: "Evidence for Net worth" })).toBeInTheDocument();
+    await user.click(getByRole("button", { description: "View the evidence for net worth in USD." }));
+    expect(getByRole("dialog", { name: "Net worth in USD" })).toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Ask Viva", hidden: true }));
-    expect(queryByRole("dialog", { name: "Evidence for Net worth" })).not.toBeInTheDocument();
+    expect(queryByRole("dialog", { name: "Net worth in USD" })).not.toBeInTheDocument();
     expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
 
     fireEvent.click(getByRole("button", { name: "Open navigation" }));
@@ -605,185 +629,176 @@ describe("minimal shell", () => {
 
   it("shows the selected queue item inside review", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText } = render(<App />);
+    const { getAllByText, getByRole, getByText } = await openSample();
     await user.click(getByRole("button", { name: "ReviewWhat needs you" }));
-    await user.click(getByRole("button", { name: /duplicate subscription/i }));
-    expect(getByRole("heading", { name: "Duplicate subscription" })).toBeInTheDocument();
-    expect(getByText("Set-aside boundary")).toBeInTheDocument();
-    expect(getByText("Card statement, page 1")).toBeInTheDocument();
-    expect(getByRole("button", { name: /harborline signature card statement.*page 1/i })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: /May I ask what annual fee is/i }));
+    expect(getByRole("heading", { name: /May I ask what/ })).toBeInTheDocument();
+    expect(getByText("Set this question aside")).toBeInTheDocument();
+    expect(getAllByText("160.00").length).toBeGreaterThan(0);
   });
 
   it("opens and focuses an exact review question from Overview", async () => {
     const user = userEvent.setup();
-    const { getAllByRole, getByRole, queryByRole } = render(<App />);
+    const { getAllByRole, getByRole, queryByRole } = await openSample();
     await user.click(getAllByRole("button", { name: "View question" })[1]);
-    await waitFor(() => expect(getByRole("heading", { name: "Duplicate subscription" })).toHaveFocus());
+    await waitFor(() => expect(getByRole("heading", { name: /May I ask what/ })).toHaveFocus());
     expect(queryByRole("button", { name: /^Answer$/i })).not.toBeInTheDocument();
     expect(queryByRole("button", { name: /^Confirm$/i })).not.toBeInTheDocument();
   });
 
-  it("does not resurrect Overview review focus after leaving Review", () => {
+  it("does not resurrect Overview review focus after leaving Review", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { getAllByRole, getByRole } = render(<App />);
+      const { getAllByRole, getByRole } = await openSample();
       fireEvent.click(getAllByRole("button", { name: "View question" })[1]);
       fireEvent.click(getByRole("button", { name: /trust.*how it works/i }));
       fireEvent.click(getByRole("button", { name: /review.*what needs you/i }));
       getByRole("heading", { name: "Review" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "Duplicate subscription" })).not.toHaveFocus();
+      expect(getByRole("heading", { name: /May I ask what/ })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
   });
 
-  it("does not resurrect Overview review focus after the selected identity changes", () => {
+  it("does not resurrect Overview review focus after the selected identity changes", async () => {
     const frames = installCapturedAnimationFrames();
     try {
-      const { getAllByRole, getByRole } = render(<App />);
+      const { getAllByRole, getByRole } = await openSample();
       fireEvent.click(getAllByRole("button", { name: "View question" })[1]);
-      fireEvent.click(getByRole("button", { name: /held statement page/i }));
-      fireEvent.click(getByRole("button", { name: /duplicate subscription/i }));
+      fireEvent.click(getByRole("button", { name: /Your acct:everyday-checking statement/i }));
+      fireEvent.click(getByRole("button", { name: /May I ask what annual fee is/i }));
       getByRole("heading", { name: "Review" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "Duplicate subscription" })).not.toHaveFocus();
+      expect(getByRole("heading", { name: /May I ask what/ })).not.toHaveFocus();
     } finally {
       frames.restore();
     }
   });
 
-  it("does not resurrect Overview review focus after the vault request and mode change", async () => {
+  it("does not resurrect Overview review focus after the vault is closed", async () => {
     const frames = installCapturedAnimationFrames();
-    const previousBridge = window.orionVivaBridge;
-    window.orionVivaBridge = {
-      request: async <T,>({ operation, payload }: { requestId: string; operation: string; payload: Record<string, unknown> }) => {
-        if (operation === "bridge.open_vault") return { protocol: "1.0", request_id: "open", ok: true, result: { state: "opened" } as T };
-        const data = payload.surface === "overview" ? { accounts: [] } : payload.surface === "documents" ? { documents: [] } : payload.surface === "trust" ? trustPayload : payload.surface === "activity" ? activityPayload : { questions: [], total: 0 };
-        return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
-      },
-    };
+    const restore = installSampleBridge();
     try {
       const user = userEvent.setup();
       const { getAllByRole, getByLabelText, getByRole } = render(<App />);
-      fireEvent.click(getAllByRole("button", { name: "View question" })[1]);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
-      await waitFor(() => expect(getByRole("heading", { name: "Review queue" })).toBeInTheDocument());
-      await user.click(getByRole("button", { name: "Open sample vault" }));
+      await waitFor(() => expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument());
+      // A question opened from Overview asks for focus one frame later. The
+      // vault is closed before that frame runs, so the focus it captured names
+      // a question on a screen nobody is looking at any more.
+      fireEvent.click(getAllByRole("button", { name: "View question" })[0]);
+      await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
       await user.click(getByRole("button", { name: /review.*what needs you/i }));
       getByRole("heading", { name: "Review" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: "Merchant category" })).not.toHaveFocus();
+      expect(document.querySelector("#selected-question-title")).toBeNull();
+      expect(getByRole("heading", { name: "Review" })).toHaveFocus();
     } finally {
-      window.orionVivaBridge = previousBridge;
+      restore();
       frames.restore();
     }
   });
 
   it("keeps the selected document when navigation moves away and back", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, queryByRole } = render(<App />);
+    const { getByRole, getByText, queryByRole } = await openSample();
 
     await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-    await user.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
-    expect(getByRole("heading", { name: "northgate-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
+    await user.click(getByRole("button", { name: /growth-portfolio-2026-06\.pdf/i }));
+    expect(getByRole("heading", { name: "brokerage_statement" })).toBeInTheDocument();
 
     await user.click(getByRole("button", { name: /overview.*your picture/i }));
     await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-    expect(getByRole("heading", { name: "northgate-brokerage-2026-05-to-2026-07.pdf" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "brokerage_statement" })).toBeInTheDocument();
     expect(queryByRole("button", { name: /open page review/i })).not.toBeInTheDocument();
     expect(getByText("Page and source-region review are not connected.")).toBeInTheDocument();
   });
 
   it("keeps the selected account when navigation moves away and back", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, container } = render(<App />);
+    const { getByRole, getByText, container } = await openSample();
 
     await user.click(container.querySelectorAll(".account-card-button")[1] as HTMLElement);
     await user.click(getByRole("button", { name: /open accounts/i }));
-    expect(getByRole("heading", { name: "Sample accounts" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Long view savings" })).toBeInTheDocument();
-    expect(getByText("Savings statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Accounts in this read" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Dormant Savings" })).toBeInTheDocument();
 
     await user.click(getByRole("button", { name: /overview.*your picture/i }));
-    expect(getByText("Long view savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
+    expect(getByText("Dormant Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
   });
 
   it("keeps the selected review question when navigation moves away and back", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText } = render(<App />);
+    const { getAllByText, getByRole, getByText } = await openSample();
 
     await user.click(getByRole("button", { name: /review.*what needs you/i }));
-    await user.click(getByRole("button", { name: /merchant category/i }));
-    expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
+    await user.click(getByRole("button", { name: /May I ask what annual fee is/i }));
+    expect(getAllByText("160.00").length).toBeGreaterThan(0);
 
     await user.click(getByRole("button", { name: /trust.*how it works/i }));
     await user.click(getByRole("button", { name: /review.*what needs you/i }));
-    expect(getByText("Card purchase on Jun 24")).toBeInTheDocument();
-    expect(getByRole("button", { name: /everyday checking june statement.*page 1/i })).toBeInTheDocument();
+    expect(getAllByText("160.00").length).toBeGreaterThan(0);
   });
 
   it("keeps the accounts detail panel focused on the selected account", async () => {
     const user = userEvent.setup();
-    const { getByRole, getByText, container } = render(<App />);
+    const { getByRole, getByText, container } = await openSample();
 
     await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
-    expect(getByRole("heading", { name: "Sample accounts" })).toBeInTheDocument();
-    expect(getByRole("heading", { name: "Everyday checking" })).toBeInTheDocument();
-    expect(getByText("Checking statements, Aug 2022–Jul 2026")).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Accounts in this read" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Abroad Current" })).toBeInTheDocument();
     expect(getByText("Grade")).toBeInTheDocument();
 
     await user.click(container.querySelectorAll(".detail-row-button")[4] as HTMLElement);
 
-    expect(getByRole("heading", { name: "Taxable Brokerage" })).toBeInTheDocument();
-    expect(getByText("Brokerage statements, Aug 2022–Jul 2026")).toBeInTheDocument();
-    expect(getByText("Quarterly statements with holdings")).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Household Card" })).toBeInTheDocument();
   });
 
   it("lets the local capture notice be dismissed", async () => {
-    const { getByRole, queryByRole } = render(<App />);
+    const { getAllByRole, getByRole, queryByRole } = await openSample();
 
-    fireEvent.click(getByRole("button", { name: "View sample document journey" }));
-    expect(getByRole("status")).toHaveTextContent("Opened the fictional sample document journey. No file was selected, no vault event was written, no model call was made, and nothing was sent.");
+    fireEvent.click(getAllByRole("button", { name: moments.sample_frame_leave })[0]);
+    expect(getAllByRole("status")[0]).toHaveTextContent("Closed. Nothing from that vault is on this screen.");
 
     fireEvent.click(getByRole("button", { name: /dismiss notice/i }));
     expect(queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("renders the Trust destination as preview-owned explanation", async () => {
+  it("renders the Trust destination from what the vault read said", async () => {
     const user = userEvent.setup();
-    const { getAllByText, getByRole, getByText, queryByRole } = render(<App />);
+    const { getAllByText, getByRole, getByText, queryByRole } = await openSample();
 
     await user.click(getByRole("button", { name: /trust.*how it works/i }));
     expect(getByRole("heading", { name: "Trust" })).toBeInTheDocument();
-    expect(getByText("Preview boundary", { selector: "strong" })).toBeInTheDocument();
-    expect(getAllByText("Static interactions", { selector: "strong" })).toHaveLength(2);
-    expect(getByText("This Trust destination describes the fictional sample and this interface’s current limitations. It is not a report about a private vault.")).toBeInTheDocument();
-    expect(getByText("What this preview can establish, what is unavailable, and which capabilities are not connected.")).toBeInTheDocument();
-    expect(getByText("Fictional sample", { selector: ".privacy-lock span" })).toBeInTheDocument();
-    expect(getByText("This fictional sample is bundled with the app. Complete outbound history is not available.")).toBeInTheDocument();
-    expect(queryByRole("button", { name: "View sample document journey" })).not.toBeInTheDocument();
+    expect(getByRole("heading", { name: "Trust and limitations" })).toBeInTheDocument();
+    // The outbound record, and what nothing on this machine can establish.
+    // Both are the read's; neither is a row this screen authored.
+    expect(getAllByText(moments.trust_no_anchoring).length).toBeGreaterThan(0);
+    expect(getByText("Local source", { selector: ".privacy-lock span" })).toBeInTheDocument();
+    expect(getByText("Every vault this app opens, the sample one included, is opened through the local desktop host on this machine.")).toBeInTheDocument();
+    expect(queryByRole("button", { name: "Go to documents" })).not.toBeInTheDocument();
     const source = getByRole("complementary", { name: "Vault source" });
     const trustHeader = getByRole("heading", { name: "Trust and limitations" });
     expect(source.compareDocumentPosition(trustHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("states the fictional sample boundary", () => {
-    const { getByRole, getByText } = render(<App />);
+  it("states the fictional sample boundary", async () => {
+    const { getByRole, getByText } = await openSample();
     expect(getByRole("complementary", { name: "Vault source" })).toBeInTheDocument();
-    expect(getByText("Every name, document, and figure here is fictional.")).toBeInTheDocument();
+    expect(getByText(moments.sample_frame_detail)).toBeInTheDocument();
   });
 
-  it("keeps fixture preview usable when no host bridge is injected", () => {
+  it("says a vault cannot be opened here when no host bridge is injected", async () => {
     const { getByText, queryByPlaceholderText } = render(<App />);
 
     expect(getByText(/Preview mode. A desktop host bridge will enable local vault opening/i)).toBeInTheDocument();
     expect(queryByPlaceholderText("/path/to/vault")).not.toBeInTheDocument();
   });
 
-  it("keeps manual directory entry as the browser fallback", () => {
+  it("keeps manual directory entry as the browser fallback", async () => {
     const { getByText, queryByLabelText, queryByRole } = render(<App />);
 
     expect(getByText(/Preview mode. A desktop host bridge will enable local vault opening/i)).toBeInTheDocument();
@@ -792,9 +807,10 @@ describe("minimal shell", () => {
   });
 
   it("exposes the collapsed and expanded state of narrow navigation", async () => {
-    installResponsiveMatchMedia(760);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole, queryByRole } = render(<App />);
+    const { getByRole, queryByRole } = await openSample();
+    act(() => responsive.resize(390));
     const openNavigation = getByRole("button", { name: "Open navigation" });
     const drawer = document.getElementById("primary-navigation-drawer");
 
@@ -817,11 +833,12 @@ describe("minimal shell", () => {
   });
 
   it("traps focus in narrow navigation and restores the trigger after Escape", async () => {
-    installResponsiveMatchMedia(759);
+    const responsive = installResponsiveMatchMedia(1440);
     document.body.style.overflow = "clip";
     document.documentElement.style.overflow = "scroll";
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getByRole } = await openSample();
+    act(() => responsive.resize(390));
     const trigger = getByRole("button", { name: "Open navigation" });
 
     await user.click(trigger);
@@ -845,9 +862,10 @@ describe("minimal shell", () => {
   });
 
   it("moves outside focus into the open narrow dialog in either Tab direction", async () => {
-    installResponsiveMatchMedia(760);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getByRole } = await openSample();
+    act(() => responsive.resize(390));
     const trigger = getByRole("button", { name: "Open navigation" });
 
     await user.click(trigger);
@@ -872,9 +890,10 @@ describe("minimal shell", () => {
   });
 
   it("skips disabled controls and falls back to the drawer when none remain", async () => {
-    installResponsiveMatchMedia(759);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getAllByRole, getByRole } = await openSample();
+    act(() => responsive.resize(390));
     const trigger = getByRole("button", { name: "Open navigation" });
 
     await user.click(trigger);
@@ -885,7 +904,7 @@ describe("minimal shell", () => {
     const skipDisabled = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
     document.dispatchEvent(skipDisabled);
     expect(skipDisabled.defaultPrevented).toBe(true);
-    expect(getByRole("button", { name: "Reset sample vault" })).toHaveFocus();
+    expect(getAllByRole("button", { name: moments.sample_frame_leave }).some((control) => control === document.activeElement)).toBe(true);
 
     dialog.querySelectorAll("button, input, select, textarea").forEach((element) => element.setAttribute("disabled", ""));
     trigger.focus();
@@ -896,9 +915,10 @@ describe("minimal shell", () => {
   });
 
   it("closes narrow navigation for the current destination and focuses the page title", async () => {
-    installResponsiveMatchMedia(760);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getByRole } = await openSample();
+    act(() => responsive.resize(390));
 
     await user.click(getByRole("button", { name: "Open navigation" }));
     await user.click(getByRole("button", { name: "OverviewYour picture" }));
@@ -908,9 +928,10 @@ describe("minimal shell", () => {
   });
 
   it("closes an open Viva drawer before opening narrow navigation", async () => {
-    installResponsiveMatchMedia(390);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole, queryByRole } = render(<App />);
+    const { getByRole, queryByRole } = await openSample();
+    act(() => responsive.resize(390));
 
     await user.click(getByRole("button", { name: /ask viva/i }));
     expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
@@ -923,9 +944,10 @@ describe("minimal shell", () => {
   it("keeps desktop navigation persistent and cleans up an open mobile modal at the breakpoint", async () => {
     document.body.style.overflow = "";
     document.documentElement.style.overflow = "auto";
-    const responsive = installResponsiveMatchMedia(760);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getByRole } = await openSample();
+    act(() => responsive.resize(390));
     const trigger = getByRole("button", { name: "Open navigation" });
 
     await user.click(trigger);
@@ -946,9 +968,10 @@ describe("minimal shell", () => {
   });
 
   it("focuses the page title after desktop resize when no current navigation item is available", async () => {
-    const responsive = installResponsiveMatchMedia(760);
+    const responsive = installResponsiveMatchMedia(1440);
     const user = userEvent.setup();
-    const { getByRole } = render(<App />);
+    const { getByRole } = await openSample();
+    act(() => responsive.resize(390));
 
     await user.click(getByRole("button", { name: "Open navigation" }));
     getByRole("button", { name: "OverviewYour picture" }).removeAttribute("aria-current");
@@ -960,11 +983,12 @@ describe("minimal shell", () => {
   });
 
   it("restores exact root and body overflow values when an open narrow drawer unmounts", async () => {
-    installResponsiveMatchMedia(320);
+    const responsive = installResponsiveMatchMedia(1440);
     document.documentElement.style.overflow = "clip";
     document.body.style.overflow = "visible";
     const user = userEvent.setup();
-    const { getByRole, unmount } = render(<App />);
+    const { getByRole, unmount } = await openSample();
+    act(() => responsive.resize(390));
 
     await user.click(getByRole("button", { name: "Open navigation" }));
     expect(getByRole("dialog", { name: "Main navigation" })).toBeInTheDocument();
@@ -1033,13 +1057,13 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/manual/vault");
 
       await user.click(getByRole("button", { name: /choose folder/i }));
 
-      expect(getByRole("status")).toHaveTextContent(/folder picker could not be opened/i);
-      expect(getByRole("status")).not.toHaveTextContent(hostFailure);
+      expect(getAllByRole("status")[0]).toHaveTextContent(/folder picker could not be opened/i);
+      expect(getAllByRole("status")[0]).not.toHaveTextContent(hostFailure);
       expect(getByLabelText("Vault directory")).toHaveValue("/manual/vault");
     } finally {
       window.orionVivaBridge = previousBridge;
@@ -1107,8 +1131,8 @@ describe("minimal shell", () => {
 
       expect(getByText("Private vault")).toBeInTheDocument();
       expect(getByText("Reading available surfaces from this device…", { selector: ".empty-state span" })).toBeInTheDocument();
-      expect(queryByText("$48,240.18")).not.toBeInTheDocument();
-      expect(queryByText("Everyday checking")).not.toBeInTheDocument();
+      expect(queryByText("USD 17,486.45")).not.toBeInTheDocument();
+      expect(queryByText("Everyday Checking")).not.toBeInTheDocument();
       releaseReads();
       await waitFor(() => expect(getByText("No accounts yet", { selector: "strong" })).toBeInTheDocument());
       expect(queryByText("Reading available surfaces from this device…", { selector: ".empty-state span" })).not.toBeInTheDocument();
@@ -1118,7 +1142,7 @@ describe("minimal shell", () => {
     }
   });
 
-  it("keeps the sample vault after reset even when an earlier private read resolves later", async () => {
+  it("keeps a closed vault closed even when its read resolves later", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     let releaseReads: () => void = () => {};
@@ -1141,20 +1165,22 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole, getByText, queryByText } = render(<App />);
+      const { getAllByText, getAllByRole, getByLabelText, getByRole, getByText, queryByText } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
       expect(getByText("Reading available surfaces from this device…", { selector: ".empty-state span" })).toBeInTheDocument();
 
-      await user.click(getByRole("button", { name: "Open sample vault" }));
-      expect(getByText("Sample vault")).toBeInTheDocument();
-      expect(getByText("$48,240.18")).toBeInTheDocument();
+      await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
+      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
       expect(queryByText("Late private account")).not.toBeInTheDocument();
 
+      // The read that was still in flight when the vault was closed lands on a
+      // session that has moved on. It changes nothing: a row from a vault
+      // nobody has open any more is a row about somebody's money on a screen
+      // that says no vault is open.
       releaseReads();
-      await waitFor(() => expect(getByText("Sample vault")).toBeInTheDocument());
-      expect(getByText("$48,240.18")).toBeInTheDocument();
+      await waitFor(() => expect(getAllByText("No vault open")[0]).toBeInTheDocument());
       expect(queryByText("Late private account")).not.toBeInTheDocument();
       expect(queryByText("late-private-document")).not.toBeInTheDocument();
     } finally {
@@ -1163,7 +1189,7 @@ describe("minimal shell", () => {
     }
   });
 
-  it("renders combined live surfaces without sample facts and keeps unconnected features honest", async () => {
+  it("renders combined live surfaces, and closing takes every one of them away", async () => {
     const user = userEvent.setup();
     const previousBridge = window.orionVivaBridge;
     window.orionVivaBridge = {
@@ -1182,7 +1208,7 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole, getByText, getAllByText, queryByRole, queryByText } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole, getByText, getAllByText, queryByRole, queryByText } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -1198,7 +1224,7 @@ describe("minimal shell", () => {
       expect(getAllByText("Conflicting evidence").length).toBeGreaterThan(0);
       expect(queryByText("101.25")).not.toBeInTheDocument();
       expect(getAllByText("Amount unavailable from this preview read.").length).toBeGreaterThan(0);
-      expect(queryByText("$48,240.18")).not.toBeInTheDocument();
+      expect(queryByText("USD 17,486.45")).not.toBeInTheDocument();
       expect(queryByText(/silverline-checking/i)).not.toBeInTheDocument();
       expect(queryByText("Every figure carries its date, scope, and evidence. Uncertainty stays visible.")).not.toBeInTheDocument();
       expect(queryByText("Document capture is not connected for this vault.")).not.toBeInTheDocument();
@@ -1231,9 +1257,8 @@ describe("minimal shell", () => {
       expect(queryByText("Write an answer")).not.toBeInTheDocument();
       expect(queryByText(/invites an answer in a sentence/)).not.toBeInTheDocument();
 
-      await user.click(getByRole("button", { name: "Open sample vault" }));
-      expect(getByText("Sample vault")).toBeInTheDocument();
-      expect(getByText("$48,240.18")).toBeInTheDocument();
+      await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
+      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
       expect(queryByText("Private checking")).not.toBeInTheDocument();
       expect(queryByText("live-document")).not.toBeInTheDocument();
       expect(queryByText("Is this your account?")).not.toBeInTheDocument();
@@ -1296,24 +1321,24 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getAllByText, getByLabelText, getByRole, getByText, queryByRole } = render(<App />);
+      const { getAllByRole, getAllByText, getByLabelText, getByRole, getByText, queryByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
 
       await waitFor(() => expect(getByText("No accounts yet", { selector: "strong" })).toBeInTheDocument());
       expect(getByText("Local source", { selector: ".privacy-lock span" })).toBeInTheDocument();
-      expect(getByText("This vault was opened through the local desktop host. Complete outbound history is not available.")).toBeInTheDocument();
-      expect(getByRole("button", { name: "Explore fictional sample data" })).toBeInTheDocument();
+      expect(getByText("Every vault this app opens, the sample one included, is opened through the local desktop host on this machine.")).toBeInTheDocument();
+      expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
       await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
       expect(getByText("No accounts yet", { selector: "strong" })).toBeInTheDocument();
-      expect(getByRole("button", { name: "Explore fictional sample data" })).toBeInTheDocument();
+      expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
       await user.click(getByRole("button", { name: /documents.*what supports it/i }));
       expect(getByText("No documents yet", { selector: "strong" })).toBeInTheDocument();
-      expect(getByRole("button", { name: "Explore fictional sample data" })).toBeInTheDocument();
+      expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
       await user.click(getByRole("button", { name: /review.*what needs you/i }));
       expect(getByText("Nothing needs you right now", { selector: "strong" })).toBeInTheDocument();
-      expect(queryByRole("button", { name: "Explore fictional sample data" })).not.toBeInTheDocument();
+      expect(queryByRole("button", { name: "Open the sample vault" })).not.toBeInTheDocument();
       await user.click(getByRole("button", { name: /activity.*what moved/i }));
       // Activity is a read now. A vault that knows of nothing moving says so,
       // which is not the same as nothing having moved.
@@ -1323,9 +1348,8 @@ describe("minimal shell", () => {
       // same prominence as one that has. That emptiness is the record.
       expect(getAllByText(moments.outbound_none).length).toBeGreaterThan(0);
       await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
-      await user.click(getByRole("button", { name: "Explore fictional sample data" }));
-      expect(getByText("$48,240.18")).toBeInTheDocument();
-      expect(getByText("Sample vault · Fictional sample data")).toBeInTheDocument();
+      await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
+      expect(getAllByText("No vault open")[0]).toBeInTheDocument();
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -1350,12 +1374,12 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole, getByText, getAllByText } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole, getByText, getAllByText } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
 
-      await waitFor(() => expect(getByRole("status")).toHaveTextContent("The private vault opened, but some surfaces could not be read. Your vault was not changed."));
+      await waitFor(() => expect(getAllByRole("status")[0]).toHaveTextContent("The private vault opened, but some surfaces could not be read. Your vault was not changed."));
       expect(getAllByText("Kept account", { ignore: "script, style, .figure-invitation" })).toHaveLength(2);
       await user.click(getByRole("button", { name: /documents.*what supports it/i }));
       expect(getByText("The documents section could not be read. The private vault is still open.")).toBeInTheDocument();
@@ -1434,13 +1458,13 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), secret);
       await user.click(getByRole("button", { name: "Open local vault" }));
 
-      expect(getByRole("status")).toHaveTextContent("The local vault could not be opened.");
-      expect(getByRole("status")).not.toHaveTextContent(secret);
+      expect(getAllByRole("status")[0]).toHaveTextContent("The local vault could not be opened.");
+      expect(getAllByRole("status")[0]).not.toHaveTextContent(secret);
       expect(getByLabelText("Passphrase")).toHaveValue("");
     } finally {
       window.orionVivaBridge = previousBridge;
@@ -1471,7 +1495,7 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -1485,7 +1509,7 @@ describe("minimal shell", () => {
       // lands on the question the queue moved to.
       await waitFor(() => expect(getByRole("heading", { name: "What is this payment for?" })).toBeInTheDocument());
       await waitFor(() => expect(document.getElementById("selected-question-title")).toHaveFocus());
-      expect(getByRole("status")).toHaveTextContent("Set aside until something changes.");
+      expect(getAllByRole("status")[0]).toHaveTextContent("Set aside until something changes.");
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -1512,7 +1536,7 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -1527,7 +1551,7 @@ describe("minimal shell", () => {
       // test environment does not implement that blur — so what is asserted
       // through the whole in-flight window is that the control was never
       // disabled, which is observable in both.
-      await waitFor(() => expect(getByRole("status")).toHaveTextContent("Setting this question aside"));
+      await waitFor(() => expect(getAllByRole("status")[0]).toHaveTextContent("Setting this question aside"));
       expect(control).not.toBeDisabled();
       expect(control).toHaveAttribute("aria-disabled", "true");
       expect(control).toHaveFocus();
@@ -1536,7 +1560,7 @@ describe("minimal shell", () => {
 
       // Nothing moved, so the control the person must use again is still under
       // their hands and the screen does not take focus off it.
-      await waitFor(() => expect(getByRole("status")).toHaveTextContent("That question is no longer open."));
+      await waitFor(() => expect(getAllByRole("status")[0]).toHaveTextContent("That question is no longer open."));
       expect(control).not.toBeDisabled();
       expect(control).toHaveFocus();
     } finally {
@@ -1566,7 +1590,7 @@ describe("minimal shell", () => {
     };
 
     try {
-      const { getByLabelText, getByRole, getByText } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole, getByText } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
@@ -1579,8 +1603,8 @@ describe("minimal shell", () => {
       // control are both gone. What happened is still said, it says the queue
       // was not read again, and focus lands on it rather than on the body.
       await waitFor(() => expect(getByText("Review could not be read")).toBeInTheDocument());
-      expect(getByRole("status")).toHaveTextContent("Set aside until something changes.");
-      expect(getByRole("status")).toHaveTextContent("This screen could not read the queue afterwards, so it no longer knows what is still open.");
+      expect(getAllByRole("status")[0]).toHaveTextContent("Set aside until something changes.");
+      expect(getAllByRole("status")[0]).toHaveTextContent("This screen could not read the queue afterwards, so it no longer knows what is still open.");
       await waitFor(() => expect(document.getElementById("review-outcome-title")).toHaveFocus());
       expect(document.activeElement).not.toBe(document.body);
     } finally {
@@ -1621,7 +1645,7 @@ describe("minimal shell", () => {
       await user.click(getByRole("button", { name: "Open local vault" }));
       await waitFor(() => expect(getByRole("button", { name: /documents.*what supports it/i })).toBeInTheDocument());
       await user.click(getByRole("button", { name: /documents.*what supports it/i }));
-      expect(getByText("Nothing has been added to this vault yet. Choose a file to add one.")).toBeInTheDocument();
+      expect(getByText("Nothing has been added to this vault yet. Choose a file to add one, or open the sample vault to see what a full one looks like.")).toBeInTheDocument();
 
       operations.length = 0;
       await user.click(getByRole("button", { name: "Choose a file" }));
@@ -1656,7 +1680,7 @@ describe("minimal shell", () => {
     }
   });
 
-  it("names what a lost passphrase costs to the field and the control beside it", () => {
+  it("names what a lost passphrase costs to the field and the control beside it", async () => {
     const previousBridge = window.orionVivaBridge;
     window.orionVivaBridge = { request: async <T,>(frame: { requestId: string }) => ({ protocol: "1.0", request_id: frame.requestId, ok: true, result: {} as T }) };
     const consequence = "This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.";
@@ -1868,13 +1892,13 @@ describe("naming a folder", () => {
       },
     };
     try {
-      const { getByLabelText, getByRole } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/typo");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
 
       expect(sent[0].create).toBe(false);
-      expect(getByRole("status")).toHaveTextContent(moments.vault_absent);
+      expect(getAllByRole("status")[0]).toHaveTextContent(moments.vault_absent);
     } finally {
       window.orionVivaBridge = previousBridge;
     }
@@ -1912,13 +1936,13 @@ describe("naming a folder", () => {
       request: async <T,>() => ({ protocol: "2.0", request_id: "r", ok: false, error: { code: "handler_failed", message: "Everyday Checking has 1200.00" } } as { protocol: string; request_id: string; ok: boolean; error: { code: string; message: string }; result?: T }),
     };
     try {
-      const { getByLabelText, getByRole } = render(<App />);
+      const { getAllByRole, getByLabelText, getByRole } = render(<App />);
       await user.type(getByLabelText("Vault directory"), "/vault");
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
 
-      expect(getByRole("status")).not.toHaveTextContent("Everyday Checking");
-      expect(getByRole("status")).toHaveTextContent("The local vault could not be opened.");
+      expect(getAllByRole("status")[0]).not.toHaveTextContent("Everyday Checking");
+      expect(getAllByRole("status")[0]).toHaveTextContent("The local vault could not be opened.");
     } finally {
       window.orionVivaBridge = previousBridge;
     }

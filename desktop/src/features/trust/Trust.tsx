@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { CircleSlash, FileQuestion, Info } from "lucide-react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
-import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, TrustActionState, SurfaceMode, TransferActionState, TrustCapabilityGroup, TrustCapabilityState, TrustData, TrustNote, TrustSampleCapability } from "../../surface/types";
+import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, TrustActionState, TransferActionState, TrustData, TrustNote } from "../../surface/types";
 
 // What a screen needs to take a whole vault out and bring one back. A source
 // that can do neither carries none of this, so the controls are absent rather
@@ -144,33 +144,6 @@ function identifiedRows<T extends { readonly id: string }>(items: readonly T[], 
   return rows;
 }
 
-const groupCopy: Record<TrustCapabilityGroup, string> = {
-  source: "Source and scope",
-  outbound_models: "Outbound, models, and maintenance",
-  integrity: "Integrity and anchoring",
-  continuity: "Continuity and settings",
-  build_support: "Build and support",
-};
-
-const capabilityStateCopy: Record<TrustCapabilityState, string> = {
-  fictional_sample: "Fictional sample",
-  preview_limitation: "Preview limitation",
-  not_connected: "Not connected",
-  not_supplied: "Not supplied",
-  not_implemented: "Not implemented",
-};
-
-function capabilityStateLabel(state: string): string | null {
-  switch (state) {
-    case "fictional_sample": return capabilityStateCopy.fictional_sample;
-    case "preview_limitation": return capabilityStateCopy.preview_limitation;
-    case "not_connected": return capabilityStateCopy.not_connected;
-    case "not_supplied": return capabilityStateCopy.not_supplied;
-    case "not_implemented": return capabilityStateCopy.not_implemented;
-    default: return null;
-  }
-}
-
 // Which build answered, said where a person looking for it would look. It is
 // the sidecar's own word for itself, including its word for not knowing — this
 // screen never fills that in, because a plausible-looking revision is worse
@@ -248,41 +221,27 @@ function Maintenance({ controls }: { controls: MaintenanceControls }) {
   </section>;
 }
 
-function NoteRows({ notes, mode }: { notes: readonly TrustNote[]; mode: SurfaceMode }) {
+function NoteRows({ notes }: { notes: readonly TrustNote[] }) {
   return <ul className="trust-note-list">{identifiedRows(notes, "trust-note").map((row) => {
     if (row.state === "missing_identity") return <li className="trust-identity-state" key={row.key}><FileQuestion aria-hidden="true" size={18} /><div><strong>Trust note identity unavailable</strong><p>A supplied note has no stable ID, so it is not presented as an identified Trust record.</p></div></li>;
     if (row.state === "conflicted_identity") return <li className="trust-identity-state" key={row.key}><FileQuestion aria-hidden="true" size={18} /><div><strong>Trust note identity conflicted</strong><p>More than one supplied note uses this Trust ID. The interface will not merge them.</p><dl><div><dt>Note ID</dt><dd>{row.id}</dd></div></dl></div></li>;
-    return <li className="trust-note" key={row.key}><div className="trust-note-heading"><span className="trust-state-label">{mode === "demo" ? "Preview note" : "Supplied note"}</span><Info aria-hidden="true" size={18} /></div><strong>{row.item.title.trim() ? row.item.title : "Note title was not supplied by this Trust view."}</strong><p>{row.item.detail.trim() ? row.item.detail : "Note detail was not supplied by this Trust view."}</p><dl><div><dt>Note ID</dt><dd>{row.item.id}</dd></div></dl></li>;
+    return <li className="trust-note" key={row.key}><div className="trust-note-heading"><span className="trust-state-label">Supplied note</span><Info aria-hidden="true" size={18} /></div><strong>{row.item.title.trim() ? row.item.title : "Note title was not supplied by this Trust view."}</strong><p>{row.item.detail.trim() ? row.item.detail : "Note detail was not supplied by this Trust view."}</p><dl><div><dt>Note ID</dt><dd>{row.item.id}</dd></div></dl></li>;
   })}</ul>;
 }
 
-function CapabilityRow({ capability }: { capability: TrustSampleCapability }) {
-  const suppliedState = capability.state as string;
-  const stateLabel = capabilityStateLabel(suppliedState);
-  return <li className="trust-capability-row"><div className="trust-capability-heading"><strong>{capability.label.trim() ? capability.label : "Capability label was not authored for this preview row."}</strong><span className={stateLabel ? "trust-state-label" : "trust-state-label unavailable"}>{stateLabel ?? "Status unavailable"}</span></div><p>{stateLabel ? (capability.detail.trim() ? capability.detail : "Capability detail was not authored for this preview row.") : "This preview row supplied an unrecognized availability state. No capability claim is made."}</p>{!stateLabel && <dl><div><dt>Unrecognized supplied status value</dt><dd>{suppliedState.trim() ? suppliedState : "Status value was not supplied."}</dd></div></dl>}<dl><div><dt>Capability ID</dt><dd>{capability.id}</dd></div></dl></li>;
-}
-
-function CapabilityIdentityRows({ rows }: { rows: readonly IdentityRow<TrustSampleCapability>[] }) {
-  const boundedRows = rows.filter((row) => row.state !== "ready");
-  if (!boundedRows.length) return null;
-  return <ul className="trust-capability-list trust-capability-identities">{boundedRows.map((row) => row.state === "missing_identity" ? <li className="trust-identity-state" key={row.key}><FileQuestion aria-hidden="true" size={18} /><div><strong>Capability identity unavailable</strong><p>A preview capability has no stable ID, so it is not presented as an identified capability row.</p></div></li> : <li className="trust-identity-state" key={row.key}><FileQuestion aria-hidden="true" size={18} /><div><strong>Capability identity conflicted</strong><p>More than one preview capability uses this Capability ID. The interface will not merge them.</p><dl><div><dt>Capability ID</dt><dd>{row.id}</dd></div></dl></div></li>)}</ul>;
-}
-
-function CapabilityRows({ rows, group }: { rows: readonly IdentityRow<TrustSampleCapability>[]; group: TrustCapabilityGroup }) {
-  const grouped = rows.filter((row): row is Extract<IdentityRow<TrustSampleCapability>, { state: "ready" }> => row.state === "ready" && row.item.group === group);
-  return <ul className="trust-capability-list">{grouped.map((row) => <CapabilityRow capability={row.item} key={row.key} />)}</ul>;
-}
-
-function TrustReady({ data, mode, identity, transfer, settings, maintenance }: { data: TrustData; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
-  const capabilities = mode === "demo" ? data.sample?.capabilities ?? [] : [];
-  const capabilityRows = identifiedRows(capabilities, "trust-capability");
+function TrustReady({ data, identity, transfer, settings, maintenance }: { data: TrustData; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
   // A vault that has sent nothing is not an empty Trust screen: the outbound
   // record is present and says so, which is the whole of what this destination
   // is for.
-  const empty = !data.notes.length && !capabilities.length && !data.outbound && !(data.absences ?? []).length;
-  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">{mode === "demo" ? "Preview-owned explanation" : "Supplied Trust view"}</div><h2>Trust and limitations</h2><p>{mode === "demo" ? "This destination explains what the fictional preview can and cannot establish. It is not a trust report for a private vault." : "These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history."}</p></header><EngineRow identity={identity} /><Absences absences={data.absences ?? []} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{maintenance ? <Maintenance controls={maintenance} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>{mode === "demo" ? "No sample Trust details" : "No Trust notes supplied"}</strong><span>{mode === "demo" ? "This fictional sample does not include Trust notes or preview capability explanations." : "The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status."}</span></div> : mode === "live" ? <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} mode={mode} /></section> : <><section className="trust-preview-statements" aria-labelledby="trust-preview-statements-title"><h3 id="trust-preview-statements-title">What this preview can say</h3><ul><li><strong>Fictional source</strong><span>The currently displayed sample names, documents, figures, and Trust rows are fixture-authored. They are not facts about a private vault.</span></li><li><strong>Static interactions</strong><span>Opening and closing these preview rows changes only what is visible. It does not write a vault event, call a model, send data, or change a setting.</span></li><li><strong>No Trust read</strong><span>This sample does not establish what a private vault sent, which models ran, whether maintenance occurred, or whether integrity checks passed.</span></li></ul></section><section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Preview notes</h3><NoteRows notes={data.notes} mode={mode} /></section><section className="trust-capabilities" aria-label="Preview capability explanations"><CapabilityIdentityRows rows={capabilityRows} />{(["source", "outbound_models", "integrity", "continuity", "build_support"] as const).map((group) => <details key={group} open={group === "source"}><summary>{groupCopy[group]}</summary><CapabilityRows rows={capabilityRows} group={group} /></details>)}</section><section className="trust-final-limitation"><CircleSlash aria-hidden="true" size={20} /><div><h3>No settings are changed here</h3><p>These preview rows are explanatory only. They cannot recover a passphrase, create an anchor, or update the app.</p></div></section></>}</section>;
+  //
+  // This screen used to carry a second version of itself for the sample vault
+  // — thirteen authored rows saying which capabilities the preview did not
+  // have. They described a fixture. What is here now describes a vault, and
+  // the sample vault is one, so it answers the same questions the same way.
+  const empty = !data.notes.length && !data.outbound && !(data.absences ?? []).length;
+  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">Supplied Trust view</div><h2>Trust and limitations</h2><p>These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history.</p></header><EngineRow identity={identity} /><Absences absences={data.absences ?? []} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{maintenance ? <Maintenance controls={maintenance} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>No Trust notes supplied</strong><span>The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.</span></div> : <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} /></section>}</section>;
 }
 
-export function Trust({ result, mode, identity, transfer, settings, maintenance }: { result: FeatureResult<TrustData>; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
-  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes and preview limitations are shown below.", needsInput: "Some Trust details need more information. Supplied notes and preview limitations are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this private-vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The private vault is still open." } }}>{(data) => <TrustReady data={data} mode={mode} identity={identity} transfer={transfer} settings={settings} maintenance={maintenance} />}</PanelStateView>;
+export function Trust({ result, identity, transfer, settings, maintenance }: { result: FeatureResult<TrustData>; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
+  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes are shown below.", needsInput: "Some Trust details need more information. Supplied notes are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The vault is still open." } }}>{(data) => <TrustReady data={data} identity={identity} transfer={transfer} settings={settings} maintenance={maintenance} />}</PanelStateView>;
 }

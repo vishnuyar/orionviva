@@ -182,3 +182,26 @@
 .trust-maintenance-controls { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
 .trust-maintenance-form { display: grid; gap: var(--space-sm); }
 .trust-maintenance-form label { display: grid; gap: var(--space-xs); font-size: var(--text-caption); font-weight: var(--weight-medium); }
+
+/* The frame around the sample vault. One claim about the whole place, said
+   once and never scrolled past, rather than a qualifier beside each figure —
+   a qualifier on one sentence quietly claims the unqualified sentences beside
+   it are different. It sits above everything, moves nothing else, and carries
+   the one action that leaves. */
+.sample-frame {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.sample-frame-copy { display: grid; gap: var(--space-xs); }
+.sample-frame-copy strong { font-size: var(--text-body); font-weight: var(--weight-strong); line-height: var(--leading-tight); }
+.sample-frame-copy span { color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.sample-frame-leave { flex: none; }
+/* The frame is part of the page rather than a thing laid over it, so the shell
+   below it becomes a column with the frame as its first row. */
+.app-shell-sample { display: grid; grid-template-rows: auto 1fr; }

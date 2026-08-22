@@ -1,30 +1,40 @@
-import { ArrowUpRight, CircleHelp, Info } from "lucide-react";
+import { ArrowUpRight, CircleHelp } from "lucide-react";
 import { identifiedRows, resolveStableSelection } from "../../app/selection";
 import { EvidenceBadge } from "../../components/EvidenceBadge";
 import { Figure } from "../../components/Figure";
 import { PanelStateView } from "../../components/PanelStateView";
 import { ProofLinks } from "../../components/ProofLinks";
-import { accountEvidenceFigure, activityEvidenceFigure, netWorthEvidenceFigure } from "../../surface/evidence";
-import type { AccountView, ActivityView, Destination, EvidenceLink, FeatureResult, OverviewData, ReviewData, ReviewView, SurfaceMode } from "../../surface/types";
+import { accountEvidenceFigure, netWorthEvidenceFigure } from "../../surface/evidence";
+import type { AccountView, ActivityData, Destination, EvidenceLink, FeatureResult, OverviewData, ReviewData, ReviewView } from "../../surface/types";
 
-function accountName(account: AccountView, mode: SurfaceMode) {
-  return account.name.trim() ? account.name : mode === "demo" ? "Sample account name was not authored." : "Account name was not supplied by this overview read.";
+// How much of what moved stands beside the picture. The rest is one click
+// away, on the screen that is about it.
+const RECENT_SIGNALS = 3;
+
+// A field the read did not supply, said one way. There used to be two of each
+// of these — one sentence for the sample vault and one for a private one — and
+// the sample's said "was not authored", which was true of a fixture and is
+// meaningless about a vault. Both vaults are vaults now, so a blank field is a
+// blank field.
+function accountName(account: AccountView) {
+  return account.name.trim() ? account.name : "Account name was not supplied by this overview read.";
 }
 
-function accountKind(account: AccountView, mode: SurfaceMode) {
-  return account.kind.trim() ? account.kind : mode === "demo" ? "Sample account kind was not authored." : "Account kind was not supplied by this overview read.";
+function accountKind(account: AccountView) {
+  return account.kind.trim() ? account.kind : "Account kind was not supplied by this overview read.";
 }
 
-function reviewLabel(item: ReviewView, mode: SurfaceMode) {
-  return item.label.trim() ? item.label : mode === "demo" ? "Sample question text was not authored." : "Question text was not supplied by this review read.";
+function reviewLabel(item: ReviewView) {
+  return item.label.trim() ? item.label : "Question text was not supplied by this review read.";
 }
 
-function activityLabel(item: ActivityView, mode: SurfaceMode) {
-  return item.label.trim() ? item.label : mode === "demo" ? "Sample activity label was not authored." : "Activity label was not supplied by this overview read.";
-}
-
-export function Overview({ result, reviewResult, mode, selectedAccount, onSelectAccount, onOpenReviewQuestion, onNavigate, onOpenEvidence, onOpenFigure, onExploreSample }: { result: FeatureResult<OverviewData>; reviewResult: FeatureResult<ReviewData>; mode: SurfaceMode; selectedAccount: string; onSelectAccount: (id: string) => void; onOpenReviewQuestion: (id: string) => void; onNavigate: (destination: Destination) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onExploreSample: () => void }) {
+export function Overview({ result, reviewResult, activityResult, selectedAccount, onSelectAccount, onOpenReviewQuestion, onNavigate, onOpenEvidence, onOpenFigure, onExploreSample }: { result: FeatureResult<OverviewData>; reviewResult: FeatureResult<ReviewData>; activityResult: FeatureResult<ActivityData>; selectedAccount: string; onSelectAccount: (id: string) => void; onOpenReviewQuestion: (id: string) => void; onNavigate: (destination: Destination) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onExploreSample: () => void }) {
   const reviewData = reviewResult.state === "ready" || reviewResult.state === "partial" || reviewResult.state === "needs_input" ? reviewResult.data : null;
+  const activityData = activityResult.state === "ready" || activityResult.state === "partial" || activityResult.state === "needs_input" ? activityResult.data : null;
+  // A few, not all. The whole list lives on the screen that is about it, and a
+  // second full list here would be a second place a person had to check.
+  const recent = (activityData?.movements ?? []).slice(0, RECENT_SIGNALS);
+  const activitySentence = activityData?.sentence ?? "";
   return <PanelStateView result={result} copy={{ partial: "Some financial-picture details are unavailable. Available details are shown below.", needsInput: "Some parts of the financial picture need more information. Available details are shown below.", unavailable: { title: "Financial picture unavailable", detail: "The financial picture is not available in this build." }, failed: { title: "Financial picture could not be read", detail: "The financial picture could not be read. The private vault is still open." } }}>{(data) => {
     const accountSelection = resolveStableSelection(data.accounts, selectedAccount);
     // The figures the read stood behind and the currencies it kept back, in one
@@ -75,19 +85,18 @@ export function Overview({ result, reviewResult, mode, selectedAccount, onSelect
             : <div className="picture-empty"><p className="picture-standing">{pictureStanding}</p></div>}
         </div> : null}
         <div className="coverage-card"><div className="card-topline"><span>Picture coverage</span><CircleHelp size={16} /></div>
-          {mode === "demo" ? <><div className="coverage-number">{data.picture.coverage.trim() ? data.picture.coverage : "Sample coverage was not authored."}</div><p>{data.corpusCoverage.trim() ? `${data.corpusCoverage}. The sample stays visibly incomplete.` : "Sample corpus coverage was not authored. The sample does not claim completeness."}</p></>
-            // The picture says one thing about how far it reaches, in one
-            // place. Where there is no figure that sentence stands where the
-            // figure would have been, so the panel never says it twice.
-            : data.picture.figures.length && data.picture.coverage.trim() ? <p>{data.picture.coverage}</p> : null}
+          {/* The picture says one thing about how far it reaches, in one
+              place. Where there is no figure that sentence stands where the
+              figure would have been, so the panel never says it twice. */}
+          {data.picture.figures.length && data.picture.coverage.trim() ? <p>{data.picture.coverage}</p> : null}
           {/* An account the read could not place under any currency is on no
               card, in no line and in no drawer. The panel counts rather than
               names where the names are already on the screen; this one is on
               no screen, and a name nowhere is not privacy. */}
           {data.picture.unplaced.length ? <ul className="picture-unplaced">{data.picture.unplaced.map((left) => <li key={left.account}><strong>{left.name}</strong><span>{left.sentence}</span></li>)}</ul> : null}
-          {accountSelection.state === "ready" ? <div className="coverage-account"><div className="detail-panel-label">Selected account</div><button type="button" className="coverage-account-title" onClick={() => onNavigate("accounts")}>{accountName(accountSelection.item, mode)}</button><div className="coverage-account-meta"><span>{accountKind(accountSelection.item, mode)}</span><span>{accountSelection.item.gradeLabel}</span>{accountSelection.item.asOf && <span>{accountSelection.item.asOf}</span>}</div>{accountSelection.item.coverage && <p>{accountSelection.item.coverage}</p>}</div>
+          {accountSelection.state === "ready" ? <div className="coverage-account"><div className="detail-panel-label">Selected account</div><button type="button" className="coverage-account-title" onClick={() => onNavigate("accounts")}>{accountName(accountSelection.item)}</button><div className="coverage-account-meta"><span>{accountKind(accountSelection.item)}</span><span>{accountSelection.item.gradeLabel}</span>{accountSelection.item.asOf && <span>{accountSelection.item.asOf}</span>}</div>{accountSelection.item.coverage && <p>{accountSelection.item.coverage}</p>}</div>
             : data.accounts.length ? <div className="empty-state"><strong>{accountSelection.state === "missing" ? "Selected account unavailable" : "Account selection unavailable"}</strong><span>{accountSelection.state === "missing" ? "The selected account is no longer present in this overview read." : accountSelection.state === "conflicted_identity" ? "More than one account uses the selected identity, so the interface will not choose between them." : "This accounts read contains rows, but none has a unique nonblank account ID."}</span>{(accountSelection.state === "missing" || accountSelection.state === "conflicted_identity") && <small>Requested account ID: {accountSelection.requestedId}</small>}</div>
-              : <div className="empty-state"><strong>{mode === "demo" ? "No sample accounts" : "No accounts yet"}</strong><span>{mode === "demo" ? "This fictional sample does not include any accounts." : "No accounts are visible in this vault yet. Add a statement when document import is available."}</span>{mode === "live" && <button type="button" className="secondary-button" onClick={onExploreSample}>Explore fictional sample data</button>}</div>}
+              : <div className="empty-state"><strong>No accounts yet</strong><span>No accounts are visible in this vault yet. Add a statement, or open the sample vault to see what one looks like when it is full.</span><button type="button" className="secondary-button" onClick={onExploreSample}>Open the sample vault</button></div>}
           <button type="button" className="text-button" onClick={() => onNavigate("documents")}>See document status <ArrowUpRight size={14} /></button>
         </div>
       </section>
@@ -97,21 +106,22 @@ export function Overview({ result, reviewResult, mode, selectedAccount, onSelect
           if (row.state === "conflicted_identity") return <div className="account-card identity-state" key={row.key}><strong>Account identity conflicted</strong><span>More than one account uses this account ID. The interface will not choose between them or open their evidence.</span><small>Account ID: {row.id}</small></div>;
           const account = row.item;
           const pressed = accountSelection.state === "ready" && accountSelection.item.id === account.id;
-          return <div className={pressed ? "account-card active" : "account-card"} key={row.key}><button type="button" className="account-card-button" aria-pressed={pressed} onClick={() => onSelectAccount(account.id)}><div className="account-icon">{account.name.trim().slice(0, 1) || "?"}</div><div className="account-copy"><div className="account-name">{accountName(account, mode)}</div><div className="account-kind">{accountKind(account, mode)}</div><div className="account-note"><span className={`mini-dot ${account.grade}`} />{account.gradeLabel}{account.note ? ` · ${account.note}` : ""}</div></div></button><Figure figure={accountEvidenceFigure(account)} onOpenEvidence={onOpenFigure} className="account-amount" /><ProofLinks label="View source" links={account.evidenceLinks} onOpen={onOpenEvidence} /></div>;
+          return <div className={pressed ? "account-card active" : "account-card"} key={row.key}><button type="button" className="account-card-button" aria-pressed={pressed} onClick={() => onSelectAccount(account.id)}><div className="account-icon">{account.name.trim().slice(0, 1) || "?"}</div><div className="account-copy"><div className="account-name">{accountName(account)}</div><div className="account-kind">{accountKind(account)}</div><div className="account-note"><span className={`mini-dot ${account.grade}`} />{account.gradeLabel}{account.note ? ` · ${account.note}` : ""}</div></div></button><Figure figure={accountEvidenceFigure(account)} onOpenEvidence={onOpenFigure} className="account-amount" /><ProofLinks label="View source" links={account.evidenceLinks} onOpen={onOpenEvidence} /></div>;
         })}</div>
       </section>
       <section className="section-block"><div className="section-heading"><div><div className="section-kicker">Current review read</div><h2>Review queue</h2></div><button type="button" className="text-button" onClick={() => onNavigate("review")}>Open review <ArrowUpRight size={14} /></button></div><div className="queue-list">{identifiedRows(reviewData?.queue ?? [], "overview-review").map((row) => {
         if (row.state === "missing_identity") return <div className="queue-row identity-state" key={row.key}><div><strong>Question identity unavailable</strong><span>One or more review rows have no stable question ID. They cannot be opened from Overview.</span></div></div>;
         if (row.state === "conflicted_identity") return <div className="queue-row identity-state" key={row.key}><div><strong>Question identity conflicted</strong><span>More than one review row uses this question ID. No question with this identity was opened.</span><small>Question ID: {row.id}</small></div></div>;
-        return <div className="queue-row" key={row.key}><div className="queue-copy"><div className="queue-title"><strong>{reviewLabel(row.item, mode)}</strong>{mode === "demo" ? <span>Fictional sample</span> : null}</div></div><button type="button" className="secondary-button" onClick={() => onOpenReviewQuestion(row.item.id)}>View question</button></div>;
+        return <div className="queue-row" key={row.key}><div className="queue-copy"><div className="queue-title"><strong>{reviewLabel(row.item)}</strong></div></div><button type="button" className="secondary-button" onClick={() => onOpenReviewQuestion(row.item.id)}>View question</button></div>;
       })}</div></section>
-      <section className="section-block"><div className="section-heading"><div><div className="section-kicker">A small, useful tail</div><h2>Recent signals</h2></div><button type="button" className="text-button" onClick={() => onNavigate("activity")}>Open activity <ArrowUpRight size={14} /></button></div><div className="signal-list">{data.recent.length ? identifiedRows(data.recent, "overview-activity").map((row) => {
-        if (row.state === "missing_identity") return <div className="signal-row identity-state" key={row.key}><div><strong>Activity identity unavailable</strong><span>One or more recent activity rows have no stable activity ID. They cannot be opened as figures or evidence.</span></div></div>;
-        if (row.state === "conflicted_identity") return <div className="signal-row identity-state" key={row.key}><div><strong>Activity identity conflicted</strong><span>More than one recent activity row uses this activity ID. The interface will not choose between them or open their evidence.</span><small>Activity ID: {row.id}</small></div></div>;
-        const item = row.item;
-        return <div className="signal-row" key={row.key}><div className={mode === "demo" ? `signal-icon ${item.tone}` : "signal-icon supplied"}>{mode === "demo" ? item.tone === "inflow" ? "↑" : item.tone === "outflow" ? "↓" : "!" : "•"}</div><div className="signal-copy"><strong>{activityLabel(item, mode)}</strong><span>{item.detail}</span><ProofLinks label="View source" links={item.evidenceLinks} onOpen={onOpenEvidence} /></div><Figure figure={activityEvidenceFigure(item)} onOpenEvidence={onOpenFigure} className={mode === "demo" ? `signal-value ${item.tone}` : "signal-value"} /></div>;
-      }) : <div className="empty-state"><strong>Activity unavailable</strong><span>Activity is not connected to this private-vault read.</span></div>}</div></section>
-      {mode === "demo" && <div className="quiet-note"><Info size={18} /><div><strong>Sample boundaries stay visible.</strong><span>Figures show only authored display, evidence, and availability fields. Missing context remains unavailable.</span></div></div>}
+      {/* The tail of what moved, read off the activity surface rather than
+          off the picture. It used to be a field on the overview read that only
+          the fixture demo ever filled, so on every real vault this block said
+          "Activity unavailable" — a sentence about a connection rather than
+          about a vault, and false in both. The rows here are the same rows the
+          activity screen shows, cut to a few. */}
+      <section className="section-block"><div className="section-heading"><div><div className="section-kicker">A small, useful tail</div><h2>Recent signals</h2></div><button type="button" className="text-button" onClick={() => onNavigate("activity")}>Open activity <ArrowUpRight size={14} /></button></div><div className="signal-list">{recent.length ? recent.map((movement) => <div className="signal-row" key={movement.id}><div className="signal-icon supplied">•</div><div className="signal-copy"><strong>{movement.description || "No description was recorded for this movement."}</strong><span>{movement.date} · {movement.account}</span></div><div className="signal-value"><strong>{movement.display}</strong><small>{movement.direction === "in" ? "in" : "out"}</small></div></div>)
+        : <div className="empty-state"><strong>Nothing has moved in this read</strong><span>{activitySentence || "The activity read is not available beside this picture."}</span></div>}</div></section>
     </>;
   }}</PanelStateView>;
 }

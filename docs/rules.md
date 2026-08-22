@@ -549,7 +549,7 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-136** | a destination and a control render only when the registry and a served read say so | **contradicted** | [surface-charter.md](surface-charter.md) | — |
 | **VOICE-137** | one absence sentence per panel; the full account lives in Trust | **contradicted** | [surface-charter.md](surface-charter.md) | — |
 | **VOICE-138** | the interface speaks about the person's money, never about its machinery | **contradicted** | [surface-charter.md](surface-charter.md) | — |
-| **VOICE-139** | the demo is a place, not a dialect | **unmet** | [surface-charter.md](surface-charter.md) | — |
+| **VOICE-139** | the demo is a place, not a dialect | enforced | [surface-charter.md](surface-charter.md) | `test_the_sample_is_a_vault_the_engine_opens` +2 |
 | **VOICE-140** | craft is a gate: tokens, and keyboard reach | **unmet** | [surface-charter.md](surface-charter.md) | — |
 | **VOICE-141** | the receipt goes to the passage | **unmet** | [surface-charter.md](surface-charter.md) | — |
 
@@ -752,7 +752,6 @@ not been. Grouped by why the gap exists.
 | **VOICE-128** | tags gain account scope, and the model copies the person's word | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
 | **VOICE-131** | the sentence and the parse are captured verbatim | unmet | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) |
 | **VOICE-134** | the interface says receipt; the contract keeps citation | unmet | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) |
-| **VOICE-139** | the demo is a place, not a dialect | unmet | [surface-charter.md](surface-charter.md) |
 | **VOICE-140** | craft is a gate: tokens, and keyboard reach | unmet | [surface-charter.md](surface-charter.md) |
 | **VOICE-141** | the receipt goes to the passage | unmet | [surface-charter.md](surface-charter.md) |
 | **X1** | Target user skill: "can install an app" | unmet | [design-invariants.md](design-invariants.md) |

@@ -175,7 +175,7 @@ export function adaptOverview(raw: unknown): OverviewData | null {
       recordIds: stringList(balance.record_ids),
     };
   });
-  return { picture: picture(raw.picture), corpusCoverage: "", accounts, recent: [] };
+  return { picture: picture(raw.picture), accounts };
 }
 
 export type OverviewPanel = { state: PanelState; issues: FeatureIssue[] };

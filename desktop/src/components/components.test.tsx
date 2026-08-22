@@ -16,7 +16,7 @@ import { SourceDisclosure } from "./SourceDisclosure";
 import { StatusNotice } from "./StatusNotice";
 
 const copy: PanelStateCopy = { partial: "Partial copy", needsInput: "Needs input copy", unavailable: { title: "Unavailable", detail: "Unavailable detail" }, failed: { title: "Failed", detail: "Failed detail" } };
-const sampleDisclosure: SurfaceSnapshot["disclosure"] = { title: "Sample vault", subtitle: "Fictional sample data", detail: "Every name, document, and figure in this vault is fictional and stored with the app." };
+const sampleDisclosure: SurfaceSnapshot["disclosure"] = { title: "Sample vault", subtitle: "Nothing here is real", detail: "Every account in this vault was invented." };
 function Broken(): never { throw new Error("feature only"); }
 
 describe("shared surface components", () => {
@@ -115,12 +115,12 @@ describe("shared surface components", () => {
 
   it("renders the complete evidence drawer in reviewed section order", () => {
     const account = { id: "account", name: "Card", kind: "card", measure: "owed" as const, exactValue: "101", currency: "USD", display: "$101", grade: "verified" as const, gradeLabel: "Verified", gradeDescription: "Verified", note: null, asOf: "today", coverage: "monthly", provenance: "Statement page 1", evidenceLinks: [{ targetDocumentId: "doc", label: "Card statement", relation: "same_account" as const, page: "page 1" }], state: "ready" as const, exactness: "rounded", recordIds: ["record-card-1"] };
-    const snapshot: SurfaceSnapshot = { mode: "demo", disclosure: sampleDisclosure, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [account], recent: [] } }, documents: { state: "ready", data: { documents: [{ id: "doc", name: "card.pdf", state: "Verified", phaseLabel: "Verified", detail: "", source: "", pages: "1", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { disclosure: sampleDisclosure, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [account] } }, documents: { state: "ready", data: { documents: [{ id: "doc", name: "card.pdf", state: "Verified", phaseLabel: "Verified", detail: "", source: "", pages: "1", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const open = vi.fn();
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByRole, getByText, getAllByRole } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "account:account" }} onDismiss={vi.fn()} onOpenDocument={open} renderEvidenceBadge={badge} />);
     expect(getByRole("dialog", { name: "Evidence for Card amount owed" })).toHaveAttribute("aria-describedby", "figure-evidence-summary");
-    expect(getByText("Sample figure · Fictional data")).toBeInTheDocument();
+    expect(getByText("Sample vault · Nothing here is real")).toBeInTheDocument();
     expect(getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)).toEqual(["Evidence status", "Figure details", "Records behind this figure", "Source trail", "Limits and omissions"]);
     expect(getByText("Rounded")).toBeInTheDocument();
     expect(getByText("record-card-1")).toBeInTheDocument();
@@ -133,11 +133,11 @@ describe("shared surface components", () => {
   it("keeps the Evidence shell dismissible when its body throws and resets for another figure", () => {
     const first = { id: "first", name: "First account", kind: "deposit", measure: "balance" as const, exactValue: "", currency: "USD", display: "$1", grade: "verified" as const, gradeLabel: "Verified", gradeDescription: "Verified", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
     const second = { ...first, id: "second", name: "Second account", display: "$2" };
-    const snapshot: SurfaceSnapshot = { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [first, second], recent: [] } }, documents: { state: "unavailable", reason: "none" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [first, second] } }, documents: { state: "unavailable", reason: "none" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const dismiss = vi.fn();
     const view = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "account:first" }} onDismiss={dismiss} onOpenDocument={vi.fn()} renderEvidenceBadge={() => <Broken />} />);
     expect(view.getByRole("dialog", { name: "Evidence for First account balance" })).toBeInTheDocument();
-    expect(view.getByText("Private vault figure · Opened on this device")).toBeInTheDocument();
+    expect(view.getByText("Private vault · Opened on this device")).toBeInTheDocument();
     expect(view.getByText("This surface could not be shown")).toBeInTheDocument();
     fireEvent.click(view.getByRole("button", { name: "Close evidence" }));
     expect(dismiss).toHaveBeenCalledOnce();
@@ -151,7 +151,7 @@ describe("shared surface components", () => {
     const customLabel = "Backend attested — custom";
     const customDescription = "Verified by the private-vault attestation service.";
     const account = { id: "live-custom", name: "Attested account", kind: "deposit", measure: "balance" as const, exactValue: "101", currency: "USD", display: "Canonical account display", grade: "unavailable" as const, gradeLabel: customLabel, gradeDescription: customDescription, note: null, asOf: "2026-08-18", coverage: "Statement period", provenance: "Private statement page 1", evidenceLinks: [], state: "ready" as const };
-    const snapshot: SurfaceSnapshot = { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [account], recent: [] } }, documents: { state: "ready", data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [account] } }, documents: { state: "ready", data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
 
     const { getByLabelText, getByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "account:live-custom" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
@@ -163,7 +163,7 @@ describe("shared surface components", () => {
 
   it("keeps missing and conflicted figure identities bounded", () => {
     const base = { id: "account", name: "Card", kind: "card", measure: "balance" as const, exactValue: "1", currency: "", display: "$1", grade: "unavailable" as const, gradeLabel: "", gradeDescription: "", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
-    const makeSnapshot = (accounts: typeof base[]): SurfaceSnapshot => ({ mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts, recent: [] } }, documents: { state: "unavailable", reason: "none" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } });
+    const makeSnapshot = (accounts: typeof base[]): SurfaceSnapshot => ({ disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts } }, documents: { state: "unavailable", reason: "none" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } });
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, rerender } = render(<EvidenceDrawer snapshot={makeSnapshot([])} selection={{ figureId: "account:account" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
     expect(getByText("This figure is no longer present in the current vault read.")).toBeInTheDocument();
@@ -173,7 +173,7 @@ describe("shared surface components", () => {
 
   it("keeps unavailable live figure metadata and document targets explicit", () => {
     const account = { id: "live", name: "Live account", kind: "", measure: null, exactValue: "raw-secret-937.25", currency: "", display: "", grade: "unavailable" as const, gradeLabel: "", gradeDescription: "", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [{ targetDocumentId: "doc", label: "Live statement", relation: "same_account" as const, page: "" }], state: "ready" as const };
-    const snapshot: SurfaceSnapshot = { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [account], recent: [] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [account] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, queryByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "account:live" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
     expect(getByText("Evidence status unavailable")).toBeInTheDocument();
@@ -197,7 +197,7 @@ describe("shared surface components", () => {
   // a figure the read named none for, and this is not one.
   it("names what a picture figure measures instead of printing a machinery sentence", () => {
     const figure = { id: "AAA", display: "AAA 1.00", exactValue: "", currency: "AAA", measure: "net_worth" as const, grade: "corroborated" as const, gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", asOf: "2026-08-21", coverage: ["A boundary the read declared."], caveats: [], evidenceLinks: [] };
-    const snapshot: SurfaceSnapshot = { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [], recent: [] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, accounts: [] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, queryByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "net-worth:AAA" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
     expect(getByText("Net worth")).toBeInTheDocument();
@@ -217,7 +217,7 @@ describe("shared surface components", () => {
   it("names the accounts the read could not value instead of saying none were stated", () => {
     const figure = { id: "AAA", display: "AAA 1.00", exactValue: "", currency: "AAA", measure: "net_worth" as const, grade: "corroborated" as const, gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", asOf: "2026-08-21", coverage: ["A boundary the read declared."], caveats: [], evidenceLinks: [], unmeasured: [{ account: "acct:named-row", name: "Rainy Day Savings", sentence: "Nothing has measured Rainy Day Savings, so it is not in this total." }, { account: "acct:second-row", name: "Sample Home Loan", sentence: "A figure could not be put on Sample Home Loan, so it is not in this total." }] };
     const row = { id: "acct:named-row", name: "A different name for the same account", kind: "Depository", measure: "balance" as const, exactValue: "", currency: "AAA", display: "AAA 2.00", grade: "verified" as const, gradeLabel: "verified", gradeDescription: "One reviewed sentence.", note: null, asOf: "2026-08-21", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
-    const snapshot: SurfaceSnapshot = { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [row], recent: [] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+    const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, accounts: [row] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, queryByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "net-worth:AAA" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
     // The name is the read's, not one worked out here from a ledger path. The
@@ -242,15 +242,18 @@ describe("shared surface components", () => {
   });
 
   it("renders exact source disclosure", () => {
-    const { getByRole, getByText } = render(<SourceDisclosure mode="demo" disclosure={sampleDisclosure} />);
+    const { getByRole, getByText } = render(<SourceDisclosure disclosure={sampleDisclosure} />);
     expect(getByRole("complementary", { name: "Vault source" })).toHaveClass("source-disclosure", "corpus-note");
-    expect(getByText("Sample vault · Fictional sample data")).toBeInTheDocument();
-    expect(getByText("Every name, document, and figure here is fictional.")).toBeInTheDocument();
+    expect(getByText("Sample vault · Nothing here is real")).toBeInTheDocument();
+    expect(getByText("Every account in this vault was invented.")).toBeInTheDocument();
   });
 
-  it("renders the bounded private-vault source disclosure", () => {
-    const disclosure: SurfaceSnapshot["disclosure"] = { title: "Private vault", subtitle: "Opened on this device", detail: "unused long disclosure" };
-    const { getByText, queryByText } = render(<SourceDisclosure mode="live" disclosure={disclosure} />);
+  it("says what the source said about itself, and never a second sentence of its own", () => {
+    // Both lines used to be a dialect switch. There is one vault kind now, so
+    // the disclosure repeats the read's own words rather than choosing between
+    // two it was carrying.
+    const disclosure: SurfaceSnapshot["disclosure"] = { title: "Private vault", subtitle: "Opened on this device", detail: "The surfaces below are read from this vault. Features that are not connected stay hidden or say so." };
+    const { getByText, queryByText } = render(<SourceDisclosure disclosure={disclosure} />);
     expect(getByText("Private vault · Opened on this device")).toBeInTheDocument();
     expect(getByText("The surfaces below are read from this vault. Features that are not connected stay hidden or say so.")).toBeInTheDocument();
     expect(queryByText("unused long disclosure")).not.toBeInTheDocument();

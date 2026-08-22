@@ -1,5 +1,5 @@
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
-import type { ActionResult, ReviewSampleAnatomy, ReviewVerb, ReviewView } from "../../surface/types";
+import type { ActionResult, ReviewVerb, ReviewView } from "../../surface/types";
 
 export type ReviewSelection =
   | { state: "empty"; reason: "queue_empty" | "no_selectable_identity" }
@@ -23,23 +23,6 @@ export function resolveReviewSelection(queue: readonly ReviewView[], requestedId
   return { state: "ready", question: matches[0] };
 }
 
-export type AnatomyPresentation =
-  | { state: "ready"; anatomy: ReviewSampleAnatomy; title: string; detail: string }
-  | { state: "missing"; title: "Sample anatomy unavailable"; detail: string }
-  | { state: "unrecognized"; title: "Sample action type unavailable"; detail: string };
-
-export function anatomyPresentation(value: string | null | undefined): AnatomyPresentation {
-  switch (value) {
-    case "answer": return { state: "ready", anatomy: "answer", title: "Answer boundary", detail: "This fictional question wants a sentence back. Answering is not connected in this version, here or in a private vault, so nothing can be read into a slot, recorded, or sent." };
-    case "decline": return { state: "ready", anatomy: "decline", title: "Set-aside boundary", detail: "The sample vault takes a setting-aside and refuses it. Nothing here is suppressed, deferred, or recorded." };
-    case "proposal": return { state: "ready", anatomy: "proposal", title: "Proposal — not applied", detail: "This fictional proposal describes a possible value. It remains unapplied and would require a separate explicit confirmation." };
-    case "confirmation": return { state: "ready", anatomy: "confirmation", title: "Confirmation required", detail: "This is confirmation anatomy only. No yes is accepted and nothing is applied." };
-    default:
-      return value?.trim()
-        ? { state: "unrecognized", title: "Sample action type unavailable", detail: "This fictional sample uses an action type this preview does not recognize. Nothing can be submitted, recorded, sent, or applied." }
-        : { state: "missing", title: "Sample anatomy unavailable", detail: "This fictional sample does not supply action anatomy. Nothing can be submitted, recorded, sent, or applied." };
-  }
-}
 
 export type OutcomePresentation = { title: string; detail: string };
 

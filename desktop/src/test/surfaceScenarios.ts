@@ -4,7 +4,6 @@ import type {
   FigureView,
   OverviewData,
   PictureView,
-  SurfaceMode,
   SurfaceSnapshot,
 } from "../surface/types";
 
@@ -88,27 +87,22 @@ export function makePicture(overrides: Partial<PictureView> = {}): PictureView {
 export function makeOverview(overrides: Partial<OverviewData> = {}): OverviewData {
   return {
     picture: makePicture(),
-    corpusCoverage: "",
     accounts: [],
-    recent: [],
     ...overrides,
   };
 }
 
-const disclosure = (mode: SurfaceMode): SurfaceSnapshot["disclosure"] => mode === "demo" ? {
-  title: "Sample vault",
-  subtitle: "Fictional sample data",
-  detail: "Every name, document, and figure in this vault is fictional and stored with the app.",
-} : {
+// One vault, one disclosure. There used to be two of these — a sample dialect
+// and a private one — and every screen picked between them.
+const disclosure: SurfaceSnapshot["disclosure"] = {
   title: "Private vault",
   subtitle: "Opened on this device",
   detail: "The surfaces below are read from this vault. Features that are not connected stay hidden or say so.",
 };
 
-export function makeSurfaceScenario(mode: SurfaceMode, overrides: Partial<Omit<SurfaceSnapshot, "mode" | "disclosure">> = {}): SurfaceSnapshot {
+export function makeSurfaceScenario(overrides: Partial<Omit<SurfaceSnapshot, "disclosure">> = {}): SurfaceSnapshot {
   return {
-    mode,
-    disclosure: disclosure(mode),
+    disclosure,
     overview: absent(),
     documents: absent(),
     review: absent(),

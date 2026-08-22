@@ -1,4 +1,4 @@
-import type { AccountView, ActivityView, DocumentsData, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, SurfaceDocument, SurfaceSnapshot, UnmeasuredAccount } from "./types";
+import type { AccountView, DocumentsData, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, SurfaceDocument, SurfaceSnapshot, UnmeasuredAccount } from "./types";
 
 export type GradePresentation = { grade: FigureGrade; label: string; description: string };
 
@@ -48,14 +48,15 @@ export function figurePrecision(value: string | null | undefined): FigurePrecisi
 }
 export function netWorthEvidenceFigure(figure: FigureView): EvidenceFigureView { return { id: `net-worth:${figure.id}`, label: "Net worth", actionLabel: figure.evidenceLabel ?? "", heading: figure.evidenceHeading ?? "", variant: "net-worth", display: figure.display || missingAmount, measure: figure.measure, currency: field(figure.currency), grade: financialGrade(figure.grade, figure.gradeLabel, figure.gradeDescription), precision: figurePrecision(figure.exactness), asOf: field(figure.asOf), coverage: records(figure.coverage), unmeasured: figure.unmeasured ?? [], recordIds: records(figure.recordIds), provenance: { state: "unavailable" }, caveats: figure.caveats, evidenceLinks: figure.evidenceLinks }; }
 export function accountEvidenceFigure(account: AccountView): EvidenceFigureView { const base = account.name.trim() ? account.name : "Account name unavailable"; const label = account.measure === "balance" ? `${base} balance` : account.measure === "owed" ? `${base} amount owed` : base; return { id: `account:${account.id}`, label, actionLabel: "", heading: "", variant: account.measure === "balance" ? "account-balance" : account.measure === "owed" ? "account-liability" : "account-unknown", display: account.display || missingAmount, measure: account.measure, currency: field(account.currency), grade: financialGrade(account.grade, account.gradeLabel, account.gradeDescription), precision: figurePrecision(account.exactness), asOf: field(account.asOf), coverage: lines(account.coverage), unmeasured: [], recordIds: records(account.recordIds), provenance: field(account.provenance), caveats: account.caveats ?? [], evidenceLinks: account.evidenceLinks }; }
-export function activityEvidenceFigure(activity: ActivityView): EvidenceFigureView { const base = activity.label.trim() ? activity.label : "Activity label unavailable"; return { id: `activity:${activity.id}`, label: `${base} ${activity.measure}`, actionLabel: "", heading: "", variant: activity.measure === "income" ? "activity-income" : "activity-spending", display: activity.display || missingAmount, measure: activity.measure, currency: { state: "unavailable" }, grade: gradePresentation("not_applicable"), precision: figurePrecision(activity.exactness), asOf: { state: "unavailable" }, coverage: { state: "unavailable" }, unmeasured: [], recordIds: records(activity.recordIds), provenance: field(activity.provenance), caveats: [], evidenceLinks: activity.evidenceLinks }; }
 function dataOf<T>(result: FeatureResult<T>): T | null { return result.state === "ready" || result.state === "partial" || result.state === "needs_input" ? result.data : null; }
 export function resolveEvidenceFigure(snapshot: SurfaceSnapshot, figureId: string): EvidenceFigureResolution {
-  const overview = dataOf(snapshot.overview); const activity = dataOf(snapshot.activity); const candidates: EvidenceFigureView[] = [];
+  // Two kinds of figure open a drawer: the picture's own, and an account's.
+  // A movement used to be a third, resolved off a shape only the fixture
+  // demo produced; the live read composes movements as sentences with no
+  // grade and no coverage, which is not a figure and has no drawer.
+  const overview = dataOf(snapshot.overview); const candidates: EvidenceFigureView[] = [];
   for (const figure of overview?.picture.figures ?? []) candidates.push(netWorthEvidenceFigure(figure));
   for (const account of overview?.accounts ?? []) candidates.push(accountEvidenceFigure(account));
-  const canonicalActivity = activity ? activity.items : overview?.recent ?? [];
-  for (const item of canonicalActivity) candidates.push(activityEvidenceFigure(item));
   const matches = candidates.filter((candidate) => candidate.id === figureId);
   if (!matches.length) return { state: "missing" };
   if (matches.length > 1) return { state: "conflicted" };

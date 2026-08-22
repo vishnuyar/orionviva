@@ -36,6 +36,11 @@ export const REQUEST_REFUSED = "invalid_request";
 // text — a handler that raised puts its exception into that field, and an
 // exception raised inside the engine can carry an account name or an amount, so
 // vault text would reach a screen ungraded, uncited and through no read model.
+// The words a shell draws the sample vault's frame with. They are the
+// engine's, not this window's: the one sentence in this product that says
+// nothing here is real is a shipped sentence, and a shell composing its own
+// would put it out of the pack's reach.
+export type SampleFrame = { title: string; detail: string; leave: string };
 export const OPEN_REFUSALS: readonly string[] = ["vault_absent", "vault_not_a_directory", "vault_wrong_passphrase"];
 // The sidecar said it accepted the request and sent nothing to read. A handler
 // ran and may have written, so this is never told as a request that never
@@ -72,6 +77,11 @@ export type BridgeClient = {
   // answered with a brand-new empty vault, which reads as their records having
   // vanished.
   openVault: (vaultDirectory: string, passphrase: string, create: boolean) => Promise<void>;
+  // The sample vault, opened from one affordance. It carries no directory and
+  // no passphrase: where it lives and what opens it are the engine's, so there
+  // is nowhere here to point it at a folder somebody keeps their own records
+  // in, and nowhere to learn what would open it.
+  openSampleVault: () => Promise<SampleFrame | null>;
   pickVaultDirectory?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;

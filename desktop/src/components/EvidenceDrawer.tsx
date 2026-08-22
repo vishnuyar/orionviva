@@ -28,8 +28,8 @@ export function EvidenceDrawer({ snapshot, selection, onDismiss, onOpenDocument,
   // into a frame; the composed form only where it wrote none.
   const heading = resolution.state === "ready" && resolution.figure.heading.trim() ? resolution.figure.heading : `Evidence for ${label}`;
   return <><div className="evidence-backdrop" aria-hidden="true" onClick={onDismiss} /><aside ref={drawerRef} id="figure-evidence-drawer" className="evidence-drawer" role="dialog" aria-modal="true" aria-labelledby="figure-evidence-title" aria-describedby="figure-evidence-summary" tabIndex={-1}>
-    <div className="evidence-drawer-topline"><div><span className="evidence-boundary">{snapshot.mode === "demo" ? "Sample figure · Fictional data" : "Private vault figure · Opened on this device"}</span><h2 id="figure-evidence-title">{heading}</h2><p id="figure-evidence-summary">Status, source records, and limits for the displayed figure.</p></div><button ref={closeRef} className="evidence-close" aria-label="Close evidence" onClick={onDismiss}>×</button></div>
-    <FeatureBoundary resetKey={`${snapshot.mode}-${selection.figureId}`}>
+    <div className="evidence-drawer-topline"><div><span className="evidence-boundary">{snapshot.disclosure.title} · {snapshot.disclosure.subtitle}</span><h2 id="figure-evidence-title">{heading}</h2><p id="figure-evidence-summary">Status, source records, and limits for the displayed figure.</p></div><button ref={closeRef} className="evidence-close" aria-label="Close evidence" onClick={onDismiss}>×</button></div>
+    <FeatureBoundary resetKey={selection.figureId}>
       {resolution.state === "missing" ? <div className="empty-state"><strong>Evidence unavailable</strong><span>This figure is no longer present in the current vault read.</span></div>
         : resolution.state === "conflicted" ? <div className="empty-state"><strong>Evidence unavailable</strong><span>More than one figure in this read uses this identity, so the interface will not choose between them.</span></div>
           : <EvidenceContents figure={resolution.figure} snapshot={snapshot} onOpenDocument={onOpenDocument} renderEvidenceBadge={renderEvidenceBadge} />}

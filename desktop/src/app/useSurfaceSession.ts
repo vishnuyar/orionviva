@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
-import { privateSource } from "../surface/sources";
+import { privateSource, sampleSource } from "../surface/sources";
 import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
@@ -23,12 +23,16 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const configuring = useRef(false);
   const asking = useRef(false);
   const maintaining = useRef(false);
-  const documentActions = session.source.documentActions;
-  const jobStream = session.source.jobStream;
-  const transferActions = session.source.transferActions;
-  const settingsActions = session.source.settingsActions;
-  const conversationActions = session.source.conversationActions;
-  const trustActions = session.source.trustActions;
+  // Every verb this session has comes from the source, and before a vault is
+  // open there is no source and therefore no verb. A screen asks whether it
+  // has one; nothing here invents a verb that would have to refuse.
+  const documentActions = session.source?.documentActions ?? null;
+  const jobStream = session.source?.jobStream ?? null;
+  const transferActions = session.source?.transferActions ?? null;
+  const settingsActions = session.source?.settingsActions ?? null;
+  const conversationActions = session.source?.conversationActions ?? null;
+  const trustActions = session.source?.trustActions ?? null;
+  const reviewActions = session.source?.reviewActions ?? null;
   const source = session.source;
 
   // What is in force, asked once per source. It is this machine's rather than
@@ -48,6 +52,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   // per screen would be putting a settled question over and over; a source
   // that is replaced is a different engine and is asked again.
   useEffect(() => {
+    if (!source) return undefined;
     let gone = false;
     const asked = requestId.current;
     void source.describe()
@@ -75,8 +80,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   // the next, so a second press while the first is in flight would queue behind
   // it and report against a queue that has already moved.
   async function runReviewVerb(verb: ReviewVerb, questionId: string, run: (actions: ReviewActions) => Promise<ActionResult>) {
-    const actions = session.source.reviewActions;
-    if (!questionId.trim() || session.reviewAction.state === "working") return;
+    const actions = reviewActions;
+    if (!actions || !questionId.trim() || session.reviewAction.state === "working") return;
     const nextRequestId = requestId.current;
     dispatch({ type: "review-acting", requestId: nextRequestId, questionId, verb });
     const result = await run(actions);
@@ -187,6 +192,39 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
       if (requestId.current !== nextRequestId) return false;
       const source = privateSource(hostBridge);
+      dispatch({ type: "reading", requestId: nextRequestId, source, snapshot: liveReadingSnapshot() });
+      try {
+        const snapshot = await source.load();
+        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot });
+      } catch {
+        if (requestId.current === nextRequestId) dispatch({ type: "load-failed", requestId: nextRequestId });
+        return false;
+      }
+      return requestId.current === nextRequestId;
+    },
+    // The one affordance the sample vault is entered from. It names no
+    // directory and no passphrase, because the request carries neither: where
+    // the sample vault lives and what opens it are the engine's, so a person
+    // pressing this cannot be pointed anywhere except at the sample.
+    async openSampleVault() {
+      if (!hostBridge) return false;
+      const nextRequestId = ++requestId.current;
+      dispatch({ type: "opening", requestId: nextRequestId });
+      let frame;
+      try {
+        frame = await hostBridge.openSampleVault();
+      } catch {
+        // The sidecar's own sentence is not repeated here: the codes a sample
+        // open can fail with are about a directory this person never named, so
+        // there is nothing in them for them to act on.
+        if (requestId.current === nextRequestId) dispatch({ type: "open-failed", requestId: nextRequestId, said: "" });
+        return false;
+      }
+      if (requestId.current !== nextRequestId) return false;
+      // No frame, no sample vault. A shell that went in anyway would be
+      // showing somebody invented money with nothing saying it was invented.
+      if (!frame) { dispatch({ type: "open-failed", requestId: nextRequestId, said: "" }); return false; }
+      const source = sampleSource(hostBridge, frame);
       dispatch({ type: "reading", requestId: nextRequestId, source, snapshot: liveReadingSnapshot() });
       try {
         const snapshot = await source.load();

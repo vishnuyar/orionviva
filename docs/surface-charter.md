@@ -164,15 +164,15 @@ person, not a pattern** — the Interface Designer, whose standing brief already
 asks *"whether the app sounds like the product the site promised"*.
 
 ### VOICE-139 — the demo is a place, not a dialect
-**State:** unmet
-**Code:** The demo is frontend fixtures: `desktop/src/surface/fixtures/demo-snapshot.ts` is loaded by `desktop/src/surface/sources.ts`, which declares that source's boundary as a fixture rather than as anything the sidecar opens. There is no frame: the demo is told sentence by sentence, by nine *Fictional sample* qualifiers standing in the interface's own components and five more inside the fixture module.
-**Test:** none — the mechanism is not built, and the rule's own condition holds it dormant until a demo vault exists.
+**State:** enforced
+**Code:** product/viva/demo.py (`build_demo_vault`, `open_demo_vault`), product/viva/desktop_bridge/__main__.py (`_open_demo_vault`), desktop/src/surface/sources.ts (`sampleSource`), desktop/src/app/App.tsx (the frame)
+**Test:** product/tests/test_demo_vault.py::test_the_sample_is_a_vault_the_engine_opens, ::test_the_frame_words_come_from_the_pack_rather_than_from_a_screen, ::test_a_private_open_carries_no_frame
 
 1. The demo is entered deliberately, from one affordance, and inhabited inside one persistent, unmistakable frame.
 2. Inside the frame, the copy is the product's own copy and the per-sentence fictional qualifiers are retired.
 3. Institution and person names in demo data are self-evidently fictional.
 4. Leaving the frame is one action, and nothing from the demo persists into a private vault.
-5. **While the demo is frontend fixtures rather than a vault opened through the sidecar, the qualifiers stay.** Clause 2 waits on that, and on nothing else.
+5. **While the demo is frontend fixtures rather than a vault opened through the sidecar, the qualifiers stay.** Clause 2 waits on that, and on nothing else. The condition is met: the sample is a vault on disk, minted by the engine, opened through the sidecar and read by the same provider a private vault is, so the qualifiers are gone and the frame is true by construction.
 
 **Why a dialect is the worse of two designs.** Qualifying every sentence makes
 the demo unreadable as a product: a person evaluating whether they want this

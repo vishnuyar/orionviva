@@ -5,12 +5,12 @@ import { Documents } from "./Documents";
 import type { CaptureControls, RescanControls } from "./Documents";
 // The sentences a person is told, read from the pack that ships them. A test
 // that types one out passes against words nobody shipped.
-import moments from "../../../../product/viva/persona/pack-v29/moments.json";
+import moments from "../../../../product/viva/persona/pack-v30/moments.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const ALREADY_HELD = moments.documents_already_held;
 const TOO_LARGE = moments.documents_too_large.replace("{limit}", "a limit the reader owns");
-import { lifecyclePresentation, resolveDocumentSelection, sampleLifecycle } from "./documentPresentation";
+import { documentRowLabel, resolveDocumentSelection } from "./documentPresentation";
 
 const document = (id: string, name = "sample.pdf"): SurfaceDocument => ({ id, name, state: "Sample", phaseLabel: "", detail: "", source: "", pages: "", provenance: "", evidenceLinks: [] });
 const data = (documents: SurfaceDocument[], readingSentence = ""): DocumentsData => ({ documents, readingSentence, captureQueue: [], processingJobs: [], outboundRecords: [] });
@@ -28,13 +28,11 @@ const reply = (result: ActionResult): CaptureControls => ({ ...quiet, state: { s
 const runningJob = (over: Partial<JobView> = {}): JobView => ({ jobId: "viva.documents.upload-1", operation: "viva.documents.upload", state: "running", completed: 1, total: 3, message: "", step: "checked", attempt: 1, steps: ["checked", "opened", "settled"], cancellable: true, ...over });
 
 describe("document presentation", () => {
-  it("maps every reviewed sample lifecycle without implying progression", () => {
-    expect(sampleLifecycle.map((item) => lifecyclePresentation(item.phase))).toEqual(sampleLifecycle.map((item) => ({ state: "ready", title: item.title, detail: item.detail })));
-  });
 
-  it("keeps missing and unknown lifecycle values explicit", () => {
-    expect(lifecyclePresentation(undefined)).toEqual({ state: "missing", title: "Lifecycle unavailable", detail: "Lifecycle was not supplied by this fictional sample." });
-    expect(lifecyclePresentation("future-runtime-phase")).toEqual({ state: "unrecognized", title: "Lifecycle not recognized", detail: "This fictional sample supplies a lifecycle value this preview does not recognize. No later step is implied." });
+  it("names a row by the file the vault recorded, and by the kind where it recorded none", () => {
+    expect(documentRowLabel(document("d", "everyday-checking.pdf"))).toBe("everyday-checking.pdf");
+    expect(documentRowLabel({ ...document("d", ""), docType: "Bank statement" })).toBe("Bank statement");
+    expect(documentRowLabel(document("d", ""))).toBe("Document type unavailable");
   });
 
   it("selects strictly by stable identity across reorder and duplicate names", () => {
@@ -53,33 +51,10 @@ describe("document presentation", () => {
 });
 
 describe("Documents surface", () => {
-  it("renders the static sample lifecycle, capture boundary, library before detail, and no legacy jobs", () => {
-    const documents = sampleLifecycle.map((item) => ({ ...document(`document-${item.phase}`, `${item.phase}.pdf`), phase: item.phase, phaseLabel: item.title, evidenceLinks: item.phase === "captured" ? [{ targetDocumentId: "document-verified", label: "Verified sample", relation: "corroborates" as const, page: "page 1" }] : [] }));
-    const openEvidence = vi.fn();
-    const { container, getByRole, getByText, getAllByText, queryByText, queryByRole } = render(<Documents rescan={null} capture={null} result={ready(documents)} mode="demo" selectedDocument="document-captured" onSelectDocument={noAction} onOpenEvidence={openEvidence} onExploreSample={noAction} />);
-
-    expect(getByRole("heading", { name: "A sample document journey" })).toBeInTheDocument();
-    expect(getByText("These are static fictional examples stored with the app. No file is selected, no vault event is written, no model call is made, nothing is sent, and no durable state changes.")).toBeInTheDocument();
-    expect(queryByRole("button", { name: /choose a/i })).not.toBeInTheDocument();
-    expect(getByText("Nothing is added to a vault from the fictional sample.")).toBeInTheDocument();
-    for (const item of sampleLifecycle) expect(getAllByText(item.title).length).toBeGreaterThan(0);
-    expect(getByText("These labels describe distinct states. They do not imply that one starts the next. Ledger posting and outbound transmission are separate unavailable actions.")).toBeInTheDocument();
-    expect(queryByText("Capture queue")).not.toBeInTheDocument();
-    expect(queryByText("Processing and recovery")).not.toBeInTheDocument();
-    expect(queryByText("Outbound records")).not.toBeInTheDocument();
-    expect(queryByRole("textbox")).not.toBeInTheDocument();
-    const library = container.querySelector(".document-library");
-    const detail = container.querySelector(".document-detail");
-    expect(library).not.toBeNull();
-    expect(detail).not.toBeNull();
-    expect((library as Element).compareDocumentPosition(detail as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.click(getByRole("button", { name: /Verified sample.*page 1/i }));
-    expect(openEvidence).toHaveBeenCalledWith(documents[0].evidenceLinks[0]);
-  });
 
   it("renders only the four returned live fields even when demo-shaped fields are injected", () => {
     const injected = { ...document("live-document-identity", "quarter-close.pdf"), docType: "statement", resolved: true, rawAvailable: false, phase: "verified" as const, phaseLabel: "MALICIOUS-PHASE", detail: "MALICIOUS-DETAIL", source: "MALICIOUS-SOURCE", pages: "MALICIOUS-PAGES", provenance: "MALICIOUS-PROVENANCE", sample: { region: "MALICIOUS-REGION", contribution: "MALICIOUS-CONTRIBUTION", waitReason: "MALICIOUS-WAIT" }, evidenceLinks: [{ targetDocumentId: "hidden-target", label: "MALICIOUS-LINK", relation: "same_period" as const, page: "MALICIOUS-PAGE" }] };
-    const { getByRole, getAllByText, getByText, queryByText } = render(<Documents rescan={null} capture={null} result={ready([injected])} mode="live" selectedDocument="live-document-identity" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    const { getByRole, getAllByText, getByText, queryByText } = render(<Documents rescan={null} capture={null} result={ready([injected])} selectedDocument="live-document-identity" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
 
     expect(queryByText("Document capture unavailable")).not.toBeInTheDocument();
     expect(getByRole("heading", { name: "What this read can show" })).toBeInTheDocument();
@@ -97,30 +72,20 @@ describe("Documents surface", () => {
       { ...document("unresolved"), docType: "notice", resolved: false, rawAvailable: false },
       { ...document("missing") },
     ];
-    const { getByText, rerender } = render(<Documents rescan={null} capture={null} result={ready(documents)} mode="live" selectedDocument="resolved" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    const { getByText, rerender } = render(<Documents rescan={null} capture={null} result={ready(documents)} selectedDocument="resolved" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
     expect(getByText("Available", { selector: ".document-detail strong" })).toBeInTheDocument();
-    rerender(<Documents rescan={null} capture={null} result={ready(documents)} mode="live" selectedDocument="unresolved" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    rerender(<Documents rescan={null} capture={null} result={ready(documents)} selectedDocument="unresolved" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
     expect(getByText("Unresolved", { selector: ".document-detail strong" })).toBeInTheDocument();
     expect(getByText("Unavailable", { selector: ".document-detail strong" })).toBeInTheDocument();
-    rerender(<Documents rescan={null} capture={null} result={ready(documents)} mode="live" selectedDocument="missing" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    rerender(<Documents rescan={null} capture={null} result={ready(documents)} selectedDocument="missing" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
     expect(getByText("Document type was not supplied by this read.")).toBeInTheDocument();
     expect(getByText("Resolution status was not supplied by this read.")).toBeInTheDocument();
     expect(getByText("Original availability was not supplied by this read.")).toBeInTheDocument();
   });
 
-  it("renders missing and runtime-unknown sample lifecycle values without inference", () => {
-    const missing = document("missing-phase", "missing-phase.pdf");
-    const runtimeUnknown = { ...document("unknown-phase", "unknown-phase.pdf"), phase: "future-runtime-phase" as SurfaceDocument["phase"] };
-    const { getAllByText, rerender } = render(<Documents rescan={null} capture={null} result={ready([missing])} mode="demo" selectedDocument="missing-phase" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
-    expect(getAllByText("Lifecycle unavailable").length).toBeGreaterThan(0);
-    expect(getAllByText("Lifecycle was not supplied by this fictional sample.").length).toBeGreaterThan(0);
-    rerender(<Documents rescan={null} capture={null} result={ready([runtimeUnknown])} mode="demo" selectedDocument="unknown-phase" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
-    expect(getAllByText("Lifecycle not recognized").length).toBeGreaterThan(0);
-    expect(getAllByText("This fictional sample supplies a lifecycle value this preview does not recognize. No later step is implied.").length).toBeGreaterThan(0);
-  });
 
   it("keeps every FeatureResult state bounded", () => {
-    const props = { mode: "live" as const, rescan: null, selectedDocument: "", capture: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+    const props = { rescan: null, selectedDocument: "", capture: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
     const { getByText, queryByText, rerender } = render(<Documents {...props} result={{ state: "absent", reason: "none" }} />);
     expect(queryByText("What this read can show")).not.toBeInTheDocument();
     rerender(<Documents {...props} result={{ state: "unavailable", reason: "internal" }} />);
@@ -136,30 +101,20 @@ describe("Documents surface", () => {
     expect(queryByText("Some documents need review. Available document details are shown below.")).not.toBeInTheDocument();
   });
 
-  it("shows capture and honest empty states without a sample lifecycle", () => {
-    const { getByRole, getByText, queryByRole, rerender } = render(<Documents rescan={null} capture={null} result={ready([])} mode="demo" selectedDocument="" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
-    expect(getByRole("heading", { name: "A sample document journey" })).toBeInTheDocument();
-    expect(getByText("No sample documents")).toBeInTheDocument();
-    expect(queryByRole("heading", { name: "Sample lifecycle" })).not.toBeInTheDocument();
-    rerender(<Documents rescan={null} capture={null} result={ready([])} mode="live" selectedDocument="" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
-    expect(getByText("No documents yet")).toBeInTheDocument();
-    expect(getByText("Nothing has been added to this vault yet. Choose a file to add one.")).toBeInTheDocument();
-    expect(getByRole("button", { name: "Explore fictional sample data" })).toBeInTheDocument();
-  });
 
   it("keeps blank, conflicted, and disappeared selections bounded", () => {
     const duplicate = [document("duplicate", "first.pdf"), document("duplicate", "second.pdf")];
-    const { getByText, rerender } = render(<Documents rescan={null} capture={null} result={ready(duplicate)} mode="demo" selectedDocument="duplicate" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    const { getByText, rerender } = render(<Documents rescan={null} capture={null} result={ready(duplicate)} selectedDocument="duplicate" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
     expect(getByText("More than one document in this read uses the selected identity, so the interface will not choose between them.")).toBeInTheDocument();
-    rerender(<Documents rescan={null} capture={null} result={ready([document("")])} mode="demo" selectedDocument="" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    rerender(<Documents rescan={null} capture={null} result={ready([document("")])} selectedDocument="" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
     expect(getByText("This row has no stable document ID, so it cannot be selected.")).toBeInTheDocument();
-    rerender(<Documents rescan={null} capture={null} result={ready([document("present")])} mode="demo" selectedDocument="removed" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
+    rerender(<Documents rescan={null} capture={null} result={ready([document("present")])} selectedDocument="removed" onSelectDocument={noAction} onOpenEvidence={noAction} onExploreSample={noAction} />);
     expect(getByText("The selected document is no longer present in the current vault read.")).toBeInTheDocument();
   });
 });
 
 describe("adding a document", () => {
-  const props = { mode: "live" as const, rescan: null, selectedDocument: "", onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+  const props = { rescan: null, selectedDocument: "", onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
 
   it("offers the chosen file as the only invitation, and never invites the gesture nobody could watch land", () => {
     const { container, getByRole, getByText } = render(<Documents {...props} capture={idle()} result={ready([])} />);
@@ -255,7 +210,7 @@ describe("adding a document", () => {
 });
 
 describe("what this read says about reading", () => {
-  const props = { mode: "live" as const, rescan: null, selectedDocument: "", capture: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+  const props = { rescan: null, selectedDocument: "", capture: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
   const sentence = SAVED_NO_READER;
 
   it("shows the panel sentence once, however many rows are never read", () => {
@@ -283,7 +238,7 @@ describe("what this read says about reading", () => {
 });
 
 describe("what the sidecar says it is doing", () => {
-  const props = { mode: "live" as const, rescan: null, selectedDocument: "", onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+  const props = { rescan: null, selectedDocument: "", onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
 
   it("says nothing about a job when the sidecar has said nothing", () => {
     const { queryByRole } = render(<Documents {...props} capture={idle()} result={ready([])} />);
@@ -337,7 +292,7 @@ describe("what the sidecar says it is doing", () => {
 });
 
 describe("going back over what is already here", () => {
-  const props = { mode: "live" as const, selectedDocument: "", capture: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
+  const props = { selectedDocument: "", capture: null, onSelectDocument: noAction, onOpenEvidence: noAction, onExploreSample: noAction };
   const controls = (state: RescanActionState, onRescan = noAction): RescanControls => ({ state, onRescan });
   const report = (over: Partial<RescanReport> = {}): RescanReport => ({ sentence: moments.rescan_nothing, changes: [], standing: [], linkCount: 0, ...over });
 

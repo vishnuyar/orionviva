@@ -615,6 +615,17 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "trust_no_maintenance_yet":        frozenset(),
     "diagnostic_written":              frozenset(),
     "diagnostic_unwritable":           frozenset(),
+
+    # The sample vault, and the frame around it. One frame said once and
+    # permanently, rather than a qualifier on every sentence: a qualifier on
+    # one figure quietly claims the unqualified figures beside it are
+    # different, and a person evaluating this product ends up reading our
+    # disclaimers instead of the picture we say we can draw.
+    "vault_sample_opened":             frozenset(),
+    "sample_frame":                    frozenset(),
+    "sample_frame_detail":             frozenset(),
+    "sample_frame_leave":              frozenset(),
+    "sample_vault_unopened":           frozenset(),
 }
 
 

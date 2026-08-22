@@ -50,25 +50,20 @@ STATED_ENVIRONMENT: dict[str, str | None] = {
     "VIVA_MODEL": None,
 }
 
-# What read the fixture's documents. Named so the artifact says a reading
-# happened and says plainly that it was not a real one.
-READER_MODEL = "fixture-reader"
-READER_PROMPT = "fixture-read-v1"
-
-# The passphrase the fixture vault is minted under. It opens nothing that
-# outlives this run: the vault is built in a temporary directory and deleted.
-PASSPHRASE = "fixture-vault-passphrase"
-
-# The surfaces the artifact holds. The overview is what this is about; the
-# documents read travels with it because a citation is only a route where the
-# document it names is a row a person can open.
-SURFACES = ("overview", "documents")
+# The surfaces the artifact holds: every one an opened vault answers. It began
+# as the overview and the documents read beside it, because a citation is only
+# a route where the document it names is a row a person can open. It is all of
+# them now, because this is the sample vault a person opens — so the interface
+# suite renders these same bytes rather than a set of rows composed in the
+# shell, and a screen that drifts from what the backend sends fails here.
+SURFACES = ("overview", "documents", "review", "trust", "activity")
 
 # What each surface is read with. The day the picture is read on is stated here
 # rather than left to the machine's clock: a total is good as of the day it was
 # asked for, so a read that asked on no stated day would write the day it ran
 # into these bytes and disagree with itself tomorrow.
-PARAMETERS: dict[str, dict] = {"overview": {"read_on": TODAY}}
+PARAMETERS: dict[str, dict] = {"overview": {"read_on": TODAY},
+                               "activity": {"as_of": TODAY}}
 
 
 def _import_path() -> None:
@@ -99,234 +94,15 @@ def _stated_environment(settings: dict = STATED_ENVIRONMENT):
 
 
 def build_vault(directory: Path):
-    """Eight shapes of account in one vault, and the documents behind them."""
+    """The fictional vault, built by the module that owns it.
+
+    It is the same vault a person opens when they enter the sample. One
+    fictional vault with two readers, rather than a demo and a fixture that
+    drift until the artifact stops describing what anybody sees."""
     _import_path()
-    from viva.ledger import (Provenance, account_opened,
-                             closing_balance_observed, document_captured,
-                             opening_balance_observed, read_recorded,
-                             simple_transaction)
-    from viva.ingest.statement import StatementFacts
-    from viva.ledger.events import (position_observed, ruling_recorded,
-                                    statement_held)
-    from viva.vault import Vault
+    from viva.demo import build_demo_vault
 
-    vault = Vault.open(directory, PASSPHRASE)
-
-    def document(body: str, doc_type: str, captured_at: str,
-                 declares: dict | None = None) -> str:
-        """One document as this vault holds it: captured first, always,
-        identified by its own content, and carrying the reading that settled it.
-
-        Every document in this vault posts, and a document cannot post through
-        this product without something having read it — so a reading is written
-        for each one. Without it the artifact would hold a document that is
-        settled and that nothing ever read, which is a combination the ingest
-        path cannot produce; a parity fixture encoding one proves the rendering
-        of something that cannot happen.
-
-        `declares` is what the document said about itself, written into the
-        reading verbatim the way a real reply is. The two boxes that bound a
-        statement's period are the part of it anything downstream reads, so a
-        document carrying both declares both and one carrying neither declares
-        neither, exactly as the vault's own events have it."""
-        doc_id = vault.raw.put(body.encode("utf-8"))
-        vault.ledger.append(document_captured(
-            doc_id, f"{doc_type}.txt", len(body.encode("utf-8")), doc_type,
-            0.98, captured_at, Provenance(doc_id=doc_id)))
-        reply = {"doc_type": doc_type, "doc_type_confidence": 0.98,
-                 **(declares or {})}
-        vault.ledger.append(read_recorded(
-            doc_id, READER_MODEL, READER_PROMPT, "text+image",
-            json.dumps(reply, sort_keys=True), 0.0, 0, 0, True, None,
-            captured_at, Provenance(doc_id=doc_id)))
-        return doc_id
-
-    def parked(body: str, filename: str, captured_at: str) -> str:
-        """A document the vault holds and nothing has read.
-
-        Captured and nothing else: no reading, and no account event standing on
-        it. It is the ordinary outcome of adding a file with no reader chosen,
-        so the artifact holds a row carrying that word and the panel's sentence
-        about it — the states the documents read exists to tell apart."""
-        doc_id = vault.raw.put(body.encode("utf-8"))
-        vault.ledger.append(document_captured(
-            doc_id, filename, len(body.encode("utf-8")), "unknown", 0.0,
-            captured_at, Provenance(doc_id=doc_id)))
-        return doc_id
-
-    def period(opening: tuple[str, str], closing: tuple[str, str]) -> dict:
-        """The two boxes a statement prints its period between."""
-        return {"opening": {"amount_raw": opening[0], "date_raw": opening[1]},
-                "closing": {"amount_raw": closing[0], "date_raw": closing[1]}}
-
-    def opening(account: str, amount: str, day: str, doc: str, page: int):
-        return opening_balance_observed(
-            account, amount, day,
-            Provenance(doc_id=doc, page=page, note="opening balance"))
-
-    def closing(account: str, amount: str, day: str, doc: str, page: int,
-                confirmed_by: str = ""):
-        return closing_balance_observed(
-            account, amount, day,
-            Provenance(doc_id=doc, page=page, note="closing balance"),
-            confirmed_by=confirmed_by)
-
-    # One account reconciles: an issuer's closing figure and the period's own
-    # movements arrive at the same number.
-    checking_doc = document("everyday checking, sixth month", "bank_statement",
-                            "2026-07-02",
-                            period(("1000.00", "2026-06-01"),
-                                   ("3081.45", "2026-06-30")))
-    vault.ledger.append(account_opened(
-        "acct:everyday-checking", "depository", "Everyday Checking", "USD",
-        "2026-06-01", institution="Sample Mutual",
-        account_number="000000004417", account_names=["SAMPLE HOLDER"]))
-    vault.ledger.append(opening("acct:everyday-checking", "1000.00",
-                                "2026-06-01", checking_doc, 1))
-    vault.ledger.append(simple_transaction(
-        "acct:everyday-checking", "2400.00", "salary", "2026-06-05"))
-    vault.ledger.append(simple_transaction(
-        "acct:everyday-checking", "-318.55", "rent", "2026-06-08"))
-    vault.ledger.append(closing("acct:everyday-checking", "3081.45",
-                                "2026-06-30", checking_doc, 3))
-
-    # One is owed on, and the bill prints what is owed as a positive number.
-    card_doc = document("household card, sixth month", "credit_card_statement",
-                        "2026-07-02",
-                        period(("240.00", "2026-06-01"),
-                               ("400.00", "2026-06-30")))
-    vault.ledger.append(account_opened(
-        "acct:household-card", "liability", "Household Card", "USD",
-        "2026-06-01", institution="Sample Card Company",
-        account_number="000000008802", account_names=["SAMPLE HOLDER"]))
-    vault.ledger.append(opening("acct:household-card", "240.00", "2026-06-01",
-                                card_doc, 1))
-    vault.ledger.append(simple_transaction(
-        "acct:household-card", "160.00", "annual fee", "2026-06-11"))
-    vault.ledger.append(closing("acct:household-card", "400.00", "2026-06-30",
-                                card_doc, 2))
-
-    # One is owed on and in credit: an overpaid card is a negative amount of
-    # debt, which says money is held rather than owed.
-    travel_doc = document("travel card, sixth month", "credit_card_statement",
-                          "2026-07-02")
-    vault.ledger.append(account_opened(
-        "acct:travel-card", "liability", "Travel Card", "USD", "2026-06-01",
-        institution="Sample Card Company", account_number="000000005190",
-        account_names=["SAMPLE HOLDER"]))
-    vault.ledger.append(closing("acct:travel-card", "-75.00", "2026-06-30",
-                                travel_doc, 1))
-
-    # One has nothing attested: its number is the replay of what is on record,
-    # with no issuer figure to check it against.
-    vault.ledger.append(account_opened(
-        "acct:rainy-day-savings", "depository", "Rainy Day Savings", "USD",
-        "2026-06-01", institution="Sample Mutual",
-        account_number="000000006723", account_names=["SAMPLE HOLDER"]))
-    savings_doc = document("rainy day savings, opening", "bank_statement",
-                           "2026-07-02")
-    vault.ledger.append(opening("acct:rainy-day-savings", "5000.00",
-                                "2026-06-01", savings_doc, 1))
-    vault.ledger.append(simple_transaction(
-        "acct:rainy-day-savings", "12.50", "interest", "2026-06-30"))
-
-    # One holds instruments as well as cash, measured on a different day from
-    # the cash, so what the account is worth rests on two dates.
-    brokerage_doc = document("growth portfolio, sixth month",
-                             "brokerage_statement", "2026-07-02")
-    vault.ledger.append(account_opened(
-        "acct:growth-portfolio", "investment", "Growth Portfolio", "USD",
-        "2026-05-31", institution="Sample Brokerage",
-        account_number="000000003311", account_names=["SAMPLE HOLDER"]))
-    vault.ledger.append(closing("acct:growth-portfolio", "500.00", "2026-06-30",
-                                brokerage_doc, 1))
-    vault.ledger.append(position_observed(
-        "acct:growth-portfolio", "SAMPLE INDEX FUND", "100", "12000.00", "USD",
-        "2026-05-31", cost_basis=Decimal("9000.00"),
-        provenance=Provenance(doc_id=brokerage_doc, page=2,
-                              note="holdings table")))
-
-    # One disagrees with itself: the issuer's figure and the movements do not
-    # meet, and the read says so rather than averaging them.
-    joint_doc = document("joint checking, sixth month", "bank_statement",
-                         "2026-07-02",
-                         period(("800.00", "2026-06-01"),
-                                ("980.00", "2026-06-30")))
-    vault.ledger.append(account_opened(
-        "acct:joint-checking", "depository", "Joint Checking", "USD",
-        "2026-06-01", institution="Sample Mutual",
-        account_number="000000002264",
-        account_names=["SAMPLE HOLDER", "SECOND SAMPLE HOLDER"]))
-    vault.ledger.append(opening("acct:joint-checking", "800.00", "2026-06-01",
-                                joint_doc, 1))
-    vault.ledger.append(simple_transaction(
-        "acct:joint-checking", "-120.00", "utilities", "2026-06-14"))
-    vault.ledger.append(closing("acct:joint-checking", "980.00", "2026-06-30",
-                                joint_doc, 2))
-
-    # One is held in a second currency, so nothing anywhere adds it to the
-    # others.
-    abroad_doc = document("abroad account, sixth month", "bank_statement",
-                          "2026-07-02")
-    vault.ledger.append(account_opened(
-        "acct:abroad-current", "depository", "Abroad Current", "EUR",
-        "2026-06-01", institution="Sample Bank Abroad",
-        account_number="000000007745", account_names=["SAMPLE HOLDER"]))
-    vault.ledger.append(closing("acct:abroad-current", "642.10", "2026-06-30",
-                                abroad_doc, 1))
-
-    # And one whose newest record is old: a confident number that is wrong
-    # about when rather than about how much.
-    dormant_doc = document("dormant savings, eleventh month of the year before",
-                           "bank_statement", "2025-12-04")
-    vault.ledger.append(account_opened(
-        "acct:dormant-savings", "depository", "Dormant Savings", "USD",
-        "2025-11-01", institution="Sample Mutual",
-        account_number="000000001038", account_names=["SAMPLE HOLDER"]))
-    vault.ledger.append(closing("acct:dormant-savings", "1250.00", "2025-11-30",
-                                dormant_doc, 1))
-
-    # And one thing a person holds that no total can carry and no card shows:
-    # a debt a ruling brought into being. Cash reaching a lender says nothing
-    # about the balance owed, so the point refuses it a figure; nothing opened
-    # it, so the accounts read never names it and no currency can be found for
-    # it. It is beneath no figure, which is the one shape whose disclosure has
-    # nowhere to go but the panel.
-    # Paid from the account nothing attests, so no reconciling chain moves and
-    # no other shape in this vault changes.
-    vault.ledger.append(simple_transaction(
-        "acct:rainy-day-savings", "-450.00", "sample lender", "2026-06-20"))
-    vault.ledger.append(ruling_recorded(
-        scope="merchant", subject="sample lender",
-        legs=[{"major": "liability", "account": "Liabilities:Loan:Sample"}],
-        occurred_at="2026-07-05", by="human"))
-
-    # And one the vault simply holds. Nothing has read it, so it stands behind
-    # no account and no figure cites it.
-    parked("a document this vault holds and has not read", "unread-note.txt",
-           "2026-07-02")
-
-    # And one that was read and not posted: its period does not join what is
-    # already held for the account, so nothing it attests is counted anywhere
-    # until the gap between them is settled. It is the other half of what makes
-    # a total less than whole, and the one no account can be named for.
-    unposted_doc = document("everyday checking, eighth month", "bank_statement",
-                            "2026-09-04",
-                            period(("3081.45", "2026-08-01"),
-                                   ("3402.10", "2026-08-31")))
-    vault.ledger.append(statement_held(
-        unposted_doc,
-        StatementFacts(
-            doc_id=unposted_doc, doc_type="bank_statement",
-            doc_type_confidence=0.98, account_ref="acct:everyday-checking",
-            currency="USD", opening_amount=Decimal("3081.45"),
-            opening_date="2026-08-01", closing_amount=Decimal("3402.10"),
-            closing_date="2026-08-31", transactions=[], opening_page=1,
-            closing_page=2, account_number="000000004417",
-            institution="Sample Mutual",
-            account_names=["SAMPLE HOLDER"]).to_dict(),
-        None, "gap", "2026-09-04", Provenance(doc_id=unposted_doc)))
-    return vault
+    return build_demo_vault(directory)
 
 
 def read_surfaces(vault) -> dict[str, Any]:

@@ -2,36 +2,36 @@ import { describe, expect, it } from "vitest";
 import { BridgeRefusal, BridgeUnreadable } from "../bridge/contracts";
 import type { BridgeClient, SurfaceName } from "../bridge/contracts";
 import { loadPrivateSnapshot } from "./load-private-snapshot";
-import { demoSource, privateSource } from "./sources";
+import { privateSource, sampleSource } from "./sources";
 
 function client(data: Partial<Record<SurfaceName, unknown>> = {}): BridgeClient {
-  const defaults: Record<SurfaceName, unknown> = { overview: { accounts: [] }, documents: { documents: [] }, review: { questions: [], total: 0 }, jobs: { state: "absent", jobs: [], running: [] }, trust: { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } }, activity: { state: "absent", sentence: "Nothing has moved.", items: [], beyond: { count: 0 } } };
+  const defaults: Record<SurfaceName, unknown> = { overview: { accounts: [] }, documents: { documents: [] }, review: { questions: [], total: 0 }, jobs: { state: "absent", jobs: [], running: [] }, trust: { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } }, activity: { state: "absent", sentence: "Nothing has moved.", beyond: { count: 0 } } };
   const read = async (surface: SurfaceName) => ({ surface, job_id: `test-${surface}`, data: surface in data ? data[surface] : defaults[surface] });
-  return { openVault: async () => undefined, readOverview: () => read("overview"), readDocuments: () => read("documents"), readReview: () => read("review"), readJobs: () => read("jobs"), readTrust: () => read("trust"), readActivity: () => read("activity"), handshake: async () => ({ protocol: "2.0", transport: "json-lines", revision: "abcdef123456" }), readCapabilities: async () => ({ protocol: "2.0", capabilities: [], destinations: { overview: true, documents: true, review: true } }), askViva: async () => ({ kind: "completed", message: "Something.", state: { question: "what?", text: "Something.", answered: true, refusal: "", grade: "", grade_sentence: "", figures: [], spoken: { may_speak: true, withheld: "", parts: ["text"], text: "Something.", grade_sentence: "", citation_sentence: "", local_only: "Local only." } }, reason: null }), answerQuestion: async () => ({ kind: "completed", message: "Recorded.", state: null, reason: null }), declineQuestion: async () => ({ kind: "completed", message: "Set aside.", state: null, reason: null }), cancelJob: async () => ({ kind: "completed", message: "Stopped.", state: null, reason: null }), readSettings: async () => ({ state: "ready", locale: "en-US", currency: "USD", adapter: "", model: "", base_url: "", key_set: false, can_send: false }), proposeSettings: async () => ({ kind: "proposal", message: "Here is what would change.", state: { kind: "presentation", changes: { locale: "en-IN" }, sends: false, digest: "abc123" }, reason: null }), confirmSettings: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }), rescanDocuments: async () => ({ kind: "completed", message: "Nothing changed.", state: { sentence: "Nothing changed.", changes: [], standing: [], link_count: 0 }, reason: null }), runMaintenance: async () => ({ kind: "completed", message: "Planned.", state: { dry_run: true, calls_spent: 0 }, reason: null }), writeDiagnostic: async () => ({ kind: "completed", message: "Written.", state: { file: "/tmp/d.json" }, reason: null }), exportVault: async () => ({ kind: "completed", message: "Copied.", state: null, reason: null }), restoreVault: async () => ({ kind: "completed", message: "Back.", state: null, reason: null }), uploadDocument: async () => ({ kind: "completed", message: "Saved.", state: null, reason: null }) };
+  return { openVault: async () => undefined, openSampleVault: async () => ({ title: "a frame title", detail: "a frame detail", leave: "a way out" }), readOverview: () => read("overview"), readDocuments: () => read("documents"), readReview: () => read("review"), readJobs: () => read("jobs"), readTrust: () => read("trust"), readActivity: () => read("activity"), handshake: async () => ({ protocol: "2.0", transport: "json-lines", revision: "abcdef123456" }), readCapabilities: async () => ({ protocol: "2.0", capabilities: [], destinations: { overview: true, documents: true, review: true } }), askViva: async () => ({ kind: "completed", message: "Something.", state: { question: "what?", text: "Something.", answered: true, refusal: "", grade: "", grade_sentence: "", figures: [], spoken: { may_speak: true, withheld: "", parts: ["text"], text: "Something.", grade_sentence: "", citation_sentence: "", local_only: "Local only." } }, reason: null }), answerQuestion: async () => ({ kind: "completed", message: "Recorded.", state: null, reason: null }), declineQuestion: async () => ({ kind: "completed", message: "Set aside.", state: null, reason: null }), cancelJob: async () => ({ kind: "completed", message: "Stopped.", state: null, reason: null }), readSettings: async () => ({ state: "ready", locale: "en-US", currency: "USD", adapter: "", model: "", base_url: "", key_set: false, can_send: false }), proposeSettings: async () => ({ kind: "proposal", message: "Here is what would change.", state: { kind: "presentation", changes: { locale: "en-IN" }, sends: false, digest: "abc123" }, reason: null }), confirmSettings: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }), rescanDocuments: async () => ({ kind: "completed", message: "Nothing changed.", state: { sentence: "Nothing changed.", changes: [], standing: [], link_count: 0 }, reason: null }), runMaintenance: async () => ({ kind: "completed", message: "Planned.", state: { dry_run: true, calls_spent: 0 }, reason: null }), writeDiagnostic: async () => ({ kind: "completed", message: "Written.", state: { file: "/tmp/d.json" }, reason: null }), exportVault: async () => ({ kind: "completed", message: "Copied.", state: null, reason: null }), restoreVault: async () => ({ kind: "completed", message: "Back.", state: null, reason: null }), uploadDocument: async () => ({ kind: "completed", message: "Saved.", state: null, reason: null }) };
 }
 
 describe("surface loading boundary", () => {
-  it("keeps the fixture-backed preview path explicit", async () => {
-    const snapshot = await demoSource.load();
-    expect(snapshot.overview.state).toBe("ready");
-    if (snapshot.overview.state === "ready") expect(snapshot.overview.data.picture.readOn).toBe("July 31, 2026");
-    expect(demoSource.boundary).toBe("fixture");
-  });
 
-  it("provides one typed demo source boundary for the shell", async () => {
-    const snapshot = await demoSource.load();
-    expect(demoSource.id).toBe("synthetic-demo");
-    expect(demoSource.label).toBe("Sample vault");
-    expect(demoSource.mode).toBe("demo");
-    expect(snapshot).toBe(await demoSource.load());
-    expect([snapshot.overview.state, snapshot.documents.state, snapshot.activity.state]).toEqual(["ready", "ready", "ready"]);
+  it("reads the sample vault through the same loader as a private one", async () => {
+    // The sample used to be a second implementation of this seam, loading
+    // fixtures composed in the shell. It is a vault now, so it comes back
+    // through the same reads, and the only thing that tells it apart is the
+    // frame the sidecar sent to draw around it.
+    const bridge = client();
+    const sample = sampleSource(bridge, { title: "a frame title", detail: "a frame detail", leave: "a way out" });
+    const snapshot = await sample.load();
+
+    expect(sample.sample).toBe(true);
+    expect(sample.frame?.title).toBe("a frame title");
+    expect(snapshot.overview.state).toBe("ready");
+    expect(privateSource(bridge).frame).toBeNull();
+    expect(privateSource(bridge).sample).toBe(false);
   });
 
   it("exposes a typed private source seam", async () => {
     const source = privateSource(client({ overview: { accounts: [] }, documents: { documents: [] }, review: { questions: [], total: 0 } }));
     const snapshot = await source.load();
-    expect(source.boundary).toBe("bridge-ready");
-    expect(snapshot.mode).toBe("live");
+    expect(source.id).toBe("bridge-client");
     expect(snapshot.review.state).toBe("ready");
   });
 
@@ -123,13 +123,11 @@ describe("surface loading boundary", () => {
     // controls are missing and none may carry copy describing one. A source
     // that dropped them would fail here rather than reach a person as a panel
     // saying actions are not connected.
-    for (const source of [demoSource, privateSource(client())]) {
+    for (const source of [sampleSource(client(), { title: "t", detail: "d", leave: "l" }), privateSource(client())]) {
+      expect(typeof source.reviewActions.answer).toBe("function");
       expect(typeof source.reviewActions.decline).toBe("function");
       expect(typeof source.reviewActions.reread).toBe("function");
     }
-    // The sample vault records nothing, so its verb refuses and says so. That
-    // keeps the refusal a person may meet reachable with no vault open.
-    await expect(demoSource.reviewActions.decline("sample", "not_now")).resolves.toMatchObject({ state: "settled", outcome: { kind: "refused", reason: "sample_vault" } });
     await expect(actions.decline("q-1", "not_now")).resolves.toEqual({ state: "settled", outcome: { kind: "completed", message: "Set aside.", reason: "" } });
     await expect(actions.reread()).resolves.toEqual({ state: "ready", data: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } });
   });

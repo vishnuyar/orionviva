@@ -176,7 +176,7 @@ export function privateReviewActions(client: BridgeClient): ReviewActions {
   };
 }
 
-export async function loadPrivateSnapshot(client: BridgeClient): Promise<SurfaceSnapshot> {
+export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"]): Promise<SurfaceSnapshot> {
   const [overviewRead, documentsRead, reviewRead, trustRead, activityRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readReview(), client.readTrust(), client.readActivity()]);
   return buildLiveSnapshot(
     settledOverview(overviewRead),
@@ -184,5 +184,6 @@ export async function loadPrivateSnapshot(client: BridgeClient): Promise<Surface
     settled(reviewRead, (read) => adaptReview(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
     settled(activityRead, (read) => adaptActivity(read.data)),
+    disclosure,
   );
 }

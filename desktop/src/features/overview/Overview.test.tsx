@@ -2,9 +2,9 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 // The sentences the product ships, read from the pack that ships them. A
 // sentence typed out here would be an assertion about words nobody released.
-import moments from "../../../../product/viva/persona/pack-v29/moments.json";
+import moments from "../../../../product/viva/persona/pack-v30/moments.json";
 import { EvidenceDrawer } from "../../components/EvidenceDrawer";
-import type { FeatureResult, FigureView, OverviewData, PictureView, ReviewData, SurfaceSnapshot } from "../../surface/types";
+import type { FeatureResult, FigureView, OverviewData, PictureView, ReviewData, SurfaceSnapshot , ActivityData } from "../../surface/types";
 import { Overview } from "./Overview";
 
 // The one slot the announcement lines take. Naming it here keeps the test
@@ -33,15 +33,20 @@ function figure(overrides: Partial<FigureView> = {}): FigureView {
 }
 
 function overview(picture: Partial<PictureView> = {}): FeatureResult<OverviewData> {
-  return { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [], ...picture }, corpusCoverage: "", accounts: [], recent: [] } };
+  return { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [], ...picture }, accounts: [] } };
 }
 
+// No activity read beside the picture, which is the state before that surface
+// answers. The recent-signals block says so in the read's own absence rather
+// than rendering rows it does not have.
+const noActivity: FeatureResult<ActivityData> = { state: "absent", reason: "not_read" };
+
 function view(result: FeatureResult<OverviewData>) {
-  return render(<Overview {...actions} result={result} reviewResult={noReview} mode="live" selectedAccount="" />);
+  return render(<Overview {...actions} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
 }
 
 function snapshotOf(result: FeatureResult<OverviewData>): SurfaceSnapshot {
-  return { mode: "live", disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: result, documents: { state: "absent", reason: "not_read" }, review: noReview, activity: { state: "absent", reason: "not_read" }, conversation: { state: "absent", reason: "not_read" }, trust: { state: "absent", reason: "not_read" } };
+  return { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: result, documents: { state: "absent", reason: "not_read" }, review: noReview, activity: { state: "absent", reason: "not_read" }, conversation: { state: "absent", reason: "not_read" }, trust: { state: "absent", reason: "not_read" } };
 }
 
 describe("the picture on the overview", () => {
@@ -238,7 +243,7 @@ describe("the picture on the overview", () => {
     expect(none.queryByRole("heading", { name: "Net worth" })).not.toBeInTheDocument();
     // And the rest of the overview is untouched: one panel standing down is
     // not the screen going quiet.
-    expect(none.getByText("Activity is not connected to this private-vault read.")).toBeInTheDocument();
+    expect(none.getByText("The activity read is not available beside this picture.")).toBeInTheDocument();
   });
 
   // The badge follows the ladder word the read supplied. A word the ladder
@@ -302,11 +307,9 @@ describe("the picture on the overview", () => {
     const shared = "EUR 642.10";
     const result: FeatureResult<OverviewData> = { state: "ready", data: {
       picture: { coverage: "A panel sentence.", readOn: "", withheld: [], unplaced: [], figures: [figure({ id: "EUR", currency: "EUR", display: shared, evidenceHeading: "Net worth in EUR" })] },
-      corpusCoverage: "",
       accounts: [{ id: "acct:abroad", name: "Abroad Current", kind: "Depository", measure: "balance", exactValue: "", currency: "EUR", display: shared, grade: "verified", gradeLabel: "verified", gradeDescription: "One reviewed sentence.", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
-      recent: [],
-    } };
-    const rendered = render(<Overview {...actions} result={result} reviewResult={noReview} mode="live" selectedAccount="" />);
+      } };
+    const rendered = render(<Overview {...actions} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
     const announced = [...rendered.container.querySelectorAll("button")].map((control) => (control.getAttribute("aria-labelledby") ?? "")
       .split(" ").map((id) => rendered.container.querySelector(`[id="${id}"]`)?.textContent ?? "").join(" ").trim() || control.textContent || "");
     const figuresNamed = announced.filter((name) => name.startsWith(shared));
@@ -317,7 +320,7 @@ describe("the picture on the overview", () => {
   // Recent activity is deferred by decision, and the admission that stands in
   // its place stays exactly as it is until something can carry it.
   it("leaves the activity admission word for word", () => {
-    expect(view(overview()).getByText("Activity is not connected to this private-vault read.")).toBeInTheDocument();
+    expect(view(overview()).getByText("The activity read is not available beside this picture.")).toBeInTheDocument();
   });
 
   // Nothing on this screen speaks direction while the site that derives it

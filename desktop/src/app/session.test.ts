@@ -2,21 +2,20 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { BridgeRequest, BridgeResponse, BridgeTransport, SurfaceName } from "../bridge/contracts";
 import type { SurfaceSource } from "../surface/sources";
-import { sampleSnapshot } from "../surface/sources";
 import type { SurfaceSnapshot } from "../surface/types";
-import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
+import { initialSession, liveReadingSnapshot, sessionReducer, unopenedSnapshot } from "./session";
 import { useSurfaceSession } from "./useSurfaceSession";
 import { destinations } from "./navigation";
 import { retainSelection } from "./selection";
 
-const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", boundary: "bridge-ready", mode: "live", load: async () => liveReadingSnapshot(), reviewActions: { answer: async () => ({ state: "unanswered" }), decline: async () => ({ state: "unanswered" }), reread: async () => ({ state: "absent", reason: "not asked" }) }, documentActions: null, jobStream: null, transferActions: null, settingsActions: null, conversationActions: null, trustActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "not asked" }, registry: { state: "unavailable", reason: "not asked" } }) };
+const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", sample: false, frame: null, load: async () => liveReadingSnapshot(), reviewActions: { answer: async () => ({ state: "unanswered" }), decline: async () => ({ state: "unanswered" }), reread: async () => ({ state: "absent", reason: "not asked" }) }, documentActions: null, jobStream: null, transferActions: null, settingsActions: null, conversationActions: null, trustActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "not asked" }, registry: { state: "unavailable", reason: "not asked" } }) };
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason?: unknown) => void; const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; }); return { promise, resolve, reject }; }
 function ok<T>(requestId: string, result: T): BridgeResponse<T> { return { protocol: "1.0", request_id: requestId, ok: true, result }; }
 function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : { questions: [], total: 0 }; }
 function readyLive(): SurfaceSnapshot {
   return {
     ...liveReadingSnapshot(),
-    overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [{ id: "account-live", name: "Live", kind: "", measure: null, exactValue: "", currency: "", display: "", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "Unavailable", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }], recent: [] } },
+    overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [{ id: "account-live", name: "Live", kind: "", measure: null, exactValue: "", currency: "", display: "", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "Unavailable", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }] } },
     documents: { state: "ready", data: { documents: [{ id: "document-live", name: "document-live", state: "Resolved", phaseLabel: "Not supplied", detail: "", source: "", pages: "", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } },
     review: { state: "ready", data: { queue: [{ id: "question-live", label: "Question", detail: "", status: "Read only", action: "", type: "", evidence: "", state: "needs_input", outcome: null, disposition: null }], count: 1, meta: { total: 1, tail: null, pending: null, invite: "", answeredByDocument: "" } } },
   };
@@ -32,10 +31,14 @@ describe("surface session", () => {
     expect(retainSelection("b", ["c", "a"])).toBe("c");
     expect(retainSelection("b", [])).toBe("");
   });
-  it("starts settled with matching sample source and snapshot", () => {
+  it("starts with no vault open and no verbs, rather than inside somebody's invented money", () => {
+    // The fixture demo used to be the starting state, so the app opened onto a
+    // picture before anybody had asked for one. Both vaults are entered
+    // deliberately now, and this is what says so.
     const state = initialSession();
     expect(state.phase).toBe("settled");
-    expect(state.source.mode).toBe(state.snapshot.mode);
+    expect(state.source).toBeNull();
+    expect(state.snapshot.overview.state).toBe("absent");
     expect(state.requestId).toBe(0);
   });
 
@@ -51,7 +54,7 @@ describe("surface session", () => {
     const opening = sessionReducer(initialSession(), { type: "opening", requestId: 1 });
     const reading = sessionReducer(opening, { type: "reading", requestId: 1, source: liveSource, snapshot: liveReadingSnapshot() });
     expect(reading.phase).toBe("reading");
-    expect(reading.source.mode).toBe(reading.snapshot.mode);
+    expect(reading.source).toBe(liveSource);
     expect(JSON.stringify(reading.snapshot)).not.toContain("Everyday checking");
   });
 
@@ -92,9 +95,8 @@ describe("surface session", () => {
   it("reset wins atomically over pending work", () => {
     const pending = sessionReducer(initialSession(), { type: "opening", requestId: 1 });
     const reset = sessionReducer(pending, { type: "reset", requestId: 2 });
-    expect(reset.snapshot).toBe(sampleSnapshot);
-    expect(reset.source.mode).toBe("demo");
-    expect(reset.source.mode).toBe(reset.snapshot.mode);
+    expect(reset.source).toBeNull();
+    expect(reset.snapshot).toEqual(unopenedSnapshot());
     expect(sessionReducer(reset, { type: "loaded", requestId: 1, snapshot: readyLive() })).toBe(reset);
   });
 
@@ -122,12 +124,12 @@ describe("surface session", () => {
     act(() => { pending = result.current.openVault("/first", "secret", false); });
     await waitFor(() => expect(result.current.session.phase).toBe("opening"));
     act(() => result.current.resetDemo());
-    expect(result.current.session.source.mode).toBe("demo");
+    expect(result.current.session.source).toBeNull();
     open.resolve(ok("open-1", { state: "opened" }));
     await act(async () => { await pending; });
-    expect(result.current.session.source.mode).toBe("demo");
-    expect(result.current.session.snapshot).toBe(sampleSnapshot);
-    expect(result.current.session.notice).toEqual({ kind: "acknowledged", text: "Sample vault reset to the fictional data stored with the app." });
+    expect(result.current.session.source).toBeNull();
+    expect(result.current.session.snapshot).toEqual(unopenedSnapshot());
+    expect(result.current.session.notice).toEqual({ kind: "acknowledged", text: "Closed. Nothing from that vault is on this screen." });
   });
 
   it("two opens resolving out of order keep the newest private request", async () => {
@@ -242,9 +244,6 @@ describe("surface session", () => {
   it("does not carry what was done on one screen to another", async () => {
     const { result } = renderHook(() => useSurfaceSession());
 
-    await act(async () => { await result.current.declineQuestion("sample-question", "not_now"); });
-    expect(result.current.session.reviewAction).toMatchObject({ state: "settled" });
-
     // Leaving the screen ends the account of what was done on it. A notice
     // still standing on return reports an act on something the person is no
     // longer looking at, minutes after it happened.
@@ -254,15 +253,18 @@ describe("surface session", () => {
     expect(result.current.session.reviewAction).toEqual({ state: "idle" });
   });
 
-  it("the sample vault answers the verb with a refusal and records nothing", async () => {
+  it("a verb pressed with no vault open does nothing rather than answering for one", async () => {
+    // Every verb comes from the source, and before a vault is open there is no
+    // source. The sample vault used to be the standing source, so a verb
+    // pressed here reached a fixture that refused; now nothing is reached at
+    // all, and nothing is claimed about a vault nobody opened.
     const { result } = renderHook(() => useSurfaceSession());
     const before = JSON.stringify(result.current.session.snapshot.review);
 
     await act(async () => { await result.current.declineQuestion("sample-question", "not_now"); });
 
-    // The refusal a person may meet is reachable with no vault open, and the
-    // sample vault's honest answer to a verb is that nothing here is recorded.
-    expect(result.current.session.reviewAction).toMatchObject({ result: { state: "settled", outcome: { kind: "refused", reason: "sample_vault" } } });
+    expect(result.current.session.source).toBeNull();
+    expect(result.current.session.reviewAction).toEqual({ state: "idle" });
     expect(JSON.stringify(result.current.session.snapshot.review)).toBe(before);
   });
 

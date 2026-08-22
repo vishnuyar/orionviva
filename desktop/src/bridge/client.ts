@@ -1,5 +1,21 @@
 import { BridgeRefusal, BridgeUnreadable } from "./contracts";
-import type { BridgeClient, BridgeTransport, DeclineReason, SurfaceName, SurfaceParameters, SurfaceReadResult } from "./contracts";
+import type { BridgeClient, BridgeTransport, DeclineReason, SampleFrame, SurfaceName, SurfaceParameters, SurfaceReadResult } from "./contracts";
+
+// The frame's words, read off the reply that opened the sample vault. Every
+// field must be there and be a sentence: a frame drawn with a blank line in it
+// would be a frame that says less than it promises, and a shell filling that
+// blank in would be writing the sentence the pack ships. A reply this cannot
+// read gets no frame, and the caller treats a missing frame as a refusal.
+function sampleFrame(result: unknown): SampleFrame | null {
+  if (typeof result !== "object" || result === null) return null;
+  const frame = (result as { frame?: unknown }).frame;
+  if (typeof frame !== "object" || frame === null) return null;
+  const said = frame as { title?: unknown; detail?: unknown; leave?: unknown };
+  if (typeof said.title !== "string" || !said.title.trim()) return null;
+  if (typeof said.detail !== "string" || !said.detail.trim()) return null;
+  if (typeof said.leave !== "string" || !said.leave.trim()) return null;
+  return { title: said.title, detail: said.detail, leave: said.leave };
+}
 
 export function createHostBridgeClient(transport: BridgeTransport): BridgeClient {
   let requestNumber = 0;
@@ -19,6 +35,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
   }
   return {
     openVault: async (vaultDirectory, passphrase, create) => { await request("bridge.open_vault", { vault_directory: vaultDirectory, passphrase, create }); },
+    openSampleVault: async () => sampleFrame(await request<unknown>("bridge.open_demo_vault", {})),
     ...(transport.pickVaultDirectory ? { pickVaultDirectory: transport.pickVaultDirectory } : {}),
     ...(transport.pickDocumentPaths ? { pickDocumentPaths: transport.pickDocumentPaths } : {}),
     ...(transport.subscribeToDroppedPaths ? { subscribeToDroppedPaths: transport.subscribeToDroppedPaths } : {}),

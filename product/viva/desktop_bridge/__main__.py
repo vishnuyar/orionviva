@@ -34,6 +34,7 @@ from viva.desktop_bridge.handlers import (
     handlers_for_opened_vault,
 )
 from viva.desktop_bridge.rpc import CURRENT_PROTOCOL, dispatch_frame, encode_frame
+from viva.surface import BRIDGE_OPEN_DEMO_VAULT, BRIDGE_OPEN_VAULT
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +82,54 @@ def _open_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
     return Vault.open(Path(directory), passphrase, create=create), made
 
 
+def _open_demo_vault(payload: dict[str, Any]) -> tuple[Vault, bool]:
+    """Open the sample vault, minting it where it lives if it is not there yet.
+
+    The request carries nothing. Where the sample vault lives and what opens it
+    are the engine's own, so a caller cannot point this at a directory they
+    keep their own records in, and cannot learn the passphrase by asking. That
+    is a fence kept by the shape of the request rather than by a check.
+
+    It is minted once and stays. A sample vault made fresh each launch would
+    lose whatever a person did inside it, and a demo somebody cannot change is
+    a screenshot."""
+    if payload:
+        raise ValueError("bridge.open_demo_vault does not accept fields: "
+                         + ", ".join(sorted(payload)))
+    from viva.demo import open_demo_vault
+
+    return open_demo_vault()
+
+
+# The two ways a vault is opened, and the one place that says so. Both are
+# answered before dispatch runs, so neither reaches an allowlist; keeping them
+# in one table is what stops a second one being added without the branch that
+# serves it.
+OPEN_OPERATIONS = {
+    BRIDGE_OPEN_VAULT: _open_vault,
+    BRIDGE_OPEN_DEMO_VAULT: _open_demo_vault,
+}
+
+
+def _sample_frame() -> dict[str, str]:
+    """The frame's own words: what the place is, what that means, and the one
+    action that leaves it."""
+    return {"title": _moment("sample_frame"),
+            "detail": _moment("sample_frame_detail"),
+            "leave": _moment("sample_frame_leave")}
+
+
+def _what_opened(made: bool, sample: bool) -> str:
+    """Which sentence a person gets about the vault that just opened.
+
+    The sample vault says so in its own words rather than borrowing the private
+    vault's: a screen that told somebody their vault was created, when what was
+    created was the demo, has said something false about their records."""
+    if sample:
+        return "vault_sample_opened"
+    return "vault_created" if made else "vault_opened"
+
+
 class Sidecar:
     """Own the process-local opened-vault lifecycle and allowlist."""
 
@@ -101,9 +150,11 @@ class Sidecar:
 
     def handle(self, frame: str) -> list[str]:
         request = _decode_request_id(frame)
-        if request is not None and request["operation"] == "bridge.open_vault":
-            response = self._open(request["request_id"], request["payload"])
-            return [response]
+        if request is not None and request["operation"] in OPEN_OPERATIONS:
+            open_it = OPEN_OPERATIONS[request["operation"]]
+            sample = request["operation"] == BRIDGE_OPEN_DEMO_VAULT
+            return [self._open(request["request_id"], request["payload"],
+                               open_it, sample)]
         return [dispatch_frame(frame, self._dispatcher.handlers)]
 
     # --------------------------------------------------------------- pumping
@@ -162,12 +213,17 @@ class Sidecar:
         self._output.write(response)
         self._output.flush()
 
-    def _open(self, request_id: str, payload: dict[str, Any]) -> str:
+    def _open(self, request_id: str, payload: dict[str, Any],
+              open_it=_open_vault, sample: bool = False) -> str:
         try:
-            vault, made = _open_vault(payload)
+            vault, made = open_it(payload)
         except Exception as exc:  # noqa: BLE001 - protocol must stay alive.
             log.debug("vault open failed: %s", exc)
-            code, said = _why_it_did_not_open(exc)
+            # The sample vault fails differently, because a person opening it
+            # named no folder and no passphrase. Telling them a directory was
+            # absent would be telling them about a path they never typed.
+            code, said = (("sample_vault_unopened", _moment("sample_vault_unopened"))
+                          if sample else _why_it_did_not_open(exc))
             return encode_frame({
                 "protocol": CURRENT_PROTOCOL.wire(),
                 "request_id": request_id,
@@ -184,9 +240,20 @@ class Sidecar:
             "protocol": CURRENT_PROTOCOL.wire(),
             "request_id": request_id,
             "ok": True,
+            # Whether this is the sample vault is stated by the side that
+            # opened it. An interface deciding for itself which vault it is
+            # looking at would be deciding whether to draw the frame that says
+            # nothing here is real, and it would be right until the day it was
+            # not.
             "result": {"state": "created" if made else "opened",
-                       "message": _moment("vault_created" if made
-                                          else "vault_opened"),
+                       "message": _moment(_what_opened(made, sample)),
+                       "sample": sample,
+                       # The words the frame around the sample vault is drawn
+                       # with, sent by the side that ships them. A shell
+                       # composing its own frame would be writing the one
+                       # sentence in this product that says nothing here is
+                       # real, and writing it out of the pack's reach.
+                       **({"frame": _sample_frame()} if sample else {}),
                        "surfaces": sorted(_surface_names())},
         })
 
@@ -257,7 +324,7 @@ def _decode_request_id(frame: str) -> dict[str, Any] | None:
         return None
     operation = payload.get("operation")
     request_id = payload.get("request_id")
-    if operation == "bridge.open_vault" and isinstance(request_id, str):
+    if operation in OPEN_OPERATIONS and isinstance(request_id, str):
         return {"operation": operation, "request_id": request_id, "payload": payload.get("payload", {})}
     return None
 

@@ -12,6 +12,11 @@ const expectedSkips = [];
 // Both halves of the parity test read these same bytes; the adapter tests are
 // the one place on this side permitted to import it.
 const backendParityFixture = "../../../../product/viva/surface/fixtures/overview-parity-v1.json";
+// The same artifact, one directory nearer: the shell's own test opens the
+// sample vault, and what the sidecar answers for it is these bytes. A shell
+// test that authored its own payloads would agree with itself while
+// disagreeing with the product.
+const shellParityFixture = "../../../product/viva/surface/fixtures/overview-parity-v1.json";
 // The persona pack the product ships. A test that asserts what a person is
 // told reads the sentence from here; one that types the sentence out passes
 // against words nobody shipped. No production module reads it: the sentences
@@ -89,7 +94,7 @@ function ownerTestImportAllowed(name, specifier) {
   if (name.startsWith("surface/adapters/")) return specifier.startsWith("./") || specifier === "../types" || specifier === "../evidence" || specifier === backendParityFixture;
   if (name.startsWith("features/")) return specifier.startsWith("./") || specifier.includes("/components/") || specifier.endsWith("/surface/types") || specifier.endsWith("/surface/evidence") || specifier.endsWith("/app/navigation") || specifier.endsWith("/app/selection");
   if (name.startsWith("surface/fixtures/")) return specifier.startsWith("./") || specifier === "../types" || specifier === "../evidence";
-  if (name.startsWith("app/")) return specifier.startsWith("./") || specifier === "../bridge/contracts" || specifier === "../surface/types" || specifier === "../surface/sources";
+  if (name.startsWith("app/")) return specifier.startsWith("./") || specifier === "../bridge/contracts" || specifier === "../surface/types" || specifier === "../surface/sources" || specifier === shellParityFixture;
   if (name.startsWith("surface/")) return specifier.startsWith("./") || specifier === "../bridge/contracts";
   return specifier.startsWith("./");
 }
@@ -681,6 +686,8 @@ function runSelfChecks() {
   assertViolation("conversation presentation crosses upper layers", (files) => files.set("features/conversation/conversationPresentation.ts", "import '../../bridge/client'; import '../../surface/adapters/review'; import '../../surface/fixtures/demo-snapshot'; import '../../app/session'; import '../overview/Overview';"), "feature crosses data boundary");
   assertViolation("conversation presentation raw shape", (files) => files.set("features/conversation/conversationPresentation.ts", "export const raw: unknown = {};"), "raw shape leaked into UI");
   assertViolation("conversation presentation arithmetic", (files) => files.set("features/conversation/conversationPresentation.ts", "export const amount = Number('1');"), "frontend arithmetic forbidden");
+  assertValid("shell test reads the backend parity artifact", (files) => files.set("app/App.test.tsx", `import { it } from 'vitest'; import artifact from '${shellParityFixture}'; it('reads one artifact', () => artifact);`));
+  assertViolation("shell test reads some other backend file", (files) => files.set("app/App.test.tsx", "import held from '../../../product/viva/surface/fixtures/surface-v1.json'; export default held;"), "owner test import forbidden");
   assertValid("adapter test reads the backend parity artifact", (files) => files.set("surface/adapters/primitives.test.ts", `import { it } from 'vitest'; import artifact from '${backendParityFixture}'; import { primitive } from './primitives'; it('reads one artifact', () => [artifact, primitive]);`));
   assertViolation("adapter test reads another path beside the artifact", (files) => files.set("surface/adapters/primitives.test.ts", "import { it } from 'vitest'; import other from '../../../../product/viva/surface/fixtures/surface-v1.json'; it('reads another', () => other);"), "owner test import forbidden");
   assertViolation("non-adapter test reads the parity artifact", (files) => files.set("components/Thing.test.tsx", `import { it } from 'vitest'; import artifact from '../../${backendParityFixture}'; it('reads the artifact', () => artifact);`), "owner test import forbidden");

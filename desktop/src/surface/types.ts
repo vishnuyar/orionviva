@@ -1,5 +1,4 @@
 export type Destination = "overview" | "accounts" | "activity" | "documents" | "review" | "trust";
-export type SurfaceMode = "demo" | "live";
 export type FigureGrade = "verified" | "corroborated" | "unverified" | "conflicted" | "unavailable" | "not_applicable";
 export type PanelState = "absent" | "ready" | "partial" | "needs_input" | "unavailable" | "failed";
 export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "stale";
@@ -179,22 +178,16 @@ export type DocumentPhase = "captured" | "queued" | "reading" | "held" | "parked
 // books — a figure and the account it was attested on, or the line for a
 // document nothing rests on. It is per row rather than per panel because it is
 // about that document and no other, and it is never composed here.
-export type SurfaceDocument = { id: string; name: string; contribution?: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; sample?: { region?: string; contribution?: string; waitReason?: string } };
+export type SurfaceDocument = { id: string; name: string; contribution?: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading };
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
 export type DocumentJob = { id: string; label: string; state: "running" | "paused" | "done"; detail: string; progress: string };
 export type OutboundRecord = { id: string; label: string; state: "queued" | "sent" | "blocked"; detail: string; destination: string };
 export type AccountView = { id: string; name: string; kind: string; measure: "balance" | "owed" | null; exactValue: string; currency: string; display: string; grade: FigureGrade; gradeLabel: string; gradeDescription: string; note: string | null; asOf: string; coverage: string | null; provenance: string | null; evidenceLinks: EvidenceLink[]; state: PanelState; caveats?: readonly string[]; exactness?: string | null; recordIds?: readonly string[] };
-export type ActivityView = { id: string; label: string; exactValue: string; display: string; measure: "income" | "spending"; detail: string; tone: "inflow" | "outflow" | "neutral"; state: PanelState; provenance: string; evidenceLinks: EvidenceLink[]; grade: "not_applicable"; exactness?: string | null; recordIds?: readonly string[]; sample?: SampleActivityDetails };
-export type SampleActivityFacet = { readonly id: string; readonly label: string };
-export type SampleActivityRelationship = { readonly targetActivityId: string; readonly label: string };
-export type SampleActivityFilterCatalog = { readonly dates: readonly SampleActivityFacet[]; readonly accounts: readonly SampleActivityFacet[]; readonly merchants: readonly SampleActivityFacet[]; readonly categories: readonly SampleActivityFacet[]; readonly tags: readonly SampleActivityFacet[]; readonly natures: readonly SampleActivityFacet[]; readonly directions: readonly SampleActivityFacet[] };
-export type SampleActivityDetails = { readonly date?: SampleActivityFacet; readonly account?: SampleActivityFacet; readonly merchant?: SampleActivityFacet; readonly category?: SampleActivityFacet; readonly tags?: readonly SampleActivityFacet[]; readonly nature?: SampleActivityFacet; readonly direction?: SampleActivityFacet; readonly relationships?: readonly SampleActivityRelationship[] };
-export type ReviewSampleAnatomy = "answer" | "decline" | "proposal" | "confirmation";
 // One thing a question needs back. `wants` is the queue's own sentence saying
 // what kind of thing that is, and `choices` is the closed vocabulary an answer
 // must land in — the vocabulary tokens. Both are the backend's.
 export type QuestionSlot = { name: string; type: string; required: boolean; wants: string; choices: readonly string[] };
-export type ReviewView = { id: string; slots?: readonly QuestionSlot[]; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string; sample?: { anatomy?: ReviewSampleAnatomy; proposedValue?: string; confirmationPrompt?: string; evidenceLinks?: EvidenceLink[] } };
+export type ReviewView = { id: string; slots?: readonly QuestionSlot[]; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string };
 export type ConversationTurn = { id: string; speaker: "you" | "viva"; text: string; state: "answer" | "refusal" | "citation" | "prompt"; citation?: string };
 export type ConversationPrompt = { id: string; label: string; detail: string; state: "ready" | "refusal" | "citation" };
 
@@ -226,7 +219,7 @@ export type PictureView = {
   withheld: readonly WithheldCurrency[];
   unplaced: readonly UnplacedAccount[];
 };
-export type OverviewData = { picture: PictureView; corpusCoverage: string; accounts: AccountView[]; recent: ActivityView[] };
+export type OverviewData = { picture: PictureView; accounts: AccountView[] };
 // One reviewed sentence for the whole panel, written by the backend, empty
 // when the panel has nothing to say. It is never composed here and never
 // repeated per row.
@@ -238,7 +231,7 @@ export type ReviewData = { queue: ReviewView[]; count: number; meta: { total: nu
 // disagree. `sentence` is empty on an ordinary spending row and is never
 // composed here.
 export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; sentence: string; decidedBy: string; provisional: boolean; linked: boolean };
-export type ActivityData = { items: ActivityView[]; sentence?: string; movements?: readonly MovementView[]; beyond?: { count: number }; sample?: { readonly filters?: SampleActivityFilterCatalog } };
+export type ActivityData = { sentence: string; movements: readonly MovementView[]; beyond: { count: number } };
 // One figure a spoken or written answer stated, and the route back to what it
 // rests on. `written` is the words the sentence wrote the figure as, so the
 // figure under the sentence is the figure in it — not a second rendering of the
@@ -258,11 +251,8 @@ export type AskActionState =
   | { state: "idle" }
   | { state: "working"; question: string }
   | { state: "settled"; question: string; result: ActionResult; turn: TurnView | null };
-export type ConversationData = { turns: ConversationTurn[]; prompts: ConversationPrompt[]; sample?: { turns: ConversationTurn[]; prompts: ConversationPrompt[] } };
+export type ConversationData = { turns: ConversationTurn[]; prompts: ConversationPrompt[] };
 export type TrustNote = { readonly id: string; readonly title: string; readonly detail: string };
-export type TrustCapabilityGroup = "source" | "outbound_models" | "integrity" | "continuity" | "build_support";
-export type TrustCapabilityState = "fictional_sample" | "preview_limitation" | "not_connected" | "not_supplied" | "not_implemented";
-export type TrustSampleCapability = { readonly id: string; readonly group: TrustCapabilityGroup; readonly label: string; readonly state: TrustCapabilityState; readonly detail: string };
 // One line of the outbound record, or one absence it carries. The sentence is
 // the read's in every case: a screen that composes its own caveat writes it out
 // of date the day the capability lands, and nothing goes red when it does.
@@ -284,7 +274,7 @@ export type OutboundRecordView = {
 // whole reviewed sentence and none is composed here — an absent capability
 // described in a screen's own soft words reads as a capability.
 export type TrustAbsence = { id: string; sentence: string };
-export type TrustData = { notes: TrustNote[]; absences?: readonly TrustAbsence[]; outbound?: OutboundRecordView; sample?: { capabilities: TrustSampleCapability[] } };
+export type TrustData = { notes: TrustNote[]; absences?: readonly TrustAbsence[]; outbound?: OutboundRecordView };
 // The review verbs a screen may use, and the read that follows one. A screen
 // holds these rather than a transport, so nothing above this line knows an
 // action is a frame.
@@ -329,4 +319,4 @@ export type DocumentActions = {
   rescan: () => Promise<{ result: ActionResult; report: RescanReport | null }>;
   reread: () => Promise<FeatureResult<DocumentsData>>;
 };
-export type SurfaceSnapshot = { mode: SurfaceMode; disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; review: FeatureResult<ReviewData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> };
+export type SurfaceSnapshot = { disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; review: FeatureResult<ReviewData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> };

@@ -4,9 +4,9 @@ import type { AccountView, FeatureResult, OverviewData } from "../../surface/typ
 import { Accounts } from "./Accounts";
 
 const account = (id: string, name = `Account ${id}`, kind = "Depository"): AccountView => ({ id, name, kind, measure: "balance", exactValue: "", currency: "USD", display: "$10.00", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "This read did not provide a recognized evidence grade.", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
-const overview = (accounts: AccountView[]): OverviewData => ({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts, recent: [] });
+const overview = (accounts: AccountView[]): OverviewData => ({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts });
 const ready = (accounts: AccountView[]): FeatureResult<OverviewData> => ({ state: "ready", data: overview(accounts) });
-const baseProps = { mode: "live" as const, selectedAccount: "", onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
+const baseProps = { selectedAccount: "", onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
 
 describe("Accounts stable identity presentation", () => {
   const longId = "A deliberately long supplied truth value stays visible and wraps without truncation across supported narrow viewport boundaries.";
@@ -43,16 +43,6 @@ describe("Accounts stable identity presentation", () => {
     expect(buttons[1]).toHaveFocus();
   });
 
-  it("uses exact mode-specific missing account copy and semantic selected detail", () => {
-    const blank = account("blank", "", "");
-    const view = render(<Accounts {...baseProps} result={ready([blank])} />);
-    expect(view.getAllByText("Account name was not supplied by this overview read.")).toHaveLength(2);
-    expect(view.getAllByText("Account kind was not supplied by this overview read.")).toHaveLength(2);
-    expect(view.getByRole("heading", { name: "Account name was not supplied by this overview read." })).toHaveAttribute("id", "selected-account-title");
-    view.rerender(<Accounts {...baseProps} mode="demo" result={ready([blank])} />);
-    expect(view.getAllByText("Sample account name was not authored.")).toHaveLength(2);
-    expect(view.getAllByText("Sample account kind was not authored.")).toHaveLength(2);
-  });
 
   it("keeps duplicate labels with distinct 128-character IDs selected exactly after reorder", () => {
     const secondId = longId.slice(0, -1) + "!";

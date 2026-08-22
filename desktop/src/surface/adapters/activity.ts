@@ -39,10 +39,6 @@ export function adaptActivity(raw: unknown): ActivityData | null {
   if (!sentence.trim()) return null;
   const rows = Array.isArray(raw.items) ? raw.items : [];
   return {
-    // `items` is the demo surface's own shape and stays empty on a live read:
-    // the two are different models and merging them would let a fixture field
-    // arrive on a row about real money.
-    items: [],
     sentence,
     movements: rows.map(movement).filter((row): row is MovementView => row !== null),
     beyond: { count: (isRecord(raw.beyond) ? optionalNonNegativeInteger(raw.beyond.count) : undefined) ?? 0 },

@@ -1,26 +1,4 @@
-import type { DocumentPhase, SurfaceDocument } from "../../surface/types";
-
-export type LifecyclePresentation =
-  | { state: "ready"; title: string; detail: string }
-  | { state: "missing"; title: "Lifecycle unavailable"; detail: "Lifecycle was not supplied by this fictional sample." }
-  | { state: "unrecognized"; title: "Lifecycle not recognized"; detail: "This fictional sample supplies a lifecycle value this preview does not recognize. No later step is implied." };
-
-export const sampleLifecycle: ReadonlyArray<{ phase: DocumentPhase; title: string; detail: string }> = [
-  { phase: "captured", title: "Captured", detail: "The original is saved before reader work begins." },
-  { phase: "queued", title: "Waiting for a reader", detail: "The captured original is waiting; this screen does not start reader work." },
-  { phase: "reading", title: "Reading", detail: "Reader work is separate. This static sample is not running a model." },
-  { phase: "held", title: "Held for review", detail: "A human decision is needed. Nothing is posted automatically." },
-  { phase: "parked", title: "Parked", detail: "The document is kept, but this sample has no supported way to continue reading it." },
-  { phase: "unresolved", title: "Needs resolution", detail: "The sample says an issue remains unresolved." },
-  { phase: "read_ready", title: "Read complete", detail: "A read result is available; that is not verification or ledger posting." },
-  { phase: "verified", title: "Verified", detail: "The sample says verification finished; this screen still does not post or send anything." },
-];
-
-export function lifecyclePresentation(value: string | null | undefined): LifecyclePresentation {
-  if (!value?.trim()) return { state: "missing", title: "Lifecycle unavailable", detail: "Lifecycle was not supplied by this fictional sample." };
-  const match = sampleLifecycle.find((item) => item.phase === value);
-  return match ? { state: "ready", title: match.title, detail: match.detail } : { state: "unrecognized", title: "Lifecycle not recognized", detail: "This fictional sample supplies a lifecycle value this preview does not recognize. No later step is implied." };
-}
+import type { SurfaceDocument } from "../../surface/types";
 
 // What a row calls a document: the name the vault recorded for the file where
 // there is one, and the kind of document where there is not. The identity stays

@@ -1,5 +1,4 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
-import { demoSource, sampleSnapshot } from "../surface/sources";
 import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, TrustActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
@@ -7,7 +6,9 @@ export type SessionPhase = "opening" | "reading" | "settled";
 export type SurfaceSession = {
   phase: SessionPhase;
   requestId: number;
-  source: SurfaceSource;
+  // No vault open yet. Every screen reads its own absent state from the
+  // snapshot; this says which verbs exist, and before a vault there are none.
+  source: SurfaceSource | null;
   snapshot: SurfaceSnapshot;
   destination: Destination;
   selectedDocument: string;
@@ -112,18 +113,22 @@ function hasReadFailure(snapshot: SurfaceSnapshot) {
   return [snapshot.overview, snapshot.documents, snapshot.review].some((result) => result.state === "failed");
 }
 
+// Before any vault is open. There used to be a vault here — the fixture demo
+// was the session's starting state, so the app opened onto a picture of
+// somebody else's invented money before anybody had asked for one. The sample
+// vault is a real vault now and is entered deliberately, from one affordance,
+// like the private one.
 export function initialSession(): SurfaceSession {
-  const ids = selectedIds(sampleSnapshot);
   return {
     phase: "settled",
     requestId: 0,
-    source: demoSource,
-    snapshot: sampleSnapshot,
+    source: null,
+    snapshot: unopenedSnapshot(),
     destination: "overview",
-    selectedDocument: ids.documents[0] ?? "",
-    selectedQueue: ids.queue[0] ?? "",
-    selectedAccount: ids.accounts[0] ?? "",
-    selectedPrompt: ids.prompts[0] ?? "",
+    selectedDocument: "",
+    selectedQueue: "",
+    selectedAccount: "",
+    selectedPrompt: "",
     notice: null,
     reviewAction: { state: "idle" },
     captureAction: { state: "idle" },
@@ -158,9 +163,28 @@ function withJob(jobs: readonly JobView[], job: JobView): readonly JobView[] {
   return held ? jobs.map((candidate) => (candidate.jobId === job.jobId ? merged : candidate)) : [...jobs, merged];
 }
 
+// Before a vault is open, and while one is being read. Two names for two
+// facts: nothing has been asked for yet, and something has and has not come
+// back. A screen that could not tell them apart would say "reading" to
+// somebody who had opened nothing.
+export function unopenedSnapshot(): SurfaceSnapshot {
+  return {
+    disclosure: {
+      title: "No vault open",
+      subtitle: "Nothing has been read",
+      detail: "Open your own vault, or open the sample vault to see what one looks like when it is full.",
+    },
+    overview: { state: "absent", reason: "no_vault" },
+    documents: { state: "absent", reason: "no_vault" },
+    review: { state: "absent", reason: "no_vault" },
+    activity: { state: "absent", reason: "no_vault" },
+    conversation: { state: "absent", reason: "no_vault" },
+    trust: { state: "absent", reason: "no_vault" },
+  };
+}
+
 export function liveReadingSnapshot(): SurfaceSnapshot {
   return {
-    mode: "live",
     disclosure: {
       title: "Private vault",
       subtitle: "Opened on this device",
@@ -180,7 +204,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "opening":
       return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
     case "reading":
-      if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
+      if (action.requestId !== state.requestId) return state;
       return {
         ...state,
         phase: "reading",
@@ -203,7 +227,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         trustAction: { state: "idle" },
       };
     case "loaded": {
-      if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
+      if (action.requestId !== state.requestId) return state;
       const ids = selectedIds(action.snapshot);
       return {
         ...state,
@@ -226,9 +250,13 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "load-failed":
       if (action.requestId !== state.requestId) return state;
       return { ...state, phase: "settled", notice: { kind: "refused", text: "The local vault opened, but its surface data could not be loaded." } };
+    // Leaving a vault, which is one action and takes everything with it. The
+    // whole session is rebuilt from nothing rather than having its fields
+    // cleared one at a time, so a field added later cannot be the one that
+    // survives a person leaving the sample vault.
     case "reset": {
       const reset = initialSession();
-      return { ...reset, requestId: action.requestId, notice: { kind: "acknowledged", text: "Sample vault reset to the fictional data stored with the app." } };
+      return { ...reset, requestId: action.requestId, notice: { kind: "acknowledged", text: "Closed. Nothing from that vault is on this screen." } };
     }
     // What was last done to a review question is said beside the question it
     // was done to, so leaving a question or leaving the screen it was on
