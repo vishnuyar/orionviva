@@ -14,7 +14,7 @@ describe("surface loading boundary", () => {
   it("keeps the fixture-backed preview path explicit", async () => {
     const snapshot = await demoSource.load();
     expect(snapshot.overview.state).toBe("ready");
-    if (snapshot.overview.state === "ready") expect(snapshot.overview.data.currentThrough).toBe("July 31, 2026");
+    if (snapshot.overview.state === "ready") expect(snapshot.overview.data.picture.readOn).toBe("July 31, 2026");
     expect(demoSource.boundary).toBe("fixture");
   });
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Accounts } from "../features/accounts/Accounts";
 import { Overview } from "../features/overview/Overview";
 import type { ActivityView, FeatureResult, OverviewData, ReviewData, ReviewView } from "../surface/types";
-import { LONG_TRUTH, absent, failed, makeAccount, makeOverview, makeSurfaceScenario, needsInput, partial, ready, unavailable } from "./surfaceScenarios";
+import { LONG_TRUTH, absent, failed, makeAccount, makeOverview, makePicture, makeSurfaceScenario, needsInput, partial, ready, unavailable } from "./surfaceScenarios";
 
 const actions = { onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
 const overviewActions = { ...actions, onOpenReviewQuestion: vi.fn(), onNavigate: vi.fn() };
@@ -69,22 +69,26 @@ describe("Overview and Accounts state matrix", () => {
 });
 
 describe("Overview supplied truth and identity boundaries", () => {
-  it("shows current-through as an opaque value and never infers freshness", () => {
-    const view = overviewView(ready(makeOverview({ currentThrough: "Opaque stale-label bytes" })));
-    expect(view.getByText("Current-through value")).toBeInTheDocument();
-    expect(view.getByText("Opaque stale-label bytes")).toBeInTheDocument();
-    expect(view.getByText("Shown as supplied. The interface does not infer freshness.")).toBeInTheDocument();
-    view.rerender(<Overview {...overviewActions} result={ready(makeOverview())} reviewResult={absentReview} mode="live" selectedAccount="" />);
-    expect(view.getByText("Current-through value was not supplied by this overview read.")).toBeInTheDocument();
+  // The horizon the projection was cut at is empty on every live read, and a
+  // heading over an empty horizon tells a person a freshness fact was withheld
+  // when none was ever asked for. The horizon does not reach this side; the
+  // picture states the day it was read on inside its own sentence.
+  it("makes no freshness claim out of the projection horizon", () => {
+    const view = overviewView(ready(makeOverview()));
+    for (const retired of ["Current-through value", "Shown as supplied. The interface does not infer freshness.", "Current-through value was not supplied by this overview read."]) {
+      expect(view.queryByText(retired), retired).not.toBeInTheDocument();
+    }
     view.rerender(<Overview {...overviewActions} result={ready(makeOverview())} reviewResult={absentReview} mode="demo" selectedAccount="" />);
-    expect(view.getByText("Sample current-through value was not authored.")).toBeInTheDocument();
+    expect(view.queryByText("Sample current-through value was not authored.")).not.toBeInTheDocument();
   });
 
-  it("hides live derived coverage and corpus fields while retaining exact demo fallbacks", () => {
-    const malicious = makeOverview({ coverage: "MALICIOUS COVERAGE", corpusCoverage: "MALICIOUS CORPUS", corpusSource: "MALICIOUS SOURCE" });
-    const view = overviewView(ready(malicious));
-    expect(view.getByText("Coverage totals were not supplied by this overview read. Available accounts are shown individually.")).toBeInTheDocument();
-    for (const hidden of ["MALICIOUS COVERAGE", "MALICIOUS CORPUS", "MALICIOUS SOURCE"]) expect(view.queryByText(hidden)).not.toBeInTheDocument();
+  // The picture's own sentence reaches a live screen whole, because the backend
+  // wrote it. The corpus fields are a demo-only concept and still do not.
+  it("shows the picture sentence the read supplied and no corpus field beside it", () => {
+    const supplied = makeOverview({ picture: makePicture({ coverage: "SUPPLIED PICTURE SENTENCE" }), corpusCoverage: "DEMO-ONLY CORPUS" });
+    const view = overviewView(ready(supplied));
+    expect(view.getByText("SUPPLIED PICTURE SENTENCE")).toBeInTheDocument();
+    expect(view.queryByText("DEMO-ONLY CORPUS")).not.toBeInTheDocument();
     view.rerender(<Overview {...overviewActions} result={ready(makeOverview())} reviewResult={absentReview} mode="demo" selectedAccount="" />);
     expect(view.getByText("Sample coverage was not authored.")).toBeInTheDocument();
     expect(view.getByText("Sample corpus coverage was not authored. The sample does not claim completeness.")).toBeInTheDocument();
@@ -112,7 +116,7 @@ describe("Overview supplied truth and identity boundaries", () => {
     expect(view.getByText("Activity identity unavailable")).toBeInTheDocument();
     expect(view.getByText("Activity identity conflicted")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "View question" })).toBeInTheDocument();
-    expect(view.getByRole("button", { name: "View evidence for Unique activity spending" })).toBeInTheDocument();
+    expect(view.getByRole("button", { description: "View evidence for Unique activity spending" })).toBeInTheDocument();
     for (const hidden of ["Blank account", "Duplicate account one", "Duplicate account two", "Blank review", "Duplicate review one", "Duplicate review two", "Blank activity", "Duplicate activity one", "Duplicate activity two"]) expect(view.queryByText(hidden)).not.toBeInTheDocument();
   });
 
@@ -128,7 +132,7 @@ describe("Overview supplied truth and identity boundaries", () => {
     const view = render(<Overview {...overviewActions} onSelectAccount={onSelectAccount} onOpenReviewQuestion={onOpenReviewQuestion} onOpenFigure={onOpenFigure} result={ready(makeOverview({ accounts: [makeAccount({ id: accountId, name: "Long account row" })], recent: [activityRow(activityId, "Long activity row")] }))} reviewResult={reviewResult} mode="live" selectedAccount="" />);
     const accountButton = view.getAllByRole("button", { name: /Long account row/i }).find((button) => button.classList.contains("account-card-button")) as HTMLElement;
     const reviewButton = view.getByRole("button", { name: "View question" });
-    const activityFigure = view.getByRole("button", { name: "View evidence for Long activity row spending" });
+    const activityFigure = view.getByRole("button", { description: "View evidence for Long activity row spending" });
     expect(accountId).toHaveLength(128);
     expect(reviewId).toHaveLength(128);
     expect(activityId).toHaveLength(128);
@@ -149,7 +153,7 @@ describe("Overview supplied truth and identity boundaries", () => {
     const view = overviewView(ready(makeOverview({ accounts, recent })), "live", reviewResult);
     expect(view.container).toHaveTextContent(LONG_TRUTH);
     expect(view.queryByRole("button", { name: /Conflicted account|Conflicted activity|View question/i })).not.toBeInTheDocument();
-    expect(view.queryByRole("button", { name: /View evidence for Conflicted/i })).not.toBeInTheDocument();
+    expect(view.queryByRole("button", { description: /View evidence for Conflicted/i })).not.toBeInTheDocument();
     expect(view.container.querySelector("[title]")).toBeNull();
   });
 
@@ -161,12 +165,12 @@ describe("Overview supplied truth and identity boundaries", () => {
     expect(view.getByText("Sample question text was not authored.")).toBeInTheDocument();
     expect(view.getByText("Sample activity label was not authored.")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "View question" })).toBeInTheDocument();
-    expect(view.getByRole("button", { name: "View evidence for Activity label unavailable spending" })).toBeInTheDocument();
+    expect(view.getByRole("button", { description: "View evidence for Activity label unavailable spending" })).toBeInTheDocument();
     for (const button of view.getAllByRole("button")) expect((button.getAttribute("aria-label") || button.textContent || "").trim()).not.toBe("");
     view.rerender(<Overview {...overviewActions} result={ready(makeOverview({ recent }))} reviewResult={reviewResult} mode="live" selectedAccount="" />);
     expect(view.getByText("Question text was not supplied by this review read.")).toBeInTheDocument();
     expect(view.getByText("Activity label was not supplied by this overview read.")).toBeInTheDocument();
     expect(view.getByRole("button", { name: "View question" })).toBeInTheDocument();
-    expect(view.getByRole("button", { name: "View evidence for Activity label unavailable spending" })).toBeInTheDocument();
+    expect(view.getByRole("button", { description: "View evidence for Activity label unavailable spending" })).toBeInTheDocument();
   });
 });

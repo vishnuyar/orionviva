@@ -5,7 +5,7 @@ import { Documents } from "./Documents";
 import type { CaptureControls } from "./Documents";
 // The sentences a person is told, read from the pack that ships them. A test
 // that types one out passes against words nobody shipped.
-import moments from "../../../../product/viva/persona/pack-v18/moments.json";
+import moments from "../../../../product/viva/persona/pack-v19/moments.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const ALREADY_HELD = moments.documents_already_held;

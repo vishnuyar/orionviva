@@ -390,3 +390,43 @@ def test_released_packs_are_frozen():
         assert h.hexdigest()[:16] == digest, (
             f"{version} changed — a released pack is immutable; add a new "
             "pack directory instead")
+
+
+def test_a_packs_own_comment_counts_nothing_it_would_have_to_keep_true():
+    """No comment in a pack file counts the lines beneath it.
+
+    A pack is frozen the day it is released and a number in its comment is
+    frozen with it, while the family it counts is still being written; a
+    comment that drifts inside an immutable artifact cannot be corrected, only
+    contradicted.
+
+    What this cannot catch, so a clean bill here is not the property being
+    held: it looks for quantities, and the defect it stands in for is a comment
+    that says something false about the family beneath it, of which a count is
+    one kind and the only mechanical kind. A comment claiming the lines do
+    something they do not, describing a family that has grown a different
+    shape, or naming a property no line has, passes this and is the same
+    failure. The protection is the comment being written truthfully and re-read
+    when the family changes; this is a reminder, not a proof."""
+    import re
+
+    # How English writes a quantity, enumerated so the check is mechanical
+    # rather than a judgement about whether a particular number is a count.
+    # It lints a comment and decides nothing the product does.
+    QUANTITIES = ("one", "two", "three", "four", "five", "six", "seven",
+                  "eight", "nine", "ten", "eleven", "twelve", "thirteen",
+                  "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+                  "nineteen", "twenty", "dozen")
+
+    said = persona.load()["moments"]["_comment"]
+    stated = re.findall(r"\b\d+\b", said)
+    spelled = [word for word in QUANTITIES
+               if re.search(r"\b" + word + r"\b", said.lower())]
+
+    assert said.strip()
+    assert not stated, (
+        f"the pack's comment states {stated}; a number here is frozen with the "
+        "pack while the family it counts is still being written")
+    assert not spelled, (
+        f"the pack's comment says {spelled}; describe the family and do not "
+        "number it")

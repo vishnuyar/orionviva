@@ -1,7 +1,9 @@
 import type {
   AccountView,
   FeatureResult,
+  FigureView,
   OverviewData,
+  PictureView,
   SurfaceMode,
   SurfaceSnapshot,
 } from "../surface/types";
@@ -54,13 +56,39 @@ export function makeAccount(overrides: Partial<AccountView> = {}): AccountView {
   };
 }
 
+export function makeFigure(overrides: Partial<FigureView> = {}): FigureView {
+  return {
+    id: "scenario-currency",
+    display: "$10.00",
+    exactValue: "",
+    currency: "USD",
+    measure: "net_worth",
+    grade: "unavailable",
+    gradeLabel: "Evidence status unavailable",
+    gradeDescription: "The read did not supply a recognized evidence status.",
+    asOf: "",
+    coverage: [],
+    caveats: [],
+    evidenceLinks: [],
+    ...overrides,
+  };
+}
+
+export function makePicture(overrides: Partial<PictureView> = {}): PictureView {
+  return {
+    coverage: "",
+    readOn: "",
+    figures: [],
+    withheld: [],
+    unplaced: [],
+    ...overrides,
+  };
+}
+
 export function makeOverview(overrides: Partial<OverviewData> = {}): OverviewData {
   return {
-    currentThrough: "",
-    coverage: "",
+    picture: makePicture(),
     corpusCoverage: "",
-    corpusSource: "",
-    netWorth: null,
     accounts: [],
     recent: [],
     ...overrides,

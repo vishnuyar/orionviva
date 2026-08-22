@@ -33,12 +33,35 @@ function shippedSentences(productRoot) {
   return { pack, sentences: packSentences(moments) };
 }
 
+// A sentence written as bare text between two tags. The scanner above has no
+// parser over it, so it reports such a sentence as ordinary words rather than
+// as one piece of text, and a rule reading only literals reports a clean bill
+// it could not have withheld. The run between a tag's closing `>` and the next
+// `<` is read back out of the source it was scanned from, so what is compared
+// is what a person would read.
+function jsxTextRuns(text, tokens) {
+  const runs = [];
+  let openedAt = -1;
+  for (const token of tokens) {
+    if (token.kind === SyntaxKind.GreaterThanToken) { openedAt = token.end; continue; }
+    if ((token.kind !== SyntaxKind.LessThanToken && token.kind !== SyntaxKind.LessThanSlashToken) || openedAt < 0) continue;
+    const run = text.slice(openedAt, token.start).trim();
+    if (run) runs.push({ value: run, start: openedAt });
+    openedAt = -1;
+  }
+  return runs;
+}
+
 function shippedSentenceViolations(name, text, sentences) {
   const shipped = new Set(sentences);
   const violations = [];
-  for (const token of scanTypeScript(name, text)) {
+  const tokens = scanTypeScript(name, text);
+  for (const token of tokens) {
     if (token.kind !== SyntaxKind.StringLiteral && token.kind !== SyntaxKind.NoSubstitutionTemplateLiteral) continue;
     if (shipped.has(token.value)) violations.push(`shipped sentence typed out: ${name}:${token.start}`);
+  }
+  for (const run of jsxTextRuns(text, tokens)) {
+    if (shipped.has(run.value)) violations.push(`shipped sentence typed out: ${name}:${run.start}`);
   }
   return [...new Set(violations)];
 }
@@ -664,6 +687,8 @@ function runSelfChecks() {
   assertSentenceViolation("a test types out a sentence the pack ships", (files) => files.set("features/overview/Overview.test.tsx", `import { it } from 'vitest'; it('says it', () => '${selfCheckSentences[0]}');`));
   assertSentenceViolation("a component types out a sentence the pack ships", (files) => files.set("features/overview/Overview.tsx", `export const Overview = () => "${selfCheckSentences[0]}";`));
   assertSentenceViolation("a sentence the pack ships written as a template literal", (files) => files.set("features/overview/Overview.tsx", "export const Overview = () => `" + selfCheckSentences[0] + "`;"));
+  assertSentenceViolation("a sentence the pack ships written as bare text between tags", (files) => files.set("features/overview/Overview.tsx", `export const Overview = () => <p>${selfCheckSentences[0]}</p>;`));
+  assertSentenceValid("prose between tags that is not one of the pack's sentences", (files) => files.set("features/overview/Overview.tsx", "export const Overview = () => <p>Saved privately, and nothing more is claimed.</p>;"));
   assertSentenceValid("a sentence read from the pack rather than written out", (files) => files.set("features/overview/Overview.test.tsx", "import { it } from 'vitest'; import moments from '../../../../product/viva/persona/pack-v18/moments.json'; it('reads it', () => moments.documents_saved_no_reader);"));
   assertSentenceValid("prose that is not one of the pack's sentences", (files) => files.set("features/overview/Overview.tsx", "export const Overview = () => 'Saved privately, and nothing more is claimed.';"));
   assertValid("a test reads the sentences a person is told from the pack that ships them", (files) => { files.set("features/overview/Overview.test.tsx", "import { it } from 'vitest'; import moments from '../../../../product/viva/persona/pack-v18/moments.json'; import { Overview } from './Overview'; it('reads the pack', () => [moments, Overview]);"); files.set("app/App.test.tsx", `${files.get("app/App.test.tsx")}\nimport moments from '../../../product/viva/persona/pack-v19/moments.json';`); });

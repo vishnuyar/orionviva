@@ -14,6 +14,8 @@ from viva.desktop_bridge import (
     OpenedVaultSurfaceProvider,
 )
 from viva.desktop_bridge.review_actions import UnreadableOutcome, outcome_of
+from viva.desktop_bridge import vault_surface
+from viva.persona import moment
 from viva.vault import Vault
 from viva.surface import CURRENT_PROTOCOL, serialize_registry
 from viva.surface import FigureView
@@ -342,7 +344,7 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
     vault = Vault.open(tmp_path / "vault", "pw")
     provider = OpenedVaultSurfaceProvider(vault)
 
-    overview = provider.read_surface("overview", {})
+    overview = provider.read_surface("overview", {"read_on": "2026-09-30"})
     documents = provider.read_surface("documents", {})
     review = provider.read_surface("review", {"limit": 5})
 
@@ -354,6 +356,16 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
         "accounts": [],
         "account_count": 0,
         "spending_by_currency": {},
+        # A vault with nothing in it has no total, and says so. Silence is not
+        # a refusal: a blank where a figure was yesterday reads as the product
+        # being broken, which is worse and less true than what happened.
+        "picture": {
+            "coverage": moment("picture_no_figure"),
+            "read_on": "2026-09-30",
+            "figures": [],
+            "withheld": [],
+            "unplaced": [],
+        },
     }
     # A panel earns its existence from data: an empty vault has no paperwork,
     # and says so rather than reporting a successful read of nothing.
@@ -376,6 +388,25 @@ def test_opened_vault_provider_rejects_unknown_surface_and_parameters(tmp_path):
         provider.read_surface("overview", {"account": "secret"})
     with pytest.raises(ValueError, match="positive integer"):
         provider.read_surface("review", {"limit": 0})
+    with pytest.raises(ValueError, match="read_on must be a string"):
+        provider.read_surface("overview", {"read_on": 20260930})
+
+
+def test_the_day_a_picture_is_read_on_is_stated_or_is_the_day_it_is_asked_on(tmp_path, monkeypatch):
+    """The read parameter and the payload field are one name end to end, and
+    it is not the projection horizon a letter away from it. A caller may state
+    the day, which is how a generated artifact stays the same bytes whenever it
+    runs; with none stated the surface holds no clock and this side does."""
+    provider = OpenedVaultSurfaceProvider(Vault.open(tmp_path / "vault", "pw"))
+    monkeypatch.setattr(vault_surface, "_now", lambda: "2027-03-01")
+
+    stated = provider.read_surface("overview", {"read_on": "2026-09-30"})
+    unstated = provider.read_surface("overview", {})
+
+    assert stated["picture"]["read_on"] == "2026-09-30"
+    assert unstated["picture"]["read_on"] == "2027-03-01"
+    # The horizon keeps its own name and its own meaning.
+    assert stated["as_of"] is None
 
 
 def test_opened_vault_allowlist_dispatches_real_surface_reads(tmp_path):

@@ -1,0 +1,96 @@
+/* The whole picture on the overview: one figure per currency, and the sentences
+   each of them carries about where its claim ends. Every value here is a token;
+   a raw value does not belong in this file.
+
+   Each selector names the card as well as the element, so that a rule in a
+   stylesheet predating the token set cannot outrank it on an element this one
+   paints. */
+
+/* Two totals held in two currencies are never added, and the layout has to say
+   so. It says it with space: the room between one currency and the next is
+   wider than the room inside either, which is what reads as two things rather
+   than one. A rule would say the same and would be a graphical object a
+   person has to see to follow the content, which is held to a contrast floor;
+   space has no ratio to clear, so this is the answer that discharges the
+   requirement rather than the one that moves the number. */
+.hero-card .picture-figures {
+  display: grid;
+  gap: var(--space-3xl);
+  min-width: 0;
+}
+
+.hero-card .picture-figure {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* The number sits in a list of its own kind, so the space between one currency
+   and the next belongs to the list rather than to the figure. The number
+   itself carries no mark: what it is set in is its own, and a rule drawn
+   through a serif numeral is read as damage to the total rather than as a way
+   into its evidence. It does not wrap: a total broken at its space is a unit
+   set as a heading with an amount beneath it, and which currency a total is in
+   is not decoration on the one screen that never adds two of them. */
+.hero-card .picture-figure .hero-amount {
+  margin: 0;
+  white-space: nowrap;
+}
+
+/* A currency the read kept back, and the picture with nothing to stand behind
+   at all. Both stand where a number would have stood rather than where a
+   footnote would: a refusal read as a footnote about the total above it is a
+   refusal about the wrong thing. */
+.hero-card .picture-withheld,
+.hero-card .picture-empty {
+  display: grid;
+  align-content: start;
+  min-height: var(--space-3xl);
+}
+
+.hero-card .picture-standing {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-section);
+  line-height: var(--leading-tight);
+}
+
+/* An account the picture could not place under any currency, named on the
+   panel because it is named nowhere else. It is a property of the picture
+   placed by the machine that holds it, not the panel's one absence sentence,
+   and it is painted in ordinary ink for the same reason the citation is: what
+   says where a claim ends is not decoration. */
+.coverage-card .picture-unplaced {
+  display: grid;
+  gap: var(--space-sm);
+  margin: var(--space-lg) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coverage-card .picture-unplaced li {
+  display: grid;
+  gap: var(--space-hair);
+  color: var(--ink);
+}
+
+.coverage-card .picture-unplaced strong {
+  font-size: var(--text-fine);
+  font-weight: var(--weight-strong);
+}
+
+.coverage-card .picture-unplaced span {
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+/* What this part of the picture covers, what day it is good for, and how old
+   the evidence beneath it is. It is the half of the claim that says where the
+   claim ends rather than a footnote about it, so it is painted in ordinary ink
+   and is subordinated by size and position instead. */
+.hero-card .picture-figure .picture-citation {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}

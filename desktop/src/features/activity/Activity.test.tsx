@@ -71,7 +71,7 @@ describe("Activity surface", () => {
     const link = { targetDocumentId: "document-exact", label: "Exact statement", relation: "same_period" as const, page: "page 7" };
     const movement = sample("figure-id", { evidenceLinks: [link] });
     const { getAllByRole, getByRole } = render(<Activity result={ready(data([movement]))} mode="demo" onOpenEvidence={openEvidence} onOpenFigure={openFigure} />);
-    fireEvent.click(getAllByRole("button", { name: /View evidence for Sample figure-id income/i })[0]);
+    fireEvent.click(getAllByRole("button", { description: /View evidence for Sample figure-id income/i })[0]);
     expect(openFigure).toHaveBeenCalledWith("activity:figure-id");
     fireEvent.click(getByRole("button", { name: "Exact statement · page 7" }));
     expect(openEvidence).toHaveBeenCalledWith(link);

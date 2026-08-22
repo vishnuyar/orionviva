@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, ConversationDialogShell } from "./App";
 // The sentences a person is told, read from the pack that ships them.
-import moments from "../../../product/viva/persona/pack-v18/moments.json";
+import moments from "../../../product/viva/persona/pack-v19/moments.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const queryByRoleIn = (root: HTMLElement, role: string) => root.querySelector(`[role="${role}"]`);
@@ -51,7 +51,7 @@ describe("minimal shell", () => {
     const { getByRole, getByText, getAllByText } = render(<App />);
     expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
     expect(getByText("$48,240.18")).toBeInTheDocument();
-    expect(getByText("Corroborated · July 31, 2026")).toBeInTheDocument();
+    expect(getByText("Supported by more than one source or matching record.")).toBeInTheDocument();
     expect(getByText("Sample vault")).toBeInTheDocument();
     expect(getByText("Sample data boundary")).toBeInTheDocument();
     const disclosure = getByRole("complementary", { name: "Vault source" });
@@ -230,7 +230,7 @@ describe("minimal shell", () => {
     const user = userEvent.setup();
     const view = render(<App />);
     if (overlay === "Evidence") {
-      await user.click(view.getByRole("button", { name: "View evidence for Net worth" }));
+      await user.click(view.getByRole("button", { description: "View evidence for Net worth" }));
       expect(view.getByRole("dialog", { name: "Evidence for Net worth" })).toBeInTheDocument();
       await user.click(view.getByRole("button", { name: "Close evidence" }));
     } else {
@@ -252,7 +252,7 @@ describe("minimal shell", () => {
     try {
       const view = render(<App />);
       if (overlay === "Evidence") {
-        const opener = view.getByRole("button", { name: "View evidence for Net worth" });
+        const opener = view.getByRole("button", { description: "View evidence for Net worth" });
         opener.focus();
         fireEvent.click(opener);
         fireEvent.click(view.getByRole("button", { name: "Close evidence" }));
@@ -446,10 +446,11 @@ describe("minimal shell", () => {
     const user = userEvent.setup();
     const { container, getByRole, getByText } = render(<App />);
 
-    await user.click(container.querySelector(".hero-card .proof-link") as HTMLElement);
-    expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).toBeInTheDocument();
-    expect(getByText("Synthetic PDF · checking statement · page 1")).toBeInTheDocument();
-
+    // The picture's figure carries one evidence control and no proof-link row:
+    // a citation the read gave no label becomes a button announcing the word
+    // "unavailable", and a stack of them under one number reads as broken
+    // links where the product claimed a receipt. Its route to a document runs
+    // through the drawer, and the case above this one drives it.
     await user.click(getByRole("button", { name: /accounts.*where money sits/i }));
     expect(getByText("Supporting documents")).toBeInTheDocument();
     await user.click(container.querySelector(".detail-panel .proof-link") as HTMLElement);
@@ -491,7 +492,7 @@ describe("minimal shell", () => {
 
     try {
       const { container, getByRole } = render(<App />);
-      fireEvent.click(container.querySelector(".hero-card .proof-link") as HTMLElement);
+      fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
       expect(getByRole("heading", { name: "silverline-checking-2026-07.pdf" })).not.toHaveFocus();
 
       fireEvent.click(getByRole("button", { name: "Reset sample vault" }));
@@ -534,7 +535,7 @@ describe("minimal shell", () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { container, getByRole } = render(<App />);
-      fireEvent.click(container.querySelector(".hero-card .proof-link") as HTMLElement);
+      fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
       fireEvent.click(getByRole("button", { name: "AccountsWhere money sits" }));
       fireEvent.click(getByRole("button", { name: "DocumentsWhat supports it" }));
       getByRole("heading", { name: "Documents" }).focus();
@@ -549,7 +550,7 @@ describe("minimal shell", () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { container, getByRole } = render(<App />);
-      fireEvent.click(container.querySelector(".hero-card .proof-link") as HTMLElement);
+      fireEvent.click(container.querySelector(".account-card .proof-link") as HTMLElement);
       fireEvent.click(getByRole("button", { name: /northgate-brokerage-2026-05-to-2026-07\.pdf/i }));
       fireEvent.click(getByRole("button", { name: /silverline-checking-2026-07\.pdf/i }));
       getByRole("heading", { name: "Documents" }).focus();
@@ -563,7 +564,7 @@ describe("minimal shell", () => {
   it("opens fresh figure evidence and routes its exact source to the selected document heading", async () => {
     const user = userEvent.setup();
     const { getByRole, queryByRole } = render(<App />);
-    const trigger = getByRole("button", { name: "View evidence for Net worth" });
+    const trigger = getByRole("button", { description: "View evidence for Net worth" });
 
     await user.click(trigger);
     expect(getByRole("dialog", { name: "Evidence for Net worth" })).toBeInTheDocument();
@@ -581,7 +582,7 @@ describe("minimal shell", () => {
     const user = userEvent.setup();
     const { getByRole, queryByRole } = render(<App />);
 
-    await user.click(getByRole("button", { name: "View evidence for Net worth" }));
+    await user.click(getByRole("button", { description: "View evidence for Net worth" }));
     expect(getByRole("dialog", { name: "Evidence for Net worth" })).toBeInTheDocument();
     fireEvent.click(getByRole("button", { name: "Ask Viva", hidden: true }));
     expect(queryByRole("dialog", { name: "Evidence for Net worth" })).not.toBeInTheDocument();
@@ -1173,7 +1174,10 @@ describe("minimal shell", () => {
       await user.type(getByLabelText("Passphrase"), "secret");
       await user.click(getByRole("button", { name: "Open local vault" }));
 
-      await waitFor(() => expect(getAllByText("Private checking")).toHaveLength(2));
+      // Twice on the screen: the account card and the selected-account panel. A
+      // figure carries its subject in text a reader hears and a screen does not
+      // show, and this counts what is shown.
+      await waitFor(() => expect(getAllByText("Private checking", { ignore: "script, style, .figure-invitation" })).toHaveLength(2));
       expect(getByText("Private vault")).toBeInTheDocument();
       expect(getByText("Opened on this device")).toBeInTheDocument();
       expect(getByText("Private vault · Opened on this device")).toBeInTheDocument();
@@ -1331,7 +1335,7 @@ describe("minimal shell", () => {
       await user.click(getByRole("button", { name: "Open local vault" }));
 
       await waitFor(() => expect(getByRole("status")).toHaveTextContent("The private vault opened, but some surfaces could not be read. Your vault was not changed."));
-      expect(getAllByText("Kept account")).toHaveLength(2);
+      expect(getAllByText("Kept account", { ignore: "script, style, .figure-invitation" })).toHaveLength(2);
       await user.click(getByRole("button", { name: /documents.*what supports it/i }));
       expect(getByText("The documents section could not be read. The private vault is still open.")).toBeInTheDocument();
     } finally {

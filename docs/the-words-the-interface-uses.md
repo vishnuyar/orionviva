@@ -145,7 +145,9 @@ practiced: aria attributes across the features and shared components,
 focus-management tests, role queries in most suites. What fails a build is
 narrower than that: a stylesheet declared to be written against the token set
 may hold no raw value, the two older stylesheets may not gain any, and the
-sentences the capture screen ships are measured against the contrast floor.
+sentences the capture screen and the overview's picture ship are measured
+against the contrast floor, along with every paint a person has to see in
+order to follow the picture.
 Keyboard reach is still held by habit.
 
 The interface has an architecture gate and half a craft gate. Naming a gap here

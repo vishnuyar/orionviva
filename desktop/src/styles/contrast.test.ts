@@ -3,6 +3,7 @@ import tokens from "./tokens.css?raw";
 import shell from "./shell.css?raw";
 import surfaces from "./surfaces.css?raw";
 import capture from "./capture.css?raw";
+import picture from "./picture.css?raw";
 
 // What a person can actually read, measured rather than judged. The colours
 // come from the token file, the grounds under them from the stylesheets that
@@ -16,6 +17,22 @@ import capture from "./capture.css?raw";
 const AA_TEXT = 4.5;
 const AA_LARGE = 3;
 const AA_NON_TEXT = 3;
+
+// The properties that paint something a person reads, and the properties that
+// paint something a person sees. Both are written as the CSS grammar for a
+// paint, longhand and shorthand alike, because a colour written as part of a
+// shorthand is the same colour on the screen. Anything else carrying a colour
+// is refused rather than passed: a gate that silently ignores what it cannot
+// classify reports a clean bill it could not have withheld.
+const TEXT_PAINTS = ["color"];
+const GRAPHICAL_PAINTS = [
+  "background", "background-color", "background-image",
+  "border", "border-color", "border-top", "border-right", "border-bottom", "border-left",
+  "border-top-color", "border-right-color", "border-bottom-color", "border-left-color",
+  "border-block", "border-block-start", "border-block-end", "border-inline", "border-inline-start", "border-inline-end",
+  "outline", "outline-color", "box-shadow", "text-shadow", "text-decoration", "text-decoration-color",
+  "column-rule", "column-rule-color", "caret-color", "accent-color", "fill", "stroke",
+];
 
 type Paint = { rgb: [number, number, number]; alpha: number };
 
@@ -84,20 +101,67 @@ function contrast(front: string, ground: [number, number, number]): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-// The declaration a selector actually carries, read from the stylesheet that
-// carries it rather than restated here.
-function declared(source: string, selector: string, property: string): string {
-  const block = blockOf(source, selector);
-  for (const declaration of block.split(";")) {
-    const [name, ...rest] = declaration.split(":");
-    if (name.trim() === property) return rest.join(":").trim();
+// Every rule a stylesheet holds, with its header split into the selectors it
+// groups. A rule nested inside an at-rule is still a rule; the at-rule that
+// holds it is not one, so a page-width variation is read as the rules it
+// carries rather than as one block.
+type Rule = { selectors: string[]; body: string };
+
+function rules(source: string): Rule[] {
+  // A comment sits between two rules and would otherwise be read as part of
+  // the header that follows it.
+  const text = source.replace(new RegExp("/\\*[\\s\\S]*?\\*/", "g"), " ");
+  const found: Rule[] = [];
+  const open: { header: string; from: number }[] = [];
+  let mark = 0;
+  for (let at = 0; at < text.length; at += 1) {
+    if (text[at] === "{") {
+      open.push({ header: text.slice(mark, at).trim(), from: at + 1 });
+      mark = at + 1;
+      continue;
+    }
+    if (text[at] !== "}") continue;
+    const rule = open.pop();
+    if (rule && !rule.header.startsWith("@")) found.push({ selectors: rule.header.split(",").map((one) => one.trim().replace(new RegExp("\\s+", "g"), " ")), body: text.slice(rule.from, at) });
+    mark = at + 1;
   }
-  throw new Error(`${selector} declares no ${property}`);
+  return found;
+}
+
+// The declaration a selector actually carries, read from the stylesheet that
+// carries it rather than restated here. A selector written alongside others
+// under one header is found among them rather than missed, and where more than
+// one rule declares the same property the last one is the one that paints —
+// which is the only one a person can see.
+function declared(source: string, selector: string, property: string): string {
+  const values: string[] = [];
+  for (const rule of rules(source)) {
+    if (!rule.selectors.includes(selector)) continue;
+    for (const declaration of rule.body.split(";")) {
+      const [name, ...rest] = declaration.split(":");
+      if (name.trim() === property) values.push(rest.join(":").trim());
+    }
+  }
+  if (!values.length) throw new Error(`${selector} declares no ${property}`);
+  return values[values.length - 1];
 }
 
 // Every stop of every page gradient the light palette paints, read out of the
 // stylesheet that paints them. Nothing here is typed: a page repainted darker
 // moves these, and what stands on it is measured again.
+// Which token names hold a colour, decided by whether the value each one
+// declares parses as one. Nothing here is a list of names anybody chose.
+const colourTokens = [...light.entries()].filter(([, value]) => { try { paint(value); return true; } catch { return false; } }).map(([name]) => name);
+
+// Every colour a declaration carries, wherever in its value it sits.
+function coloursIn(value: string): string[] {
+  const found: string[] = [];
+  for (const match of value.matchAll(new RegExp("var\\((--[\\w-]+)\\)", "g"))) if (colourTokens.includes(match[1])) found.push(`var(${match[1]})`);
+  for (const match of value.matchAll(new RegExp("#[0-9a-f]{3,8}(?![\\w-])", "gi"))) found.push(match[0]);
+  for (const match of value.matchAll(new RegExp("rgba?\\([^)]*\\)", "gi"))) found.push(match[0]);
+  return found;
+}
+
 const lightSource = tokens.replace(qualifiedRootBlock(tokens), "");
 const grounds = [...new Set([...lightSource.matchAll(new RegExp("linear-gradient\\(180deg,\\s*(#[0-9a-f]{6})\\s*0%,\\s*(#[0-9a-f]{6})\\s*100%\\)", "g"))].flatMap((match) => [match[1], match[2]]))];
 
@@ -149,6 +213,150 @@ describe("what a person can read on the screens this cycle authored", () => {
     expect(words).not.toBe(border);
     expect(close).toBe(words);
     expect(paint(words).rgb).toEqual(paint("var(--ink)").rgb);
+  });
+
+  // The picture's own sentence about how far it reaches, on the card that
+  // heads it. A citation painted quieter than the figure it qualifies is a
+  // citation the product is apologising for, so subordination comes from size
+  // and position and never from contrast.
+  it("puts the picture's coverage sentence above the floor at the size it renders", () => {
+    const ink = declared(surfaces, ".coverage-card p", "color");
+    const card = declared(surfaces, ".coverage-card", "background");
+    const size = Number(resolve(declared(surfaces, ".coverage-card p", "font-size")).replace("px", ""));
+    const floor = size >= 24 ? AA_LARGE : AA_TEXT;
+    for (const page of grounds) {
+      expect(contrast(ink, stack(page, card)), `picture coverage on ${page}`).toBeGreaterThanOrEqual(floor);
+    }
+  });
+
+  // The line beside a picture figure that says how well the number is stood
+  // behind. It is the whole of X2's second clause on this screen, so it is not
+  // decoration and is not painted as any.
+  it("puts the picture figure's grade line above the floor at the size it renders", () => {
+    const ink = declared(surfaces, ".hero-meta", "color");
+    const paper = declared(surfaces, ".hero-card", "background");
+    const size = Number(resolve(declared(surfaces, ".hero-meta", "font-size")).replace("px", ""));
+    const floor = size >= 24 ? AA_LARGE : AA_TEXT;
+    for (const page of grounds) {
+      expect(contrast(ink, stack(page, paper)), `picture grade line on ${page}`).toBeGreaterThanOrEqual(floor);
+    }
+  });
+
+  // The citation each currency's figure carries. It renders on the paper the
+  // hero card is painted in, at the smallest step the type scale has.
+  it("puts the picture figure's citation above the floor at the size it renders", () => {
+    const ink = declared(picture, ".hero-card .picture-figure .picture-citation", "color");
+    const paper = declared(surfaces, ".hero-card", "background");
+    const size = Number(resolve(declared(picture, ".hero-card .picture-figure .picture-citation", "font-size")).replace("px", ""));
+    const floor = size >= 24 ? AA_LARGE : AA_TEXT;
+    for (const page of grounds) {
+      expect(contrast(ink, stack(page, paper)), `picture citation on ${page}`).toBeGreaterThanOrEqual(floor);
+    }
+  });
+
+  // An account the picture could not place under any currency, named on the
+  // panel because it is named nowhere else. It renders on the coverage card's
+  // own ground, beside the sentence about how far the picture reaches.
+  it("puts an account named nowhere else above the floor at the size it renders", () => {
+    const card = declared(surfaces, ".coverage-card", "background");
+    const ink = declared(picture, ".coverage-card .picture-unplaced li", "color");
+    for (const selector of [".coverage-card .picture-unplaced strong", ".coverage-card .picture-unplaced span"]) {
+      const size = Number(resolve(declared(picture, selector, "font-size")).replace("px", ""));
+      const floor = size >= 24 ? AA_LARGE : AA_TEXT;
+      for (const page of grounds) {
+        expect(contrast(ink, stack(page, card)), `${selector} on ${page}`).toBeGreaterThanOrEqual(floor);
+      }
+    }
+  });
+
+  // A grade's badge and the mark beside it. The pill said every word on the
+  // ladder in one colour, so a figure whose records disagree arrived in the
+  // colour of a figure that is fine; the pill is neutral now and the mark is
+  // what tells them apart, so the mark is a graphical object a person has to
+  // see in order to follow the content.
+  it("puts a grade's word and its mark above their floors", () => {
+    const paper = declared(surfaces, ".hero-card", "background");
+    const pill = declared(surfaces, ".evidence-badge", "background");
+    const word = declared(surfaces, ".evidence-badge", "color");
+    const size = Number(resolve(declared(surfaces, ".evidence-badge", "font-size")).replace("px", ""));
+    const floor = size >= 24 ? AA_LARGE : AA_TEXT;
+    // The conflicted grade's mark, the one this diff paints. The other
+    // grades' marks are measured and filed rather than repainted: they sit
+    // below this floor on a pill no change here touches.
+    const mark = declared(surfaces, ".mini-dot.conflicted", "background");
+    for (const page of grounds) {
+      const ground = stack(page, paper, pill);
+      expect(contrast(word, ground), `a grade's word on ${page}`).toBeGreaterThanOrEqual(floor);
+      expect(contrast(mark, ground), `the conflicted mark on ${page}`).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+  });
+
+  // The row that leads into a figure's evidence. Its edge is what says it is a
+  // control at all, so the edge is measured too.
+  it("puts the route into a figure's evidence above its floors", () => {
+    const paper = declared(surfaces, ".hero-card", "background");
+    const chip = declared(surfaces, ".proof-link", "background");
+    const ink = declared(surfaces, ".proof-link", "color");
+    const edge = declared(surfaces, ".proof-link", "border-color");
+    const size = Number(resolve(declared(surfaces, ".proof-link", "font-size")).replace("px", ""));
+    const floor = size >= 24 ? AA_LARGE : AA_TEXT;
+    for (const page of grounds) {
+      const ground = stack(page, paper, chip);
+      expect(contrast(ink, ground), `the route's words on ${page}`).toBeGreaterThanOrEqual(floor);
+      expect(contrast(edge, ground), `the route's edge on ${page}`).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+  });
+
+  // The total itself, at the size and on the paper the picture gives it.
+  it("puts the total above the floor at the size it renders", () => {
+    const ink = declared(surfaces, ".hero-amount", "color");
+    const paper = declared(surfaces, ".hero-card", "background");
+    for (const page of grounds) {
+      expect(contrast(ink, stack(page, paper)), `the total on ${page}`).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  // Anything the picture paints that a person has to see in order to follow the
+  // content is measured at the ground it renders on, never judged, and a
+  // colour on a property this gate cannot place is refused rather than waved
+  // through: a gate that silently ignores a paint it cannot classify reports a
+  // clean bill it could not have withheld.
+  //
+  // The picture separates one currency from the next with space rather than a
+  // rule, because space carries the same "these are two" and has no ratio to
+  // clear, and a rule cannot be load-bearing when it is justified and
+  // decorative when it is measured.
+  it("measures every graphical object the picture paints, and refuses a colour it cannot place", () => {
+    const walked = rules(picture);
+    expect(walked.length).toBeGreaterThan(0);
+    const paper = declared(surfaces, ".hero-card", "background");
+    const graphical: { property: string; colour: string }[] = [];
+    const unplaced: string[] = [];
+    let carried = 0;
+    for (const rule of walked) for (const declaration of rule.body.split(";")) {
+      const [name, ...rest] = declaration.split(":");
+      const property = name.trim();
+      const value = rest.join(":").trim();
+      if (!property || !value) continue;
+      const colours = coloursIn(value);
+      carried += colours.length;
+      if (!colours.length || TEXT_PAINTS.includes(property)) continue;
+      if (GRAPHICAL_PAINTS.includes(property)) { for (const colour of colours) graphical.push({ property, colour }); continue; }
+      unplaced.push(`${property}: ${value}`);
+    }
+    // The sweep read real declarations and found real colours, so a clean bill
+    // below is one it could have withheld.
+    expect(carried).toBeGreaterThan(0);
+    expect(unplaced, "a colour on a property this gate cannot place").toEqual([]);
+    for (const { property, colour } of graphical) for (const page of grounds) {
+      expect(contrast(colour, stack(page, paper)), `picture ${property} ${colour} on ${page}`).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+    expect(graphical, "the picture separates its currencies with space, not with an object").toEqual([]);
+    // What says two totals are two is the room between them against the room
+    // inside either, both read out of the stylesheet that declares them.
+    const between = Number(resolve(declared(picture, ".hero-card .picture-figures", "gap")).replace("px", ""));
+    const within = Number(resolve(declared(picture, ".hero-card .picture-figure", "gap")).replace("px", ""));
+    expect(between / within, `${between}px between currencies against ${within}px inside one`).toBeGreaterThanOrEqual(4);
   });
 
   it("puts the capture answer and the panel's reading sentence above the floor", () => {

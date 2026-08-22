@@ -16,7 +16,7 @@ function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { 
 function readyLive(): SurfaceSnapshot {
   return {
     ...liveReadingSnapshot(),
-    overview: { state: "ready", data: { currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "Opened local vault", netWorth: null, accounts: [{ id: "account-live", name: "Live", kind: "", measure: null, exactValue: "", currency: "", display: "", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "Unavailable", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }], recent: [] } },
+    overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts: [{ id: "account-live", name: "Live", kind: "", measure: null, exactValue: "", currency: "", display: "", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "Unavailable", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }], recent: [] } },
     documents: { state: "ready", data: { documents: [{ id: "document-live", name: "document-live", state: "Resolved", phaseLabel: "Not supplied", detail: "", source: "", pages: "", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } },
     review: { state: "ready", data: { queue: [{ id: "question-live", label: "Question", detail: "", status: "Read only", action: "", type: "", evidence: "", state: "needs_input", outcome: null, disposition: null }], count: 1, meta: { total: 1, tail: null, pending: null, invite: "", answeredByDocument: "" } } },
   };

@@ -43,6 +43,14 @@
               "resolved": true
             },
             {
+              "doc_type": "bank_statement",
+              "filename": "bank_statement.txt",
+              "id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071",
+              "raw_available": true,
+              "reading": "read",
+              "resolved": true
+            },
+            {
               "doc_type": "credit_card_statement",
               "filename": "credit_card_statement.txt",
               "id": "a4f4a08820d946b4a77974e840ac16fc66a7462f6102eb539026a80eb6ccc7ef",
@@ -83,8 +91,24 @@
               "resolved": true
             }
           ],
-          "holds": [],
-          "raw_document_count": 9,
+          "holds": [
+            {
+              "account_label": "acct:everyday-checking",
+              "account_ref": "acct:everyday-checking",
+              "closing_amount": "3402.10",
+              "closing_date": "2026-08-31",
+              "currency": "USD",
+              "doc_id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071",
+              "finding": null,
+              "held_balance": null,
+              "opening_amount": "3081.45",
+              "opening_date": "2026-08-01",
+              "period": "2026-08-01 \u2013 2026-08-31",
+              "reason": "gap",
+              "transactions": []
+            }
+          ],
+          "raw_document_count": 10,
           "reading_sentence": "Saved privately. Reading will wait until you choose a reader.",
           "state": "ready"
         },
@@ -319,8 +343,8 @@
                 ],
                 "coverage": "This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.",
                 "currency": "USD",
-                "display": "USD 5,012.50",
-                "exact_value": "5012.50",
+                "display": "USD 4,562.50",
+                "exact_value": "4562.50",
                 "exactness": "exact",
                 "grade": "unverified",
                 "grade_description": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
@@ -375,9 +399,178 @@
           ],
           "as_of": null,
           "caveats": [
+            "This rests on records of more than one date: each part is only as current as the record behind it.",
             "This rests on records of more than one date: each part is only as current as the record behind it."
           ],
           "issues": [],
+          "picture": {
+            "coverage": "7 of the 9 accounts you hold are counted here, so this is not the whole of what you hold.",
+            "figures": [
+              {
+                "as_of": "2026-09-30",
+                "boundary": {
+                  "cut": [
+                    {
+                      "kind": "currency",
+                      "value": "EUR"
+                    }
+                  ],
+                  "unmeasured": [
+                    {
+                      "account": "Liabilities:Loan:Sample",
+                      "reason": "refused",
+                      "settled_by": "the loan or mortgage statement"
+                    },
+                    {
+                      "account": "acct:rainy-day-savings",
+                      "reason": "unobserved",
+                      "settled_by": ""
+                    }
+                  ],
+                  "unposted": 1,
+                  "whole": false
+                },
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": [
+                  "This total covers what you hold in EUR, and nothing held in any other currency.",
+                  "One document you have added is not counted in this total.",
+                  "It is good as of 2026-09-30.",
+                  "The oldest measurement behind it is from 2026-06-30."
+                ],
+                "currency": "EUR",
+                "display": "EUR 642.10",
+                "evidence_heading": "Net worth in EUR",
+                "evidence_label": "View the evidence for net worth in EUR.",
+                "exact_value": "642.10",
+                "exactness": "exact",
+                "grade": "corroborated",
+                "grade_description": "Read this answer as corroborated: independent records agree on what it rests on, and no document from an issuer attests it directly.",
+                "grade_label": "corroborated",
+                "id": "EUR",
+                "measure": "net_worth",
+                "provenance": "",
+                "record_ids": [
+                  "acct:abroad-current"
+                ],
+                "unmeasured": []
+              },
+              {
+                "as_of": "2026-09-30",
+                "boundary": {
+                  "cut": [
+                    {
+                      "kind": "currency",
+                      "value": "USD"
+                    }
+                  ],
+                  "unmeasured": [
+                    {
+                      "account": "Liabilities:Loan:Sample",
+                      "reason": "refused",
+                      "settled_by": "the loan or mortgage statement"
+                    },
+                    {
+                      "account": "acct:rainy-day-savings",
+                      "reason": "unobserved",
+                      "settled_by": ""
+                    }
+                  ],
+                  "unposted": 1,
+                  "whole": false
+                },
+                "caveats": [],
+                "citations": [
+                  {
+                    "document_id": "0ea3d7d4441eef067e35c39ec91898390d8e9b973585de8c741d737a96d00660",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "3782cf884917f3d2794075b6c084cf994e0cd59f7c4a94b46657599682a5d7bd",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "a4f4a08820d946b4a77974e840ac16fc66a7462f6102eb539026a80eb6ccc7ef",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
+                    "label": "",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "coverage": [
+                  "This total covers what you hold in USD, and nothing held in any other currency.",
+                  "One account you hold could not be valued, so it is not in this total.",
+                  "One document you have added is not counted in this total.",
+                  "It is good as of 2026-09-30.",
+                  "The oldest measurement behind it is from 2025-11-30."
+                ],
+                "currency": "USD",
+                "display": "USD 17,486.45",
+                "evidence_heading": "Net worth in USD",
+                "evidence_label": "View the evidence for net worth in USD.",
+                "exact_value": "17486.45",
+                "exactness": "exact",
+                "grade": "corroborated",
+                "grade_description": "Read this answer as corroborated: independent records agree on what it rests on, and no document from an issuer attests it directly.",
+                "grade_label": "corroborated",
+                "id": "USD",
+                "measure": "net_worth",
+                "provenance": "",
+                "record_ids": [
+                  "acct:dormant-savings",
+                  "acct:everyday-checking",
+                  "acct:growth-portfolio",
+                  "acct:household-card",
+                  "acct:joint-checking",
+                  "acct:travel-card"
+                ],
+                "unmeasured": [
+                  {
+                    "account": "acct:rainy-day-savings",
+                    "name": "Rainy Day Savings",
+                    "sentence": "Nothing has measured Rainy Day Savings, so it is not in this total."
+                  }
+                ]
+              }
+            ],
+            "read_on": "2026-09-30",
+            "unplaced": [
+              {
+                "account": "Liabilities:Loan:Sample",
+                "name": "Sample",
+                "sentence": "I could not put a figure on Sample, though something would settle it, and no total here covers it."
+              }
+            ],
+            "withheld": []
+          },
           "spending_by_currency": {
             "USD": "438.55"
           },

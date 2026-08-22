@@ -6,9 +6,12 @@ carried through the real bridge dispatch. Nothing in it is authored by hand.
 
 The vault it reads is built here, in code, from the event constructors the
 ingest path posts through, and holds eight shapes of account: one that
-reconciles, one owed on, one owed on and in credit, one nothing attested, one
-holding instruments, one whose records disagree, one in a second currency, and
-one whose newest record is old. Every name and number in it is invented.
+reconciles, one owed on, one owed on and in credit, one nothing attested and so
+carried by no net-worth point, one holding instruments, one whose records
+disagree, one in a second currency, and one whose newest record is old. Beside
+them it holds a debt a ruling brought into being that no total can carry and no
+card shows, a document nothing has read, and a document read and not posted.
+Every name and number in it is invented.
 """
 
 from __future__ import annotations
@@ -61,6 +64,12 @@ PASSPHRASE = "fixture-vault-passphrase"
 # document it names is a row a person can open.
 SURFACES = ("overview", "documents")
 
+# What each surface is read with. The day the picture is read on is stated here
+# rather than left to the machine's clock: a total is good as of the day it was
+# asked for, so a read that asked on no stated day would write the day it ran
+# into these bytes and disagree with itself tomorrow.
+PARAMETERS: dict[str, dict] = {"overview": {"read_on": TODAY}}
+
 
 def _import_path() -> None:
     for package in ("product", "core", "merchant"):
@@ -96,7 +105,9 @@ def build_vault(directory: Path):
                              closing_balance_observed, document_captured,
                              opening_balance_observed, read_recorded,
                              simple_transaction)
-    from viva.ledger.events import position_observed
+    from viva.ingest.statement import StatementFacts
+    from viva.ledger.events import (position_observed, ruling_recorded,
+                                    statement_held)
     from viva.vault import Vault
 
     vault = Vault.open(directory, PASSPHRASE)
@@ -275,10 +286,46 @@ def build_vault(directory: Path):
     vault.ledger.append(closing("acct:dormant-savings", "1250.00", "2025-11-30",
                                 dormant_doc, 1))
 
+    # And one thing a person holds that no total can carry and no card shows:
+    # a debt a ruling brought into being. Cash reaching a lender says nothing
+    # about the balance owed, so the point refuses it a figure; nothing opened
+    # it, so the accounts read never names it and no currency can be found for
+    # it. It is beneath no figure, which is the one shape whose disclosure has
+    # nowhere to go but the panel.
+    # Paid from the account nothing attests, so no reconciling chain moves and
+    # no other shape in this vault changes.
+    vault.ledger.append(simple_transaction(
+        "acct:rainy-day-savings", "-450.00", "sample lender", "2026-06-20"))
+    vault.ledger.append(ruling_recorded(
+        scope="merchant", subject="sample lender",
+        legs=[{"major": "liability", "account": "Liabilities:Loan:Sample"}],
+        occurred_at="2026-07-05", by="human"))
+
     # And one the vault simply holds. Nothing has read it, so it stands behind
     # no account and no figure cites it.
     parked("a document this vault holds and has not read", "unread-note.txt",
            "2026-07-02")
+
+    # And one that was read and not posted: its period does not join what is
+    # already held for the account, so nothing it attests is counted anywhere
+    # until the gap between them is settled. It is the other half of what makes
+    # a total less than whole, and the one no account can be named for.
+    unposted_doc = document("everyday checking, eighth month", "bank_statement",
+                            "2026-09-04",
+                            period(("3081.45", "2026-08-01"),
+                                   ("3402.10", "2026-08-31")))
+    vault.ledger.append(statement_held(
+        unposted_doc,
+        StatementFacts(
+            doc_id=unposted_doc, doc_type="bank_statement",
+            doc_type_confidence=0.98, account_ref="acct:everyday-checking",
+            currency="USD", opening_amount=Decimal("3081.45"),
+            opening_date="2026-08-01", closing_amount=Decimal("3402.10"),
+            closing_date="2026-08-31", transactions=[], opening_page=1,
+            closing_page=2, account_number="000000004417",
+            institution="Sample Mutual",
+            account_names=["SAMPLE HOLDER"]).to_dict(),
+        None, "gap", "2026-09-04", Provenance(doc_id=unposted_doc)))
     return vault
 
 
@@ -305,7 +352,8 @@ def read_surfaces(vault) -> dict[str, Any]:
             "protocol": CURRENT_PROTOCOL.wire(),
             "request_id": f"parity-{surface}",
             "operation": "viva.surface.read",
-            "payload": {"surface": surface, "job_id": f"parity-{surface}"},
+            "payload": {"surface": surface, "job_id": f"parity-{surface}",
+                        "parameters": PARAMETERS.get(surface, {})},
         })
         reads[surface] = json.loads(dispatch_frame(frame, dispatcher.handlers))
     return reads

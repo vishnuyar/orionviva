@@ -16,12 +16,20 @@
 .hero-card, .coverage-card { min-height: 258px; padding: 25px 28px; }
 .card-topline, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .card-topline { color: #89948d; font-size: 12px; font-weight: 600; }
-.evidence-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px; color: #64836b; background: #eff6ed; font-size: 10px; font-weight: 700; }
+/* The pill says a grade and never dresses one. It carried one green for every
+   word on the ladder, so a figure whose records disagree arrived in the colour
+   of a figure that is fine — the colour telling a person the opposite of the
+   word beside it, about their own money. Neutral here, and the mark beside the
+   word is what distinguishes. */
+.evidence-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px; color: var(--ink); background: var(--panel); font-size: 10px; font-weight: 700; }
 .hero-amount { margin: 28px 0 10px; color: #294339; font-family: "Playfair Display", Georgia, serif; font-size: clamp(42px, 6vw, 66px); letter-spacing: -.07em; line-height: 1; }
-.figure-trigger { border: 0; background: transparent; padding: 0; color: inherit; font: inherit; text-align: inherit; }
+.figure-trigger { border: 0; background: transparent; padding: 0; color: inherit; text-align: inherit; }
 .figure-trigger:hover { color: #4f735f; }
 .hero-card .figure-trigger { display: block; }
-.hero-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #9ca69f; font-size: 10px; }
+.figure-invitation { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.evidence-coverage-line { display: block; }
+.evidence-omission > span { display: block; }
+.hero-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink); font-size: var(--text-caption); }
 .hero-meta button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; color: #719079; background: transparent; font-size: 11px; font-weight: 700; }
 .figure-footnote { display: grid; gap: 4px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #ebe5d7; color: #8f998f; }
 .figure-footnote span { color: #63746a; font-size: 11px; font-weight: 700; }
@@ -32,7 +40,7 @@
 .overview-read-context dt { color: #87918a; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .overview-read-context dd { margin: 0; color: #4b6156; font-size: 13px; font-weight: 700; line-height: 1.45; }
 .coverage-number { max-width: 250px; margin: 26px 0 13px; color: #4b6156; font-size: 16px; line-height: 1.35; font-weight: 600; }
-.coverage-card p { margin: 19px 0 14px; color: #92978d; font-size: 11px; line-height: 1.5; }
+.coverage-card p { margin: 19px 0 14px; color: var(--ink); font-size: var(--text-caption); line-height: 1.5; }
 .coverage-account {
   display: grid;
   gap: 7px;
@@ -203,7 +211,7 @@
   box-shadow: 0 0 0 1px rgba(93, 121, 104, 0.16);
 }
 .account-card > .proof-links { margin: 0; padding: 0 17px 13px 68px; }
-.account-card > .account-amount { justify-self: end; margin: -48px 17px 14px 68px; }
+.account-card > .account-amount { justify-self: end; margin: 0 17px 14px 68px; }
 .account-icon {
   display: grid;
   place-items: center;
@@ -224,6 +232,9 @@
 .account-amount { margin-left: auto; color: #385347; font-family: "Playfair Display", Georgia, serif; font-size: 18px; white-space: nowrap; }
 .mini-dot.corroborated { background: #c19250; }
 .mini-dot.unverified { background: #b08d7e; }
+/* Records that disagree had no mark of their own and fell to the one every
+   unmarked grade falls to. */
+.mini-dot.conflicted { background: var(--rust); }
 .mini-dot.not_applicable, .evidence-badge.not_applicable .mini-dot { background: #7c8794; }
 
 .signal-list { border-top: 1px solid var(--line); }
@@ -543,12 +554,14 @@
 }
 .proof-link {
   padding: 4px 7px;
-  color: #5e7769;
+  color: var(--ink);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-caption);
   text-align: left;
   background: #f4f7f1;
-  border: 1px solid #d9e2d8;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--muted);
   border-radius: 6px;
 }
 .proof-link:hover { border-color: #9db3a3; }
@@ -674,7 +687,7 @@
   .account-card-button { grid-template-columns: auto 1fr; padding: 14px; }
   .account-card-button .account-amount { grid-column: 2; }
   .account-card > .proof-links { padding: 0 14px 12px 65px; }
-  .account-card > .account-amount { justify-self: start; margin: -4px 14px 10px 65px; }
+  .account-card > .account-amount { justify-self: start; margin: 0 14px 10px 65px; }
   .account-amount { margin-left: 0; font-size: 16px; white-space: normal; overflow-wrap: anywhere; }
   .section-block { margin-top: 37px; }
   .section-heading { align-items: end; }

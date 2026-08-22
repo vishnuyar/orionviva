@@ -4,7 +4,7 @@ import type { AccountView, FeatureResult, OverviewData } from "../../surface/typ
 import { Accounts } from "./Accounts";
 
 const account = (id: string, name = `Account ${id}`, kind = "Depository"): AccountView => ({ id, name, kind, measure: "balance", exactValue: "", currency: "USD", display: "$10.00", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "This read did not provide a recognized evidence grade.", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
-const overview = (accounts: AccountView[]): OverviewData => ({ currentThrough: "", coverage: "", corpusCoverage: "", corpusSource: "", netWorth: null, accounts, recent: [] });
+const overview = (accounts: AccountView[]): OverviewData => ({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, corpusCoverage: "", accounts, recent: [] });
 const ready = (accounts: AccountView[]): FeatureResult<OverviewData> => ({ state: "ready", data: overview(accounts) });
 const baseProps = { mode: "live" as const, selectedAccount: "", onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
 
@@ -16,7 +16,7 @@ describe("Accounts stable identity presentation", () => {
     expect(view.getAllByText("Account identity conflicted")).toHaveLength(1);
     expect(view.getAllByText("same")).toHaveLength(1);
     expect(view.getAllByRole("button", { name: /Unique/i }).filter((button) => button.classList.contains("detail-row-button"))).toHaveLength(1);
-    expect(view.getAllByRole("button", { name: /View evidence for/i })).toHaveLength(2);
+    expect(view.container.querySelectorAll(".figure-trigger")).toHaveLength(2);
     expect(view.queryByRole("button", { name: /Blank|Duplicate/i })).not.toBeInTheDocument();
   });
 

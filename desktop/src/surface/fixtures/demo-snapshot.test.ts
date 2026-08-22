@@ -17,10 +17,10 @@ const trust = dataOf(demoSnapshot.trust);
 
 describe("minimal shell model", () => {
   it("keeps the demo figure backend-shaped and exact", () => {
-    expect(overview.netWorth?.exactValue).toBe("48240.18");
-    expect(typeof overview.netWorth?.exactValue).toBe("string");
-    expect(overview.netWorth?.coverage).toContain("statements");
-    expect(overview.netWorth?.caveats).toHaveLength(1);
+    expect(overview.picture.figures[0]?.exactValue).toBe("48240.18");
+    expect(typeof overview.picture.figures[0]?.exactValue).toBe("string");
+    expect(overview.picture.figures[0]?.coverage[0]).toContain("statements");
+    expect(overview.picture.figures[0]?.caveats).toHaveLength(1);
   });
 
   it("keeps the demo surface aligned with the current document and review slices", () => {
@@ -66,7 +66,7 @@ describe("minimal shell model", () => {
     expect(activity.items.every((item) => item.grade === "not_applicable")).toBe(true);
     expect(activity.items.every((item) => item.recordIds?.length)).toBe(true);
     expect(overview.accounts.every((account) => account.recordIds?.length)).toBe(true);
-    expect(overview.netWorth?.recordIds?.length).toBeGreaterThan(0);
+    expect(overview.picture.figures[0]?.recordIds?.length).toBeGreaterThan(0);
     expect(activity.items.every((item) => item.provenance.length > 0)).toBe(true);
     expect(activity.items.every((item) => item.sample?.date && item.sample.account && item.sample.merchant && item.sample.category && item.sample.tags?.length && item.sample.nature && item.sample.direction)).toBe(true);
     expect(review.queue.every((item) => item.outcome === null && item.disposition === null)).toBe(true);
@@ -81,7 +81,7 @@ describe("minimal shell model", () => {
       page: "page 1",
     });
     expect(documents.documents.every((doc) => doc.evidenceLinks.every((link) => link.targetDocumentId !== doc.id))).toBe(true);
-    expect(overview.netWorth?.evidenceLinks.length).toBeGreaterThan(0);
+    expect(overview.picture.figures[0]?.evidenceLinks.length).toBeGreaterThan(0);
     expect(overview.accounts.every((account) => account.evidenceLinks.length > 0)).toBe(true);
     expect(activity.items.every((activity) => activity.evidenceLinks.length > 0)).toBe(true);
   });
@@ -123,7 +123,6 @@ describe("minimal shell model", () => {
     expect(syntheticCorpus.accountFamilies).toHaveLength(5);
     expect(syntheticCorpus.documents.at(-1)?.pages).toBe("2 pages");
     expect(corpusCoverageLabel(syntheticCorpus)).toContain("176 synthetic documents");
-    expect(overview.corpusSource).toContain("Synthetic local corpus");
   });
 
   it("routes duplicate document names by target id after reorder", () => {
@@ -148,7 +147,7 @@ describe("minimal shell model", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(documentIds.size).toBe(documents.documents.length);
     const allEvidenceLinks = [
-      ...(overview.netWorth?.evidenceLinks ?? []),
+      ...overview.picture.figures.flatMap((figure) => figure.evidenceLinks),
       ...overview.accounts.flatMap((account) => account.evidenceLinks),
       ...activity.items.flatMap((activity) => activity.evidenceLinks),
       ...documents.documents.flatMap((doc) => doc.evidenceLinks),

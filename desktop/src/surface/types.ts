@@ -56,12 +56,38 @@ export type FeatureResult<T> =
   | { state: "unavailable"; reason: string }
   | { state: "failed"; reason: "read_failed" | "invalid_payload" };
 
+// What a figure measures, as a closed set of words the backend supplies. It
+// widens only when a read starts emitting a new one, so a word outside it is a
+// read this interface has not been taught to label.
+export type FigureMeasure = "balance" | "owed" | "spending" | "income" | "net_worth";
+
 // How a document stands to the figure that cites it. `attests` is the first
 // witness — the figure was read from this document; `corroborates` is a
 // second one. The set is the backend's and is closed on both sides.
 export type EvidenceRelation = "attests" | "corroborates" | "same_period" | "same_account" | "settles_question";
 export type EvidenceLink = { targetDocumentId: string; label: string; relation: EvidenceRelation; page: string };
-export type FigureView = { id: string; display: string; exactValue: string; currency: string; measure: "balance" | "owed" | "spending" | "income"; grade: FigureGrade; gradeLabel: string; gradeDescription: string; asOf: string; coverage: string; caveats: string[]; evidenceLinks: EvidenceLink[]; exactness?: string | null; recordIds?: readonly string[] };
+// `coverage` is an ordered list of whole sentences, one line each, and is
+// never joined or split here: three of the sentences two figures carry can be
+// identical while the one that differs is the last, and a person who meets
+// them as a paragraph stops reading before the fact that differs.
+// `unmeasured` names the accounts the read could not value and carries, for
+// each, the reviewed sentence saying why it is not in the total. Both are the
+// read's: a machine's word for why a person's money is missing tells them
+// nothing, and nothing here maps one into words.
+//
+// One account a figure could not value, the name it is written under, and the
+// whole reviewed sentence saying why. Nothing on this side composes it, chooses
+// between wordings, reads it, or works out what to call the account: an account
+// is written once, by the one writer of accounts, and two sides each resolving
+// a path is two systems describing one fact.
+export type UnmeasuredAccount = { account: string; name: string; sentence: string };
+
+// A figure carries two reviewed sentences about reaching its own evidence:
+// what the control announces and what the drawer that opens is titled. Both
+// are written by the read that composed the figure, because two figures held
+// in two currencies must be told apart by a person who cannot see them, and a
+// name composed here would be the same name twice.
+export type FigureView = { id: string; display: string; exactValue: string; currency: string; measure: FigureMeasure; grade: FigureGrade; gradeLabel: string; gradeDescription: string; asOf: string; coverage: readonly string[]; caveats: string[]; evidenceLinks: EvidenceLink[]; exactness?: string | null; recordIds?: readonly string[]; evidenceLabel?: string; evidenceHeading?: string; unmeasured?: readonly UnmeasuredAccount[] };
 export type DocumentPhase = "captured" | "queued" | "reading" | "held" | "parked" | "read_ready" | "verified" | "unresolved";
 export type SurfaceDocument = { id: string; name: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; sample?: { region?: string; contribution?: string; waitReason?: string } };
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
@@ -78,7 +104,35 @@ export type ReviewView = { id: string; label: string; detail: string; status: st
 export type ConversationTurn = { id: string; speaker: "you" | "viva"; text: string; state: "answer" | "refusal" | "citation" | "prompt"; citation?: string };
 export type ConversationPrompt = { id: string; label: string; detail: string; state: "ready" | "refusal" | "citation" };
 
-export type OverviewData = { currentThrough: string; coverage: string; corpusCoverage: string; corpusSource: string; netWorth: FigureView | null; accounts: AccountView[]; recent: ActivityView[] };
+// The whole picture as the read composed it: one reviewed sentence about how
+// far it reaches, the day it was read on, one figure per currency, and one
+// sentence for each currency whose total was kept back — a currency that
+// vanishes without a trace leaves the totals that remain reading as the whole
+// of what a person holds. How old
+// the evidence beneath a figure is belongs to that figure and is said in its
+// own sentence, because a date taken over the whole picture would be untrue of
+// every currency but one. Nothing here is composed on this side, and
+// nothing anywhere adds the figures together — they are held in different
+// currencies and no rate has a source, a date or a grade of its own.
+// One currency whose total was kept back, and the reviewed sentence saying so.
+// The currency travels beside the sentence rather than being findable in it:
+// reading a sentence to learn which currency it is about is the one way this
+// side could come to know it, and that door is better closed than watched. It
+// is what puts the sentence in the place its figure would have taken.
+export type WithheldCurrency = { currency: string; sentence: string };
+// One account the read could not place under any currency. It is on no card,
+// in no line and in no drawer, so the panel names it rather than counting it:
+// the rule that suppresses names suppresses them where the names are already
+// on the screen, and a name nowhere is not privacy, it is concealment.
+export type UnplacedAccount = { account: string; name: string; sentence: string };
+export type PictureView = {
+  coverage: string;
+  readOn: string;
+  figures: readonly FigureView[];
+  withheld: readonly WithheldCurrency[];
+  unplaced: readonly UnplacedAccount[];
+};
+export type OverviewData = { picture: PictureView; corpusCoverage: string; accounts: AccountView[]; recent: ActivityView[] };
 // One reviewed sentence for the whole panel, written by the backend, empty
 // when the panel has nothing to say. It is never composed here and never
 // repeated per row.

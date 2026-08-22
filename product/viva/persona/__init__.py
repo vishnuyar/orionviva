@@ -305,6 +305,80 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "card_withheld_incomplete":       frozenset({"account"}),
     "card_withheld_in_parts":         frozenset({"account"}),
     "card_withheld_unsayable":        frozenset({"account"}),
+    # And the same declaration where the figure stands for the whole picture
+    # rather than for one account. What a person reads on the panel counts and
+    # names nothing: a total is shown above the accounts it was taken over, so
+    # the names are already below it and what is left to say is how many. What
+    # says why one account is not in a total does name it, because it is read
+    # where somebody went looking for exactly that. How much of what a person
+    # holds is counted is a claim about the picture and is said once, over the
+    # figures the panel shows, rather than on any one of them. Singular and
+    # plural, and all against some, are whole sentences chosen by comparing two
+    # integers rather than a frame with a word dropped into it.
+    # How far the picture reaches is a claim about the picture and never about
+    # a total: at two currencies there are two totals and no third, so a line
+    # opening "this total" would name either a figure nothing may compose or
+    # one of the two, of which it is false. Three lines rather than two,
+    # because a verb agreeing with a count is a word dropped into a frame.
+    "picture_accounts_all":               frozenset(),
+    # And the same where every account is counted and the read still declares
+    # itself short of something. A person reads "every account is counted" as
+    # "is this everything", so a completeness claim standing over a read that
+    # says it is incomplete is false in the way it is actually read. The
+    # sentence carries its own resolution: what else is short of whole is said
+    # on a figure, which is a different card and may be one of several, so a
+    # line depending on what follows it depends on a layout it cannot see.
+    "picture_accounts_all_incomplete":    frozenset(),
+    "picture_accounts_one":               frozenset({"held"}),
+    "picture_accounts_some":              frozenset({"counted", "held"}),
+    "picture_boundary_selected_currency": frozenset({"currency"}),
+    "picture_boundary_unmeasured_one":    frozenset(),
+    "picture_boundary_unmeasured_many":   frozenset({"count"}),
+    "picture_boundary_unposted_one":      frozenset(),
+    "picture_boundary_unposted_many":     frozenset({"count"}),
+    "picture_as_of":                      frozenset({"date"}),
+    "picture_oldest_input":               frozenset({"date"}),
+    # What stands where no total could be stood behind at all. A blank where a
+    # figure was yesterday says the product is broken, which is less true than
+    # saying there is nothing to stand behind today.
+    "picture_no_figure":                  frozenset(),
+    # And where one currency's total alone is kept back. Silence at the figure
+    # is what silence is at the panel: a person shown one number where two
+    # belong is not told that a second was withheld, and learns nothing was
+    # there.
+    "picture_withheld_unsayable":         frozenset({"currency"}),
+    # And why one account a person holds is not in a total. Names alone do not
+    # discharge what is owed here: a person looking at a card with a number on
+    # it that the total does not include needs to know whether anything is
+    # theirs to do, and only the reason tells them. One whole line per token of
+    # the closed vocabulary the read declares them under, so a token with no
+    # line fails the build rather than reaching a person as itself.
+    "picture_unmeasured_unobserved":      frozenset({"account"}),
+    # A gap that names a remedy and one that has nothing to point at are two
+    # different things to be told, so they are two lines. That a remedy exists
+    # is asserted rather than hoped for: a boundary refuses to be built where a
+    # refused gap names nothing that would settle it, so the clause is true by
+    # construction. What would settle it is not placed — half a sentence
+    # arriving at runtime from text nobody reviewed is a version that resolves
+    # to a frame rather than to the words a person was shown.
+    "picture_unmeasured_refused":         frozenset({"account"}),
+    # And the same two where the account is beneath no figure at all. An
+    # account the read could not place in any currency appears on no card, in
+    # no total and in no drawer, so counting it and naming it nowhere is not
+    # privacy but concealment: a person cannot verify, act on, or discover
+    # something the product recorded and calls nothing. It is named at the
+    # panel, which is where beneath-nothing lands.
+    "picture_unplaced_unobserved":        frozenset({"account"}),
+    "picture_unplaced_refused":           frozenset({"account"}),
+    # And what the control that opens a picture figure's evidence is called,
+    # and what the panel it opens is headed. One total per currency means one
+    # control per currency, and two controls announcing the same words conflate
+    # two figures nothing may relate — at the moment a person acts on one of
+    # them, and only for the person who cannot see which card it sits on. Both
+    # take the slice the figure was cut to, because that is the whole of what
+    # tells them apart.
+    "picture_evidence_label":             frozenset({"currency"}),
+    "picture_evidence_heading":           frozenset({"currency"}),
     # How well a set of figures is stood behind: one whole reviewed line per word
     # on the ladder, chosen by that word, so no sentence anywhere is a frame with
     # a machine's word dropped into it. Not one takes a slot. Each is worded as

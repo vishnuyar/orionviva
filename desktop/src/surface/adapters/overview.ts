@@ -1,5 +1,5 @@
 import { gradePresentation } from "../evidence";
-import type { AccountView, EvidenceLink, EvidenceRelation, FeatureIssue, OverviewData, PanelState } from "../types";
+import type { AccountView, EvidenceLink, EvidenceRelation, FeatureIssue, FigureMeasure, FigureView, OverviewData, PanelState, PictureView, UnmeasuredAccount, UnplacedAccount, WithheldCurrency } from "../types";
 import { isRecord, record, textValue, uniqueRecordsById } from "./primitives";
 
 // The words a citation may stand in to its figure. The set is the backend's,
@@ -10,6 +10,11 @@ const RELATIONS: readonly EvidenceRelation[] = ["attests", "corroborates", "same
 // The panel states that withhold something and carry the reasons why. Any
 // other state is a read that returned its rows.
 const WITHHOLDING: readonly PanelState[] = ["partial", "needs_input"];
+
+// What a figure may say it measures. The set is the backend's, restated here
+// so a word outside it is carried as no measure at all rather than shown as
+// one this side invented.
+const MEASURES: readonly FigureMeasure[] = ["balance", "owed", "spending", "income", "net_worth"];
 
 function relation(value: unknown): EvidenceRelation | null {
   const named = textValue(value);
@@ -30,6 +35,107 @@ function evidenceLinks(balance: Record<string, unknown>): EvidenceLink[] {
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(textValue).filter((item) => item.trim().length > 0) : [];
+}
+
+function measure(value: unknown): FigureMeasure | null {
+  const named = textValue(value);
+  return MEASURES.find((known) => known === named) ?? null;
+}
+
+// One currency's part of the picture. Every field is the backend's; a figure
+// that arrives without an identity or without a measure this side can label is
+// left out rather than shown with a hole in it.
+function pictureFigure(raw: Record<string, unknown>): FigureView | null {
+  const id = textValue(raw.id);
+  const named = measure(raw.measure);
+  if (!id || named === null) return null;
+  const evidence = gradePresentation(textValue(raw.grade) || undefined);
+  const backendGradeLabel = textValue(raw.grade_label);
+  const backendGradeDescription = textValue(raw.grade_description);
+  return {
+    id,
+    display: textValue(raw.display),
+    exactValue: textValue(raw.exact_value),
+    currency: textValue(raw.currency),
+    measure: named,
+    grade: evidence.grade,
+    gradeLabel: backendGradeLabel.trim() ? backendGradeLabel : evidence.label,
+    // One whole reviewed sentence as the backend wrote it; never composed here
+    // out of the ladder word.
+    gradeDescription: backendGradeDescription.trim() ? backendGradeDescription : evidence.description,
+    asOf: textValue(raw.as_of),
+    // One line each, in the order the read put them in. Joining them here
+    // would make a paragraph of sentences a person is meant to meet one at a
+    // time, and splitting one back apart would be this side reading punctuation.
+    coverage: stringList(raw.coverage),
+    caveats: stringList(raw.caveats),
+    evidenceLinks: evidenceLinks(raw),
+    exactness: textValue(raw.exactness) || null,
+    recordIds: stringList(raw.record_ids),
+    // What a person who cannot see the screen is told about reaching this
+    // figure's evidence. Both sentences are the read's, because one composed
+    // here would announce identically for every currency.
+    evidenceLabel: textValue(raw.evidence_label),
+    evidenceHeading: textValue(raw.evidence_heading),
+    // The accounts the read could not value, each with the reviewed sentence
+    // saying why. The panel counts and never names; the figure's own evidence
+    // names, which is where the rule that suppresses names sends them. The
+    // boundary the read declared is not carried across at all, so nothing it
+    // holds for a machine can reach a person by any route through here.
+    unmeasured: unmeasured(raw.unmeasured),
+  };
+}
+
+// One entry per currency the read kept back, each carrying its own sentence.
+// An entry with no sentence is left out rather than rendered as a blank where
+// a total would have been.
+function withheld(value: unknown): WithheldCurrency[] {
+  const rows = Array.isArray(value) ? value : [];
+  return rows.map(record)
+    .map((row) => ({ currency: textValue(row.currency), sentence: textValue(row.sentence) }))
+    .filter((row) => row.sentence.trim().length > 0);
+}
+
+// One entry per account the read left out, in the order it declared them, each
+// carrying the name the read writes that account under. An entry missing any
+// of the three is left out rather than shown as a name with no reason, a
+// reason about nothing, or a ledger path a person never chose.
+// The accounts no figure is beneath, each named and each carrying the reviewed
+// sentence saying why. The read also records the token it decided under; that
+// is what chose the sentence and it is not something to show a person, so it
+// stops here.
+function unplaced(value: unknown): UnplacedAccount[] {
+  const rows = Array.isArray(value) ? value : [];
+  return rows.map(record)
+    .map((row) => ({ account: textValue(row.account), name: textValue(row.name), sentence: textValue(row.sentence) }))
+    .filter((row) => row.account.trim().length > 0 && row.name.trim().length > 0 && row.sentence.trim().length > 0);
+}
+
+function unmeasured(value: unknown): UnmeasuredAccount[] {
+  const rows = Array.isArray(value) ? value : [];
+  return rows.map(record)
+    .map((row) => ({ account: textValue(row.account), name: textValue(row.name), sentence: textValue(row.sentence) }))
+    .filter((row) => row.account.trim().length > 0 && row.name.trim().length > 0 && row.sentence.trim().length > 0);
+}
+
+// The picture block as the read composed it. The sentence is carried whole and
+// is never written here; the figures are carried one per currency and are
+// never added together.
+function picture(raw: unknown): PictureView {
+  const block = record(raw);
+  const supplied = Array.isArray(block.figures) ? block.figures : [];
+  const figures: FigureView[] = [];
+  for (const entry of supplied.map(record)) {
+    const figure = pictureFigure(entry);
+    if (figure !== null) figures.push(figure);
+  }
+  return {
+    coverage: textValue(block.coverage),
+    readOn: textValue(block.read_on),
+    figures,
+    withheld: withheld(block.withheld),
+    unplaced: unplaced(block.unplaced),
+  };
 }
 
 export function adaptOverview(raw: unknown): OverviewData | null {
@@ -69,7 +175,7 @@ export function adaptOverview(raw: unknown): OverviewData | null {
       recordIds: stringList(balance.record_ids),
     };
   });
-  return { currentThrough: textValue(raw.as_of), coverage: "", corpusCoverage: "", corpusSource: "Opened local vault", netWorth: null, accounts, recent: [] };
+  return { picture: picture(raw.picture), corpusCoverage: "", accounts, recent: [] };
 }
 
 export type OverviewPanel = { state: PanelState; issues: FeatureIssue[] };

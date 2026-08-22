@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping
 from typing import Any
 
@@ -46,9 +47,15 @@ class OpenedVaultSurfaceProvider:
         Which accounts are shown, what each is worth, how well it is stood
         behind and what its figure covers are all decided in the surface, over
         the same read a conversation makes. Nothing about them is decided
-        here."""
+        here.
+
+        What is decided here is the day the picture is read on, because the
+        surface holds no clock and this side of the boundary does. A caller may
+        state the day, which is how a generated artifact stays the same bytes
+        whenever it is run; with none stated it is the day it is asked on."""
         projection = self._vault.ledger.projection_as_of(parameters.get("as_of"))
-        return overview(projection, locale_from_env())
+        return overview(projection, locale_from_env(),
+                        parameters.get("read_on") or _now())
 
     def _documents(self) -> dict[str, Any]:
         """Open the projection and the blob store, and hand both to the surface
@@ -75,8 +82,16 @@ class OpenedVaultSurfaceProvider:
         return {"state": "ready", **queue}
 
 
+def _now() -> str:
+    """Today, as the one place this side of the boundary reads a clock."""
+    return datetime.date.today().isoformat()
+
+
 def _parameters(parameters: Mapping[str, Any]) -> dict[str, Any]:
-    allowed = {"as_of", "limit", "jurisdiction", "locale"}
+    # `as_of` is the horizon a projection is cut at; `read_on` is the day a
+    # picture is read on. Two names one letter apart meaning two things is how
+    # a later change gets one of them wrong, so they are not spelled alike.
+    allowed = {"as_of", "limit", "jurisdiction", "locale", "read_on"}
     unexpected = set(parameters) - allowed
     if unexpected:
         raise BridgeRequestError(
@@ -84,7 +99,7 @@ def _parameters(parameters: Mapping[str, Any]) -> dict[str, Any]:
             + ", ".join(sorted(unexpected))
         )
     result = dict(parameters)
-    for name in ("as_of", "jurisdiction", "locale"):
+    for name in ("as_of", "jurisdiction", "locale", "read_on"):
         value = result.get(name, "")
         if not isinstance(value, str):
             raise BridgeRequestError(f"{name} must be a string")

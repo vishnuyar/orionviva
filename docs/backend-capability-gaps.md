@@ -169,14 +169,19 @@ only the reviewed model, once only a client method.
   vocabulary token, so it waits on the desktop application configuring its own
   model, locale and currency — a capability this product does not have anywhere.
 
-- **Net worth on the live path** — *Financial picture.*
-  `product/viva/ledger/networth.py#net_worth`. Resolves, and was called on a
-  scratch vault: it returns a point carrying one line per account with the
-  account, amount, currency, date, grade, origin and kind, the hash that line
-  proves against, and separate lists of what was missing, skipped and held. The
-  opened-vault surface provider never calls it, and the desktop overview adapter
-  hardcodes a null net worth, so live mode shows none while the synthetic preview
-  shows one.
+- **Net worth on the live path — reached.** *Financial picture.*
+  `product/viva/ledger/networth.py#net_worth`. Resolves, and returns a point
+  carrying one line per account with the account, amount, currency, date, grade,
+  origin and kind, the hash that line proves against, and separate lists of what
+  was missing, skipped and held. `product/viva/surface/overview.py` now composes
+  a picture over it through the `query_ledger` tool, the opened-vault surface
+  provider calls that composer with the day to read on, and the desktop overview
+  adapter carries the picture rather than a null figure. What it composes is one
+  total per currency and never a converted grand total, each with the day it is
+  good for, what it could not value and why, and how far the whole picture
+  reaches. Where the interface still stands short of the capability is a checked
+  claim about the running product and is recorded in
+  [User Interface Implementation Status](user-interface-implementation-status.md).
 
 - **The reviewed figure model on the reads that do not yet use it** — *Financial
   picture.* `product/viva/surface/models.py#FigureView`. Resolves. It refuses to
