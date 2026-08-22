@@ -70,6 +70,16 @@
         "contract": "QuestionQueue.v1"
       },
       "state": "ready"
+    },
+    {
+      "capability_id": "vault.transfer",
+      "contract": "VaultTransfer.v1",
+      "id": "vault.transfer.ready",
+      "payload": {
+        "capability_id": "vault.transfer",
+        "contract": "VaultTransfer.v1"
+      },
+      "state": "ready"
     }
   ],
   "models": {
@@ -583,6 +593,27 @@
         "writes_event",
         "may_call_model",
         "may_egress"
+      ]
+    },
+    {
+      "actions": [
+        "export",
+        "restore"
+      ],
+      "availability": "when a vault is open",
+      "contract": "VaultTransfer.v1",
+      "destination": "trust",
+      "disposition": "surface",
+      "entrypoint": "viva.vault_transfer",
+      "fixture_ids": [
+        "vault.transfer.ready"
+      ],
+      "id": "vault.transfer",
+      "maturity": "preview",
+      "owner": "viva.vault_transfer",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
       ]
     }
   ]

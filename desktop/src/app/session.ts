@@ -1,6 +1,6 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot } from "../surface/types";
+import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -31,6 +31,11 @@ export type SurfaceSession = {
   // and which destinations its own registry says a read reaches. It is asked
   // once per source, because neither answer changes while one sidecar lives.
   description: SourceDescription;
+  // What became of the last whole-vault copy a person asked for, out or back.
+  // It is not cleared by moving screens: it is a receipt for a file that now
+  // exists, or for one that does not, and either outlives the screen a person
+  // happened to be on.
+  transferAction: TransferActionState;
 };
 
 export type SessionAction =
@@ -51,6 +56,8 @@ export type SessionAction =
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
   | { type: "job-progress"; requestId: number; job: JobView }
   | { type: "described"; requestId: number; description: SourceDescription }
+  | { type: "transferring"; requestId: number; verb: TransferVerb }
+  | { type: "transferred"; requestId: number; verb: TransferVerb; result: ActionResult }
   | { type: "cancelling"; requestId: number; jobId: string }
   | { type: "cancelled"; requestId: number; jobId: string; result: ActionResult; jobs: readonly JobView[] }
   | { type: "notice"; notice: Notice | null };
@@ -94,6 +101,7 @@ export function initialSession(): SurfaceSession {
     cancelAction: { state: "idle" },
     jobs: [],
     description: unasked(),
+    transferAction: { state: "idle" },
   };
 }
 
@@ -136,7 +144,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked() };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -155,6 +163,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         cancelAction: { state: "idle" },
         jobs: [],
         description: unasked(),
+        transferAction: { state: "idle" },
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -231,6 +240,12 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "described":
       if (action.requestId !== state.requestId) return state;
       return { ...state, description: action.description };
+    case "transferring":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, transferAction: { state: "working", verb: action.verb } };
+    case "transferred":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, transferAction: { state: "settled", verb: action.verb, result: action.result } };
     case "job-progress":
       if (action.requestId !== state.requestId) return state;
       return { ...state, jobs: withJob(state.jobs, action.job) };

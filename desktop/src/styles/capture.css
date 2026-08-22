@@ -86,3 +86,17 @@
 .document-job h2 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
 .document-job p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
 .document-job-bar { width: 100%; height: var(--space-sm); }
+
+/* Taking a whole vault out, and bringing one back. Two forms rather than one:
+   they need different things and mean different things, and a single form with
+   a mode would let a person press the wrong half of it. */
+.trust-transfer { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.trust-transfer h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.trust-transfer p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-transfer-form { display: grid; gap: var(--space-sm); }
+.trust-transfer-form label { display: grid; gap: var(--space-xs); font-size: var(--text-caption); font-weight: var(--weight-medium); }
+
+/* Which build answered, said where a person looking for it would look. */
+.trust-engine { display: grid; gap: var(--space-sm); padding: var(--space-lg) 0; }
+.trust-engine h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.trust-engine p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }

@@ -230,6 +230,22 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         entrypoint="viva.rescan",
     ),
     _surface(
+        "vault.transfer",
+        "viva.vault_transfer",
+        CapabilityDestination.TRUST,
+        "when a vault is open",
+        "VaultTransfer.v1",
+        ("export", "restore"),
+        # Neither action decrypts anything to travel and neither touches the
+        # open vault in place: the export reads the files this vault is made of
+        # and writes them elsewhere, and the restore writes into a directory
+        # that holds nothing. Nothing here writes an event into this vault and
+        # nothing reaches the network — a copy on this machine is not egress,
+        # and what a person then does with that file is theirs.
+        (TrustEffect.READS_DATA,),
+        entrypoint="viva.vault_transfer",
+    ),
+    _surface(
         "maintenance.agent",
         "viva.agent",
         CapabilityDestination.TRUST,

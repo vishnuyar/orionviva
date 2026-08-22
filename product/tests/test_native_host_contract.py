@@ -18,7 +18,9 @@ import pytest
 
 from viva.desktop_bridge.__main__ import Sidecar, _open_vault
 from viva.desktop_bridge.handlers import (DOCUMENTS_OPERATIONS,
-                                           REVIEW_OPERATIONS, default_handlers,
+                                           REVIEW_OPERATIONS,
+                                           TRANSFER_OPERATIONS,
+                                           default_handlers,
                                            handlers_for_opened_vault)
 from viva.desktop_bridge.rpc import dispatch_frame
 from viva.desktop_bridge.surface_read import _read_request
@@ -60,6 +62,12 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # a caller asserting which work an identity stands for, which is the same
     # fence the upload's single field keeps from the other side.
     DOCUMENTS_OPERATIONS["cancel"]: {"job_id"},
+    # A copy out names where to write it. A copy back names what to read, where
+    # to put it, and the passphrase that proves it can be read — the third is
+    # there because a restore is verified by being opened, and nothing but the
+    # engine can open it.
+    TRANSFER_OPERATIONS["export"]: {"archive"},
+    TRANSFER_OPERATIONS["restore"]: {"archive", "directory", "passphrase"},
 }
 
 # Where the sidecar declares the fields it will accept, per operation.
@@ -69,6 +77,7 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     REVIEW_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "review_actions.py", "_decline_request"),
     DOCUMENTS_OPERATIONS["upload"]: (BRIDGE_PACKAGE / "document_actions.py", "_upload_request"),
     DOCUMENTS_OPERATIONS["cancel"]: (BRIDGE_PACKAGE / "document_actions.py", "_cancel_request"),
+    TRANSFER_OPERATIONS["restore"]: (BRIDGE_PACKAGE / "vault_actions.py", "_restore_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

@@ -6,7 +6,7 @@ import { adaptJobs, adaptProgress } from "./adapters/jobs";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SurfaceRegistry, SurfaceSnapshot } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SurfaceRegistry, SurfaceSnapshot, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -94,6 +94,16 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
     reread: () => readDocumentsFeature(client),
     cancel: (jobId) => acted(client.cancelJob(jobId)),
     readJobs: () => readJobsFeature(client),
+  };
+}
+
+// A whole vault out, and a whole vault back. Neither is followed by a read of
+// this vault: the export does not change it, and the restore writes somewhere
+// else entirely, so re-reading here would claim a change nothing made.
+export function privateTransferActions(client: BridgeClient): VaultTransferActions {
+  return {
+    export: (archive) => acted(client.exportVault(archive)),
+    restore: (archive, directory, passphrase) => acted(client.restoreVault(archive, directory, passphrase)),
   };
 }
 

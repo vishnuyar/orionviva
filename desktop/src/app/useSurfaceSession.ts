@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { privateSource } from "../surface/sources";
-import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb } from "../surface/types";
+import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, TransferVerb, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
@@ -17,8 +17,10 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const capturing = useRef(false);
   const choosing = useRef(false);
   const cancelling = useRef(false);
+  const transferring = useRef(false);
   const documentActions = session.source.documentActions;
   const jobStream = session.source.jobStream;
+  const transferActions = session.source.transferActions;
   const source = session.source;
 
   // What the engine behind this source says about itself, asked once per
@@ -112,6 +114,23 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     return () => { gone = true; stop?.(); };
   }, [documentActions, hostBridge]);
 
+  // One whole-vault copy at a time, out or back. The sidecar answers one
+  // request before it reads the next, so a second press while the first is in
+  // flight would queue behind it and report against a file that has already
+  // been written.
+  async function runTransfer(verb: TransferVerb, run: (actions: VaultTransferActions) => Promise<ActionResult>) {
+    if (!transferActions || transferring.current) return;
+    transferring.current = true;
+    const nextRequestId = requestId.current;
+    dispatch({ type: "transferring", requestId: nextRequestId, verb });
+    try {
+      const result = await run(transferActions);
+      if (requestId.current === nextRequestId) dispatch({ type: "transferred", requestId: nextRequestId, verb, result });
+    } finally {
+      transferring.current = false;
+    }
+  }
+
   return {
     session,
     hostAvailable: Boolean(hostBridge),
@@ -175,6 +194,15 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       } finally {
         cancelling.current = false;
       }
+    },
+    transferAvailable: Boolean(transferActions),
+    async exportVault(archive: string) {
+      if (!archive.trim()) return;
+      await runTransfer("export", (actions) => actions.export(archive.trim()));
+    },
+    async restoreVault(archive: string, directory: string, passphrase: string) {
+      if (!archive.trim() || !directory.trim() || !passphrase) return;
+      await runTransfer("restore", (actions) => actions.restore(archive.trim(), directory.trim(), passphrase));
     },
     resetDemo() {
       const nextRequestId = ++requestId.current;

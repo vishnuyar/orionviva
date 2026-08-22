@@ -127,7 +127,7 @@ reason. The day a surface becomes live-readable, or a destination is declared,
 or a capability's destination moves, this table is wrong and the build says
 so.
 
-### Bridge operations (9)
+### Bridge operations (11)
 
 Every operation the sidecar will answer, and whether an allowlist admits it.
 The operation set and the allowlist column are derived; whether the desktop
@@ -151,6 +151,8 @@ them.
 | `viva.documents.upload` | yes | added to the allowlist when a vault opens; the handler takes one path, opens the file itself and captures it, and asks for the reader that cannot read, so no model runs on this route whatever the environment holds | yes |
 | `viva.documents.cancel` | yes | added to the allowlist when a vault opens; it names a job the registry minted, never a document, and is the one operation a running job may be interrupted to serve | yes |
 | `viva.maintenance.run` | no | derived from the action the maintenance capability declares; no handler is registered for it, so an opened vault refuses it | no |
+| `viva.vault.export` | yes | added to the allowlist when a vault opens; it writes every file this vault is made of into one archive without decrypting any of them, and never replaces an archive that is already there | yes |
+| `viva.vault.restore` | yes | added to the allowlist when a vault opens; it writes into a directory that holds nothing, never over a vault in use, and reports only what opening the copy and reading it through established | yes |
 
 ### Gaps (33)
 

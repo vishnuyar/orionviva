@@ -300,7 +300,7 @@ export function App() {
           {session.destination === "documents" && <Documents result={surface.documents} mode={surface.mode} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={resetDemoVault} />}
           {session.destination === "review" && <Review result={surface.review} mode={surface.mode} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenEvidence={openEvidenceDocument} actions={{ state: session.reviewAction, onDecline: declineQuestion }} />}
           {session.destination === "activity" && <Activity result={surface.activity} mode={surface.mode} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} />}
-          {session.destination === "trust" && <Trust result={surface.trust} mode={surface.mode} identity={session.description.identity} />}
+          {session.destination === "trust" && <Trust result={surface.trust} mode={surface.mode} identity={session.description.identity} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} />}
         </FeatureBoundary>}
       </div>
     </main>

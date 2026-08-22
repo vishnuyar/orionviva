@@ -1,7 +1,7 @@
 import type { BridgeClient } from "../bridge/contracts";
 import { demoSnapshot } from "./fixtures/demo-snapshot";
-import { loadPrivateSnapshot, privateDocumentActions, privateJobStream, privateReviewActions, readEngineIdentity, readSurfaceRegistry } from "./load-private-snapshot";
-import type { ActionResult, Destination, DocumentActions, EngineIdentity, FeatureResult, JobStream, ReviewActions, SurfaceMode, SurfaceRegistry, SurfaceSnapshot } from "./types";
+import { loadPrivateSnapshot, privateDocumentActions, privateJobStream, privateReviewActions, privateTransferActions, readEngineIdentity, readSurfaceRegistry } from "./load-private-snapshot";
+import type { ActionResult, Destination, DocumentActions, EngineIdentity, FeatureResult, JobStream, ReviewActions, SurfaceMode, SurfaceRegistry, SurfaceSnapshot, VaultTransferActions } from "./types";
 
 // Every source carries the review verbs. The sample vault's verb always
 // refuses, because nothing in it is recorded, which is also how the refusal a
@@ -10,7 +10,7 @@ import type { ActionResult, Destination, DocumentActions, EngineIdentity, Featur
 // The capture verb is not on every source. The sample vault cannot take a
 // file at all, so it carries none and the screen it feeds renders no control
 // rather than one that would have to refuse.
-export type SurfaceSource = { id: "synthetic-demo" | "bridge-client"; label: string; description: string; boundary: "fixture" | "bridge-ready"; mode: SurfaceMode; load: () => Promise<SurfaceSnapshot>; reviewActions: ReviewActions; documentActions: DocumentActions | null; jobStream: JobStream | null; describe: () => Promise<SourceDescription> };
+export type SurfaceSource = { id: "synthetic-demo" | "bridge-client"; label: string; description: string; boundary: "fixture" | "bridge-ready"; mode: SurfaceMode; load: () => Promise<SurfaceSnapshot>; reviewActions: ReviewActions; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; describe: () => Promise<SourceDescription> };
 // What a source says about the engine behind it: which build answered, and
 // which destinations its registry says a read reaches. The sample vault has no
 // engine behind it, so it answers with the one honest thing it can — a fixture
@@ -24,8 +24,8 @@ const sampleServed: Record<Destination, boolean> = { overview: true, accounts: t
 export const sampleSnapshot = demoSnapshot;
 const sampleRefusal = async (): Promise<ActionResult> => ({ state: "settled", outcome: { kind: "refused", message: "This is the sample vault, and nothing in it is recorded. This question was not set aside. Open your own vault to set one aside for real.", reason: "sample_vault" } });
 const sampleReviewActions: ReviewActions = { decline: sampleRefusal, reread: async () => demoSnapshot.review };
-export const demoSource: SurfaceSource = { id: "synthetic-demo", label: "Sample vault", description: "Every name, document, and figure in this vault is fictional and stored with the app.", boundary: "fixture", mode: "demo", load: async () => demoSnapshot, reviewActions: sampleReviewActions, documentActions: null, jobStream: null, describe: async () => ({ identity: { state: "unavailable", reason: "sample_vault" }, registry: { state: "ready", data: { served: sampleServed, undeclared: [] } } }) };
-export function privateSource(client: BridgeClient): SurfaceSource { return { id: "bridge-client", label: "Private vault", description: "The surfaces below are read from this vault. Features that are not connected stay hidden or say so.", boundary: "bridge-ready", mode: "live", load: () => loadPrivateSnapshot(client), reviewActions: privateReviewActions(client), documentActions: privateDocumentActions(client), jobStream: privateJobStream(client), describe: async () => {
+export const demoSource: SurfaceSource = { id: "synthetic-demo", label: "Sample vault", description: "Every name, document, and figure in this vault is fictional and stored with the app.", boundary: "fixture", mode: "demo", load: async () => demoSnapshot, reviewActions: sampleReviewActions, documentActions: null, jobStream: null, transferActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "sample_vault" }, registry: { state: "ready", data: { served: sampleServed, undeclared: [] } } }) };
+export function privateSource(client: BridgeClient): SurfaceSource { return { id: "bridge-client", label: "Private vault", description: "The surfaces below are read from this vault. Features that are not connected stay hidden or say so.", boundary: "bridge-ready", mode: "live", load: () => loadPrivateSnapshot(client), reviewActions: privateReviewActions(client), documentActions: privateDocumentActions(client), jobStream: privateJobStream(client), transferActions: privateTransferActions(client), describe: async () => {
   const [identity, registry] = await Promise.all([readEngineIdentity(client), readSurfaceRegistry(client)]);
   return { identity, registry };
 } }; }

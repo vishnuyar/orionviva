@@ -48,6 +48,21 @@ export type SurfaceRegistry = { served: Record<Destination, boolean>; undeclared
 // including its word for not knowing; empty means the reply carried no such
 // field, which is a fact about the build rather than about the tree.
 export type EngineIdentity = { protocol: string; transport: string; revision: string };
+// Taking a whole vault out, and bringing one back. A source that carries none
+// cannot do either, so the screen renders no control rather than one that would
+// have to refuse. Only paths cross, and the passphrase on the way back — the
+// copy is verified by being opened, and only the engine can open it.
+export type VaultTransferActions = {
+  export: (archive: string) => Promise<ActionResult>;
+  restore: (archive: string, directory: string, passphrase: string) => Promise<ActionResult>;
+};
+// What became of the last copy a person asked for, out or back. One at a time,
+// because each is one request and one answer.
+export type TransferVerb = "export" | "restore";
+export type TransferActionState =
+  | { state: "idle" }
+  | { state: "working"; verb: TransferVerb }
+  | { state: "settled"; verb: TransferVerb; result: ActionResult };
 // The review actions a screen may reach. The registry declares `answer` too and
 // this build serves no handler for it, so nothing here can name it.
 export type ReviewVerb = "decline";

@@ -86,6 +86,13 @@ export type BridgeClient = {
   // stopped, never a document: what the vault holds when a job stops is
   // whatever its last finished step left there.
   cancelJob: (jobId: string) => Promise<unknown>;
+  // A whole vault out, and a whole vault back. Only paths cross: the sidecar
+  // opens every file itself, and nothing about a vault's contents ever enters
+  // this window. The passphrase crosses on the way back for the same reason it
+  // crosses to open a vault — the copy is verified by being opened, and only
+  // the engine can open it.
+  exportVault: (archive: string) => Promise<unknown>;
+  restoreVault: (archive: string, directory: string, passphrase: string) => Promise<unknown>;
   // An action answers with an outcome. It arrives unread, like a surface read:
   // the transport carries the frame and something above it decides what it says.
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;

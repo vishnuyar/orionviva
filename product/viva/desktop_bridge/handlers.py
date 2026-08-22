@@ -27,6 +27,8 @@ REVIEW_CAPABILITY = "review.questions"
 REVIEW_OPERATIONS = action_operations_for(REVIEW_CAPABILITY)
 DOCUMENTS_CAPABILITY = "documents.ingest"
 DOCUMENTS_OPERATIONS = action_operations_for(DOCUMENTS_CAPABILITY)
+TRANSFER_CAPABILITY = "vault.transfer"
+TRANSFER_OPERATIONS = action_operations_for(TRANSFER_CAPABILITY)
 
 
 class BridgeRequestError(ValueError):
@@ -130,6 +132,7 @@ def handlers_for_opened_vault(
     from .document_actions import DocumentActions
     from .jobs import JobRegistry
     from .review_actions import ReviewActions
+    from .vault_actions import VaultTransferActions
     from .vault_surface import OpenedVaultSurfaceProvider
 
     jobs = JobRegistry(progress_sink, pump)
@@ -138,9 +141,12 @@ def handlers_for_opened_vault(
     )
     actions = ReviewActions(vault)
     captures = DocumentActions(vault, jobs)
+    transfers = VaultTransferActions(vault, jobs)
     return BridgeDispatcher({
         **reads.handlers,
         REVIEW_OPERATIONS["decline"]: actions.decline,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
         DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,
+        TRANSFER_OPERATIONS["export"]: transfers.export,
+        TRANSFER_OPERATIONS["restore"]: transfers.restore,
     })

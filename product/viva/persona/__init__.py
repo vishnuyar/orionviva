@@ -486,6 +486,21 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "jobs_stopped_capture":            frozenset(),
     "jobs_already_settled":            frozenset(),
     "jobs_unknown":                    frozenset(),
+    # What is said about a whole vault leaving and a whole vault coming back.
+    # The two happy lines say what was established rather than what was
+    # attempted: a copy written without decrypting anything, and a vault
+    # opened and read through — because a restore nobody read is not a
+    # restore. The unhappy ones are kept apart by what actually stopped, since
+    # a name already taken and a file that would not read back ask a person to
+    # do two completely different things next.
+    "vault_exported":                  frozenset(),
+    "vault_export_exists":             frozenset(),
+    "vault_export_incomplete":         frozenset(),
+    "vault_export_unwritable":         frozenset(),
+    "vault_restored":                  frozenset(),
+    "vault_restore_occupied":          frozenset(),
+    "vault_restore_unreadable":        frozenset(),
+    "vault_restore_unsafe":            frozenset(),
 }
 
 

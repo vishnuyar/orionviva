@@ -1,7 +1,9 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EngineIdentity, FeatureResult, TrustData, TrustSampleCapability } from "../../surface/types";
+import type { EngineIdentity, FeatureResult, TransferActionState, TrustData, TrustSampleCapability } from "../../surface/types";
 import { Trust } from "./Trust";
+import type { TransferControls } from "./Trust";
+import moments from "../../../../product/viva/persona/pack-v21/moments.json";
 
 const note = (id: string, title = "Supplied title", detail = "Supplied detail") => ({ id, title, detail });
 const capability = (id: string, state: TrustSampleCapability["state"], label = `Capability ${id}`, detail = `Detail ${id}`): TrustSampleCapability => ({ id, group: "source", label, state, detail });
@@ -10,24 +12,26 @@ const ready = (data: TrustData): FeatureResult<TrustData> => ({ state: "ready", 
 // before the handshake lands and is not the same fact as an engine that would
 // not say.
 const unasked: FeatureResult<EngineIdentity> = { state: "absent", reason: "not_asked" };
+const noTransfer: TransferControls["onExport"] = () => {};
+const noRestore: TransferControls["onRestore"] = () => {};
 
 describe("Trust surface", () => {
   it("renders every FeatureResult boundary and both honest empty modes", () => {
-    const { getByText, queryByText, rerender } = render(<Trust identity={unasked} mode="live" result={{ state: "absent", reason: "not_read" }} />);
+    const { getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} mode="live" result={{ state: "absent", reason: "not_read" }} />);
     expect(queryByText("Trust details unavailable")).not.toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="live" result={{ state: "unavailable", reason: "not_connected" }} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="live" result={{ state: "unavailable", reason: "not_connected" }} />);
     expect(getByText("Trust and maintenance details are not connected to this private-vault read.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="live" result={{ state: "failed", reason: "read_failed" }} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="live" result={{ state: "failed", reason: "read_failed" }} />);
     expect(getByText("Trust details could not be read", { selector: "strong" })).toBeInTheDocument();
     expect(getByText("Trust and maintenance details could not be read. The private vault is still open.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="live" result={{ state: "partial", data: { notes: [note("partial")] }, issues: [{ code: "partial", message: "bounded" }] }} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="live" result={{ state: "partial", data: { notes: [note("partial")] }, issues: [{ code: "partial", message: "bounded" }] }} />);
     expect(getByText("Some Trust details are unavailable. Supplied notes and preview limitations are shown below.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="live" result={{ state: "needs_input", data: { notes: [note("needs")] }, issues: [{ code: "needs", message: "bounded" }] }} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="live" result={{ state: "needs_input", data: { notes: [note("needs")] }, issues: [{ code: "needs", message: "bounded" }] }} />);
     expect(getByText("Some Trust details need more information. Supplied notes and preview limitations are shown below.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="live" result={ready({ notes: [] })} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="live" result={ready({ notes: [] })} />);
     expect(getByText("No Trust notes supplied")).toBeInTheDocument();
     expect(getByText("The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="demo" result={ready({ notes: [], sample: { capabilities: [] } })} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="demo" result={ready({ notes: [], sample: { capabilities: [] } })} />);
     expect(getByText("No sample Trust details")).toBeInTheDocument();
   });
 
@@ -39,7 +43,7 @@ describe("Trust surface", () => {
       capability("supply", "not_supplied"),
       capability("implementation", "not_implemented"),
     ];
-    const { container, getByText } = render(<Trust identity={unasked} mode="demo" result={ready({ notes: [note("preview", "Preview boundary")], sample: { capabilities } })} />);
+    const { container, getByText } = render(<Trust identity={unasked} transfer={null} mode="demo" result={ready({ notes: [note("preview", "Preview boundary")], sample: { capabilities } })} />);
     expect(getByText("Preview-owned explanation")).toBeInTheDocument();
     expect(getByText("This destination explains what the fictional preview can and cannot establish. It is not a trust report for a private vault.")).toBeInTheDocument();
     for (const label of ["Fictional sample", "Preview limitation", "Not connected", "Not supplied", "Not implemented"]) expect(getByText(label)).toBeInTheDocument();
@@ -54,7 +58,7 @@ describe("Trust surface", () => {
 
   it("shows only supplied live notes and hides malicious preview capabilities", () => {
     const malicious = capability("secret", "fictional_sample", "Secret fictional capability", "Secret fictional detail");
-    const { getByText, queryByText } = render(<Trust identity={unasked} mode="live" result={ready({ notes: [note("live-note", "Backend supplied note", "Backend supplied detail")], sample: { capabilities: [malicious] } })} />);
+    const { getByText, queryByText } = render(<Trust identity={unasked} transfer={null} mode="live" result={ready({ notes: [note("live-note", "Backend supplied note", "Backend supplied detail")], sample: { capabilities: [malicious] } })} />);
     expect(getByText("Supplied Trust view")).toBeInTheDocument();
     expect(getByText("Backend supplied note")).toBeInTheDocument();
     expect(getByText("Backend supplied detail")).toBeInTheDocument();
@@ -67,26 +71,26 @@ describe("Trust surface", () => {
 
   it("bounds missing and duplicate Trust note identities without merging by label or order", () => {
     const notes = [note("", "Hidden blank one"), note(" ", "Hidden blank two"), note("duplicate", "Hidden duplicate one"), note("duplicate", "Hidden duplicate two"), note("unique-one", "Same label"), note("unique-two", "Same label")];
-    const { getAllByText, getByText, queryByText, rerender } = render(<Trust identity={unasked} mode="live" result={ready({ notes })} />);
+    const { getAllByText, getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} mode="live" result={ready({ notes })} />);
     expect(getAllByText("Trust note identity unavailable")).toHaveLength(1);
     expect(getAllByText("Trust note identity conflicted")).toHaveLength(1);
     expect(getByText("duplicate")).toBeInTheDocument();
     expect(getAllByText("Same label")).toHaveLength(2);
     for (const hidden of ["Hidden blank one", "Hidden blank two", "Hidden duplicate one", "Hidden duplicate two"]) expect(queryByText(hidden)).not.toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="live" result={ready({ notes: [...notes].reverse() })} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="live" result={ready({ notes: [...notes].reverse() })} />);
     expect(getAllByText("Same label")).toHaveLength(2);
   });
 
   it("renders missing note fields and bounded capability identity rows", () => {
     const capabilities = [capability("", "not_supplied"), { ...capability(" ", "not_connected"), group: "outbound_models" as const }, capability("duplicate", "not_supplied"), { ...capability("duplicate", "not_implemented"), group: "integrity" as const }, capability("missing-fields", "preview_limitation", "", "")];
-    const { getAllByText, getByText, rerender } = render(<Trust identity={unasked} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities } })} />);
+    const { getAllByText, getByText, rerender } = render(<Trust identity={unasked} transfer={null} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities } })} />);
     expect(getByText("Note title was not supplied by this Trust view.")).toBeInTheDocument();
     expect(getByText("Note detail was not supplied by this Trust view.")).toBeInTheDocument();
     expect(getAllByText("Capability identity unavailable")).toHaveLength(1);
     expect(getAllByText("Capability identity conflicted")).toHaveLength(1);
     expect(getByText("Capability label was not authored for this preview row.")).toBeInTheDocument();
     expect(getByText("Capability detail was not authored for this preview row.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities: [...capabilities].reverse() } })} />);
+    rerender(<Trust identity={unasked} transfer={null} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities: [...capabilities].reverse() } })} />);
     expect(getAllByText("Capability identity unavailable")).toHaveLength(1);
     expect(getAllByText("Capability identity conflicted")).toHaveLength(1);
   });
@@ -94,7 +98,7 @@ describe("Trust surface", () => {
   it("bounds inherited, future, and blank availability states without indexing the state map", () => {
     const unknownStates = ["constructor", "toString", "hasOwnProperty", "__proto__", "future_state_128-EXACT", ""];
     const capabilities = unknownStates.map((state, position) => ({ ...capability(`unknown-state-${position}`, "preview_limitation"), state } as unknown as TrustSampleCapability));
-    const { getAllByText, getByText } = render(<Trust identity={unasked} mode="demo" result={ready({ notes: [], sample: { capabilities } })} />);
+    const { getAllByText, getByText } = render(<Trust identity={unasked} transfer={null} mode="demo" result={ready({ notes: [], sample: { capabilities } })} />);
     expect(getAllByText("Status unavailable")).toHaveLength(unknownStates.length);
     expect(getAllByText("This preview row supplied an unrecognized availability state. No capability claim is made.")).toHaveLength(unknownStates.length);
     expect(getAllByText("Unrecognized supplied status value")).toHaveLength(unknownStates.length);
@@ -107,7 +111,7 @@ describe("Trust surface", () => {
     try {
       const notes = [note("", "Blank hidden"), note("missing-identity", "Ready note named missing"), note("x", "Duplicate note one"), note("x", "Duplicate note two"), note("conflict-x", "Ready note named conflict")];
       const capabilities = [capability("", "not_supplied", "Blank capability hidden"), capability("missing-identity", "not_connected", "Ready capability named missing"), capability("x", "not_supplied", "Duplicate capability one"), { ...capability("x", "not_implemented", "Duplicate capability two"), group: "integrity" as const }, capability("conflict-x", "preview_limitation", "Ready capability named conflict")];
-      const view = render(<Trust identity={unasked} mode="demo" result={ready({ notes, sample: { capabilities } })} />);
+      const view = render(<Trust identity={unasked} transfer={null} mode="demo" result={ready({ notes, sample: { capabilities } })} />);
       const assertComplete = () => {
         expect(view.getAllByText("Trust note identity unavailable")).toHaveLength(1);
         expect(view.getAllByText("Trust note identity conflicted")).toHaveLength(1);
@@ -119,7 +123,7 @@ describe("Trust surface", () => {
         expect(view.getByText("Ready capability named conflict")).toBeInTheDocument();
       };
       assertComplete();
-      view.rerender(<Trust identity={unasked} mode="demo" result={ready({ notes: [...notes].reverse(), sample: { capabilities: [...capabilities].reverse() } })} />);
+      view.rerender(<Trust identity={unasked} transfer={null} mode="demo" result={ready({ notes: [...notes].reverse(), sample: { capabilities: [...capabilities].reverse() } })} />);
       assertComplete();
       expect(error).not.toHaveBeenCalled();
     } finally {
@@ -129,9 +133,55 @@ describe("Trust surface", () => {
 
   it("preserves long supplied identities and explanatory copy without truncation attributes", () => {
     const long = `long-${"identity".repeat(20)}`;
-    const { container, getByText } = render(<Trust identity={unasked} mode="live" result={ready({ notes: [note(long, long, long)] })} />);
+    const { container, getByText } = render(<Trust identity={unasked} transfer={null} mode="live" result={ready({ notes: [note(long, long, long)] })} />);
     expect(getByText(long, { selector: "strong" })).toBeInTheDocument();
     expect(getByText(long, { selector: "dd" })).toBeInTheDocument();
     expect(container.querySelector("[title]")).not.toBeInTheDocument();
+  });
+});
+
+describe("a copy of a whole vault", () => {
+  const props = { mode: "live" as const, identity: unasked, result: ready({ notes: [note("only")] }) };
+  const controls = (state: TransferActionState = { state: "idle" }, onExport = noTransfer, onRestore = noRestore): TransferControls => ({ state, onExport, onRestore });
+
+  it("offers no control at all where the source cannot take a copy", () => {
+    const { queryByRole } = render(<Trust {...props} transfer={null} />);
+    expect(queryByRole("button", { name: "Take a copy" })).not.toBeInTheDocument();
+  });
+
+  it("hands the path a person typed over, and nothing else", () => {
+    const asked: string[] = [];
+    const { getByLabelText, getByRole } = render(<Trust {...props} transfer={controls({ state: "idle" }, (archive: string) => { asked.push(archive); })} />);
+    fireEvent.change(getByLabelText("Write the copy to"), { target: { value: "/copies/mine.orionvault" } });
+    fireEvent.click(getByRole("button", { name: "Take a copy" }));
+    expect(asked).toEqual(["/copies/mine.orionvault"]);
+  });
+
+  it("hands a restore all three of the things it needs", () => {
+    const asked: string[][] = [];
+    const { getByLabelText, getByRole } = render(<Trust {...props} transfer={controls({ state: "idle" }, noTransfer, (...args: string[]) => { asked.push(args); })} />);
+    fireEvent.change(getByLabelText("Bring back the copy at"), { target: { value: "/copies/mine.orionvault" } });
+    fireEvent.change(getByLabelText("Into the empty folder"), { target: { value: "/vaults/back" } });
+    fireEvent.change(getByLabelText("Its passphrase"), { target: { value: "the-passphrase" } });
+    fireEvent.click(getByRole("button", { name: "Bring it back" }));
+    expect(asked).toEqual([["/copies/mine.orionvault", "/vaults/back", "the-passphrase"]]);
+  });
+
+  it("keeps both controls in the tab order while the vault is answering", () => {
+    const { getByRole, getByText } = render(<Trust {...props} transfer={controls({ state: "working", verb: "export" })} />);
+    expect(getByRole("button", { name: "Take a copy" })).toHaveAttribute("aria-disabled", "true");
+    expect(getByText("Your vault is answering the last request. Pressing again does nothing until it has.")).toBeInTheDocument();
+  });
+
+  it("says the vault's own sentence about the copy, and composes none of its own", () => {
+    const settled: TransferActionState = { state: "settled", verb: "export", result: { state: "settled", outcome: { kind: "completed", message: moments.vault_exported, reason: "" } } };
+    const { getAllByText } = render(<Trust {...props} transfer={controls(settled)} />);
+    expect(getAllByText(moments.vault_exported).length).toBeGreaterThan(0);
+  });
+
+  it("says what channel answered when the vault itself never did", () => {
+    const settled: TransferActionState = { state: "settled", verb: "restore", result: { state: "unanswered" } };
+    const { getAllByText } = render(<Trust {...props} transfer={controls(settled)} />);
+    expect(getAllByText(/did not answer/).length).toBeGreaterThan(0);
   });
 });
