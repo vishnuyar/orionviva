@@ -501,6 +501,20 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "vault_restore_occupied":          frozenset(),
     "vault_restore_unreadable":        frozenset(),
     "vault_restore_unsafe":            frozenset(),
+    # What is said about going back over what a vault already holds. The line
+    # for a pass that changed nothing is its own rather than an empty list,
+    # because a list with no rows and a sweep that found nothing read alike on
+    # a screen and mean different things. The rest each name one kind of change
+    # and place a count in it. The last says what this pass deliberately does
+    # not do: a document nothing has read stays unread, because reading one
+    # costs money and asks first.
+    "rescan_nothing":                  frozenset(),
+    "rescan_gaps":                     frozenset({"count"}),
+    "rescan_corroborated":             frozenset({"count"}),
+    "rescan_linked":                   frozenset({"count"}),
+    "rescan_settled":                  frozenset({"count"}),
+    "rescan_open":                     frozenset({"count"}),
+    "rescan_unread":                   frozenset(),
 }
 
 

@@ -30,6 +30,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     handshake: () => request("bridge.handshake", {}),
     readCapabilities: () => request("viva.surface.capabilities", {}),
     cancelJob: (jobId: string) => request("viva.documents.cancel", { job_id: jobId }),
+    rescanDocuments: () => request("viva.documents.rescan", {}),
     exportVault: (archive: string) => request("viva.vault.export", { archive }),
     restoreVault: (archive: string, directory: string, passphrase: string) => request("viva.vault.restore", { archive, directory, passphrase }),
     declineQuestion: (questionId, reason: DeclineReason) => request("viva.review.decline", { question_id: questionId, reason }),

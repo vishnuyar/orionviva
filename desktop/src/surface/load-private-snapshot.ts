@@ -2,7 +2,9 @@ import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/cont
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
+import { isRecord } from "./adapters/primitives";
 import { adaptJobs, adaptProgress } from "./adapters/jobs";
+import { adaptRescan } from "./adapters/rescan";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
@@ -94,6 +96,16 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
     reread: () => readDocumentsFeature(client),
     cancel: (jobId) => acted(client.cancelJob(jobId)),
     readJobs: () => readJobsFeature(client),
+    // Two answers from one frame, kept apart. `result` is which channel spoke
+    // and what the vault said; `report` is what the pass did, and it is read
+    // only from a reply the vault itself settled — a channel that never
+    // answered has nothing to report about.
+    rescan: async () => {
+      const [replied] = await Promise.allSettled([client.rescanDocuments()]);
+      const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
+      const report = replied.status === "fulfilled" && isRecord(replied.value) ? adaptRescan(replied.value.state) : null;
+      return { result, report };
+    },
   };
 }
 

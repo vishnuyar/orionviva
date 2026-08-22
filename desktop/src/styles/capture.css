@@ -100,3 +100,9 @@
 .trust-engine { display: grid; gap: var(--space-sm); padding: var(--space-lg) 0; }
 .trust-engine h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
 .trust-engine p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+
+/* A pass back over what a vault already holds, and what came of it. */
+.document-rescan { display: grid; gap: var(--space-sm); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.document-rescan h2 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.document-rescan p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.document-rescan-answer ul { margin: var(--space-sm) 0 0; padding-left: var(--space-lg); display: grid; gap: var(--space-xs); font-size: var(--text-fine); }

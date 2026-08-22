@@ -18,6 +18,7 @@ import pytest
 
 from viva.desktop_bridge.__main__ import Sidecar, _open_vault
 from viva.desktop_bridge.handlers import (DOCUMENTS_OPERATIONS,
+                                           RESCAN_OPERATIONS,
                                            REVIEW_OPERATIONS,
                                            TRANSFER_OPERATIONS,
                                            default_handlers,
@@ -68,6 +69,10 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # engine can open it.
     TRANSFER_OPERATIONS["export"]: {"archive"},
     TRANSFER_OPERATIONS["restore"]: {"archive", "directory", "passphrase"},
+    # A pass goes over the whole vault, so the request carries nothing. A field
+    # naming part of it would be a caller asserting a scope the sweep does not
+    # have, and the fence is the shape of the request.
+    RESCAN_OPERATIONS["rescan"]: set(),
 }
 
 # Where the sidecar declares the fields it will accept, per operation.
@@ -78,6 +83,7 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     DOCUMENTS_OPERATIONS["upload"]: (BRIDGE_PACKAGE / "document_actions.py", "_upload_request"),
     DOCUMENTS_OPERATIONS["cancel"]: (BRIDGE_PACKAGE / "document_actions.py", "_cancel_request"),
     TRANSFER_OPERATIONS["restore"]: (BRIDGE_PACKAGE / "vault_actions.py", "_restore_request"),
+    RESCAN_OPERATIONS["rescan"]: (BRIDGE_PACKAGE / "rescan_actions.py", "_no_fields"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

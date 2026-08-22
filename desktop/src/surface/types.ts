@@ -209,15 +209,32 @@ export type ReviewActions = {
 // The capture verb a screen may use, and the read that follows it. A source
 // that cannot capture carries none, so a screen with nothing behind the
 // control renders no control.
+// One change a pass back over the vault made, or one standing fact it
+// reported. The sentence is the backend's: this side has no words for what a
+// gap is, and inventing some is exactly what a reviewed read model prevents.
+export type RescanChange = { id: string; count: number; sentence: string };
+// What a pass did, as the read model composed it. `changes` is empty for a
+// pass that changed nothing, which is why the panel's own sentence is carried
+// separately — an empty list and a sweep that found nothing read alike.
+export type RescanReport = { sentence: string; changes: readonly RescanChange[]; standing: readonly RescanChange[]; linkCount: number };
+// What became of the last pass a person asked for.
+export type RescanActionState =
+  | { state: "idle" }
+  | { state: "working" }
+  | { state: "settled"; result: ActionResult; report: RescanReport | null };
 export type DocumentActions = {
-  upload: (path: string) => Promise<ActionResult>;
   // One document per call, and one call per gesture.
-  reread: () => Promise<FeatureResult<DocumentsData>>;
+  upload: (path: string) => Promise<ActionResult>;
   // Stop one job by the identity the sidecar minted for it, and read the
   // registry back. The read is separate because a stop that reached nothing
   // and a stop that worked both answer, and only the registry says which
   // jobs are left.
   cancel: (jobId: string) => Promise<ActionResult>;
   readJobs: () => Promise<FeatureResult<JobsData>>;
+  // A pass back over what is already held, and the read that follows it: the
+  // pass writes links and heals, so what the documents screen shows can move
+  // under it.
+  rescan: () => Promise<{ result: ActionResult; report: RescanReport | null }>;
+  reread: () => Promise<FeatureResult<DocumentsData>>;
 };
 export type SurfaceSnapshot = { mode: SurfaceMode; disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; review: FeatureResult<ReviewData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> };

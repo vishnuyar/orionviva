@@ -225,7 +225,13 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.DOCUMENTS,
         "after a document has been ingested",
         "RescanResult.v1",
-        (),
+        # The action is named for what it does rather than for pressing it: the
+        # operation is derived from the capability's family and this word, and
+        # `viva.documents.run` would name a thing nobody could identify.
+        ("rescan",),
+        # It writes: links, heals and corroborations are events. It reaches no
+        # model and sends nothing — going back over what is already held reads
+        # nothing new, which is what keeps this action free and repeatable.
         (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
         entrypoint="viva.rescan",
     ),

@@ -460,7 +460,9 @@
       ]
     },
     {
-      "actions": [],
+      "actions": [
+        "rescan"
+      ],
       "availability": "after a document has been ingested",
       "contract": "RescanResult.v1",
       "destination": "documents",

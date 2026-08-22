@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, ConversationDialogShell } from "./App";
 // The sentences a person is told, read from the pack that ships them.
-import moments from "../../../product/viva/persona/pack-v21/moments.json";
+import moments from "../../../product/viva/persona/pack-v22/moments.json";
 
 const SAVED_NO_READER = moments.documents_saved_no_reader;
 const queryByRoleIn = (root: HTMLElement, role: string) => root.querySelector(`[role="${role}"]`);

@@ -91,6 +91,10 @@ export type BridgeClient = {
   // this window. The passphrase crosses on the way back for the same reason it
   // crosses to open a vault — the copy is verified by being opened, and only
   // the engine can open it.
+  // One pass back over what this vault already holds. It carries nothing,
+  // because a pass goes over the whole vault and a field naming part of it
+  // would be this side asserting a scope the sweep does not have.
+  rescanDocuments: () => Promise<unknown>;
   exportVault: (archive: string) => Promise<unknown>;
   restoreVault: (archive: string, directory: string, passphrase: string) => Promise<unknown>;
   // An action answers with an outcome. It arrives unread, like a surface read:

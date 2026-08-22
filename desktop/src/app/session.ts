@@ -1,6 +1,6 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -36,6 +36,11 @@ export type SurfaceSession = {
   // exists, or for one that does not, and either outlives the screen a person
   // happened to be on.
   transferAction: TransferActionState;
+  // What the last pass back over this vault said it did. It stays on the
+  // screen after the pass: it is a receipt for events that were written, and
+  // clearing it on the next navigation would take a record of a change away
+  // from the person the change was made for.
+  rescanAction: RescanActionState;
 };
 
 export type SessionAction =
@@ -56,6 +61,8 @@ export type SessionAction =
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
   | { type: "job-progress"; requestId: number; job: JobView }
   | { type: "described"; requestId: number; description: SourceDescription }
+  | { type: "rescanning"; requestId: number }
+  | { type: "rescanned"; requestId: number; result: ActionResult; report: RescanReport | null; documents: FeatureResult<DocumentsData> }
   | { type: "transferring"; requestId: number; verb: TransferVerb }
   | { type: "transferred"; requestId: number; verb: TransferVerb; result: ActionResult }
   | { type: "cancelling"; requestId: number; jobId: string }
@@ -102,6 +109,7 @@ export function initialSession(): SurfaceSession {
     jobs: [],
     description: unasked(),
     transferAction: { state: "idle" },
+    rescanAction: { state: "idle" },
   };
 }
 
@@ -144,7 +152,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -164,6 +172,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         jobs: [],
         description: unasked(),
         transferAction: { state: "idle" },
+        rescanAction: { state: "idle" },
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -240,6 +249,23 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "described":
       if (action.requestId !== state.requestId) return state;
       return { ...state, description: action.description };
+    case "rescanning":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, rescanAction: { state: "working" } };
+    case "rescanned": {
+      if (action.requestId !== state.requestId) return state;
+      // A pass writes links and heals, so the documents read that follows it
+      // replaces only documents. Nothing else was asked for, so nothing else
+      // is claimed to have been read again.
+      const snapshot = { ...state.snapshot, documents: action.documents };
+      const ids = selectedIds(snapshot);
+      return {
+        ...state,
+        snapshot,
+        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        rescanAction: { state: "settled", result: action.result, report: action.report },
+      };
+    }
     case "transferring":
       if (action.requestId !== state.requestId) return state;
       return { ...state, transferAction: { state: "working", verb: action.verb } };

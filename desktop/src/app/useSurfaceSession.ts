@@ -18,6 +18,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const choosing = useRef(false);
   const cancelling = useRef(false);
   const transferring = useRef(false);
+  const sweeping = useRef(false);
   const documentActions = session.source.documentActions;
   const jobStream = session.source.jobStream;
   const transferActions = session.source.transferActions;
@@ -196,6 +197,22 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
     },
     transferAvailable: Boolean(transferActions),
+    // One pass at a time, and the documents read taken again once the answer
+    // is in: the pass writes, so what the screen shows can move under it.
+    async rescanDocuments() {
+      const actions = documentActions;
+      if (!actions || sweeping.current) return;
+      sweeping.current = true;
+      const nextRequestId = requestId.current;
+      dispatch({ type: "rescanning", requestId: nextRequestId });
+      try {
+        const { result, report } = await actions.rescan();
+        const documents = await actions.reread();
+        if (requestId.current === nextRequestId) dispatch({ type: "rescanned", requestId: nextRequestId, result, report, documents });
+      } finally {
+        sweeping.current = false;
+      }
+    },
     async exportVault(archive: string) {
       if (!archive.trim()) return;
       await runTransfer("export", (actions) => actions.export(archive.trim()));

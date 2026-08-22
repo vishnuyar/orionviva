@@ -1,7 +1,7 @@
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
 import type { ChannelPresentation } from "../../components/actionChannel";
-import type { CancelActionState, CaptureActionState, DocumentsData, EvidenceLink, FeatureResult, JobView, SurfaceDocument, SurfaceMode } from "../../surface/types";
+import type { CancelActionState, CaptureActionState, DocumentsData, EvidenceLink, FeatureResult, JobView, RescanActionState, SurfaceDocument, SurfaceMode } from "../../surface/types";
 import { documentRowLabel, lifecyclePresentation, resolveDocumentSelection, sampleLifecycle } from "./documentPresentation";
 
 // What a screen needs to say what became of a capture, and — where the host
@@ -15,7 +15,10 @@ import { documentRowLabel, lifecyclePresentation, resolveDocumentSelection, samp
 // screen with nothing behind the control renders no control rather than one
 // that would have to refuse.
 export type CaptureControls = { state: CaptureActionState; onChoose: (() => void) | null; job: JobView | null; cancel: CancelActionState; onStop: ((jobId: string) => void) | null };
-type DocumentsProps = { result: FeatureResult<DocumentsData>; mode: SurfaceMode; selectedDocument: string; capture: CaptureControls | null; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void };
+// What a screen needs to send this vault back over what it already holds, and
+// to say what came of it. A source that cannot do it carries none of this.
+export type RescanControls = { state: RescanActionState; onRescan: () => void };
+type DocumentsProps = { rescan: RescanControls | null; result: FeatureResult<DocumentsData>; mode: SurfaceMode; selectedDocument: string; capture: CaptureControls | null; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void };
 
 // The one sentence this panel says, and the only place it is said. What the
 // vault answered the last capture with stands until the next capture; where
@@ -67,6 +70,30 @@ function JobProgress({ job, cancel, onStop }: { job: JobView; cancel: CancelActi
     <progress className="document-job-bar" value={job.completed} max={job.total || 1} aria-labelledby="document-job-title" />
     {onStop && running && job.cancellable ? <button className="secondary-button" type="button" aria-disabled={stopping} aria-describedby={stopping ? "document-job-stopping" : undefined} onClick={() => { if (!stopping) onStop(job.jobId); }}>Stop</button> : null}
     {stopping ? <span className="action-explanation" id="document-job-stopping">Asking your vault to stop. What has already finished is kept.</span> : null}
+  </section>;
+}
+
+// A pass back over everything already here. It reads nothing new, so it costs
+// nothing and asks for nothing — which is why the control says what it does
+// rather than warning about it. What came of it is the backend's own sentences,
+// one per kind of change; this composes none of them and counts nothing.
+function RescanPanel({ rescan }: { rescan: RescanControls }) {
+  const working = rescan.state.state === "working";
+  const report = rescan.state.state === "settled" ? rescan.state.report : null;
+  const unread = rescan.state.state === "settled" && !report;
+  return <section className="document-rescan" aria-labelledby="document-rescan-title">
+    <div className="detail-panel-label">Go back over this vault</div>
+    <h2 id="document-rescan-title">Look again at what is already here</h2>
+    <p>This looks for records that close each other, statements a second document now agrees with, and movements that are two halves of one transfer. It reads no document, so it costs nothing and sends nothing.</p>
+    <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "document-rescan-waiting" : undefined} onClick={() => { if (!working) rescan.onRescan(); }}>Look again</button>
+    {working ? <span className="action-explanation" id="document-rescan-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
+    <div className="visually-hidden" role="status" aria-live="polite">{report ? report.sentence : ""}</div>
+    {report ? <div className="document-rescan-answer">
+      <p>{report.sentence}</p>
+      {report.changes.length ? <ul>{report.changes.map((change) => <li key={change.id}>{change.sentence}</li>)}</ul> : null}
+      {report.standing.length ? <ul className="document-rescan-standing">{report.standing.map((item) => <li key={item.id}>{item.sentence}</li>)}</ul> : null}
+    </div> : null}
+    {unread ? <p className="document-rescan-answer">Your vault answered in a way this screen does not recognise, so it will not say what that pass did.</p> : null}
   </section>;
 }
 
@@ -151,13 +178,14 @@ function DocumentDetail({ mode, document, onOpenEvidence }: { mode: SurfaceMode;
 // The region announcing it is mounted for the life of the screen and only its
 // text changes, because a live region that arrives with its words is one
 // several screen readers never announce.
-export function Documents({ result, mode, selectedDocument, capture, onSelectDocument, onOpenEvidence, onExploreSample }: DocumentsProps) {
+export function Documents({ result, mode, selectedDocument, capture, rescan, onSelectDocument, onOpenEvidence, onExploreSample }: DocumentsProps) {
   const said = capturePresentation(capture ? capture.state : { state: "idle" }, panelSentence(result));
   const captureRegion = capture?.onChoose ? <CapturePanel state={capture.state} onChoose={capture.onChoose} /> : mode === "demo" ? <SampleCaptureBoundary /> : null;
   const job = capture?.job ?? null;
-  if (result.state === "absent" && !captureRegion && !said && !job) return null;
+  if (result.state === "absent" && !captureRegion && !said && !job && !rescan) return null;
   return <section className="feature-panel documents-surface">
     {captureRegion}
+    {rescan ? <RescanPanel rescan={rescan} /> : null}
     {capture && job ? <JobProgress job={job} cancel={capture.cancel} onStop={capture.onStop} /> : null}
     {capture ? <div className="visually-hidden" role="status" aria-live="polite">{said ? `${said.title ? `${said.title}. ` : ""}${said.detail}` : ""}</div> : null}
     {said ? <div className="document-capture-answer">{said.title ? <strong>{said.title}</strong> : null}<p>{said.detail}</p></div> : null}
