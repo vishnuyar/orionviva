@@ -84,7 +84,9 @@ def test_default_surface_read_returns_live_reviewed_registry():
     # "served" means lives here. Two derivations of one rule are two rules, and
     # the one a person would meet is the one nobody reviewed.
     assert response["result"]["destinations"]["overview"] is True
-    assert response["result"]["destinations"]["settings"] is False
+    # A destination no surfaced capability reaches is reported false. `activity`
+    # is the one that has stayed that way through every cycle so far.
+    assert response["result"]["destinations"]["activity"] is False
 
 
 def test_surface_read_rejects_payload_fields():

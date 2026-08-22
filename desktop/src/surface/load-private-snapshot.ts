@@ -5,11 +5,12 @@ import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
 import { isRecord } from "./adapters/primitives";
 import { adaptJobs, adaptProgress } from "./adapters/jobs";
 import { adaptRescan } from "./adapters/rescan";
+import { adaptProposal, adaptSettings } from "./adapters/settings";
 import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SurfaceRegistry, SurfaceSnapshot, VaultTransferActions } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SettingsActions, SurfaceRegistry, SurfaceSnapshot, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -107,6 +108,25 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
       const report = replied.status === "fulfilled" && isRecord(replied.value) ? adaptRescan(replied.value.state) : null;
       return { result, report };
     },
+  };
+}
+
+// What this machine has been told to do, and the yes that tells it. Proposing
+// changes nothing: what comes back is either the proposal a person is shown, or
+// the channel's own answer about why there is none.
+export function privateSettingsActions(client: BridgeClient): SettingsActions {
+  return {
+    read: async () => {
+      const [replied] = await Promise.allSettled([client.readSettings()]);
+      return settled(replied, adaptSettings);
+    },
+    propose: async (kind, fields) => {
+      const [replied] = await Promise.allSettled([client.proposeSettings(kind, fields)]);
+      const proposal = replied.status === "fulfilled" ? adaptProposal(replied.value) : null;
+      if (proposal) return proposal;
+      return acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
+    },
+    confirm: (kind, fields, digest, key) => acted(client.confirmSettings(kind, fields, digest, key)),
   };
 }
 

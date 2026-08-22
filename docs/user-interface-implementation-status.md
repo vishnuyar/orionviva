@@ -108,7 +108,7 @@ the interface ships it, or it is rejected as invented.
 | `review` | yes | yes | yes | yes |
 | `viva` | no | yes | yes | no |
 | `trust` | yes | yes | yes | yes |
-| `settings` | no | yes | no | no |
+| `settings` | no | yes | yes | no |
 | `none` | no | yes | no | no |
 
 The two sides still disagree, but no longer about spelling: the registry used
@@ -120,7 +120,11 @@ destinations with no place in the interface; `accounts` and `activity` are
 shipped destinations no surfaced capability claims, which the interface now
 marks on the destination itself. `trust` became live-readable when the outbound
 record landed there, and it reads as ready for a vault that has sent nothing —
-that emptiness is the record rather than an absent panel. `none` is how the registry
+that emptiness is the record rather than an absent panel. `settings` is now
+claimed by a surfaced capability and is still no place in the interface: the
+charter defers Settings as its own destination, so the controls that reach that
+capability sit on Trust until it lands. That is a stated deferral rather than a
+gap, and the row says so by reporting no shipped destination. `none` is how the registry
 says a capability has no destination at all. `jobs` is a live-readable surface
 name that is no registry destination and no screen of its own: what the sidecar
 is doing is shown on the documents screen, beside the work that started it,
@@ -129,7 +133,7 @@ reason. The day a surface becomes live-readable, or a destination is declared,
 or a capability's destination moves, this table is wrong and the build says
 so.
 
-### Bridge operations (12)
+### Bridge operations (15)
 
 Every operation the sidecar will answer, and whether an allowlist admits it.
 The operation set and the allowlist column are derived; whether the desktop
@@ -153,6 +157,9 @@ them.
 | `viva.documents.upload` | yes | added to the allowlist when a vault opens; the handler takes one path, opens the file itself and captures it, and asks for the reader that cannot read, so no model runs on this route whatever the environment holds | yes |
 | `viva.documents.cancel` | yes | added to the allowlist when a vault opens; it names a job the registry minted, never a document, and is the one operation a running job may be interrupted to serve | yes |
 | `viva.maintenance.run` | no | derived from the action the maintenance capability declares; no handler is registered for it, so an opened vault refuses it | no |
+| `viva.settings.read` | yes | the allowlist a sidecar starts with, before any vault is open; it is not a surface read, because a surface read opens a vault and this question has an answer before one exists | yes |
+| `viva.settings.propose` | yes | the allowlist a sidecar starts with; it describes what would change, changes nothing, and carries the digest a yes has to name | yes |
+| `viva.settings.confirm` | yes | the allowlist a sidecar starts with; it applies exactly the proposal that was shown, and is the one request an API key ever travels in | yes |
 | `viva.documents.rescan` | yes | added to the allowlist when a vault opens; it stitches gaps, closes holds a counterparty now attests and links transfers among movements already posted, reads no document, and answers with a reviewed read model rather than the counts the sweep returns | yes |
 | `viva.vault.export` | yes | added to the allowlist when a vault opens; it writes every file this vault is made of into one archive without decrypting any of them, and never replaces an archive that is already there | yes |
 | `viva.vault.restore` | yes | added to the allowlist when a vault opens; it writes into a directory that holds nothing, never over a vault in use, and reports only what opening the copy and reading it through established | yes |

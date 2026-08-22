@@ -236,6 +236,20 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         entrypoint="viva.rescan",
     ),
     _surface(
+        "settings.configuration",
+        "viva.configuration",
+        CapabilityDestination.SETTINGS,
+        "always, with or without a vault open",
+        "Configuration.v1",
+        ("propose", "confirm"),
+        # Proposing sends nothing and reaches nothing: it describes what would
+        # change. Confirming a model is the moment bytes become able to leave,
+        # which is why the pair is declared as one capability with `may_egress`
+        # on it — a person is agreeing to the permission, not to a call.
+        (TrustEffect.READS_DATA, TrustEffect.MAY_EGRESS),
+        entrypoint="viva.configuration",
+    ),
+    _surface(
         "trust.outbound",
         "viva.surface.outbound",
         CapabilityDestination.TRUST,

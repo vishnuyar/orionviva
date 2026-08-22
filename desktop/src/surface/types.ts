@@ -48,6 +48,27 @@ export type SurfaceRegistry = { served: Record<Destination, boolean>; undeclared
 // including its word for not knowing; empty means the reply carried no such
 // field, which is a fact about the build rather than about the tree.
 export type EngineIdentity = { protocol: string; transport: string; revision: string };
+// What is in force. `keySet` is whether a key exists, never what it is: there
+// is no field here a key could travel in, which is what keeps it out of every
+// reply this interface can see.
+export type SettingsView = { locale: string; currency: string; adapter: string; model: string; baseUrl: string; keySet: boolean; canSend: boolean };
+// One reviewed change a person has been shown, and the digest their yes has to
+// name. `sends` is the read's own word for whether saying yes makes bytes able
+// to leave; nothing here works it out from which fields moved.
+export type SettingsProposal = { kind: "presentation" | "model"; changes: Readonly<Record<string, string>>; sends: boolean; digest: string; message: string };
+// Where a settings exchange stands. A proposal is held until a person says yes
+// to it, which is the whole point: the reply that describes a change is not the
+// change.
+export type SettingsActionState =
+  | { state: "idle" }
+  | { state: "working" }
+  | { state: "proposed"; proposal: SettingsProposal }
+  | { state: "settled"; result: ActionResult };
+export type SettingsActions = {
+  read: () => Promise<FeatureResult<SettingsView>>;
+  propose: (kind: "presentation" | "model", fields: Record<string, string>) => Promise<SettingsProposal | ActionResult>;
+  confirm: (kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) => Promise<ActionResult>;
+};
 // Taking a whole vault out, and bringing one back. A source that carries none
 // cannot do either, so the screen renders no control rather than one that would
 // have to refuse. Only paths cross, and the passphrase on the way back — the

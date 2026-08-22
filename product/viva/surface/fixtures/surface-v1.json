@@ -72,6 +72,16 @@
       "state": "ready"
     },
     {
+      "capability_id": "settings.configuration",
+      "contract": "Configuration.v1",
+      "id": "settings.configuration.ready",
+      "payload": {
+        "capability_id": "settings.configuration",
+        "contract": "Configuration.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "trust.outbound",
       "contract": "OutboundRecord.v1",
       "id": "trust.outbound.ready",
@@ -604,6 +614,28 @@
         "reads_data",
         "writes_event",
         "may_call_model",
+        "may_egress"
+      ]
+    },
+    {
+      "actions": [
+        "propose",
+        "confirm"
+      ],
+      "availability": "always, with or without a vault open",
+      "contract": "Configuration.v1",
+      "destination": "settings",
+      "disposition": "surface",
+      "entrypoint": "viva.configuration",
+      "fixture_ids": [
+        "settings.configuration.ready"
+      ],
+      "id": "settings.configuration",
+      "maturity": "stable",
+      "owner": "viva.configuration",
+      "reason": null,
+      "trust_effect": [
+        "reads_data",
         "may_egress"
       ]
     },

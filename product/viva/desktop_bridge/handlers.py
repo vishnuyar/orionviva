@@ -11,6 +11,7 @@ from viva.surface import (
     BRIDGE_HANDSHAKE,
     CURRENT_PROTOCOL,
     SURFACE_CAPABILITIES,
+    SETTINGS_READ,
     SURFACE_READ,
     action_operations_for,
     operation_names,
@@ -31,6 +32,8 @@ TRANSFER_CAPABILITY = "vault.transfer"
 TRANSFER_OPERATIONS = action_operations_for(TRANSFER_CAPABILITY)
 RESCAN_CAPABILITY = "documents.rescan"
 RESCAN_OPERATIONS = action_operations_for(RESCAN_CAPABILITY)
+SETTINGS_CAPABILITY = "settings.configuration"
+SETTINGS_OPERATIONS = action_operations_for(SETTINGS_CAPABILITY)
 
 
 class BridgeRequestError(ValueError):
@@ -91,9 +94,20 @@ def _surface_capabilities(payload: dict[str, Any]) -> dict[str, Any]:
 def default_handlers() -> BridgeDispatcher:
     """Return the safe baseline allowlist for a newly started sidecar."""
 
+    from .settings_actions import SettingsActions
+
+    # Settings are in the baseline allowlist rather than the opened-vault one.
+    # A person with no vault yet has to be able to say how figures are written
+    # and whether a model may be reached at all, and a build that made them
+    # open a vault first would have made configuration a thing you need a vault
+    # to reach and a vault a thing you need configuration to use.
+    settings = SettingsActions()
     return BridgeDispatcher({
         BRIDGE_HANDSHAKE: _handshake,
         SURFACE_CAPABILITIES: _surface_capabilities,
+        SETTINGS_READ: settings.read,
+        SETTINGS_OPERATIONS["propose"]: settings.propose,
+        SETTINGS_OPERATIONS["confirm"]: settings.confirm,
     })
 
 

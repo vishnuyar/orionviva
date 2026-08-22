@@ -1,6 +1,6 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, SettingsActionState, SettingsProposal, SettingsView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -41,6 +41,12 @@ export type SurfaceSession = {
   // clearing it on the next navigation would take a record of a change away
   // from the person the change was made for.
   rescanAction: RescanActionState;
+  // What is in force, and where a settings exchange stands. The proposal is
+  // held in the session rather than in the panel, because a proposal is a
+  // thing a person was shown and a screen that lost it on a re-render would
+  // ask them to agree to something they can no longer read.
+  settings: FeatureResult<SettingsView>;
+  settingsAction: SettingsActionState;
 };
 
 export type SessionAction =
@@ -61,6 +67,10 @@ export type SessionAction =
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
   | { type: "job-progress"; requestId: number; job: JobView }
   | { type: "described"; requestId: number; description: SourceDescription }
+  | { type: "settings-read"; settings: FeatureResult<SettingsView> }
+  | { type: "settings-working" }
+  | { type: "settings-proposed"; proposal: SettingsProposal }
+  | { type: "settings-settled"; result: ActionResult; settings: FeatureResult<SettingsView> }
   | { type: "rescanning"; requestId: number }
   | { type: "rescanned"; requestId: number; result: ActionResult; report: RescanReport | null; documents: FeatureResult<DocumentsData> }
   | { type: "transferring"; requestId: number; verb: TransferVerb }
@@ -110,6 +120,8 @@ export function initialSession(): SurfaceSession {
     description: unasked(),
     transferAction: { state: "idle" },
     rescanAction: { state: "idle" },
+    settings: { state: "absent", reason: "not_asked" },
+    settingsAction: { state: "idle" },
   };
 }
 
@@ -249,6 +261,13 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "described":
       if (action.requestId !== state.requestId) return state;
       return { ...state, description: action.description };
+    // Settings survive a vault opening and closing: they are this machine's,
+    // not this vault's, and clearing them on a source change would make a
+    // person say yes to the same thing twice.
+    case "settings-read": return { ...state, settings: action.settings };
+    case "settings-working": return { ...state, settingsAction: { state: "working" } };
+    case "settings-proposed": return { ...state, settingsAction: { state: "proposed", proposal: action.proposal } };
+    case "settings-settled": return { ...state, settings: action.settings, settingsAction: { state: "settled", result: action.result } };
     case "rescanning":
       if (action.requestId !== state.requestId) return state;
       return { ...state, rescanAction: { state: "working" } };

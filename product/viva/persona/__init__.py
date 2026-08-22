@@ -533,6 +533,24 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "outbound_window":                 frozenset({"first", "last"}),
     "outbound_models":                 frozenset({"count"}),
     "outbound_no_anchor":              frozenset(),
+    # Configuration. The two proposals are worded apart on purpose: how figures
+    # are written sends nothing and says so, while naming a model is the moment
+    # bytes become able to leave, and its sentence says exactly what would then
+    # be able to go and where the record of it is. Every refusal names what
+    # stopped and states that nothing changed and nothing was sent, because a
+    # person reading a refusal about sending needs both of those facts.
+    "settings_presentation_proposed":  frozenset(),
+    "settings_presentation_confirmed": frozenset(),
+    "settings_model_proposed":         frozenset(),
+    "settings_model_confirmed":        frozenset(),
+    "settings_model_cleared":          frozenset(),
+    "settings_declined":               frozenset(),
+    "settings_locale_unknown":         frozenset(),
+    "settings_currency_unknown":       frozenset(),
+    "settings_adapter_unknown":        frozenset(),
+    "settings_model_unnamed":          frozenset(),
+    "settings_key_missing":            frozenset(),
+    "settings_unwritable":             frozenset(),
 }
 
 

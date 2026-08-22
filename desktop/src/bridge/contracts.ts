@@ -98,6 +98,14 @@ export type BridgeClient = {
   // because a pass goes over the whole vault and a field naming part of it
   // would be this side asserting a scope the sweep does not have.
   rescanDocuments: () => Promise<unknown>;
+  // What this machine has been told to do, and the yes that tells it. Asked
+  // without a vault: a person with none yet still has to be able to say how
+  // figures are written and whether a model may be reached at all.
+  readSettings: () => Promise<unknown>;
+  proposeSettings: (kind: "presentation" | "model", fields: Record<string, string>) => Promise<unknown>;
+  // The key travels in this one call and nowhere else — not in a proposal, not
+  // in a reply, not in a digest.
+  confirmSettings: (kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) => Promise<unknown>;
   exportVault: (archive: string) => Promise<unknown>;
   restoreVault: (archive: string, directory: string, passphrase: string) => Promise<unknown>;
   // An action answers with an outcome. It arrives unread, like a surface read:

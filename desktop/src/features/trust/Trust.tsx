@@ -2,11 +2,21 @@ import { useState, type FormEvent } from "react";
 import { CircleSlash, FileQuestion, Info } from "lucide-react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
-import type { EngineIdentity, FeatureResult, OutboundRecordView, SurfaceMode, TransferActionState, TrustCapabilityGroup, TrustCapabilityState, TrustData, TrustNote, TrustSampleCapability } from "../../surface/types";
+import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, SurfaceMode, TransferActionState, TrustCapabilityGroup, TrustCapabilityState, TrustData, TrustNote, TrustSampleCapability } from "../../surface/types";
 
 // What a screen needs to take a whole vault out and bring one back. A source
 // that can do neither carries none of this, so the controls are absent rather
 // than present and refusing.
+// What a screen needs to say how figures are written and whether a model may
+// be reached. A source that carries none of this renders no controls: the
+// engine has not offered them, and a form that would have to refuse is worse
+// than no form.
+export type SettingsControls = {
+  settings: FeatureResult<SettingsView>;
+  state: SettingsActionState;
+  onPropose: (kind: "presentation" | "model", fields: Record<string, string>) => void;
+  onConfirm: (kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) => void;
+};
 export type TransferControls = { state: TransferActionState; onExport: (archive: string) => void; onRestore: (archive: string, directory: string, passphrase: string) => void };
 
 // The one sentence this panel says about the last copy. What the vault
@@ -19,6 +29,51 @@ function transferSentence(state: TransferActionState): string {
     return `${said.title}. ${said.detail}`;
   }
   return state.result.outcome.message.trim() || UNSPOKEN_REPLY;
+}
+
+// How figures are written, and whether a model may be reached. Two forms, kept
+// apart the way the engine keeps them apart: the first sends nothing and says
+// so, and the second is the moment bytes become able to leave. The proposal
+// between pressing and agreeing is the whole point — the reply describing a
+// change is not the change.
+function Configuration({ controls }: { controls: SettingsControls }) {
+  const [locale, setLocale] = useState("");
+  const [currency, setCurrency] = useState("");
+  const [adapter, setAdapter] = useState("anthropic");
+  const [model, setModel] = useState("");
+  const [key, setKey] = useState("");
+  const working = controls.state.state === "working";
+  const proposal = controls.state.state === "proposed" ? controls.state.proposal : null;
+  const settled = controls.state.state === "settled" ? controls.state.result : null;
+  const said = settled ? (settled.state === "settled" ? settled.outcome.message.trim() || UNSPOKEN_REPLY : `${channelPresentation(settled).title}. ${channelPresentation(settled).detail}`) : "";
+  const inForce = controls.settings.state === "ready" ? controls.settings.data : null;
+  const presentationFields = { locale: locale.trim(), currency: currency.trim() };
+  const modelFields = { adapter, model: model.trim() };
+  return <section className="trust-settings" aria-labelledby="trust-settings-title">
+    <h3 id="trust-settings-title">What this app has been told to do</h3>
+    {inForce ? <dl className="trust-settings-current">
+      <div><dt>Figures are written as</dt><dd>{inForce.locale} · {inForce.currency}</dd></div>
+      <div><dt>Model</dt><dd>{inForce.canSend ? `${inForce.adapter} · ${inForce.model}` : "None. Nothing can be sent anywhere."}</dd></div>
+    </dl> : <p>This source did not say what is in force.</p>}
+    <form className="trust-settings-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onPropose("presentation", presentationFields); }}>
+      <label>Write numbers as<input value={locale} onChange={(event) => setLocale(event.target.value)} placeholder="en-US" autoComplete="off" /></label>
+      <label>Label totals<input value={currency} onChange={(event) => setCurrency(event.target.value)} placeholder="USD" autoComplete="off" /></label>
+      <button className="secondary-button" type="submit" aria-disabled={working}>Show me what would change</button>
+    </form>
+    <form className="trust-settings-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onPropose("model", modelFields); }}>
+      <label>Reach a model through<select value={adapter} onChange={(event) => setAdapter(event.target.value)}><option value="anthropic">anthropic</option><option value="openai-compatible">openai-compatible</option></select></label>
+      <label>Named exactly<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="a pinned model id" autoComplete="off" /></label>
+      <label>Its key<input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="Paste the key" autoComplete="off" /></label>
+      <button className="secondary-button" type="submit" aria-disabled={working}>Show me what would change</button>
+    </form>
+    {proposal ? <div className={proposal.sends ? "trust-settings-proposal sends" : "trust-settings-proposal"}>
+      <p>{proposal.message}</p>
+      <dl>{Object.entries(proposal.changes).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value || "nothing"}</dd></div>)}</dl>
+      <button className="primary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onConfirm(proposal.kind, proposal.kind === "presentation" ? presentationFields : modelFields, proposal.digest, proposal.kind === "model" ? key : ""); setKey(""); }}>Yes, do that</button>
+    </div> : null}
+    <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
+    {said ? <p className="trust-settings-answer">{said}</p> : null}
+  </section>;
 }
 
 // Taking a whole vault out, and bringing one back into a folder of its own.
@@ -177,16 +232,16 @@ function CapabilityRows({ rows, group }: { rows: readonly IdentityRow<TrustSampl
   return <ul className="trust-capability-list">{grouped.map((row) => <CapabilityRow capability={row.item} key={row.key} />)}</ul>;
 }
 
-function TrustReady({ data, mode, identity, transfer }: { data: TrustData; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null }) {
+function TrustReady({ data, mode, identity, transfer, settings }: { data: TrustData; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null }) {
   const capabilities = mode === "demo" ? data.sample?.capabilities ?? [] : [];
   const capabilityRows = identifiedRows(capabilities, "trust-capability");
   // A vault that has sent nothing is not an empty Trust screen: the outbound
   // record is present and says so, which is the whole of what this destination
   // is for.
   const empty = !data.notes.length && !capabilities.length && !data.outbound;
-  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">{mode === "demo" ? "Preview-owned explanation" : "Supplied Trust view"}</div><h2>Trust and limitations</h2><p>{mode === "demo" ? "This destination explains what the fictional preview can and cannot establish. It is not a trust report for a private vault." : "These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history."}</p></header><EngineRow identity={identity} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>{mode === "demo" ? "No sample Trust details" : "No Trust notes supplied"}</strong><span>{mode === "demo" ? "This fictional sample does not include Trust notes or preview capability explanations." : "The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status."}</span></div> : mode === "live" ? <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} mode={mode} /></section> : <><section className="trust-preview-statements" aria-labelledby="trust-preview-statements-title"><h3 id="trust-preview-statements-title">What this preview can say</h3><ul><li><strong>Fictional source</strong><span>The currently displayed sample names, documents, figures, and Trust rows are fixture-authored. They are not facts about a private vault.</span></li><li><strong>Static interactions</strong><span>Opening and closing these preview rows changes only what is visible. It does not write a vault event, call a model, send data, or change a setting.</span></li><li><strong>No Trust read</strong><span>This sample does not establish what a private vault sent, which models ran, whether maintenance occurred, or whether integrity checks passed.</span></li></ul></section><section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Preview notes</h3><NoteRows notes={data.notes} mode={mode} /></section><section className="trust-capabilities" aria-label="Preview capability explanations"><CapabilityIdentityRows rows={capabilityRows} />{(["source", "outbound_models", "integrity", "continuity", "build_support"] as const).map((group) => <details key={group} open={group === "source"}><summary>{groupCopy[group]}</summary><CapabilityRows rows={capabilityRows} group={group} /></details>)}</section><section className="trust-final-limitation"><CircleSlash aria-hidden="true" size={20} /><div><h3>No settings are changed here</h3><p>These preview rows are explanatory only. They cannot change provider or network permission, locale or currency display, recover a passphrase, run maintenance, create an anchor, update the app, or produce a diagnostic file.</p></div></section></>}</section>;
+  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">{mode === "demo" ? "Preview-owned explanation" : "Supplied Trust view"}</div><h2>Trust and limitations</h2><p>{mode === "demo" ? "This destination explains what the fictional preview can and cannot establish. It is not a trust report for a private vault." : "These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history."}</p></header><EngineRow identity={identity} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>{mode === "demo" ? "No sample Trust details" : "No Trust notes supplied"}</strong><span>{mode === "demo" ? "This fictional sample does not include Trust notes or preview capability explanations." : "The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status."}</span></div> : mode === "live" ? <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} mode={mode} /></section> : <><section className="trust-preview-statements" aria-labelledby="trust-preview-statements-title"><h3 id="trust-preview-statements-title">What this preview can say</h3><ul><li><strong>Fictional source</strong><span>The currently displayed sample names, documents, figures, and Trust rows are fixture-authored. They are not facts about a private vault.</span></li><li><strong>Static interactions</strong><span>Opening and closing these preview rows changes only what is visible. It does not write a vault event, call a model, send data, or change a setting.</span></li><li><strong>No Trust read</strong><span>This sample does not establish what a private vault sent, which models ran, whether maintenance occurred, or whether integrity checks passed.</span></li></ul></section><section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Preview notes</h3><NoteRows notes={data.notes} mode={mode} /></section><section className="trust-capabilities" aria-label="Preview capability explanations"><CapabilityIdentityRows rows={capabilityRows} />{(["source", "outbound_models", "integrity", "continuity", "build_support"] as const).map((group) => <details key={group} open={group === "source"}><summary>{groupCopy[group]}</summary><CapabilityRows rows={capabilityRows} group={group} /></details>)}</section><section className="trust-final-limitation"><CircleSlash aria-hidden="true" size={20} /><div><h3>No settings are changed here</h3><p>These preview rows are explanatory only. They cannot recover a passphrase, run maintenance, create an anchor, update the app, or produce a diagnostic file.</p></div></section></>}</section>;
 }
 
-export function Trust({ result, mode, identity, transfer }: { result: FeatureResult<TrustData>; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null }) {
-  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes and preview limitations are shown below.", needsInput: "Some Trust details need more information. Supplied notes and preview limitations are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this private-vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The private vault is still open." } }}>{(data) => <TrustReady data={data} mode={mode} identity={identity} transfer={transfer} />}</PanelStateView>;
+export function Trust({ result, mode, identity, transfer, settings }: { result: FeatureResult<TrustData>; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null }) {
+  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes and preview limitations are shown below.", needsInput: "Some Trust details need more information. Supplied notes and preview limitations are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this private-vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The private vault is still open." } }}>{(data) => <TrustReady data={data} mode={mode} identity={identity} transfer={transfer} settings={settings} />}</PanelStateView>;
 }

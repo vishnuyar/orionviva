@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { privateSource } from "../surface/sources";
-import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, TransferVerb, VaultTransferActions } from "../surface/types";
+import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, TransferVerb, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
@@ -19,10 +19,24 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const cancelling = useRef(false);
   const transferring = useRef(false);
   const sweeping = useRef(false);
+  const configuring = useRef(false);
   const documentActions = session.source.documentActions;
   const jobStream = session.source.jobStream;
   const transferActions = session.source.transferActions;
+  const settingsActions = session.source.settingsActions;
   const source = session.source;
+
+  // What is in force, asked once per source. It is this machine's rather than
+  // this vault's, so it is read whenever a source appears and never cleared by
+  // one going away.
+  useEffect(() => {
+    if (!settingsActions) return undefined;
+    let gone = false;
+    void settingsActions.read()
+      .then((settings) => { if (!gone) dispatch({ type: "settings-read", settings }); })
+      .catch(() => undefined);
+    return () => { gone = true; };
+  }, [settingsActions]);
 
   // What the engine behind this source says about itself, asked once per
   // source. Neither answer changes while one sidecar lives, so asking again
@@ -197,6 +211,34 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       }
     },
     transferAvailable: Boolean(transferActions),
+    settingsAvailable: Boolean(settingsActions),
+    // Proposing changes nothing. What comes back is either the proposal a
+    // person is shown, or the channel's own answer about why there is none.
+    async proposeSettings(kind: "presentation" | "model", fields: Record<string, string>) {
+      if (!settingsActions || configuring.current) return;
+      configuring.current = true;
+      dispatch({ type: "settings-working" });
+      try {
+        const answered = await settingsActions.propose(kind, fields);
+        if ("digest" in answered) dispatch({ type: "settings-proposed", proposal: answered as SettingsProposal });
+        else dispatch({ type: "settings-settled", result: answered, settings: await settingsActions.read() });
+      } finally {
+        configuring.current = false;
+      }
+    },
+    // The yes names the digest of the proposal that was shown. The key travels
+    // in this one call and is held nowhere on this side afterwards.
+    async confirmSettings(kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) {
+      if (!settingsActions || configuring.current) return;
+      configuring.current = true;
+      dispatch({ type: "settings-working" });
+      try {
+        const result = await settingsActions.confirm(kind, fields, digest, key);
+        dispatch({ type: "settings-settled", result, settings: await settingsActions.read() });
+      } finally {
+        configuring.current = false;
+      }
+    },
     // One pass at a time, and the documents read taken again once the answer
     // is in: the pass writes, so what the screen shows can move under it.
     async rescanDocuments() {

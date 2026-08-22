@@ -115,3 +115,17 @@
 .trust-outbound-phases, .trust-outbound-absences { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-xs); color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
 .trust-outbound-models { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-caption); }
 .trust-outbound-models div { display: flex; justify-content: space-between; gap: var(--space-sm); }
+
+/* What this app has been told to do. The proposal that stands between pressing
+   and agreeing is marked when saying yes to it makes bytes able to leave. */
+.trust-settings { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.trust-settings h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.trust-settings p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-settings-current { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-fine); }
+.trust-settings-current div { display: flex; justify-content: space-between; gap: var(--space-sm); }
+.trust-settings-form { display: grid; gap: var(--space-sm); }
+.trust-settings-form label { display: grid; gap: var(--space-xs); font-size: var(--text-caption); font-weight: var(--weight-medium); }
+.trust-settings-proposal { display: grid; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); }
+.trust-settings-proposal.sends { border-color: var(--rust); }
+.trust-settings-proposal dl { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-caption); }
+.trust-settings-proposal dl div { display: flex; justify-content: space-between; gap: var(--space-sm); }

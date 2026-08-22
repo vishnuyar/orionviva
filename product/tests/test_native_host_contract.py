@@ -20,6 +20,7 @@ from viva.desktop_bridge.__main__ import Sidecar, _open_vault
 from viva.desktop_bridge.handlers import (DOCUMENTS_OPERATIONS,
                                            RESCAN_OPERATIONS,
                                            REVIEW_OPERATIONS,
+                                           SETTINGS_OPERATIONS,
                                            TRANSFER_OPERATIONS,
                                            default_handlers,
                                            handlers_for_opened_vault)
@@ -28,6 +29,7 @@ from viva.desktop_bridge.surface_read import _read_request
 from viva.surface import (
     BRIDGE_HANDSHAKE,
     BRIDGE_OPEN_VAULT,
+    SETTINGS_READ,
     CURRENT_PROTOCOL,
     SURFACE_CAPABILITIES,
     SURFACE_READ,
@@ -73,6 +75,15 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # naming part of it would be a caller asserting a scope the sweep does not
     # have, and the fence is the shape of the request.
     RESCAN_OPERATIONS["rescan"]: set(),
+    # Settings are asked before a vault exists, so they are in the baseline
+    # allowlist and declare their fields here like everything else. The key is
+    # among the confirm fields and among no others: it travels in one request
+    # and is never on a proposal, in a reply or in a digest.
+    SETTINGS_READ: set(),
+    SETTINGS_OPERATIONS["propose"]: {"kind", "locale", "currency", "adapter",
+                                     "model", "base_url"},
+    SETTINGS_OPERATIONS["confirm"]: {"kind", "digest", "key", "locale",
+                                     "currency", "adapter", "model", "base_url"},
 }
 
 # Where the sidecar declares the fields it will accept, per operation.

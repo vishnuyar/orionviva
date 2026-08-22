@@ -25,6 +25,9 @@ BRIDGE_HANDSHAKE = "bridge.handshake"
 BRIDGE_OPEN_VAULT = "bridge.open_vault"
 SURFACE_CAPABILITIES = "viva.surface.capabilities"
 SURFACE_READ = "viva.surface.read"
+# What is in force, asked without a vault. It is not a surface read: a surface
+# read opens a vault, and this question has an answer before one exists.
+SETTINGS_READ = "viva.settings.read"
 
 
 @dataclass(frozen=True)
@@ -49,6 +52,7 @@ DECLARED_OPERATIONS: tuple[BridgeOperation, ...] = (
     BridgeOperation(SURFACE_CAPABILITIES),
     BridgeOperation(SURFACE_READ, serves=("AccountOverview.v1", "QuestionQueue.v1",
                                          "JobRegistry.v1", "OutboundRecord.v1")),
+    BridgeOperation(SETTINGS_READ, serves=("Configuration.v1",)),
 )
 
 

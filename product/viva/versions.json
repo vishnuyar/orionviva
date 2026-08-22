@@ -42,7 +42,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v23"
+      "active": "pack-v24"
     },
     "schema_pack": {
       "in": "schemas",
@@ -174,6 +174,7 @@
     "pack-v20": "66f771a73448fb1d",
     "pack-v21": "c5a1d590e73330ed",
     "pack-v22": "832871efe591c1fd",
-    "pack-v23": "1d9d57e662edc6aa"
+    "pack-v23": "1d9d57e662edc6aa",
+    "pack-v24": "8b9ec9ee7b8860fe"
   }
 }
