@@ -104,6 +104,14 @@ jobs:
           ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT: ${{ vars.ORIONVIVA_WINDOWS_CERTIFICATE_THUMBPRINT }}
           ORIONVIVA_WINDOWS_TIMESTAMP_URL: ${{ vars.ORIONVIVA_WINDOWS_TIMESTAMP_URL }}
         run: python scripts/prepare_native_release.py --target "${{ matrix.target }}" --check-sidecar
+
+      # The artifact, run. Everything above this checks the tree; this starts
+      # the executable that will be signed and shipped, opens the sample vault
+      # through it and reads every surface. It runs before signing, so a build
+      # that cannot answer a frame is never notarized and never published.
+      - name: Validate the packaged sidecar by running it
+        run: python scripts/validate_packaged_artifact.py --target "${{ matrix.target }}"
+
       - name: Validate Tauri build command
         working-directory: desktop
         run: npx tauri build --help

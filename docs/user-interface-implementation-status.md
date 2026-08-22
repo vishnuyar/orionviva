@@ -135,7 +135,7 @@ reason. The day a surface becomes live-readable, or a destination is declared,
 or a capability's destination moves, this table is wrong and the build says
 so.
 
-### Bridge operations (18)
+### Bridge operations (19)
 
 Every operation the sidecar will answer, and whether an allowlist admits it.
 The operation set and the allowlist column are derived; whether the desktop
@@ -162,6 +162,7 @@ person as a button that refuses.
 | `viva.documents.cancel` | yes | added to the allowlist when a vault opens; it names a job the registry minted, never a document, and is the one operation a running job may be interrupted to serve | yes |
 | `viva.maintenance.run` | yes | added to the allowlist when a vault opens; it wakes the agent once and plans by default, so a request that did not say to spend stops at the line where money starts, and the reply carries the whole run rather than a summary of it | yes |
 | `viva.maintenance.diagnose` | yes | added to the allowlist when a vault opens; it writes a file built from a list of what may be said rather than by taking a vault and removing what must not travel, so what it holds is four counts and nothing that came off a document | yes |
+| `viva.lifecycle.read` | yes | the allowlist a sidecar starts with, before any vault is open; it folds what this process can establish about itself and answers that there is no update channel — nothing here asks whether a newer version exists and nothing here could install one — beside what an update does to a vault and what to do when a version will not start | yes — Trust renders it beside where the build names itself |
 | `viva.settings.read` | yes | the allowlist a sidecar starts with, before any vault is open; it is not a surface read, because a surface read opens a vault and this question has an answer before one exists | yes |
 | `viva.settings.propose` | yes | the allowlist a sidecar starts with; it describes what would change, changes nothing, and carries the digest a yes has to name | yes |
 | `viva.settings.confirm` | yes | the allowlist a sidecar starts with; it applies exactly the proposal that was shown, and is the one request an API key ever travels in | yes |

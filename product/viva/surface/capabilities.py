@@ -265,6 +265,19 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         entrypoint="viva.configuration",
     ),
     _surface(
+        "trust.lifecycle",
+        "viva.surface.lifecycle",
+        CapabilityDestination.TRUST,
+        "always, with or without a vault open",
+        "UpdateLifecycle.v1",
+        (),
+        # It folds what this process can establish about itself. It opens no
+        # vault, reaches no network to ask whether a newer version exists, and
+        # installs nothing: there is no update channel, and this read is where
+        # that is said rather than implied by a screen having a section.
+        (TrustEffect.READS_DATA,),
+    ),
+    _surface(
         "trust.outbound",
         "viva.surface.outbound",
         CapabilityDestination.TRUST,

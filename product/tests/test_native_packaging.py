@@ -98,21 +98,26 @@ def test_the_release_ships_no_updater_it_cannot_honour():
     """A signed `latest.json` beside the installers advertises an update channel.
     Nothing compiles an updater plugin into this application, so no installed
     copy can read that channel — the manifest would be a promise the binary
-    cannot keep. The two halves ship together or not at all."""
-    cargo = (DESKTOP / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8")
-    package = PACKAGE_JSON.read_text(encoding="utf-8")
-    has_plugin = "tauri-plugin-updater" in cargo or "plugin-updater" in package
+    cannot keep. The two halves ship together or not at all.
 
-    release_script = (ROOT / "scripts" / "prepare_native_release.py").read_text()
-    release_workflow = (ROOT / ".github" / "workflows"
-                        / "release-desktop.yml").read_text()
-    publishes = ("createUpdaterArtifacts" in release_script
-                 or "uploadUpdaterJson" in release_workflow
-                 or "uploadUpdaterSignatures" in release_workflow)
+    This used to grep both files for the words. It asks the release step
+    instead, because the release step is what decides: a grep for
+    `createUpdaterArtifacts` matches the gate that forbids it as readily as the
+    configuration that would enable it, and a check that fires on its own
+    enforcement is a check nobody can add enforcement under."""
+    import sys
 
-    assert has_plugin == publishes, (
-        "the release publishes updater artifacts but the application has no "
-        "updater plugin" if publishes else
-        "the application has an updater plugin but the release publishes no "
-        "updater artifacts"
-    )
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import prepare_native_release as release
+
+    readable, published = release._updater_declarations()
+
+    assert readable == [], (
+        "an updater plugin is compiled in but nothing publishes a channel: "
+        f"{readable}")
+    assert published == [], (
+        "an update channel would be published that no installed copy can read: "
+        f"{published}")
+    # And the step itself agrees, so a build that acquired half a channel fails
+    # the release rather than only failing here.
+    release.validate_update_channel()

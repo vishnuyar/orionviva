@@ -252,6 +252,10 @@ export type AskActionState =
   | { state: "working"; question: string }
   | { state: "settled"; question: string; result: ActionResult; turn: TurnView | null };
 export type ConversationData = { turns: ConversationTurn[]; prompts: ConversationPrompt[] };
+// What this application says about being updated and about being recovered.
+// There is no update channel; every sentence here is the engine's account of
+// that, and of how this copy got onto the machine.
+export type UpdateLifecycleView = { readonly sentence: string; readonly originSentence: string; readonly revision: string; readonly notes: readonly { readonly id: string; readonly sentence: string }[] };
 export type TrustNote = { readonly id: string; readonly title: string; readonly detail: string };
 // One line of the outbound record, or one absence it carries. The sentence is
 // the read's in every case: a screen that composes its own caveat writes it out

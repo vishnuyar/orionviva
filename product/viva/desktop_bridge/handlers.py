@@ -11,6 +11,7 @@ from viva.surface import (
     BRIDGE_HANDSHAKE,
     CURRENT_PROTOCOL,
     SURFACE_CAPABILITIES,
+    LIFECYCLE_READ,
     SETTINGS_READ,
     SURFACE_READ,
     action_operations_for,
@@ -110,9 +111,26 @@ def default_handlers() -> BridgeDispatcher:
         BRIDGE_HANDSHAKE: _handshake,
         SURFACE_CAPABILITIES: _surface_capabilities,
         SETTINGS_READ: settings.read,
+        LIFECYCLE_READ: _lifecycle_read,
         SETTINGS_OPERATIONS["propose"]: settings.propose,
         SETTINGS_OPERATIONS["confirm"]: settings.confirm,
     })
+
+
+def _lifecycle_read(payload: dict[str, Any]) -> dict[str, Any]:
+    """What happens to this application when a new version exists.
+
+    In the baseline allowlist beside settings: a person meets this question
+    before they have opened anything, and the answer does not depend on what
+    they open. It accepts no fields, because what it reports is a fact about
+    this process rather than about anything a caller could name."""
+    from viva.surface.lifecycle import current
+
+    if payload:
+        raise BridgeRequestError(
+            "viva.lifecycle.read does not accept payload fields: "
+            + ", ".join(sorted(payload)))
+    return current()
 
 
 def handlers_with_surface_provider(

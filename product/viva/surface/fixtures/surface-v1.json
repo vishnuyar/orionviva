@@ -92,6 +92,16 @@
       "state": "ready"
     },
     {
+      "capability_id": "trust.lifecycle",
+      "contract": "UpdateLifecycle.v1",
+      "id": "trust.lifecycle.ready",
+      "payload": {
+        "capability_id": "trust.lifecycle",
+        "contract": "UpdateLifecycle.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "trust.outbound",
       "contract": "OutboundRecord.v1",
       "id": "trust.outbound.ready",
@@ -668,6 +678,24 @@
       "trust_effect": [
         "reads_data",
         "may_egress"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "always, with or without a vault open",
+      "contract": "UpdateLifecycle.v1",
+      "destination": "trust",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "trust.lifecycle.ready"
+      ],
+      "id": "trust.lifecycle",
+      "maturity": "stable",
+      "owner": "viva.surface.lifecycle",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
       ]
     },
     {

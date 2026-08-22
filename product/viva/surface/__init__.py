@@ -21,6 +21,7 @@ from .capabilities import (
 from .operations import (
     BRIDGE_HANDSHAKE,
     BRIDGE_OPEN_DEMO_VAULT,
+    LIFECYCLE_READ,
     BRIDGE_OPEN_VAULT,
     BRIDGE_OPERATIONS,
     DECLARED_OPERATIONS,
@@ -46,6 +47,7 @@ __all__ = [
     "CitationRelation",
     "BRIDGE_HANDSHAKE",
     "BRIDGE_OPEN_DEMO_VAULT",
+    "LIFECYCLE_READ",
     "BRIDGE_OPEN_VAULT",
     "BRIDGE_OPERATIONS",
     "BridgeOperation",

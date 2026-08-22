@@ -626,6 +626,17 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "sample_frame_detail":             frozenset(),
     "sample_frame_leave":              frozenset(),
     "sample_vault_unopened":           frozenset(),
+
+    # What happens to this application when a new version of it exists, and
+    # what happens to a person's records when it does. Nothing here checks for
+    # an update or installs one; these say that plainly rather than leaving a
+    # screen to imply a channel by having a section about one.
+    "update_no_channel":               frozenset(),
+    "update_vault_untouched":          frozenset(),
+    "update_recovery":                 frozenset(),
+    "update_installed_build":          frozenset(),
+    "update_source_build":             frozenset(),
+    "update_unknown_build":            frozenset(),
 }
 
 

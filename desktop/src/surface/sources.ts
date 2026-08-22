@@ -1,6 +1,6 @@
 import type { BridgeClient, SampleFrame } from "../bridge/contracts";
-import { loadPrivateSnapshot, privateConversationActions, privateDocumentActions, privateJobStream, privateReviewActions, privateSettingsActions, privateTransferActions, privateTrustActions, readEngineIdentity, readSurfaceRegistry } from "./load-private-snapshot";
-import type { DocumentActions, EngineIdentity, FeatureResult, JobStream, ReviewActions, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, VaultTransferActions } from "./types";
+import { loadPrivateSnapshot, privateConversationActions, privateDocumentActions, privateJobStream, privateReviewActions, privateSettingsActions, privateTransferActions, privateTrustActions, readEngineIdentity, readSurfaceRegistry, readUpdateLifecycle } from "./load-private-snapshot";
+import type { DocumentActions, EngineIdentity, FeatureResult, JobStream, ReviewActions, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 // One kind of source, because there is now one kind of vault.
 //
@@ -18,7 +18,7 @@ import type { DocumentActions, EngineIdentity, FeatureResult, JobStream, ReviewA
 export type SurfaceSource = { id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: () => Promise<SurfaceSnapshot>; reviewActions: ReviewActions; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
 // What a source says about the engine behind it: which build answered, and
 // which destinations its registry says a read reaches.
-export type SourceDescription = { identity: FeatureResult<EngineIdentity>; registry: FeatureResult<SurfaceRegistry> };
+export type SourceDescription = { identity: FeatureResult<EngineIdentity>; registry: FeatureResult<SurfaceRegistry>; lifecycle: FeatureResult<UpdateLifecycleView> };
 
 export function vaultSource(client: BridgeClient, frame: SampleFrame | null): SurfaceSource {
   const sample = frame !== null;
@@ -45,8 +45,8 @@ export function vaultSource(client: BridgeClient, frame: SampleFrame | null): Su
     conversationActions: privateConversationActions(client),
     trustActions: privateTrustActions(client),
     describe: async () => {
-      const [identity, registry] = await Promise.all([readEngineIdentity(client), readSurfaceRegistry(client)]);
-      return { identity, registry };
+      const [identity, registry, lifecycle] = await Promise.all([readEngineIdentity(client), readSurfaceRegistry(client), readUpdateLifecycle(client)]);
+      return { identity, registry, lifecycle };
     },
   };
 }

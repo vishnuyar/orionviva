@@ -129,12 +129,58 @@ def sidecar_path(target: str) -> Path:
     return TAURI_ROOT / "binaries" / f"{SIDECAR_NAME}-{target}{suffix}"
 
 
+# What names an update channel, on each side of the application. The left half
+# is what would let an installed copy read one; the right half is what would
+# publish one. This is a list rather than a search for the word "update",
+# because the word appears in prose and these are the declarations that decide.
+UPDATER_CRATES = ("tauri-plugin-updater",)
+UPDATER_CONFIG_KEYS = ("updater", "createUpdaterArtifacts", "pubkey")
+
+
+def _updater_declarations() -> tuple[list[str], list[str]]:
+    """What this build declares about an update channel, on each side.
+
+    Returns what would let an installed copy read one, and what would publish
+    one. Read rather than assumed: the day somebody adds either, this says so
+    instead of the release quietly acquiring half a channel."""
+    cargo = CARGO_CONFIG.read_text(encoding="utf-8")
+    readable = [crate for crate in UPDATER_CRATES if crate in cargo]
+    configured = json.dumps(read_json(TAURI_CONFIG))
+    published = [key for key in UPDATER_CONFIG_KEYS if f'"{key}"' in configured]
+    return readable, published
+
+
+def validate_update_channel() -> None:
+    """Ship installers, or ship an updater; never the signature of one without
+    the other.
+
+    A signed update manifest beside installers no copy can read would advertise
+    a channel that does not exist — a promise on the release page the binary
+    cannot keep. And an updater compiled in with nothing published would have
+    an installed copy asking a channel nobody publishes.
+
+    This is also the pair that keeps the sentence a person reads true: the
+    lifecycle read tells them this copy does not check for updates and cannot
+    install one, and that sentence stops being true the moment either half of
+    this appears. So it fails here rather than there."""
+    readable, published = _updater_declarations()
+    if readable and not published:
+        fail("an updater plugin is compiled in but nothing publishes a channel: "
+             + ", ".join(readable))
+    if published and not readable:
+        fail("an update channel would be published that no installed copy can "
+             "read: " + ", ".join(published))
+    if readable and published:
+        fail("this build declares an update channel, and the sentence the "
+             "product shows a person says there is none; change both or "
+             "neither: " + ", ".join(readable + published))
+
+
 def release_override(platform: str, values: dict[str, str]) -> dict[str, Any]:
-    # No updater artifacts. The application has no updater plugin compiled into
-    # it, so a signed `latest.json` beside the installers would advertise a
-    # channel that no installed copy can read — a promise on the release page
-    # the binary cannot keep. Ship installers, or ship an updater; not the
-    # signature of one without the other.
+    # No updater artifacts, and `validate_update_channel` is what holds it:
+    # the application has no updater plugin compiled into it, so a signed
+    # `latest.json` beside the installers would advertise a channel that no
+    # installed copy can read.
     bundle: dict[str, Any] = {}
     if platform == "windows":
         bundle["windows"] = {
@@ -156,9 +202,11 @@ def main() -> int:
     version = validate_versions()
     targets = load_targets()
     validate_tag(version)
+    validate_update_channel()
 
     if args.metadata_only:
-        print(f"native release: metadata valid for {version} ({len(targets)} targets)")
+        print(f"native release: metadata valid for {version} ({len(targets)} targets), "
+              "and no update channel is declared on either side")
         return 0
     if not args.target:
         fail("--target is required unless --metadata-only is used")

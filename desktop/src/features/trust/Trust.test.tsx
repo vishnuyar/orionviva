@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsView, TransferActionState, TrustData } from "../../surface/types";
 import { Trust } from "./Trust";
 import type { MaintenanceControls, SettingsControls, TransferControls } from "./Trust";
-import moments from "../../../../product/viva/persona/pack-v30/moments.json";
+import moments from "../../../../product/viva/persona/pack-v31/moments.json";
 
 const note = (id: string, title = "Supplied title", detail = "Supplied detail") => ({ id, title, detail });
 const ready = (data: TrustData): FeatureResult<TrustData> => ({ state: "ready", data });
@@ -16,18 +16,18 @@ const noRestore: TransferControls["onRestore"] = () => {};
 
 describe("Trust surface", () => {
   it("renders every FeatureResult boundary and the honest empty state", () => {
-    const { getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "absent", reason: "not_read" }} />);
+    const { getByText, queryByText, rerender } = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "absent", reason: "not_read" }} />);
     expect(queryByText("Trust details unavailable")).not.toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "unavailable", reason: "not_connected" }} />);
+    rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "unavailable", reason: "not_connected" }} />);
     expect(getByText("Trust and maintenance details are not connected to this vault read.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "failed", reason: "read_failed" }} />);
+    rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "failed", reason: "read_failed" }} />);
     expect(getByText("Trust details could not be read", { selector: "strong" })).toBeInTheDocument();
     expect(getByText("Trust and maintenance details could not be read. The vault is still open.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "partial", data: { notes: [note("partial")] }, issues: [{ code: "partial", message: "bounded" }] }} />);
+    rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "partial", data: { notes: [note("partial")] }, issues: [{ code: "partial", message: "bounded" }] }} />);
     expect(getByText("Some Trust details are unavailable. Supplied notes are shown below.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "needs_input", data: { notes: [note("needs")] }, issues: [{ code: "needs", message: "bounded" }] }} />);
+    rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "needs_input", data: { notes: [note("needs")] }, issues: [{ code: "needs", message: "bounded" }] }} />);
     expect(getByText("Some Trust details need more information. Supplied notes are shown below.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [] })} />);
+    rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [] })} />);
     expect(getByText("No Trust notes supplied")).toBeInTheDocument();
     expect(getByText("The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.")).toBeInTheDocument();
   });
@@ -36,13 +36,13 @@ describe("Trust surface", () => {
 
   it("bounds missing and duplicate Trust note identities without merging by label or order", () => {
     const notes = [note("", "Hidden blank one"), note(" ", "Hidden blank two"), note("duplicate", "Hidden duplicate one"), note("duplicate", "Hidden duplicate two"), note("unique-one", "Same label"), note("unique-two", "Same label")];
-    const { getAllByText, getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes })} />);
+    const { getAllByText, getByText, queryByText, rerender } = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes })} />);
     expect(getAllByText("Trust note identity unavailable")).toHaveLength(1);
     expect(getAllByText("Trust note identity conflicted")).toHaveLength(1);
     expect(getByText("duplicate")).toBeInTheDocument();
     expect(getAllByText("Same label")).toHaveLength(2);
     for (const hidden of ["Hidden blank one", "Hidden blank two", "Hidden duplicate one", "Hidden duplicate two"]) expect(queryByText(hidden)).not.toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [...notes].reverse() })} />);
+    rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [...notes].reverse() })} />);
     expect(getAllByText("Same label")).toHaveLength(2);
   });
 
@@ -52,7 +52,7 @@ describe("Trust surface", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const notes = [note("", "Blank hidden"), note("missing-identity", "Ready note named missing"), note("x", "Duplicate note one"), note("x", "Duplicate note two"), note("conflict-x", "Ready note named conflict")];
-      const view = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes })} />);
+      const view = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes })} />);
       const assertComplete = () => {
         expect(view.getAllByText("Trust note identity unavailable")).toHaveLength(1);
         expect(view.getAllByText("Trust note identity conflicted")).toHaveLength(1);
@@ -60,7 +60,7 @@ describe("Trust surface", () => {
         expect(view.getByText("Ready note named conflict")).toBeInTheDocument();
       };
       assertComplete();
-      view.rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [...notes].reverse() })} />);
+      view.rerender(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [...notes].reverse() })} />);
       assertComplete();
       expect(error).not.toHaveBeenCalled();
     } finally {
@@ -70,7 +70,7 @@ describe("Trust surface", () => {
 
   it("preserves long supplied identities and explanatory copy without truncation attributes", () => {
     const long = `long-${"identity".repeat(20)}`;
-    const { container, getByText } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [note(long, long, long)] })} />);
+    const { container, getByText } = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [note(long, long, long)] })} />);
     expect(getByText(long, { selector: "strong" })).toBeInTheDocument();
     expect(getByText(long, { selector: "dd" })).toBeInTheDocument();
     expect(container.querySelector("[title]")).not.toBeInTheDocument();
@@ -78,7 +78,7 @@ describe("Trust surface", () => {
 });
 
 describe("a copy of a whole vault", () => {
-  const props = { identity: unasked, settings: null, maintenance: null, result: ready({ notes: [note("only")] }) };
+  const props = { identity: unasked, lifecycle: unasked, settings: null, maintenance: null, result: ready({ notes: [note("only")] }) };
   const controls = (state: TransferActionState = { state: "idle" }, onExport = noTransfer, onRestore = noRestore): TransferControls => ({ state, onExport, onRestore });
 
   it("offers no control at all where the source cannot take a copy", () => {
@@ -130,7 +130,7 @@ describe("everything this vault has sent", () => {
     ...over,
   });
   const withRecord = (over: Partial<OutboundRecordView> = {}) =>
-    render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [], outbound: record(over) })} />);
+    render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [], outbound: record(over) })} />);
 
   it("renders the record of a vault that has sent nothing with the same prominence", () => {
     // Hiding it would keep the promise by having nothing to show rather than
@@ -166,7 +166,7 @@ describe("everything this vault has sent", () => {
 
 describe("what this app has been told to do", () => {
   const inForce: SettingsView = { locale: "en-US", currency: "USD", adapter: "", model: "", baseUrl: "", keySet: false, canSend: false };
-  const base = { identity: unasked, transfer: null, maintenance: null, result: ready({ notes: [], outbound: { sentence: moments.outbound_none, callCount: 0, phases: [], models: [], modelSentence: "", span: null, cost: null, absences: [] } }) };
+  const base = { identity: unasked, lifecycle: unasked, transfer: null, maintenance: null, result: ready({ notes: [], outbound: { sentence: moments.outbound_none, callCount: 0, phases: [], models: [], modelSentence: "", span: null, cost: null, absences: [] } }) };
   const controls = (over: Partial<SettingsControls> = {}): SettingsControls => ({
     settings: { state: "ready", data: inForce }, state: { state: "idle" },
     onPropose: () => {}, onConfirm: () => {}, ...over,
@@ -215,11 +215,11 @@ describe("what this app has been told to do", () => {
 
 describe("what this cannot establish, and what it could do on its own", () => {
   const withAbsences = (absences: Array<{ id: string; sentence: string }>) =>
-    render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [], absences, outbound: undefined })} />);
+    render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [], absences, outbound: undefined })} />);
   const maintenance = (over: Partial<MaintenanceControls> = {}): MaintenanceControls =>
     ({ state: { state: "idle" }, onRun: () => {}, onDiagnose: () => {}, ...over });
   const withMaintenance = (controls: MaintenanceControls | null) =>
-    render(<Trust identity={unasked} transfer={null} settings={null} maintenance={controls} result={ready({ notes: [note("only")] })} />);
+    render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={controls} result={ready({ notes: [note("only")] })} />);
 
   it("says plainly that nothing is anchored, in the read's own sentence", () => {
     // An absence a person has to open something to find is an absence they
@@ -259,5 +259,36 @@ describe("what this cannot establish, and what it could do on its own", () => {
     const settled = { state: "settled" as const, result: { state: "settled" as const, outcome: { kind: "completed" as const, message: moments.maintenance_planned, reason: "" } } };
     const { getAllByText } = withMaintenance(maintenance({ state: settled }));
     expect(getAllByText(moments.maintenance_planned).length).toBeGreaterThan(0);
+  });
+});
+
+describe("what happens when a new version exists", () => {
+  const lifecycle = { state: "ready" as const, data: {
+    sentence: "a sentence about no channel",
+    originSentence: "a sentence about how this copy got here",
+    revision: "abcdef123456",
+    notes: [{ id: "vault_untouched", sentence: "a sentence about a vault" },
+            { id: "recovery", sentence: "a sentence about starting over" }],
+  } };
+
+  it("says there is no channel, in the engine's own words", () => {
+    const { getByRole, getByText } = render(<Trust identity={unasked} lifecycle={lifecycle} transfer={null} settings={null} maintenance={null} result={ready({ notes: [] })} />);
+
+    expect(getByRole("heading", { name: "Updates and recovery" })).toBeInTheDocument();
+    expect(getByText(lifecycle.data.sentence)).toBeInTheDocument();
+    expect(getByText(lifecycle.data.originSentence)).toBeInTheDocument();
+  });
+
+  it("says what an update does to a vault, and what to do when one will not start", () => {
+    const { getByText } = render(<Trust identity={unasked} lifecycle={lifecycle} transfer={null} settings={null} maintenance={null} result={ready({ notes: [] })} />);
+
+    for (const note of lifecycle.data.notes) expect(getByText(note.sentence)).toBeInTheDocument();
+  });
+
+  it("renders no section at all where the read did not answer", () => {
+    // A heading with nothing under it says a channel exists and is quiet.
+    const { queryByRole } = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [] })} />);
+
+    expect(queryByRole("heading", { name: "Updates and recovery" })).not.toBeInTheDocument();
   });
 });

@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { ActivityData, FeatureResult, MovementView } from "../../surface/types";
 import { Activity } from "./Activity";
-import moments from "../../../../product/viva/persona/pack-v30/moments.json";
+import moments from "../../../../product/viva/persona/pack-v31/moments.json";
 
 const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", sentence: "", decidedBy: "default", provisional: false, linked: false, ...over });
 const read = (movements: MovementView[]): ActivityData => ({ sentence: movements.length ? moments.activity_scope : moments.activity_empty, movements, beyond: { count: 0 } });

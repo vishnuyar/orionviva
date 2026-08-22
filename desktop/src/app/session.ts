@@ -149,7 +149,7 @@ export function initialSession(): SurfaceSession {
 // nothing renders a destination as unserved on the strength of a question
 // nobody put.
 export function unasked(): SourceDescription {
-  return { identity: { state: "absent", reason: "not_asked" }, registry: { state: "absent", reason: "not_asked" } };
+  return { identity: { state: "absent", reason: "not_asked" }, registry: { state: "absent", reason: "not_asked" }, lifecycle: { state: "absent", reason: "not_asked" } };
 }
 
 // One job's row replaced by a newer statement about the same job, or appended

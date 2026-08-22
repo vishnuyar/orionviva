@@ -7,12 +7,13 @@ import { adaptTurn } from "./adapters/conversation";
 import { isRecord } from "./adapters/primitives";
 import { adaptJobs, adaptProgress } from "./adapters/jobs";
 import { adaptRescan } from "./adapters/rescan";
+import { adaptLifecycle } from "./adapters/lifecycle";
 import { adaptProposal, adaptSettings } from "./adapters/settings";
 import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, VaultTransferActions } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -69,6 +70,14 @@ async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<Jobs
 export async function readEngineIdentity(client: BridgeClient): Promise<FeatureResult<EngineIdentity>> {
   const [replied] = await Promise.allSettled([client.handshake()]);
   return settled(replied, adaptIdentity);
+}
+
+// What happens to this application when a new version exists. Asked once per
+// source like the handshake and the registry: it is a fact about the build
+// rather than about the vault, and it does not change while one sidecar lives.
+export async function readUpdateLifecycle(client: BridgeClient): Promise<FeatureResult<UpdateLifecycleView>> {
+  const [replied] = await Promise.allSettled([client.readLifecycle()]);
+  return settled(replied, adaptLifecycle);
 }
 
 export async function readSurfaceRegistry(client: BridgeClient): Promise<FeatureResult<SurfaceRegistry>> {

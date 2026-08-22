@@ -124,6 +124,9 @@ export type BridgeClient = {
   // What this machine has been told to do, and the yes that tells it. Asked
   // without a vault: a person with none yet still has to be able to say how
   // figures are written and whether a model may be reached at all.
+  // What happens when a new version exists. Asked without a vault, because a
+  // person meets that question before they have opened anything.
+  readLifecycle: () => Promise<unknown>;
   readSettings: () => Promise<unknown>;
   proposeSettings: (kind: "presentation" | "model", fields: Record<string, string>) => Promise<unknown>;
   // The key travels in this one call and nowhere else — not in a proposal, not

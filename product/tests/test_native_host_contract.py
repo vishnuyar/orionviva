@@ -31,6 +31,7 @@ from viva.desktop_bridge.surface_read import _read_request
 from viva.surface import (
     BRIDGE_HANDSHAKE,
     BRIDGE_OPEN_VAULT,
+    LIFECYCLE_READ,
     SETTINGS_READ,
     CURRENT_PROTOCOL,
     SURFACE_CAPABILITIES,
@@ -100,6 +101,10 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # nowhere to widen it from.
     MAINTENANCE_OPERATIONS["diagnose"]: {"file"},
     SETTINGS_READ: set(),
+    # What happens when a new version exists. It reports a fact about this
+    # process, so there is nothing a caller could name — and the shape of the
+    # request is what keeps it that way.
+    LIFECYCLE_READ: set(),
     SETTINGS_OPERATIONS["propose"]: {"kind", "locale", "currency", "adapter",
                                      "model", "base_url"},
     SETTINGS_OPERATIONS["confirm"]: {"kind", "digest", "key", "locale",

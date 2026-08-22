@@ -50,6 +50,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     readCapabilities: () => request("viva.surface.capabilities", {}),
     cancelJob: (jobId: string) => request("viva.documents.cancel", { job_id: jobId }),
     rescanDocuments: () => request("viva.documents.rescan", {}),
+    readLifecycle: () => request("viva.lifecycle.read", {}),
     readSettings: () => request("viva.settings.read", {}),
     proposeSettings: (kind, fields) => request("viva.settings.propose", { kind, ...fields }),
     confirmSettings: (kind, fields, digest, key) => request("viva.settings.confirm", { kind, ...fields, digest, ...(key ? { key } : {}) }),

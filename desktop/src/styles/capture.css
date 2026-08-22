@@ -205,3 +205,12 @@
 /* The frame is part of the page rather than a thing laid over it, so the shell
    below it becomes a column with the frame as its first row. */
 .app-shell-sample { display: grid; grid-template-rows: auto 1fr; }
+
+/* What happens to this application when a new version exists, beside where the
+   build names itself: "which copy is this" and "what happens when there is a
+   newer one" are the same question asked twice. */
+.trust-lifecycle { display: grid; gap: var(--space-sm); padding: var(--space-lg) 0; }
+.trust-lifecycle h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.trust-lifecycle p { margin: 0; font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-lifecycle-origin { color: var(--muted); }
+.trust-lifecycle ul { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-sm); color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }

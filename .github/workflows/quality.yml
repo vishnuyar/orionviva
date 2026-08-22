@@ -82,6 +82,16 @@ jobs:
           python ../scripts/build_desktop_sidecar.py \
             --output-dir src-tauri/binaries \
             --target "$(rustc -vV | sed -n 's/^host: //p')"
+
+      # The one check in this repository whose subject is the artifact rather
+      # than the tree. It starts the executable that was just built, speaks the
+      # real protocol to it, opens the sample vault through it and reads every
+      # surface — because a build that imports cleanly and cannot answer a frame
+      # is exactly the build a person downloads.
+      - name: Validate the packaged sidecar by running it
+        run: |
+          python ../scripts/validate_packaged_artifact.py \
+            --target "$(rustc -vV | sed -n 's/^host: //p')"
       - name: Build Tauri desktop bundle
         run: npx tauri build
 

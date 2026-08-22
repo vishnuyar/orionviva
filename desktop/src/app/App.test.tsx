@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, ConversationDialogShell } from "./App";
 // The sentences a person is told, read from the pack that ships them.
-import moments from "../../../product/viva/persona/pack-v30/moments.json";
+import moments from "../../../product/viva/persona/pack-v31/moments.json";
 // The sample vault as the backend answers for it, produced by running the
 // product rather than authored here.
 import sampleVault from "../../../product/viva/surface/fixtures/overview-parity-v1.json";

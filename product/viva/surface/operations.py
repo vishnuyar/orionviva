@@ -33,6 +33,10 @@ SURFACE_READ = "viva.surface.read"
 # What is in force, asked without a vault. It is not a surface read: a surface
 # read opens a vault, and this question has an answer before one exists.
 SETTINGS_READ = "viva.settings.read"
+# What happens to this application when a new version exists. Asked without a
+# vault for the same reason settings are: a person meets this question before
+# they have opened anything, and the answer does not depend on what they open.
+LIFECYCLE_READ = "viva.lifecycle.read"
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,7 @@ DECLARED_OPERATIONS: tuple[BridgeOperation, ...] = (
                                          "JobRegistry.v1", "OutboundRecord.v1",
                                          "ActivityMovements.v1")),
     BridgeOperation(SETTINGS_READ, serves=("Configuration.v1",)),
+    BridgeOperation(LIFECYCLE_READ, serves=("UpdateLifecycle.v1",)),
 )
 
 

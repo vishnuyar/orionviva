@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { CircleSlash, FileQuestion, Info } from "lucide-react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
-import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, TrustActionState, TransferActionState, TrustData, TrustNote } from "../../surface/types";
+import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, TrustActionState, TransferActionState, TrustData, TrustNote, UpdateLifecycleView } from "../../surface/types";
 
 // What a screen needs to take a whole vault out and bring one back. A source
 // that can do neither carries none of this, so the controls are absent rather
@@ -148,6 +148,23 @@ function identifiedRows<T extends { readonly id: string }>(items: readonly T[], 
 // the sidecar's own word for itself, including its word for not knowing — this
 // screen never fills that in, because a plausible-looking revision is worse
 // than a stated absence.
+// What happens to this application when a new version exists, and what happens
+// to a person's records when it does. Every sentence is the read's: this
+// renders and composes nothing.
+//
+// It is rendered where the build names itself, because "which copy is this" and
+// "what happens when there is a newer one" are the same question asked twice,
+// and a person who has just read one is holding the context for the other.
+function UpdateLifecycle({ lifecycle }: { lifecycle: FeatureResult<UpdateLifecycleView> }) {
+  if (lifecycle.state !== "ready") return null;
+  return <section className="trust-lifecycle" aria-labelledby="trust-lifecycle-title">
+    <h3 id="trust-lifecycle-title">Updates and recovery</h3>
+    <p>{lifecycle.data.sentence}</p>
+    <p className="trust-lifecycle-origin">{lifecycle.data.originSentence}</p>
+    <ul>{lifecycle.data.notes.map((note) => <li key={note.id}>{note.sentence}</li>)}</ul>
+  </section>;
+}
+
 function EngineRow({ identity }: { identity: FeatureResult<EngineIdentity> }) {
   if (identity.state !== "ready") return <section className="trust-engine" aria-labelledby="trust-engine-title"><h3 id="trust-engine-title">The engine behind this vault</h3><p>This source did not say which build answered.</p></section>;
   const { protocol, revision } = identity.data;
@@ -229,7 +246,7 @@ function NoteRows({ notes }: { notes: readonly TrustNote[] }) {
   })}</ul>;
 }
 
-function TrustReady({ data, identity, transfer, settings, maintenance }: { data: TrustData; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
+function TrustReady({ data, identity, lifecycle, transfer, settings, maintenance }: { data: TrustData; identity: FeatureResult<EngineIdentity>; lifecycle: FeatureResult<UpdateLifecycleView>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
   // A vault that has sent nothing is not an empty Trust screen: the outbound
   // record is present and says so, which is the whole of what this destination
   // is for.
@@ -239,9 +256,9 @@ function TrustReady({ data, identity, transfer, settings, maintenance }: { data:
   // have. They described a fixture. What is here now describes a vault, and
   // the sample vault is one, so it answers the same questions the same way.
   const empty = !data.notes.length && !data.outbound && !(data.absences ?? []).length;
-  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">Supplied Trust view</div><h2>Trust and limitations</h2><p>These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history.</p></header><EngineRow identity={identity} /><Absences absences={data.absences ?? []} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{maintenance ? <Maintenance controls={maintenance} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>No Trust notes supplied</strong><span>The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.</span></div> : <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} /></section>}</section>;
+  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">Supplied Trust view</div><h2>Trust and limitations</h2><p>These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history.</p></header><EngineRow identity={identity} /><UpdateLifecycle lifecycle={lifecycle} /><Absences absences={data.absences ?? []} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{maintenance ? <Maintenance controls={maintenance} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>No Trust notes supplied</strong><span>The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.</span></div> : <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} /></section>}</section>;
 }
 
-export function Trust({ result, identity, transfer, settings, maintenance }: { result: FeatureResult<TrustData>; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
-  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes are shown below.", needsInput: "Some Trust details need more information. Supplied notes are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The vault is still open." } }}>{(data) => <TrustReady data={data} identity={identity} transfer={transfer} settings={settings} maintenance={maintenance} />}</PanelStateView>;
+export function Trust({ result, identity, lifecycle, transfer, settings, maintenance }: { result: FeatureResult<TrustData>; identity: FeatureResult<EngineIdentity>; lifecycle: FeatureResult<UpdateLifecycleView>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
+  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes are shown below.", needsInput: "Some Trust details need more information. Supplied notes are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The vault is still open." } }}>{(data) => <TrustReady data={data} identity={identity} lifecycle={lifecycle} transfer={transfer} settings={settings} maintenance={maintenance} />}</PanelStateView>;
 }
