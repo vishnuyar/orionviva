@@ -305,7 +305,7 @@ export function App() {
         </FeatureBoundary>}
       </div>
     </main>
-    {conversationOpen && <ConversationDialogShell mode={surface.mode} resetKey={`${session.requestId}-${surface.mode}-conversation`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer result={surface.conversation} mode={surface.mode} selectedPrompt={session.selectedPrompt} onSelectPrompt={control.selectPrompt} /></ConversationDialogShell>}
+    {conversationOpen && <ConversationDialogShell mode={surface.mode} resetKey={`${session.requestId}-${surface.mode}-conversation`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer result={surface.conversation} mode={surface.mode} selectedPrompt={session.selectedPrompt} onSelectPrompt={control.selectPrompt} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean) => void control.askViva(question, mirrored) } : null} /></ConversationDialogShell>}
     {evidenceSelection && <EvidenceDrawer snapshot={surface} selection={evidenceSelection} drawerRef={evidenceDrawerRef} closeRef={evidenceCloseRef} onDismiss={evidenceDialog.dismissAndRestore} onOpenDocument={(link) => openEvidenceDocument(link, true)} renderEvidenceBadge={(grade) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />} />}
   </div>;
 }

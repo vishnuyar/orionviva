@@ -568,6 +568,17 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "documents_awaiting":              frozenset(),
     "documents_contributed":           frozenset({"amount", "account", "day"}),
     "documents_contributed_nothing":   frozenset(),
+    # What a conversation says about itself. Speech cannot carry a receipt: a
+    # figure on a screen opens a drawer that opens a document, and a figure
+    # spoken aloud opens nothing. So one line says where the evidence is rather
+    # than pretending to read it, and one refuses to speak a figure whose text
+    # mirror is not in front of the person. The last says that speaking and
+    # listening stay on this machine, because sending a voice elsewhere would
+    # be a new way for things to leave and nobody has decided that.
+    "conversation_unconfigured":       frozenset(),
+    "conversation_spoken_citation":    frozenset(),
+    "conversation_spoken_withheld":    frozenset(),
+    "conversation_voice_local_only":   frozenset(),
 }
 
 

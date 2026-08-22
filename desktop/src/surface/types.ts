@@ -222,6 +222,25 @@ export type OverviewData = { picture: PictureView; corpusCoverage: string; accou
 export type DocumentsData = { documents: SurfaceDocument[]; readingSentence: string; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
 export type ReviewData = { queue: ReviewView[]; count: number; meta: { total: number; tail: { count: number; amount: string } | null; pending: { count: number } | null; invite: string; answeredByDocument: string } };
 export type ActivityData = { items: ActivityView[]; sample?: { readonly filters?: SampleActivityFilterCatalog } };
+// One figure a spoken or written answer stated, and the route back to what it
+// rests on. `written` is the words the sentence wrote the figure as, so the
+// figure under the sentence is the figure in it — not a second rendering of the
+// same number.
+export type TurnFigure = { id: string; written: string; grade: string; what: string; recordIds: readonly string[] };
+// What a voice surface may say of one turn, and what it may not. Every sentence
+// here was written on the other side of the bridge; a surface that assembled
+// its own would be speaking a figure under wording nobody reviewed.
+export type SpokenTurn = { maySpeak: boolean; withheld: string; parts: readonly string[]; text: string; gradeSentence: string; citationSentence: string; localOnly: string };
+// One whole turn. The grade sentence is a whole reviewed sentence rather than a
+// word in a frame, and it is the read's.
+export type TurnView = { question: string; text: string; answered: boolean; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; spoken: SpokenTurn };
+export type ConversationActions = {
+  ask: (question: string, mirrored: boolean) => Promise<{ result: ActionResult; turn: TurnView | null }>;
+};
+export type AskActionState =
+  | { state: "idle" }
+  | { state: "working"; question: string }
+  | { state: "settled"; question: string; result: ActionResult; turn: TurnView | null };
 export type ConversationData = { turns: ConversationTurn[]; prompts: ConversationPrompt[]; sample?: { turns: ConversationTurn[]; prompts: ConversationPrompt[] } };
 export type TrustNote = { readonly id: string; readonly title: string; readonly detail: string };
 export type TrustCapabilityGroup = "source" | "outbound_models" | "integrity" | "continuity" | "build_support";

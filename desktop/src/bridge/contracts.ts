@@ -110,6 +110,10 @@ export type BridgeClient = {
   restoreVault: (archive: string, directory: string, passphrase: string) => Promise<unknown>;
   // An action answers with an outcome. It arrives unread, like a surface read:
   // the transport carries the frame and something above it decides what it says.
+  // One question, and whether its text will be in front of the person. The
+  // second is a fact about this screen rather than a preference: it is the
+  // input to the rule that a figure is never spoken with nowhere to check it.
+  askViva: (question: string, mirrored: boolean) => Promise<unknown>;
   answerQuestion: (questionId: string, said: string) => Promise<unknown>;
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;
 };

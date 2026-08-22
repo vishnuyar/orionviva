@@ -1,6 +1,63 @@
+import { useState, type FormEvent } from "react";
 import { PanelStateView } from "../../components/PanelStateView";
-import type { ConversationData, ConversationPrompt, ConversationTurn, FeatureResult, SurfaceMode } from "../../surface/types";
+import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
+import type { AskActionState, ConversationData, ConversationPrompt, ConversationTurn, FeatureResult, SurfaceMode, TurnView } from "../../surface/types";
 import { presentConversationRows, resolveConversationPrompt, type PromptSelection } from "./conversationPresentation";
+
+// What a screen needs to ask Viva a question. A source that cannot ask carries
+// none of this, so the box is absent rather than present and refusing.
+export type AskControls = { state: AskActionState; onAsk: (question: string, mirrored: boolean) => void };
+
+// One answered turn, with the mirror that makes a spoken figure checkable: the
+// sentence, the whole reviewed grade line, and every figure written in the
+// words the sentence wrote it in, beside the records it rests on. Nothing here
+// is composed — not the grade line, not the citation line, not the sentence
+// saying why something was not spoken.
+function AnsweredTurn({ turn }: { turn: TurnView }) {
+  return <article className="conversation-answer" aria-labelledby="conversation-answer-title">
+    <h3 id="conversation-answer-title">{turn.question}</h3>
+    <p className="conversation-answer-text">{turn.text || turn.refusal}</p>
+    {turn.gradeSentence ? <p className="conversation-answer-grade">{turn.gradeSentence}</p> : null}
+    {turn.figures.length ? <dl className="conversation-answer-figures">{turn.figures.map((figure) => <div key={figure.id}>
+      <dt>{figure.written || figure.id}</dt>
+      <dd>{figure.what}{figure.recordIds.length ? ` · ${figure.recordIds.join(", ")}` : ""}</dd>
+    </div>)}</dl> : null}
+    {turn.spoken.withheld ? <p className="conversation-answer-withheld">{turn.spoken.withheld}</p> : null}
+    {turn.spoken.citationSentence ? <p className="conversation-answer-citation">{turn.spoken.citationSentence}</p> : null}
+  </article>;
+}
+
+// The box a person asks in. `mirrored` is true because this drawer is where the
+// answer appears: the text is in front of the person by construction, and
+// saying so is a fact about this screen rather than a preference somebody sets.
+function AskBox({ ask }: { ask: AskControls }) {
+  const [question, setQuestion] = useState("");
+  const working = ask.state.state === "working";
+  const settled = ask.state.state === "settled" ? ask.state : null;
+  const said = settled && settled.result.state !== "settled"
+    ? `${channelPresentation(settled.result).title}. ${channelPresentation(settled.result).detail}`
+    : settled && !settled.turn && settled.result.state === "settled"
+      ? settled.result.outcome.message.trim() || UNSPOKEN_REPLY
+      : "";
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (working || !question.trim()) return;
+    ask.onAsk(question.trim(), true);
+    setQuestion("");
+  }
+  return <section className="conversation-ask" aria-labelledby="conversation-ask-title">
+    <h3 id="conversation-ask-title">Ask about your money</h3>
+    <form onSubmit={submit}>
+      <label htmlFor="conversation-ask-question">Your question</label>
+      <textarea id="conversation-ask-question" value={question} onChange={(event) => setQuestion(event.target.value)} rows={2} />
+      <button className="primary-button" type="submit" aria-disabled={working} aria-describedby={working ? "conversation-ask-waiting" : undefined}>Ask</button>
+    </form>
+    {working ? <span className="action-explanation" id="conversation-ask-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
+    <div className="visually-hidden" role="status" aria-live="polite">{settled?.turn ? settled.turn.text || settled.turn.refusal : said}</div>
+    {settled?.turn ? <AnsweredTurn turn={settled.turn} /> : null}
+    {said ? <p className="conversation-answer-text">{said}</p> : null}
+  </section>;
+}
 
 function TurnList({ turns, mode }: { turns: readonly ConversationTurn[]; mode: SurfaceMode }) {
   return <section className="conversation-thread" aria-labelledby="conversation-turns-title"><h3 id="conversation-turns-title">{mode === "demo" ? "Fictional conversation turns" : "Supplied conversation turns"}</h3><p className="conversation-turn-order">Turns are shown in the order supplied to this view. The interface does not verify chronology.</p><ul>{presentConversationRows(turns, "turn").map((row) => {
@@ -41,6 +98,11 @@ function ConversationReady({ data, mode, selectedPrompt, onSelectPrompt }: { dat
   return <div className="conversation-body"><p className="conversation-intro">{mode === "demo" ? "Selecting a sample prompt changes only the displayed detail. It does not send a prompt, call a model, write a vault event, create an outbound action, or make a durable change." : "Displaying supplied conversation fields does not establish that a model call occurred."}</p><TurnList turns={view.turns} mode={mode} /><PromptRows prompts={view.prompts} selectedPrompt={selectedPrompt} selection={selection} mode={mode} onSelectPrompt={onSelectPrompt} /></div>;
 }
 
-export function ConversationDrawer({ result, mode, selectedPrompt, onSelectPrompt }: { result: FeatureResult<ConversationData>; mode: SurfaceMode; selectedPrompt: string; onSelectPrompt: (id: string) => void }) {
-  return <PanelStateView result={result} copy={{ partial: "Some conversation details are unavailable. Supplied read-only content is shown below.", needsInput: "Some conversation details need input, but this preview cannot accept or send a prompt. Supplied read-only content is shown below.", unavailable: { title: "Conversation isn’t connected yet", detail: "Viva is not connected to this vault in this preview. Opening this drawer does not send a prompt or call a model. This unavailable view does not establish whether earlier model activity occurred." }, failed: { title: "Conversation could not be read", detail: "The conversation view could not be read. Opening this drawer does not send a prompt or call a model. This failed read does not establish whether earlier model activity occurred. The private vault remains open." } }}>{(data) => <ConversationReady data={data} mode={mode} selectedPrompt={selectedPrompt} onSelectPrompt={onSelectPrompt} />}</PanelStateView>;
+export function ConversationDrawer({ result, mode, selectedPrompt, onSelectPrompt, ask }: { result: FeatureResult<ConversationData>; mode: SurfaceMode; selectedPrompt: string; onSelectPrompt: (id: string) => void; ask: AskControls | null }) {
+  // The box sits outside the read's state gate rather than inside it. What
+  // answers a question is the engine; the read below supplies turns and
+  // prompts, and a read that is not connected still has that to say. Hiding
+  // the box behind it would tie one to the other, and hiding what the read
+  // says behind the box would drop a true sentence about the product.
+  return <>{ask ? <AskBox ask={ask} /> : null}<PanelStateView result={result} copy={{ partial: "Some conversation details are unavailable. Supplied read-only content is shown below.", needsInput: "Some conversation details need input, but this preview cannot accept or send a prompt. Supplied read-only content is shown below.", unavailable: { title: "Conversation isn’t connected yet", detail: "Viva is not connected to this vault in this preview. Opening this drawer does not send a prompt or call a model. This unavailable view does not establish whether earlier model activity occurred." }, failed: { title: "Conversation could not be read", detail: "The conversation view could not be read. Opening this drawer does not send a prompt or call a model. This failed read does not establish whether earlier model activity occurred. The private vault remains open." } }}>{(data) => <ConversationReady data={data} mode={mode} selectedPrompt={selectedPrompt} onSelectPrompt={onSelectPrompt} />}</PanelStateView></>;
 }

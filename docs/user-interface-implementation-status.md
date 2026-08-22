@@ -133,7 +133,7 @@ reason. The day a surface becomes live-readable, or a destination is declared,
 or a capability's destination moves, this table is wrong and the build says
 so.
 
-### Bridge operations (15)
+### Bridge operations (16)
 
 Every operation the sidecar will answer, and whether an allowlist admits it.
 The operation set and the allowlist column are derived; whether the desktop
@@ -160,6 +160,7 @@ left in it.
 | `viva.settings.read` | yes | the allowlist a sidecar starts with, before any vault is open; it is not a surface read, because a surface read opens a vault and this question has an answer before one exists | yes |
 | `viva.settings.propose` | yes | the allowlist a sidecar starts with; it describes what would change, changes nothing, and carries the digest a yes has to name | yes |
 | `viva.settings.confirm` | yes | the allowlist a sidecar starts with; it applies exactly the proposal that was shown, and is the one request an API key ever travels in | yes |
+| `viva.conversation.ask` | yes | added to the allowlist when a vault opens; one session lives as long as the vault does, so turns share context and voice would read the same turn a screen does. A turn is a blocking request rather than a job, which is one of the five reserved interface unknowns answered the narrow way | yes |
 | `viva.documents.rescan` | yes | added to the allowlist when a vault opens; it stitches gaps, closes holds a counterparty now attests and links transfers among movements already posted, reads no document, and answers with a reviewed read model rather than the counts the sweep returns | yes |
 | `viva.vault.export` | yes | added to the allowlist when a vault opens; it writes every file this vault is made of into one archive without decrypting any of them, and never replaces an archive that is already there | yes |
 | `viva.vault.restore` | yes | added to the allowlist when a vault opens; it writes into a directory that holds nothing, never over a vault in use, and reports only what opening the copy and reading it through established | yes |

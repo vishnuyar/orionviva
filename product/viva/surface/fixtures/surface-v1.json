@@ -223,7 +223,9 @@
       ]
     },
     {
-      "actions": [],
+      "actions": [
+        "ask"
+      ],
       "availability": "when the vault is open and the conversation engine is configured",
       "contract": "ConversationTurn.v1",
       "destination": "viva",

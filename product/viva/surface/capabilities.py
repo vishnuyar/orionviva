@@ -188,7 +188,10 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.VIVA,
         "when the vault is open and the conversation engine is configured",
         "ConversationTurn.v1",
-        (),
+        # Asking is the whole of it. Voice is a skin over this same turn rather
+        # than a second action: text and voice share one session and one
+        # runtime, so a second verb here would be a second answering path.
+        ("ask",),
         (TrustEffect.READS_DATA, TrustEffect.MAY_CALL_MODEL, TrustEffect.WRITES_EVENT),
         entrypoint="viva.speak",
     ),

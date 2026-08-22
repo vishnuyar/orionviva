@@ -20,10 +20,12 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const transferring = useRef(false);
   const sweeping = useRef(false);
   const configuring = useRef(false);
+  const asking = useRef(false);
   const documentActions = session.source.documentActions;
   const jobStream = session.source.jobStream;
   const transferActions = session.source.transferActions;
   const settingsActions = session.source.settingsActions;
+  const conversationActions = session.source.conversationActions;
   const source = session.source;
 
   // What is in force, asked once per source. It is this machine's rather than
@@ -212,6 +214,22 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     },
     transferAvailable: Boolean(transferActions),
     settingsAvailable: Boolean(settingsActions),
+    askAvailable: Boolean(conversationActions),
+    // One question at a time. `mirrored` says the drawer showing the answer is
+    // open, which is a fact about this screen rather than a preference: it is
+    // what decides whether anything may be spoken.
+    async askViva(question: string, mirrored: boolean) {
+      if (!conversationActions || !question.trim() || asking.current) return;
+      asking.current = true;
+      const nextRequestId = requestId.current;
+      dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
+      try {
+        const { result, turn } = await conversationActions.ask(question.trim(), mirrored);
+        if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn });
+      } finally {
+        asking.current = false;
+      }
+    },
     // Proposing changes nothing. What comes back is either the proposal a
     // person is shown, or the channel's own answer about why there is none.
     async proposeSettings(kind: "presentation" | "model", fields: Record<string, string>) {

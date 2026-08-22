@@ -1,6 +1,6 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, SettingsActionState, SettingsProposal, SettingsView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -47,6 +47,10 @@ export type SurfaceSession = {
   // ask them to agree to something they can no longer read.
   settings: FeatureResult<SettingsView>;
   settingsAction: SettingsActionState;
+  // What was asked of Viva, and the turn it produced. It lives in the session
+  // rather than in the drawer, because the drawer closes and a turn is a thing
+  // that happened — and because voice reads the same turn a screen does.
+  askAction: AskActionState;
 };
 
 export type SessionAction =
@@ -67,6 +71,8 @@ export type SessionAction =
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
   | { type: "job-progress"; requestId: number; job: JobView }
   | { type: "described"; requestId: number; description: SourceDescription }
+  | { type: "asking"; requestId: number; question: string }
+  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null }
   | { type: "settings-read"; settings: FeatureResult<SettingsView> }
   | { type: "settings-working" }
   | { type: "settings-proposed"; proposal: SettingsProposal }
@@ -122,6 +128,7 @@ export function initialSession(): SurfaceSession {
     rescanAction: { state: "idle" },
     settings: { state: "absent", reason: "not_asked" },
     settingsAction: { state: "idle" },
+    askAction: { state: "idle" },
   };
 }
 
@@ -164,7 +171,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -185,6 +192,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         description: unasked(),
         transferAction: { state: "idle" },
         rescanAction: { state: "idle" },
+        askAction: { state: "idle" },
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -261,6 +269,12 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "described":
       if (action.requestId !== state.requestId) return state;
       return { ...state, description: action.description };
+    case "asking":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, askAction: { state: "working", question: action.question } };
+    case "asked":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
     // Settings survive a vault opening and closing: they are this machine's,
     // not this vault's, and clearing them on a source change would make a
     // person say yes to the same thing twice.

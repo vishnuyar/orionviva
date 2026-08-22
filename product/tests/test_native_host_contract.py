@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 from viva.desktop_bridge.__main__ import Sidecar, _open_vault
-from viva.desktop_bridge.handlers import (DOCUMENTS_OPERATIONS,
+from viva.desktop_bridge.handlers import (CONVERSATION_OPERATIONS,
+                                           DOCUMENTS_OPERATIONS,
                                            RESCAN_OPERATIONS,
                                            REVIEW_OPERATIONS,
                                            SETTINGS_OPERATIONS,
@@ -80,6 +81,11 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # allowlist and declare their fields here like everything else. The key is
     # among the confirm fields and among no others: it travels in one request
     # and is never on a proposal, in a reply or in a digest.
+    # A question, and whether its text will be in front of the person. The
+    # second is a fact about the caller's own screen and the input to the rule
+    # that a figure is never spoken with nowhere to check it — not a switch for
+    # speech, which is why there is no field here that could be one.
+    CONVERSATION_OPERATIONS["ask"]: {"question", "mirrored"},
     SETTINGS_READ: set(),
     SETTINGS_OPERATIONS["propose"]: {"kind", "locale", "currency", "adapter",
                                      "model", "base_url"},
@@ -97,6 +103,8 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     DOCUMENTS_OPERATIONS["cancel"]: (BRIDGE_PACKAGE / "document_actions.py", "_cancel_request"),
     TRANSFER_OPERATIONS["restore"]: (BRIDGE_PACKAGE / "vault_actions.py", "_restore_request"),
     RESCAN_OPERATIONS["rescan"]: (BRIDGE_PACKAGE / "rescan_actions.py", "_no_fields"),
+    CONVERSATION_OPERATIONS["ask"]: (BRIDGE_PACKAGE / "conversation_actions.py",
+                                     "_ask_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

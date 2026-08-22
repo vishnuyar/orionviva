@@ -139,3 +139,16 @@
 .review-answer form { display: grid; gap: var(--space-sm); }
 .review-answer label { font-size: var(--text-caption); font-weight: var(--weight-medium); }
 .review-answer textarea { width: 100%; font: inherit; font-size: var(--text-body); line-height: var(--leading-body); }
+
+/* Asking Viva, and the mirror that makes a spoken figure checkable. */
+.conversation-ask { display: grid; gap: var(--space-sm); padding: var(--space-lg); border-bottom: 1px solid var(--line); }
+.conversation-ask h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.conversation-ask form { display: grid; gap: var(--space-sm); }
+.conversation-ask label { font-size: var(--text-caption); font-weight: var(--weight-medium); }
+.conversation-ask textarea { width: 100%; font: inherit; font-size: var(--text-body); line-height: var(--leading-body); }
+.conversation-answer { display: grid; gap: var(--space-sm); }
+.conversation-answer h3 { margin: 0; color: var(--muted); font-size: var(--text-fine); font-weight: var(--weight-medium); }
+.conversation-answer p { margin: 0; font-size: var(--text-body); line-height: var(--leading-body); }
+.conversation-answer-grade, .conversation-answer-citation, .conversation-answer-withheld { color: var(--muted); font-size: var(--text-fine); }
+.conversation-answer-figures { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-caption); }
+.conversation-answer-figures div { display: flex; justify-content: space-between; gap: var(--space-sm); }

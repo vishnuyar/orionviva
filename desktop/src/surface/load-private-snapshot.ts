@@ -2,6 +2,7 @@ import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/cont
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
+import { adaptTurn } from "./adapters/conversation";
 import { isRecord } from "./adapters/primitives";
 import { adaptJobs, adaptProgress } from "./adapters/jobs";
 import { adaptRescan } from "./adapters/rescan";
@@ -10,7 +11,7 @@ import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SettingsActions, SurfaceRegistry, SurfaceSnapshot, VaultTransferActions } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, SurfaceSnapshot, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -107,6 +108,20 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
       const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
       const report = replied.status === "fulfilled" && isRecord(replied.value) ? adaptRescan(replied.value.state) : null;
       return { result, report };
+    },
+  };
+}
+
+// One question, and the turn it produced. Two answers from one frame, kept
+// apart: `result` is which channel spoke and what the vault said; `turn` is the
+// turn itself, read only from a reply the vault settled.
+export function privateConversationActions(client: BridgeClient): ConversationActions {
+  return {
+    ask: async (question, mirrored) => {
+      const [replied] = await Promise.allSettled([client.askViva(question, mirrored)]);
+      const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
+      const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
+      return { result, turn };
     },
   };
 }

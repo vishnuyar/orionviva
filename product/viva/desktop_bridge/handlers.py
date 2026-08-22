@@ -30,6 +30,8 @@ DOCUMENTS_CAPABILITY = "documents.ingest"
 DOCUMENTS_OPERATIONS = action_operations_for(DOCUMENTS_CAPABILITY)
 TRANSFER_CAPABILITY = "vault.transfer"
 TRANSFER_OPERATIONS = action_operations_for(TRANSFER_CAPABILITY)
+CONVERSATION_CAPABILITY = "conversation.viva"
+CONVERSATION_OPERATIONS = action_operations_for(CONVERSATION_CAPABILITY)
 RESCAN_CAPABILITY = "documents.rescan"
 RESCAN_OPERATIONS = action_operations_for(RESCAN_CAPABILITY)
 SETTINGS_CAPABILITY = "settings.configuration"
@@ -145,6 +147,7 @@ def handlers_for_opened_vault(
     happened, which is what makes this testable without a bridge.
     """
 
+    from .conversation_actions import ConversationActions
     from .document_actions import DocumentActions
     from .jobs import JobRegistry
     from .review_actions import ReviewActions
@@ -160,6 +163,7 @@ def handlers_for_opened_vault(
     captures = DocumentActions(vault, jobs)
     transfers = VaultTransferActions(vault, jobs)
     sweeps = RescanActions(vault, jobs)
+    talking = ConversationActions(vault, jobs)
     return BridgeDispatcher({
         **reads.handlers,
         REVIEW_OPERATIONS["answer"]: actions.answer,
@@ -169,4 +173,5 @@ def handlers_for_opened_vault(
         TRANSFER_OPERATIONS["export"]: transfers.export,
         TRANSFER_OPERATIONS["restore"]: transfers.restore,
         RESCAN_OPERATIONS["rescan"]: sweeps.run,
+        CONVERSATION_OPERATIONS["ask"]: talking.ask,
     })
