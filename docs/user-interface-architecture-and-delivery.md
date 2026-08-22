@@ -13,7 +13,7 @@ on the current branch is recorded in
 ### VOICE-100 — the product is an installed desktop application, not a server
 **State:** enforced-with-exception
 **Code:** product/viva/desktop_bridge/rpc.py, desktop/src-tauri/
-**Test:** product/tests/test_desktop_bridge.py::test_handshake_is_versioned_and_framed
+**Test:** product/tests/test_desktop_bridge.py::test_handshake_is_versioned_framed_and_says_which_build_answered
 
 1. The shell and the bundled Python sidecar communicate over a small, allowlisted, typed JSON-lines protocol.
 2. No localhost HTTP server is opened.

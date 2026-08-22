@@ -14,7 +14,7 @@ import { Review } from "../features/review/Review";
 import { Trust } from "../features/trust/Trust";
 import { resolveEvidenceTarget } from "../surface/evidence";
 import type { DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, ReviewActionState, ReviewData, SurfaceMode } from "../surface/types";
-import { destinations } from "./navigation";
+import { destinations, standingCopy, standingOf } from "./navigation";
 import { useResponsiveNavigation } from "./useResponsiveNavigation";
 import { useEvidenceDialog } from "./useEvidenceDialog";
 import { useSurfaceSession } from "./useSurfaceSession";
@@ -278,7 +278,15 @@ export function App() {
         <strong>{session.source.label}</strong><span className="vault-source-subtitle">{session.source.mode === "demo" ? "Fictional sample data" : "Opened on this device"}</span><span className="vault-source-boundary">{session.source.mode === "demo" ? "Sample data boundary" : "Read-only vault surfaces"}</span><p>{session.source.description}</p>
         {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" aria-describedby="vault-passphrase-consequence" /></label><p className="vault-passphrase-consequence" id="vault-passphrase-consequence">This opens a vault in the folder you name, and creates one there if none exists. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.</p><button className="secondary-button vault-open-button" type="submit" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-passphrase-consequence vault-open-waiting" : "vault-passphrase-consequence"}>{openingVault ? "Opening vault..." : "Open local vault"}</button>{openingVault ? <span className="action-explanation" id="vault-open-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}</form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
       </div>
-      <nav id="primary-navigation" aria-label="Main navigation"><div className="nav-label">Navigate</div>{destinations.map((item) => <button key={item.id} className={session.destination === item.id ? "nav-item active" : "nav-item"} aria-current={session.destination === item.id ? "page" : undefined} onClick={() => navigate(item.id)}><span><strong>{item.label}</strong><small>{item.eyebrow}</small></span></button>)}</nav>
+      <nav id="primary-navigation" aria-label="Main navigation"><div className="nav-label">Navigate</div>{destinations.map((item) => {
+        // What the engine's own registry says about this place, said beside
+        // it. Nothing here decides it, and a destination whose standing has
+        // not been asked for carries no mark: a mark on everything while an
+        // answer is on its way is a mark that stops meaning anything.
+        const standing = standingOf(session.description.registry, item.id);
+        const said = standingCopy[standing];
+        return <button key={item.id} className={session.destination === item.id ? "nav-item active" : "nav-item"} aria-current={session.destination === item.id ? "page" : undefined} onClick={() => navigate(item.id)}><span><strong>{item.label}</strong><small>{item.eyebrow}</small></span>{said ? <span className="nav-standing">{said}</span> : null}</button>;
+      })}</nav>
       <div className="sidebar-footer"><div className="privacy-lock"><Info aria-hidden="true" size={16} /><span>{surface.mode === "demo" ? "Fictional sample" : "Local source"}</span></div><p>{surface.mode === "demo" ? "This fictional sample is bundled with the app. Complete outbound history is not available." : "This vault was opened through the local desktop host. Complete outbound history is not available."}</p></div>
     </aside>
     <main className="main-content" inert={Boolean(evidenceSelection) || conversationOpen || (isNarrow && mobileNav) ? true : undefined}>
@@ -292,7 +300,7 @@ export function App() {
           {session.destination === "documents" && <Documents result={surface.documents} mode={surface.mode} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={resetDemoVault} />}
           {session.destination === "review" && <Review result={surface.review} mode={surface.mode} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenEvidence={openEvidenceDocument} actions={{ state: session.reviewAction, onDecline: declineQuestion }} />}
           {session.destination === "activity" && <Activity result={surface.activity} mode={surface.mode} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} />}
-          {session.destination === "trust" && <Trust result={surface.trust} mode={surface.mode} />}
+          {session.destination === "trust" && <Trust result={surface.trust} mode={surface.mode} identity={session.description.identity} />}
         </FeatureBoundary>}
       </div>
     </main>

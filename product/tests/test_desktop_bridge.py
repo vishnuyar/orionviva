@@ -33,15 +33,25 @@ def frame(**overrides):
     return json.dumps(payload)
 
 
-def test_handshake_is_versioned_and_framed():
+def test_handshake_is_versioned_framed_and_says_which_build_answered():
+    """The handshake is the one exchange that happens before anything else and
+    without a vault, so it is where a build names itself: a build that cannot
+    open a vault, or opens one and answers wrongly, is exactly the build
+    somebody needs named. The revision is read rather than guessed, and a build
+    that cannot establish its own says the word for that instead of leaving a
+    hole a reader would fill in."""
+    from viva.revision import source_revision
+
     response = json.loads(dispatch_frame(frame(), default_handlers().handlers))
 
     assert response == {
         "protocol": "2.0",
         "request_id": "req-1",
         "ok": True,
-        "result": {"protocol": "2.0", "transport": "json-lines"},
+        "result": {"protocol": "2.0", "transport": "json-lines",
+                   "revision": source_revision()},
     }
+    assert response["result"]["revision"]
 
 
 def test_unknown_operations_are_refused_by_the_allowlist():
@@ -61,12 +71,20 @@ def test_default_surface_read_returns_live_reviewed_registry():
         )
     )
 
+    from viva.surface import served_destinations
+
     assert response["ok"] is True
     assert response["result"] == {
         "protocol": CURRENT_PROTOCOL.wire(),
         "capabilities": json.loads(serialize_registry()),
+        "destinations": served_destinations(),
     }
     assert any(item["id"] == "review.questions" for item in response["result"]["capabilities"])
+    # The destination signal is derived here because the rule about what
+    # "served" means lives here. Two derivations of one rule are two rules, and
+    # the one a person would meet is the one nobody reviewed.
+    assert response["result"]["destinations"]["overview"] is True
+    assert response["result"]["destinations"]["settings"] is False
 
 
 def test_surface_read_rejects_payload_fields():

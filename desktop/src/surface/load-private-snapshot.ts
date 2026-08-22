@@ -1,11 +1,12 @@
 import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
+import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
 import { adaptJobs, adaptProgress } from "./adapters/jobs";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SurfaceSnapshot } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, SurfaceRegistry, SurfaceSnapshot } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -53,6 +54,20 @@ async function readDocumentsFeature(client: BridgeClient): Promise<FeatureResult
 async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<JobsData>> {
   const [read] = await Promise.allSettled([client.readJobs()]);
   return settled(read, (value) => adaptJobs(value.data));
+}
+
+// What the sidecar declares about itself and about its own registry, read here
+// like every other payload. Both are asked once when a vault opens: neither
+// changes while one sidecar lives, and asking again per screen would be asking
+// a settled question over and over.
+export async function readEngineIdentity(client: BridgeClient): Promise<FeatureResult<EngineIdentity>> {
+  const [replied] = await Promise.allSettled([client.handshake()]);
+  return settled(replied, adaptIdentity);
+}
+
+export async function readSurfaceRegistry(client: BridgeClient): Promise<FeatureResult<SurfaceRegistry>> {
+  const [replied] = await Promise.allSettled([client.readCapabilities()]);
+  return settled(replied, adaptRegistry);
 }
 
 // What the sidecar says it is doing, as it does it, already read into the

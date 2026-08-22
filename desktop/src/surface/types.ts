@@ -38,6 +38,16 @@ export type JobsData = { jobs: readonly JobView[]; running: readonly string[] };
 // source that carries none is one whose host cannot deliver a statement
 // mid-job, so nothing above it waits for one.
 export type JobStream = (listen: (job: JobView) => void) => Promise<() => void>;
+// Which destinations a read reaches, as the sidecar's own registry derived it,
+// and which of this shell's destinations that registry does not declare at all.
+// The second is not a rounding of the first: a screen the product has never
+// heard of is a different fault from one whose read is not connected yet, and a
+// shell that reported them alike would be hiding the one it caused.
+export type SurfaceRegistry = { served: Record<Destination, boolean>; undeclared: readonly Destination[] };
+// Which build of the engine answered. `revision` is the sidecar's own word,
+// including its word for not knowing; empty means the reply carried no such
+// field, which is a fact about the build rather than about the tree.
+export type EngineIdentity = { protocol: string; transport: string; revision: string };
 // The review actions a screen may reach. The registry declares `answer` too and
 // this build serves no handler for it, so nothing here can name it.
 export type ReviewVerb = "decline";

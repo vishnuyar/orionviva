@@ -15,6 +15,7 @@ from viva.surface import (
     action_operations_for,
     operation_names,
     serialize_registry,
+    served_destinations,
 )
 
 # The capability whose actions an opened vault may serve, mapped to the
@@ -50,9 +51,19 @@ class BridgeDispatcher:
 
 
 def _handshake(payload: dict[str, Any]) -> dict[str, str]:
+    """Who answered, and which build of it.
+
+    The revision belongs here rather than on a trust read because the handshake
+    is the one exchange that happens before anything else and without a vault:
+    a build that cannot open a vault, or that opens one and answers wrongly, is
+    exactly the build whose identity somebody needs. It is read, never guessed,
+    and a build that cannot establish its own says the word for that."""
+    from viva.revision import source_revision
+
     if payload:
         raise BridgeRequestError(f"{BRIDGE_HANDSHAKE} does not accept payload fields")
-    return {"protocol": CURRENT_PROTOCOL.wire(), "transport": "json-lines"}
+    return {"protocol": CURRENT_PROTOCOL.wire(), "transport": "json-lines",
+            "revision": source_revision()}
 
 
 def _surface_capabilities(payload: dict[str, Any]) -> dict[str, Any]:
@@ -65,6 +76,11 @@ def _surface_capabilities(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "protocol": CURRENT_PROTOCOL.wire(),
         "capabilities": json.loads(serialize_registry()),
+        # Which destinations a read actually reaches, derived from the registry
+        # by the registry. The interface used to carry a hand-written
+        # vocabulary in place of this, which is a second answer to a question
+        # only one side can answer.
+        "destinations": served_destinations(),
     }
 
 

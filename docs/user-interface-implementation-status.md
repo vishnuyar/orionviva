@@ -88,7 +88,7 @@ A gap no machine in this repository can hold says so in place of an address and
 gives its reason. Those sit in their own table, counted, so "untestable" is a
 short list with reasons rather than a blanket over the whole document.
 
-### Destinations (11)
+### Destinations (10)
 
 Where the registry and the interface agree about where a capability lands, and
 where they do not. The first three marked columns are derived from the code on
@@ -101,8 +101,7 @@ the interface ships it, or it is rejected as invented.
 | Destination | Live read | Registry destination | Claimed by a surfaced capability | Shipped in the interface |
 | --- | --- | --- | --- | --- |
 | `overview` | yes | yes | yes | yes |
-| `account` | no | yes | no | no |
-| `accounts` | no | no | no | yes |
+| `accounts` | no | yes | no | yes |
 | `activity` | no | yes | no | yes |
 | `documents` | yes | yes | yes | yes |
 | `jobs` | yes | no | no | yes |
@@ -112,11 +111,14 @@ the interface ships it, or it is rejected as invented.
 | `settings` | no | yes | no | no |
 | `none` | no | yes | no | no |
 
-The two sides disagree in both directions and nothing but this table gates it.
-They do not even spell one destination the same way: the registry declares
-`account`, the interface ships `accounts`. `viva` and `settings` are registry
+The two sides still disagree, but no longer about spelling: the registry used
+to declare `account` while the interface shipped `accounts`, and nothing but
+this table held the two together. They are one word now, and the interface
+derives what it says about a destination from the registry's own signal rather
+than from a vocabulary of its own. `viva` and `settings` are registry
 destinations with no place in the interface; `accounts` and `activity` are
-shipped destinations no surfaced capability claims. `none` is how the registry
+shipped destinations no surfaced capability claims, which the interface now
+marks on the destination itself. `none` is how the registry
 says a capability has no destination at all. `jobs` is a live-readable surface
 name that is no registry destination and no screen of its own: what the sidecar
 is doing is shown on the documents screen, beside the work that started it,
@@ -140,9 +142,9 @@ them.
 
 | Operation | Allowlisted | Where it is served | Consumed by the desktop |
 | --- | --- | --- | --- |
-| `bridge.handshake` | yes | the allowlist a sidecar starts with, before any vault is open | no — the desktop client sends its first request cold and never reads the `protocol` field the sidecar stamps on every response, so the version is asserted per frame and checked by nobody |
+| `bridge.handshake` | yes | the allowlist a sidecar starts with, before any vault is open; it names the build that answered, read from a file a packaging step writes or from the tree this module lives in | yes — asked once when a vault opens, and what it says about the build is shown on Trust. The desktop still never checks the `protocol` field the sidecar stamps on every response, so the version is asserted per frame and checked by nobody |
 | `bridge.open_vault` | no | intercepted by `Sidecar.handle` as a branch before dispatch runs, so it reaches no allowlist and has no protocol major validated | yes |
-| `viva.surface.capabilities` | yes | the allowlist a sidecar starts with, before any vault is open | no — `BridgeClient` declares no capabilities read, and the desktop carries a hand-written capability vocabulary in its place |
+| `viva.surface.capabilities` | yes | the allowlist a sidecar starts with, before any vault is open; it answers with the reviewed registry and with which destinations a read reaches, derived where the rule lives | yes |
 | `viva.surface.read` | yes | added to the allowlist when a vault opens | yes |
 | `viva.review.answer` | no | derived from the action the review capability declares; no handler is registered for it, so an opened vault refuses it, and the interface offers no control that would call it | no |
 | `viva.review.decline` | yes | added to the allowlist when a vault opens | yes |

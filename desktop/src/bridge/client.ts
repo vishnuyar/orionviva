@@ -27,6 +27,8 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     readDocuments: () => read("documents"),
     readReview: (parameters) => read("review", parameters),
     readJobs: () => read("jobs"),
+    handshake: () => request("bridge.handshake", {}),
+    readCapabilities: () => request("viva.surface.capabilities", {}),
     cancelJob: (jobId: string) => request("viva.documents.cancel", { job_id: jobId }),
     declineQuestion: (questionId, reason: DeclineReason) => request("viva.review.decline", { question_id: questionId, reason }),
     // The payload is the path and nothing else. A job identity is the

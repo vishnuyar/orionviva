@@ -1,4 +1,4 @@
-import type { SurfaceSource } from "../surface/sources";
+import type { SourceDescription, SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
 import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, ReviewActionState, ReviewData, ReviewVerb, SurfaceSnapshot } from "../surface/types";
 import { retainSelection } from "./selection";
@@ -27,6 +27,10 @@ export type SurfaceSession = {
   // and a snapshot claiming to hold it would be claiming the vault said
   // something it never said.
   jobs: readonly JobView[];
+  // What the engine behind this source says about itself: which build answered,
+  // and which destinations its own registry says a read reaches. It is asked
+  // once per source, because neither answer changes while one sidecar lives.
+  description: SourceDescription;
 };
 
 export type SessionAction =
@@ -46,6 +50,7 @@ export type SessionAction =
   | { type: "capturing"; requestId: number }
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
   | { type: "job-progress"; requestId: number; job: JobView }
+  | { type: "described"; requestId: number; description: SourceDescription }
   | { type: "cancelling"; requestId: number; jobId: string }
   | { type: "cancelled"; requestId: number; jobId: string; result: ActionResult; jobs: readonly JobView[] }
   | { type: "notice"; notice: Notice | null };
@@ -88,7 +93,16 @@ export function initialSession(): SurfaceSession {
     captureAction: { state: "idle" },
     cancelAction: { state: "idle" },
     jobs: [],
+    description: unasked(),
   };
+}
+
+// What is known about the engine before anything has been asked. Not an empty
+// answer and not a false one: a source that has not been asked yet says so, and
+// nothing renders a destination as unserved on the strength of a question
+// nobody put.
+export function unasked(): SourceDescription {
+  return { identity: { state: "absent", reason: "not_asked" }, registry: { state: "absent", reason: "not_asked" } };
 }
 
 // One job's row replaced by a newer statement about the same job, or appended
@@ -122,7 +136,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [] };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked() };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -140,6 +154,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         captureAction: { state: "idle" },
         cancelAction: { state: "idle" },
         jobs: [],
+        description: unasked(),
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -213,6 +228,9 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     // is taken whatever screen a person is on. Nothing here decides whether
     // the job it names is the one a control belongs to; that is decided where
     // the control is.
+    case "described":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, description: action.description };
     case "job-progress":
       if (action.requestId !== state.requestId) return state;
       return { ...state, jobs: withJob(state.jobs, action.job) };

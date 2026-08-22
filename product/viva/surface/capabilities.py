@@ -19,8 +19,17 @@ class CapabilityDisposition(StrEnum):
 
 
 class CapabilityDestination(StrEnum):
+    """Where in the interface a capability is reached.
+
+    The spelling is the interface's. This registry used to declare `account`
+    while the interface shipped `accounts`, and nothing but a documentation
+    table held the two together — a destination that resolves on one side and
+    not the other is a claim about where a person can go that neither side can
+    check.
+    """
+
     OVERVIEW = "overview"
-    ACCOUNT = "account"
+    ACCOUNTS = "accounts"
     ACTIVITY = "activity"
     DOCUMENTS = "documents"
     REVIEW = "review"
@@ -391,6 +400,31 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         trust_effect=(TrustEffect.MAY_CALL_MODEL,),
     ),
 )
+
+
+def served_destinations() -> dict[str, bool]:
+    """Every destination the registry declares, and whether a read reaches it.
+
+    A destination is served when some surfaced capability aimed at it has a
+    contract an operation actually delivers — which is the same question
+    maturity asks, asked one level up. It is derived here rather than on the
+    far side of a bridge because two derivations of one rule are two rules, and
+    the one a person would meet is the one nobody reviewed.
+
+    `none` is in the answer and is never served: it is how the registry says a
+    capability has no destination at all, and leaving it out would make its
+    absence look like an oversight rather than a statement.
+    """
+    served = {destination.value: False for destination in CapabilityDestination}
+    for capability in CAPABILITIES:
+        if capability.disposition is not CapabilityDisposition.SURFACE:
+            continue
+        if capability.destination is CapabilityDestination.NONE:
+            continue
+        if capability.maturity is CapabilityMaturity.STABLE:
+            served[capability.destination.value] = True
+    served[CapabilityDestination.NONE.value] = False
+    return served
 
 
 def capability_registry() -> tuple[CapabilitySpec, ...]:

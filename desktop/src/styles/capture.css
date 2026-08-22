@@ -58,3 +58,31 @@
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
+
+/* What the sidecar's own registry says about a place a person can stand, said
+   beside the place. It is set in the fine size and the muted colour because it
+   is a statement about the product rather than a state of the control: a mark
+   that shouted would read as an error where the honest reading is "not yet". */
+.nav-standing {
+  flex-shrink: 0;
+  padding: var(--space-hair) var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+}
+
+/* What one job is doing, on the screen the work was started from. */
+.document-job {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+}
+.document-job h2 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.document-job p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.document-job-bar { width: 100%; height: var(--space-sm); }

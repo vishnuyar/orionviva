@@ -14,6 +14,7 @@ from .capabilities import (
     capability_for,
     capability_registry,
     command_classifications,
+    served_destinations,
     serialize_registry,
     validate_registry,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "command_classifications",
     "declared_contracts",
     "operation_names",
+    "served_destinations",
     "serialize_registry",
     "served_contracts",
     "validate_operations",

@@ -7,6 +7,10 @@ export type SurfaceName = "overview" | "documents" | "review" | "jobs";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
+// What the sidecar said about itself when the shell first spoke to it, and what
+// it says about its own registry. Both arrive unread: the transport carries the
+// frame and something above it decides what it says.
+export type HandshakeResult = { protocol: string; transport: string; revision: string };
 // The two reasons a question may be set aside. The set is the sidecar's and is
 // closed on both sides; sending anything else is refused before the engine runs.
 export type DeclineReason = "not_now" | "dont_know";
@@ -66,6 +70,12 @@ export type BridgeClient = {
   // and answers absent for a sidecar that has run no job — which is not the
   // same fact as a sidecar that cannot say.
   readJobs: () => Promise<SurfaceReadResult>;
+  // Who answered and which build of it. Asked before a vault is open, because
+  // the build that cannot open one is exactly the build somebody needs named.
+  handshake: () => Promise<unknown>;
+  // The reviewed registry, and which destinations a read reaches. The shell
+  // used to carry a hand-written vocabulary in place of this.
+  readCapabilities: () => Promise<unknown>;
   // One path per call. Several files are several frames, one after another,
   // because the sidecar answers one request before it reads the next.
   uploadDocument: (path: string) => Promise<unknown>;

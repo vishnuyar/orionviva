@@ -19,6 +19,20 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const cancelling = useRef(false);
   const documentActions = session.source.documentActions;
   const jobStream = session.source.jobStream;
+  const source = session.source;
+
+  // What the engine behind this source says about itself, asked once per
+  // source. Neither answer changes while one sidecar lives, so asking again
+  // per screen would be putting a settled question over and over; a source
+  // that is replaced is a different engine and is asked again.
+  useEffect(() => {
+    let gone = false;
+    const asked = requestId.current;
+    void source.describe()
+      .then((description) => { if (!gone) dispatch({ type: "described", requestId: asked, description }); })
+      .catch(() => undefined);
+    return () => { gone = true; };
+  }, [source]);
 
   // What the sidecar is doing, as it does it. It cannot arrive in a reply:
   // the reply comes when the work is over, and a channel that only speaks
