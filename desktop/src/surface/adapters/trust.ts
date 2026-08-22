@@ -1,4 +1,4 @@
-import type { OutboundLine, OutboundModel, OutboundRecordView, TrustData, TrustNote } from "../types";
+import type { OutboundLine, OutboundModel, OutboundRecordView, TrustAbsence, TrustData, TrustNote } from "../types";
 import { isRecord, optionalNonNegativeInteger, textValue, uniqueRecordsById } from "./primitives";
 
 // One line of the record. A line with no sentence is dropped rather than shown
@@ -63,10 +63,12 @@ export function adaptTrust(raw: unknown): TrustData | null {
   const notes: TrustNote[] = Array.isArray(raw.notes)
     ? uniqueRecordsById(raw.notes).map((item) => ({ id: textValue(item.id), title: textValue(item.title), detail: textValue(item.detail) }))
     : [];
+  const absences: TrustAbsence[] = (Array.isArray(raw.absences) ? raw.absences : [])
+    .map(absence).filter((row): row is TrustAbsence => row !== null);
   const outbound = adaptOutbound(raw.outbound);
   // A trust read that carried no record at all is read as no trust data. The
   // record is the whole of what this build's Trust destination is for, and a
   // panel rendering notes without it would say less than the read knows.
   if (!outbound) return null;
-  return { notes, outbound };
+  return { notes, absences, outbound };
 }

@@ -601,6 +601,20 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "vault_wrong_passphrase":          frozenset(),
     "vault_created":                   frozenset(),
     "vault_opened":                    frozenset(),
+    # What Trust says about the rest of itself. The anchoring line is the
+    # plainest sentence in the pack on purpose: an absent capability described
+    # in soft words reads as a capability, and this one is the difference
+    # between a person checking a claim and taking it. The maintenance lines
+    # keep a plan apart from a run, because a report of what would happen and a
+    # report of what did are the same shape on a screen. The diagnostic line
+    # says what the file holds rather than promising what it leaves out.
+    "maintenance_planned":             frozenset(),
+    "maintenance_ran":                 frozenset(),
+    "maintenance_unconfigured":        frozenset(),
+    "trust_no_anchoring":              frozenset(),
+    "trust_no_maintenance_yet":        frozenset(),
+    "diagnostic_written":              frozenset(),
+    "diagnostic_unwritable":           frozenset(),
 }
 
 

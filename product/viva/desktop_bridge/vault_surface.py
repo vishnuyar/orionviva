@@ -105,12 +105,24 @@ class OpenedVaultSurfaceProvider:
         does."""
         from ..surface.outbound import outbound
 
+        from ..persona import moment
+
+        events = list(self._vault.events())
         return {
             "state": "ready",
-            "outbound": outbound(self._vault.events(), locale_from_env()),
-            # Trust's other rows are owed by their own cycle. An empty list
-            # says this build supplies none rather than that the vault has
-            # nothing to say, and the panel's own state says which.
+            "outbound": outbound(events, locale_from_env()),
+            # What nothing on this machine can establish, said in the plainest
+            # sentences the pack holds. An absent capability described in soft
+            # words reads as a capability, and the difference is whether a
+            # person checks a claim or takes it.
+            "absences": [
+                {"id": "anchoring", "sentence": moment("trust_no_anchoring")},
+            ] + ([{"id": "maintenance",
+                   "sentence": moment("trust_no_maintenance_yet")}]
+                 if not self._vault.ledger.projection().agent_log() else []),
+            # Trust's notes are owed by their own cycle. An empty list says
+            # this build supplies none rather than that the vault has nothing
+            # to say, and the panel's own state says which.
             "notes": [],
         }
 

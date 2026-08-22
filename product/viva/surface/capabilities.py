@@ -298,7 +298,12 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.TRUST,
         "when unattended maintenance is explicitly enabled",
         "MaintenanceRun.v1",
-        ("run",),
+        # Running is one action; writing a file somebody can send is the other.
+        # They are one capability because they are the same destination and the
+        # same question — what has this product been doing, and can I show
+        # somebody — and splitting them would put half the answer under a
+        # capability nobody would look for.
+        ("run", "diagnose"),
         (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT, TrustEffect.MAY_CALL_MODEL),
         entrypoint="viva.agent",
     ),

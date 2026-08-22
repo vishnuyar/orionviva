@@ -119,6 +119,13 @@ export type BridgeClient = {
   // The key travels in this one call and nowhere else — not in a proposal, not
   // in a reply, not in a digest.
   confirmSettings: (kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) => Promise<unknown>;
+  // Unattended work. `spend` is a person's own word, defaulting to false:
+  // the agent reaches a model, and a request that did not say so has not asked
+  // for that.
+  runMaintenance: (spend: boolean) => Promise<unknown>;
+  // A file somebody can hand over. Only a path crosses; what goes in the file
+  // is decided on the other side, from a list of what may be said.
+  writeDiagnostic: (file: string) => Promise<unknown>;
   exportVault: (archive: string) => Promise<unknown>;
   restoreVault: (archive: string, directory: string, passphrase: string) => Promise<unknown>;
   // An action answers with an outcome. It arrives unread, like a surface read:

@@ -135,7 +135,7 @@ reason. The day a surface becomes live-readable, or a destination is declared,
 or a capability's destination moves, this table is wrong and the build says
 so.
 
-### Bridge operations (16)
+### Bridge operations (17)
 
 Every operation the sidecar will answer, and whether an allowlist admits it.
 The operation set and the allowlist column are derived; whether the desktop
@@ -144,9 +144,10 @@ cell reads `yes` or `no` and nothing else.
 
 The reads are declared; the actions are one per action the capability registry
 declares, so this table read on its own is the whole of what can touch a vault.
-An action with no handler is refused by the allowlist rather than by silence,
-and the ones in that state are marked below — `viva.maintenance.run` is the one
-left in it.
+An action with no handler is refused by the allowlist rather than by silence.
+Nothing is in that state now: every action the registry declares has a handler,
+and a new one declared without a handler fails a test rather than reaching a
+person as a button that refuses.
 
 | Operation | Allowlisted | Where it is served | Consumed by the desktop |
 | --- | --- | --- | --- |
@@ -158,7 +159,8 @@ left in it.
 | `viva.review.decline` | yes | added to the allowlist when a vault opens | yes |
 | `viva.documents.upload` | yes | added to the allowlist when a vault opens; the handler takes one path, opens the file itself and captures it, then reads it with the reader this machine's configuration builds — which cannot read until somebody has said yes to naming a model, so no model runs on this route until then | yes |
 | `viva.documents.cancel` | yes | added to the allowlist when a vault opens; it names a job the registry minted, never a document, and is the one operation a running job may be interrupted to serve | yes |
-| `viva.maintenance.run` | no | derived from the action the maintenance capability declares; no handler is registered for it, so an opened vault refuses it | no |
+| `viva.maintenance.run` | yes | added to the allowlist when a vault opens; it wakes the agent once and plans by default, so a request that did not say to spend stops at the line where money starts, and the reply carries the whole run rather than a summary of it | yes |
+| `viva.maintenance.diagnose` | yes | added to the allowlist when a vault opens; it writes a file built from a list of what may be said rather than by taking a vault and removing what must not travel, so what it holds is four counts and nothing that came off a document | yes |
 | `viva.settings.read` | yes | the allowlist a sidecar starts with, before any vault is open; it is not a surface read, because a surface read opens a vault and this question has an answer before one exists | yes |
 | `viva.settings.propose` | yes | the allowlist a sidecar starts with; it describes what would change, changes nothing, and carries the digest a yes has to name | yes |
 | `viva.settings.confirm` | yes | the allowlist a sidecar starts with; it applies exactly the proposal that was shown, and is the one request an API key ever travels in | yes |

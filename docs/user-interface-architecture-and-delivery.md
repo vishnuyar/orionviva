@@ -111,12 +111,12 @@ on the current branch is recorded in
 ### VOICE-109 — the bridge is transport and nothing else
 **State:** enforced-with-exception
 **Code:** product/viva/desktop_bridge/handlers.py:17 (`BridgeDispatcher`)
-**Test:** product/tests/test_desktop_bridge.py::test_unknown_operations_are_refused_by_the_allowlist, ::test_an_action_the_registry_declares_without_a_handler_is_refused
+**Test:** product/tests/test_desktop_bridge.py::test_unknown_operations_are_refused_by_the_allowlist, ::test_an_operation_the_registry_does_not_declare_is_refused_by_name, ::test_every_action_the_registry_declares_is_served
 
 1. The bridge validates a protocol version, dispatches an allowlisted operation, emits job-state frames and serializes the result.
 2. It computes no total, infers no grade, decides no movement's direction and manufactures no user-facing caveat.
 3. The allowlist snapshot cannot be mutated after the dispatcher is created, and handler failures return safe error frames rather than raising.
-4. Every action a capability declares reaches the sidecar as an operation of its own — `viva.review.decline`, not a generic `act` carrying an action name — derived from the registry rather than written by hand, so the operation table read on its own is the complete list of everything that can touch a vault. An action no handler serves is a declared operation the allowlist refuses.
+4. Every action a capability declares reaches the sidecar as an operation of its own — `viva.review.decline`, not a generic `act` carrying an action name — derived from the registry rather than written by hand, so the operation table read on its own is the complete list of everything that can touch a vault. An action no handler serves is a declared operation the allowlist refuses; this build serves all of them, and declaring a new action without one fails a test rather than reaching a person as a button that says no.
 
 **Exception:** the job-state frames assertion 1 names reach no subscriber. The sidecar writes them, the native host returns only the frame whose request id matches and which carries no event key, and every event frame is dropped — so the channel is severed above the bridge and nothing in the window has received one. The bridge's own half is unchanged on purpose; the channel's shape is fixed in [jobs-and-the-progress-channel.md](jobs-and-the-progress-channel.md) and is built with its first real producer. Separately, `bridge.open_vault` is intercepted as a branch before dispatch, so that one operation is neither protocol-checked nor in any allowlist ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open).
 

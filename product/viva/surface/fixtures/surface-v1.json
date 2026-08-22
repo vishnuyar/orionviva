@@ -548,7 +548,8 @@
     },
     {
       "actions": [
-        "run"
+        "run",
+        "diagnose"
       ],
       "availability": "when unattended maintenance is explicitly enabled",
       "contract": "MaintenanceRun.v1",

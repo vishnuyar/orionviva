@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { CircleSlash, FileQuestion, Info } from "lucide-react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
-import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, SurfaceMode, TransferActionState, TrustCapabilityGroup, TrustCapabilityState, TrustData, TrustNote, TrustSampleCapability } from "../../surface/types";
+import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, TrustActionState, SurfaceMode, TransferActionState, TrustCapabilityGroup, TrustCapabilityState, TrustData, TrustNote, TrustSampleCapability } from "../../surface/types";
 
 // What a screen needs to take a whole vault out and bring one back. A source
 // that can do neither carries none of this, so the controls are absent rather
@@ -11,6 +11,9 @@ import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionS
 // be reached. A source that carries none of this renders no controls: the
 // engine has not offered them, and a form that would have to refuse is worse
 // than no form.
+// Unattended work, and a file somebody can send. A source that carries neither
+// renders no controls: a control that would have to refuse is worse than none.
+export type MaintenanceControls = { state: TrustActionState; onRun: (spend: boolean) => void; onDiagnose: (file: string) => void };
 export type SettingsControls = {
   settings: FeatureResult<SettingsView>;
   state: SettingsActionState;
@@ -207,6 +210,44 @@ function OutboundRecord({ record }: { record: OutboundRecordView }) {
   </section>;
 }
 
+// What nothing on this machine can establish. The sentences are the read's, and
+// they are rendered plainly and near the top rather than filed under a
+// disclosure: an absence a person has to open something to find is an absence
+// they will not find.
+function Absences({ absences }: { absences: readonly { id: string; sentence: string }[] }) {
+  if (!absences.length) return null;
+  return <section className="trust-absences" aria-labelledby="trust-absences-title">
+    <h3 id="trust-absences-title">What this cannot establish</h3>
+    <ul>{absences.map((absence) => <li key={absence.id}>{absence.sentence}</li>)}</ul>
+  </section>;
+}
+
+// Unattended work, and a file somebody can send. Planning is what the control
+// does; spending is a second control with its own word on it, because the
+// difference between the two is money leaving.
+function Maintenance({ controls }: { controls: MaintenanceControls }) {
+  const [file, setFile] = useState("");
+  const working = controls.state.state === "working";
+  const settled = controls.state.state === "settled" ? controls.state.result : null;
+  const said = settled ? (settled.state === "settled" ? settled.outcome.message.trim() || UNSPOKEN_REPLY : `${channelPresentation(settled).title}. ${channelPresentation(settled).detail}`) : "";
+  return <section className="trust-maintenance" aria-labelledby="trust-maintenance-title">
+    <h3 id="trust-maintenance-title">Work this app could do on its own</h3>
+    <p>Planning shows what it would do and does none of it. Running it spends model calls, and every one of them lands in the record above.</p>
+    <div className="trust-maintenance-controls">
+      <button className="secondary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onRun(false); }}>Show me what it would do</button>
+      <button className="secondary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onRun(true); }}>Run it, and spend</button>
+    </div>
+    <form className="trust-maintenance-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onDiagnose(file); }}>
+      <label>Write a file I can send<input value={file} onChange={(event) => setFile(event.target.value)} placeholder="/path/to/diagnostic.json" autoComplete="off" /></label>
+      <button className="secondary-button" type="submit" aria-disabled={working}>Write it</button>
+    </form>
+    <p>That file holds what this build is and what has gone through it as counts. No name, no amount, no document and nothing from your records.</p>
+    {working ? <span className="action-explanation" id="trust-maintenance-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
+    <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
+    {said ? <p className="trust-maintenance-answer">{said}</p> : null}
+  </section>;
+}
+
 function NoteRows({ notes, mode }: { notes: readonly TrustNote[]; mode: SurfaceMode }) {
   return <ul className="trust-note-list">{identifiedRows(notes, "trust-note").map((row) => {
     if (row.state === "missing_identity") return <li className="trust-identity-state" key={row.key}><FileQuestion aria-hidden="true" size={18} /><div><strong>Trust note identity unavailable</strong><p>A supplied note has no stable ID, so it is not presented as an identified Trust record.</p></div></li>;
@@ -232,16 +273,16 @@ function CapabilityRows({ rows, group }: { rows: readonly IdentityRow<TrustSampl
   return <ul className="trust-capability-list">{grouped.map((row) => <CapabilityRow capability={row.item} key={row.key} />)}</ul>;
 }
 
-function TrustReady({ data, mode, identity, transfer, settings }: { data: TrustData; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null }) {
+function TrustReady({ data, mode, identity, transfer, settings, maintenance }: { data: TrustData; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
   const capabilities = mode === "demo" ? data.sample?.capabilities ?? [] : [];
   const capabilityRows = identifiedRows(capabilities, "trust-capability");
   // A vault that has sent nothing is not an empty Trust screen: the outbound
   // record is present and says so, which is the whole of what this destination
   // is for.
-  const empty = !data.notes.length && !capabilities.length && !data.outbound;
-  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">{mode === "demo" ? "Preview-owned explanation" : "Supplied Trust view"}</div><h2>Trust and limitations</h2><p>{mode === "demo" ? "This destination explains what the fictional preview can and cannot establish. It is not a trust report for a private vault." : "These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history."}</p></header><EngineRow identity={identity} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>{mode === "demo" ? "No sample Trust details" : "No Trust notes supplied"}</strong><span>{mode === "demo" ? "This fictional sample does not include Trust notes or preview capability explanations." : "The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status."}</span></div> : mode === "live" ? <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} mode={mode} /></section> : <><section className="trust-preview-statements" aria-labelledby="trust-preview-statements-title"><h3 id="trust-preview-statements-title">What this preview can say</h3><ul><li><strong>Fictional source</strong><span>The currently displayed sample names, documents, figures, and Trust rows are fixture-authored. They are not facts about a private vault.</span></li><li><strong>Static interactions</strong><span>Opening and closing these preview rows changes only what is visible. It does not write a vault event, call a model, send data, or change a setting.</span></li><li><strong>No Trust read</strong><span>This sample does not establish what a private vault sent, which models ran, whether maintenance occurred, or whether integrity checks passed.</span></li></ul></section><section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Preview notes</h3><NoteRows notes={data.notes} mode={mode} /></section><section className="trust-capabilities" aria-label="Preview capability explanations"><CapabilityIdentityRows rows={capabilityRows} />{(["source", "outbound_models", "integrity", "continuity", "build_support"] as const).map((group) => <details key={group} open={group === "source"}><summary>{groupCopy[group]}</summary><CapabilityRows rows={capabilityRows} group={group} /></details>)}</section><section className="trust-final-limitation"><CircleSlash aria-hidden="true" size={20} /><div><h3>No settings are changed here</h3><p>These preview rows are explanatory only. They cannot recover a passphrase, run maintenance, create an anchor, update the app, or produce a diagnostic file.</p></div></section></>}</section>;
+  const empty = !data.notes.length && !capabilities.length && !data.outbound && !(data.absences ?? []).length;
+  return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">{mode === "demo" ? "Preview-owned explanation" : "Supplied Trust view"}</div><h2>Trust and limitations</h2><p>{mode === "demo" ? "This destination explains what the fictional preview can and cannot establish. It is not a trust report for a private vault." : "These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history."}</p></header><EngineRow identity={identity} /><Absences absences={data.absences ?? []} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{maintenance ? <Maintenance controls={maintenance} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>{mode === "demo" ? "No sample Trust details" : "No Trust notes supplied"}</strong><span>{mode === "demo" ? "This fictional sample does not include Trust notes or preview capability explanations." : "The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status."}</span></div> : mode === "live" ? <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} mode={mode} /></section> : <><section className="trust-preview-statements" aria-labelledby="trust-preview-statements-title"><h3 id="trust-preview-statements-title">What this preview can say</h3><ul><li><strong>Fictional source</strong><span>The currently displayed sample names, documents, figures, and Trust rows are fixture-authored. They are not facts about a private vault.</span></li><li><strong>Static interactions</strong><span>Opening and closing these preview rows changes only what is visible. It does not write a vault event, call a model, send data, or change a setting.</span></li><li><strong>No Trust read</strong><span>This sample does not establish what a private vault sent, which models ran, whether maintenance occurred, or whether integrity checks passed.</span></li></ul></section><section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Preview notes</h3><NoteRows notes={data.notes} mode={mode} /></section><section className="trust-capabilities" aria-label="Preview capability explanations"><CapabilityIdentityRows rows={capabilityRows} />{(["source", "outbound_models", "integrity", "continuity", "build_support"] as const).map((group) => <details key={group} open={group === "source"}><summary>{groupCopy[group]}</summary><CapabilityRows rows={capabilityRows} group={group} /></details>)}</section><section className="trust-final-limitation"><CircleSlash aria-hidden="true" size={20} /><div><h3>No settings are changed here</h3><p>These preview rows are explanatory only. They cannot recover a passphrase, create an anchor, or update the app.</p></div></section></>}</section>;
 }
 
-export function Trust({ result, mode, identity, transfer, settings }: { result: FeatureResult<TrustData>; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null }) {
-  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes and preview limitations are shown below.", needsInput: "Some Trust details need more information. Supplied notes and preview limitations are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this private-vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The private vault is still open." } }}>{(data) => <TrustReady data={data} mode={mode} identity={identity} transfer={transfer} settings={settings} />}</PanelStateView>;
+export function Trust({ result, mode, identity, transfer, settings, maintenance }: { result: FeatureResult<TrustData>; mode: SurfaceMode; identity: FeatureResult<EngineIdentity>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
+  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes and preview limitations are shown below.", needsInput: "Some Trust details need more information. Supplied notes and preview limitations are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this private-vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The private vault is still open." } }}>{(data) => <TrustReady data={data} mode={mode} identity={identity} transfer={transfer} settings={settings} maintenance={maintenance} />}</PanelStateView>;
 }

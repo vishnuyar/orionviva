@@ -2,8 +2,8 @@ import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsView, TransferActionState, TrustData, TrustSampleCapability } from "../../surface/types";
 import { Trust } from "./Trust";
-import type { SettingsControls, TransferControls } from "./Trust";
-import moments from "../../../../product/viva/persona/pack-v28/moments.json";
+import type { MaintenanceControls, SettingsControls, TransferControls } from "./Trust";
+import moments from "../../../../product/viva/persona/pack-v29/moments.json";
 
 const note = (id: string, title = "Supplied title", detail = "Supplied detail") => ({ id, title, detail });
 const capability = (id: string, state: TrustSampleCapability["state"], label = `Capability ${id}`, detail = `Detail ${id}`): TrustSampleCapability => ({ id, group: "source", label, state, detail });
@@ -17,21 +17,21 @@ const noRestore: TransferControls["onRestore"] = () => {};
 
 describe("Trust surface", () => {
   it("renders every FeatureResult boundary and both honest empty modes", () => {
-    const { getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={{ state: "absent", reason: "not_read" }} />);
+    const { getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={{ state: "absent", reason: "not_read" }} />);
     expect(queryByText("Trust details unavailable")).not.toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={{ state: "unavailable", reason: "not_connected" }} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={{ state: "unavailable", reason: "not_connected" }} />);
     expect(getByText("Trust and maintenance details are not connected to this private-vault read.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={{ state: "failed", reason: "read_failed" }} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={{ state: "failed", reason: "read_failed" }} />);
     expect(getByText("Trust details could not be read", { selector: "strong" })).toBeInTheDocument();
     expect(getByText("Trust and maintenance details could not be read. The private vault is still open.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={{ state: "partial", data: { notes: [note("partial")] }, issues: [{ code: "partial", message: "bounded" }] }} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={{ state: "partial", data: { notes: [note("partial")] }, issues: [{ code: "partial", message: "bounded" }] }} />);
     expect(getByText("Some Trust details are unavailable. Supplied notes and preview limitations are shown below.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={{ state: "needs_input", data: { notes: [note("needs")] }, issues: [{ code: "needs", message: "bounded" }] }} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={{ state: "needs_input", data: { notes: [note("needs")] }, issues: [{ code: "needs", message: "bounded" }] }} />);
     expect(getByText("Some Trust details need more information. Supplied notes and preview limitations are shown below.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={ready({ notes: [] })} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={ready({ notes: [] })} />);
     expect(getByText("No Trust notes supplied")).toBeInTheDocument();
     expect(getByText("The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="demo" result={ready({ notes: [], sample: { capabilities: [] } })} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="demo" result={ready({ notes: [], sample: { capabilities: [] } })} />);
     expect(getByText("No sample Trust details")).toBeInTheDocument();
   });
 
@@ -43,7 +43,7 @@ describe("Trust surface", () => {
       capability("supply", "not_supplied"),
       capability("implementation", "not_implemented"),
     ];
-    const { container, getByText } = render(<Trust identity={unasked} transfer={null} settings={null} mode="demo" result={ready({ notes: [note("preview", "Preview boundary")], sample: { capabilities } })} />);
+    const { container, getByText } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="demo" result={ready({ notes: [note("preview", "Preview boundary")], sample: { capabilities } })} />);
     expect(getByText("Preview-owned explanation")).toBeInTheDocument();
     expect(getByText("This destination explains what the fictional preview can and cannot establish. It is not a trust report for a private vault.")).toBeInTheDocument();
     for (const label of ["Fictional sample", "Preview limitation", "Not connected", "Not supplied", "Not implemented"]) expect(getByText(label)).toBeInTheDocument();
@@ -58,7 +58,7 @@ describe("Trust surface", () => {
 
   it("shows only supplied live notes and hides malicious preview capabilities", () => {
     const malicious = capability("secret", "fictional_sample", "Secret fictional capability", "Secret fictional detail");
-    const { getByText, queryByText } = render(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={ready({ notes: [note("live-note", "Backend supplied note", "Backend supplied detail")], sample: { capabilities: [malicious] } })} />);
+    const { getByText, queryByText } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={ready({ notes: [note("live-note", "Backend supplied note", "Backend supplied detail")], sample: { capabilities: [malicious] } })} />);
     expect(getByText("Supplied Trust view")).toBeInTheDocument();
     expect(getByText("Backend supplied note")).toBeInTheDocument();
     expect(getByText("Backend supplied detail")).toBeInTheDocument();
@@ -71,26 +71,26 @@ describe("Trust surface", () => {
 
   it("bounds missing and duplicate Trust note identities without merging by label or order", () => {
     const notes = [note("", "Hidden blank one"), note(" ", "Hidden blank two"), note("duplicate", "Hidden duplicate one"), note("duplicate", "Hidden duplicate two"), note("unique-one", "Same label"), note("unique-two", "Same label")];
-    const { getAllByText, getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={ready({ notes })} />);
+    const { getAllByText, getByText, queryByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={ready({ notes })} />);
     expect(getAllByText("Trust note identity unavailable")).toHaveLength(1);
     expect(getAllByText("Trust note identity conflicted")).toHaveLength(1);
     expect(getByText("duplicate")).toBeInTheDocument();
     expect(getAllByText("Same label")).toHaveLength(2);
     for (const hidden of ["Hidden blank one", "Hidden blank two", "Hidden duplicate one", "Hidden duplicate two"]) expect(queryByText(hidden)).not.toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={ready({ notes: [...notes].reverse() })} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={ready({ notes: [...notes].reverse() })} />);
     expect(getAllByText("Same label")).toHaveLength(2);
   });
 
   it("renders missing note fields and bounded capability identity rows", () => {
     const capabilities = [capability("", "not_supplied"), { ...capability(" ", "not_connected"), group: "outbound_models" as const }, capability("duplicate", "not_supplied"), { ...capability("duplicate", "not_implemented"), group: "integrity" as const }, capability("missing-fields", "preview_limitation", "", "")];
-    const { getAllByText, getByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities } })} />);
+    const { getAllByText, getByText, rerender } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities } })} />);
     expect(getByText("Note title was not supplied by this Trust view.")).toBeInTheDocument();
     expect(getByText("Note detail was not supplied by this Trust view.")).toBeInTheDocument();
     expect(getAllByText("Capability identity unavailable")).toHaveLength(1);
     expect(getAllByText("Capability identity conflicted")).toHaveLength(1);
     expect(getByText("Capability label was not authored for this preview row.")).toBeInTheDocument();
     expect(getByText("Capability detail was not authored for this preview row.")).toBeInTheDocument();
-    rerender(<Trust identity={unasked} transfer={null} settings={null} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities: [...capabilities].reverse() } })} />);
+    rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="demo" result={ready({ notes: [note("missing-note", "", "")], sample: { capabilities: [...capabilities].reverse() } })} />);
     expect(getAllByText("Capability identity unavailable")).toHaveLength(1);
     expect(getAllByText("Capability identity conflicted")).toHaveLength(1);
   });
@@ -98,7 +98,7 @@ describe("Trust surface", () => {
   it("bounds inherited, future, and blank availability states without indexing the state map", () => {
     const unknownStates = ["constructor", "toString", "hasOwnProperty", "__proto__", "future_state_128-EXACT", ""];
     const capabilities = unknownStates.map((state, position) => ({ ...capability(`unknown-state-${position}`, "preview_limitation"), state } as unknown as TrustSampleCapability));
-    const { getAllByText, getByText } = render(<Trust identity={unasked} transfer={null} settings={null} mode="demo" result={ready({ notes: [], sample: { capabilities } })} />);
+    const { getAllByText, getByText } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="demo" result={ready({ notes: [], sample: { capabilities } })} />);
     expect(getAllByText("Status unavailable")).toHaveLength(unknownStates.length);
     expect(getAllByText("This preview row supplied an unrecognized availability state. No capability claim is made.")).toHaveLength(unknownStates.length);
     expect(getAllByText("Unrecognized supplied status value")).toHaveLength(unknownStates.length);
@@ -111,7 +111,7 @@ describe("Trust surface", () => {
     try {
       const notes = [note("", "Blank hidden"), note("missing-identity", "Ready note named missing"), note("x", "Duplicate note one"), note("x", "Duplicate note two"), note("conflict-x", "Ready note named conflict")];
       const capabilities = [capability("", "not_supplied", "Blank capability hidden"), capability("missing-identity", "not_connected", "Ready capability named missing"), capability("x", "not_supplied", "Duplicate capability one"), { ...capability("x", "not_implemented", "Duplicate capability two"), group: "integrity" as const }, capability("conflict-x", "preview_limitation", "Ready capability named conflict")];
-      const view = render(<Trust identity={unasked} transfer={null} settings={null} mode="demo" result={ready({ notes, sample: { capabilities } })} />);
+      const view = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="demo" result={ready({ notes, sample: { capabilities } })} />);
       const assertComplete = () => {
         expect(view.getAllByText("Trust note identity unavailable")).toHaveLength(1);
         expect(view.getAllByText("Trust note identity conflicted")).toHaveLength(1);
@@ -123,7 +123,7 @@ describe("Trust surface", () => {
         expect(view.getByText("Ready capability named conflict")).toBeInTheDocument();
       };
       assertComplete();
-      view.rerender(<Trust identity={unasked} transfer={null} settings={null} mode="demo" result={ready({ notes: [...notes].reverse(), sample: { capabilities: [...capabilities].reverse() } })} />);
+      view.rerender(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="demo" result={ready({ notes: [...notes].reverse(), sample: { capabilities: [...capabilities].reverse() } })} />);
       assertComplete();
       expect(error).not.toHaveBeenCalled();
     } finally {
@@ -133,7 +133,7 @@ describe("Trust surface", () => {
 
   it("preserves long supplied identities and explanatory copy without truncation attributes", () => {
     const long = `long-${"identity".repeat(20)}`;
-    const { container, getByText } = render(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={ready({ notes: [note(long, long, long)] })} />);
+    const { container, getByText } = render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={ready({ notes: [note(long, long, long)] })} />);
     expect(getByText(long, { selector: "strong" })).toBeInTheDocument();
     expect(getByText(long, { selector: "dd" })).toBeInTheDocument();
     expect(container.querySelector("[title]")).not.toBeInTheDocument();
@@ -141,7 +141,7 @@ describe("Trust surface", () => {
 });
 
 describe("a copy of a whole vault", () => {
-  const props = { mode: "live" as const, identity: unasked, settings: null, result: ready({ notes: [note("only")] }) };
+  const props = { mode: "live" as const, identity: unasked, settings: null, maintenance: null, result: ready({ notes: [note("only")] }) };
   const controls = (state: TransferActionState = { state: "idle" }, onExport = noTransfer, onRestore = noRestore): TransferControls => ({ state, onExport, onRestore });
 
   it("offers no control at all where the source cannot take a copy", () => {
@@ -193,7 +193,7 @@ describe("everything this vault has sent", () => {
     ...over,
   });
   const withRecord = (over: Partial<OutboundRecordView> = {}) =>
-    render(<Trust identity={unasked} transfer={null} settings={null} mode="live" result={ready({ notes: [], outbound: record(over) })} />);
+    render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={ready({ notes: [], outbound: record(over) })} />);
 
   it("renders the record of a vault that has sent nothing with the same prominence", () => {
     // Hiding it would keep the promise by having nothing to show rather than
@@ -229,7 +229,7 @@ describe("everything this vault has sent", () => {
 
 describe("what this app has been told to do", () => {
   const inForce: SettingsView = { locale: "en-US", currency: "USD", adapter: "", model: "", baseUrl: "", keySet: false, canSend: false };
-  const base = { mode: "live" as const, identity: unasked, transfer: null, result: ready({ notes: [], outbound: { sentence: moments.outbound_none, callCount: 0, phases: [], models: [], modelSentence: "", span: null, cost: null, absences: [] } }) };
+  const base = { mode: "live" as const, identity: unasked, transfer: null, maintenance: null, result: ready({ notes: [], outbound: { sentence: moments.outbound_none, callCount: 0, phases: [], models: [], modelSentence: "", span: null, cost: null, absences: [] } }) };
   const controls = (over: Partial<SettingsControls> = {}): SettingsControls => ({
     settings: { state: "ready", data: inForce }, state: { state: "idle" },
     onPropose: () => {}, onConfirm: () => {}, ...over,
@@ -273,5 +273,54 @@ describe("what this app has been told to do", () => {
     const settled = { state: "settled" as const, result: { state: "settled" as const, outcome: { kind: "completed" as const, message: moments.settings_model_confirmed, reason: "" } } };
     const { getAllByText } = render(<Trust {...base} settings={controls({ state: settled })} />);
     expect(getAllByText(moments.settings_model_confirmed).length).toBeGreaterThan(0);
+  });
+});
+
+describe("what this cannot establish, and what it could do on its own", () => {
+  const withAbsences = (absences: Array<{ id: string; sentence: string }>) =>
+    render(<Trust identity={unasked} transfer={null} settings={null} maintenance={null} mode="live" result={ready({ notes: [], absences, outbound: undefined })} />);
+  const maintenance = (over: Partial<MaintenanceControls> = {}): MaintenanceControls =>
+    ({ state: { state: "idle" }, onRun: () => {}, onDiagnose: () => {}, ...over });
+  const withMaintenance = (controls: MaintenanceControls | null) =>
+    render(<Trust identity={unasked} transfer={null} settings={null} maintenance={controls} mode="live" result={ready({ notes: [note("only")] })} />);
+
+  it("says plainly that nothing is anchored, in the read's own sentence", () => {
+    // An absence a person has to open something to find is an absence they
+    // will not find.
+    const { getByText } = withAbsences([{ id: "anchoring", sentence: moments.trust_no_anchoring }]);
+    expect(getByText(moments.trust_no_anchoring)).toBeInTheDocument();
+  });
+
+  it("says nothing about absences the read did not name", () => {
+    const { queryByRole } = withAbsences([]);
+    expect(queryByRole("heading", { name: "What this cannot establish" })).not.toBeInTheDocument();
+  });
+
+  it("renders no maintenance controls where the source carries none", () => {
+    const { queryByRole } = withMaintenance(null);
+    expect(queryByRole("button", { name: "Show me what it would do" })).not.toBeInTheDocument();
+  });
+
+  it("keeps planning and spending as two controls with their own words", () => {
+    // The difference between them is money leaving.
+    const asked: boolean[] = [];
+    const { getByRole } = withMaintenance(maintenance({ onRun: (spend: boolean) => { asked.push(spend); } }));
+    fireEvent.click(getByRole("button", { name: "Show me what it would do" }));
+    fireEvent.click(getByRole("button", { name: "Run it, and spend" }));
+    expect(asked).toEqual([false, true]);
+  });
+
+  it("hands the diagnostic the path a person typed, and nothing else", () => {
+    const asked: string[] = [];
+    const { getByLabelText, getByRole } = withMaintenance(maintenance({ onDiagnose: (file: string) => { asked.push(file); } }));
+    fireEvent.change(getByLabelText("Write a file I can send"), { target: { value: "/tmp/diagnostic.json" } });
+    fireEvent.click(getByRole("button", { name: "Write it" }));
+    expect(asked).toEqual(["/tmp/diagnostic.json"]);
+  });
+
+  it("says the vault's own sentence about what a run did", () => {
+    const settled = { state: "settled" as const, result: { state: "settled" as const, outcome: { kind: "completed" as const, message: moments.maintenance_planned, reason: "" } } };
+    const { getAllByText } = withMaintenance(maintenance({ state: settled }));
+    expect(getAllByText(moments.maintenance_planned).length).toBeGreaterThan(0);
   });
 });

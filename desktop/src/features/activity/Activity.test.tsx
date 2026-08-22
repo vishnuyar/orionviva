@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ActivityData, ActivityView, FeatureResult, MovementView, SampleActivityFilterCatalog } from "../../surface/types";
 import { Activity } from "./Activity";
-import moments from "../../../../product/viva/persona/pack-v28/moments.json";
+import moments from "../../../../product/viva/persona/pack-v29/moments.json";
 
 const item = (id: string, overrides: Partial<ActivityView> = {}): ActivityView => ({ id, label: "Returned movement", exactValue: "101.25", display: "Canonical display", measure: "income", detail: "Returned detail", tone: "inflow", state: "ready", provenance: "Returned provenance", evidenceLinks: [], grade: "not_applicable", recordIds: ["record-returned"], ...overrides });
 const filters: SampleActivityFilterCatalog = {

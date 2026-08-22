@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource } from "../surface/sources";
-import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, TransferVerb, VaultTransferActions } from "../surface/types";
+import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
@@ -22,11 +22,13 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const sweeping = useRef(false);
   const configuring = useRef(false);
   const asking = useRef(false);
+  const maintaining = useRef(false);
   const documentActions = session.source.documentActions;
   const jobStream = session.source.jobStream;
   const transferActions = session.source.transferActions;
   const settingsActions = session.source.settingsActions;
   const conversationActions = session.source.conversationActions;
+  const trustActions = session.source.trustActions;
   const source = session.source;
 
   // What is in force, asked once per source. It is this machine's rather than
@@ -149,6 +151,19 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     }
   }
 
+  async function runTrust(run: (actions: TrustActions) => Promise<ActionResult>) {
+    if (!trustActions || maintaining.current) return;
+    maintaining.current = true;
+    const nextRequestId = requestId.current;
+    dispatch({ type: "trust-working", requestId: nextRequestId });
+    try {
+      const result = await run(trustActions);
+      if (requestId.current === nextRequestId) dispatch({ type: "trust-settled", requestId: nextRequestId, result });
+    } finally {
+      maintaining.current = false;
+    }
+  }
+
   return {
     session,
     hostAvailable: Boolean(hostBridge),
@@ -221,6 +236,17 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     transferAvailable: Boolean(transferActions),
     settingsAvailable: Boolean(settingsActions),
     askAvailable: Boolean(conversationActions),
+    trustAvailable: Boolean(trustActions),
+    // One at a time. `spend` is the person's own word and is never inferred:
+    // the agent reaches a model, so a run nobody said to spend on plans and
+    // stops at the line where money starts.
+    async runMaintenance(spend: boolean) {
+      await runTrust((actions) => actions.run(spend));
+    },
+    async writeDiagnostic(file: string) {
+      if (!file.trim()) return;
+      await runTrust((actions) => actions.diagnose(file.trim()));
+    },
     // One question at a time. `mirrored` says the drawer showing the answer is
     // open, which is a fact about this screen rather than a preference: it is
     // what decides whether anything may be spoken.

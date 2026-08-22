@@ -64,6 +64,17 @@ export type SettingsActionState =
   | { state: "working" }
   | { state: "proposed"; proposal: SettingsProposal }
   | { state: "settled"; result: ActionResult };
+// Unattended work, and a file somebody can send. A source that carries neither
+// renders no controls: the engine has not offered them, and a control that
+// would have to refuse is worse than none.
+export type TrustActions = {
+  run: (spend: boolean) => Promise<ActionResult>;
+  diagnose: (file: string) => Promise<ActionResult>;
+};
+export type TrustActionState =
+  | { state: "idle" }
+  | { state: "working" }
+  | { state: "settled"; result: ActionResult };
 export type SettingsActions = {
   read: () => Promise<FeatureResult<SettingsView>>;
   propose: (kind: "presentation" | "model", fields: Record<string, string>) => Promise<SettingsProposal | ActionResult>;
@@ -269,7 +280,11 @@ export type OutboundRecordView = {
   cost: { exactValue: string; currency: string; display: string; sentence: string } | null;
   absences: readonly { id: string; sentence: string }[];
 };
-export type TrustData = { notes: TrustNote[]; outbound?: OutboundRecordView; sample?: { capabilities: TrustSampleCapability[] } };
+// What nothing on this machine can establish, as the read says it. Each is a
+// whole reviewed sentence and none is composed here — an absent capability
+// described in a screen's own soft words reads as a capability.
+export type TrustAbsence = { id: string; sentence: string };
+export type TrustData = { notes: TrustNote[]; absences?: readonly TrustAbsence[]; outbound?: OutboundRecordView; sample?: { capabilities: TrustSampleCapability[] } };
 // The review verbs a screen may use, and the read that follows one. A screen
 // holds these rather than a transport, so nothing above this line knows an
 // action is a frame.

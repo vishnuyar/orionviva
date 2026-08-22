@@ -17,7 +17,7 @@ from viva.desktop_bridge.review_actions import UnreadableOutcome, outcome_of
 from viva.desktop_bridge import vault_surface
 from viva.persona import moment
 from viva.vault import Vault
-from viva.surface import CURRENT_PROTOCOL, serialize_registry
+from viva.surface import CURRENT_PROTOCOL, action_operations, serialize_registry
 from viva.surface import FigureView
 from viva.surface.models import FigureGrade
 
@@ -474,15 +474,27 @@ def test_the_decline_verb_is_reachable_only_once_a_vault_is_open(tmp_path):
     assert "viva.documents.upload" in handlers
 
 
-def test_an_action_the_registry_declares_without_a_handler_is_refused(tmp_path):
-    """Every declared action is an operation; only the ones this build serves
-    have a handler. The rest are refused by the allowlist rather than by
-    silence — the maintenance capability's `run` is the one left in that state,
-    and it is refused by name rather than answered emptily."""
+def test_every_action_the_registry_declares_is_served(tmp_path):
+    """A declared action without a handler is a button the interface can draw
+    and the sidecar will refuse. This build serves all of them, and this is
+    what says so: the list is read off the registry rather than written here,
+    so declaring a new action fails here until it is answered."""
     vault = Vault.open(tmp_path / "vault", "pw")
     handlers = handlers_for_opened_vault(vault).handlers
 
-    for operation in ("viva.maintenance.run",):
+    declared = {operation.name for operation in action_operations()}
+
+    assert not declared - set(handlers)
+
+
+def test_an_operation_the_registry_does_not_declare_is_refused_by_name(tmp_path):
+    """The allowlist is what answers, not the shape of the frame. Something
+    nobody declared is refused as not allowed rather than dispatched into a
+    handler that happens to accept an empty payload."""
+    vault = Vault.open(tmp_path / "vault", "pw")
+    handlers = handlers_for_opened_vault(vault).handlers
+
+    for operation in ("viva.maintenance.sweep", "viva.trust.export"):
         response = json.loads(
             dispatch_frame(_review_frame(operation, {}), handlers))
 

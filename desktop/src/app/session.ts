@@ -1,6 +1,6 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
 import { demoSource, sampleSnapshot } from "../surface/sources";
-import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, TrustActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -51,6 +51,10 @@ export type SurfaceSession = {
   // rather than in the drawer, because the drawer closes and a turn is a thing
   // that happened — and because voice reads the same turn a screen does.
   askAction: AskActionState;
+  // What became of the last unattended run or diagnostic asked for. It is a
+  // receipt for something that happened, so it outlives the screen a person
+  // was on when it landed.
+  trustAction: TrustActionState;
 };
 
 export type SessionAction =
@@ -71,6 +75,8 @@ export type SessionAction =
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
   | { type: "job-progress"; requestId: number; job: JobView }
   | { type: "described"; requestId: number; description: SourceDescription }
+  | { type: "trust-working"; requestId: number }
+  | { type: "trust-settled"; requestId: number; result: ActionResult }
   | { type: "asking"; requestId: number; question: string }
   | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null }
   | { type: "settings-read"; settings: FeatureResult<SettingsView> }
@@ -129,6 +135,7 @@ export function initialSession(): SurfaceSession {
     settings: { state: "absent", reason: "not_asked" },
     settingsAction: { state: "idle" },
     askAction: { state: "idle" },
+    trustAction: { state: "idle" },
   };
 }
 
@@ -171,7 +178,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId || action.snapshot.mode !== action.source.mode) return state;
       return {
@@ -193,6 +200,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         transferAction: { state: "idle" },
         rescanAction: { state: "idle" },
         askAction: { state: "idle" },
+        trustAction: { state: "idle" },
       };
     case "loaded": {
       if (action.requestId !== state.requestId || action.snapshot.mode !== state.source.mode) return state;
@@ -273,6 +281,12 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "described":
       if (action.requestId !== state.requestId) return state;
       return { ...state, description: action.description };
+    case "trust-working":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, trustAction: { state: "working" } };
+    case "trust-settled":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, trustAction: { state: "settled", result: action.result } };
     case "asking":
       if (action.requestId !== state.requestId) return state;
       return { ...state, askAction: { state: "working", question: action.question } };

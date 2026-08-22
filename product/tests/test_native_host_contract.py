@@ -19,6 +19,7 @@ import pytest
 from viva.desktop_bridge.__main__ import Sidecar, _open_vault
 from viva.desktop_bridge.handlers import (CONVERSATION_OPERATIONS,
                                            DOCUMENTS_OPERATIONS,
+                                           MAINTENANCE_OPERATIONS,
                                            RESCAN_OPERATIONS,
                                            REVIEW_OPERATIONS,
                                            SETTINGS_OPERATIONS,
@@ -89,6 +90,15 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # that a figure is never spoken with nowhere to check it — not a switch for
     # speech, which is why there is no field here that could be one.
     CONVERSATION_OPERATIONS["ask"]: {"question", "mirrored"},
+    # Spending is a word rather than a default, and a budget is a number of
+    # model calls. There is no field naming what to work on: a wake goes over
+    # the whole vault, and a caller pointing it somewhere would be asserting a
+    # scope the run does not have.
+    MAINTENANCE_OPERATIONS["run"]: {"spend", "budget"},
+    # Where to write it, and nothing about what to put in. What a diagnostic
+    # says is decided by the field list it is built from, so a caller has
+    # nowhere to widen it from.
+    MAINTENANCE_OPERATIONS["diagnose"]: {"file"},
     SETTINGS_READ: set(),
     SETTINGS_OPERATIONS["propose"]: {"kind", "locale", "currency", "adapter",
                                      "model", "base_url"},
@@ -108,6 +118,10 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     RESCAN_OPERATIONS["rescan"]: (BRIDGE_PACKAGE / "rescan_actions.py", "_no_fields"),
     CONVERSATION_OPERATIONS["ask"]: (BRIDGE_PACKAGE / "conversation_actions.py",
                                      "_ask_request"),
+    MAINTENANCE_OPERATIONS["run"]: (BRIDGE_PACKAGE / "trust_actions.py",
+                                    "_run_request"),
+    MAINTENANCE_OPERATIONS["diagnose"]: (BRIDGE_PACKAGE / "trust_actions.py",
+                                         "_diagnose_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

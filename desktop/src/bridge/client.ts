@@ -36,6 +36,8 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     readSettings: () => request("viva.settings.read", {}),
     proposeSettings: (kind, fields) => request("viva.settings.propose", { kind, ...fields }),
     confirmSettings: (kind, fields, digest, key) => request("viva.settings.confirm", { kind, ...fields, digest, ...(key ? { key } : {}) }),
+    runMaintenance: (spend: boolean) => request("viva.maintenance.run", { spend }),
+    writeDiagnostic: (file: string) => request("viva.maintenance.diagnose", { file }),
     exportVault: (archive: string) => request("viva.vault.export", { archive }),
     restoreVault: (archive: string, directory: string, passphrase: string) => request("viva.vault.restore", { archive, directory, passphrase }),
     askViva: (question: string, mirrored: boolean) => request("viva.conversation.ask", { question, mirrored }),

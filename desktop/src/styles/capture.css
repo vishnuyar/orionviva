@@ -169,3 +169,16 @@
 /* Making a vault is a thing a person says to do, never something a mistyped
    path does for them. */
 .vault-create-choice { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--text-caption); font-weight: var(--weight-medium); }
+
+/* What this machine cannot establish, and what it could do on its own. The
+   absences are plain and near the top: an absence a person has to open
+   something to find is an absence they will not find. */
+.trust-absences { display: grid; gap: var(--space-sm); padding: var(--space-lg) 0; }
+.trust-absences h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.trust-absences ul { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-sm); font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-maintenance { display: grid; gap: var(--space-md); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.trust-maintenance h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.trust-maintenance p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-maintenance-controls { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.trust-maintenance-form { display: grid; gap: var(--space-sm); }
+.trust-maintenance-form label { display: grid; gap: var(--space-xs); font-size: var(--text-caption); font-weight: var(--weight-medium); }

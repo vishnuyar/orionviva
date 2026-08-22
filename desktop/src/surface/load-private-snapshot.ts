@@ -12,7 +12,7 @@ import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, SurfaceSnapshot, VaultTransferActions } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -124,6 +124,15 @@ export function privateConversationActions(client: BridgeClient): ConversationAc
       const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
       return { result, turn };
     },
+  };
+}
+
+// Unattended work, and a file somebody can send. Neither is followed by a read:
+// what a run did is in its own reply, and a diagnostic changes nothing here.
+export function privateTrustActions(client: BridgeClient): TrustActions {
+  return {
+    run: (spend) => acted(client.runMaintenance(spend)),
+    diagnose: (file) => acted(client.writeDiagnostic(file)),
   };
 }
 
