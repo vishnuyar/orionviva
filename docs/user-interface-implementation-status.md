@@ -107,7 +107,7 @@ the interface ships it, or it is rejected as invented.
 | `jobs` | yes | no | no | yes |
 | `review` | yes | yes | yes | yes |
 | `viva` | no | yes | yes | no |
-| `trust` | no | yes | yes | yes |
+| `trust` | yes | yes | yes | yes |
 | `settings` | no | yes | no | no |
 | `none` | no | yes | no | no |
 
@@ -118,7 +118,9 @@ derives what it says about a destination from the registry's own signal rather
 than from a vocabulary of its own. `viva` and `settings` are registry
 destinations with no place in the interface; `accounts` and `activity` are
 shipped destinations no surfaced capability claims, which the interface now
-marks on the destination itself. `none` is how the registry
+marks on the destination itself. `trust` became live-readable when the outbound
+record landed there, and it reads as ready for a vault that has sent nothing —
+that emptiness is the record rather than an absent panel. `none` is how the registry
 says a capability has no destination at all. `jobs` is a live-readable surface
 name that is no registry destination and no screen of its own: what the sidecar
 is doing is shown on the documents screen, beside the work that started it,

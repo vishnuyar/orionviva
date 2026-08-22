@@ -106,3 +106,12 @@
 .document-rescan h2 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
 .document-rescan p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
 .document-rescan-answer ul { margin: var(--space-sm) 0 0; padding-left: var(--space-lg); display: grid; gap: var(--space-xs); font-size: var(--text-fine); }
+
+/* Everything a vault has sent, and what nothing here can establish about it. */
+.trust-outbound { display: grid; gap: var(--space-sm); padding: var(--space-lg) 0; }
+.trust-outbound h3 { margin: 0; font-size: var(--text-title); line-height: var(--leading-tight); }
+.trust-outbound p { margin: 0; font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-outbound-lead { color: var(--ink); font-weight: var(--weight-medium); }
+.trust-outbound-phases, .trust-outbound-absences { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-xs); color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-outbound-models { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-caption); }
+.trust-outbound-models div { display: flex; justify-content: space-between; gap: var(--space-sm); }

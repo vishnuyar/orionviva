@@ -24,7 +24,7 @@ class OpenedVaultSurfaceProvider:
     bridge operations.
     """
 
-    _SURFACES = frozenset(("overview", "documents", "review", "jobs"))
+    _SURFACES = frozenset(("overview", "documents", "review", "jobs", "trust"))
 
     def __init__(self, vault: Vault, jobs: Any = None) -> None:
         self._vault = vault
@@ -42,6 +42,8 @@ class OpenedVaultSurfaceProvider:
             return self._documents()
         if surface == "jobs":
             return self._job_registry()
+        if surface == "trust":
+            return self._trust()
         return self._review(params)
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
@@ -72,6 +74,29 @@ class OpenedVaultSurfaceProvider:
         return documents(self._vault.ledger.projection(),
                          frozenset(self._vault.raw.doc_ids()),
                          live_reading_configured())
+
+    def _trust(self) -> dict[str, Any]:
+        """What this vault has sent, and what nothing here can establish.
+
+        The event stream is handed to the surface that folds it, rather than a
+        projection: a model call is recorded once and read once, and putting it
+        through a projection would be a second opinion about a fact the log
+        already states plainly.
+
+        The absences travel inside the read for the same reason every other
+        sentence does — a screen that composes its own caveats writes them out
+        of date the day the capability lands, and nothing goes red when it
+        does."""
+        from ..surface.outbound import outbound
+
+        return {
+            "state": "ready",
+            "outbound": outbound(self._vault.events(), locale_from_env()),
+            # Trust's other rows are owed by their own cycle. An empty list
+            # says this build supplies none rather than that the vault has
+            # nothing to say, and the panel's own state says which.
+            "notes": [],
+        }
 
     def _job_registry(self) -> dict[str, Any]:
         """What the sidecar is doing, or has just done, for this vault.

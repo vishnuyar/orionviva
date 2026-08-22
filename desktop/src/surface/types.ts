@@ -198,7 +198,24 @@ export type TrustNote = { readonly id: string; readonly title: string; readonly 
 export type TrustCapabilityGroup = "source" | "outbound_models" | "integrity" | "continuity" | "build_support";
 export type TrustCapabilityState = "fictional_sample" | "preview_limitation" | "not_connected" | "not_supplied" | "not_implemented";
 export type TrustSampleCapability = { readonly id: string; readonly group: TrustCapabilityGroup; readonly label: string; readonly state: TrustCapabilityState; readonly detail: string };
-export type TrustData = { notes: TrustNote[]; sample?: { capabilities: TrustSampleCapability[] } };
+// One line of the outbound record, or one absence it carries. The sentence is
+// the read's in every case: a screen that composes its own caveat writes it out
+// of date the day the capability lands, and nothing goes red when it does.
+export type OutboundLine = { id: string; count: number; sentence: string };
+export type OutboundModel = { name: string; count: number };
+// What a whole outbound record says. `callCount` of zero with a sentence is a
+// vault that has sent nothing — which is the record, not an empty panel.
+export type OutboundRecordView = {
+  sentence: string;
+  callCount: number;
+  phases: readonly OutboundLine[];
+  models: readonly OutboundModel[];
+  modelSentence: string;
+  span: { first: string; last: string; sentence: string } | null;
+  cost: { exactValue: string; currency: string; display: string; sentence: string } | null;
+  absences: readonly { id: string; sentence: string }[];
+};
+export type TrustData = { notes: TrustNote[]; outbound?: OutboundRecordView; sample?: { capabilities: TrustSampleCapability[] } };
 // The review verbs a screen may use, and the read that follows one. A screen
 // holds these rather than a transport, so nothing above this line knows an
 // action is a frame.

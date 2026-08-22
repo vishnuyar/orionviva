@@ -236,6 +236,18 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         entrypoint="viva.rescan",
     ),
     _surface(
+        "trust.outbound",
+        "viva.surface.outbound",
+        CapabilityDestination.TRUST,
+        "when a vault is open",
+        "OutboundRecord.v1",
+        (),
+        # It reads the log and nothing else. The record describes calls that
+        # were made; describing them makes none, and this read reaches no model
+        # and sends nothing.
+        (TrustEffect.READS_DATA,),
+    ),
+    _surface(
         "vault.transfer",
         "viva.vault_transfer",
         CapabilityDestination.TRUST,

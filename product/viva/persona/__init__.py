@@ -515,6 +515,24 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "rescan_settled":                  frozenset({"count"}),
     "rescan_open":                     frozenset({"count"}),
     "rescan_unread":                   frozenset(),
+    # The outbound record. A vault that has sent nothing gets a line of its
+    # own, because an empty list and a screen that failed to load are the same
+    # picture. Each phase a model call is recorded under has a line saying what
+    # was actually sent on it, and a phase this build has no line for says so
+    # rather than being described by the nearest one. The last two are absences
+    # the read carries rather than a screen composing them: what this record
+    # does not cover, and that nothing outside this machine holds a hash of it.
+    "outbound_none":                   frozenset(),
+    "outbound_some":                   frozenset(),
+    "outbound_scope":                  frozenset(),
+    "outbound_phase_classify":         frozenset({"count"}),
+    "outbound_phase_extract":          frozenset({"count"}),
+    "outbound_phase_speak":            frozenset({"count"}),
+    "outbound_phase_unnamed":          frozenset({"count"}),
+    "outbound_cost":                   frozenset({"amount"}),
+    "outbound_window":                 frozenset({"first", "last"}),
+    "outbound_models":                 frozenset({"count"}),
+    "outbound_no_anchor":              frozenset(),
 }
 
 

@@ -1,9 +1,9 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { EngineIdentity, FeatureResult, TransferActionState, TrustData, TrustSampleCapability } from "../../surface/types";
+import type { EngineIdentity, FeatureResult, OutboundRecordView, TransferActionState, TrustData, TrustSampleCapability } from "../../surface/types";
 import { Trust } from "./Trust";
 import type { TransferControls } from "./Trust";
-import moments from "../../../../product/viva/persona/pack-v22/moments.json";
+import moments from "../../../../product/viva/persona/pack-v23/moments.json";
 
 const note = (id: string, title = "Supplied title", detail = "Supplied detail") => ({ id, title, detail });
 const capability = (id: string, state: TrustSampleCapability["state"], label = `Capability ${id}`, detail = `Detail ${id}`): TrustSampleCapability => ({ id, group: "source", label, state, detail });
@@ -183,5 +183,46 @@ describe("a copy of a whole vault", () => {
     const settled: TransferActionState = { state: "settled", verb: "restore", result: { state: "unanswered" } };
     const { getAllByText } = render(<Trust {...props} transfer={controls(settled)} />);
     expect(getAllByText(/did not answer/).length).toBeGreaterThan(0);
+  });
+});
+
+describe("everything this vault has sent", () => {
+  const record = (over: Partial<OutboundRecordView> = {}): OutboundRecordView => ({
+    sentence: moments.outbound_none, callCount: 0, phases: [], models: [], modelSentence: "", span: null, cost: null,
+    absences: [{ id: "scope", sentence: moments.outbound_scope }, { id: "anchoring", sentence: moments.outbound_no_anchor }],
+    ...over,
+  });
+  const withRecord = (over: Partial<OutboundRecordView> = {}) =>
+    render(<Trust identity={unasked} transfer={null} mode="live" result={ready({ notes: [], outbound: record(over) })} />);
+
+  it("renders the record of a vault that has sent nothing with the same prominence", () => {
+    // Hiding it would keep the promise by having nothing to show rather than
+    // by showing it.
+    const { getByRole, getByText } = withRecord();
+    expect(getByRole("heading", { name: "Everything this vault has sent" })).toBeInTheDocument();
+    expect(getByText(moments.outbound_none)).toBeInTheDocument();
+  });
+
+  it("says both absences with the read's own words", () => {
+    const { getByText } = withRecord();
+    expect(getByText(moments.outbound_scope)).toBeInTheDocument();
+    expect(getByText(moments.outbound_no_anchor)).toBeInTheDocument();
+  });
+
+  it("renders one line per pass and composes none of them", () => {
+    const { getByText } = withRecord({
+      sentence: moments.outbound_some, callCount: 3,
+      phases: [{ id: "extract", count: 2, sentence: "Twice, pages were sent." }],
+      span: { first: "2026-07-01", last: "2026-08-05", sentence: "First on one day, last on another." },
+      cost: { exactValue: "0.30", currency: "USD", display: "USD 0.30", sentence: "It cost USD 0.30." },
+    });
+    expect(getByText("Twice, pages were sent.")).toBeInTheDocument();
+    expect(getByText("First on one day, last on another.")).toBeInTheDocument();
+    expect(getByText("It cost USD 0.30.")).toBeInTheDocument();
+  });
+
+  it("shows no total at all where the read carried none", () => {
+    const { queryByText } = withRecord({ sentence: moments.outbound_some, callCount: 1 });
+    expect(queryByText(/cost/i)).not.toBeInTheDocument();
   });
 });

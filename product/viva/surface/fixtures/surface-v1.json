@@ -72,6 +72,16 @@
       "state": "ready"
     },
     {
+      "capability_id": "trust.outbound",
+      "contract": "OutboundRecord.v1",
+      "id": "trust.outbound.ready",
+      "payload": {
+        "capability_id": "trust.outbound",
+        "contract": "OutboundRecord.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "vault.transfer",
       "contract": "VaultTransfer.v1",
       "id": "vault.transfer.ready",
@@ -595,6 +605,24 @@
         "writes_event",
         "may_call_model",
         "may_egress"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "when a vault is open",
+      "contract": "OutboundRecord.v1",
+      "destination": "trust",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "trust.outbound.ready"
+      ],
+      "id": "trust.outbound",
+      "maturity": "stable",
+      "owner": "viva.surface.outbound",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
       ]
     },
     {

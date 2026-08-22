@@ -3,7 +3,7 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.0";
 
-export type SurfaceName = "overview" | "documents" | "review" | "jobs";
+export type SurfaceName = "overview" | "documents" | "review" | "jobs" | "trust";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
@@ -70,6 +70,9 @@ export type BridgeClient = {
   // and answers absent for a sidecar that has run no job — which is not the
   // same fact as a sidecar that cannot say.
   readJobs: () => Promise<SurfaceReadResult>;
+  // The complete outbound record, and what nothing on this machine can
+  // establish about it. Both are the read's; neither is composed here.
+  readTrust: () => Promise<SurfaceReadResult>;
   // Who answered and which build of it. Asked before a vault is open, because
   // the build that cannot open one is exactly the build somebody needs named.
   handshake: () => Promise<unknown>;
