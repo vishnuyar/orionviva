@@ -142,6 +142,25 @@ holds that, and M2 is the invariant underneath it. And the per-panel admissions
 are retired only when Trust can carry the full account and never ahead of it,
 which is VOICE-137's fifth clause.
 
+## What has landed
+
+Every position in the table below has been built. The order stands as written —
+positions are stable labels, and a reader tracing why a thing was built when
+needs the sequence intact — but the table is now a record rather than a plan,
+and the ground each item names is the ground it was actually built on.
+
+Two placements turned out differently in the building, and both are recorded
+where they happened rather than only here. The demo item was **larger** than
+"the remaining enumerated states": making the demo a vault removed the reason
+every screen had a second implementation of itself, so the item that added a
+vault also deleted a dialect. And the last three positions were, as the
+corrections below predicted, three different things — a green-field read model,
+a comment turned into a check, and a check whose subject is the artifact rather
+than the tree.
+
+What remains open is what this document already lists as not scheduled, plus
+what each item's own commit records as its shortfall.
+
 ## The order
 
 Positions are stable labels inside this document. The sequence is carried by
