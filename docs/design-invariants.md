@@ -183,16 +183,14 @@
 6. A ruling on a movement outranks the heuristic rung that defaulted it, so an answer sticks and does not reopen.
 
 ### M2 — Which way the money went is decided by the account's kind, in one place
-**State:** enforced-with-exception
-**Code:** product/viva/ledger/streams.py:79
-**Test:** product/tests/test_streams.py::test_a_stream_cannot_be_built_without_the_account_kind
+**State:** enforced
+**Code:** product/viva/ledger/streams.py:79 (`money_effect`), product/viva/ledger/projection/merchants.py:146 (`implication_of`)
+**Test:** product/tests/test_streams.py::test_a_stream_cannot_be_built_without_the_account_kind, product/tests/test_direction_site.py::test_a_purchase_on_a_liability_is_money_leaving_not_money_arriving, ::test_the_site_reads_no_posted_sign_at_all
 
 1. A posted amount is signed by its effect on the balance the document prints, so on a liability a purchase posts positive.
 2. The direction of a movement is derived from the account's kind by one function, and no read derives it from a posted sign.
 3. A reader holding no account kind raises; there is no fallback to the posted amount.
 4. Direction splits a relationship's statistics and never its key: a card-paid subscription and the same subscription paid from checking are one arrangement under one subject.
-
-**Exception:** product/viva/ledger/projection/merchants.py:152 — `implication_of` still picks a counterparty's implication from the posted sign (`inflow=m.amount > 0`), so on a liability it reads a purchase as an inflow.
 
 ### X1 — Target user skill: "can install an app"
 **State:** unmet

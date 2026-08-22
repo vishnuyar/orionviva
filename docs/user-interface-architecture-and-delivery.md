@@ -131,12 +131,13 @@ on the current branch is recorded in
 **Exception:** the second half of the anti-staleness ruling — that the installed build exposes its UI and sidecar source revisions through an About or Trust view — has nowhere to live yet, because no Trust surface exists.
 
 ### VOICE-111 — every direction shown comes from the account's kind, never a posted sign
-**State:** unmet
-**Code:** product/viva/ledger/projection/merchants.py:146 (`implication_of`)
-**Test:** none
+**State:** enforced
+**Code:** product/viva/ledger/projection/merchants.py:146 (`implication_of`), product/viva/ledger/streams.py:79 (`money_effect`)
+**Test:** product/tests/test_direction_site.py::test_a_purchase_on_a_liability_is_money_leaving_not_money_arriving, ::test_a_movement_with_no_account_kind_raises_rather_than_guessing, ::test_the_site_reads_no_posted_sign_at_all
 
-1. M2 names one site still outstanding: `implication_of` picks a counterparty's implication from the posted sign (`inflow=m.amount > 0`), so on a liability it reads a purchase as an inflow.
-2. Nothing that ships direction filters or a transaction detail speaking direction may land before that site closes, or the interface renders a known-wrong inflow, states it as a fact about a person's money, and carries a grade while doing so.
+1. The site M2 named is closed: `implication_of` asks the one function that decides direction from the account's kind, and that function raises when it is handed no kind rather than falling back to the posted amount.
+2. The guard is structural rather than a comment: a test parses the site and fails if it compares a movement's amount to anything but what that function returned.
+3. Direction filters and a transaction detail speaking direction are therefore no longer held by this rule. What still holds them is that nothing supplies either.
 
 ### VOICE-112 — the surface never claims machinery the product does not have
 **State:** unmet

@@ -148,8 +148,22 @@ def implication_of(core: ProjectionCore, m) -> dict | None:
 
     Money out to a lender repays borrowing; money in from one is the
     borrowing. Same counterparty, opposite sign, opposite meaning — so `on`
-    is data on the implication rather than a branch in the caller."""
-    return implication_in(merchant_record(core, m), inflow=m.amount > 0)
+    is data on the implication rather than a branch in the caller.
+
+    **Which way the money went comes from the account's kind.** A posted amount
+    is signed by its effect on the balance the document prints, so on a
+    liability a purchase posts positive and a sign alone reads it as money
+    arriving. This asks the one function that knows, which raises rather than
+    guessing when it is handed no kind — so a movement that cannot say what
+    kind of account it is on cannot be described in a direction at all.
+
+    The guard is the call, not a comment beside one: there is no branch here
+    that reads `m.amount` and no argument that could reintroduce it."""
+    from ..streams import money_effect
+
+    return implication_in(merchant_record(core, m),
+                          inflow=money_effect(getattr(m, "kind", ""),
+                                              m.amount) > 0)
 
 
 def counterparty_kind(core: ProjectionCore, m) -> str:

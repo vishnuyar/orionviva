@@ -83,7 +83,7 @@ What the ledger records, and which way the money went.
 | Rule | Name | State | Doc | Test |
 | --- | --- | --- | --- | --- |
 | **M1** | Cash-flow over accrual, when in doubt | enforced | [design-invariants.md](design-invariants.md) | `test_unrealized_gain_is_a_derived_as_of_view_not_a_ledger_fact` |
-| **M2** | Which way the money went is decided by the account's kind, in one place | enforced *(exception)* | [design-invariants.md](design-invariants.md) | `test_a_stream_cannot_be_built_without_the_account_kind` |
+| **M2** | Which way the money went is decided by the account's kind, in one place | enforced | [design-invariants.md](design-invariants.md) | `test_a_stream_cannot_be_built_without_the_account_kind` |
 
 ## Experience
 
@@ -148,7 +148,7 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-4** | weak evidence excludes the money and says so | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_a_suggested_implication_is_provisional_not_silent` |
 | **MON-5** | a ruling whose legs disagree is mixed, and is neither counted nor dropped | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_a_compound_payment_is_neither_counted_nor_dropped` |
 | **MON-6** | every spending aggregate is on the nature predicate | **contradicted** | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `product/tests/test_nature.py:71 (asserts the divergence)` |
-| **MON-7** | which way the money went has one derivation (M2) | enforced *(exception)* | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_a_card_purchase_reads_as_money_out` |
+| **MON-7** | which way the money went has one derivation (M2) | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_a_card_purchase_reads_as_money_out` |
 | **MON-8** | the own-account rung is looser than the auto-link bar, deliberately | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_an_asserted_account_does_not_make_its_own_payments_internal` |
 | **MON-9** | nature is derived, and no event says it | by-review | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | — |
 | **MON-10** | a reset never destroys a person's rulings | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_reset_drops_model_categorization_but_keeps_my_rulings` |
@@ -526,7 +526,7 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-108** | every capability has a destination or a recorded reason for not having one | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_non_surface_capabilities_have_explicit_disposition_and_reason` +1 |
 | **VOICE-109** | the bridge is transport and nothing else | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_unknown_operations_are_refused_by_the_allowlist` +1 |
 | **VOICE-110** | compiled frontend output is never committed | by-review *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
-| **VOICE-111** | every direction shown comes from the account's kind, never a posted sign | **unmet** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
+| **VOICE-111** | every direction shown comes from the account's kind, never a posted sign | enforced | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
 | **VOICE-112** | the surface never claims machinery the product does not have | **unmet** | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
 | **VOICE-113** | these options are removed from future consideration | untestable | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | — |
 | **VOICE-114** | with no reader configured, a document is saved privately and reading waits | enforced *(exception)* | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) | `test_reader_factory_gates_on_env` +6 |
@@ -747,7 +747,6 @@ not been. Grouped by why the gap exists.
 | **VOICE-93** | model versions are pinned; no "latest" alias on the trust path | unmet | [model-trust-policy.md](model-trust-policy.md) |
 | **VOICE-94** | every version is a new hire | unmet | [model-trust-policy.md](model-trust-policy.md) |
 | **VOICE-95** | autonomy is earned statistically and revoked automatically | unmet | [model-trust-policy.md](model-trust-policy.md) |
-| **VOICE-111** | every direction shown comes from the account's kind, never a posted sign | unmet | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |
 | **VOICE-112** | the surface never claims machinery the product does not have | unmet | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |
 | **VOICE-124** | seed small, generate on first encounter, promote on review | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
 | **VOICE-125** | no amounts and no currency in the interview envelope | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |

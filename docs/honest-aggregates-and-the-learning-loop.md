@@ -63,15 +63,13 @@
 **Contradiction:** the doc says every downstream aggregate excludes anything not `spending`, and M1 says a card purchase is spending ([design-invariants.md](design-invariants.md)). `spending_by_currency` (movements.py:345) instead inlines its own test — depository outflows only — so it **omits every card purchase**, and it is what four callers print or use as the spending headline: `rescan.py:60` and `debug/vault.py:87` both label it *"external spending (transfers excluded)"* directly above a category breakdown computed on the correct population; `desktop_bridge/vault_surface.py:59` publishes it; `bench/synthetic/run_corpus.py:170` picks a currency from it. `test_nature.py:71` asserts the two disagree (560.00 by category, 60.00 by currency). Not resolved here.
 
 ### MON-7 — which way the money went has one derivation (M2)
-**State:** enforced-with-exception
-**Code:** product/viva/ledger/streams.py:79 (`money_effect(kind, amount)`); product/viva/ledger/projection/movements.py:305 delegates to it
-**Test:** product/tests/test_streams.py::test_a_card_purchase_reads_as_money_out
+**State:** enforced
+**Code:** product/viva/ledger/streams.py:79 (`money_effect(kind, amount)`); product/viva/ledger/projection/movements.py:305 and product/viva/ledger/projection/merchants.py:146 both delegate to it
+**Test:** product/tests/test_streams.py::test_a_card_purchase_reads_as_money_out, product/tests/test_direction_site.py::test_direction_is_decided_by_the_one_function_that_knows
 
 1. A movement's direction is derived from the account's kind, by one function, in the module that owns the words `in` and `out`.
 2. No read derives direction from a posted sign.
 3. A caller holding no account kind raises rather than falling back to the sign (product/tests/test_streams.py::test_a_stream_cannot_be_built_without_the_account_kind).
-
-**Exception:** product/viva/ledger/projection/merchants.py:146 (`implication_of`) selects a counterparty's implication with `inflow=m.amount > 0` — the posted sign — so on a liability it reads a purchase as an inflow.
 
 ### MON-8 — the own-account rung is looser than the auto-link bar, deliberately
 **State:** enforced
