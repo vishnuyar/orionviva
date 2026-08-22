@@ -1219,7 +1219,7 @@ describe("minimal shell", () => {
       expect(getByRole("heading", { name: "Is this your account?" })).toBeInTheDocument();
       expect(queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
       expect(getByRole("button", { name: "Set aside for now" })).toBeInTheDocument();
-      expect(getByText("Setting a question aside is connected. Answering one in your own words is not, and neither is proposing a change, confirming one, or correcting a document.")).toBeInTheDocument();
+      expect(getByText("Setting a question aside is connected, and so is answering one in your own words. Proposing a change, confirming one, and correcting a document are not.")).toBeInTheDocument();
       // The read supplies an invitation to answer in a sentence. Nothing here
       // can take one, so a real vault's invitation is never put to a person.
       expect(queryByText("Write an answer")).not.toBeInTheDocument();

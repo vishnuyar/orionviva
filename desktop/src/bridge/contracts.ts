@@ -110,6 +110,7 @@ export type BridgeClient = {
   restoreVault: (archive: string, directory: string, passphrase: string) => Promise<unknown>;
   // An action answers with an outcome. It arrives unread, like a surface read:
   // the transport carries the frame and something above it decides what it says.
+  answerQuestion: (questionId: string, said: string) => Promise<unknown>;
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;
 };
 

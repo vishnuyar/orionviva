@@ -1,7 +1,8 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { ActionOutcomeView, FeatureResult, ReviewActionState, ReviewData, ReviewView } from "../../surface/types";
+import type { ActionOutcomeView, FeatureResult, QuestionSlot, ReviewActionState, ReviewData, ReviewView } from "../../surface/types";
 import { Review } from "./Review";
+import moments from "../../../../product/viva/persona/pack-v25/moments.json";
 
 const question = (id: string, overrides: Partial<ReviewView> = {}): ReviewView => ({ id, label: "Returned question", detail: "Returned reason", status: "Read only", action: "", type: "identity", evidence: "", state: "needs_input", outcome: null, disposition: null, scope: "account", count: 7, amount: "101.25", currency: "USD", ...overrides });
 const data = (queue: ReviewView[], meta: Partial<ReviewData["meta"]> = {}): ReviewData => ({ queue, count: 999, meta: { total: 42, tail: null, pending: null, invite: "", answeredByDocument: "", ...meta } });
@@ -10,9 +11,10 @@ const noAction = () => {};
 // Every source a screen can be given carries the verbs, so there is no state
 // with nothing behind the controls. Tests that are not about a verb use the
 // state a screen opens in.
-const inert = { state: { state: "idle" } as const, onDecline: noAction };
+const noAnswer = (_questionId: string, _said: string) => {};
+const inert = { state: { state: "idle" } as const, onAnswer: noAnswer, onDecline: noAction };
 // A screen with the verb in whatever state the last one left it.
-const acted = (state: ReviewActionState) => ({ state, onDecline: noAction });
+const acted = (state: ReviewActionState) => ({ state, onAnswer: noAnswer, onDecline: noAction });
 
 describe("Review inspection surface", () => {
   it("renders live fields exactly and never combines supplied amount and currency", () => {
@@ -32,10 +34,10 @@ describe("Review inspection surface", () => {
     // Said once, in the panel holding the controls it is about, rather than
     // three times over one screen.
     expect(container.querySelectorAll(".review-set-aside p")).toHaveLength(2);
-    expect(getByText("Setting a question aside is connected. Answering one in your own words is not, and neither is proposing a change, confirming one, or correcting a document.")).toBeInTheDocument();
-    expect(queryByText(/Answering in your own words is not connected in this version/)).not.toBeInTheDocument();
+    expect(getByText("Setting a question aside is connected, and so is answering one in your own words. Proposing a change, confirming one, and correcting a document are not.")).toBeInTheDocument();
     expect(getByText("Source document unavailable")).toBeInTheDocument();
-    expect(queryByRole("form")).not.toBeInTheDocument();
+    // This question declares no slots, so nothing said in words settles it and
+    // there is no box to write in.
     expect(queryByRole("textbox")).not.toBeInTheDocument();
     expect(queryByRole("button", { name: /answer|decline|proposal|confirm|document review/i })).not.toBeInTheDocument();
     expect(queryByText("Static fictional anatomy")).not.toBeInTheDocument();
@@ -161,7 +163,7 @@ describe("Review inspection surface", () => {
 
   it("offers both reasons a question may be set aside, and both say it is set aside", () => {
     const decline = vi.fn();
-    const actions = { state: { state: "idle" } as const, onDecline: decline };
+    const actions = { state: { state: "idle" } as const, onAnswer: noAnswer, onDecline: decline };
     const { getAllByRole, getByRole, getByText, queryByRole } = render(<Review result={ready(data([question("live-question")]))} mode="live" selectedQueue="live-question" onSelectQueue={noAction} onOpenEvidence={noAction} actions={actions} />);
 
     expect(getByText("Setting a question aside does not delete it. It comes back on its own when the amount behind it, or the number of movements it covers, changes.")).toBeInTheDocument();
@@ -259,7 +261,7 @@ describe("Review inspection surface", () => {
   it("says a sample refusal in the sample vault, where nothing is recorded", () => {
     const decline = vi.fn();
     const sample = question("sample-question", { sample: { anatomy: "answer", evidenceLinks: [] } });
-    const actions = { state: { state: "settled", questionId: "sample-question", verb: "decline", result: { state: "settled", outcome: { kind: "refused", message: "This is the sample vault, and nothing in it is recorded.", reason: "sample_vault" } } } as const, onDecline: decline };
+    const actions = { state: { state: "settled", questionId: "sample-question", verb: "decline", result: { state: "settled", outcome: { kind: "refused", message: "This is the sample vault, and nothing in it is recorded.", reason: "sample_vault" } } } as const, onAnswer: noAnswer, onDecline: decline };
     const { getByRole, getByText } = render(<Review result={ready(data([sample]))} mode="demo" selectedQueue="sample-question" onSelectQueue={noAction} onOpenEvidence={noAction} actions={actions} />);
 
     fireEvent.click(getByRole("button", { name: "Set aside for now" }));
@@ -303,7 +305,7 @@ describe("Review inspection surface", () => {
     // While the vault is answering, a second press does nothing and the control
     // says why to a screen reader rather than going silent.
     const declined = vi.fn();
-    rerender(<Review {...props} actions={{ state: states[1], onDecline: declined }} />);
+    rerender(<Review {...props} actions={{ state: states[1], onAnswer: noAnswer, onDecline: declined }} />);
     expect(pressed).toHaveAttribute("aria-disabled", "true");
     expect(pressed).toHaveAccessibleDescription("Your vault is answering the last request. Pressing again does nothing until it has.");
     fireEvent.click(pressed);
@@ -329,5 +331,57 @@ describe("Review inspection surface", () => {
     // left on the screen.
     expect(getByText("Set aside")).toHaveAttribute("id", "review-outcome-title");
     expect(getByText("Set aside")).toHaveAttribute("tabindex", "-1");
+  });
+});
+
+describe("answering in a person's own words", () => {
+  const props = { selectedQueue: "q-1", onSelectQueue: noAction, onOpenEvidence: noAction };
+  const slot = { name: "same_account", type: "yes_no", required: true, wants: moments.wants_yes_no, choices: [] as string[] };
+  const choiceSlot = { name: "category", type: "choice", required: true, wants: moments.wants_choice.replace("{alternatives}", "food, rent"), choices: ["food", "rent"] };
+  const answerable = (slots: readonly QuestionSlot[]) => ready(data([{ ...question("q-1"), slots }], { invite: "Say it however you like." }));
+
+  it("renders no form for a question nothing said in words settles", () => {
+    // A document settles it. The form is absent rather than present and
+    // refusing.
+    const { queryByRole } = render(<Review {...props} result={answerable([])} mode="live" actions={inert} />);
+    expect(queryByRole("button", { name: "Send this answer" })).not.toBeInTheDocument();
+  });
+
+  it("says what each slot needs back in the queue's own words", () => {
+    const { getByText } = render(<Review {...props} result={answerable([slot])} mode="live" actions={inert} />);
+    expect(getByText(moments.wants_yes_no)).toBeInTheDocument();
+  });
+
+  it("shows the closed vocabulary an answer has to land in", () => {
+    const { getByText } = render(<Review {...props} result={answerable([choiceSlot])} mode="live" actions={inert} />);
+    expect(getByText(moments.wants_choice.replace("{alternatives}", "food, rent"))).toBeInTheDocument();
+  });
+
+  it("invites a person in the read's own sentence rather than one of its own", () => {
+    const { getByLabelText } = render(<Review {...props} result={answerable([slot])} mode="live" actions={inert} />);
+    expect(getByLabelText("Say it however you like.")).toBeInTheDocument();
+  });
+
+  it("sends the question and the sentence, and nothing else", () => {
+    const sent: Array<[string, string]> = [];
+    const actions = { state: { state: "idle" } as const, onAnswer: (id: string, said: string) => { sent.push([id, said]); }, onDecline: noAction };
+    const { getByLabelText, getByRole } = render(<Review {...props} result={answerable([slot])} mode="live" actions={actions} />);
+    fireEvent.change(getByLabelText("Say it however you like."), { target: { value: "  yes, that is the same account  " } });
+    fireEvent.click(getByRole("button", { name: "Send this answer" }));
+    expect(sent).toEqual([["q-1", "yes, that is the same account"]]);
+  });
+
+  it("sends nothing at all for an empty sentence", () => {
+    const sent: string[] = [];
+    const actions = { state: { state: "idle" } as const, onAnswer: (id: string) => { sent.push(id); }, onDecline: noAction };
+    const { getByRole } = render(<Review {...props} result={answerable([slot])} mode="live" actions={actions} />);
+    fireEvent.click(getByRole("button", { name: "Send this answer" }));
+    expect(sent).toEqual([]);
+  });
+
+  it("keeps the control in the tab order while the vault is answering", () => {
+    const actions = { state: { state: "working", questionId: "q-1", verb: "answer" } as const, onAnswer: noAnswer, onDecline: noAction };
+    const { getByRole } = render(<Review {...props} result={answerable([slot])} mode="live" actions={actions} />);
+    expect(getByRole("button", { name: "Send this answer" })).toHaveAttribute("aria-disabled", "true");
   });
 });

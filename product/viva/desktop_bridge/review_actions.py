@@ -9,9 +9,19 @@ happened, in Viva's own sentence, and a machine reason whenever she refused. A
 refusal is an ordinary reply here — a question that is no longer open is not an
 error, and a person is told so in words.
 
-The review capability also declares an ``answer`` action, and no handler for it
-is registered. The operation is therefore declared and unserved: a frame naming
-it is refused by the allowlist rather than by silence.
+Answering is the single inbound door and it is served here. What crosses is one
+question's identity and one sentence, and nothing else: the question is looked
+up in the live queue rather than taken from the caller, so a stale screen cannot
+answer something that is no longer being asked, or answer it with slots it is no
+longer being asked with.
+
+**A sentence is a sentence, whatever this machine has been told to do.** With no
+model named, the filler degrades to the identity — each declared scalar slot is
+offered the sentence as it was typed, and the same deterministic checks decide.
+So a plainly written reply is answered on a machine that sends nothing, and
+anything else is refused rather than guessed at. With one named, the same door
+reads what a person actually wrote. There are not two answering paths; there is
+one, and what it can understand widens.
 """
 
 from __future__ import annotations
@@ -33,6 +43,19 @@ class ReviewActions:
 
     def __init__(self, vault: Any) -> None:
         self._vault = vault
+
+    def answer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """One reply to one question, in a person's own words.
+
+        The engine reads the sentence into the slots the question declared and
+        deterministic code checks every value against its type. A value that
+        does not survive is asked again in Viva's voice rather than coerced
+        into something nobody stated, which arrives here as a refusal with a
+        reason — an ordinary reply, not an error frame."""
+        from viva.engine import answer_question
+
+        question_id, said = _answer_request(payload)
+        return outcome_of(answer_question(self._vault, question_id, said)).as_dict()
 
     def decline(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Set one question aside. It returns when its stake moves."""
@@ -71,6 +94,28 @@ def outcome_of(result: Mapping[str, Any]) -> ActionOutcome:
     if result.get("recorded") is False:
         return ActionOutcome("waiting", message or moment("reply_document_awaited"))
     return ActionOutcome("completed", message or moment("reply_recorded"))
+
+
+def _answer_request(payload: Mapping[str, Any]) -> tuple[str, str]:
+    """The two things an answer carries, and nothing else.
+
+    No slot values and no parsed structure: a caller that could send those
+    would be filling the question's slots itself, and the check that stands
+    between a model's structure and the ledger would have a second door with
+    nothing behind it."""
+    from viva.reply import MAX_REPLY_TOKENS
+
+    allowed = {"question_id", "said"}
+    _fenced(payload, allowed, "viva.review.answer")
+    said = payload.get("said")
+    if not isinstance(said, str) or not said.strip():
+        raise BridgeRequestError("said must be a non-empty string")
+    # Bounded here as well as inside the engine, so a sentence long enough to
+    # be a denial of service is refused before it reaches anything that reads
+    # it. The bound is the reply module's own, so one number governs.
+    if len(said) > MAX_REPLY_TOKENS * 8:
+        raise BridgeRequestError("said is longer than a reply may be")
+    return _question_id(payload), said
 
 
 def _decline_request(payload: Mapping[str, Any]) -> tuple[str, str]:

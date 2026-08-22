@@ -56,6 +56,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase"},
     SURFACE_CAPABILITIES: set(),
     SURFACE_READ: {"surface", "parameters", "job_id"},
+    REVIEW_OPERATIONS["answer"]: {"question_id", "said"},
     REVIEW_OPERATIONS["decline"]: {"question_id", "reason"},
     # One field, and that is the whole fence: a caller with nowhere to put an
     # identity cannot assert one, so the constraint is kept by the shape of the
@@ -90,6 +91,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
 PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     BRIDGE_OPEN_VAULT: (BRIDGE_PACKAGE / "__main__.py", "_open_vault"),
     SURFACE_READ: (BRIDGE_PACKAGE / "surface_read.py", "_read_request"),
+    REVIEW_OPERATIONS["answer"]: (BRIDGE_PACKAGE / "review_actions.py", "_answer_request"),
     REVIEW_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "review_actions.py", "_decline_request"),
     DOCUMENTS_OPERATIONS["upload"]: (BRIDGE_PACKAGE / "document_actions.py", "_upload_request"),
     DOCUMENTS_OPERATIONS["cancel"]: (BRIDGE_PACKAGE / "document_actions.py", "_cancel_request"),

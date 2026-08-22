@@ -162,11 +162,39 @@ class Slot:
                 "which it would then refuse; what a model is told is part of "
                 "what the slot allows")
 
+    def wants(self) -> str:
+        """One reviewed sentence saying what this slot needs back.
+
+        The same declaration the inbound check reads, said in words a person
+        can act on. It is composed here rather than on a surface because a
+        surface writing it would be writing the second half of a contract whose
+        first half lives in code, and the two would drift.
+
+        A slot holding several of something says so instead of naming a type,
+        because what it wants is not one kind of thing."""
+        from .persona import moment
+
+        if self.parts:
+            return moment("wants_several")
+        if self.type == ANSWER_CHOICE:
+            from . import render
+
+            # What a person may answer with is `choices`, not `offered`:
+            # narrowing what a model is told costs the model a prior and must
+            # never cost the person an answer.
+            return moment("wants_choice",
+                          alternatives=render.label(", ".join(self.choices)))
+        return moment(f"wants_{self.type}")
+
     def to_dict(self) -> dict:
         """The declaration, as data. No action and no arguments: a surface reads
         what is wanted, and has nothing to send but words."""
         out = {"name": self.name, "type": self.type,
-               "required": self.required}
+               "required": self.required,
+               # The vocabulary tokens a surface needs, and the sentence that
+               # introduces them. Both are the queue's: a screen that wrote
+               # either would be inventing half of a contract.
+               "wants": self.wants()}
         if self.choices:
             out["choices"] = list(self.choices)
         if self.parts:

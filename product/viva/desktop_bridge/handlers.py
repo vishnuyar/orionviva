@@ -162,6 +162,7 @@ def handlers_for_opened_vault(
     sweeps = RescanActions(vault, jobs)
     return BridgeDispatcher({
         **reads.handlers,
+        REVIEW_OPERATIONS["answer"]: actions.answer,
         REVIEW_OPERATIONS["decline"]: actions.decline,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
         DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,

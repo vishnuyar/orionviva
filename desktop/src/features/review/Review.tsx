@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { ProofLinks } from "../../components/ProofLinks";
 import type { DeclineReason, EvidenceLink, FeatureResult, ReviewActionState, ReviewData, ReviewView, SurfaceMode } from "../../surface/types";
@@ -6,7 +7,7 @@ import { anatomyPresentation, outcomePresentation, resolveReviewSelection, worki
 // What a screen needs to use the review verb this build serves. Every source a
 // screen can be given carries the verb, so there is no state in which the
 // controls are absent.
-export type ReviewActionControls = { state: ReviewActionState; onDecline: (questionId: string, reason: DeclineReason) => void };
+export type ReviewActionControls = { state: ReviewActionState; onAnswer: (questionId: string, said: string) => void; onDecline: (questionId: string, reason: DeclineReason) => void };
 type ReviewProps = { result: FeatureResult<ReviewData>; mode: SurfaceMode; selectedQueue: string; onSelectQueue: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; actions: ReviewActionControls };
 
 // Whether this read can say what is still open. Only the read's own states
@@ -61,7 +62,7 @@ function SetAsideControls({ question, mode, actions }: { question: ReviewView; m
   return <section className="review-set-aside" aria-labelledby="review-set-aside-title">
     <h4 id="review-set-aside-title">Set this question aside</h4>
     <p>Setting a question aside does not delete it. It comes back on its own when the amount behind it, or the number of movements it covers, changes.</p>
-    {mode === "live" ? <p>Setting a question aside is connected. Answering one in your own words is not, and neither is proposing a change, confirming one, or correcting a document.</p> : null}
+    {mode === "live" ? <p>Setting a question aside is connected, and so is answering one in your own words. Proposing a change, confirming one, and correcting a document are not.</p> : null}
     <div className="review-set-aside-controls">
       <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "review-set-aside-waiting" : undefined} onClick={() => setAside("not_now")}>Set aside for now</button>
       <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "review-set-aside-waiting" : undefined} onClick={() => setAside("dont_know")}>Set aside: I do not know</button>
@@ -70,8 +71,43 @@ function SetAsideControls({ question, mode, actions }: { question: ReviewView; m
   </section>;
 }
 
-function LiveDetail({ question, mode, actions }: { question: ReviewView; mode: SurfaceMode; actions: ReviewActionControls }) {
-  return <><div className="review-detail-grid"><div><span>Question ID</span><strong>{question.id}</strong><small>A question ID is the stable identity used for selection. It is not a queue position or document ID.</small></div><div><span>Question text</span><strong>{question.label || "Question text was not supplied by this read."}</strong></div><div><span>Why this question was asked</span><strong>{question.detail || "Why this question was asked was not supplied by this read."}</strong></div><div><span>Question kind</span><strong>{question.type || "Question kind was not supplied by this read."}</strong></div><div><span>Question scope</span><strong>{question.scope || "Question scope was not supplied by this read."}</strong></div><div><span>Question count</span><strong>{question.count === undefined ? "Question count was not supplied by this read." : question.count}</strong></div><div><span>Question amount</span><strong>{question.amount || "Question amount was not supplied by this read."}</strong></div><div><span>Question currency</span><strong>{question.currency || "Question currency was not supplied by this read."}</strong></div></div><p className="review-value-helper">These values are shown as supplied. The interface does not calculate consequence or change question order.</p><div className="review-live-omissions"><p>A separate consequence description was not supplied by this read.</p><p>Proposal state was not supplied by this read.</p></div><section className="review-source-state"><h4>Source document unavailable</h4><p>A source document target was not supplied for this question.</p></section><SetAsideControls question={question} mode={mode} actions={actions} /></>;
+// Answering, in a person's own words. What each slot needs back and the closed
+// vocabulary an answer must land in are the queue's — this renders them and
+// writes neither. Nothing but the sentence crosses: the structure behind it is
+// read on the other side of the bridge, where the check that stands between a
+// model's structure and the ledger lives.
+//
+// `invite` is what the box says before anything is written, and it is the
+// read's too. A screen inventing that line would be inviting a person into a
+// contract it made up.
+function AnswerControls({ question, invite, actions }: { question: ReviewView; invite: string; actions: ReviewActionControls }) {
+  const [said, setSaid] = useState("");
+  const working = actions.state.state === "working";
+  const slots = question.slots ?? [];
+  function answer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (working || !said.trim()) return;
+    actions.onAnswer(question.id, said.trim());
+    setSaid("");
+  }
+  // A question with no slots is one nothing said in words settles — a document
+  // does. The form is absent rather than present and refusing, and the read's
+  // own sentence about that stands in its place elsewhere on the screen.
+  if (!slots.length) return null;
+  return <section className="review-answer" aria-labelledby="review-answer-title">
+    <h4 id="review-answer-title">Answer this</h4>
+    <ul className="review-answer-wants">{slots.map((slot) => <li key={slot.name}>{slot.wants}</li>)}</ul>
+    <form onSubmit={answer}>
+      <label htmlFor="review-answer-said">{invite || "Write your answer here."}</label>
+      <textarea id="review-answer-said" value={said} onChange={(event) => setSaid(event.target.value)} rows={3} />
+      <button className="primary-button" type="submit" aria-disabled={working} aria-describedby={working ? "review-answer-waiting" : undefined}>Send this answer</button>
+    </form>
+    {working ? <span className="action-explanation" id="review-answer-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
+  </section>;
+}
+
+function LiveDetail({ question, mode, actions, invite }: { question: ReviewView; mode: SurfaceMode; actions: ReviewActionControls; invite: string }) {
+  return <><div className="review-detail-grid"><div><span>Question ID</span><strong>{question.id}</strong><small>A question ID is the stable identity used for selection. It is not a queue position or document ID.</small></div><div><span>Question text</span><strong>{question.label || "Question text was not supplied by this read."}</strong></div><div><span>Why this question was asked</span><strong>{question.detail || "Why this question was asked was not supplied by this read."}</strong></div><div><span>Question kind</span><strong>{question.type || "Question kind was not supplied by this read."}</strong></div><div><span>Question scope</span><strong>{question.scope || "Question scope was not supplied by this read."}</strong></div><div><span>Question count</span><strong>{question.count === undefined ? "Question count was not supplied by this read." : question.count}</strong></div><div><span>Question amount</span><strong>{question.amount || "Question amount was not supplied by this read."}</strong></div><div><span>Question currency</span><strong>{question.currency || "Question currency was not supplied by this read."}</strong></div></div><p className="review-value-helper">These values are shown as supplied. The interface does not calculate consequence or change question order.</p><div className="review-live-omissions"><p>A separate consequence description was not supplied by this read.</p><p>Proposal state was not supplied by this read.</p></div><section className="review-source-state"><h4>Source document unavailable</h4><p>A source document target was not supplied for this question.</p></section><AnswerControls question={question} invite={invite} actions={actions} /><SetAsideControls question={question} mode={mode} actions={actions} /></>;
 }
 
 function DemoDetail({ question, mode, actions, onOpenEvidence }: { question: ReviewView; mode: SurfaceMode; actions: ReviewActionControls; onOpenEvidence: (link: EvidenceLink) => void }) {
@@ -88,9 +124,8 @@ function SelectionState({ state }: { state: ReturnType<typeof resolveReviewSelec
 function MoreFromRead({ data }: { data: ReviewData }) {
   const pending = data.meta.pending;
   const pendingCopy = pending === null ? "Set-aside summary was not supplied by this read." : pending.count === 0 ? "Set-aside items reported: 0." : pending.count === 1 ? "1 set-aside item is reported. It returns on its own when what it is about changes. Opening its detail is not available in this preview." : `${pending.count} set-aside items are reported. Each returns on its own when what it is about changes. Opening their detail is not available in this preview.`;
-  // The read supplies an invitation to answer in a sentence and nothing in
-  // this build can take one, so the invitation is not shown. What the screen
-  // cannot do is said once, beside the control that can.
+  // The invitation the read supplies is shown where a person writes, beside
+  // the box it invites them into, rather than here.
   return <section className="review-more" aria-labelledby="review-more-title"><h3 id="review-more-title">More from this read</h3><p>These summaries are shown separately. The interface does not add them together or create question rows from them.</p><div className="review-more-grid">{data.meta.tail === null ? <div><span>Open questions outside this list</span><strong>Tail summary was not supplied by this read.</strong><small>No question rows are created from this summary.</small></div> : <><div><span>Open questions outside this list</span><strong>{data.meta.tail.count}</strong><small>No question rows are created from this summary.</small></div><div><span>Tail amount supplied</span><strong>{data.meta.tail.amount || "Tail amount was not supplied by this read."}</strong></div></>}<div><span>Set-aside summary</span><strong>{pendingCopy}</strong></div></div><div className="review-guidance"><div><h4>Document-answer guidance</h4><p>{data.meta.answeredByDocument || "Document-answer guidance was not supplied by this read."}</p></div></div><p>The contract supplies no mapping from this guidance to a specific question. This preview cannot accept an answer or document.</p></section>;
 }
 
@@ -100,6 +135,6 @@ export function Review({ result, mode, selectedQueue, onSelectQueue, onOpenEvide
     const activeId = selection.state === "ready" ? selection.question.id : selectedQueue;
     const pending = data.meta.pending;
     const pendingAddendum = pending === null || pending.count === 0 ? "" : pending.count === 1 ? " 1 set-aside item remains. Opening it is not available in this preview." : ` ${pending.count} set-aside items remain. Opening them is not available in this preview.`;
-    return <section className="feature-panel review-inspection"><ReviewHeader mode={mode} total={data.meta.total} />{!data.queue.length ? <div className="empty-state"><strong id="review-empty-title" tabIndex={-1}>{mode === "demo" ? "No sample review questions" : "Nothing needs you right now"}</strong><span>{mode === "demo" ? "This fictional sample does not include any review questions." : `There are no open questions in the current review read.${pendingAddendum}`}</span></div> : <div className="review-inspection-layout"><ReviewQueue queue={data.queue} mode={mode} selectedId={activeId} onSelectQueue={onSelectQueue} />{selection.state === "ready" ? <aside className="review-selected"><div className="detail-panel-label">Selected question</div><h3 id="selected-question-title" tabIndex={-1}>{selection.question.label || (mode === "live" ? "Question text was not supplied by this read." : "Sample question text unavailable")}</h3>{mode === "live" ? <LiveDetail question={selection.question} mode={mode} actions={actions} /> : <DemoDetail question={selection.question} mode={mode} actions={actions} onOpenEvidence={onOpenEvidence} />}</aside> : <SelectionState state={selection} />}</div>}<MoreFromRead data={data} /></section>;
+    return <section className="feature-panel review-inspection"><ReviewHeader mode={mode} total={data.meta.total} />{!data.queue.length ? <div className="empty-state"><strong id="review-empty-title" tabIndex={-1}>{mode === "demo" ? "No sample review questions" : "Nothing needs you right now"}</strong><span>{mode === "demo" ? "This fictional sample does not include any review questions." : `There are no open questions in the current review read.${pendingAddendum}`}</span></div> : <div className="review-inspection-layout"><ReviewQueue queue={data.queue} mode={mode} selectedId={activeId} onSelectQueue={onSelectQueue} />{selection.state === "ready" ? <aside className="review-selected"><div className="detail-panel-label">Selected question</div><h3 id="selected-question-title" tabIndex={-1}>{selection.question.label || (mode === "live" ? "Question text was not supplied by this read." : "Sample question text unavailable")}</h3>{mode === "live" ? <LiveDetail question={selection.question} mode={mode} actions={actions} invite={data.meta.invite} /> : <DemoDetail question={selection.question} mode={mode} actions={actions} onOpenEvidence={onOpenEvidence} />}</aside> : <SelectionState state={selection} />}</div>}<MoreFromRead data={data} /></section>;
   }}</PanelStateView><ActionOutcomeNotice state={actions.state} unread={queueUnread(result)} /></div>;
 }

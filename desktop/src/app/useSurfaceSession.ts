@@ -271,6 +271,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     openEvidence(link: EvidenceLink) { dispatch({ type: "select-document", id: link.targetDocumentId }); dispatch({ type: "navigate", destination: "documents" }); },
     selectDocument(id: string) { dispatch({ type: "select-document", id }); },
     selectQueue(id: string) { dispatch({ type: "select-queue", id }); },
+    async answerQuestion(questionId: string, said: string) {
+      await runReviewVerb("answer", questionId, (actions) => actions.answer(questionId, said));
+    },
     async declineQuestion(questionId: string, reason: DeclineReason) {
       await runReviewVerb("decline", questionId, (actions) => actions.decline(questionId, reason));
     },

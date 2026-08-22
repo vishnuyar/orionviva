@@ -145,6 +145,7 @@ export function privateTransferActions(client: BridgeClient): VaultTransferActio
 // render, including the case where the reply could not be read at all.
 export function privateReviewActions(client: BridgeClient): ReviewActions {
   return {
+    answer: (questionId, said) => acted(client.answerQuestion(questionId, said)),
     decline: (questionId, reason) => acted(client.declineQuestion(questionId, reason)),
     reread: () => readReviewFeature(client),
   };

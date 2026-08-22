@@ -129,3 +129,13 @@
 .trust-settings-proposal.sends { border-color: var(--rust); }
 .trust-settings-proposal dl { margin: 0; display: grid; gap: var(--space-xs); font-size: var(--text-caption); }
 .trust-settings-proposal dl div { display: flex; justify-content: space-between; gap: var(--space-sm); }
+
+/* Answering a question in a person's own words. What each slot needs back is
+   the queue's sentence, listed above the box rather than beside it, so a person
+   reads what is wanted before they start writing. */
+.review-answer { display: grid; gap: var(--space-sm); padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.review-answer h4 { margin: 0; font-size: var(--text-lead); line-height: var(--leading-tight); }
+.review-answer-wants { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-xs); color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.review-answer form { display: grid; gap: var(--space-sm); }
+.review-answer label { font-size: var(--text-caption); font-weight: var(--weight-medium); }
+.review-answer textarea { width: 100%; font: inherit; font-size: var(--text-body); line-height: var(--leading-body); }

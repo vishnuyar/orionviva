@@ -86,7 +86,7 @@ export type TransferActionState =
   | { state: "settled"; verb: TransferVerb; result: ActionResult };
 // The review actions a screen may reach. The registry declares `answer` too and
 // this build serves no handler for it, so nothing here can name it.
-export type ReviewVerb = "decline";
+export type ReviewVerb = "answer" | "decline";
 // What became of the last review verb a person used, held beside the question
 // it was used on. An outcome belongs to one question, so a screen that moves to
 // another must not keep showing it.
@@ -179,7 +179,11 @@ export type SampleActivityRelationship = { readonly targetActivityId: string; re
 export type SampleActivityFilterCatalog = { readonly dates: readonly SampleActivityFacet[]; readonly accounts: readonly SampleActivityFacet[]; readonly merchants: readonly SampleActivityFacet[]; readonly categories: readonly SampleActivityFacet[]; readonly tags: readonly SampleActivityFacet[]; readonly natures: readonly SampleActivityFacet[]; readonly directions: readonly SampleActivityFacet[] };
 export type SampleActivityDetails = { readonly date?: SampleActivityFacet; readonly account?: SampleActivityFacet; readonly merchant?: SampleActivityFacet; readonly category?: SampleActivityFacet; readonly tags?: readonly SampleActivityFacet[]; readonly nature?: SampleActivityFacet; readonly direction?: SampleActivityFacet; readonly relationships?: readonly SampleActivityRelationship[] };
 export type ReviewSampleAnatomy = "answer" | "decline" | "proposal" | "confirmation";
-export type ReviewView = { id: string; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string; sample?: { anatomy?: ReviewSampleAnatomy; proposedValue?: string; confirmationPrompt?: string; evidenceLinks?: EvidenceLink[] } };
+// One thing a question needs back. `wants` is the queue's own sentence saying
+// what kind of thing that is, and `choices` is the closed vocabulary an answer
+// must land in — the vocabulary tokens. Both are the backend's.
+export type QuestionSlot = { name: string; type: string; required: boolean; wants: string; choices: readonly string[] };
+export type ReviewView = { id: string; slots?: readonly QuestionSlot[]; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string; sample?: { anatomy?: ReviewSampleAnatomy; proposedValue?: string; confirmationPrompt?: string; evidenceLinks?: EvidenceLink[] } };
 export type ConversationTurn = { id: string; speaker: "you" | "viva"; text: string; state: "answer" | "refusal" | "citation" | "prompt"; citation?: string };
 export type ConversationPrompt = { id: string; label: string; detail: string; state: "ready" | "refusal" | "citation" };
 
@@ -245,6 +249,12 @@ export type TrustData = { notes: TrustNote[]; outbound?: OutboundRecordView; sam
 // holds these rather than a transport, so nothing above this line knows an
 // action is a frame.
 export type ReviewActions = {
+  // One reply to one question, in a person's own words. Nothing but the
+  // question and the sentence crosses: a screen that could send slot values
+  // would be filling the question's slots itself, and the check that stands
+  // between a model's structure and the ledger would have a second door with
+  // nothing behind it.
+  answer: (questionId: string, said: string) => Promise<ActionResult>;
   decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;
   reread: () => Promise<FeatureResult<ReviewData>>;
 };

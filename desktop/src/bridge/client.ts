@@ -37,6 +37,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     confirmSettings: (kind, fields, digest, key) => request("viva.settings.confirm", { kind, ...fields, digest, ...(key ? { key } : {}) }),
     exportVault: (archive: string) => request("viva.vault.export", { archive }),
     restoreVault: (archive: string, directory: string, passphrase: string) => request("viva.vault.restore", { archive, directory, passphrase }),
+    answerQuestion: (questionId: string, said: string) => request("viva.review.answer", { question_id: questionId, said }),
     declineQuestion: (questionId, reason: DeclineReason) => request("viva.review.decline", { question_id: questionId, reason }),
     // The payload is the path and nothing else. A job identity is the
     // sidecar's to mint, so this side never sends one and the field set alone

@@ -46,6 +46,7 @@ export type OutcomePresentation = { title: string; detail: string };
 // What each verb calls the thing it does, in the words its own controls used,
 // so a title never names an act the person did not perform.
 const verbWords: Record<ReviewVerb, { working: string; completed: string; refused: string; waiting: string }> = {
+  answer: { working: "Reading your answer", completed: "Answered", refused: "Not answered", waiting: "Waiting on a document" },
   decline: { working: "Setting this question aside", completed: "Set aside", refused: "Not set aside", waiting: "Nothing set aside yet" },
 };
 

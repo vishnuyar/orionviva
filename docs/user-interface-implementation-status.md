@@ -143,8 +143,8 @@ cell reads `yes` or `no` and nothing else.
 The reads are declared; the actions are one per action the capability registry
 declares, so this table read on its own is the whole of what can touch a vault.
 An action with no handler is refused by the allowlist rather than by silence,
-and the ones in that state are marked below — `viva.review.answer` among
-them.
+and the ones in that state are marked below — `viva.maintenance.run` is the one
+left in it.
 
 | Operation | Allowlisted | Where it is served | Consumed by the desktop |
 | --- | --- | --- | --- |
@@ -152,7 +152,7 @@ them.
 | `bridge.open_vault` | no | intercepted by `Sidecar.handle` as a branch before dispatch runs, so it reaches no allowlist and has no protocol major validated | yes |
 | `viva.surface.capabilities` | yes | the allowlist a sidecar starts with, before any vault is open; it answers with the reviewed registry and with which destinations a read reaches, derived where the rule lives | yes |
 | `viva.surface.read` | yes | added to the allowlist when a vault opens | yes |
-| `viva.review.answer` | no | derived from the action the review capability declares; no handler is registered for it, so an opened vault refuses it, and the interface offers no control that would call it | no |
+| `viva.review.answer` | yes | added to the allowlist when a vault opens; it is the single inbound door, and the question is looked up in the live queue rather than taken from the caller, so a stale screen cannot answer something that is no longer being asked | yes |
 | `viva.review.decline` | yes | added to the allowlist when a vault opens | yes |
 | `viva.documents.upload` | yes | added to the allowlist when a vault opens; the handler takes one path, opens the file itself and captures it, then reads it with the reader this machine's configuration builds — which cannot read until somebody has said yes to naming a model, so no model runs on this route until then | yes |
 | `viva.documents.cancel` | yes | added to the allowlist when a vault opens; it names a job the registry minted, never a document, and is the one operation a running job may be interrupted to serve | yes |

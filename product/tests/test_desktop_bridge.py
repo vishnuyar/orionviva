@@ -476,12 +476,12 @@ def test_the_decline_verb_is_reachable_only_once_a_vault_is_open(tmp_path):
 def test_an_action_the_registry_declares_without_a_handler_is_refused(tmp_path):
     """Every declared action is an operation; only the ones this build serves
     have a handler. The rest are refused by the allowlist rather than by
-    silence — including the review capability's own `answer`, which this build
-    declares and does not serve."""
+    silence — the maintenance capability's `run` is the one left in that state,
+    and it is refused by name rather than answered emptily."""
     vault = Vault.open(tmp_path / "vault", "pw")
     handlers = handlers_for_opened_vault(vault).handlers
 
-    for operation in ("viva.review.answer",):
+    for operation in ("viva.maintenance.run",):
         response = json.loads(
             dispatch_frame(_review_frame(operation, {}), handlers))
 
