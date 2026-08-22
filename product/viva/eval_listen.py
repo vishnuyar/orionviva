@@ -40,6 +40,7 @@ import pathlib
 import statistics
 import time
 
+from .honesty import rate, refusal_rate
 from .ingest.categorize import SEED_CATEGORIES
 from .listen import ruling_context, ruling_from, ruling_slots
 from .reply import interpret as fill_slots
@@ -156,10 +157,17 @@ def run(extract_fn, cases: dict, repeat: int = 1) -> dict:
         "n": n, "cases": len(cases["cases"]), "repeat": repeat,
         "counts": counts,
         "scored": n - counts[BROKEN],
-        "rates": {k: round(v / scored, 3) for k, v in counts.items()},
+        "rates": {k: rate(v, scored) or 0.0 for k, v in counts.items()},
         # `None` when nothing was measured: an unknown rate is not a zero rate.
+        # The definition is the harness's, imported rather than repeated, so
+        # two reports of one measurement cannot disagree about the edges.
         "confidently_wrong": (None if counts[BROKEN] == n
-                              else round((counts[WRONG] + counts[RUIN]) / scored, 3)),
+                              else rate(counts[WRONG] + counts[RUIN], scored)),
+        # How often the model declined to make a reading at all. It is safe and
+        # is never confidently wrong, and it is reported because a model that
+        # declines everything scores a perfect confidently-wrong rate — the one
+        # way that headline can be read as saying more than it does.
+        "refusal_rate": refusal_rate(counts[SAFE], scored),
         "latency_p50": round(statistics.median(latencies), 2) if latencies else 0,
         "latency_max": round(max(latencies), 2) if latencies else 0,
         "unstable": unstable,
@@ -200,6 +208,12 @@ def report(result: dict, key_version: str = "") -> str:
         "",
         f"  CONFIDENTLY WRONG RATE: {result['confidently_wrong']:.1%}"
         + ("   <- the number that matters" if result["confidently_wrong"] else "   clean"),
+        # Beside it, always. A model that declines everything scores a perfect
+        # confidently-wrong rate, and the two figures read together are what
+        # stop that being mistaken for a good one.
+        f"  refusal rate:           "
+        + ("not measured" if result["refusal_rate"] is None
+           else f"{result['refusal_rate']:.1%}"),
         f"  latency  p50 {result['latency_p50']}s   max {result['latency_max']}s",
     ]
     if result["unstable"]:

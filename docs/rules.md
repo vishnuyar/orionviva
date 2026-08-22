@@ -107,7 +107,7 @@ Rules about this folder: state, order, supersession, and when an ADR is owed.
 | **SPINE-4** | Authenticity uses no chain, token or on-chain mechanism | enforced | [README.md](README.md) | `test_chain_detects_tampering` |
 | **SPINE-5** | Document order lives here and nowhere else | **unmet** | [reading-guide.md](reading-guide.md) | — |
 | **SPINE-6** | Superseded stays, historical is fenced, neither is deleted | **unmet** | [reading-guide.md](reading-guide.md) | — |
-| **SPINE-7** | The eval harness ships before the first user who is not the author | **unmet** | [implementation-roadmap.md](implementation-roadmap.md) | `test_an_unreadable_confidence_or_direction_degrades_to_the_cautious_value` |
+| **SPINE-7** | The eval harness ships before the first user who is not the author | enforced *(exception)* | [implementation-roadmap.md](implementation-roadmap.md) | `test_the_refusal_rate_is_measured_over_the_answers_a_person_got` |
 | **SPINE-8** | The trust trial runs alongside breadth, never in front of it | untestable | [implementation-roadmap.md](implementation-roadmap.md) | — |
 | **SPINE-9** | The phases past the product are gated on earned trust, not on a calendar | untestable | [implementation-roadmap.md](implementation-roadmap.md) | — |
 | **SPINE-10** | A one-way door gets an ADR before product code exists | **unmet** | [decisions/README.md](decisions/README.md) | — |
@@ -584,7 +584,7 @@ The instruments that measure the product, and where truth is kept.
 | **PROG-24** | Honesty is checked before accuracy | enforced *(exception)* | [eval-harness-design.md](eval-harness-design.md) | `test_declining_is_safe_and_never_counted_as_confidently_wrong` |
 | **PROG-25** | The confidently-wrong rate is the headline, and its target is zero | enforced | [eval-harness-design.md](eval-harness-design.md) | `test_an_invented_split_is_ruin_even_when_the_majors_are_right` +1 |
 | **PROG-26** | A call that never reached the model is scored by nothing | enforced | [eval-harness-design.md](eval-harness-design.md) | `test_a_broken_pipe_is_never_reported_as_a_clean_result` +1 |
-| **PROG-27** | The eval runs on every change to trust-critical code | **unmet** | [eval-harness-design.md](eval-harness-design.md) | — |
+| **PROG-27** | The eval runs on every change to trust-critical code | enforced *(exception)* | [eval-harness-design.md](eval-harness-design.md) | `test_the_run_reports_and_holds_a_ceiling` |
 | **PROG-28** | The frozen case set ships with the code and holds nobody's data | enforced *(exception)* | [eval-harness-design.md](eval-harness-design.md) | `test_the_key_names_nobody_real` +1 |
 | **PROG-29** | The answer path returns structure, not prose | enforced *(exception)* | [eval-harness-design.md](eval-harness-design.md) | `test_balances_match_the_projection_and_carry_grades` +1 |
 | **PROG-30** | Opening Balance Equity is permanent and always the earliest known opening | enforced | [individual-as-enterprise.md](individual-as-enterprise.md) | `test_backfill_prepends_older_statements` +1 |
@@ -715,7 +715,6 @@ not been. Grouped by why the gap exists.
 | **MON-73** | a person and their accounts | unmet | [account-identity-and-entity-resolution.md](account-identity-and-entity-resolution.md) |
 | **PROG-14** | Source-region validity is graded | unmet | [benchmark-harness-design.md](benchmark-harness-design.md) |
 | **PROG-15** | Cost and latency are reported per document per candidate | unmet | [benchmark-harness-design.md](benchmark-harness-design.md) |
-| **PROG-27** | The eval runs on every change to trust-critical code | unmet | [eval-harness-design.md](eval-harness-design.md) |
 | **PROG-32** | P&L and balance sheet are named projections over the posting ledger | unmet | [individual-as-enterprise.md](individual-as-enterprise.md) |
 | **PROG-37** | The model layer supports four access modes | unmet | [adoption-and-distribution.md](adoption-and-distribution.md) |
 | **PROG-38** | No server component ever holds a key or decrypts the ledger | unmet | [multi-device-and-remote-access.md](multi-device-and-remote-access.md) |

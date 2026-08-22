@@ -18,7 +18,7 @@
 
 ### PROG-25 — The confidently-wrong rate is the headline, and its target is zero
 **State:** enforced
-**Code:** product/viva/eval_listen.py:161, product/viva/eval_listen.py:196-202
+**Code:** product/viva/eval_listen.py:161, product/viva/eval_listen.py:196-202; the rate itself is product/viva/honesty.py:43 (`rate`), imported rather than repeated
 **Test:** product/tests/test_eval_listen.py::test_an_invented_split_is_ruin_even_when_the_majors_are_right, product/tests/test_eval_listen.py::test_an_amount_in_the_reply_is_ruin
 
 1. A run reports the confidently-wrong rate as its headline figure, not accuracy.
@@ -35,12 +35,14 @@
 3. A declining model is still distinguished from a broken pipe.
 
 ### PROG-27 — The eval runs on every change to trust-critical code
-**State:** unmet
-**Code:** none found (.github/workflows/quality.yml runs the surface gates and their tests, and no eval)
-**Test:** none
+**State:** enforced-with-exception
+**Code:** product/viva/honesty.py:1, .github/workflows/quality.yml (the `suite` job runs the harness over `product/evals/honesty_turns.json`)
+**Test:** product/tests/test_honesty_harness.py::test_the_run_reports_and_holds_a_ceiling, ::test_a_ceiling_is_not_enforced_where_nothing_was_measured
 
-1. A change to trust-critical code — verification, the ledger, the model layer, prompts — re-runs the eval before it lands, in pre-commit and in CI.
-2. A change that moves the confidently-wrong rate fails the build.
+1. A change to trust-critical code — verification, the ledger, the model layer, prompts — re-runs the harness before it lands, in CI, over a frozen record of recorded turns that needs no model, no vault and no passphrase.
+2. A change that moves a measured rate above the ceiling the build declares fails it. A rate with an empty denominator is not enforced, because failing a build for having nothing to measure is a different fault.
+
+**Exception:** the half that calls a model does not run here. `eval_listen` needs a model and a key, and a CI job is given neither; a run without one would report nothing while looking like a pass, which is the failure PROG-26 exists to prevent. So the rate the build holds is the unsupported-figure rate and not the confidently-wrong rate, and nothing in CI moves the latter.
 3. A new model or a re-tuned local model re-sits the relevant eval slice before it serves ([model-trust-policy.md](model-trust-policy.md), feedback loop 3: every version is a new hire).
 4. A scheduled run on the author's real instance catches drift no code change triggered.
 

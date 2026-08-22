@@ -42,6 +42,18 @@ jobs:
       - name: Run every package suite
         run: PYTHONPATH=.:product:core:merchant:bench python -m pytest product core merchant bench -q
 
+      # The half of the honesty harness that needs no model, no vault and no
+      # passphrase, over a frozen record of recorded turns. It runs on every
+      # change rather than on a schedule, which is what PROG-27 asks for; the
+      # half that calls a model cannot run here, because a key is a secret this
+      # job is not given and a run without one would report nothing while
+      # looking like a pass.
+      - name: Run the honesty harness over the frozen turn record
+        run: >-
+          PYTHONPATH=.:product:core:merchant python -m viva.honesty
+          --events product/evals/honesty_turns.json
+          --max-unsupported-rate 0.0
+
   desktop:
     runs-on: macos-latest
     defaults:

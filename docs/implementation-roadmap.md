@@ -49,14 +49,14 @@ does not cover. This document's Slice 0 audit recorded those tests as present
 wrong when it was written.
 
 ### SPINE-7 — The eval harness ships before the first user who is not the author
-**State:** unmet
-**Code:** product/viva/eval_listen.py:1
-**Test:** product/tests/test_eval_listen.py::test_an_unreadable_confidence_or_direction_degrades_to_the_cautious_value (the harness behaves; nothing tests that it shipped, which is what this rule asserts)
+**State:** enforced-with-exception
+**Code:** product/viva/honesty.py:1 (vault-facing), product/viva/eval_listen.py:1 (one model call against a frozen key)
+**Test:** product/tests/test_honesty_harness.py::test_the_refusal_rate_is_measured_over_the_answers_a_person_got, ::test_the_confidently_wrong_rate_is_not_reported_over_a_vault, product/tests/test_eval_listen.py::test_an_unreadable_confidence_or_direction_degrades_to_the_cautious_value
 
 1. No stranger tests the product until a continuous honesty harness exists, with the confidently-wrong rate as its headline.
 2. The eval corpus accumulates at zero marginal cost as a by-product of the build, from frozen answer keys and from the corrections a person gives.
 
-**Exception:** the harness exists on one surface only — `eval_listen` grades a single call, reading a sentence into a structured reading against a frozen synthetic key (product/viva/eval_listen.py:1). Nothing measures the confidently-wrong rate over a live vault, and shapes authored, holes unfilled and clauses dropped are counted by a debug reader (product/viva/debug/) rather than by the eval.
+**Exception:** the confidently-wrong rate is still measured over one model call against a frozen key and nowhere else. The vault-facing half measures what a vault can answer without a key — the refusal rate, and how often a figure was stated with nothing on record behind it — and reports the confidently-wrong rate as not measured rather than as zero, because a key is what says an answer was wrong and a vault has none. Shapes authored, holes unfilled and clauses dropped are still counted by a debug reader (product/viva/debug/) rather than by the harness.
 
 ### SPINE-8 — The trust trial runs alongside breadth, never in front of it
 **State:** untestable

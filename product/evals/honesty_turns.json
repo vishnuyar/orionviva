@@ -1,0 +1,98 @@
+[
+  {
+    "event_type": "ReadRecorded",
+    "event_id": "a83930b67be9433f9e5ac00eca86891c",
+    "occurred_at": "2026-07-01",
+    "provenance": {
+      "doc_id": "speak:frozen:1:1",
+      "page": null,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "doc_id": "speak:frozen:1:1",
+      "model": "a-pinned-1",
+      "prompt_version": "speak-v1",
+      "input_mode": "text",
+      "response_text": "{\"prompt_versions\": {}, \"modality\": \"text\", \"resolved_model\": \"a-pinned-1\", \"question\": \"what did I spend last month?\", \"authored_shape\": \"final\", \"defect\": \"\", \"request\": [], \"response\": {}, \"shape\": {\"figures\": [{\"id\": \"f1\", \"grade\": \"verified\", \"record_ids\": [\"doc-1\"]}]}, \"bindings\": {}, \"verdict\": {\"answered\": true, \"refusal\": \"\", \"diagnosis\": \"\", \"calls\": 1}}",
+      "cost_usd": 0.0,
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "parse_ok": true,
+      "parse_error": null,
+      "phase": "speak"
+    }
+  },
+  {
+    "event_type": "ReadRecorded",
+    "event_id": "b7b93c7757a5465383443241e61f053a",
+    "occurred_at": "2026-07-01",
+    "provenance": {
+      "doc_id": "speak:frozen:2:1",
+      "page": null,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "doc_id": "speak:frozen:2:1",
+      "model": "a-pinned-1",
+      "prompt_version": "speak-v1",
+      "input_mode": "text",
+      "response_text": "{\"prompt_versions\": {}, \"modality\": \"text\", \"resolved_model\": \"a-pinned-1\", \"question\": \"what is my net worth?\", \"authored_shape\": \"final\", \"defect\": \"\", \"request\": [], \"response\": {}, \"shape\": {\"figures\": [{\"id\": \"f2\", \"grade\": \"corroborated\", \"record_ids\": [\"doc-2\", \"doc-3\"]}]}, \"bindings\": {}, \"verdict\": {\"answered\": true, \"refusal\": \"\", \"diagnosis\": \"\", \"calls\": 1}}",
+      "cost_usd": 0.0,
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "parse_ok": true,
+      "parse_error": null,
+      "phase": "speak"
+    }
+  },
+  {
+    "event_type": "ReadRecorded",
+    "event_id": "556fab69428a48df85b6245f851cfa32",
+    "occurred_at": "2026-07-01",
+    "provenance": {
+      "doc_id": "speak:frozen:3:1",
+      "page": null,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "doc_id": "speak:frozen:3:1",
+      "model": "a-pinned-1",
+      "prompt_version": "speak-v1",
+      "input_mode": "text",
+      "response_text": "{\"prompt_versions\": {}, \"modality\": \"text\", \"resolved_model\": \"a-pinned-1\", \"question\": \"how much will I have next year?\", \"authored_shape\": \"final\", \"defect\": \"\", \"request\": [], \"response\": {}, \"shape\": {\"figures\": []}, \"bindings\": {}, \"verdict\": {\"answered\": false, \"refusal\": \"I will not state a figure nothing here stands behind.\", \"diagnosis\": \"\", \"calls\": 1}}",
+      "cost_usd": 0.0,
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "parse_ok": true,
+      "parse_error": null,
+      "phase": "speak"
+    }
+  },
+  {
+    "event_type": "ReadRecorded",
+    "event_id": "01cb134d84f44ec8bf9b20530c4d06c1",
+    "occurred_at": "2026-07-01",
+    "provenance": {
+      "doc_id": "speak:frozen:4:1",
+      "page": null,
+      "region": "",
+      "note": ""
+    },
+    "body": {
+      "doc_id": "speak:frozen:4:1",
+      "model": "a-pinned-1",
+      "prompt_version": "speak-v1",
+      "input_mode": "text",
+      "response_text": "{\"prompt_versions\": {}, \"modality\": \"text\", \"resolved_model\": \"a-pinned-1\", \"question\": \"what did I pay that shop?\", \"authored_shape\": \"final\", \"defect\": \"\", \"request\": [], \"response\": {}, \"shape\": {\"figures\": [{\"id\": \"f3\", \"grade\": \"unverified\", \"record_ids\": [\"doc-4\"]}]}, \"bindings\": {}, \"verdict\": {\"answered\": true, \"refusal\": \"\", \"diagnosis\": \"\", \"calls\": 1}}",
+      "cost_usd": 0.0,
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "parse_ok": true,
+      "parse_error": null,
+      "phase": "speak"
+    }
+  }
+]
