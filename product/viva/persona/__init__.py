@@ -551,6 +551,23 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "settings_model_unnamed":          frozenset(),
     "settings_key_missing":            frozenset(),
     "settings_unwritable":             frozenset(),
+    # What is said when a document is actually read, and what it turned out to
+    # be worth to the picture. The readings that did not post are kept apart —
+    # one that will not reconcile, one starting from a balance nothing here has
+    # seen, one whose account is ambiguous, and a pay stub waiting for its
+    # deposit are four different things to be told, and none of them is a
+    # failure to read: a person told the reading failed would go looking for a
+    # better scan of a document that was read perfectly well. The row line
+    # places the figure a document attested and the account it attested it on;
+    # the last says a document nothing rests on, rather than leaving the row
+    # silent about it.
+    "documents_posted":                frozenset(),
+    "documents_held":                  frozenset(),
+    "documents_gap":                   frozenset(),
+    "documents_identity":              frozenset(),
+    "documents_awaiting":              frozenset(),
+    "documents_contributed":           frozenset({"amount", "account", "day"}),
+    "documents_contributed_nothing":   frozenset(),
 }
 
 

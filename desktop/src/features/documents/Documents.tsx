@@ -107,7 +107,7 @@ function SampleCaptureBoundary() {
 }
 
 function LiveScope() {
-  return <section className="document-scope"><h2>What this read can show</h2><p>This private-vault read supplies document identity, the name of the file where one was recorded, document type, resolution status, whether an original is available, and whether it has been read. Lifecycle steps, pages, source regions, provenance, contributions, wait reasons, recovery, posting, and outbound history are not supplied. What a capture is doing while it runs is reported separately, by the sidecar doing it.</p></section>;
+  return <section className="document-scope"><h2>What this read can show</h2><p>This private-vault read supplies document identity, the name of the file where one was recorded, document type, resolution status, whether an original is available, whether it has been read, and what it put on your books. Lifecycle steps, pages, source regions, provenance, wait reasons, and recovery are not supplied. What a capture is doing while it runs is reported separately, by the sidecar doing it.</p></section>;
 }
 
 function SampleLifecycle() {
@@ -150,7 +150,7 @@ function DocumentDetail({ mode, document, onOpenEvidence }: { mode: SurfaceMode;
     <DetailField label="Pages" value="Page details are not supplied by the private-vault read." />
     <DetailField label="Source region" value="Source region is not supplied by the private-vault read." />
     <DetailField label="Provenance" value="Provenance is not supplied by the private-vault read." />
-    <DetailField label="Contribution" value="What this document contributed is not supplied by the private-vault read." />
+    <DetailField label="Contribution" value={document.contribution?.trim() || "What this document contributed was not supplied by this read."} />
   </div><section className="document-wait"><h4>Wait or hold</h4><p>A wait reason is not supplied by the private-vault read.</p></section><RelatedEvidence mode={mode} document={document} onOpenEvidence={onOpenEvidence} /><Limitations /></aside>;
 
   const lifecycle = lifecyclePresentation(document.phase);

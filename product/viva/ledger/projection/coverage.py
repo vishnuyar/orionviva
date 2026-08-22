@@ -66,3 +66,29 @@ def open_holds(core: ProjectionCore) -> list[dict]:
 
 def gap_holds(core: ProjectionCore) -> list[dict]:
     return [b for b in open_holds(core) if b.get("reason") == "gap"]
+
+
+def document_contributions(core: ProjectionCore) -> dict[str, dict]:
+    """What each posted document actually put on the books.
+
+    One entry per document that attested a closing balance: the account it
+    spoke about, the figure that was accepted for it, the day that figure is
+    good for, and the currency the account is held in. It is what the ledger
+    recorded and nothing else — no wording, no grade, no derived total.
+
+    The accepted figure is the corrected one where a person ruled on a misread,
+    which is the figure that is actually on the books rather than the one the
+    document printed. A document that posted movements and attested no closing
+    has no entry: this says what a document was worth to the picture, and a
+    document with nothing here contributed nothing a figure rests on.
+    """
+    accounts = {}
+    for account, state in core._acct.items():
+        for doc_id in state.doc_ids:
+            accounts.setdefault(doc_id, (account, state.currency))
+    found: dict[str, dict] = {}
+    for doc_id, (amount, as_of) in core._doc_closing.items():
+        account, currency = accounts.get(doc_id, ("", ""))
+        found[doc_id] = {"account": account, "currency": currency,
+                         "amount": str(amount), "as_of": as_of}
+    return found

@@ -73,7 +73,8 @@ class OpenedVaultSurfaceProvider:
         names a reader at all."""
         return documents(self._vault.ledger.projection(),
                          frozenset(self._vault.raw.doc_ids()),
-                         live_reading_configured())
+                         live_reading_configured(),
+                         locale_from_env())
 
     def _trust(self) -> dict[str, Any]:
         """What this vault has sent, and what nothing here can establish.

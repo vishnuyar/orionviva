@@ -164,7 +164,11 @@ export type UnmeasuredAccount = { account: string; name: string; sentence: strin
 // name composed here would be the same name twice.
 export type FigureView = { id: string; display: string; exactValue: string; currency: string; measure: FigureMeasure; grade: FigureGrade; gradeLabel: string; gradeDescription: string; asOf: string; coverage: readonly string[]; caveats: string[]; evidenceLinks: EvidenceLink[]; exactness?: string | null; recordIds?: readonly string[]; evidenceLabel?: string; evidenceHeading?: string; unmeasured?: readonly UnmeasuredAccount[] };
 export type DocumentPhase = "captured" | "queued" | "reading" | "held" | "parked" | "read_ready" | "verified" | "unresolved";
-export type SurfaceDocument = { id: string; name: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; sample?: { region?: string; contribution?: string; waitReason?: string } };
+// `contribution` is the reviewed sentence saying what this document put on the
+// books — a figure and the account it was attested on, or the line for a
+// document nothing rests on. It is per row rather than per panel because it is
+// about that document and no other, and it is never composed here.
+export type SurfaceDocument = { id: string; name: string; contribution?: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; sample?: { region?: string; contribution?: string; waitReason?: string } };
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
 export type DocumentJob = { id: string; label: string; state: "running" | "paused" | "done"; detail: string; progress: string };
 export type OutboundRecord = { id: string; label: string; state: "queued" | "sent" | "blocked"; detail: string; destination: string };

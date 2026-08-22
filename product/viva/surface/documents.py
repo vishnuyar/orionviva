@@ -46,8 +46,31 @@ _UNREAD_CONFIGURED_MOMENT = "documents_saved_unread"
 _YIELDED_NOTHING_MOMENT = "documents_read_yielded_nothing"
 
 
+def _contribution(doc_id: str, contributions: dict, locale: str) -> str:
+    """What this document is worth to the picture, in one reviewed sentence.
+
+    A figure and the account it was attested on, or the line for a document
+    nothing rests on. It is said per row rather than per panel because it is
+    about that document and no other — which is the opposite of the reading
+    sentence above, and the reason the two are built in different places.
+
+    Nothing is composed here: the amount is written by the one writer of
+    amounts, the account by the one writer of accounts, and the sentence they
+    go into is the pack's."""
+    from .. import render
+
+    found = contributions.get(doc_id)
+    if not found or not found.get("amount"):
+        return moment("documents_contributed_nothing")
+    return moment("documents_contributed",
+                  amount=render.money(found["amount"], found.get("currency", ""),
+                                      locale=locale),
+                  account=render.label(found.get("account", "")),
+                  day=render.date(found.get("as_of", "")))
+
+
 def documents(projection, raw_doc_ids: frozenset[str],
-              reading_configured: bool) -> dict[str, Any]:
+              reading_configured: bool, locale: str = "") -> dict[str, Any]:
     """Every document this vault has captured, ready to render.
 
     ``raw_doc_ids`` is which originals the vault still holds, which is a fact
@@ -55,6 +78,7 @@ def documents(projection, raw_doc_ids: frozenset[str],
     ``reading_configured`` says whether this machine names a reader at all,
     which decides which of two true sentences a person is shown."""
     captured = projection.captured_docs()
+    contributions = projection.document_contributions()
     filenames = projection.captured_filenames()
     attempted = projection.read_attempted_docs()
     parsed = projection.read_parsed_docs()
@@ -71,6 +95,11 @@ def documents(projection, raw_doc_ids: frozenset[str],
             "resolved": projection.is_resolved(doc_id),
             "raw_available": doc_id in raw_doc_ids,
             "reading": _reading(doc_id, attempted, parsed),
+            # What this document put on the books, said about this document.
+            # A row that stays silent about it reads as a document that has not
+            # been looked at, which is a different fact and is already said by
+            # the reading word beside it.
+            "contribution": _contribution(doc_id, contributions, locale),
         }
         for doc_id, doc_type in sorted(captured.items())
     ]

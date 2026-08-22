@@ -233,3 +233,49 @@ def test_every_row_carries_the_whole_contract(field):
     read = _read_model([_captured(DOC)])
 
     assert field in read["documents"][0]
+
+
+def test_a_row_says_what_that_document_put_on_the_books(tmp_path):
+    """Per row rather than per panel: it is about that document and no other,
+    which is the opposite of the reading sentence above it."""
+    from viva import render
+    from viva.ingest.raw_store import RawStore
+    from viva.ledger.events import (account_opened, closing_balance_observed,
+                                    document_captured)
+    from viva.vault import Vault
+
+    vault = Vault.open(tmp_path / "vault", "pw")
+    doc_id = RawStore.fingerprint(b"a statement")
+    vault.ledger.append(account_opened("acct:one", "checking", "Everyday",
+                                       "USD", "2026-01-01"))
+    vault.ledger.append(document_captured(doc_id, "june.pdf", 11, "statement",
+                                          0.9, "2026-07-01"))
+    vault.ledger.append(closing_balance_observed(
+        "acct:one", "1200.00", "2026-06-30",
+        provenance=Provenance(doc_id=doc_id)))
+
+    read = documents(vault.ledger.projection(), frozenset({doc_id}), False,
+                     "en-US")
+
+    assert read["documents"][0]["contribution"] == moment(
+        "documents_contributed",
+        amount=render.money("1200.00", "USD", locale="en-US"),
+        account=render.label("acct:one"), day=render.date("2026-06-30"))
+
+
+def test_a_row_that_nothing_rests_on_says_so_rather_than_staying_silent(tmp_path):
+    """A silent row reads as a document nobody has looked at, which is a
+    different fact and is already said by the reading word beside it."""
+    from viva.ingest.raw_store import RawStore
+    from viva.ledger.events import document_captured
+    from viva.vault import Vault
+
+    vault = Vault.open(tmp_path / "vault", "pw")
+    doc_id = RawStore.fingerprint(b"a statement")
+    vault.ledger.append(document_captured(doc_id, "june.pdf", 11, "statement",
+                                          0.9, "2026-07-01"))
+
+    read = documents(vault.ledger.projection(), frozenset({doc_id}), False)
+
+    assert read["documents"][0]["contribution"] == moment(
+        "documents_contributed_nothing")

@@ -165,6 +165,9 @@ class LedgerProjection:
     def read_parsed_docs(self) -> set[str]:
         return _coverage.read_parsed_docs(self._core)
 
+    def document_contributions(self) -> dict[str, dict]:
+        return _coverage.document_contributions(self._core)
+
     def open_holds(self) -> list[dict]:
         return _coverage.open_holds(self._core)
 

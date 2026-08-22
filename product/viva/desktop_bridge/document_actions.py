@@ -4,12 +4,20 @@ This module knows neither the vault implementation nor the desktop transport. A
 sidecar entry point injects one already-open vault and gets back the handlers
 for the document actions this build serves.
 
-Capture is all this path does. It asks for the parking reader by name rather
-than building one and discarding the live half, so no model runs here whatever
-the machine's environment holds: what comes back cannot read, so there is no
-branch in which it does. What is captured is therefore parked, and the reply
-says which of two true things happened — that no reader has been chosen, or
-that one is named and nothing on this path used it.
+Capture comes first and always: the bytes are sealed into the vault before
+anything looks at them, so a document is kept whatever the reading then does.
+
+Whether it is then **read** is decided by one question, asked in one place —
+whether this machine names a model. Until somebody has said yes to naming one,
+the reader that comes back cannot read, so there is no branch on this path in
+which a model runs; once one is named, the same call returns the reader that
+does. The permission is the configuration, and the configuration is a proposal
+somebody agreed to.
+
+The reply says which of five true things happened, each read off the action the
+engine declared: the document was posted, it was read and could not be
+reconciled, it was kept unread because no model is named, it was kept unread
+though one is, or the vault already held it.
 
 The request carries a path and nothing else. Nothing about the file decides
 what is done with it: its name, its extension and its contents are never
@@ -61,6 +69,13 @@ OPENED = "opened"
 SETTLED = "settled"
 CAPTURE_STEPS = (CHECKED, OPENED, SETTLED)
 
+# The steps a capture declares when a model is named. `read` is a step of its
+# own because it is the one that takes time and the one that costs money: a
+# person watching a bar move deserves to know which part of it is the part
+# they are paying for.
+READ = "read"
+READING_STEPS = (CHECKED, OPENED, READ, SETTLED)
+
 
 class DocumentActions:
     """Adapt one already-open vault into the allowlisted document handlers."""
@@ -83,12 +98,18 @@ class DocumentActions:
         mid-job would use, and the checkpoints below are where it would land.
         """
         from viva.engine import upload
-        from viva.ingest.reader import live_reading_configured, parking_reader
+        from viva.ingest.reader import build_reader, live_reading_configured
 
         from viva.persona import moment
 
         path = _upload_request(payload)
-        job = self._jobs.open("viva.documents.upload", CAPTURE_STEPS)
+        # One question, asked once, deciding both what the job declares it will
+        # do and what actually happens. Two answers to it would be a bar that
+        # promises a step nothing runs, or one that runs a step nobody was
+        # shown.
+        read_fn, reading = build_reader()
+        job = self._jobs.open("viva.documents.upload",
+                              READING_STEPS if reading else CAPTURE_STEPS)
         try:
             with job:
                 job.checkpoint()
@@ -106,7 +127,9 @@ class DocumentActions:
                     return _with_job(unreadable, job.job_id)
                 job.reached(OPENED)
                 job.checkpoint()
-                result = upload(self._vault, path.name, data, parking_reader())
+                result = upload(self._vault, path.name, data, read_fn)
+                if reading:
+                    job.reached(READ)
                 job.reached(SETTLED)
                 return _with_job(_outcome(result, live_reading_configured()),
                                  job.job_id)
@@ -237,10 +260,20 @@ def _outcome(result: Mapping[str, Any], reading_configured: bool) -> ActionOutco
     when a projector for its type arrives, which is not a thing this product
     can do, and a screen is not where a promise like that gets made.
     """
-    from viva.ingest import DUPLICATE, PARKED
+    from viva.ingest.pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP,
+                                      IDENTITY, PARKED, POSTED)
     from viva.persona import moment
 
+    # Each action the engine can declare, against the sentence for that action
+    # and no other. A reading that did not post is four different facts, and a
+    # table is how they stay four rather than collapsing into the nearest one
+    # the day somebody adds a branch.
+    said = {POSTED: "documents_posted", CONFLICT: "documents_held",
+            GAP: "documents_gap", IDENTITY: "documents_identity",
+            AWAITING: "documents_awaiting"}
     action = result.get("action")
+    if action in said:
+        return ActionOutcome("completed", moment(said[action]))
     if action == PARKED:
         return ActionOutcome("completed", moment(
             "documents_saved_unread" if reading_configured

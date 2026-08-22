@@ -157,23 +157,46 @@ def test_a_caller_cannot_assert_a_job_id_because_the_request_has_no_room_for_one
     assert "job_id" in refusal["error"]["message"]
 
 
-def test_a_configured_environment_still_captures_and_still_reads_nothing(
-        tmp_path, unplugged, monkeypatch):
-    """The money fence is structural. A machine that names a reader gets the
-    same capture as one that does not, because this path asks for the reader
-    that cannot read rather than building one and declining to use it."""
-    monkeypatch.setenv("VIVA_MODEL_ADAPTER", "some-adapter")
-    monkeypatch.setenv("VIVA_MODEL", "some-pinned-model")
+def test_a_machine_that_names_no_model_captures_and_reads_nothing(
+        tmp_path, unplugged):
+    """The permission is the configuration. Until somebody has said yes to
+    naming a model, the reader this path asks for cannot read, so there is no
+    branch in which one runs."""
     vault = _vault(tmp_path)
 
     result = _Sidecar(vault).send(UPLOAD, {"path": str(_file(tmp_path))})
 
     assert result["kind"] == "completed"
-    # A different true sentence, and the same absence of a reading behind it.
-    assert result["message"] == moment("documents_saved_unread")
+    assert result["message"] == moment("documents_saved_no_reader")
     documents = vault.ledger.projection()
     assert documents.read_attempted_docs() == set()
     assert documents.captured_docs() == {RawStore.fingerprint(DOCUMENT): "unknown"}
+
+
+def test_a_machine_that_names_a_model_reads_and_declares_a_step_for_it(
+        tmp_path, monkeypatch):
+    """The step is its own because it is the one that takes time and the one
+    that costs money: a person watching a bar move deserves to know which part
+    of it is the part they are paying for."""
+    from viva.ingest.pipeline import ReadResult
+    import viva.ingest.reader as reader
+
+    read = {"asked": False}
+
+    def a_reader(data, doc_id):
+        read["asked"] = True
+        return ReadResult("unknown", 0.0, None, "nothing usable in it",
+                          model="a-pinned-model")
+
+    monkeypatch.setattr(reader, "build_reader", lambda: (a_reader, True))
+    vault = _vault(tmp_path)
+
+    result = _Sidecar(vault).send(UPLOAD, {"path": str(_file(tmp_path))})
+
+    assert read["asked"] is True
+    assert result["kind"] == "completed"
+    assert vault.ledger.projection().read_attempted_docs() == {
+        RawStore.fingerprint(DOCUMENT)}
 
 
 def test_a_document_the_vault_has_already_settled_is_not_taken_twice(
@@ -293,11 +316,29 @@ def test_the_blob_is_already_sealed_when_the_read_begins_on_this_path(
     assert seen["bytes"] == DOCUMENT
 
 
-@pytest.mark.parametrize("action", ["posted", "awaiting", "conflict", "gap",
-                                   "identity", "something-else", None])
+@pytest.mark.parametrize("action,key", [
+    ("posted", "documents_posted"),
+    ("conflict", "documents_held"),
+    ("gap", "documents_gap"),
+    ("identity", "documents_identity"),
+    ("awaiting", "documents_awaiting"),
+])
+def test_every_action_a_reading_can_declare_has_a_sentence_of_its_own(action, key):
+    """A reading that did not post is four different facts. A person told the
+    reading failed would go looking for a better scan of a document that was
+    read perfectly well."""
+    from viva.desktop_bridge.document_actions import _outcome
+    from viva.persona import moment
+
+    outcome = _outcome({"action": action}, True)
+
+    assert outcome.kind == "completed"
+    assert outcome.message == moment(key)
+
+
+@pytest.mark.parametrize("action", ["something-else", None])
 def test_an_outcome_this_route_has_no_word_for_raises_rather_than_guessing(action):
-    """A route that reads nothing produces two actions and no others. Handing
-    one of the rest the nearest available sentence would put words about a
+    """Handing an action the nearest available sentence would put words about a
     different event in front of a person, so the mapping refuses to answer at
     all."""
     from viva.desktop_bridge.document_actions import _outcome

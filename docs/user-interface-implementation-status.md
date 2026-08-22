@@ -154,7 +154,7 @@ them.
 | `viva.surface.read` | yes | added to the allowlist when a vault opens | yes |
 | `viva.review.answer` | no | derived from the action the review capability declares; no handler is registered for it, so an opened vault refuses it, and the interface offers no control that would call it | no |
 | `viva.review.decline` | yes | added to the allowlist when a vault opens | yes |
-| `viva.documents.upload` | yes | added to the allowlist when a vault opens; the handler takes one path, opens the file itself and captures it, and asks for the reader that cannot read, so no model runs on this route whatever the environment holds | yes |
+| `viva.documents.upload` | yes | added to the allowlist when a vault opens; the handler takes one path, opens the file itself and captures it, then reads it with the reader this machine's configuration builds — which cannot read until somebody has said yes to naming a model, so no model runs on this route until then | yes |
 | `viva.documents.cancel` | yes | added to the allowlist when a vault opens; it names a job the registry minted, never a document, and is the one operation a running job may be interrupted to serve | yes |
 | `viva.maintenance.run` | no | derived from the action the maintenance capability declares; no handler is registered for it, so an opened vault refuses it | no |
 | `viva.settings.read` | yes | the allowlist a sidecar starts with, before any vault is open; it is not a surface read, because a surface read opens a vault and this question has an answer before one exists | yes |
