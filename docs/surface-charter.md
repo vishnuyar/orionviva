@@ -82,7 +82,7 @@ it is the first work the gate needs. **The owner is the registry cycle.**
 
 ### VOICE-137 — one absence sentence per panel; the full account lives in Trust
 **State:** contradicted
-**Code:** Twenty-six fields render as *"… not supplied by this read"* (twenty-five in the past tense, one in the present) across three interface modules: `desktop/src/features/review/Review.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. `desktop/src/features/documents/Documents.tsx:47` renders a six-item enumeration headed *"Unavailable in this preview"*. `desktop/src/app/App.tsx:246` carries a standing admission in the sidebar footer, on every destination at once.
+**Code:** Twenty-seven fields render as *"… not supplied by this read"* (twenty-six in the past tense, one in the present) across three interface modules: `desktop/src/features/review/Review.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. `desktop/src/features/documents/Documents.tsx:86` renders a six-item enumeration headed *"Unavailable in this preview"*. `desktop/src/app/App.tsx:277` carries a standing admission in the sidebar footer, on every destination at once.
 **Test:** none — the subject is rendered copy and its tests are TypeScript. A count of absence sentences per panel is checkable against a rendered component, and that check has no owner until the craft slice.
 
 1. A panel states at most one absence, in one plain sentence, and only when the absence changes what the person should do next.
@@ -195,7 +195,7 @@ demo is a vault the sidecar opens, and not before.
 
 ### VOICE-140 — craft is a gate: tokens, and keyboard reach
 **State:** unmet
-**Code:** The two stylesheets beside `desktop/src/styles/tokens.css` carry 148 raw `font-size` declarations between them — 30 in `desktop/src/styles/shell.css` and 118 in `desktop/src/styles/surfaces.css`. One literal `◎` stands in for an icon at `desktop/src/features/accounts/Accounts.tsx:34`.
+**Code:** The two stylesheets beside `desktop/src/styles/tokens.css` carry 145 raw `font-size` declarations between them — 30 in `desktop/src/styles/shell.css` and 115 in `desktop/src/styles/surfaces.css`. One literal `◎` stands in for an icon at `desktop/src/features/accounts/Accounts.tsx:34`.
 **Test:** none the rule index can name — the index collects test names by parsing Python, and both gates this rule wants read the interface. The token gate exists: `desktop/scripts/check-style-tokens.mjs` runs in the desktop CI job, holds a stylesheet written against the token set to zero raw values, ratchets the two legacy stylesheets by a count that may fall and may not rise, and carries self-checks that each break one of its rules and assert it goes red. The keyboard check does not exist.
 
 1. A type scale, a spacing scale, motion rules — including where motion is forbidden, which is near money and near grades — dark mode and iconography exist as tokens before a new surface ships against them.
