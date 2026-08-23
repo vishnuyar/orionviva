@@ -1,0 +1,119 @@
+@media (max-width: 760px) {
+  .app-shell, .main-content, .content-wrap, .page-heading, .page-actions, .hero-grid, .hero-card, .coverage-card, .section-block, .account-grid, .account-card, .account-card-button, .account-copy, .queue-row, .queue-copy, .detail-panel, .detail-row, .document-library-layout, .document-library, .sample-lifecycle-card, .conversation-thread, .signal-row, .signal-copy, .review-inspection-layout, .review-queue, .review-selected, .activity-layout, .activity-list, .activity-detail { min-width: 0; }
+  .navigation-backdrop {
+    display: block;
+    position: fixed;
+    z-index: 30;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    padding: 0;
+    border: 0;
+    background: rgba(31, 43, 37, .42);
+  }
+  .sidebar {
+    position: fixed;
+    z-index: 40;
+    inset: 0 auto 0 0;
+    width: min(320px, calc(100vw - 32px));
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform .2s ease;
+    box-shadow: 12px 0 30px #26332f1a;
+  }
+  .sidebar-open { transform: translateX(0); visibility: visible; pointer-events: auto; }
+  .mobile-menu, .mobile-close { display: grid; place-items: center; }
+  .mobile-close { margin-left: auto; }
+  button, input, select, textarea { min-height: 44px; }
+  .icon-button { min-width: 44px; }
+  .nav-item, .ask-button, .primary-button, .secondary-button, .text-button, .proof-link, .related-evidence-button, .conversation-prompt { font-size: max(11px, 1em); }
+  .topbar { height: 67px; padding: 0 20px; gap: 12px; }
+  .breadcrumbs { flex: 1; }
+  .ask-button { padding: 8px; font-size: 0; }
+  .ask-button svg { width: 17px; }
+  .content-wrap { padding: 37px 20px 60px; }
+  .page-heading { align-items: start; flex-direction: column; margin-bottom: 20px; }
+  .page-actions { align-items: stretch; flex-direction: column; width: 100%; }
+  .primary-button { width: 100%; justify-content: center; }
+  .hero-grid, .account-grid, .trust-preview-statements ul, .trust-note-list { grid-template-columns: 1fr; }
+  .hero-card, .coverage-card { min-height: 0; padding: 21px; }
+  .hero-amount { font-size: clamp(34px, 13vw, 49px); overflow-wrap: anywhere; }
+  .account-card { padding: 0; }
+  .account-card-button { grid-template-columns: auto 1fr; padding: 14px; }
+  .account-card-button .account-amount { grid-column: 2; }
+  .account-card > .proof-links { padding: 0 14px 12px 65px; }
+  .account-card > .account-amount { justify-self: start; margin: 0 14px 10px 65px; }
+  .account-amount { margin-left: 0; font-size: 16px; white-space: normal; overflow-wrap: anywhere; }
+  .section-block { margin-top: 37px; }
+  .section-heading { align-items: end; }
+  .feature-panel { padding: 24px; }
+  .notice { margin: 14px 20px -2px; }
+  .queue-row, .detail-row { grid-template-columns: 1fr; display: grid; }
+  .sample-lifecycle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .document-library-layout { grid-template-columns: 1fr; }
+  .review-inspection-layout { grid-template-columns: 1fr; }
+  .activity-layout { grid-template-columns: 1fr; }
+  .activity-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-panel-grid { grid-template-columns: 1fr; }
+  .detail-figure { text-align: left; }
+  .corpus-note, .proof-links, .proof-link, .proof-links-label, .source-disclosure, .detail-figure, .signal-value, .action-explanation, .vault-source-card, .vault-source-card *, .breadcrumbs, .page-heading, .section-heading { overflow-wrap: anywhere; white-space: normal; }
+  .corpus-note { margin-bottom: 22px; }
+  .proof-link { line-height: 1.35; }
+}
+
+@media (max-width: 759px) {
+  .evidence-drawer { width: min(440px, calc(100vw - 24px)); padding: 20px 16px; }
+  .conversation-drawer { width: min(440px, calc(100vw - 24px)); padding: 20px 16px; }
+  .evidence-detail-grid { grid-template-columns: 1fr; }
+  .evidence-drawer button, .conversation-drawer button { min-height: 44px; }
+}
+
+@media (max-width: 390px) {
+  .evidence-drawer { width: 100vw; padding: 16px; }
+  .conversation-drawer { width: 100vw; padding: 16px; }
+  .conversation-section-heading { align-items: flex-start; flex-direction: column; }
+  .topbar, .content-wrap { padding-left: 14px; padding-right: 14px; }
+  .notice { margin-left: 14px; margin-right: 14px; }
+  .breadcrumbs > span, .breadcrumbs svg { display: none; }
+  .hero-card, .coverage-card, .feature-panel { padding: 18px; }
+  .sample-lifecycle-grid { grid-template-columns: 1fr; }
+  .document-capture-status, .document-scope, .sample-lifecycle { padding: 16px; }
+  .document-detail-grid { grid-template-columns: 1fr; }
+  .review-detail-grid, .review-more-grid, .review-guidance { grid-template-columns: 1fr; }
+  .activity-detail-grid, .activity-organization-grid { grid-template-columns: 1fr; }
+  .activity-filter-grid, .activity-select { grid-template-columns: 1fr; }
+  .activity-list-row { grid-template-columns: 1fr; }
+  .activity-list-figure { min-width: 0; border-top: 1px solid var(--line); border-left: 0; text-align: left; }
+  .trust-panel { padding: 18px; }
+  .trust-capability-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .trust-state-label { align-self: flex-start; overflow-wrap: normal; word-break: normal; white-space: nowrap; }
+  .account-card-button { grid-template-columns: 1fr; }
+  .account-card-button .account-amount { grid-column: 1; }
+  .account-card > .proof-links { padding-left: 14px; }
+  .signal-row { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
+  .signal-value { grid-column: 2; margin-left: 0; }
+}
+
+@media (max-width: 320px) {
+  .evidence-drawer { width: 100vw; padding: 12px; }
+  .conversation-drawer { width: 100vw; padding: 12px; }
+  .sidebar { width: calc(100vw - 20px); padding-left: 10px; padding-right: 10px; }
+  .topbar, .content-wrap { padding-left: 10px; padding-right: 10px; }
+  .documents-surface { padding: 12px; }
+  .review-inspection { padding: 12px; }
+  .activity-panel { padding: 12px; }
+  .trust-panel { padding: 12px; }
+  .activity-filter-grid { grid-template-columns: 1fr; }
+  .activity-list-row { grid-template-columns: 1fr; }
+  .activity-list-figure { min-width: 0; border-top: 1px solid var(--line); border-left: 0; text-align: left; }
+  .document-capture-status, .document-scope, .sample-lifecycle { padding: 12px; }
+  .section-heading { align-items: start; flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evidence-drawer, .evidence-backdrop, .conversation-drawer, .conversation-backdrop, .activity-panel *, .trust-panel * { transition: none !important; animation: none !important; }
+}

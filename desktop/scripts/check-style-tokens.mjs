@@ -9,7 +9,12 @@ const tokenFile = "tokens.css";
 // The stylesheets that predate the token set. They are ratcheted rather than
 // migrated: their counts may fall and may never rise. Every other stylesheet
 // under the styles directory is held to zero, whatever it is called.
-const ratchetFiles = ["shell.css", "surfaces.css"];
+const ratchetFiles = [
+  "shell.css", "surfaces.css", "surface-base.css", "documents.css",
+  "surface-primitives.css", "review.css", "surface-details.css",
+  "conversation.css", "activity.css", "trust.css", "evidence.css",
+  "surface-responsive.css",
+];
 
 const colourTokens = ["--ink", "--muted", "--line", "--paper", "--panel", "--sage", "--moss", "--rust", "--gold"];
 const typeTokens = ["--text-caption", "--text-fine", "--text-body", "--text-lead", "--text-title", "--text-section", "--text-page", "--text-display"];
@@ -84,18 +89,108 @@ const baseline = {
       "weight": 18
     },
     "surfaces.css": {
-      "colour": 249,
-      "leading": 46,
+      "colour": 0,
+      "leading": 0,
+      "motion": 0,
+      "radius": 0,
+      "space": 0,
+      "type": 0,
+      "weight": 0
+    },
+    "surface-base.css": {
+      "colour": 32,
+      "leading": 8,
+      "motion": 0,
+      "radius": 7,
+      "space": 46,
+      "type": 19,
+      "weight": 10
+    },
+    "documents.css": {
+      "colour": 14,
+      "leading": 5,
+      "motion": 0,
+      "radius": 3,
+      "space": 19,
+      "type": 7,
+      "weight": 0
+    },
+    "surface-primitives.css": {
+      "colour": 36,
+      "leading": 3,
+      "motion": 0,
+      "radius": 5,
+      "space": 32,
+      "type": 17,
+      "weight": 4
+    },
+    "review.css": {
+      "colour": 35,
+      "leading": 8,
+      "motion": 0,
+      "radius": 8,
+      "space": 35,
+      "type": 15,
+      "weight": 3
+    },
+    "surface-details.css": {
+      "colour": 2,
+      "leading": 0,
+      "motion": 0,
+      "radius": 0,
+      "space": 4,
+      "type": 3,
+      "weight": 1
+    },
+    "conversation.css": {
+      "colour": 39,
+      "leading": 8,
+      "motion": 0,
+      "radius": 7,
+      "space": 30,
+      "type": 17,
+      "weight": 3
+    },
+    "activity.css": {
+      "colour": 30,
+      "leading": 6,
+      "motion": 0,
+      "radius": 6,
+      "space": 34,
+      "type": 14,
+      "weight": 7
+    },
+    "trust.css": {
+      "colour": 21,
+      "leading": 4,
+      "motion": 0,
+      "radius": 4,
+      "space": 22,
+      "type": 7,
+      "weight": 3
+    },
+    "evidence.css": {
+      "colour": 32,
+      "leading": 3,
+      "motion": 0,
+      "radius": 6,
+      "space": 23,
+      "type": 13,
+      "weight": 4
+    },
+    "surface-responsive.css": {
+      "colour": 2,
+      "leading": 1,
       "motion": 2,
-      "radius": 46,
-      "space": 294,
-      "type": 120,
-      "weight": 35
+      "radius": 0,
+      "space": 47,
+      "type": 5,
+      "weight": 0
     }
   },
   "icons": {
-    "glyphStandIns": 5,
-    "bareIconSizes": 22
+    "glyphStandIns": 3,
+    "bareIconSizes": 17
   }
 };
 // baseline end
@@ -363,13 +458,15 @@ function syntheticTokenFile() {
 }
 
 function selfCheckStyles() {
-  return new Map([
+  const styles = new Map([
     [tokenFile, syntheticTokenFile()],
     ["shell.css", ".nav-item { color: #123456; padding: 11px; font-size: 13px; }"],
     ["surfaces.css", ".hero-card { border-radius: 12px; transition: transform .2s ease; }"],
     ["capture.css", ".capture-panel { padding: var(--space-md); color: var(--ink); font-size: var(--text-body); }"],
     ["guards.css", guardedClassPrefixes.map((prefix) => `.${prefix} { color: var(--ink); }`).join("\n")],
   ]);
+  for (const name of ratchetFiles) if (!styles.has(name)) styles.set(name, "");
+  return styles;
 }
 
 function selfCheckModules() {

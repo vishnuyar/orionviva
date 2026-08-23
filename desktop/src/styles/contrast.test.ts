@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
 import tokens from "./tokens.css?raw";
 import shell from "./shell.css?raw";
-import surfaces from "./surfaces.css?raw";
+import surfaceBase from "./surface-base.css?raw";
+import documents from "./documents.css?raw";
+import surfacePrimitives from "./surface-primitives.css?raw";
+import review from "./review.css?raw";
+import surfaceDetails from "./surface-details.css?raw";
+import conversation from "./conversation.css?raw";
+import activity from "./activity.css?raw";
+import trust from "./trust.css?raw";
+import evidence from "./evidence.css?raw";
+import surfaceResponsive from "./surface-responsive.css?raw";
 import capture from "./capture.css?raw";
 import picture from "./picture.css?raw";
+
+const surfaces = [surfaceBase, documents, surfacePrimitives, review,
+  surfaceDetails, conversation, activity, trust, evidence,
+  surfaceResponsive].join("\n");
 
 // What a person can actually read, measured rather than judged. The colours
 // come from the token file, the grounds under them from the stylesheets that

@@ -49,8 +49,8 @@
 
 ### PROJ-24 — `check_completeness` reports what is held, not what is missing
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:1671
-**Test:** product/tests/test_tools.py::test_completeness_counts_the_held_document
+**Code:** product/viva/tools/ledger_audit.py:9
+**Test:** product/tests/test_tool_contract.py::test_completeness_counts_the_held_document
 
 1. `check_completeness` reports documents held, documents posted, documents awaiting review, counterparties with no category yet, and each account's as-of date and grade.
 2. It never consults the expectations engine, and never reports which statements are missing.

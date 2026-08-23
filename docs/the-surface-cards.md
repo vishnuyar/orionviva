@@ -14,8 +14,8 @@ A liability speaks `owed` and never `balance`. That rule lives once, as
 
 ### VOICE-61 — a figure whose value denies its quantity's direction fills no hole asserting it
 **State:** enforced
-**Code:** product/viva/tools/runner.py:775
-**Test:** product/tests/test_shape.py::test_a_credit_on_a_card_never_fills_a_hole_that_asserts_a_debt
+**Code:** product/viva/tools/runner_binding.py:257
+**Test:** product/tests/test_shape_binding.py::test_a_credit_on_a_card_never_fills_a_hole_that_asserts_a_debt
 
 1. A hole asking for a quantity that asserts a direction is a sentence asserting that direction.
 2. A figure carrying a value running the other way fills no such hole, and the clause never reaches a person.
@@ -25,7 +25,7 @@ A liability speaks `owed` and never `balance`. That rule lives once, as
 ### VOICE-62 — which quantities assert a direction is declared with the vocabulary
 **State:** enforced
 **Code:** product/viva/quantity.py:119 (`ASSERTS_DIRECTION`)
-**Test:** product/tests/test_tools.py::test_which_quantities_assert_a_direction_is_declared_with_the_vocabulary
+**Test:** product/tests/test_tool_compute.py::test_which_quantities_assert_a_direction_is_declared_with_the_vocabulary
 
 1. The set lives in the module that owns the quantity vocabulary, is closed, and grows by editing it there.
 2. Every member of it is a member of the quantity vocabulary.
@@ -43,7 +43,7 @@ A liability speaks `owed` and never `balance`. That rule lives once, as
 ### VOICE-64 — every figure carries its own as-of date and grade
 **State:** enforced
 **Code:** product/viva/tools/envelope.py:138 (`figure`)
-**Test:** product/tests/test_shape.py::test_the_figure_the_hole_asked_about_is_spoken
+**Test:** product/tests/test_shape_binding.py::test_the_figure_the_hole_asked_about_is_spoken
 
 1. A figure carries the date it is good for; it is never dressed as "current".
 2. A figure carries its grade, and a composed total that mixes vintages says so.

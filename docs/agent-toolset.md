@@ -24,8 +24,8 @@
 
 ### PROJ-15 — every figure in an answer is a tool result, cited by id
 **State:** enforced
-**Code:** product/viva/tools/runner.py:1375
-**Test:** product/tests/test_tools.py::test_a_number_no_tool_returned_is_refused
+**Code:** product/viva/tools/runner_binding.py:104 · product/viva/tools/runner_delivery.py:219
+**Test:** product/tests/test_tool_runner.py::test_a_number_no_tool_returned_is_refused
 
 1. A number no tool emitted has no id, so it cannot be cited and cannot be said.
 2. A money-kind figure citing no record is refused before the answer is delivered.
@@ -41,16 +41,16 @@
 
 ### PROJ-17 — a read's requirement is in the schema the model is shown
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:744
-**Test:** product/tests/test_tools.py::test_the_detailed_read_declares_in_its_schema_that_it_takes_filters
+**Code:** product/viva/tools/ledger_movements.py:229
+**Test:** product/tests/test_tool_limits.py::test_the_detailed_read_declares_in_its_schema_that_it_takes_filters
 
 1. `list_movements` declares `filters` required in its own schema, so a call naming nothing is refused where arguments are validated rather than after the read is entered.
 2. A filter a read honours but that does not narrow it — `currency` on the detailed read — is named in the description as the trap it is.
 
 ### PROJ-18 — totals and rows are two verbs
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:1602, product/viva/tools/ledger_tools.py:777
-**Test:** product/tests/test_tools.py::test_the_transactions_read_returns_totals_and_no_rows
+**Code:** product/viva/tools/ledger_vocabulary.py:115, product/viva/tools/ledger_movements.py:262
+**Test:** product/tests/test_tool_limits.py::test_the_transactions_read_returns_totals_and_no_rows
 
 1. `query_ledger` answers in totals and returns no rows.
 2. `list_movements` returns the rows, and refuses a call naming none of account, category, merchant, tag or window.
@@ -58,7 +58,7 @@
 
 ### PROJ-25 — the model is told what day it is
 **State:** enforced
-**Code:** product/viva/speak.py:161
+**Code:** product/viva/planners.py:161
 **Test:** product/tests/test_speak.py::test_the_day_a_turn_is_asked_on_reaches_the_model
 
 1. The system message carries today's date as a template field of the pinned persona file.

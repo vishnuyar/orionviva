@@ -17,7 +17,7 @@
 ### PROG-31 — An inferred figure is graded and visible, never a silent plug
 **State:** enforced
 **Code:** product/viva/ledger/projection/balances.py:86 (`balance`), :99-105, :110-121
-**Test:** product/tests/test_tools.py::test_balances_match_the_projection_and_carry_grades (assertion 1), product/tests/test_pipeline.py::test_gap_between_months_is_surfaced_not_invented (assertion 2)
+**Test:** product/tests/test_tool_contract.py::test_balances_match_the_projection_and_carry_grades (assertion 1), product/tests/test_pipeline.py::test_gap_between_months_is_surfaced_not_invented (assertion 2)
 
 1. A lone attested closing with nothing to reconcile against is graded `verified`; an attested closing that its opening and transactions reconcile to is graded `corroborated`, rising to `verified` where a person has confirmed the reading; a balance replayed with no attested closing to check it against is graded `unverified` and carries the explanation why.
 2. A gap is surfaced as a quantified gap, never closed by a plug the reader cannot see.
@@ -33,7 +33,7 @@
 
 ### PROG-33 — Reconciliation is the gap detector
 **State:** enforced
-**Code:** product/viva/ledger/projection/balances.py:108 (`check_balance_identity`), product/viva/ingest/pipeline.py:183, product/viva/ingest/diagnose.py
+**Code:** product/viva/ledger/projection/balances.py:108 (`check_balance_identity`), product/viva/ingest/statement_projector.py:89, product/viva/ingest/diagnose.py
 **Test:** product/tests/test_pipeline.py::test_gap_held_item_reports_the_held_balance, product/tests/test_pipeline.py::test_out_of_order_uploads_self_heal
 
 1. Opening balance plus the transactions seen must equal the closing balance the statement states.

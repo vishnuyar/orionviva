@@ -59,8 +59,8 @@ model writes no digits, and every clause carries a hole).
 
 ### VOICE-57 — a figure fills a hole only when kind, quantity and set all agree
 **State:** enforced
-**Code:** product/viva/tools/runner.py:760
-**Test:** product/tests/test_shape.py::test_a_thing_of_the_wrong_kind_cannot_fill_a_hole
+**Code:** product/viva/tools/runner_binding.py:242
+**Test:** product/tests/test_shape_binding.py::test_a_thing_of_the_wrong_kind_cannot_fill_a_hole
 
 1. A hole holding a magnitude must say what the magnitude is of, and what set it was taken over.
 2. A figure that states no set fills no hole asking for one; a total of everything cannot be spoken as one counterparty's.

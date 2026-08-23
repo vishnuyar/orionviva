@@ -158,7 +158,10 @@ def test_every_way_a_turn_can_refuse_is_raised_somewhere_in_the_source():
 
     package = pathlib.Path(persona.__file__).resolve().parent.parent
     raised = set()
-    for path in (package / "tools" / "runner.py", package / "speak.py"):
+    for path in (package / "tools" / "runner.py",
+                 package / "tools" / "runner_binding.py",
+                 package / "tools" / "runner_delivery.py",
+                 package / "speak.py", package / "planners.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         declaring = {id(node) for assign in ast.walk(tree)
                      if isinstance(assign, ast.Assign)

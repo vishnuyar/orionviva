@@ -77,7 +77,7 @@ const legacyIdentifiers = ["DemoState", "demoState", "snapshotFromBridge", "crea
 function importSpecifiers(text) {
   return [...text.matchAll(/(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g)].map((match) => match[1]);
 }
-function isTest(name) { return /\.(test|spec)\.(ts|tsx)$/.test(name); }
+function isTest(name) { return /\.(test|spec|testSupport)\.(ts|tsx)$/.test(name); }
 function isTestSupport(name) { return name === "test/surfaceScenarios.ts"; }
 function importsSegment(specifier, segment) { return specifier.split("/").includes(segment); }
 function isTestLibrary(specifier) { return specifier === "vitest" || specifier === "react" || specifier.startsWith("@testing-library/"); }

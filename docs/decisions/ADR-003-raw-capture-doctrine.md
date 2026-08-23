@@ -22,7 +22,7 @@ _This records reasoning, not current behaviour._
 5. Extraction interfaces are built capture-first: the raw exchange is written before parsing.
 6. A recorded request may elide an image payload, replacing it with the page hash, and only while the page cache is retained — which puts the page cache on the never-pruned list.
 
-**Exception:** assertion 2 is unmet on the ingest path. `read_recorded` (product/viva/ledger/events.py:271) carries the model, the prompt version, the input mode, the raw response text, whether it parsed, and the cost and token counts — and no request field of any kind. The image-elision carve-out (core/vivacore/models/base.py:169) describes the paths that *do* record a request; it is not the only gap, because one path records none. The answering path stores the request verbatim (product/viva/speak.py:600), so the difference is a choice rather than a limit.
+**Exception:** assertion 2 is unmet on the ingest path. `read_recorded` (product/viva/ledger/events.py:271) carries the model, the prompt version, the input mode, the raw response text, whether it parsed, and the cost and token counts — and no request field of any kind. The image-elision carve-out (core/vivacore/models/base.py:169) describes the paths that *do* record a request; it is not the only gap, because one path records none. The answering path stores the request verbatim (product/viva/session.py:90), so the difference is a choice rather than a limit.
 
 ## Why
 

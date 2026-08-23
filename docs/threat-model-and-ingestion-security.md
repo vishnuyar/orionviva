@@ -29,7 +29,7 @@
 
 ### ING-72 — Deterministic verification is the reference monitor
 **State:** enforced
-**Code:** core/vivacore/verify/arithmetic.py:44, product/viva/ingest/pipeline.py:329-336 (a statement that does not reconcile is held at `conflicted`, not posted)
+**Code:** core/vivacore/verify/arithmetic.py:44, product/viva/ingest/statement_projector.py:202-209 (a statement that does not reconcile is held at `conflicted`, not posted)
 **Test:** product/tests/test_pipeline.py::test_unreconciled_statement_is_conflict_not_posted
 
 1. A figure a model reports is checked by arithmetic that does not consult the model.
@@ -47,7 +47,7 @@
 
 ### ING-74 — The poisoned document and the exact exchange are retained
 **State:** enforced
-**Code:** product/viva/ingest/raw_store.py:51 (`put`, capture before judgment), product/viva/ledger/events.py:271 (`read_recorded`), product/viva/ingest/pipeline.py:769
+**Code:** product/viva/ingest/raw_store.py:51 (`put`, capture before judgment), product/viva/ledger/events.py:271 (`read_recorded`), product/viva/ingest/brokerage_projector.py:98
 **Test:** product/tests/test_pipeline.py::test_read_that_throws_is_recorded_not_orphaned, product/tests/test_raw_store.py::test_put_is_content_addressed
 
 1. Every uploaded file is captured, encrypted and content-addressed before anything parses it.

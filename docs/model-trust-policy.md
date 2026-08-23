@@ -7,8 +7,8 @@
 
 ### VOICE-90 — trust attaches to the system around a model, never to a model
 **State:** enforced-with-exception
-**Code:** product/viva/tools/runner.py:760, product/viva/ledger/events.py:558
-**Test:** product/tests/test_shape.py::test_a_thing_of_the_wrong_kind_cannot_fill_a_hole
+**Code:** product/viva/tools/runner_binding.py:242, product/viva/ledger/events.py:558
+**Test:** product/tests/test_shape_binding.py::test_a_thing_of_the_wrong_kind_cannot_fill_a_hole
 
 1. A model's output becomes a fact in the ledger only after the system has checked it.
 2. Models extract, parse and converse; they never certify.

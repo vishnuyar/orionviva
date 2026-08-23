@@ -61,14 +61,14 @@
 
 ### MON-93 — the spending answer says what its total is made of
 **State:** enforced-with-exception
-**Code:** product/viva/answer.py:191 (`answer_spending`); product/viva/tools/ledger_tools.py:1151 (the uncategorized caveat), :1172 (the grade over the movements counted)
+**Code:** product/viva/answer.py:191 (`answer_spending`); product/viva/tools/ledger_aggregates.py:211 (the uncategorized caveat), :232 (the grade over the movements counted)
 **Test:** product/tests/test_categorize.py::test_answer_spending_reports_categories
 
 1. The spending answer carries a grade — how much of it is confirmed versus model-suggested — and provenance, the source lines.
-2. `answer_spending` reports the uncategorized share honestly, as a caveat beside the total rather than folded into it (product/tests/test_tools.py::test_an_amount_inside_a_caveat_is_written_like_every_other_amount).
+2. `answer_spending` reports the uncategorized share honestly, as a caveat beside the total rather than folded into it (product/tests/test_tool_runner.py::test_an_amount_inside_a_caveat_is_written_like_every_other_amount).
 3. A total made of `unverified` guesses says so.
 
-**Exception:** the confirmed-versus-suggested *mix* of assertion 1 is not computed anywhere. `answer_spending` returns an `Answer` with `grade=None` and no provenance, and the tool read states a single grade — the weakest of the counted movements' grades (product/viva/tools/ledger_tools.py:1172) — so a total holding one unverified assignment reads `unverified`, which is assertion 3, and how much of it is confirmed is never stated. The uncategorized caveat on the tool read is written only where the read is grouped by category (:1152).
+**Exception:** the confirmed-versus-suggested *mix* of assertion 1 is not computed anywhere. `answer_spending` returns an `Answer` with `grade=None` and no provenance, and the tool read states a single grade — the weakest of the counted movements' grades (product/viva/tools/ledger_aggregates.py:232) — so a total holding one unverified assignment reads `unverified`, which is assertion 3, and how much of it is confirmed is never stated. The uncategorized caveat on the tool read is written only where the read is grouped by category (:212).
 
 ## Why
 

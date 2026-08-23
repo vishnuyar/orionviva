@@ -12,7 +12,7 @@
 **Test:** product/tests/test_reader_two_phase.py::test_classify_unreadable_is_unknown_not_a_guess, product/tests/test_pipeline.py::test_unreconciled_statement_is_conflict_not_posted
 
 1. A document's type comes from a model, carries a confidence, and can be wrong.
-2. `unknown` is a first-class type: the document is captured, stored raw and parked rather than discarded, and re-read once a projector exists. *The extraction half is not implemented: a type with no projector is parked straight after the classify pass (product/viva/ingest/reader.py:100-107) and only a projectable type is routed onward (product/viva/ingest/pipeline.py:813), so no generic claim extraction runs, there are no claims for fewer checks to apply to, and no answer stands on one to say so (X2).*
+2. `unknown` is a first-class type: the document is captured, stored raw and parked rather than discarded, and re-read once a projector exists. *The extraction half is not implemented: a type with no projector is parked straight after the classify pass (product/viva/ingest/reader.py:100-107) and only a projectable type is routed onward (product/viva/ingest/brokerage_projector.py:142), so no generic claim extraction runs, there are no claims for fewer checks to apply to, and no answer stands on one to say so (X2).*
 3. A misclassification degrades to a visible conflict — the wrong checks fail loudly — and never to silent corruption.
 4. Which checks run for a type is a registry row, not code.
 
@@ -76,7 +76,7 @@
 
 ### ING-47 — Observations accumulate; they do not just dedup
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/raw_store.py:51-61 (the content address is the fingerprint, so the same bytes are one document), product/viva/ingest/pipeline.py:404 (`_period_already_posted` — the same account and period end, whatever the bytes), :637 (a pay stub recognised by the decomposition it would write), product/viva/ingest/pipeline.py:339 (`_try_corroboration`), :193 (`heal_corroboration`)
+**Code:** product/viva/ingest/raw_store.py:51-61 (the content address is the fingerprint, so the same bytes are one document), product/viva/ingest/statement_projector.py:277 (`_period_already_posted` — the same account and period end, whatever the bytes), product/viva/ingest/paystub_projector.py:100 (a pay stub recognised by the decomposition it would write), product/viva/ingest/statement_projector.py:212 (`_try_corroboration`), :99 (`heal_corroboration`)
 **Test:** product/tests/test_pipeline.py::test_reupload_is_duplicate_no_double_post, product/tests/test_pipeline.py::test_a_redownloaded_statement_does_not_post_its_transactions_twice, product/tests/test_pipeline.py::test_a_reissued_statement_for_a_posted_period_is_held_not_posted, product/tests/test_brokerage.py::test_a_redownloaded_brokerage_statement_does_not_post_its_activity_twice, product/tests/test_paystub.py::test_a_second_copy_of_a_stub_is_named_a_duplicate_not_a_missing_deposit, product/tests/test_transfers.py::test_cross_document_corroboration_closes_the_gap, product/tests/test_transfers.py::test_corroboration_heals_in_either_order, product/tests/test_transfers.py::test_a_real_misread_is_not_falsely_corroborated
 
 1. The same real transaction seen again — an overlapping statement, a re-upload, a second document type — merges by fingerprint into one fact, never a second copy.
@@ -96,13 +96,13 @@
 
 ### ING-49 — Completeness is data
 **State:** enforced-with-exception
-**Code:** product/viva/tools/ledger_tools.py:1671 (`check_completeness`), :400 (`_attested_coverage` — what each account's statements attest, and what falls short of the window asked for)
-**Test:** product/tests/test_tools.py::test_completeness_counts_the_held_document, product/tests/test_tools.py::test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so, product/tests/test_tools.py::test_a_window_outside_what_is_attested_covers_nothing_and_says_which
+**Code:** product/viva/tools/ledger_audit.py:9 (`check_completeness`), product/viva/tools/ledger_common.py:400 (`_attested_coverage` — what each account's statements attest, and what falls short of the window asked for)
+**Test:** product/tests/test_tool_contract.py::test_completeness_counts_the_held_document, product/tests/test_tool_runner.py::test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so, product/tests/test_tool_runner.py::test_a_window_outside_what_is_attested_covers_nothing_and_says_which
 
 1. What is missing is one query rather than an inference: `check_completeness` reports every document held, posted and awaiting review, and the date each account's evidence is good as of.
 2. Every aggregate states its coverage honestly — the periods its statements attest, and a caveat naming each account in scope that falls short.
 
-**Exception:** the commitment also had an account carry an *expected cadence* ("monthly statement, ~5th") so that a statement nobody sent is itself a gap. `account_opened` (product/viva/ledger/events.py:160) has no cadence field, and a gap is detectable only where a posted statement's opening fails to continue from the balance held (`GAP`, product/viva/ingest/pipeline.py:61). A period with no statement at all is silence rather than a named hole.
+**Exception:** the commitment also had an account carry an *expected cadence* ("monthly statement, ~5th") so that a statement nobody sent is itself a gap. `account_opened` (product/viva/ledger/events.py:160) has no cadence field, and a gap is detectable only where a posted statement's opening fails to continue from the balance held (`GAP`, product/viva/ingest/pipeline_models.py:61). A period with no statement at all is silence rather than a named hole.
 
 ### ING-90 — Two timelines per fact: when it happened, and when we learned it
 **State:** by-review-with-exception

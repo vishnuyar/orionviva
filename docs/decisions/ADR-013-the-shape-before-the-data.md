@@ -12,8 +12,8 @@ _This records reasoning, not current behaviour._
 
 ### ADR-013 — A run holds a ledger of what it established, and an answer may say only what is in it
 **State:** enforced-with-exception
-**Code:** product/viva/tools/shape.py:230 · product/viva/tools/runner.py:652 · product/viva/tools/runner.py:761 · product/viva/tools/runner.py:799 · product/viva/tools/compute.py:380 · product/viva/speak.py:604
-**Test:** product/tests/test_shape.py::test_a_figure_that_states_no_set_fills_no_hole_asking_for_one
+**Code:** product/viva/tools/shape.py:230 · product/viva/tools/runner_binding.py:134 · product/viva/tools/runner_binding.py:243 · product/viva/tools/runner_binding.py:281 · product/viva/tools/compute.py:380 · product/viva/session.py:94
+**Test:** product/tests/test_shape_binding.py::test_a_figure_that_states_no_set_fills_no_hole_asking_for_one
 
 1. A turn runs in three stages and the order is enforced: the shape, then the reads, then the bindings.
 2. The shape is committed before any tool is on the table — clauses of literal words with typed holes, and no digits anywhere.
@@ -43,7 +43,7 @@ _This records reasoning, not current behaviour._
 26. A statement drawn from one figure's boundary is placed under the clause that bound that figure, said once within it and again under the next clause that makes it.
 27. The one statement that is about the answer rather than about a figure — how many of the person's accounts the answer covers — is computed over the answer, placed once after the clauses, and placed only where every stated figure declares, as data, exactly which accounts it covers.
 
-**Exception:** a `supposed` hole is exempt from rule 4 by construction — it holds a value the person put into their own question, so it cites no record and carries no grade, and a clause no read touched can still be spoken (product/viva/render.py:52, :382; product/viva/tools/runner.py:676). Separately, the prose a model writes *around* a hole is read by nobody before a person reads it. See *Why*, under the residuals, for what that costs and for the three narrower cases that ship open with it.
+**Exception:** a `supposed` hole is exempt from rule 4 by construction — it holds a value the person put into their own question, so it cites no record and carries no grade, and a clause no read touched can still be spoken (product/viva/render.py:52, :382; product/viva/tools/runner_binding.py:158). Separately, the prose a model writes *around* a hole is read by nobody before a person reads it. See *Why*, under the residuals, for what that costs and for the three narrower cases that ship open with it.
 
 ## Why
 

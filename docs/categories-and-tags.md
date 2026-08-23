@@ -70,7 +70,7 @@
 **Test:** product/tests/test_tags.py::test_tags_are_normalised_and_alias_separately_from_categories
 
 1. A tag alias and a category alias are separate maps; merging one never merges the other.
-2. `known_tags()` is that vocabulary in canonical labels only, offered before a new tag is minted (product/viva/ledger/projection/categories.py:358; product/viva/tools/ledger_tools.py:327, where a tag the vault does not hold is refused with the known ones).
+2. `known_tags()` is that vocabulary in canonical labels only, offered before a new tag is minted (product/viva/ledger/projection/categories.py:358; product/viva/tools/ledger_common.py:327, where a tag the vault does not hold is refused with the known ones).
 
 ### MON-82 — punctuation folds deterministically; nothing past it folds without a ruling
 **State:** enforced
@@ -88,7 +88,7 @@
 
 1. `subcategory_merges()` names every group the separator fold brought together, and the enrichment run prints it.
 2. A group whose spellings met because a person ruled them the same is left out (product/tests/test_category_identity.py::test_a_merge_a_person_ruled_is_not_reported_as_one_nobody_asked_about).
-3. A spending read grouped by subcategory carries the fold as a caveat beside the figures it changed (product/viva/tools/ledger_tools.py:957).
+3. A spending read grouped by subcategory carries the fold as a caveat beside the figures it changed (product/viva/tools/ledger_aggregates.py:107).
 
 ### MON-84 — a model may propose a fold and may never apply one
 **State:** enforced

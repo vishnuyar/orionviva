@@ -9,7 +9,7 @@
 
 ### ING-50 — A document's type never comes from its filename
 **State:** enforced
-**Code:** product/viva/ingest/reader.py:62 (`classify` reads the document), product/viva/ingest/pipeline.py:761 (`filename` is recorded on the capture event and is not used to route)
+**Code:** product/viva/ingest/reader.py:62 (`classify` reads the document), product/viva/ingest/brokerage_projector.py:90 (`filename` is recorded on the capture event and is not used to route)
 **Test:** product/tests/test_reader_two_phase.py::test_classify_unreadable_is_unknown_not_a_guess
 
 1. The type is extracted from the document's content and graded.
@@ -36,7 +36,7 @@ _No profile for a tax form is registered, so such a document classifies and park
 
 ### ING-53 — The leg a document attests and the leg the system supplies carry different grades
 **State:** enforced
-**Code:** product/viva/ledger/events.py:79-82, product/viva/ingest/pipeline.py:480 (`account_grade=(t.grade or VERIFIED)`), product/viva/ledger/postings.py
+**Code:** product/viva/ledger/events.py:79-82, product/viva/ingest/statement_projector.py:353 (`account_grade=(t.grade or VERIFIED)`), product/viva/ledger/postings.py
 **Test:** product/tests/test_postings.py::test_withdrawal_balances_and_grades
 
 1. A posting the document states carries the grade its attestation earns.

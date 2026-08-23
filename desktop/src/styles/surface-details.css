@@ -1,0 +1,25 @@
+.account-detail-list, .document-list { border-top: 1px solid var(--line); margin: 24px 0; }
+.detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--line);
+}
+.detail-row.identity-state { justify-content: start; }
+.detail-row.identity-state > div { width: 100%; }
+.detail-row-button { background: transparent; border-left: 0; border-right: 0; border-top: 0; border-radius: 0; }
+.detail-row > .detail-row-button { flex: 1; min-width: 0; padding: 0; border-bottom: 0; }
+.detail-figure .figure-trigger, .selected-account-figure { color: #385347; font-family: "Playfair Display", Georgia, serif; font-size: 18px; font-weight: 700; }
+.detail-row div { display: grid; gap: 5px; }
+.detail-row strong { color: #506057; font-size: 12px; }
+.detail-figure { text-align: right; }
+.detail-figure strong { font-size: 13px; }
+.detail-row-button {
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  border-radius: 0;
+}

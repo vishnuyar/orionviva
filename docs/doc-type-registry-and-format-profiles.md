@@ -55,7 +55,7 @@ _Profiles are authored by hand today. The versioning the rule depends on exists;
 
 ### ING-37 — A profile is versioned, and every read records the version that produced it
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/prompt_library.py:60 (`compose_extraction` yields `extract:<base>+<fragment>`), :71 (`resolve` reconstructs any recorded version), product/viva/ingest/pipeline.py:795 (one `ReadRecorded` per phase)
+**Code:** product/viva/ingest/prompt_library.py:60 (`compose_extraction` yields `extract:<base>+<fragment>`), :71 (`resolve` reconstructs any recorded version), product/viva/ingest/brokerage_projector.py:124 (one `ReadRecorded` per phase)
 **Test:** product/tests/test_prompt_library.py::test_active_versions_are_frozen, product/tests/test_prompt_library.py::test_a_missing_version_raises_rather_than_defaulting, product/tests/test_prompt_library.py::test_resolve_round_trips_every_kind_of_version
 
 1. Prompt files are append-only: changing a prompt means adding a new id, never editing a released one.
@@ -66,7 +66,7 @@ _Profiles are authored by hand today. The versioning the rule depends on exists;
 
 ### ING-30 — A held document is polymorphic, and consumers route on the registry
 **State:** by-review
-**Code:** product/viva/ingest/registry.py:143 (`identity_of_facts`), product/viva/ingest/pipeline.py:167, :212, :818
+**Code:** product/viva/ingest/registry.py:143 (`identity_of_facts`), product/viva/ingest/statement_projector.py:73, :118, product/viva/ingest/brokerage_projector.py:147
 **Test:** none
 
 1. Anything that walks the held set asks the registry which identity a facts blob belongs to before constructing a typed object from it.

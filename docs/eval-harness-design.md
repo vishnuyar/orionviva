@@ -61,7 +61,7 @@
 ### PROG-29 — The answer path returns structure, not prose
 **State:** enforced-with-exception
 **Code:** product/viva/tools/envelope.py:1 (figures carry value, quantity, kind, grade, `record_ids` and boundary)
-**Test:** product/tests/test_tools.py::test_balances_match_the_projection_and_carry_grades, product/tests/test_tools.py::test_every_figure_a_tool_emits_says_what_it_measures
+**Test:** product/tests/test_tool_contract.py::test_balances_match_the_projection_and_carry_grades, product/tests/test_tool_contract.py::test_every_figure_a_tool_emits_says_what_it_measures
 
 1. Every read returns a figure with its grade and the records behind it, not a bare number.
 2. A correction is appended as an event and never overwrites a value.

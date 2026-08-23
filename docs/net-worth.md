@@ -29,13 +29,13 @@
 
 ### MON-25 — a liability's own magnitude is emitted as `owed`, never as `balance`
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:149 (`_measure_of`), :1308 (`_PART_MEASURES`), :1384 (`_line_word`), product/viva/quantity.py:46
-**Test:** product/tests/test_tools.py::test_no_read_states_what_is_owed_as_what_is_held, product/tests/test_shape.py::test_what_is_owed_cannot_fill_a_hole_that_asked_for_what_is_held
+**Code:** product/viva/tools/ledger_common.py:149 (`_measure_of`), product/viva/tools/ledger_aggregates.py:368 (`_PART_MEASURES`), :444 (`_line_word`), product/viva/quantity.py:46
+**Test:** product/tests/test_tool_contract.py::test_no_read_states_what_is_owed_as_what_is_held, product/tests/test_shape_binding.py::test_what_is_owed_cannot_fill_a_hole_that_asked_for_what_is_held
 
 1. Every read that emits a liability's own magnitude — the balances read, a net-worth line, the liabilities subtotal, the provenance read — names it `owed`.
 2. A subtotal declares what its side measures however few accounts are in it: `assets` declares `balance` even in a vault whose only account is an overpaid card.
 3. `owed` carries the convention the bill prints, so an overpaid card is emitted negative and means it, and one card is the same figure from every read.
-4. A debt added to a deposit refuses, and a net worth assembled by hand out of the two sides refuses (product/tests/test_tools.py::test_what_is_owed_does_not_add_to_what_is_held).
+4. A debt added to a deposit refuses, and a net worth assembled by hand out of the two sides refuses (product/tests/test_tool_compute.py::test_what_is_owed_does_not_add_to_what_is_held).
 5. A clause asking about a balance cannot be filled with a debt; the binding refuses.
 
 ### MON-86 — trust the person; provable-versus-not is an audience question

@@ -37,7 +37,7 @@
 
 ### MON-71 — an ambiguous statement is held, and the ruling teaches the map
 **State:** enforced
-**Code:** product/viva/ingest/pipeline.py:414 (the `identity` hold); product/viva/ingest/review.py:111 (`apply_identity_ruling`)
+**Code:** product/viva/ingest/statement_projector.py:287 (the `identity` hold); product/viva/ingest/review.py:111 (`apply_identity_ruling`)
 **Test:** product/tests/test_pipeline.py::test_ambiguous_identity_merge_learns_the_alias
 
 1. The statement is held under an `identity` reason carrying the candidate account, its name and the reason — never posted on a guess.

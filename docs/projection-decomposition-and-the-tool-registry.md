@@ -26,8 +26,8 @@
 
 ### PROJ-62 — a structured filter object, validated against the vault's own vocabulary
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:112
-**Test:** product/tests/test_tools.py::test_unknown_category_refusal_names_the_vocabulary
+**Code:** product/viva/tools/ledger_common.py:112
+**Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary
 
 1. A read takes a typed filter object, never a query string and never SQL.
 2. Every filter value is validated against the vault's own learned values — its accounts, categories, tags, counterparties and currencies — and a value the vault does not hold refuses, naming the values it does hold.
@@ -46,7 +46,7 @@
 ### PROJ-64 — one result envelope, refusal first-class
 **State:** enforced
 **Code:** product/viva/tools/envelope.py:138
-**Test:** product/tests/test_tools.py::test_unknown_tool_is_a_refusal_not_an_exception
+**Test:** product/tests/test_tool_contract.py::test_unknown_tool_is_a_refusal_not_an_exception
 
 1. Every tool returns one envelope: figures, grade, value-time, record ids, coverage, caveats, and a machine-tagged refusal when no figure can be asserted.
 2. A call never raises across the tool boundary; an unknown tool, an unknown argument, a wrong type or a value outside an enum comes back as a refusal that names what would have been accepted.
@@ -56,7 +56,7 @@
 ### PROJ-1 — the shape is committed before anything is read
 **State:** enforced
 **Code:** product/viva/tools/runner.py:489, product/viva/tools/shape.py:353 (`Shape`), product/viva/tools/runner.py:346 (`SHAPE_TOOL`)
-**Test:** product/tests/test_shape.py::test_the_shape_is_committed_before_anything_is_read
+**Test:** product/tests/test_shape_grammar.py::test_the_shape_is_committed_before_anything_is_read
 
 1. An answer's clauses — literal words with typed holes — are committed before any tool is on the table.
 2. A read attempted before a shape refuses the turn; a delivery with no shape refuses the turn; a shape offered after a read is refused.
@@ -65,7 +65,7 @@
 ### PROJ-2 — a model writes no digits, and every clause carries a hole
 **State:** enforced
 **Code:** product/viva/tools/shape.py:246, product/viva/tools/shape.py:334, product/viva/tools/shape.py:226 (`Clause`)
-**Test:** product/tests/test_shape.py::test_no_words_in_a_shape_may_carry_a_digit
+**Test:** product/tests/test_shape_grammar.py::test_no_words_in_a_shape_may_carry_a_digit
 
 1. A clause whose own literal words carry any digit does not come into being.
 2. A clause placing no hole does not come into being.
@@ -76,7 +76,7 @@
 ### PROJ-3 — a hole declares what its number is of and what set it is over
 **State:** enforced
 **Code:** product/viva/tools/shape.py:179
-**Test:** product/tests/test_shape.py::test_a_hole_holding_a_magnitude_must_say_what_set_it_is_over
+**Test:** product/tests/test_shape_binding.py::test_a_hole_holding_a_magnitude_must_say_what_set_it_is_over
 
 1. A hole holding a magnitude declares the quantity it asks for, from the closed vocabulary the tools declare into.
 2. A hole holding a measurement also declares the set it is a number over: the axes its sentence narrows on, or the whole of what the quantity ranges over.
@@ -95,8 +95,8 @@
 
 ### PROJ-5 — a property of a figure the machine holds is placed by the machine
 **State:** enforced
-**Code:** product/viva/tools/runner.py:1408
-**Test:** product/tests/test_shape.py::test_a_boundary_is_said_once_inside_the_clause_that_made_it
+**Code:** product/viva/tools/runner_delivery.py:272
+**Test:** product/tests/test_shape_claims.py::test_a_boundary_is_said_once_inside_the_clause_that_made_it
 
 1. A figure's scope, its caveats and its grade are placed by the runner and are never asked for through a hole.
 2. A statement drawn from one figure's boundary is placed under the clause that bound that figure, and again under the next clause that makes it.
@@ -107,7 +107,7 @@
 ### PROJ-6 — `compute` takes figure ids and stipulations, never a typed number
 **State:** enforced
 **Code:** product/viva/tools/compute.py:524
-**Test:** product/tests/test_tools.py::test_compute_refuses_a_number_typed_in_and_names_what_it_has
+**Test:** product/tests/test_tool_compute.py::test_compute_refuses_a_number_typed_in_and_names_what_it_has
 
 1. An operand is a figure some tool emitted in this run, named by its id, or a value the person stipulated in this turn's question and which the question demonstrably contains.
 2. The expression is parsed, never evaluated: four operators, parentheses, integer literals and bound names only.
@@ -119,7 +119,7 @@
 ### PROJ-7 — an empty optional field means the field was not sent
 **State:** enforced
 **Code:** product/viva/tools/registry.py:107
-**Test:** product/tests/test_tools.py::test_an_empty_optional_box_narrows_nothing_and_is_said_to_narrow_nothing
+**Test:** product/tests/test_tool_vocabulary.py::test_an_empty_optional_box_narrows_nothing_and_is_said_to_narrow_nothing
 
 1. An optional field the schema names, arriving empty, is treated as a field that was not sent — decided once in `Registry.call`, so it is true of every tool at once.
 2. A required field sent empty is still a fault.
@@ -128,8 +128,8 @@
 
 ### PROJ-8 — `nature` is not a filter
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:112
-**Test:** product/tests/test_tools.py::test_nature_is_not_a_filter_any_read_offers
+**Code:** product/viva/tools/ledger_common.py:112
+**Test:** product/tests/test_tool_vocabulary.py::test_nature_is_not_a_filter_any_read_offers
 
 1. No read accepts `nature` as a filter, and the tool descriptions offer none.
 2. A movement's derived nature is untouched: it still decides what counts as spending, and it still comes back on every row a listing returns.
@@ -137,7 +137,7 @@
 ### PROJ-9 — a read records what narrowed it, and every figure declares its set
 **State:** enforced
 **Code:** product/viva/tools/envelope.py:295
-**Test:** product/tests/test_tools.py::test_every_filter_a_read_honours_can_be_said_in_the_answer
+**Test:** product/tests/test_tool_vocabulary.py::test_every_filter_a_read_honours_can_be_said_in_the_answer
 
 1. Every figure every read emits declares the set it was taken over, structured rather than written out.
 2. A read that narrows a set records what it narrowed it to on the figures it emits.
@@ -147,8 +147,8 @@
 
 ### PROJ-10 — discovery is generous, narrowing is exact
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:1505
-**Test:** product/tests/test_tools.py::test_a_name_buried_inside_a_label_reaches_nothing
+**Code:** product/viva/tools/ledger_vocabulary.py:36
+**Test:** product/tests/test_tool_vocabulary.py::test_a_name_buried_inside_a_label_reaches_nothing
 
 1. `query_ledger` with `entity: "vocabulary"` and a `group_by` returns the labels this vault holds under that grouping, and how many.
 2. Its optional `matching` argument looks a name up by three ordered comparisons — key equality, key prefix, whole token of the key — with the vault's own key function applied to both sides. A run of characters buried inside a word reaches nothing.
@@ -158,7 +158,7 @@
 ### PROJ-11 — model-facing tool text is a versioned file
 **State:** enforced
 **Code:** product/viva/tools/registry.py:33
-**Test:** product/tests/test_tools.py::test_a_tool_without_a_description_cannot_register
+**Test:** product/tests/test_tool_contract.py::test_a_tool_without_a_description_cannot_register
 
 1. Every tool's description lives in the versioned, digest-pinned prompt file, never as a Python literal.
 2. Registering a tool with no description section fails, so a tool cannot reach a model unexplained.
@@ -166,8 +166,8 @@
 
 ### PROJ-12 — a read is bounded by a named constant that does not grow with the ledger
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:54
-**Test:** product/tests/test_tools.py::test_no_uncapped_read_exceeds_what_a_result_may_cost
+**Code:** product/viva/tools/ledger_common.py:54
+**Test:** product/tests/test_tool_limits.py::test_no_uncapped_read_exceeds_what_a_result_may_cost
 
 1. Every uncapped read is bounded by a named constant, and none of those bounds grows with the size of the ledger.
 2. A figure's records do not travel to the model; an answer cites the figure by id and the runner resolves the rest, so only their count is sent.
@@ -175,8 +175,8 @@
 
 ### PROJ-65 — a block of rows is one read's figures, each beside the slice it covers
 **State:** enforced
-**Code:** product/viva/tools/runner.py:916 (`_rows_bound`) · product/viva/tools/runner.py:646 · product/viva/tools/runner.py:1346
-**Test:** product/tests/test_shape.py::test_a_shape_that_names_no_row_count_answers_whatever_the_count_turns_out_to_be · product/tests/test_shape.py::test_the_set_is_graded_once_above_the_block_and_never_per_row · product/tests/test_tools.py::test_two_figures_over_one_slice_fill_no_block
+**Code:** product/viva/tools/runner_binding.py:398 (`_rows_bound`) · product/viva/tools/runner_binding.py:128 · product/viva/tools/runner_delivery.py:289
+**Test:** product/tests/test_shape_rows.py::test_a_shape_that_names_no_row_count_answers_whatever_the_count_turns_out_to_be · product/tests/test_shape_rows.py::test_the_set_is_graded_once_above_the_block_and_never_per_row · product/tests/test_tool_vocabulary.py::test_two_figures_over_one_slice_fill_no_block
 
 1. A binding may name a whole reading — `{"read": "rN"}` — rather than one thing in it. A rows hole takes that reference and no other, and no other hole takes it.
 2. The machine writes one line per figure of that read, each beside the slice it covers, so how many rows there are never reaches the model.
@@ -188,8 +188,8 @@
 
 ### PROJ-66 — a hole nothing can fill costs its clause and not the turn
 **State:** enforced
-**Code:** product/viva/tools/runner.py:1297 · product/viva/tools/runner.py:1442 · product/viva/tools/shape.py:121 (`HOLE_THE_CLAUSE`)
-**Test:** product/tests/test_shape.py::test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn · product/tests/test_shape.py::test_an_answer_whose_every_clause_falls_away_says_so
+**Code:** product/viva/tools/runner_delivery.py:145 · product/viva/tools/runner_delivery.py:287 · product/viva/tools/shape.py:121 (`HOLE_THE_CLAUSE`)
+**Test:** product/tests/test_shape_binding.py::test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn · product/tests/test_shape_binding.py::test_an_answer_whose_every_clause_falls_away_says_so
 
 1. A hole nothing can fill costs its clause and not the turn: the clause is dropped and what could be established still stands. This is the implementation of [ADR-013](decisions/ADR-013-the-shape-before-the-data.md) assertion 15.
 2. A dropped clause is disclosed — a reviewed pack phrase names what was missing by its kind, never a zero and never a silence.
@@ -197,8 +197,8 @@
 
 ### PROJ-67 — a read that groups cuts as many ways as it groups
 **State:** enforced
-**Code:** product/viva/tools/ledger_tools.py:704 · product/viva/tools/ledger_tools.py:1031 (`_month_slice`) · product/viva/tools/ledger_tools.py:1197 · product/viva/tools/envelope.py:421 (`cut_set`)
-**Test:** product/tests/test_tools.py::test_each_group_of_the_summary_read_names_its_own_slice · product/tests/test_tools.py::test_a_months_slice_is_the_calendar_month_not_what_moved_in_it · product/tests/test_tools.py::test_the_only_group_of_a_partitioning_grouping_is_the_whole
+**Code:** product/viva/tools/ledger_movements.py:189 · product/viva/tools/ledger_common.py:573 (`_month_slice`) · product/viva/tools/ledger_aggregates.py:257 · product/viva/tools/envelope.py:421 (`cut_set`)
+**Test:** product/tests/test_tool_vocabulary.py::test_each_group_of_the_summary_read_names_its_own_slice · product/tests/test_tool_vocabulary.py::test_a_months_slice_is_the_calendar_month_not_what_moved_in_it · product/tests/test_tool_scope.py::test_the_only_group_of_a_partitioning_grouping_is_the_whole
 
 1. A read narrows once and cuts into as many groups as it has, and which cut a figure is is a property of the figure. The transactions read cuts twice over the same movements — a figure per account and a figure per month — and each figure names its own slice.
 2. A month-shaped group's slice is the calendar month, first day to last, rather than the first and last day money actually moved: the cut names the group, and written from the data two vaults' January would be different periods.

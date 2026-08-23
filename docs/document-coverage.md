@@ -8,7 +8,7 @@
 
 ### ING-20 — A document type counts as covered only when a real one has posted
 **State:** untestable
-**Code:** product/viva/ingest/registry.py:67 (the registered types), product/viva/ingest/pipeline.py:813 (a projectable type is posted, anything else is parked)
+**Code:** product/viva/ingest/registry.py:67 (the registered types), product/viva/ingest/brokerage_projector.py:142 (a projectable type is posted, anything else is parked)
 **Test:** none
 
 1. A registry row for a type is not coverage; a real document of that type must have been ingested, reconciled and posted.

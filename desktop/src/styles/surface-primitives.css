@@ -1,0 +1,117 @@
+.detail-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fbfaf6;
+}
+.detail-panel-label {
+  color: #8e9a92;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.detail-panel h3 { margin: 0; color: #3d5045; font-size: 18px; font-family: "Playfair Display", Georgia, serif; }
+.detail-panel p { margin: 0; color: #8d968f; font-size: 11px; line-height: 1.6; }
+.detail-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.detail-panel-grid div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #f1efe7;
+}
+.detail-panel-grid span { color: #9ca49e; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+.detail-panel-grid strong { color: #46584f; font-size: 11px; line-height: 1.4; }
+.account-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.account-card { display: grid; overflow: hidden; }
+.account-card.identity-state { gap: 7px; padding: 17px; color: #526159; }
+.account-card-button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 17px;
+  border: 0;
+  text-align: left;
+  background: transparent;
+}
+.account-card.active,
+.detail-row-button.active {
+  border-color: #99b6a0;
+  box-shadow: 0 0 0 1px rgba(93, 121, 104, 0.16);
+}
+.account-card > .proof-links { margin: 0; padding: 0 17px 13px 68px; }
+.account-card > .account-amount { justify-self: end; margin: 0 17px 14px 68px; }
+.account-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: #65826d;
+  background: #e5eee4;
+  font-family: Georgia, serif;
+  font-size: 18px;
+}
+.account-copy { min-width: 0; display: grid; gap: 2px; }
+.account-name { color: #42554b; font-size: 12px; font-weight: 700; }
+.account-kind, .account-note, .account-date, .signal-copy span, .detail-row span { color: #9ca49e; font-size: 10px; }
+.account-note { display: flex; align-items: center; gap: 5px; margin-top: 6px; }
+.account-date { margin-top: 3px; }
+.account-amount { margin-left: auto; color: #385347; font-family: "Playfair Display", Georgia, serif; font-size: 18px; white-space: nowrap; }
+.mini-dot.corroborated { background: #c19250; }
+.mini-dot.unverified { background: #b08d7e; }
+/* Records that disagree had no mark of their own and fell to the one every
+   unmarked grade falls to. */
+.mini-dot.conflicted { background: var(--rust); }
+.mini-dot.not_applicable, .evidence-badge.not_applicable .mini-dot { background: #7c8794; }
+
+.signal-list { border-top: 1px solid var(--line); }
+.signal-row { display: flex; align-items: center; gap: 13px; padding: 13px 2px; border-bottom: 1px solid var(--line); }
+.signal-row.identity-state { display: grid; grid-template-columns: 1fr; }
+.signal-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; font-size: 15px; font-weight: 700; }
+.signal-icon.inflow { color: #648e72; background: #e5f1e6; }
+.signal-icon.outflow { color: #af765d; background: #f4e8df; }
+.signal-icon.neutral { color: #ad8955; background: #f4ecd9; }
+.signal-icon.supplied { color: #6f7d75; background: #edf0ec; }
+.signal-copy { display: grid; gap: 4px; }
+.signal-copy strong { color: #506059; font-size: 12px; }
+.signal-value { margin-left: auto; font-size: 12px; font-weight: 700; }
+.signal-value.inflow { color: #5e8a6a; }
+.signal-value.outflow { color: #a96f58; }
+.signal-value.neutral { color: #ad8955; font-size: 10px; }
+.quiet-note {
+  display: flex;
+  gap: 11px;
+  max-width: 640px;
+  margin: 44px 0 0;
+  padding: 14px 0;
+  color: #6c8874;
+}
+.quiet-note div { display: grid; gap: 3px; }
+.quiet-note strong { color: #607c68; font-size: 11px; }
+.quiet-note span { color: #9ba49d; font-size: 10px; }
+
+.feature-panel { max-width: 760px; padding: 34px; }
+.feature-icon {
+  display: grid;
+  place-items: center;
+  width: 43px;
+  height: 43px;
+  margin-bottom: 19px;
+  border-radius: 13px;
+  color: #66836c;
+  background: #e6efe5;
+  font-size: 25px;
+}
+.feature-panel h2 { margin-bottom: 9px; }
+.feature-panel > p { max-width: 550px; margin: 0 0 25px; color: #89958e; font-size: 12px; line-height: 1.65; }

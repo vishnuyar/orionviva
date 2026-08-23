@@ -71,7 +71,7 @@
 
 ### MON-63 — a counterparty may supply a leg a statement's read dropped
 **State:** enforced
-**Code:** product/viva/ingest/pipeline.py:339 (`_try_corroboration`), :193 (`heal_corroboration`); product/viva/ingest/transfers.py:394 (`find_corroborating_legs`)
+**Code:** product/viva/ingest/statement_projector.py:212 (`_try_corroboration`), :99 (`heal_corroboration`); product/viva/ingest/transfers.py:394 (`find_corroborating_legs`)
 **Test:** product/tests/test_transfers.py::test_cross_document_corroboration_closes_the_gap
 
 1. Where a statement's gap exactly equals a decisive unmatched movement on another account the person holds, that movement supplies the missing leg, with no model call.
@@ -107,7 +107,7 @@
 
 ### MON-67 — detection runs over a vault that already exists
 **State:** enforced
-**Code:** product/viva/ingest/pipeline.py:232 (`sweep`)
+**Code:** product/viva/ingest/statement_projector.py:138 (`sweep`)
 **Test:** product/tests/test_transfers.py::test_sweep_links_previously_ingested_statements
 
 1. `sweep()` stitches gaps, corroborates conflict-holds and links transfers over statements ingested before any of this existed, with no re-upload.

@@ -7,8 +7,8 @@
 
 ### T1 — Provenance, grade, exactness and boundary on every figure
 **State:** enforced-with-exception
-**Code:** product/viva/tools/envelope.py:139 · product/viva/tools/runner.py:799
-**Test:** product/tests/test_shape.py::test_a_figure_that_states_no_set_fills_no_hole_asking_for_one
+**Code:** product/viva/tools/envelope.py:139 · product/viva/tools/runner_binding.py:281
+**Test:** product/tests/test_shape_binding.py::test_a_figure_that_states_no_set_fills_no_hole_asking_for_one
 
 1. Every number a tool asserts is emitted as a figure with an id, and an answer cites the id rather than restating the value.
 2. A figure declares its kind. `financial` and `computed` carry a grade; `activity` (what the agent did or holds on record) and `hypothetical` (a value resting on the person's own premise) carry none and cannot acquire one by composition.
@@ -34,14 +34,14 @@
 
 ### T3 — Capture-first
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/raw_store.py:51 · product/viva/ledger/events.py:271 · product/viva/ingest/pipeline.py:870
+**Code:** product/viva/ingest/raw_store.py:51 · product/viva/ledger/events.py:271 · product/viva/ingest/pipeline.py:104
 **Test:** product/tests/test_raw_store.py::test_put_is_content_addressed · product/tests/test_capture_first.py::test_the_raw_blob_is_stored_before_the_reader_is_called, ::test_a_reader_that_raises_does_not_take_the_document_with_it
 
 1. Every original document is written, encrypted and content-addressed, before anything parses it.
 2. Every model response is captured verbatim with the model and the prompt version that produced it.
 3. Nothing trust-relevant is ever pruned, summarized in place, or cleaned up.
 
-**Exception:** the ingest path records no request field of any kind — product/viva/ledger/events.py:271. It takes the position that a request is reconstructable from the stored document plus the immutable prompt version, which is faithful in content and not in bytes. The answering path stores the request verbatim (product/viva/speak.py:600), so the gap is a choice rather than a limit.
+**Exception:** the ingest path records no request field of any kind — product/viva/ledger/events.py:271. It takes the position that a request is reconstructable from the stored document plus the immutable prompt version, which is faithful in content and not in bytes. The answering path stores the request verbatim (product/viva/session.py:90), so the gap is a choice rather than a limit.
 
 ### T4 — Everything is an event
 **State:** enforced-with-exception
@@ -130,7 +130,7 @@
 2. A reading is never picked silently between two valid ones: `ambiguous` is a first-class outcome.
 3. Where locale cannot be determined from context the figure grades `conflicted` rather than being guessed.
 
-**Exception:** the structural `YYYY-MM-DD` checks use `str.isdigit()`, which accepts non-ASCII digits — product/viva/tools/runner.py:165 and product/viva/tools/ledger_tools.py:277.
+**Exception:** the structural `YYYY-MM-DD` checks use `str.isdigit()`, which accepts non-ASCII digits — product/viva/tools/runner.py:165 and product/viva/tools/ledger_common.py:277.
 
 ### I3 — Trust is earned per locale
 **State:** enforced-with-exception
@@ -203,7 +203,7 @@ The shipped entry points read the vault passphrase and the model key from enviro
 
 ### X2 — Uncertainty is visible, never decorative
 **State:** enforced-with-exception
-**Code:** product/viva/tools/runner.py:1437
+**Code:** product/viva/tools/runner_delivery.py:268
 **Test:** product/tests/test_persona_pack.py::test_every_grade_a_figure_can_carry_has_a_reviewed_sentence
 
 1. Confidence language in any surface maps 1:1 to verification grades, and a build check holds the sentences and the ladder to each other in both directions.

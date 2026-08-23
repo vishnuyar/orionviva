@@ -9,7 +9,7 @@
 
 ### MON-37 — a pay stub is a divergent profile, selected as data
 **State:** enforced
-**Code:** product/viva/ingest/registry.py (the `pay_stub` profile, `identity="paystub"`); product/viva/ingest/pipeline.py:538 (`post_paystub`)
+**Code:** product/viva/ingest/registry.py (the `pay_stub` profile, `identity="paystub"`); product/viva/ingest/statement_projector.py:411 (`post_paystub`)
 **Test:** product/tests/test_registry.py::test_pay_stub_is_a_divergent_projectable_profile
 
 1. A profile names its facts shape, its identity and its post-projector; the reader dispatches after classify to the right extraction prompt and parser, and the pipeline dispatches on the profile's identity.
@@ -36,7 +36,7 @@
 
 ### MON-40 — either arrival order works
 **State:** enforced
-**Code:** product/viva/ingest/pipeline.py:590 (`heal_paystubs`)
+**Code:** product/viva/ingest/paystub_projector.py:53 (`heal_paystubs`)
 **Test:** product/tests/test_paystub.py::test_paystub_without_deposit_waits_then_heals
 
 1. A pay stub with no matching deposit yet is held awaiting the deposit rather than posted or dropped.

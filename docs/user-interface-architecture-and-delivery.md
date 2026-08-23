@@ -182,7 +182,7 @@ the ingest request itself.
 
 ### VOICE-114 — with no reader configured, a document is saved privately and reading waits
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/reader.py:198 (`_parking_reader`), :204 (`parking_reader`), :230 (`build_reader`), product/viva/ingest/pipeline.py:870 (capture first, always), product/viva/surface/documents.py (the sentence, composed from the pack)
+**Code:** product/viva/ingest/reader.py:198 (`_parking_reader`), :204 (`parking_reader`), :230 (`build_reader`), product/viva/ingest/pipeline.py:104 (capture first, always), product/viva/surface/documents.py (the sentence, composed from the pack)
 **Test:** product/tests/test_reader_config.py::test_reader_factory_gates_on_env, ::test_a_parked_document_carries_the_reason_it_was_not_read; product/tests/test_capture_first.py::test_the_raw_blob_is_stored_before_the_reader_is_called, ::test_a_reader_that_raises_does_not_take_the_document_with_it; product/tests/test_surface_documents.py::test_a_document_nothing_has_looked_at_says_so_once_on_the_panel, ::test_a_document_that_was_read_and_yielded_nothing_is_not_one_nobody_read; product/tests/test_document_actions.py::test_a_captured_document_is_sealed_and_the_reply_says_reading_waits
 
 1. With no reader configured, Documents says: "Saved privately. Reading will wait until you choose a reader."

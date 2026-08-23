@@ -27,7 +27,7 @@
 
 ### ING-62 — A forced correction auto-applies at `corroborated` and is always reported
 **State:** enforced
-**Code:** product/viva/ingest/pipeline.py:311 (apply the forced correction and re-check), :265 (`_apply_forced`), :488 (the grade)
+**Code:** product/viva/ingest/statement_projector.py:184 (apply the forced correction and re-check), product/viva/ingest/pipeline.py:87 (`_apply_forced`), product/viva/ingest/statement_projector.py:361 (the grade)
 **Test:** product/tests/test_pipeline.py::test_forced_correction_auto_applies_and_posts
 
 1. A forced correction is applied only if the corrected statement then reconciles.
@@ -36,13 +36,13 @@
 
 ### ING-63 — A suggested or unlocalized finding never posts
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/pipeline.py:325-335 (hold, persist the finding, return CONFLICT)
+**Code:** product/viva/ingest/statement_projector.py:198-208 (hold, persist the finding, return CONFLICT)
 **Test:** product/tests/test_pipeline.py::test_unforced_conflict_carries_a_finding, product/tests/test_review.py::test_failed_statement_is_held_and_listed
 
 1. A statement whose finding is suggested or unlocalized is held with its finding and is not posted.
 2. A suggested correction is shown against the source rather than led by our number.
 
-**Exception:** cross-document corroboration runs before the hold. `product/viva/ingest/pipeline.py:324` calls `_try_corroboration` whatever the diagnosis said; where a counterparty document closes the gap exactly, that path discards the suggested or unlocalized finding, synthesizes a `cross_document` finding at `FORCED`, and posts (pipeline.py:386-397). The hold at :325 is what happens when corroboration returns nothing. So the rule reads: never posts *unless a second document supplies the leg* (MON-63).
+**Exception:** cross-document corroboration runs before the hold. `product/viva/ingest/statement_projector.py:197` calls `_try_corroboration` whatever the diagnosis said; where a counterparty document closes the gap exactly, that path discards the suggested or unlocalized finding, synthesizes a `cross_document` finding at `FORCED`, and posts (pipeline.py:386-397). The hold at :198 is what happens when corroboration returns nothing. So the rule reads: never posts *unless a second document supplies the leg* (MON-63).
 
 ### ING-64 — The diagnosis rules are versioned
 **State:** by-review
@@ -53,13 +53,13 @@
 
 ### ING-65 — Repair is bounded
 **State:** enforced-with-exception
-**Code:** product/viva/ingest/pipeline.py:281 (`post_statement` makes no model call), product/viva/ingest/reader.py:177 (`read_with_retry`, `max_retries=1`)
+**Code:** product/viva/ingest/statement_projector.py:154 (`post_statement` makes no model call), product/viva/ingest/reader.py:177 (`read_with_retry`, `max_retries=1`)
 **Test:** product/tests/test_reader_retry.py::test_gives_up_after_the_retry_and_parks
 
 1. The whole document is never re-read in the hope that it comes out consistent.
 2. A parse failure is re-asked at most once, and the second failure parks the document rather than trying again.
 
-**Exception:** the targeted re-read — one cheap model call over the cropped region doubt was localized to — is not built. `product/viva/ingest/pipeline.py:281` goes straight from deterministic diagnosis to cross-document corroboration to the hold, with no repair model call anywhere. The one-repair-pass cap is therefore satisfied vacuously.
+**Exception:** the targeted re-read — one cheap model call over the cropped region doubt was localized to — is not built. `product/viva/ingest/statement_projector.py:154` goes straight from deterministic diagnosis to cross-document corroboration to the hold, with no repair model call anywhere. The one-repair-pass cap is therefore satisfied vacuously.
 
 ### ING-66 — A correction is an event, and a human ruling grades highest
 **State:** enforced

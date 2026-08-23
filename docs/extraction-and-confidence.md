@@ -7,7 +7,7 @@
 
 ### ING-1 — Confidence is constructed, never self-reported
 **State:** by-review
-**Code:** product/viva/ledger/events.py:61 (grades are set by deterministic checks downstream), product/viva/ingest/pipeline.py:488
+**Code:** product/viva/ledger/events.py:61 (grades are set by deterministic checks downstream), product/viva/ingest/statement_projector.py:361
 **Test:** none
 
 1. A figure's grade is assigned by deterministic code after a check runs, never copied from a number the model produced.
@@ -23,8 +23,8 @@
 
 ### ING-3 — What each grade means
 **State:** enforced
-**Code:** product/viva/ledger/events.py:63-67 · product/viva/ingest/pipeline.py:488 · product/viva/ledger/projection/balances.py:99, :110
-**Test:** product/tests/test_pipeline.py::test_checking_statement_posts_and_reconciles, product/tests/test_tools.py::test_balances_match_the_projection_and_carry_grades
+**Code:** product/viva/ledger/events.py:63-67 · product/viva/ingest/statement_projector.py:361 · product/viva/ledger/projection/balances.py:99, :110
+**Test:** product/tests/test_pipeline.py::test_checking_statement_posts_and_reconciles, product/tests/test_tool_contract.py::test_balances_match_the_projection_and_carry_grades
 
 1. `verified` means an issuer's document attests the figure and nothing is in doubt about how it was read — a lone attested closing, or an attested figure whose reading a person has confirmed.
 2. `corroborated` means two independent observations agree — including an opening plus a period's transactions reconciling to an attested closing.

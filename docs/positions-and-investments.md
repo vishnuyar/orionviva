@@ -9,7 +9,7 @@
 
 ### MON-29 — a holding is a dated measurement, never a posting
 **State:** enforced
-**Code:** product/viva/ledger/events.py:659 (`position_observed`); product/viva/ingest/pipeline.py:616 (`post_brokerage`)
+**Code:** product/viva/ledger/events.py:659 (`position_observed`); product/viva/ingest/paystub_projector.py:79 (`post_brokerage`)
 **Test:** product/tests/test_brokerage.py::test_brokerage_reconciles_and_records_positions_as_measurements
 
 1. A holding is recorded as `PositionObserved` — instrument, units, market value, currency, `as_of`, grade, provenance — and is not posted to the money ledger.
@@ -17,11 +17,11 @@
 3. Unrealized gain is never posted, never reconciled and never an event; it is derived at read time from the measurements on hand (product/viva/ledger/projection/positions.py:257, product/tests/test_brokerage.py::test_unrealized_gain_is_a_derived_as_of_view_not_a_ledger_fact).
 4. Measurements are append-only: a later statement emits a new observation for the same instrument and edits nothing (product/tests/test_brokerage.py::test_a_later_statement_revalues_the_same_holding).
 5. Positions emit only the `measured` valuation class, and a position value is surfaced with its as-of date, never as "current".
-6. If a statement prints a "change in value" line, presentation may show our derived number beside it; the ledger never reconciles against it (product/viva/ingest/brokerage.py:90 — the read carries positions, cash and the stated total, and no such figure; the two identities are product/viva/ingest/pipeline.py:644 and :681).
+6. If a statement prints a "change in value" line, presentation may show our derived number beside it; the ledger never reconciles against it (product/viva/ingest/brokerage.py:90 — the read carries positions, cash and the stated total, and no such figure; the two identities are product/viva/ingest/paystub_projector.py:107 and :144).
 
 ### MON-30 — the internal tally is a hard gate
 **State:** enforced
-**Code:** product/viva/ingest/pipeline.py:644 (`check_brokerage_identity` in `post_brokerage`); product/viva/ingest/registry.py:30 (`BROKERAGE_IDENTITY`)
+**Code:** product/viva/ingest/paystub_projector.py:107 (`check_brokerage_identity` in `post_brokerage`); product/viva/ingest/registry.py:30 (`BROKERAGE_IDENTITY`)
 **Test:** product/tests/test_brokerage.py::test_a_misread_holding_fails_the_tally_and_is_held
 
 1. `Σ position market_value + cash = stated total`, deterministic `Decimal` arithmetic, no model.
@@ -30,7 +30,7 @@
 
 ### MON-31 — the cash flow reconciles when the statement reports it
 **State:** enforced
-**Code:** product/viva/ingest/pipeline.py:681 (`check_balance_identity` over the activity)
+**Code:** product/viva/ingest/paystub_projector.py:144 (`check_balance_identity` over the activity)
 **Test:** product/tests/test_brokerage.py::test_cash_flow_reconciles_and_recognizes_income_fees_gains
 
 1. The flow path runs when a statement carries both an opening cash figure and an activity list: the opening is booked once, each activity item posts, and the closing is observed.

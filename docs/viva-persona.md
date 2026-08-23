@@ -7,7 +7,7 @@
 
 ### VOICE-10 — voice is versioned data, never incidental copy
 **State:** enforced
-**Code:** product/viva/persona/__init__.py:462 (`say`), product/viva/persona/pack-v31/ (each newer pack adds a family and copies the rest verbatim; pack-v19 was in force until a stopped job needed words, pack-v20 until a vault leaving and coming back did, and pack-v21 until a pass back over what is already held did)
+**Code:** product/viva/persona/contracts.py:403 (`say`), product/viva/persona/pack-v31/ (each newer pack adds a family and copies the rest verbatim; pack-v19 was in force until a stopped job needed words, pack-v20 until a vault leaving and coming back did, and pack-v21 until a pass back over what is already held did)
 **Test:** product/tests/test_persona_pack.py::test_question_text_no_longer_lives_in_code
 
 1. Everything Viva says lives in `product/viva/persona/<pack>/` as phrasings, moments and tone rules.
@@ -16,7 +16,7 @@
 
 ### VOICE-11 — a phrasing may not introduce a fact its intent did not supply
 **State:** enforced
-**Code:** product/viva/persona/__init__.py:71 (`INTENT_FIELDS`), :451 (`slots_of`)
+**Code:** product/viva/persona/contracts.py:12 (`INTENT_FIELDS`), :392 (`slots_of`)
 **Test:** product/tests/test_persona_pack.py::test_phrasings_use_only_their_intent_fields
 
 1. Every `{slot}` in a phrasing names a field the question intent supplies.
@@ -25,7 +25,7 @@
 
 ### VOICE-12 — every question kind has a phrasing, and no phrasing is orphaned
 **State:** enforced
-**Code:** product/viva/persona/__init__.py:71 (`INTENT_FIELDS`), :176 (`MOMENT_FIELDS`)
+**Code:** product/viva/persona/contracts.py:12 (`INTENT_FIELDS`), :117 (`MOMENT_FIELDS`)
 **Test:** product/tests/test_persona_pack.py::test_every_intent_has_a_phrasing_and_no_orphans
 
 1. A question kind with no phrasing fails the build.
@@ -34,7 +34,7 @@
 
 ### VOICE-13 — a slot is typed, and a figure reaches a person only through the one renderer
 **State:** enforced
-**Code:** product/viva/render.py:55 (`TYPES`), product/viva/persona/__init__.py:462 (`say`)
+**Code:** product/viva/render.py:55 (`TYPES`), product/viva/persona/contracts.py:403 (`say`)
 **Test:** product/tests/test_persona_pack.py::test_a_money_slot_cannot_be_handed_a_figure_that_formatted_itself
 
 1. A money slot accepts only what `render.money` wrote, with its value, currency and one locale's conventions.
