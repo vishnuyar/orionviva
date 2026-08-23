@@ -117,6 +117,8 @@ class OpenedVaultSurfaceProvider:
             # person checks a claim or takes it.
             "absences": [
                 {"id": "anchoring", "sentence": moment("trust_no_anchoring")},
+                {"id": "conversation_history",
+                 "sentence": moment("trust_no_conversation_history")},
             ] + ([{"id": "maintenance",
                    "sentence": moment("trust_no_maintenance_yet")}]
                  if not self._vault.ledger.projection().agent_log() else []),

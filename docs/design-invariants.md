@@ -93,7 +93,7 @@
 3. Every prompt is a versioned file; a released version's bytes never change, so a recorded `prompt_version` resolves to the exact text that produced a reading, forever.
 4. Access modes are bundled local, OAuth-brokered, BYOK, and future attested-cloud.
 
-**Exception:** assertion 4 is reachable only as BYOK and as a keyless local endpoint — core/vivacore/models/spec.py:22 offers an `api_key_env` or nothing. No OAuth-brokered path and no attested-cloud path exists.
+**Exception:** assertion 4 is reachable only as BYOK and as a keyless local endpoint — core/vivacore/models/spec.py:23 offers an `api_key_env` or nothing. No OAuth-brokered path and no attested-cloud path exists.
 
 ### T9 — The personal/impersonal boundary is drawn at package edges
 **State:** enforced-with-exception
@@ -194,12 +194,12 @@
 
 ### X1 — Target user skill: "can install an app"
 **State:** unmet
-**Code:** product/viva/env.py:1
-**Test:** none
+**Code:** product/viva/configuration.py:1 · desktop/src/features/trust/Trust.tsx:42
+**Test:** product/tests/test_configuration.py · desktop/src/features/trust/Trust.test.tsx
 
 1. No feature may require self-hosting, a terminal, or knowing what an API key is on the default path.
 
-The shipped entry points read the vault passphrase and the model key from environment variables or a hand-edited `.env` file (product/viva/env.py:14), and nothing in the tree supplies either without the person editing a file. A desktop shell exists under `desktop/`; no credential path reaches it.
+The desktop takes a vault passphrase and model details without requiring a terminal, including a key or an explicit keyless route. The default path is still unmet: a person must choose a provider, pinned model and sometimes a service address and API key, while the product supplies no bundled model, account connection or install-only route.
 
 ### X2 — Uncertainty is visible, never decorative
 **State:** enforced-with-exception
@@ -272,7 +272,7 @@ Some requirements are cross-cutting: they belong to no single feature, so they a
 - `figure()` accepts a money-kind figure with no grade, and nothing stops a model typing a strength word into its own clause text.
 - Reclassifying a past cash withdrawal as an asset acquisition moves money out of a spending total that was true when it was spoken. What the product owes a person whose figure changes afterwards is undecided.
 - `implication_of` still reads a counterparty's implication off the posted sign, and there is no structural guard against a fifth site doing the same.
-- The default path requires a passphrase and a model key in the environment or a `.env` file, so X1 is a target rather than a property.
+- The default path still requires a passphrase and a person-chosen provider and pinned model; some routes also require a service address and key. No bundled model, account connection or install-only route exists, so X1 remains a target rather than a property.
 - Nothing computes, per locale or in general, whether a question can be answered before a call is made, so capability honesty is a judgement rather than a property of the registry.
 - The structural date check accepts non-ASCII digits.
 - Nothing checks that a new invariant arrived by a recorded decision rather than by an edit to this file, so SPINE-12 holds only by review.

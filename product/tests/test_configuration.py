@@ -37,6 +37,7 @@ def elsewhere(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(configuration, "SETTINGS_FILE", tmp_path / "settings.json")
     monkeypatch.setattr(configuration, "SECRETS_FILE", tmp_path / ".env")
     monkeypatch.setattr(configuration, "CONFIG_HOME", tmp_path)
+    monkeypatch.setattr(configuration, "_EXPLICIT_ENVIRONMENT", set())
     for name in (configuration.LOCALE_VAR, configuration.CURRENCY_VAR,
                  configuration.ADAPTER_VAR, configuration.MODEL_VAR,
                  configuration.BASE_URL_VAR, configuration.KEY_ENV_VAR,
@@ -122,6 +123,103 @@ def test_a_model_with_no_key_anywhere_is_refused():
     assert raised.value.reason == "key_missing"
 
 
+def test_a_model_may_need_no_key_only_when_the_person_says_so():
+    proposal = propose_model(adapter="openai-compatible", model="a-pinned-1",
+                             base_url="https://example.invalid/v1",
+                             key_action="none")
+
+    assert proposal.changes == {
+        "adapter": "openai-compatible", "model": "a-pinned-1",
+        "base_url": "https://example.invalid/v1", "key": "not needed",
+    }
+
+    settings = apply(proposal, proposal.digest)
+
+    assert settings.can_send is True
+    assert os.environ[configuration.KEY_ENV_VAR] == "none"
+
+
+def test_keyless_takes_effect_after_startup_used_the_default_key_route(
+        monkeypatch):
+    configuration.SETTINGS_FILE.write_text(json.dumps({
+        "adapter": "openai-compatible", "model": "a-pinned-1",
+    }), encoding="utf-8")
+    configuration.SECRETS_FILE.write_text("", encoding="utf-8")
+    monkeypatch.setenv("VIVA_ENV_FILE", str(configuration.SECRETS_FILE))
+    configuration.put_stored_in_force()
+    assert os.environ[configuration.KEY_ENV_VAR] == configuration.KEY_NAME
+
+    proposal = propose_model(adapter="openai-compatible", model="a-pinned-1",
+                             key_action="none")
+    apply(proposal, proposal.digest)
+
+    assert os.environ[configuration.KEY_ENV_VAR] == "none"
+
+
+def test_an_exported_default_key_stays_in_force_when_a_new_key_is_stored(
+        monkeypatch):
+    monkeypatch.setenv(configuration.KEY_NAME, "exported-synthetic")
+    monkeypatch.setenv("VIVA_ENV_FILE", str(configuration.SECRETS_FILE))
+    configuration.put_stored_in_force()
+
+    proposal = propose_model(adapter="anthropic", model="a-pinned-1",
+                             key="new-synthetic")
+    apply(proposal, proposal.digest, key="new-synthetic")
+
+    assert os.environ[configuration.KEY_NAME] == "exported-synthetic"
+    assert f"{configuration.KEY_NAME}=new-synthetic" in configuration.SECRETS_FILE.read_text()
+
+
+def test_a_key_loaded_from_the_credential_store_is_replaced_now(monkeypatch):
+    configuration.SECRETS_FILE.write_text(
+        f"{configuration.KEY_NAME}=old-stored\n", encoding="utf-8")
+    monkeypatch.setenv("VIVA_ENV_FILE", str(configuration.SECRETS_FILE))
+    configuration.put_stored_in_force()
+    assert os.environ[configuration.KEY_NAME] == "old-stored"
+
+    proposal = propose_model(adapter="anthropic", model="a-pinned-1",
+                             key="new-stored")
+    apply(proposal, proposal.digest, key="new-stored")
+
+    assert os.environ[configuration.KEY_NAME] == "new-stored"
+    assert f"{configuration.KEY_NAME}=new-stored" in configuration.SECRETS_FILE.read_text()
+
+
+def test_routing_in_the_credential_file_stays_an_explicit_override(monkeypatch):
+    configuration.SETTINGS_FILE.write_text(json.dumps({
+        "adapter": "anthropic", "model": "debug-model",
+    }), encoding="utf-8")
+    configuration.SECRETS_FILE.write_text(
+        f"{configuration.MODEL_VAR}=debug-model\n"
+        f"{configuration.KEY_NAME}=stored-key\n", encoding="utf-8")
+    monkeypatch.setenv("VIVA_ENV_FILE", str(configuration.SECRETS_FILE))
+    configuration.put_stored_in_force()
+
+    proposal = propose_model(adapter="anthropic", model="new-stored-model")
+    apply(proposal, proposal.digest)
+
+    assert os.environ[configuration.MODEL_VAR] == "debug-model"
+    assert json.loads(configuration.SETTINGS_FILE.read_text())["model"] == "new-stored-model"
+
+
+def test_the_document_reader_honours_a_key_that_is_not_needed(monkeypatch):
+    from viva.ingest import reader as reader_module
+
+    monkeypatch.setenv(configuration.ADAPTER_VAR, "openai-compatible")
+    monkeypatch.setenv(configuration.MODEL_VAR, "a-pinned-1")
+    monkeypatch.setenv(configuration.KEY_ENV_VAR, "none")
+    seen = {}
+    monkeypatch.setattr(reader_module, "read_statement",
+                        lambda _data, _doc_id, spec, _locale, _currency:
+                        seen.setdefault("spec", spec))
+
+    reader, live = reader_module.build_reader()
+    reader(b"", "synthetic-document")
+
+    assert live is True
+    assert seen["spec"].api_key_env is None
+
+
 def test_a_way_of_reaching_a_model_nobody_knows_is_refused():
     with pytest.raises(ConfigurationError) as raised:
         propose_model(adapter="carrier-pigeon", model="a-pinned-1", key="k")
@@ -189,6 +287,24 @@ def test_taking_the_permission_back_stops_anything_being_able_to_leave():
     assert live_reading_configured() is False
 
 
+@pytest.mark.parametrize("key_variable", ["", "none", configuration.KEY_NAME])
+@pytest.mark.parametrize("adapter,model", [("", ""), ("anthropic", ""),
+                                           ("", "a-pinned-1"),
+                                           ("anthropic", "a-pinned-1")])
+def test_what_a_person_is_told_and_what_the_reader_gates_on_agree(
+        monkeypatch, adapter, model, key_variable):
+    """The settings read and ingest gate agree for every keyed state."""
+    from viva.ingest.reader import live_reading_configured
+
+    monkeypatch.setenv(configuration.ADAPTER_VAR, adapter)
+    monkeypatch.setenv(configuration.MODEL_VAR, model)
+    if key_variable:
+        monkeypatch.setenv(configuration.KEY_ENV_VAR, key_variable)
+        monkeypatch.setenv(key_variable, "a-key")
+
+    assert current().can_send is live_reading_configured()
+
+
 # -------------------------------------------------------------------- the key
 
 
@@ -221,6 +337,120 @@ def test_the_settings_file_never_holds_the_key():
     assert "a-key" not in configuration.SETTINGS_FILE.read_text()
 
 
+def test_the_settings_file_holds_where_the_key_was_put():
+    """Settings persist the key's environment name, never its value."""
+    proposal = propose_model(adapter="anthropic", model="a-pinned-1", key="a-key")
+    apply(proposal, proposal.digest, key="a-key")
+
+    written = json.loads(configuration.SETTINGS_FILE.read_text())
+
+    assert written[configuration.KEY_ENV_FIELD] == configuration.KEY_NAME
+
+
+def test_a_change_that_files_no_key_writes_nothing_down_about_where_one_is(
+        monkeypatch):
+    """A model-only change does not persist an exported key name."""
+    monkeypatch.setenv(configuration.KEY_ENV_VAR, "A_NAME_OF_THEIR_OWN")
+    monkeypatch.setenv("A_NAME_OF_THEIR_OWN", "a-key")
+
+    proposal = propose_model(adapter="anthropic", model="a-pinned-1")
+    apply(proposal, proposal.digest)
+
+    written = json.loads(configuration.SETTINGS_FILE.read_text())
+
+    assert configuration.KEY_ENV_FIELD not in written
+    assert os.environ[configuration.KEY_ENV_VAR] == "A_NAME_OF_THEIR_OWN"
+
+
+def test_a_change_to_how_figures_are_written_records_nothing_about_a_key(
+        monkeypatch):
+    """A presentation change does not persist credential routing."""
+    monkeypatch.setenv(configuration.KEY_ENV_VAR, "A_NAME_OF_THEIR_OWN")
+    monkeypatch.setenv("A_NAME_OF_THEIR_OWN", "a-key")
+
+    proposal = propose_presentation(locale="en-IN")
+    apply(proposal, proposal.digest)
+
+    written = json.loads(configuration.SETTINGS_FILE.read_text())
+
+    assert configuration.KEY_ENV_FIELD not in written
+    assert written["locale"] == "en-IN"
+    assert os.environ[configuration.KEY_ENV_VAR] == "A_NAME_OF_THEIR_OWN"
+
+
+def test_a_presentation_change_does_not_override_an_exported_model(monkeypatch):
+    configuration.SETTINGS_FILE.write_text(json.dumps({
+        "locale": "en-US", "currency": "USD", "adapter": "anthropic",
+        "model": "stored-model-1",
+    }), encoding="utf-8")
+    monkeypatch.setenv(configuration.MODEL_VAR, "exported-model-1")
+
+    proposal = propose_presentation(locale="en-IN")
+    settings = apply(proposal, proposal.digest)
+
+    assert os.environ[configuration.MODEL_VAR] == "exported-model-1"
+    assert settings.model == "exported-model-1"
+
+
+def test_a_refused_settings_write_does_not_write_or_activate_a_key(monkeypatch):
+    proposal = propose_model(adapter="anthropic", model="a-pinned-1", key="a-key")
+
+    def refuse(_stored):
+        raise ConfigurationError(configuration.UNWRITABLE)
+
+    monkeypatch.setattr(configuration, "_write", refuse)
+
+    with pytest.raises(ConfigurationError) as raised:
+        apply(proposal, proposal.digest, key="a-key")
+
+    assert raised.value.reason == configuration.UNWRITABLE
+    assert configuration.SECRETS_FILE.exists() is False
+    assert configuration.SETTINGS_FILE.exists() is False
+    assert os.environ.get(configuration.KEY_NAME) is None
+
+
+def test_the_one_door_to_the_key_says_a_key_is_there_and_never_which(monkeypatch):
+    """The credential accessor reports presence without returning the key."""
+    monkeypatch.delenv(configuration.KEY_NAME, raising=False)
+
+    before = configuration.key_store()
+    after = configuration.key_store("a-key")
+
+    assert before.held is False
+    assert after.held is True
+    assert after.variable == configuration.KEY_NAME
+    assert "a-key" not in json.dumps(after.__dict__)
+
+
+# ------------------------------------------------------------- what was stored
+
+
+def test_a_machine_nobody_configured_reads_as_one_nobody_configured():
+    assert configuration.SETTINGS_FILE.exists() is False
+
+    settings = current()
+
+    assert settings.adapter == ""
+    assert settings.settings_readable is True
+
+
+def test_settings_that_cannot_be_read_are_not_reported_as_never_written():
+    """An unreadable settings file is reported and left unchanged."""
+    configuration.SETTINGS_FILE.write_text("{ not settings at all", encoding="utf-8")
+
+    settings = current()
+
+    assert settings.settings_readable is False
+    assert settings.adapter == ""
+    assert configuration.SETTINGS_FILE.read_text() == "{ not settings at all"
+
+
+def test_settings_holding_something_that_is_not_settings_read_as_unreadable():
+    configuration.SETTINGS_FILE.write_text('["a list of things"]', encoding="utf-8")
+
+    assert current().settings_readable is False
+
+
 # ---------------------------------------------------------------- the bridge
 
 
@@ -242,6 +472,46 @@ def test_proposing_over_the_bridge_changes_nothing_and_says_what_would():
     assert answered["result"]["kind"] == "refused"
     assert answered["result"]["reason"] == "key_missing"
     assert answered["result"]["message"] == moment("settings_key_missing")
+
+
+def test_the_bridge_carries_a_new_keys_presence_without_carrying_the_key():
+    proposed = _send(PROPOSE, {"kind": "model", "adapter": "anthropic",
+                               "model": "a-pinned-1", "key_action": "set"})["result"]
+
+    assert proposed["kind"] == "proposal"
+    assert proposed["state"]["changes"]["key"] == "set"
+    assert "a-key" not in json.dumps(proposed)
+
+    confirmed = _send(CONFIRM, {"kind": "model", "adapter": "anthropic",
+                                "model": "a-pinned-1", "key_action": "set",
+                                "digest": proposed["state"]["digest"],
+                                "key": "a-key"})["result"]
+
+    assert confirmed["kind"] == "completed"
+    assert confirmed["state"]["key_set"] is True
+    assert "a-key" not in json.dumps(confirmed)
+
+
+def test_a_keyless_model_crosses_the_bridge_as_an_explicit_statement():
+    proposed = _send(PROPOSE, {"kind": "model",
+                               "adapter": "openai-compatible",
+                               "model": "a-pinned-1",
+                               "base_url": "https://example.invalid/v1",
+                               "key_action": "none"})["result"]
+
+    assert proposed["kind"] == "proposal"
+    assert proposed["state"]["changes"]["key"] == "not needed"
+
+    confirmed = _send(CONFIRM, {"kind": "model",
+                                "adapter": "openai-compatible",
+                                "model": "a-pinned-1",
+                                "base_url": "https://example.invalid/v1",
+                                "key_action": "none",
+                                "digest": proposed["state"]["digest"]})["result"]
+
+    assert confirmed["kind"] == "completed"
+    assert os.environ[configuration.KEY_ENV_VAR] == "none"
+    assert confirmed["message"] == moment("settings_model_keyless_confirmed")
 
 
 def test_a_presentation_proposal_and_its_yes_cross_the_bridge():

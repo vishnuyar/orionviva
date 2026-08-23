@@ -27,6 +27,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from viva.configuration import put_stored_in_force
 from viva.vault import Vault
 from viva.desktop_bridge.handlers import (
     BridgeDispatcher,
@@ -331,6 +332,8 @@ def _decode_request_id(frame: str) -> dict[str, Any] | None:
 
 def main() -> int:
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+    # Restore persisted configuration before accepting the first frame.
+    put_stored_in_force()
     sidecar = Sidecar(sys.stdout, sys.stdin)
     # `readline` rather than iteration: a file iterator reads ahead into a
     # buffer of its own, and a frame sitting in that buffer is invisible both

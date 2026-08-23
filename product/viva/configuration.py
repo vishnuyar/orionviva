@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,6 +62,27 @@ KEY_ENV_VAR = "VIVA_MODEL_KEY_ENV"
 # by a person, because a person choosing the name of an environment variable is
 # exactly the thing X1 says no feature may require.
 KEY_NAME = "VIVA_MODEL_API_KEY"
+
+# The settings-file field holding the environment name used for the key.
+KEY_ENV_FIELD = "key_env"
+
+# The environment name for every non-secret stored setting.
+_IN_FORCE = (("locale", LOCALE_VAR), ("currency", CURRENCY_VAR),
+             ("adapter", ADAPTER_VAR), ("model", MODEL_VAR),
+             ("base_url", BASE_URL_VAR))
+
+
+def _present_environment() -> set[str]:
+    """Environment names supplied before stored settings are replayed."""
+    names = {variable for _, variable in _IN_FORCE}
+    names.update((KEY_ENV_VAR, KEY_NAME))
+    selected = os.environ.get(KEY_ENV_VAR, "").strip()
+    if selected:
+        names.add(selected)
+    return {name for name in names if name in os.environ}
+
+
+_EXPLICIT_ENVIRONMENT = _present_environment()
 
 # The ways of reaching a model this build knows. Read from the one place that
 # resolves them, so a name this list admits is a name the adapter registry can
@@ -97,8 +119,8 @@ class Configuration:
     """What is in force, as a screen may read it.
 
     The key itself is never here, and there is no accessor that would return
-    it. What a screen may know is whether one is set, which is what decides
-    whether a model can be reached at all."""
+    it. A screen may know whether one is in use; naming an adapter and model is
+    the separate permission that decides whether outbound work is possible."""
 
     locale: str
     currency: str
@@ -106,13 +128,11 @@ class Configuration:
     model: str = ""
     base_url: str = ""
     key_set: bool = False
+    settings_readable: bool = True
 
     @property
     def can_send(self) -> bool:
-        """Whether anything can leave this machine as things stand.
-
-        The same question :func:`viva.ingest.reader.build_reader` asks, asked
-        where a person can be told the answer."""
+        """Whether an adapter and model are named, allowing outbound work."""
         return bool(self.adapter and self.model)
 
     def as_dict(self) -> dict[str, Any]:
@@ -124,6 +144,7 @@ class Configuration:
             "base_url": self.base_url,
             "key_set": self.key_set,
             "can_send": self.can_send,
+            "settings_readable": self.settings_readable,
         }
 
 
@@ -165,7 +186,94 @@ def digest_of(kind: str, changes: dict[str, str]) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
 
 
+# ------------------------------------------------------------------ the key
+
+
+@dataclass(frozen=True)
+class KeyRecord:
+    """The key's environment name and whether a value is held there."""
+
+    variable: str
+    held: bool
+
+
+def key_store(key: str = "", variable: str = "",
+              commit: Callable[[], None] | None = None) -> KeyRecord:
+    """Read key presence, or store a key owner-only and put it in force.
+
+    Returns the environment name and presence only; never the secret value.
+    If ``commit`` fails, the credential write is rolled back.
+    """
+    if not key.strip():
+        # An explicit environment name remains in force for this process.
+        selected = variable.strip() or os.environ.get(KEY_ENV_VAR) or KEY_NAME
+        return KeyRecord(selected, bool(os.environ.get(selected)))
+    lines = []
+    previous_text: str | None = None
+    previous_mode: int | None = None
+    previous_key: str | None = None
+    try:
+        if SECRETS_FILE.exists():
+            previous_text = SECRETS_FILE.read_text(encoding="utf-8")
+            previous_mode = stat.S_IMODE(SECRETS_FILE.stat().st_mode)
+            for line in previous_text.splitlines():
+                if line.strip().startswith(f"{KEY_NAME}="):
+                    previous_key = line.partition("=")[2]
+                else:
+                    lines.append(line)
+    except OSError as exc:
+        raise ConfigurationError(UNWRITABLE) from exc
+    lines.append(f"{KEY_NAME}={key.strip()}")
+    try:
+        CONFIG_HOME.mkdir(parents=True, exist_ok=True)
+        handle = os.open(str(SECRETS_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                         stat.S_IRUSR | stat.S_IWUSR)
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            out.write("\n".join(lines) + "\n")
+        os.chmod(SECRETS_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError as exc:
+        raise ConfigurationError(UNWRITABLE) from exc
+    previous_environment = os.environ.get(KEY_NAME)
+    activate = (KEY_NAME not in _EXPLICIT_ENVIRONMENT
+                and (previous_environment is None
+                     or previous_environment == previous_key))
+    if activate:
+        os.environ[KEY_NAME] = key.strip()
+    try:
+        if commit is not None:
+            commit()
+    except Exception:
+        try:
+            if previous_text is None:
+                SECRETS_FILE.unlink(missing_ok=True)
+            else:
+                handle = os.open(str(SECRETS_FILE),
+                                 os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                                 previous_mode or stat.S_IRUSR | stat.S_IWUSR)
+                with os.fdopen(handle, "w", encoding="utf-8") as out:
+                    out.write(previous_text)
+                os.chmod(SECRETS_FILE,
+                         previous_mode or stat.S_IRUSR | stat.S_IWUSR)
+        except OSError:
+            log.exception("the credential write could not be rolled back")
+        if activate:
+            if previous_environment is None:
+                os.environ.pop(KEY_NAME, None)
+            else:
+                os.environ[KEY_NAME] = previous_environment
+        raise
+    return KeyRecord(KEY_NAME, True)
+
+
 # ------------------------------------------------------------------ reading
+
+
+@dataclass(frozen=True)
+class Stored:
+    """Stored settings and whether an existing settings file was readable."""
+
+    settings: dict[str, Any]
+    readable: bool = True
 
 
 def current() -> Configuration:
@@ -175,22 +283,31 @@ def current() -> Configuration:
     `.env`: an explicit export is somebody saying so at the point of running,
     and a stored setting must never quietly override it."""
     stored = _stored()
+    settings = stored.settings
     return Configuration(
-        locale=os.environ.get(LOCALE_VAR) or stored.get("locale", "") or "en-US",
-        currency=os.environ.get(CURRENCY_VAR) or stored.get("currency", "") or "USD",
-        adapter=os.environ.get(ADAPTER_VAR) or stored.get("adapter", ""),
-        model=os.environ.get(MODEL_VAR) or stored.get("model", ""),
-        base_url=os.environ.get(BASE_URL_VAR) or stored.get("base_url", ""),
-        key_set=bool(os.environ.get(os.environ.get(KEY_ENV_VAR, KEY_NAME))),
+        locale=os.environ.get(LOCALE_VAR) or settings.get("locale", "") or "en-US",
+        currency=os.environ.get(CURRENCY_VAR) or settings.get("currency", "") or "USD",
+        adapter=os.environ.get(ADAPTER_VAR) or settings.get("adapter", ""),
+        model=os.environ.get(MODEL_VAR) or settings.get("model", ""),
+        base_url=os.environ.get(BASE_URL_VAR) or settings.get("base_url", ""),
+        key_set=key_store().held,
+        settings_readable=stored.readable,
     )
 
 
-def _stored() -> dict[str, Any]:
+def _stored() -> Stored:
+    """Read settings without modifying an unreadable file."""
     try:
         held = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return Stored({})
     except (OSError, json.JSONDecodeError):
-        return {}
-    return held if isinstance(held, dict) else {}
+        log.warning("the settings at %s could not be read", SETTINGS_FILE)
+        return Stored({}, readable=False)
+    if not isinstance(held, dict):
+        log.warning("the settings at %s hold no settings", SETTINGS_FILE)
+        return Stored({}, readable=False)
+    return Stored(held)
 
 
 # ---------------------------------------------------------------- proposing
@@ -214,7 +331,7 @@ def propose_presentation(locale: str = "", currency: str = "") -> Proposal:
 
 
 def propose_model(adapter: str = "", model: str = "", base_url: str = "",
-                  key: str = "") -> Proposal:
+                  key: str = "", key_action: str = "") -> Proposal:
     """What would change about which model may be reached.
 
     Naming a model is what makes bytes able to leave, so this proposal always
@@ -225,6 +342,7 @@ def propose_model(adapter: str = "", model: str = "", base_url: str = "",
     held = current()
     adapter = adapter.strip()
     model = model.strip()
+    key_action = key_action.strip()
     if not adapter and not model:
         # Naming nothing is how a person takes the permission back. It is a
         # change to the same thing, so it travels on the same path.
@@ -234,15 +352,20 @@ def propose_model(adapter: str = "", model: str = "", base_url: str = "",
         raise ConfigurationError(UNKNOWN_ADAPTER)
     if not model or any(alias in model.lower() for alias in _UNPINNED):
         raise ConfigurationError(UNPINNED_MODEL)
-    if not key.strip() and not held.key_set:
+    key_will_be_set = bool(key.strip()) or key_action == "set"
+    key_is_not_needed = key_action == "none"
+    if not key_will_be_set and not key_is_not_needed and not held.key_set:
         raise ConfigurationError(MISSING_KEY)
     changes = {"adapter": adapter, "model": model,
                "base_url": base_url.strip()}
-    if key.strip():
+    if key_will_be_set:
         # Whether a key would be set, never what it is. The digest a yes names
         # therefore covers the fact of a key and not its value, which is what
         # keeps the secret out of every reply this proposal appears in.
         changes["key"] = "set"
+    elif key_is_not_needed:
+        # This value is explicit input and is never inferred from the address.
+        changes["key"] = "not needed"
     return Proposal("model", changes, sends=True)
 
 
@@ -280,15 +403,27 @@ def apply(proposal: Proposal, digest: str, key: str = "") -> Configuration:
     """
     if digest != proposal.digest:
         raise ConfigurationError(NOT_THE_PROPOSAL)
-    stored = _stored()
+    previous = _stored().settings
+    stored = dict(previous)
     for name, value in proposal.changes.items():
         if name == "key":
             continue
         stored[name] = value
-    _write(stored)
-    if proposal.changes.get("key") == "set" or key.strip():
-        _write_key(key)
-    _put_in_force(stored, key)
+    key_change = proposal.changes.get("key", "")
+    if key_change == "set" and not key.strip():
+        raise ConfigurationError(MISSING_KEY)
+    if key_change == "set":
+        # Persist the store-selected name only when this proposal writes a key.
+        stored[KEY_ENV_FIELD] = KEY_NAME
+    elif key_change == "not needed":
+        # `none` selects the existing keyless adapter path without deleting a
+        # stored credential.
+        stored[KEY_ENV_FIELD] = "none"
+    if key_change == "set":
+        key_store(key, commit=lambda: _write(stored))
+    else:
+        _write(stored)
+    _put_in_force(stored, previous)
     return current()
 
 
@@ -303,47 +438,60 @@ def _write(stored: dict[str, Any]) -> None:
         raise ConfigurationError(UNWRITABLE) from exc
 
 
-def _write_key(key: str) -> None:
-    """Put the key where the engine already looks, readable by nobody else.
-
-    The file is created with its permissions already narrow rather than
-    narrowed afterwards: a key that is world-readable for even the moment
-    between writing and chmod is a key that leaked."""
-    if not key.strip():
-        return
-    lines = []
-    try:
-        if SECRETS_FILE.exists():
-            lines = [line for line in SECRETS_FILE.read_text(encoding="utf-8").splitlines()
-                     if not line.strip().startswith(f"{KEY_NAME}=")]
-    except OSError as exc:
-        raise ConfigurationError(UNWRITABLE) from exc
-    lines.append(f"{KEY_NAME}={key.strip()}")
-    try:
-        CONFIG_HOME.mkdir(parents=True, exist_ok=True)
-        handle = os.open(str(SECRETS_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
-                         stat.S_IRUSR | stat.S_IWUSR)
-        with os.fdopen(handle, "w", encoding="utf-8") as out:
-            out.write("\n".join(lines) + "\n")
-        os.chmod(SECRETS_FILE, stat.S_IRUSR | stat.S_IWUSR)
-    except OSError as exc:
-        raise ConfigurationError(UNWRITABLE) from exc
+def _where_a_key_is_read_from(stored: dict[str, Any]) -> str:
+    """Return the stored key name, falling back to the credential store."""
+    return key_store(variable=str(stored.get(KEY_ENV_FIELD, ""))).variable
 
 
-def _put_in_force(stored: dict[str, Any], key: str) -> None:
+def _is_explicit(variable: str, previous: str) -> bool:
+    """Whether a process value came from outside stored settings."""
+    if variable in _EXPLICIT_ENVIRONMENT:
+        return True
+    return variable in os.environ and os.environ[variable] != previous
+
+
+def _put_in_force(stored: dict[str, Any], previous: dict[str, Any]) -> None:
     """Make what was just written true for the process that wrote it.
 
     A setting a person applied and that takes effect on the next launch is a
     setting that did not take effect, and there is no screen on which that
     reads as anything but a control that did not work."""
-    for name, variable in (("locale", LOCALE_VAR), ("currency", CURRENCY_VAR),
-                           ("adapter", ADAPTER_VAR), ("model", MODEL_VAR),
-                           ("base_url", BASE_URL_VAR)):
-        value = str(stored.get(name, ""))
+    for name, variable in _IN_FORCE:
+        before = str(previous.get(name, "")).strip()
+        if _is_explicit(variable, before):
+            continue
+        value = str(stored.get(name, "")).strip()
         if value:
             os.environ[variable] = value
         else:
             os.environ.pop(variable, None)
-    os.environ[KEY_ENV_VAR] = KEY_NAME
-    if key.strip():
-        os.environ[KEY_NAME] = key.strip()
+    # Model changes that do not mention a key preserve the current key route.
+    before = _where_a_key_is_read_from(previous)
+    if not _is_explicit(KEY_ENV_VAR, before):
+        os.environ[KEY_ENV_VAR] = _where_a_key_is_read_from(stored)
+
+
+# ---------------------------------------------------------------- starting up
+
+
+def put_stored_in_force() -> None:
+    """Load stored settings without overriding explicit environment values."""
+    from .env import env_file, load_dotenv
+
+    present_before_file = _present_environment()
+    source = env_file()
+    if source is not None:
+        load_dotenv(source)
+    _EXPLICIT_ENVIRONMENT.update(present_before_file)
+    present_after_file = _present_environment()
+    if (source is not None and source.resolve() == SECRETS_FILE.resolve()
+            and KEY_NAME not in present_before_file):
+        present_after_file.discard(KEY_NAME)
+    _EXPLICIT_ENVIRONMENT.update(present_after_file)
+    stored = _stored().settings
+    for name, variable in _IN_FORCE:
+        value = str(stored.get(name, "")).strip()
+        if value:
+            os.environ.setdefault(variable, value)
+    # The key's environment name follows the same precedence as routing.
+    os.environ.setdefault(KEY_ENV_VAR, _where_a_key_is_read_from(stored))

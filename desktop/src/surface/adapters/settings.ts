@@ -2,8 +2,9 @@ import type { ActionOutcome, SettingsProposal, SettingsView } from "../types";
 import { booleanValue, isRecord, textValue } from "./primitives";
 
 // What is in force, read into the shape a screen holds. There is no field here
-// a key could travel in: what a screen may know is whether one is set, which is
-// what decides whether anything can be sent at all.
+// a key could travel in: a screen may know whether one is in use. That is
+// separate from whether an adapter and model are named, including a route the
+// person explicitly said needs no key.
 export function adaptSettings(raw: unknown): SettingsView | null {
   if (!isRecord(raw)) return null;
   const locale = textValue(raw.locale);

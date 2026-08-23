@@ -13,17 +13,18 @@ describe("Conversation body", () => {
     const { container, getByText, queryByText, rerender } = render(<ConversationDrawer ask={null} result={{ state: "absent", reason: "not_read" }} selectedPrompt="" onSelectPrompt={noAction} />);
     expect(container).toBeEmptyDOMElement();
     rerender(<ConversationDrawer ask={null} result={{ state: "unavailable", reason: "not_connected" }} selectedPrompt="" onSelectPrompt={noAction} />);
-    expect(getByText("Conversation isn’t connected yet")).toBeInTheDocument();
-    expect(getByText("Viva is not connected to this vault in this preview. Opening this drawer does not send a prompt or call a model. This unavailable view does not establish whether earlier model activity occurred.")).toBeInTheDocument();
+    expect(getByText("Recorded conversation is unavailable")).toBeInTheDocument();
+    expect(getByText("This build cannot show recorded conversation turns here.")).toBeInTheDocument();
     expect(queryByText(/No prompt was sent and no model call was made/)).not.toBeInTheDocument();
     rerender(<ConversationDrawer ask={null} result={{ state: "failed", reason: "read_failed" }} selectedPrompt="" onSelectPrompt={noAction} />);
-    expect(getByText("The conversation view could not be read. Opening this drawer does not send a prompt or call a model. This failed read does not establish whether earlier model activity occurred. The private vault remains open.")).toBeInTheDocument();
+    expect(getByText("Recorded conversation could not be read")).toBeInTheDocument();
+    expect(getByText("The read for recorded conversation turns did not complete. The question box is still available.")).toBeInTheDocument();
     expect(queryByText(/No prompt was sent and no model call was made/)).not.toBeInTheDocument();
     rerender(<ConversationDrawer ask={null} result={{ state: "partial", data: { turns: [turn("partial")], prompts: [] }, issues: [{ code: "partial", message: "bounded" }] }} selectedPrompt="" onSelectPrompt={noAction} />);
     expect(getByText("Some conversation details are unavailable. Supplied read-only content is shown below.")).toBeInTheDocument();
     rerender(<ConversationDrawer ask={null} result={{ state: "needs_input", data: { turns: [turn("needs")], prompts: [] }, issues: [{ code: "needs", message: "bounded" }] }} selectedPrompt="" onSelectPrompt={noAction} />);
     expect(getByText("Some conversation details need input, but this preview cannot accept or send a prompt. Supplied read-only content is shown below.")).toBeInTheDocument();
-    expect(queryByText("Conversation isn’t connected yet")).not.toBeInTheDocument();
+    expect(queryByText("Recorded conversation is unavailable")).not.toBeInTheDocument();
   });
 
 

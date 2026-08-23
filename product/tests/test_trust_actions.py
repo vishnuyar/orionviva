@@ -97,7 +97,8 @@ def test_the_trust_read_says_plainly_that_nothing_is_anchored(tmp_path: Path):
 def test_a_vault_nothing_has_run_over_says_that_too(tmp_path: Path):
     read = OpenedVaultSurfaceProvider(_vault(tmp_path)).read_surface("trust", {})
 
-    assert [item["id"] for item in read["absences"]] == ["anchoring", "maintenance"]
+    assert [item["id"] for item in read["absences"]] == [
+        "anchoring", "conversation_history", "maintenance"]
 
 
 # --------------------------------------------------- a file somebody can send

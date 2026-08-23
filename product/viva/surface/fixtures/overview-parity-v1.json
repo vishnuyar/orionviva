@@ -1097,6 +1097,10 @@
             {
               "id": "anchoring",
               "sentence": "Nothing here is anchored anywhere outside this machine. There is no external anchoring built: no third party holds a hash of your records, nobody could tell you whether this vault has been altered, and none of what you see rests on anything but this machine being honest with you."
+            },
+            {
+              "id": "conversation_history",
+              "sentence": "This build cannot show the recorded turns from questions you have asked Viva."
             }
           ],
           "notes": [],

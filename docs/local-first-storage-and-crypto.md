@@ -81,7 +81,7 @@ Local-first does not mean single-device forever. Designing storage as an encrypt
 ## Open
 
 - The storage leaning was never taken up. The system of record is an encrypted, hash-chained JSONL event log (product/viva/ledger/store.py:1) plus a content-addressed encrypted blob store (product/viva/ingest/raw_store.py:25); no `sqlite`, `sqlcipher` or keychain dependency exists anywhere in `product/`, `core/`, `merchant/` or `bench/`. Whether the leaning is abandoned or merely unbuilt is undecided.
-- Key custody: whether the second wrap is a keychain wrap, a printed recovery phrase, or both, and when it lands.
+- Model credentials are machine-level and currently live in an owner-only plaintext `.env` file. The sidecar loads one into its process at startup, before any vault opens, and retains it for the process lifetime. Moving that accessor to the OS keychain, with a user-held recovery path, is a dedicated custody cycle; this storage decision remains open until it lands.
 - Key rotation has no story beyond a sketch, and one is needed before any second user.
 - Does the event log double as the agent's memory substrate (corrections, preferences), or is memory a separate store? The leaning is one log, many projections.
 - Q5: measure whether encryption overhead matters at personal-finance data volumes, in whichever stack the form-factor decision picks.

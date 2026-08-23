@@ -484,6 +484,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "settings_presentation_confirmed": frozenset(),
     "settings_model_proposed":         frozenset(),
     "settings_model_confirmed":        frozenset(),
+    "settings_model_keyless_confirmed": frozenset(),
     "settings_model_cleared":          frozenset(),
     "settings_declined":               frozenset(),
     "settings_locale_unknown":         frozenset(),
@@ -554,6 +555,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "maintenance_unconfigured":        frozenset(),
     "trust_no_anchoring":              frozenset(),
     "trust_no_maintenance_yet":        frozenset(),
+    "trust_no_conversation_history":   frozenset(),
     "diagnostic_written":              frozenset(),
     "diagnostic_unwritable":           frozenset(),
 

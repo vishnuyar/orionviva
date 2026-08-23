@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { CircleSlash, FileQuestion, Info } from "lucide-react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
@@ -34,6 +34,13 @@ function transferSentence(state: TransferActionState): string {
   return state.result.outcome.message.trim() || UNSPOKEN_REPLY;
 }
 
+function proposedSettingValue(name: string, value: string): string {
+  if (name !== "key") return value || "nothing";
+  if (value === "set") return "A new key will be held.";
+  if (value === "not needed") return "No key is needed.";
+  return value || "nothing";
+}
+
 // How figures are written, and whether a model may be reached. Two forms, kept
 // apart the way the engine keeps them apart: the first sends nothing and says
 // so, and the second is the moment bytes become able to leave. The proposal
@@ -44,19 +51,33 @@ function Configuration({ controls }: { controls: SettingsControls }) {
   const [currency, setCurrency] = useState("");
   const [adapter, setAdapter] = useState("anthropic");
   const [model, setModel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [key, setKey] = useState("");
+  const [keyNotNeeded, setKeyNotNeeded] = useState(false);
   const working = controls.state.state === "working";
   const proposal = controls.state.state === "proposed" ? controls.state.proposal : null;
   const settled = controls.state.state === "settled" ? controls.state.result : null;
   const said = settled ? (settled.state === "settled" ? settled.outcome.message.trim() || UNSPOKEN_REPLY : `${channelPresentation(settled).title}. ${channelPresentation(settled).detail}`) : "";
   const inForce = controls.settings.state === "ready" ? controls.settings.data : null;
+  useEffect(() => {
+    if (!inForce) return;
+    setLocale(inForce.locale);
+    setCurrency(inForce.currency);
+    setAdapter(inForce.adapter);
+    setModel(inForce.model);
+    setBaseUrl(inForce.baseUrl);
+    if (!inForce.canSend) setKeyNotNeeded(false);
+  }, [inForce?.adapter, inForce?.baseUrl, inForce?.canSend, inForce?.currency, inForce?.keySet, inForce?.locale, inForce?.model]);
   const presentationFields = { locale: locale.trim(), currency: currency.trim() };
-  const modelFields = { adapter, model: model.trim() };
+  const modelFields = { adapter, model: model.trim(), base_url: baseUrl.trim(), key_action: key.trim() ? "set" : keyNotNeeded ? "none" : "" };
+  const fieldLabels: Record<string, string> = { adapter: "How to reach it", model: "Model", base_url: "Where to reach it", key: "Key" };
   return <section className="trust-settings" aria-labelledby="trust-settings-title">
     <h3 id="trust-settings-title">What this app has been told to do</h3>
     {inForce ? <dl className="trust-settings-current">
       <div><dt>Figures are written as</dt><dd>{inForce.locale} · {inForce.currency}</dd></div>
       <div><dt>Model</dt><dd>{inForce.canSend ? `${inForce.adapter} · ${inForce.model}` : "None. Nothing can be sent anywhere."}</dd></div>
+      <div><dt>Where it is reached</dt><dd>{inForce.baseUrl || (inForce.canSend ? "The selected model service decides." : "Nowhere.")}</dd></div>
+      <div><dt>Key</dt><dd>{inForce.keySet ? "A key is held on this machine." : inForce.canSend ? "No key is in use for this model." : "No key is in use."}</dd></div>
     </dl> : <p>This source did not say what is in force.</p>}
     <form className="trust-settings-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onPropose("presentation", presentationFields); }}>
       <label>Write numbers as<input value={locale} onChange={(event) => setLocale(event.target.value)} placeholder="en-US" autoComplete="off" /></label>
@@ -64,14 +85,18 @@ function Configuration({ controls }: { controls: SettingsControls }) {
       <button className="secondary-button" type="submit" aria-disabled={working}>Show me what would change</button>
     </form>
     <form className="trust-settings-form" onSubmit={(event) => { event.preventDefault(); if (!working) controls.onPropose("model", modelFields); }}>
-      <label>Reach a model through<select value={adapter} onChange={(event) => setAdapter(event.target.value)}><option value="anthropic">anthropic</option><option value="openai-compatible">openai-compatible</option></select></label>
+      <label>Reach a model through<select value={adapter} onChange={(event) => setAdapter(event.target.value)}><option value="">Choose how</option><option value="anthropic">anthropic</option><option value="openai-compatible">openai-compatible</option></select></label>
       <label>Named exactly<input value={model} onChange={(event) => setModel(event.target.value)} placeholder="a pinned model id" autoComplete="off" /></label>
-      <label>Its key<input type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="Paste the key" autoComplete="off" /></label>
+      <label>Where to reach it<input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://model-service.example/v1" autoComplete="off" /></label>
+      <label>Its key<input type="password" value={key} disabled={keyNotNeeded} onChange={(event) => setKey(event.target.value)} placeholder="Paste the key" autoComplete="off" /></label>
+      <p>Leave this blank to keep the key already in use. If no key is in use, paste one or say this model needs no key.</p>
+      <label><span><input type="checkbox" checked={keyNotNeeded} onChange={(event) => { setKeyNotNeeded(event.target.checked); if (event.target.checked) setKey(""); }} /> This model needs no key</span></label>
       <button className="secondary-button" type="submit" aria-disabled={working}>Show me what would change</button>
+      <button className="secondary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onPropose("model", { adapter: "", model: "", base_url: "", key_action: "" }); }}>Reach no model</button>
     </form>
     {proposal ? <div className={proposal.sends ? "trust-settings-proposal sends" : "trust-settings-proposal"}>
       <p>{proposal.message}</p>
-      <dl>{Object.entries(proposal.changes).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value || "nothing"}</dd></div>)}</dl>
+      <dl>{Object.entries(proposal.changes).map(([name, value]) => <div key={name}><dt>{fieldLabels[name] || name}</dt><dd>{proposedSettingValue(name, value)}</dd></div>)}</dl>
       <button className="primary-button" type="button" aria-disabled={working} onClick={() => { if (!working) controls.onConfirm(proposal.kind, proposal.kind === "presentation" ? presentationFields : modelFields, proposal.digest, proposal.kind === "model" ? key : ""); setKey(""); }}>Yes, do that</button>
     </div> : null}
     <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
@@ -102,7 +127,7 @@ function VaultCopy({ transfer }: { transfer: TransferControls }) {
   }
   return <section className="trust-transfer" aria-labelledby="trust-transfer-title">
     <h3 id="trust-transfer-title">A copy of this whole vault</h3>
-    <p>A copy is written without decrypting anything, so the file is exactly as private as this vault — and exactly as lost as this vault if you lose the passphrase. Bringing one back writes into an empty folder and never over a vault in use.</p>
+    <p>A copy is written without decrypting anything, so the file is exactly as private as this vault — and exactly as lost as this vault if you lose the passphrase. It carries no model configuration and no key. Bringing one back writes into an empty folder and never over a vault in use.</p>
     <form className="trust-transfer-form" onSubmit={takeCopy}>
       <label>Write the copy to<input value={archive} onChange={(event) => setArchive(event.target.value)} placeholder="/path/to/copy.orionvault" autoComplete="off" /></label>
       <button className="secondary-button" type="submit" aria-disabled={working} aria-describedby={working ? "trust-transfer-waiting" : undefined}>Take a copy</button>

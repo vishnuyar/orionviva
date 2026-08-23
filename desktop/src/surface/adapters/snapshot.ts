@@ -1,6 +1,5 @@
 import type { ActivityData, DocumentsData, FeatureResult, OverviewData, ReviewData, SurfaceSnapshot, TrustData } from "../types";
 
-const unavailable = <T>(reason: string): FeatureResult<T> => ({ state: "unavailable", reason });
 // Which vault this is, said by the side that opened it. It used to be written
 // here, so every snapshot said "Private vault" — including the sample one,
 // which is the one place a wrong answer matters.
@@ -13,7 +12,7 @@ export function buildLiveSnapshot(overview: FeatureResult<OverviewData>, documen
     documents,
     review,
     activity,
-    conversation: unavailable("Viva is not connected to this private vault. No model call was made."),
+    conversation: { state: "absent", reason: "not_read" },
     trust,
   };
 }

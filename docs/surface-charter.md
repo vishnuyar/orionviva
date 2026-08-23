@@ -103,11 +103,12 @@ is to carry it, and leaves in each panel the one sentence that changes what to
 do next.
 
 **Why the ordering clause is load-bearing.** Read without clause 5, this rule
-authorises deleting the per-panel admissions immediately, and Trust does not
-render live data today. That would trade scattered honesty for none at all, in
-one commit, with this rule as the justification. Clause 5 makes the retirement
-conditional on the destination that inherits the obligation being able to carry
-it. It is also what makes this rule compatible with VOICE-112, *the surface
+authorises deleting the per-panel admissions before Trust carries their full
+account. Trust now renders live outbound and absence data, but each retirement
+still travels with the corresponding Trust entry; a missing transcript is the
+first such pair. Clause 5 makes the retirement conditional on the destination
+that inherits the obligation being able to carry it. It is also what makes this
+rule compatible with VOICE-112, *the surface
 never claims machinery the product does not have*, whose second and fourth
 assertions — that a Documents surface does not paper over capture being met on
 originals and unmet on the ingest request, and that outbound accounting is not

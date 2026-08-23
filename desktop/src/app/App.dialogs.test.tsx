@@ -16,10 +16,8 @@ describe("dialogs", () => {
     await user.click(getByRole("button", { name: /ask viva/i }));
 
     expect(getByRole("dialog", { name: "Viva conversation" })).toBeInTheDocument();
-    // Viva is not connected to a vault read, so the drawer says so rather than
-    // showing turns from somewhere else. What it does carry is the box that
-    // takes a question, which is not a read and does not wait for one.
-    expect(getByText("Conversation isn’t connected yet")).toBeInTheDocument();
+    // The absent transcript body renders nothing beside the live question box.
+    expect(document.body).not.toHaveTextContent("Recorded conversation is unavailable");
     expect(document.body).not.toHaveTextContent("picture is complete");
     expect(document.body).not.toHaveTextContent("Brokerage statement, page 4");
     // The box that takes a question is outside the read's gate, so a person
@@ -117,7 +115,7 @@ describe("dialogs", () => {
       expect(dismiss).toHaveBeenCalledTimes(1);
       view.rerender(<ConversationDialogShell resetKey="request-2-live" drawerRef={drawer} closeRef={close} onDismiss={dismiss}><div>Recovered supplied body</div></ConversationDialogShell>);
       expect(view.getByText("Recovered supplied body")).toBeInTheDocument();
-      expect(view.getByText("This drawer shows the turns this vault recorded, and takes a question of your own.")).toBeInTheDocument();
+      expect(view.getByText("Ask Viva a question about the records in this vault.")).toBeInTheDocument();
     } finally {
       error.mockRestore();
     }

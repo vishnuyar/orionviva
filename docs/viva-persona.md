@@ -7,7 +7,7 @@
 
 ### VOICE-10 — voice is versioned data, never incidental copy
 **State:** enforced
-**Code:** product/viva/persona/contracts.py:403 (`say`), product/viva/persona/pack-v31/ (each newer pack adds a family and copies the rest verbatim; pack-v19 was in force until a stopped job needed words, pack-v20 until a vault leaving and coming back did, and pack-v21 until a pass back over what is already held did)
+**Code:** product/viva/persona/contracts.py, product/viva/persona/pack-v32/ (each newer pack adds a family and copies the rest verbatim; pack-v32 adds the keyless-model confirmation and the recorded-conversation absence)
 **Test:** product/tests/test_persona_pack.py::test_question_text_no_longer_lives_in_code
 
 1. Everything Viva says lives in `product/viva/persona/<pack>/` as phrasings, moments and tone rules.

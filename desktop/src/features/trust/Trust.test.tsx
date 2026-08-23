@@ -187,14 +187,77 @@ describe("what this app has been told to do", () => {
     const { getAllByRole, getByLabelText } = render(<Trust {...base} settings={controls({ onPropose: (kind, fields) => { asked.push([kind, fields]); } })} />);
     fireEvent.change(getByLabelText("Write numbers as"), { target: { value: "en-IN" } });
     fireEvent.click(getAllByRole("button", { name: "Show me what would change" })[0]);
-    expect(asked).toEqual([["presentation", { locale: "en-IN", currency: "" }]]);
+    expect(asked).toEqual([["presentation", { locale: "en-IN", currency: "USD" }]]);
+  });
+
+  it("fills the model form from what is in force and resyncs after confirmation", () => {
+    const first: SettingsView = { locale: "en-US", currency: "USD", adapter: "openai-compatible", model: "a-pinned-1", baseUrl: "https://first.invalid/v1", keySet: true, canSend: true };
+    const second: SettingsView = { ...first, model: "a-pinned-2", baseUrl: "https://second.invalid/v1" };
+    const settings = controls({ settings: { state: "ready", data: first } });
+    const view = render(<Trust {...base} settings={settings} />);
+
+    expect(view.getByLabelText("Reach a model through")).toHaveValue("openai-compatible");
+    expect(view.getByLabelText("Named exactly")).toHaveValue("a-pinned-1");
+    expect(view.getByLabelText("Where to reach it")).toHaveValue("https://first.invalid/v1");
+
+    view.rerender(<Trust {...base} settings={{ ...settings, settings: { state: "ready", data: second } }} />);
+
+    expect(view.getByLabelText("Named exactly")).toHaveValue("a-pinned-2");
+    expect(view.getByLabelText("Where to reach it")).toHaveValue("https://second.invalid/v1");
+  });
+
+  it("does not mistake a missing key for a choice that no key is needed", () => {
+    const missing: SettingsView = { locale: "en-US", currency: "USD", adapter: "openai-compatible", model: "a-pinned-1", baseUrl: "https://example.invalid/v1", keySet: false, canSend: true };
+    const view = render(<Trust {...base} settings={controls({ settings: { state: "ready", data: missing } })} />);
+
+    expect(view.getByLabelText("This model needs no key")).not.toBeChecked();
+    expect(view.getByText("No key is in use for this model.")).toBeInTheDocument();
+  });
+
+  it("states the blank-key rule and carries only the presence of a new key", () => {
+    const asked: Array<[string, Record<string, string>]> = [];
+    const view = render(<Trust {...base} settings={controls({ onPropose: (kind, fields) => { asked.push([kind, fields]); } })} />);
+
+    fireEvent.change(view.getByLabelText("Reach a model through"), { target: { value: "anthropic" } });
+    fireEvent.change(view.getByLabelText("Named exactly"), { target: { value: "a-pinned-1" } });
+    fireEvent.change(view.getByLabelText("Where to reach it"), { target: { value: "https://example.invalid/v1" } });
+    fireEvent.change(view.getByLabelText("Its key"), { target: { value: "a-key" } });
+    fireEvent.click(view.getAllByRole("button", { name: "Show me what would change" })[1]);
+
+    expect(view.getByText("Leave this blank to keep the key already in use. If no key is in use, paste one or say this model needs no key.")).toBeInTheDocument();
+    expect(asked).toEqual([["model", { adapter: "anthropic", model: "a-pinned-1", base_url: "https://example.invalid/v1", key_action: "set" }]]);
+    expect(JSON.stringify(asked)).not.toContain("a-key");
+  });
+
+  it("lets a person state that the model needs no key without inspecting its address", () => {
+    const asked: Array<[string, Record<string, string>]> = [];
+    const view = render(<Trust {...base} settings={controls({ onPropose: (kind, fields) => { asked.push([kind, fields]); } })} />);
+
+    fireEvent.change(view.getByLabelText("Reach a model through"), { target: { value: "openai-compatible" } });
+    fireEvent.change(view.getByLabelText("Named exactly"), { target: { value: "a-pinned-1" } });
+    fireEvent.click(view.getByLabelText("This model needs no key"));
+    fireEvent.click(view.getAllByRole("button", { name: "Show me what would change" })[1]);
+
+    expect(asked[0][1].key_action).toBe("none");
+  });
+
+  it("offers the existing proposal path for reaching no model", () => {
+    const asked: Array<[string, Record<string, string>]> = [];
+    const view = render(<Trust {...base} settings={controls({ onPropose: (kind, fields) => { asked.push([kind, fields]); } })} />);
+
+    fireEvent.click(view.getByRole("button", { name: "Reach no model" }));
+
+    expect(asked).toEqual([["model", { adapter: "", model: "", base_url: "", key_action: "" }]]);
   });
 
   it("shows the proposal's own sentence and every change it names before any yes", () => {
-    const proposal = { kind: "model" as const, changes: { adapter: "anthropic", model: "a-pinned-1" }, sends: true, digest: "abc123", message: moments.settings_model_proposed };
-    const { getByText, getByRole } = render(<Trust {...base} settings={controls({ state: { state: "proposed", proposal } })} />);
+    const proposal = { kind: "model" as const, changes: { adapter: "anthropic", model: "a-pinned-1", base_url: "https://example.invalid/v1", key: "not needed" }, sends: true, digest: "abc123", message: moments.settings_model_proposed };
+    const { getByText, getAllByText, getByRole } = render(<Trust {...base} settings={controls({ state: { state: "proposed", proposal } })} />);
     expect(getByText(moments.settings_model_proposed)).toBeInTheDocument();
     expect(getByText("a-pinned-1")).toBeInTheDocument();
+    expect(getAllByText("Where to reach it").length).toBeGreaterThan(1);
+    expect(getAllByText("Key").length).toBeGreaterThan(1);
+    expect(getByText("No key is needed.")).toBeInTheDocument();
     expect(getByRole("button", { name: "Yes, do that" })).toBeInTheDocument();
   });
 

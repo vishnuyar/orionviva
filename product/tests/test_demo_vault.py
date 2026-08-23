@@ -95,7 +95,8 @@ def test_the_states_the_other_screens_can_be_in_are_reachable(home: Path):
     # Something has been sent, so the outbound record is a record rather than
     # an absence, and something has run, so Trust is not only absences.
     assert trust["outbound"]["call_count"] > 0
-    assert [absence["id"] for absence in trust["absences"]] == ["anchoring"]
+    assert [absence["id"] for absence in trust["absences"]] == [
+        "anchoring", "conversation_history"]
 
 
 def test_every_document_is_named_the_way_a_person_would_recognise_it(home: Path):

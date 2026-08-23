@@ -84,9 +84,12 @@ class SettingsActions:
             return _refused(exc.reason)
         if kind == "presentation":
             said = "settings_presentation_confirmed"
+        elif not settings.can_send:
+            said = "settings_model_cleared"
+        elif proposal.changes.get("key") == "not needed":
+            said = "settings_model_keyless_confirmed"
         else:
-            said = ("settings_model_confirmed" if settings.can_send
-                    else "settings_model_cleared")
+            said = "settings_model_confirmed"
         return ActionOutcome("completed", moment(said),
                              state=settings.as_dict()).as_dict()
 
@@ -110,13 +113,15 @@ def _refused(reason: str) -> dict[str, Any]:
 # can reach the reader's model edge — which is a property of the shape rather
 # than of a check a later edit could relax.
 _PRESENTATION_FIELDS = {"locale", "currency"}
-_MODEL_FIELDS = {"adapter", "model", "base_url"}
+_MODEL_FIELDS = {"adapter", "model", "base_url", "key_action"}
 
 
 def _propose_request(payload: Mapping[str, Any]) -> tuple[str, dict[str, str]]:
     allowed = {"kind"} | _PRESENTATION_FIELDS | _MODEL_FIELDS
     _fenced(payload, allowed, "viva.settings.propose")
     kind = _kind(payload)
+    if kind == "model":
+        _key_action(payload)
     fields = _PRESENTATION_FIELDS if kind == "presentation" else _MODEL_FIELDS
     return kind, {name: _text(payload, name) for name in sorted(fields)
                   if name in payload}
@@ -126,6 +131,8 @@ def _confirm_request(payload: Mapping[str, Any]) -> tuple[str, dict[str, str], s
     allowed = {"kind", "digest", "key"} | _PRESENTATION_FIELDS | _MODEL_FIELDS
     _fenced(payload, allowed, "viva.settings.confirm")
     kind = _kind(payload)
+    if kind == "model":
+        _key_action(payload)
     if kind == "presentation" and "key" in payload:
         # The one place the two paths could be joined by a caller, closed here
         # rather than ignored: a request that sends a key under the kind that
@@ -146,6 +153,12 @@ def _kind(payload: Mapping[str, Any]) -> str:
     if kind not in ("presentation", "model"):
         raise BridgeRequestError("kind must be presentation or model")
     return kind
+
+
+def _key_action(payload: Mapping[str, Any]) -> None:
+    action = _text(payload, "key_action")
+    if action not in ("", "set", "none"):
+        raise BridgeRequestError("key_action must be set, none, or empty")
 
 
 def _text(payload: Mapping[str, Any], name: str) -> str:

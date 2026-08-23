@@ -242,7 +242,8 @@ describe("vault", () => {
       await user.click(getByRole("button", { name: /overview.*your picture/i }));
 
       await user.click(getByRole("button", { name: /ask viva/i }));
-      expect(getByText("Viva is not connected to this vault in this preview. Opening this drawer does not send a prompt or call a model. This unavailable view does not establish whether earlier model activity occurred.")).toBeInTheDocument();
+      expect(getByRole("button", { name: /^Ask$/i })).toBeInTheDocument();
+      expect(document.body).not.toHaveTextContent("Recorded conversation is unavailable");
       expect(queryByText("What changed this month?")).not.toBeInTheDocument();
       await user.click(getByRole("button", { name: /close viva conversation/i }));
 

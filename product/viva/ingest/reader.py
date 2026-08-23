@@ -251,10 +251,11 @@ def build_reader():
     adapter = os.environ.get("VIVA_MODEL_ADAPTER")
     model = os.environ.get("VIVA_MODEL")
 
+    key_env = os.environ.get("VIVA_MODEL_KEY_ENV", "ANTHROPIC_API_KEY")
     spec = ModelSpec(
         name="viva-reader", adapter=adapter, model=model,
         base_url=os.environ.get("VIVA_MODEL_BASE_URL"),
-        api_key_env=os.environ.get("VIVA_MODEL_KEY_ENV", "ANTHROPIC_API_KEY"),
+        api_key_env=None if (key_env or "").lower() in ("", "none") else key_env,
         json_mode=True)
     locale = locale_from_env()
     currency = currency_from_env()

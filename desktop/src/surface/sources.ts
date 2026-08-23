@@ -14,7 +14,8 @@ import type { DocumentActions, EngineIdentity, FeatureResult, JobStream, ReviewA
 //
 // `sample` is what the sidecar said about the vault it opened, carried here so
 // the shell can put one permanent frame around the place. It is not a
-// rendering switch: nothing below this line branches on it.
+// rendering switch: no screen branches on it. This source uses it only to
+// choose the permanent frame that says where a person is.
 export type SurfaceSource = { id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: () => Promise<SurfaceSnapshot>; reviewActions: ReviewActions; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
 // What a source says about the engine behind it: which build answered, and
 // which destinations its registry says a read reaches.
@@ -25,7 +26,7 @@ export function vaultSource(client: BridgeClient, frame: SampleFrame | null): Su
   const label = sample ? "Sample vault" : "Private vault";
   const subtitle = sample ? "Nothing here is real" : "Opened on this device";
   const description = sample
-    ? "Every account, document, name and amount in this vault was invented. It is a vault like any other, and nothing you do here touches your own."
+    ? "Every account, document, name and amount here was invented. Changes you make here do not change your own records."
     : "The surfaces below are read from this vault. Features that are not connected stay hidden or say so.";
   return {
     id: "bridge-client",
