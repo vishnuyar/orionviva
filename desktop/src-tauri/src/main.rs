@@ -125,10 +125,36 @@ fn force_stop_child(child: &mut Child) {
     let _ = child.wait();
 }
 
+// The bridge a packaged build runs: the executable Tauri stages beside this
+// one. It is asked for by name because `externalBin` stages it under its own
+// name with the target triple stripped, so this constant and that entry in
+// tauri.conf.json move together or not at all.
+//
+// A build that never looked here fell through to the development `python3`,
+// whose working directory is a path baked in at compile time. That path exists
+// on the machine that built the app and nowhere else, and the interpreter it
+// found was whatever `python3` means to a Finder-launched process — 3.9 on a
+// stock Mac, which cannot import the product runtime at all. The sidecar died
+// before reading a frame, and every open answered with a bridge that was
+// already gone.
+const BUNDLED_SIDECAR: &str = "viva-desktop-bridge";
+
+fn bundled_sidecar() -> Option<PathBuf> {
+    let beside = std::env::current_exe()
+        .ok()?
+        .parent()?
+        .join(format!("{BUNDLED_SIDECAR}{}", std::env::consts::EXE_SUFFIX));
+    beside.is_file().then_some(beside)
+}
+
 fn spawn_bridge() -> Result<BridgeProcess, String> {
-    // Development uses the repository's Python module. Packaging can provide
-    // an executable path through ORIONVIVA_SIDECAR without changing the UI.
+    // An explicit path wins, so a developer can point the host at a bridge of
+    // their own. Otherwise the bundled executable, which is what every
+    // installed copy runs. Only a build with neither — a checkout being worked
+    // on — falls back to the repository's Python module.
     let mut command = if let Ok(path) = std::env::var("ORIONVIVA_SIDECAR") {
+        Command::new(path)
+    } else if let Some(path) = bundled_sidecar() {
         Command::new(path)
     } else {
         let mut command = Command::new("python3");
