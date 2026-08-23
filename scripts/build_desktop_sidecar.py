@@ -24,16 +24,18 @@ def fail(message: str) -> "NoReturn":
 
 
 def main() -> int:
+    # Which interpreter, not just which version. `python3` is whatever the
+    # shell's PATH says it is, and a machine with a venv sitting right there can
+    # still run this under a system 3.9 — a version alone leaves nobody any
+    # wiser about where it came from.
     if sys.version_info < (3, 11):
-        fail("Python 3.11 or newer is required by the product runtime")
+        fail("Python 3.11 or newer is required by the product runtime; "
+             f"found {sys.version.split()[0]} ({sys.executable})")
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--target", help="Rust target triple used by Tauri")
     args = parser.parse_args()
-
-    if sys.version_info < (3, 11):
-        fail(f"Python 3.11+ is required; found {sys.version.split()[0]} ({sys.executable})")
 
     if not SPEC.is_file():
         fail(f"missing PyInstaller spec: {SPEC}")

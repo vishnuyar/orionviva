@@ -246,7 +246,13 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       // folder holding no vault, a path that is not a folder, and a vault this
       // passphrase will not open — three completely different next steps that
       // one "could not be opened" made look like the same mistake.
-      return { ...state, phase: "settled", notice: { kind: "refused", text: action.said || "The local vault could not be opened. Check the directory and passphrase, then try again." } };
+      //
+      // Where it gave none, the failure is not one of those three, and the
+      // fallback says so rather than sending a person back to a folder and a
+      // passphrase that were never rejected. It sent them there for a dead
+      // sidecar once, and re-typing a correct passphrase cannot fix a bridge
+      // that was never running.
+      return { ...state, phase: "settled", notice: { kind: "refused", text: action.said || "The local vault could not be opened. Nothing came back saying why — a wrong folder or a wrong passphrase would have said so." } };
     case "load-failed":
       if (action.requestId !== state.requestId) return state;
       return { ...state, phase: "settled", notice: { kind: "refused", text: "The local vault opened, but its surface data could not be loaded." } };

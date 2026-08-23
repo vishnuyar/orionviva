@@ -106,7 +106,7 @@ describe("surface session", () => {
     const failed = sessionReducer(opening, { type: "open-failed", requestId: 1, said: "" });
     expect(failed.phase).toBe("settled");
     expect(failed.snapshot).toBe(before.snapshot);
-    expect(failed.notice).toEqual({ kind: "refused", text: "The local vault could not be opened. Check the directory and passphrase, then try again." });
+    expect(failed.notice).toEqual({ kind: "refused", text: "The local vault could not be opened. Nothing came back saying why — a wrong folder or a wrong passphrase would have said so." });
   });
 
   it("reports the exact partial read notice after one failed result", () => {
