@@ -363,7 +363,7 @@ synthetic vault, exercises the real flows, and asserts the installed build
 reports its revisions — which directly answers the stale bundle, because CI
 tests what a person will install rather than a neighbouring development server.
 
-**Four worked cases, so the gates can be applied without guessing.** A
+**Five worked cases, so the gates can be applied without guessing.** A
 projection that adds `excluded_from_spending` fails contract drift: the Overview
 adapter must render the caveat or deliberately reject the field with a reviewed
 reason, its partial fixture changes, and the visual state is reviewed. A
@@ -377,6 +377,13 @@ destination and contract. And obligations arrive as a registry entry:
 `obligations.read` with its availability rule, trust effect, contract and
 Overview and Account consumers, so "Viva noticed" appears only once a real
 obligation exists and no new shell or top-level navigation item is needed.
+Finally, a future progressive-proof slice may let a local "Show verification
+details" preference hide only evidence detail the surface contract marks as
+suppressible. The adapter switches on that presentation declaration, never on
+a grade word; mandatory uncertainty and caveats remain visible, the complete
+Evidence drawer stays reachable, and changing the preference changes neither
+the payload nor anything an authorised agent can inspect. That slice still
+requires its own approved brief and does not describe the current interface.
 
 **The demo vault is a product requirement, not sample decoration.** Install,
 choose sample data, see a clearly fictional but mature financial picture, try

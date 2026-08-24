@@ -36,8 +36,14 @@
 **Code:** product/viva/tools/__init__.py:31
 **Test:** none
 
-1. Every registered verb is a read.
-2. The write direction produces a Proposal that deterministic writers apply after an explicit confirmation; it takes no tool.
+1. Every verb in the executable agent registry is read-only; `compute` reasons
+   over returned figures and person-supplied inputs but writes nothing.
+2. A proposal and the separately gated operation that may apply it are not
+   registry tools. Deterministic writers apply only after the required explicit
+   confirmation.
+3. Future action execution remains outside this read-tool registry, with one
+   allowlisted operation per action so the operation table stays the complete
+   readable write surface.
 
 ### PROJ-17 — a read's requirement is in the schema the model is shown
 **State:** enforced
@@ -83,7 +89,8 @@ rental property, another child or a fourth loan adds none.
 
 Two counts live in this file and must be kept apart. **Thirteen** is the
 design-intent verb set. **Six** is what the registry holds, which is derived by
-running the code.
+running the code. The tables below describe that design vocabulary, not a claim
+that every named verb is registered or has product substrate today.
 
 ### Reading the ledger
 
@@ -123,14 +130,16 @@ running the code.
 | `get_provenance(record_id)` | Figure → source document → exact region. Powers tap-the-number, and answers *why do you say that?* |
 | `get_transparency(question)` | What left my machine; why was this model trusted with that document. Reads the outbound and autonomy ledgers. |
 
-**The forbidden list is what makes it safe to hand over your finances.** No tool
-moves money or talks to any institution — Phase 3 "actions" will be drafts
-presented for explicit yes, executed by the human or a separately-gated
-mechanism. No tool touches the network; every verb operates on local state.
-Writes are events. "Nothing irreversible without your explicit yes" is thereby
-*structural*: there is no tool with which Viva could be tricked, or
-prompt-injected, into doing damage. And every figure in every answer is a tool
-result with a record id — T1 enforced in code, not in a prompt.
+**The forbidden list is what makes it safe to hand over your finances.** No
+registered read tool moves money, writes a correction, or talks to any
+institution. Action execution is outside this registry: a later financial
+action is drafted for an explicit yes and then handled by a separately gated,
+allowlisted operation or by the person. No tool touches the network; every
+registered verb operates on local state. Writes are events. "Nothing
+irreversible without your explicit yes" is thereby *structural*: there is no
+read tool with which Viva could be tricked, or prompt-injected, into doing
+damage. And every figure in every answer is a tool result with a record id — T1
+enforced in code, not in a prompt.
 
 The stress test is chains, not verbs. *Can we afford the $8K vacation in
 December?* is `query_ledger` for liquid funds plus `list_obligations` through
@@ -159,27 +168,35 @@ structurally impossible).
 ## Open
 
 - Seven of the thirteen verbs exist in no registered form. `find_patterns` has
-  its machinery built and unexposed — rhythm hypotheses and stream building,
-  with a CLI report and three consumers — and begins life as a named projection
-  through `query_ledger` rather than as a verb. `list_obligations` is half-built:
-  a cadence and a last occurrence exist per stream, and nothing computes a next
-  expected date or amount; how sure a rhythm must be before a bill is called
-  *due* is a design question, not missing machinery. `search_documents` is
+  deterministic substrate but no verb: streams group counterparty relationships
+  by rail and separate their directional flows; rhythm hypotheses measure and
+  decompose cadence and amount stability, consult confirmed rhythm rulings, and
+  feed the diagnostic report and a supported-recurring-spending mode of
+  `query_ledger`. That read reports observed arrangements, not future findings
+  or obligations. `list_obligations` is incomplete on the same substrate: first
+  and last occurrences, cadence, amount stability, and confirmed or measured
+  periodicities exist, but no code computes a sufficiently grounded next
+  expected date, expected amount or honest range, confidence, coverage, or the
+  evidence threshold at which the word *due* is allowed. `search_documents` is
   blocked at the data layer: originals are stored content-addressed, there is no
   text index, and what is captured per document is the model's response text
   rather than the document's own. `project`, `recall`, `remember` and `correct`
   have nothing underneath them at all.
 - `remember` and `correct` are write verbs in a document that also says the
-  write direction takes no tools. Either the count narrows to eleven read verbs
-  or those two are something other than tools. Unruled: it is a decision, not a
-  tidy-up, and the count stays thirteen until it is taken.
+  executable registry is read-only and action execution belongs outside it.
+  Either the design count narrows to eleven read verbs or those two become
+  separately gated actions rather than tools. This document records the
+  contradiction and does not resolve it; the count stays thirteen until a
+  dedicated ruling is taken.
 - Whether a slot can be filled at all is not computed from the registry before a
   call is made. `{document}` is a declared slot type that no tool emits.
 - The `vocabulary` mode's count carries no grade and no record ids, so *why do
   you say five?* comes back with nothing, and it is declared `activity` — which
   is not what a count of the person's own labels is.
-- The draft-and-approve mechanism for Phase 3 actions lives outside this toolset
-  by design; its shape is a capability-model question.
+- The general draft-and-confirm mechanism for financial actions does not yet
+  exist. It remains outside this read toolset by design; its proposal, policy,
+  state re-check, consent, application, and outcome shapes are a later
+  capability-model question.
 - Every capability recorded here is proven mechanically and lightly exercised
   against real data. Read the built ones as working in the suite and unproven in
   a real sitting.

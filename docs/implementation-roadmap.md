@@ -76,9 +76,19 @@ wrong when it was written.
 
 ## Why
 
-This document has two halves, and the split is the point. A slice is a unit of *planning*. Once the work exists, the code and its design document are the record, and a label only tells a reader where in a queue it once sat — so the built half is organised by capability, and reading it answers what the product does today. Only the unbuilt half is organised by slice, in the fact-statement form the plan has used throughout, because for unbuilt work the order *is* the content.
+This document has two halves, and the split is the point. Once work exists, the
+code and its design document are the record, and a historical slice label only
+tells a reader where in a queue it once sat — so the built half is organised by
+capability, and reading it answers what the product does today. The unbuilt half
+is organised by dependency-ordered cycle family. Each family receives its own
+approved brief and may produce one or more vertical slices without reusing or
+renumbering the frozen historical labels; for planned work, the order and
+dependency path are the content.
 
-The approach is data-first: every slice seeds a reusable block rather than a feature, and the trust signal rides all of them from the first version to the endgame. This is the ordered path by which the whole invariant set gets built.
+The approach remains data-first: each future capability seeds or composes a
+reusable block rather than a standalone feature, and the trust signal rides the
+whole vertical slice from product through surface contract to interface. This is
+the ordered path by which the approved direction can be built.
 
 **What is built, by capability.**
 
@@ -107,23 +117,208 @@ and remaining gaps live in
 
 **What is planned, and why in this order.**
 
-*Obligations and proactive alerts* turn passive records into active help: an obligation primitive with cadence and due rules from recurrence detection, anomaly and fee and subscription detection reusing the existing finding block, and a proactive trigger deciding *when* to surface. Its real dependency is nature and category semantics settling, not time — recurrence detection stays noisy until then. The proactive-trigger block is exactly what the conversational agent later uses to volunteer. Card-specific fields feed obligations; when needed, the card profile version bumps and only affected statements are re-read, because the claims layer records which profile version read each document.
+These are cycle families, not historical slices, and none receives an old slice
+label. They are planned direction rather than built behaviour. Each family still
+needs its own approved brief, and each capability travels as one vertical slice:
+product projection or event, reviewed `viva.surface` contract, capability and
+operation disposition, fixtures, installed-interface consumer and tests. A new
+shell is not a substitute for any missing layer.
 
-*Viva speaks* is mostly built, and what remains is the honesty measurement rather than the machinery.
+### Cycle family 1 — quiet proof and correction reachability
 
-*Goals and budgets* compose spending, income and balances with no new engine, and establish the graduated-autonomy pattern — draft against act — that every future action inherits: Viva drafts on request and never acts irreversibly without a yes.
+**Product capability.** A later brief must distinguish routine evidence detail
+from attention-required or blocking truth, make material uncertainty
+non-suppressible by construction, and register category, tag and transfer
+corrections as backend actions that return a typed outcome and refreshed read.
 
-*Loans, insurance, tax and FX* each ship as their own smallest seed: one loan, one policy, one tax document, one currency pair. Most of this is [document-coverage.md](document-coverage.md) becoming registry rows. A mortgage payment is compound — interest, principal and escrow in one movement — so it cannot be answered by a single ruling and must be split, and the ratios come from the loan statement, which is why it lands here; until then the queue names such payments as compound and asks for the document rather than forcing a guess ([learning-mode.md](learning-mode.md)). This slice completes consolidation of a full financial life; the provision primitive proves the model is not secretly transaction-shaped, and tax, cost basis and jurisdiction are prerequisites for real advice and for a two-country reality.
+**Surface contract.** The reviewed contract must say which presentation detail
+is suppressible without changing the grade, citation, record identity, caveat or
+agent-visible evidence. Correction operations must carry typed outcomes rather
+than invite the desktop to infer what happened.
 
-*Trust hardening* periodically anchors the chain head to a trusted timestamp or transparency log — signatures and a timestamp, no blockchain, no token — and verifies issuer signatures where issuers provide them, so authenticity needs no inference. It makes facts provable to others, which is the precondition for the endgame.
+**Interface consumer.** The installed desktop may store one generic preference
+for routine verification detail, remove repeated positive assurance from the
+default picture, and submit corrections through registered actions. It must
+keep mandatory qualifications and the complete evidence drawer reachable and
+must not switch on grade words or mutate financial state optimistically.
 
-*Creditworthiness and selective disclosure* is the vision in seed form: a bitemporal creditworthiness projection, and a proof bundle disclosing a single graded claim with its provenance and anchor, revealing nothing more. It composes every block, and the net-worth curve's provable subtotal is already its first primitive, derived for free.
+**Dependency.** This is first because every later picture, proposal and action
+needs the existing one-way surface boundary to carry visibility and outcome
+policy explicitly before more financial meaning crosses it.
 
-*Household scope and sync* comes last because it is a *mode*, not a foundation: a scope lens filtering by party, and sync as encrypted vault export and import through a blind relay where documents stay put and the ledger follows. Party existed from day one, so this does not reshape the schema.
+**Acceptance condition.** Toggling routine detail changes no payload or
+financial fact; unverified, conflicted, stale, incomplete or caveated truth
+remains plainly qualified without a grade-specific frontend branch; and the
+full receipt remains reachable from every displayed figure.
+
+### Cycle family 2 — obligations and quiet findings
+
+**Product capability.** A later brief must complete a grounded obligation
+projection with subject, cadence, expected date, expected amount or honest
+range, confidence, records and coverage; set the threshold between *due* and
+*usually appears around*; and expose deterministic recurring, subscription,
+fee, duplicate, amount-change, anomaly and income-interruption findings. Ranking
+and set-aside decisions belong to the backend, and a set-aside snapshots its
+stake so it stays quiet until evidence or machinery changes.
+
+**Surface contract.** Typed obligation, finding and short-brief models must
+carry explicit panel state, headline, explanation, importance, evidence,
+coverage, available action and required visibility. The desktop composes none
+of them.
+
+**Interface consumer.** The existing Overview may gain *Coming up* and at most
+three backend-ranked *What changed* items, with obligation context on the
+relevant account and only registered inspect, ask-Viva and set-aside gestures.
+This creates no notification centre, push path, urgency mechanic, Viva
+initiation or new top-level destination.
+
+**Dependency.** It follows quiet proof because every finding needs the same
+mandatory-visibility and receipt rules, and correction outcomes must already be
+backend-owned. Grounded recurrence also waits on sufficiently settled nature
+and category semantics; time alone does not make a noisy rhythm an obligation.
+
+**Acceptance condition.** No qualified item means no rendered panel and no
+announced absence; a rhythm below the due threshold is not called a bill due;
+set-aside persists as a backend decision until its stake moves; and every money
+figure retains its receipt.
+
+### Cycle family 3 — current-period control
+
+**Product capability.** A later brief must add a deterministic projection over
+liquid balances, expected income, known obligations, available planned spending
+and goal contributions, and completeness. It must return a bounded result,
+horizon, assumptions, weakest grade, coverage, caveats and a range wherever one
+exact amount is not justified, and must refuse *safe to spend* when the evidence
+supports only an amount uncommitted among records currently seen.
+
+**Surface contract.** Runway or available funds must cross as a whole answer,
+never a bare number, with the assumptions, boundaries and evidence that would
+change it. Any chart series and tooltip text are backend-supplied.
+
+**Interface consumer.** The desktop renders the result, horizon, assumptions
+and supplied series. A what-if gesture sends a scenario request; sorting,
+rounding or local editing performs no financial recalculation.
+
+**Dependency.** This composes the existing spending, income and balance reads
+with family 2's grounded obligations and family 1's evidence policy. Later goal
+inputs may strengthen the result, but their absence must be represented rather
+than guessed ahead of family 5.
+
+**Acceptance condition.** Missing or stale inputs weaken or refuse the claim in
+the backend before it crosses the surface; the interface cannot produce a
+different answer; and every assumption and source behind the headline remains
+reachable.
+
+### Cycle family 4 — durable conversation and correction
+
+**Product capability.** A later brief must define durable conversation reads
+while re-fetching every financial figure on every turn, and must record
+corrections and rulings as events applied deterministically. It must resolve,
+in that dedicated cycle, whether correction and preference writes are agent
+verbs or separately gated actions; this roadmap does not settle that question.
+
+**Surface contract.** Conversation history, cited replies, proposed corrections
+and completed, refused, waiting, stale and set-aside outcomes must have typed
+shapes. Text and later voice consume one answer shape.
+
+**Interface consumer.** The desktop renders the durable history and cited
+outcomes, shows a proposed correction before confirmation, and never turns a
+normal refusal, wait or stale result into an invented error.
+
+**Dependency.** It follows the first picture-side utilities so conversation can
+explain the same backend meanings rather than create a parallel product. It
+also depends on family 1's correction reachability, typed outcomes and refreshed
+reads.
+
+**Acceptance condition.** An earlier answer may supply context but never
+evidence for a later figure; a correction survives a new session and changes
+every affected projection; and later voice mirrors the same cited text rather
+than creating a second answer path.
+
+### Cycle family 5 — goals and plans
+
+**Product capability.** A later brief must design explicit goal events and
+projections, distinguish a desired target from funds actually reserved for it,
+and compute contribution, target-date, progress and deviation deterministically.
+A natural-language request may become a typed draft and then a proposal, but it
+does not become a write without confirmation. Composing existing financial
+reads does not remove this backend work.
+
+**Surface contract.** Goal drafts, proposals, assumptions, alternatives,
+progress and modify, confirm, pause and set-aside outcomes must cross as reviewed
+types with their evidence and state.
+
+**Interface consumer.** A person may state a goal conversationally or through a
+minimal form. A Plans destination is earned only after the registry serves it
+and the vault holds a plan or the person has asked to make one.
+
+**Dependency.** Plans depend on family 3's bounded current-period projection and
+family 4's durable proposal and correction path. Goal events and projections
+must exist before a destination claims to present them.
+
+**Acceptance condition.** An unreserved goal is never rendered as funded; a
+draft leaves the ledger unchanged; and confirmation records exactly the
+proposal the person saw or refuses it as stale.
+
+### Cycle family 6 — scenarios
+
+**Product capability.** A later brief must implement pure deterministic
+amortisation, compounding, payoff, runway and affordability scenarios. Every
+assumption is enumerated, the result inherits the weakest evidentiary basis of
+its recorded inputs, hypothetical premises stay hypothetical, and no model does
+the arithmetic.
+
+**Surface contract.** Scenario requests, comparable results, assumptions,
+boundaries and changed premises must cross as typed data. Turning a scenario
+into a plan is a separate proposal operation.
+
+**Interface consumer.** The desktop collects premises, renders backend-supplied
+comparisons and changed assumptions, and may request that a chosen scenario be
+drafted as a plan. It computes none of the comparison.
+
+**Dependency.** Scenarios depend on family 3's bounded financial inputs and
+family 5's explicit distinction among hypothetical result, draft and recorded
+plan.
+
+**Acceptance condition.** Equal inputs produce equal outputs independently of
+model or interface; a hypothetical result never acquires a verification grade
+by composition; and no scenario silently becomes a plan or action.
+
+### Cycle family 7 — drafted, explicitly confirmed action
+
+**Product capability.** A later brief must define separately gated action
+capabilities outside the read-tool set, produce complete drafts, re-check state
+immediately before applying, and record proposal, consent and outcome
+separately. A networked or irreversible mechanism must be structurally
+unreachable without confirmation.
+
+**Surface contract.** An action contract must carry the exact destination,
+consequence, timing, reversibility, basis and typed outcome the person is being
+asked to confirm. The operation table remains the readable inventory of every
+capability that can touch a vault.
+
+**Interface consumer.** The desktop shows the complete proposed action, requires
+an explicit confirmation, treats refusal and staleness as normal outcomes, and
+never displays success before the backend reports completion.
+
+**Dependency.** This comes last because it composes the durable confirmation
+path from family 4, explicit plans from family 5 and deterministic comparisons
+from family 6. No interface gesture may bridge a missing backend policy or
+operation.
+
+**Acceptance condition.** An unconfirmed proposal changes nothing; a proposal
+whose basis changed cannot be applied unseen; and no executable path exists
+outside the declared, gated operation inventory.
 
 **Decision recorded: no agent-memory framework.** Rulings are institutional knowledge, not preferences, and the append-only, graded, deterministically-applied event log already avoids the staleness and trustworthy-retrieval problems those frameworks are benchmarking.
 
-**The stack, end to end.** The first version gave one honest answer. The built half consolidates a whole financial life on a small set of re-composed blocks. Obligations make it volunteer, the speaking slice gives it a voice, goals and instruments let it advise and act across every domain, trust hardening and selective disclosure make its facts provable to others — the credit-bureau alternative — and household scope opens it to multiple people and devices. Every slice is the same blocks, re-composed.
+**The stack, end to end.** The first version gave one honest answer, and the
+built half consolidates a financial picture on a small set of re-composed
+blocks. The planned order first makes proof quieter without weakening it, then
+adds obligations and quiet findings, current-period control, durable
+conversation and correction, goals and plans, deterministic scenarios, and
+finally drafted action behind explicit confirmation. Each later feature is the
+same vertical path through product, surface and interface, not a new shell.
 
 ## Open
 
@@ -136,12 +331,6 @@ and remaining gaps live in
 - The conversation has met the author's real vault, and what the runs found is not settled. A wrong number reached a person, carrying its grade and its citation correctly, from four compounding faults of which none was in the shape mechanism. And *swapping the model changes phrasing rather than answers* is false as written: one local model emitted no tool call in twenty replies and so answered nothing at all, which makes the property per-model rather than a property of the design, with the shipped default on the wrong side of it.
 - Two done criteria for the speaking slice still have no test: that a document's own text cannot make Viva act, and that swapping the model changes phrasing rather than answers.
 - The wiring between the model and the citation gate is unpinned: the gate is tested hard and its supply line is not.
-- Volunteering through the proactive triggers is a done criterion of the speaking slice and the triggers do not exist yet.
-- Where this sits against the product phases: `ROADMAP.md`'s foundations phase is complete, and the organize-and-consolidate phase is in progress — transfer-linking and always-current net worth are built, account aggregation is not.
+- The speaking path has no quiet-finding projection to read. Quiet findings remain planned picture state and do not authorise Viva to initiate or notify.
+- Where this sits against the product phases: `ROADMAP.md`'s foundations phase is complete, and the organize-and-consolidate phase is in progress — transfer-linking and the evidence-bounded net-worth curve are built, account aggregation is not.
 - Anchoring has never run and nothing schedules it; it is trust hardening's work.
-- Done criteria, obligations and proactive alerts: a recurring charge becomes an obligation with cadence; a surprise fee or duplicate subscription raises a finding; completeness (expected-versus-seen) becomes a nudge, so a missing expected statement is flagged; triggers respect a speak-when-it-matters threshold.
-- Done criteria, goals and budgets: a category budget tracks actual against target from spending; a payoff or savings goal projects a date from cash flow; progress updates as statements post; Viva drafts on request but never acts irreversibly without a yes.
-- Done criteria, loans, insurance, tax and FX: a mortgage payment splits principal, interest and escrow and projects a payoff date; a deductible question answers from a provision with its source; estimated tax cites its jurisdiction rules; an FX-converted total is labelled an estimate with its rate and date.
-- Done criteria, trust hardening: the chain head anchors and the anchor verifies independently; a signed statement's signature validates and the grade rises to issuer-attested; an outside party detects tampering given only the anchor.
-- Done criteria, creditworthiness and selective disclosure: a proof bundle verifies against the anchor and issuer signatures without exposing other data; the claim carries its grade; a third party validates it offline; nothing beyond the claim leaks.
-- Done criteria, household scope and sync: a joint account attributes to the right parties; a household total scopes correctly; an encrypted vault round-trips across devices with no plaintext exposure; keys never leave the user.

@@ -161,6 +161,8 @@ Two questions have no correct answer among anything the queue can offer: a **com
 - What a person is owed when a figure they were already shown moves afterwards is undecided.
 - The queue's filter for repeat nature questions reads the derivation rather than "this was answered", so a ruling at a scope the nature derivation does not consult — a category-scoped rule is the standing case — would suppress nothing.
 - Near-duplicate category labels minted through an answer ([issue #7](https://github.com/vishnuyar/orionviva/issues/7)); the ruling is Vishnu's.
-- Model-phrased questions, and proactive *timing* — deciding when to interrupt rather than waiting to be opened — are unbuilt.
+- Model-phrased questions are unbuilt. Interruptive timing is not a missing
+  queue capability: findings belong in the picture, and Viva waits to be
+  opened rather than initiating or notifying.
 - Learned auto-apply for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)) is unbuilt.
 - The interview source is the one place where answering produces *another* question ([the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md)); the compound and capital-purchase cases above are recorded in [learning-mode.md](learning-mode.md) and deferred by decision.

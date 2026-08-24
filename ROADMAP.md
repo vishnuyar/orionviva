@@ -16,20 +16,34 @@ For what is actually built, in detail, see
 ## Phase 1 — Organize & consolidate (now)
 - [ ] Account connection (aggregation) alongside manual upload.
 - [x] Transfer-linking so a card payment isn't miscounted as new spending.
-- [x] Always-current net worth and history.
+- [x] A net-worth curve current through the available evidence, carrying its coverage and stale inputs.
 - [ ] Breadth of instruments: five document types are read today; a full financial life produces closer to forty.
 
 ## Phase 2 — Explain & advise
 - [ ] Ask-anything over the full financial picture, in plain language.
-- [ ] Volunteered insight: recurring charges, fees, anomalies, trends.
+- [ ] Obligations and quiet findings: expected payments, recurring charges,
+  fees, anomalies, and trends appear in the picture; Viva never initiates and
+  the product never notifies.
+- [ ] Current-period control: a bounded view of available funds and runway,
+  carrying its horizon, assumptions, coverage, and caveats.
 - [x] Honest-uncertainty surfacing in the desktop: figures and answers carry
   their grades, dates, coverage, caveats, and evidence into the interface.
 
 ## Phase 3 — Take action
-- [ ] Drafts budgets and payoff plans; keeps things categorized.
-- [ ] Autonomous on routine, low-stakes upkeep; asks first on anything irreversible.
+- [ ] Durable conversation and correction: corrections and preferences persist
+  and update the picture across sessions.
+- [ ] Goals and plans: draft targets, contributions, payoff paths, and progress
+  from stated assumptions without changing the person's records.
+- [ ] Deterministic scenarios: compare affordability, runway, compounding, and
+  payoff choices without turning a hypothetical into a plan.
+- [ ] Drafted actions: show the exact proposal and its consequences, re-check
+  its basis, and require explicit confirmation before anything irreversible;
+  routine low-stakes upkeep is still reported.
 
 ## Phase 4 — Trust agent (the longer arc)
+
+This phase begins only after the single-user product has earned trust in use.
+
 - [ ] Verifiable credentials: cryptographically attested source data.
 - [ ] Selective, permissioned disclosure (prove a fact without revealing the raw number).
 - [ ] Counterparty flow: your agent answers a lender's agent, on your consent — the credit-bureau alternative.

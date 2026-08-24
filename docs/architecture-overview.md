@@ -183,8 +183,9 @@ the direction documents named beside each seam here.
 - **Audio voice** would be a new modality on the same cited conversation turn,
   never a second answer path
   ([viva-listens-and-speaks.md](viva-listens-and-speaks.md)).
-- **Proactive triggers and obligations** would reuse the finding block and the
-  suggestions channel ([the-maintenance-agent.md](the-maintenance-agent.md),
+- **Obligations and quiet findings** would reuse the finding block and appear
+  in the existing picture without a notification path or Viva initiation
+  ([the-maintenance-agent.md](the-maintenance-agent.md),
   [the-suggestions-channel.md](the-suggestions-channel.md)).
 - **Household scope and sync** would move the same encrypted vault through a
   blind relay

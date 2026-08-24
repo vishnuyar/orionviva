@@ -24,15 +24,55 @@ Counts and operation names are deliberately not copied here. Tests compare the
 registry, operation table, status tables, and desktop client so those facts have
 one executable source rather than another prose snapshot.
 
-## Capabilities still absent
+## Capabilities still absent or incomplete
 
 - **Account aggregation.** A person can open a local or sample vault and upload
   documents, but no bank-connection or aggregation capability is registered.
   Manual, encrypted capture remains the only acquisition path.
-- **Category and tag editing in the desktop.** The ledger supports both
-  concepts, but `activity.movements` is read-only and advertises no write action.
-  A future surface must keep the one-category partition separate from the
-  many-tag overlay.
+- **Evidence-presentation emphasis and suppressibility.** Figures carry their
+  grade, label, exactness, coverage, records, provenance, and caveats, but the
+  surface contract does not yet distinguish routine evidence detail from truth
+  that must remain visible. No backend declaration currently licenses a desktop
+  preference to suppress repeated positive assurance.
+- **Activity correction actions.** The ledger supports categories, tags, and
+  transfer relationships, but `activity.movements` is read-only and advertises
+  no category, tag, transaction-correction, or transfer-confirmation action. A
+  future surface must keep the one-category partition separate from the
+  many-tag overlay and must re-read backend state after an action outcome.
+- **Grounded obligation projection.** The stream and rhythm machinery derives
+  flows, observed cadence and amount stability, first and last occurrences,
+  and confirmed or measured periodicities. The recurring-spending ledger read
+  reports supported arrangements already observed; it is not a forecast. No
+  projection yet computes a sufficiently grounded next expected date, expected
+  amount or honest range, confidence, coverage, or threshold for saying an
+  obligation is *due*.
+- **Pattern and finding exposure.** Deterministic stream and rhythm machinery
+  exists, the diagnostic stream report consumes it, and `query_ledger` can read
+  supported recurring spending. There is no registered `find_patterns` verb
+  and no typed surface for recurring, subscription, fee, duplicate,
+  amount-change, anomaly, or income-interruption findings, including ranking
+  and evidence-staked set-aside outcomes.
+- **Current-period runway.** No deterministic projection combines liquid
+  balances, expected income, obligations, planned spending, goal
+  contributions, and completeness into a bounded available-funds or runway
+  answer with assumptions and caveats.
+- **Durable conversation reads.** `conversation.viva` can answer one text turn,
+  but no conversation projection or read supplies recorded turns across the
+  current drawer or a later session. An earlier answer therefore has no
+  durable conversation contract, and must never be reused as evidence.
+- **Goal events and projections.** There is no explicit goal store or event
+  vocabulary and no deterministic target, contribution, progress, or deviation
+  projection. Existing proposal and ruling events do not make that substrate a
+  goal model.
+- **Deterministic scenarios.** No registered `project` read or scenario library
+  supplies amortisation, compounding, payoff, runway, or affordability results
+  with enumerated assumptions and inherited evidentiary basis.
+- **General drafted-and-confirmed financial action.** Review and settings have
+  bounded proposal-and-confirm flows, but there is no general action model that
+  records a complete financial-action draft, re-checks its basis immediately
+  before application, and records proposal, consent, and outcome separately.
+  Any future execution belongs to separately gated action capabilities outside
+  the agent's read-tool registry.
 - **Audio voice.** `conversation.viva` provides one text conversation session
   and a voice-ready reply shape, but no microphone, speech recognition, or audio
   playback implementation exists. Voice must remain a modality on the same
@@ -70,6 +110,7 @@ discovery, and build identity. These no longer belong in a backend gap list.
 
 ## Open
 
-- The first six absent capabilities above need briefs before implementation.
+- Each absent or incomplete capability above needs its own approved brief before
+  implementation; this inventory does not register or authorize one.
 - When a capability closes, remove it here only after the registry, operation,
   desktop consumer, and tests agree.
