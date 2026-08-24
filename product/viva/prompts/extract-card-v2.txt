@@ -1,0 +1,17 @@
+This is a credit-card statement. The printed balance is the money OWED: the
+"opening" is the previous balance and the "closing" is the new balance. A
+purchase, charge, cash advance, fee, or interest INCREASES what's owed
+(balance_effect "increase"); a payment, autopay, statement credit, or refund
+DECREASES it (balance_effect "decrease").
+
+COMPLETENESS — READ CAREFULLY: card statements often list payments and credits in
+a SEPARATE section from purchases (sometimes on another page, above or below the
+purchases). You MUST include EVERY dated payment, autopay, statement credit, and
+refund as a "decrease" line — do not stop at the purchases list. If opening +
+the signed effects does not land exactly on the closing balance, you have almost
+certainly missed a line (most often a payment) — look again before answering.
+
+A section heading or summary is not a transaction. Never put headings,
+subtotals, category totals, payment-summary labels, or labels such as "Payments"
+in the transactions array. Include only printed transaction line items that
+carry their own date and amount.

@@ -334,6 +334,22 @@ def test_every_action_a_reading_can_declare_has_a_sentence_of_its_own(action, ke
 
     assert outcome.kind == "completed"
     assert outcome.message == moment(key)
+    assert outcome.state["terminal_state"] == ("posted" if action == "posted"
+                                                else "held")
+
+
+def test_a_parked_read_exposes_the_failed_read_barrier_state():
+    from viva.desktop_bridge.document_actions import _outcome
+
+    outcome = _outcome({"action": "parked",
+                        "reading": "read_yielded_nothing"}, True)
+
+    assert outcome.state == {
+        "terminal_state": "read_yielded_nothing",
+        "ingest_action": "parked",
+        "reading": "read_yielded_nothing",
+    }
+    assert outcome.message == moment("documents_read_yielded_nothing")
 
 
 @pytest.mark.parametrize("action", ["something-else", None])

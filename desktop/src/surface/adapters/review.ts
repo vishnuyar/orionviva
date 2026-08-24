@@ -1,10 +1,18 @@
-import type { ActionOutcome, ActionOutcomeView, QuestionSlot, ReviewData, ReviewView } from "../types";
+import type { ActionOutcome, ActionOutcomeView, DocumentIngestAction, DocumentReading, DocumentTerminalState, QuestionSlot, ReviewData, ReviewView } from "../types";
 import { isRecord, optionalNonNegativeInteger, textValue, uniqueRecordsById } from "./primitives";
 
 // The closed vocabulary an action answers in. A kind outside it is a reply
 // this interface cannot read, and is refused rather than mapped to the
 // nearest word.
 const OUTCOME_KINDS: readonly ActionOutcome[] = ["completed", "refused", "proposal", "waiting", "stale", "set_aside"];
+const DOCUMENT_TERMINAL_STATES: readonly DocumentTerminalState[] = ["captured_only", "read_yielded_nothing", "held", "posted", "duplicate"];
+const DOCUMENT_INGEST_ACTIONS: readonly DocumentIngestAction[] = ["posted", "parked", "duplicate", "conflict", "gap", "identity", "awaiting"];
+const DOCUMENT_READINGS: readonly DocumentReading[] = ["never_read", "read_yielded_nothing", "read"];
+
+function closedWord<T extends string>(value: unknown, words: readonly T[]): T | undefined {
+  const word = textValue(value);
+  return words.find((candidate) => candidate === word);
+}
 
 export function adaptActionOutcome(raw: unknown): ActionOutcomeView | null {
   if (!isRecord(raw)) return null;
@@ -18,8 +26,26 @@ export function adaptActionOutcome(raw: unknown): ActionOutcomeView | null {
   // The identity of the work this outcome came out of, where the reply named
   // one. It sits under `state` because that is where a reply puts what it is
   // reporting about, and it is read by name rather than by position.
-  const jobId = isRecord(raw.state) ? textValue(raw.state.job_id) : "";
-  return jobId ? { kind, message, reason, jobId } : { kind, message, reason };
+  const state = isRecord(raw.state) ? raw.state : null;
+  const jobId = state ? textValue(state.job_id) : "";
+  const proposalId = state ? textValue(state.proposal_id) : "";
+  const proposalSummary = state ? textValue(state.summary) : "";
+  const hasTerminalState = state !== null && "terminal_state" in state;
+  const hasIngestAction = state !== null && "ingest_action" in state;
+  // A document receipt is readable only when both the terminal state and its
+  // pipeline action are present and belong to their closed vocabularies.
+  if (hasTerminalState !== hasIngestAction) return null;
+  const terminalState = hasTerminalState ? closedWord(state.terminal_state, DOCUMENT_TERMINAL_STATES) : undefined;
+  const ingestAction = hasIngestAction ? closedWord(state.ingest_action, DOCUMENT_INGEST_ACTIONS) : undefined;
+  if ((hasTerminalState && !terminalState) || (hasIngestAction && !ingestAction)) return null;
+  const hasReading = state !== null && "reading" in state;
+  const reading = hasReading ? closedWord(state.reading, DOCUMENT_READINGS) : undefined;
+  if (hasReading && !reading) return null;
+  return { kind, message, reason,
+    ...(jobId ? { jobId } : {}),
+    ...(proposalId ? { proposalId, proposalSummary } : {}),
+    ...(terminalState && ingestAction ? { terminalState, ingestAction } : {}),
+    ...(reading ? { reading } : {}) };
 }
 
 // What a question needs back, as the queue declared it. `wants` is the queue's

@@ -273,11 +273,26 @@ def _outcome(result: Mapping[str, Any], reading_configured: bool) -> ActionOutco
             AWAITING: "documents_awaiting"}
     action = result.get("action")
     if action in said:
-        return ActionOutcome("completed", moment(said[action]))
+        terminal = "posted" if action == POSTED else "held"
+        return ActionOutcome("completed", moment(said[action]),
+                             state={"terminal_state": terminal,
+                                    "ingest_action": action})
     if action == PARKED:
-        return ActionOutcome("completed", moment(
-            "documents_saved_unread" if reading_configured
-            else "documents_saved_no_reader"))
+        reading = str(result.get("reading") or "")
+        terminal = ("read_yielded_nothing"
+                    if reading == "read_yielded_nothing"
+                    or (not reading and reading_configured)
+                    else "captured_only")
+        message_key = ("documents_read_yielded_nothing"
+                       if terminal == "read_yielded_nothing"
+                       else "documents_saved_unread" if reading_configured
+                       else "documents_saved_no_reader")
+        return ActionOutcome("completed", moment(message_key),
+            state={"terminal_state": terminal, "ingest_action": action,
+                   "reading": reading or ("never_read" if not reading_configured
+                                           else "read_yielded_nothing")})
     if action == DUPLICATE:
-        return ActionOutcome("completed", moment("documents_already_held"))
+        return ActionOutcome("completed", moment("documents_already_held"),
+                             state={"terminal_state": "duplicate",
+                                    "ingest_action": action})
     raise UnreadableOutcome(moment("documents_outcome_unstated"))

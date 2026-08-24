@@ -19,14 +19,7 @@ class CapabilityDisposition(StrEnum):
 
 
 class CapabilityDestination(StrEnum):
-    """Where in the interface a capability is reached.
-
-    The spelling is the interface's. This registry used to declare `account`
-    while the interface shipped `accounts`, and nothing but a documentation
-    table held the two together — a destination that resolves on one side and
-    not the other is a claim about where a person can go that neither side can
-    check.
-    """
+    """Where in the interface a capability is reached, in interface spelling."""
 
     OVERVIEW = "overview"
     ACCOUNTS = "accounts"
@@ -173,7 +166,7 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.REVIEW,
         "when the vault has open questions",
         "QuestionQueue.v1",
-        ("answer", "decline"),
+        ("answer", "confirm", "decline"),
         # The effects are what this capability may do, not what one build of
         # it serves. Its entrypoint reads a typed sentence with the extractor
         # the environment configured, so a model may be called and bytes may

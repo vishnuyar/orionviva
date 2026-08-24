@@ -63,7 +63,7 @@ surface capability. A roadmap checkbox alone does not authorize it.
 ## Closed by the live desktop bridge
 
 The current desktop reaches account overview, activity, document upload and
-rescan, job state and cancellation, review answer and decline, Ask Viva,
+rescan, job state and cancellation, review answer, proposal confirmation and decline, Ask Viva,
 settings proposal and confirmation, outbound history, update lifecycle, vault
 export and restore, maintenance, diagnostics, sample-vault opening, capability
 discovery, and build identity. These no longer belong in a backend gap list.

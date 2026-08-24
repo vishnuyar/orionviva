@@ -363,6 +363,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     async answerQuestion(questionId: string, said: string) {
       await runReviewVerb("answer", questionId, (actions) => actions.answer(questionId, said));
     },
+    async confirmProposal(questionId: string, proposalId: string, said: string, asked: string) {
+      await runReviewVerb("confirm", questionId, (actions) => actions.confirm?.(proposalId, said, asked) ?? Promise.resolve({ state: "unserved" }));
+    },
     async declineQuestion(questionId: string, reason: DeclineReason) {
       await runReviewVerb("decline", questionId, (actions) => actions.decline(questionId, reason));
     },

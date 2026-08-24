@@ -97,6 +97,17 @@ def test_card_fragment_carries_the_payments_completeness_rule():
     assert "separate section" not in pl.resolve("checking-v1").lower()
 
 
+def test_current_card_fragment_excludes_summary_rows_from_transactions():
+    from viva.ingest import profile_for
+
+    fragment = profile_for("credit_card_statement").type_fragment
+    assert fragment == "card-v2"
+    text = pl.resolve(fragment).lower()
+    for excluded in ("section heading", "subtotal", "payment-summary",
+                     "only printed transaction line items"):
+        assert excluded in text
+
+
 # ----------------------------------------------------- the interpret prompt
 
 

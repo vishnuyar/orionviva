@@ -103,10 +103,20 @@ def _write_answer(vault: Vault, q, parsed, spoken: str) -> dict:
         return {"ok": True, "linked": False}
 
     if q.kind == MERCHANT:
-        assign_merchant_category(vault.ledger, refs["merchant"],
-                                 parsed.value("category"), by="human")
+        category = parsed.value("category")
+        movement_keys = tuple(refs.get("movements") or ())
+        if q.scope == "one":
+            # A one-scoped merchant answer assigns the category only to the
+            # exact movement population carried by the question.
+            for movement_key in movement_keys:
+                assign_category(vault.ledger, movement_key, category,
+                                by="human")
+        else:
+            assign_merchant_category(vault.ledger, refs["merchant"],
+                                     category, by="human")
         return {"ok": True, "merchant": refs["merchant"],
-                "category": parsed.value("category")}
+                "category": category, "scope": q.scope,
+                "settled_movements": list(movement_keys)}
 
     if q.kind == NATURE:
         from .listen import ruling_from
@@ -643,8 +653,14 @@ def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:
     `auto_corrected`, `message`, and the `finding` when one was raised."""
     res = capture_and_ingest(vault.raw, vault.ledger, data, read_fn,
                              filename=filename, captured_at=_today())
+    projection = vault.ledger.projection()
+    attempted = res.doc_id in projection.read_attempted_docs()
+    parsed = res.doc_id in projection.read_parsed_docs()
+    reading = ("read" if parsed else "read_yielded_nothing" if attempted
+               else "never_read")
     return {
-        "action": res.action, "grade": res.grade, "doc_type": res.doc_type,
+        "doc_id": res.doc_id, "action": res.action, "reading": reading,
+        "grade": res.grade, "doc_type": res.doc_type,
         "account": res.account, "auto_corrected": res.auto_corrected,
         "message": res.message,
         "finding": res.finding.to_dict() if res.finding else None,

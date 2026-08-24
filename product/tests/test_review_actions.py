@@ -137,6 +137,86 @@ def test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written():
     assert outcome.message
 
 
+def test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account(
+        tmp_path, monkeypatch):
+    from viva.desktop_bridge.review_actions import ReviewActions
+    from viva.ledger.events import SCOPE_MOVEMENT
+    from viva.listen import Proposal
+
+    vault = _vault(tmp_path)
+    movement = vault.ledger.projection().movements()[0]
+    account = "Assets:Loans:Sample Person"
+    proposal = Proposal(
+        scope=SCOPE_MOVEMENT, subject=movement.key,
+        legs=[{"major": "asset", "account": account}],
+        new_accounts=[account], currency="USD", said="this was a loan")
+    actions = ReviewActions(vault)
+    monkeypatch.setattr("viva.engine.answer_question", lambda *_args, **_kwargs: {
+        "ok": True, "confirm": True, "proposal": proposal.to_dict()})
+    proposed = actions.answer({"question_id": "question-1",
+                               "said": "this was a loan"})
+    proposal_id = proposed["state"]["proposal_id"]
+    assert proposed["kind"] == "proposal" and proposed["state"]["summary"]
+
+    outcome = actions.confirm({"proposal_id": proposal_id, "said": "yes"})
+
+    assert outcome["kind"] == "completed"
+    assert account in {info.account
+                       for info in vault.ledger.projection().account_infos()}
+    ruled = next(m for m in vault.ledger.projection().movements()
+                  if m.key == movement.key)
+    assert ruled.nature_reason == "ruling"
+
+
+def test_bridge_can_decline_a_held_proposal_without_writing(tmp_path,
+                                                            monkeypatch):
+    from viva.desktop_bridge.review_actions import ReviewActions
+    from viva.ledger.events import SCOPE_MOVEMENT
+    from viva.listen import Proposal
+
+    vault = _vault(tmp_path)
+    movement = vault.ledger.projection().movements()[0]
+    proposal = Proposal(scope=SCOPE_MOVEMENT, subject=movement.key,
+                        legs=[{"major": "asset",
+                               "account": "Assets:Loans:Sample Person"}],
+                        new_accounts=["Assets:Loans:Sample Person"],
+                        currency="USD")
+    actions = ReviewActions(vault)
+    monkeypatch.setattr("viva.engine.answer_question", lambda *_args, **_kwargs: {
+        "ok": True, "confirm": True, "proposal": proposal.to_dict()})
+    proposed = actions.answer({"question_id": "question-1",
+                               "said": "this was a loan"})
+    proposal_id = proposed["state"]["proposal_id"]
+
+    outcome = actions.confirm({"proposal_id": proposal_id, "said": "no"})
+
+    assert outcome["kind"] == "completed"
+    assert "Assets:Loans:Sample Person" not in {
+        info.account for info in vault.ledger.projection().account_infos()}
+    assert proposal_id not in actions._proposals
+
+
+def test_a_refused_answer_does_not_leave_an_unreachable_proposal(tmp_path,
+                                                                 monkeypatch):
+    """A proposal exists only when the answer opened its confirmation door.
+    Diagnostic proposal context on a refusal is neither returned nor retained
+    under an opaque identity nobody could reach."""
+    from viva.desktop_bridge.review_actions import ReviewActions
+
+    actions = ReviewActions(_vault(tmp_path))
+    monkeypatch.setattr("viva.engine.answer_question", lambda *_args, **_kwargs: {
+        "ok": False, "why": "needs_name", "message": "What should I call it?",
+        "proposal": {"summary": "Open an unnamed account."}})
+
+    outcome = actions.answer({"question_id": "question-1",
+                              "said": "this was a loan"})
+
+    assert outcome["kind"] == "refused"
+    assert outcome["reason"] == "needs_name"
+    assert outcome["state"] is None
+    assert actions._proposals == {}
+
+
 def test_an_answer_that_sets_a_question_aside_has_its_own_outcome_kind():
     from viva.desktop_bridge.review_actions import outcome_of
 

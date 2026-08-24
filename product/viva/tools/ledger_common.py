@@ -110,38 +110,106 @@ def _mixed_vintage(dates) -> bool:
     return len({str(day) for day in dates if str(day)}) > 1
 
 
+# The filters each read honors. Both the model-facing schema and dispatcher
+# derive their accepted combinations from this table.
+_SUPPORTED_FILTERS = {
+    "balances": {"account", "currency"},
+    "transactions": {"account", "category", "tag", "merchant", "currency",
+                     "window"},
+    "list_movements": {"account", "category", "tag", "merchant", "currency",
+                       "window"},
+    "holdings": {"account", "currency"},
+    "aggregate:spending": {"account", "category", "tag", "merchant",
+                           "currency", "window"},
+    "aggregate:income": {"currency", "window"},
+    "aggregate:recurring_spending": {"currency"},
+    "aggregate:surplus": {"currency", "window"},
+    "aggregate:stalest_balance": set(),
+    "aggregate:weakest_evidence": {"currency"},
+    "aggregate:net_worth": set(),
+    "vocabulary": set(),
+}
+
+_FILTER_PROPERTIES = {
+    "account": {"type": "string"},
+    "category": {"type": "string"},
+    "tag": {"type": "string"},
+    "merchant": {"type": "string"},
+    "currency": {"type": "string"},
+    "window": {"type": "object",
+               "properties": {"from": {"type": "string"},
+                              "to": {"type": "string"},
+                              "preset": {"type": "string",
+                                         "enum": ["latest_complete_calendar_month"]}},
+               "additionalProperties": False},
+}
+
+_ENTITY_VALUES = ["balances", "transactions", "holdings", "aggregate",
+                  "vocabulary"]
+_METRIC_VALUES = ["spending", "income", "recurring_spending", "surplus",
+                  "stalest_balance", "weakest_evidence", "net_worth"]
+_GROUP_VALUES = ["category", "subcategory", "tag", "merchant", "account",
+                 "currency"]
+
+
+def _filters_schema(kind: str) -> dict:
+    """Return the closed native filter object for one read family."""
+    return {
+        "type": "object",
+        "properties": {name: _FILTER_PROPERTIES[name]
+                       for name in sorted(_SUPPORTED_FILTERS[kind])},
+        "additionalProperties": False,
+    }
+
+
+def _query_branch(entity: str, *, metric: str = "") -> dict:
+    kind = f"aggregate:{metric}" if metric else entity
+    properties = {"entity": {"type": "string", "enum": [entity]}}
+    required = ["entity"]
+    if metric:
+        properties["metric"] = {"type": "string", "enum": [metric]}
+        required.append("metric")
+    if entity == "vocabulary":
+        properties["group_by"] = {"type": "string", "enum": _GROUP_VALUES}
+        properties["matching"] = {"type": "string"}
+        required.append("group_by")
+    if metric == "spending":
+        properties["group_by"] = {"type": "string", "enum": _GROUP_VALUES}
+    if metric == "net_worth":
+        properties["as_of"] = {"type": "string"}
+    supported = _SUPPORTED_FILTERS[kind]
+    if supported:
+        properties["filters"] = _filters_schema(kind)
+    return {"type": "object", "properties": properties,
+            "required": required, "additionalProperties": False}
+
+
+# Top-level properties expose the public vocabulary to deterministic and
+# non-native callers. ``oneOf`` closes native calls by entity and metric.
 QUERY_LEDGER_PARAMS = {
     "type": "object",
     "properties": {
-        "entity": {"type": "string",
-                   "enum": ["balances", "transactions", "holdings",
-                            "aggregate", "vocabulary"]},
+        "entity": {"type": "string", "enum": _ENTITY_VALUES},
         "metric": {"type": "string",
-                   "enum": ["spending", "income", "recurring_spending",
-                            "surplus", "stalest_balance",
-                            "weakest_evidence", "net_worth"]},
+                   "enum": _METRIC_VALUES},
         "group_by": {"type": "string",
-                     "enum": ["category", "subcategory", "tag", "merchant",
-                              "account", "currency"]},
+                     "enum": _GROUP_VALUES},
         "as_of": {"type": "string"},
         "matching": {"type": "string"},
         "filters": {
             "type": "object",
-            "properties": {
-                "account": {"type": "string"},
-                "category": {"type": "string"},
-                "tag": {"type": "string"},
-                "merchant": {"type": "string"},
-                "currency": {"type": "string"},
-                "window": {"type": "object",
-                           "properties": {"from": {"type": "string"},
-                                          "to": {"type": "string"},
-                                          "preset": {"type": "string",
-                                                     "enum": ["latest_complete_calendar_month"]}}},
-            },
+            "properties": _FILTER_PROPERTIES,
         },
     },
     "required": ["entity"],
+    "oneOf": [
+        _query_branch("balances"),
+        _query_branch("transactions"),
+        _query_branch("holdings"),
+        _query_branch("vocabulary"),
+        *[_query_branch("aggregate", metric=metric)
+          for metric in _METRIC_VALUES],
+    ],
 }
 
 TOOL = "query_ledger"
@@ -681,30 +749,6 @@ def _month_slice(month: str, narrowed) -> dict | None:
     if start > end:
         return None
     return {"kind": BY_PERIOD, "value": start, "to": end}
-
-
-
-# Which filters each read honors. A filter an entity would ignore is refused,
-# never accepted-and-dropped: rows that are individually true still answer the
-# wrong question when the set was never narrowed.
-_SUPPORTED_FILTERS = {
-    "balances": {"account", "currency"},
-    "transactions": {"account", "category", "tag", "merchant", "currency",
-                     "window"},
-    "list_movements": {"account", "category", "tag", "merchant", "currency",
-                       "window"},
-    "holdings": {"account", "currency"},
-    "aggregate:spending": {"account", "category", "tag", "merchant",
-                           "currency", "window"},
-    "aggregate:income": {"currency", "window"},
-    "aggregate:recurring_spending": {"currency"},
-    "aggregate:surplus": {"currency", "window"},
-    "aggregate:stalest_balance": set(),
-    "aggregate:weakest_evidence": {"currency"},
-    "aggregate:net_worth": set(),
-    "vocabulary": set(),
-}
-
 
 
 

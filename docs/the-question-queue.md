@@ -61,23 +61,25 @@
 2. The model turns language into structure and never into a value; deterministic code validates each value against its type and writes.
 3. A reply that does not hold up goes back to the model once, with what it sent and what was wrong with it, before anyone troubles the person (product/tests/test_ask.py::test_a_reply_that_does_not_hold_up_comes_back_in_vivas_words).
 
-### MON-50 — there is no button path and no second way in
+### MON-50 — a substantive answer has no button payload
 **State:** enforced
-**Code:** product/viva/reply.py:536 (a closed vocabulary is validation, not a payload)
+**Code:** product/viva/reply.py:536 (a closed vocabulary is validation, not a payload); desktop/src/features/review/Review.tsx (`AnswerControls`)
 **Test:** product/tests/test_ask.py::test_a_reply_she_could_not_read_leaves_the_question_where_it_was
 
-1. A question offers no clickable payload that would write without anyone saying anything.
+1. A question's substantive answer offers no clickable payload; it enters as the person's sentence and is read through the slots the question declared.
 2. A closed vocabulary survives as validation of what a person said.
 3. `offered` — the part of a vocabulary a model is told — may be narrower than `choices`, which is what a reply is validated against.
+4. After that sentence produces an inspectable Proposal, explicit confirm and decline controls may answer only its declared `yes_no` slot; they carry no proposed ledger structure.
 
-### MON-51 — a confirmation is a question, not a second door (X3)
+### MON-51 — confirmation is an explicit typed decision (X3)
 **State:** enforced
-**Code:** product/viva/listen.py:538 (`propose`), :658 (`apply_proposal`)
-**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written
+**Code:** product/viva/listen.py:538 (`propose`), :658 (`apply_proposal`); product/viva/desktop_bridge/review_actions.py (`ReviewActions.confirm`)
+**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written, product/tests/test_review_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
 
 1. An answer that would do something irreversible comes back as a proposal stating in plain words what it would do.
-2. The yes that applies it is a declared `yes_no` slot, filled by the model from the person's words and decided by code (product/tests/test_ask.py::test_a_confirmation_is_read_as_language_not_as_a_word).
+2. The decision is a declared `yes_no` slot, filled either from the person's words or by an explicit confirm-or-decline control and decided by code (product/tests/test_ask.py::test_a_confirmation_is_read_as_language_not_as_a_word; desktop/src/features/review/Review.test.tsx).
 3. A proposal never confirmed leaves the ledger untouched (product/tests/test_ask.py::test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched).
+4. The opened-vault bridge retains the proposed structure and gives the interface only an opaque identity, summary and decision sentence; a client cannot submit replacement legs.
 
 ### MON-52 — a nature question is raised only where the evidence is weak
 **State:** enforced
@@ -127,9 +129,21 @@ The words are deterministic because a model that phrases a question could smuggl
 
 The answer path had to be typed for a reason that showed up in a real sitting. Routing a reply by the *kind* of question meant a sentence typed into a transfer question's box was parsed as a ruling about the four majors. Now each question declares the structure of an answer to it, one router reads any reply into those slots, and the split of labour is fixed: the model turns language into structure, deterministic code turns structure into a write.
 
-Buttons went for a stronger reason. A channel that triggers a write without anyone saying anything is the thing the design excludes. A closed vocabulary survives as *validation* rather than as clickable payloads — and it is closed in one direction only for a good reason: a label the vocabulary does not hold is still read, because a category a person coins is theirs to add. That leaves a near-duplicate open, and closing it would need either a fence, contradicting the local-categorization decision, or a stemming rule, which is the class of workaround this project has deleted twice.
+Buttons remain excluded from the substantive answer because a pre-baked payload
+would bypass the person's own account of what is true. Confirmation is narrower:
+the proposal is already visible, the only admissible decision is its declared
+`yes_no` slot, and the client holds no structure it could change. A closed
+vocabulary otherwise survives as *validation* rather than as clickable payloads
+— and it is closed in one direction only for a good reason: a label the
+vocabulary does not hold is still read, because a category a person coins is
+theirs to add. That leaves a near-duplicate open, and closing it would need
+either a fence, contradicting the local-categorization decision, or a stemming
+rule, which is the class of workaround this project has deleted twice.
 
-A confirmation is not a rival to X3; it *is* the mechanism. What the design excludes is a write with nobody saying anything, not a second function with the gate between its halves. Ask, read, record — or propose, confirm, record.
+A confirmation is not a rival to X3; it *is* the mechanism. What the design
+excludes is an uninspected or client-authored write, not an explicit decision
+between the proposal and its application. Ask, read, record — or propose,
+inspect, decide, record.
 
 What raises a nature question was the build's sharpest surprise. The spec advertised a vehicle purchase and a property closing as the two highest-leverage questions, and neither is provisional: both are confidently categorized and counted as spending. So "ask about provisional items" would have missed exactly what was promised. A nature question is therefore raised wherever nature rests on **weak evidence** — a category hint, or the plain default — and leverage ranking is the filter. Big-ticket ambiguity floats up and a grocery run sinks, with no jurisdiction-shaped list of capital-looking categories anywhere.
 

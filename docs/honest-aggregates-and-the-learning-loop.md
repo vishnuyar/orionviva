@@ -141,6 +141,6 @@ Finally, a read-side abstraction is only as reversible as its dispatch is explic
 - `spending_by_currency` measures something other than what its callers print it as (MON-6). Putting it on `counts_as_spending`, retiring it, or renaming it to what it measures is a ruling, because the assertions that pin the divergence are deliberate. This is the unresolved R5 from the July repair list; the partition test R5 asked for was never written.
 - `implication_of` picks a counterparty's implication by the posted sign (MON-7's exception), and a structural guard against a further site is not built.
 - Principal/interest splitting on a mortgage payment waits on amortization data.
-- Per-transaction custom categories for peer descriptors ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)) compose over nature unchanged, and are unbuilt.
+- Minting, enumerating, renaming and styling custom categories remain unbuilt; assigning a known category to one peer movement is live through the question answer path ([local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md)).
 - Loosening the transfer auto-link bar is deliberately not done.
 - The other half of the incomplete-total doctrine is unbuilt: a gap does not become a question Viva asks. The queue's question for the same account carries only a yes/no about whether a document exists, and answering it writes nothing by design. Closing it needs a question source that can record a balance.

@@ -8,13 +8,14 @@
 ### VOICE-50 — a Proposal is the only path to a change, and it is never applied unconfirmed
 **State:** enforced
 **Code:** product/viva/listen.py (`Proposal`, `apply_proposal`), product/viva/engine.py (`confirm_proposal`), product/viva/desktop_bridge/review_actions.py (`outcome_of`)
-**Test:** product/tests/test_listen.py::test_applying_is_a_separate_explicit_act, product/tests/test_review_actions.py::test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written
+**Test:** product/tests/test_listen.py::test_applying_is_a_separate_explicit_act, product/tests/test_review_actions.py::test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written, product/tests/test_review_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
 
 1. A Proposal is a structured, un-applied intent: what it would change, how much money it moves, the evidence behind it, how confident it is, how to reverse it.
 2. Proposing and applying are separate acts; anything but a yes writes nothing.
 3. A proposal states what it does not know, and names each meaning once.
 4. X3 is satisfied structurally rather than by prompt: a Proposal is by definition not applied until confirmed.
 5. The interface boundary preserves an unconfirmed Proposal as `proposal`, never as a completed write or an unreadable outcome; setting a question aside is likewise its own `set_aside` outcome rather than an answered question.
+6. The opened-vault bridge retains the unapplied structure under an opaque identity. Confirmation applies that retained structure through its typed `yes_no` slot; declining writes nothing and closes it.
 
 ### VOICE-51 — the interpreter never supplies a figure
 **State:** enforced
@@ -204,6 +205,7 @@ not code — and it grows with verbs, not nouns
 - The real-vault proving run of what replaced the planner is still owed. `answer.py` remains the scripted test modality and the oracle.
 - An ADR and a design doc for the shape mechanism are owed once the round trip has run against real money.
 - Proposal unification — one common shape behind transfer suggestions, category suggestions and findings — is a refactor with no user-visible gain, and must wait for evidence or it is premature generalization.
+- The desktop keeps an accepted proposal only in the current review action state. Ordinary navigation clears its opaque identity while the opened-vault bridge still retains the proposal, so returning to Review cannot confirm or decline it.
 - Open-world free text with no question attached.
 - Whether a parse may ever auto-apply, and on what contract. The existing forced/suggested distinction is the candidate; a money threshold is a currency- and jurisdiction-shaped guess and is not.
 - Accounting words versus plain English on the surface.

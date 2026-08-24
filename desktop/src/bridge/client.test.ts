@@ -40,6 +40,20 @@ describe("bridge transport framing", () => {
     expect(frames[0].payload).toEqual({ question_id: "question-2", reason: "dont_know" });
   });
 
+  it("frames proposal confirmation by opaque identity and a yes-or-no sentence", async () => {
+    const frames: BridgeRequest[] = [];
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      return { protocol: "1.0", request_id: frame.requestId, ok: true,
+        result: { kind: "completed", message: "Recorded.", state: null, reason: null } as T };
+    } });
+
+    await client.confirmProposal?.("proposal-1", "yes", "Open Sample Loan?");
+
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.review.confirm"]);
+    expect(frames[0].payload).toEqual({ proposal_id: "proposal-1", said: "yes", asked: "Open Sample Loan?" });
+  });
+
   it("frames a capture as one path per request and asserts no job identity", async () => {
     const frames: BridgeRequest[] = [];
     const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {

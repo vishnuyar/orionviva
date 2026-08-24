@@ -63,3 +63,30 @@ def test_gives_up_after_the_retry_and_parks():
     assert rr.facts is None and rr.error is not None       # honestly failed
     assert len(calls) == 2                                 # tried once + one retry
     assert len(rr.phases) == 2
+
+
+def test_value_retry_removes_a_summary_heading_instead_of_keeping_empty_date():
+    heading = ('{"doc_type":"credit_card_statement","doc_type_confidence":1.0,'
+               '"account_ref":"Card","opening":{"amount_raw":"100.00",'
+               '"date_raw":"2026-01-01","page":1},"closing":'
+               '{"amount_raw":"80.00","date_raw":"2026-01-31","page":1},'
+               '"transactions":[{"date_raw":"","description":"Payments",'
+               '"amount_raw":"20.00","balance_effect":"decrease"},'
+               '{"date_raw":"2026-01-10","description":"PAYMENT",'
+               '"amount_raw":"20.00","balance_effect":"decrease"}]}')
+    corrected = heading.replace(
+        '{"date_raw":"","description":"Payments","amount_raw":"20.00",'
+        '"balance_effect":"decrease"},', "")
+    calls = []
+
+    def extract(prompt):
+        calls.append(prompt)
+        return _result(heading if len(calls) == 1 else corrected)
+
+    rr = read_with_retry(extract, "PROMPT", "doc", "en-US", "USD")
+
+    assert rr.facts is not None and len(rr.facts.transactions) == 1
+    assert rr.facts.transactions[0].description == "PAYMENT"
+    assert "remove that whole object" in calls[1]
+    assert "empty string for a required" in calls[1]
+    assert "transaction date or amount" in calls[1]

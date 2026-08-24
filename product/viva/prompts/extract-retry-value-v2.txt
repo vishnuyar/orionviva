@@ -1,0 +1,12 @@
+Your previous reply was valid JSON, but one value could not be read: {err}.
+Return the corrected JSON and change only what is necessary to repair that
+error. Copy values exactly as printed and never invent one.
+
+If the error names an indexed transaction object, first verify that the object
+is an actual printed transaction line. If it is a heading, subtotal, category
+total, payment-summary row, or other section label, remove that whole object
+from the transactions array. If it is an actual transaction, correct the named
+field from that printed line. Do not use an empty string for a required
+transaction date or amount; when a real transaction's required value is
+genuinely unreadable, preserve the truthful unreadable text so the document is
+held for review rather than making it appear valid.

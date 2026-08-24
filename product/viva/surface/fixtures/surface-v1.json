@@ -637,6 +637,7 @@
     {
       "actions": [
         "answer",
+        "confirm",
         "decline"
       ],
       "availability": "when the vault has open questions",

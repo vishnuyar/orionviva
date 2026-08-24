@@ -99,8 +99,7 @@ export type BridgeClient = {
   // Who answered and which build of it. Asked before a vault is open, because
   // the build that cannot open one is exactly the build somebody needs named.
   handshake: () => Promise<unknown>;
-  // The reviewed registry, and which destinations a read reaches. The shell
-  // used to carry a hand-written vocabulary in place of this.
+  // The reviewed registry and the destinations its reads reach.
   readCapabilities: () => Promise<unknown>;
   // One path per call. Several files are several frames, one after another,
   // because the sidecar answers one request before it reads the next.
@@ -148,6 +147,7 @@ export type BridgeClient = {
   // input to the rule that a figure is never spoken with nowhere to check it.
   askViva: (question: string, mirrored: boolean) => Promise<unknown>;
   answerQuestion: (questionId: string, said: string) => Promise<unknown>;
+  confirmProposal?: (proposalId: string, said: string, asked: string) => Promise<unknown>;
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;
 };
 

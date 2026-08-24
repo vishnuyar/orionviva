@@ -77,7 +77,7 @@ _SEED: tuple[DocProfile, ...] = (
             "savings", "savings_account_statement", "money_market_statement",
         })),
     DocProfile(
-        "credit_card_statement", LIABILITY, type_fragment="card-v1",
+        "credit_card_statement", LIABILITY, type_fragment="card-v2",
         aliases=frozenset({
             "credit_card", "card_statement", "creditcard_statement",
             "credit_card_account_statement",

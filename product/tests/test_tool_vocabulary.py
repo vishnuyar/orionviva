@@ -1098,6 +1098,28 @@ def test_the_form_the_reads_and_the_writing_table_offer_the_same_filters():
                                  sorted(honoured - offered))
 
 
+def test_native_query_schema_discriminates_filters_by_read_family():
+    """Invalid combinations are absent from the form a native model sees.
+
+    The deterministic dispatcher still refuses a bypassed invalid call; this
+    test is about preventing the model from being offered one as valid.
+    """
+    branches = ledger_tools.QUERY_LEDGER_PARAMS["oneOf"]
+
+    def branch(entity, metric=""):
+        return next(item for item in branches
+                    if item["properties"]["entity"]["enum"] == [entity]
+                    and (not metric or
+                         item["properties"]["metric"]["enum"] == [metric]))
+
+    assert "filters" not in branch("vocabulary")["properties"]
+    assert "filters" not in branch("aggregate", "net_worth")["properties"]
+    assert set(branch("balances")["properties"]["filters"]["properties"]) == {
+        "account", "currency"}
+    assert "window" in branch("transactions")["properties"]["filters"][
+        "properties"]
+
+
 def test_nature_is_not_a_filter_any_read_offers(proj, registry):
     """`nature` is not a filter: the form refuses it as an unknown field, and
     each of the three reads that once honoured it refuses it as unsupported."""
@@ -1174,6 +1196,19 @@ def test_a_turn_that_spent_its_budget_says_why_the_last_read_stopped(registry):
                  registry, max_calls=2)
     assert result.refusal == "call_budget_exhausted"
     assert result.diagnosis == "unknown_category"
+
+
+def test_an_identical_refused_call_stops_on_the_first_repeat(registry):
+    result = run(
+        "what did I spend on that?",
+        _turn({"shape": _SPENT}, _UNHELD_CATEGORY, _UNHELD_CATEGORY,
+              _UNHELD_CATEGORY),
+        registry, max_calls=8)
+
+    assert result.refusal == "call_budget_exhausted"
+    assert result.diagnosis == "unknown_category"
+    assert result.calls == 3  # shape note, first refusal, repeated refusal
+    assert "repeated an identical" in result.detail
 
 
 def test_a_cause_is_not_spoken_where_a_later_read_succeeded(registry):

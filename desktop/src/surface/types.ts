@@ -2,6 +2,8 @@ export type Destination = "overview" | "accounts" | "activity" | "documents" | "
 export type FigureGrade = "verified" | "corroborated" | "unverified" | "conflicted" | "unavailable" | "not_applicable";
 export type PanelState = "absent" | "ready" | "partial" | "needs_input" | "unavailable" | "failed";
 export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "stale" | "set_aside";
+export type DocumentTerminalState = "captured_only" | "read_yielded_nothing" | "held" | "posted" | "duplicate";
+export type DocumentIngestAction = "posted" | "parked" | "duplicate" | "conflict" | "gap" | "identity" | "awaiting";
 // What an action answered with: the kind of thing that happened, the sentence
 // Viva would say to the person, and the machine reason a refusal carries.
 // `jobId` is the identity the sidecar minted for the work this outcome came
@@ -9,8 +11,9 @@ export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "
 // an empty string standing for that would be an identity nothing can hold. It
 // is carried beside the sentence rather than found inside it, because the one
 // thing a person can do to a job in flight — stop it — needs the identity and
-// not the words.
-export type ActionOutcomeView = { kind: ActionOutcome; message: string; reason: string; jobId?: string };
+// not the words. A document action also carries the vault's terminal state,
+// ingest action, and reading state as separate closed words.
+export type ActionOutcomeView = { kind: ActionOutcome; message: string; reason: string; jobId?: string; proposalId?: string; proposalSummary?: string; terminalState?: DocumentTerminalState; ingestAction?: DocumentIngestAction; reading?: DocumentReading };
 // Four channels one verb can come back through. `settled` is the vault's own
 // answer in its own sentence, and the only one that tells a person the vault
 // said no. `unserved` is the sidecar reading the request and refusing to take
@@ -94,9 +97,8 @@ export type TransferActionState =
   | { state: "idle" }
   | { state: "working"; verb: TransferVerb }
   | { state: "settled"; verb: TransferVerb; result: ActionResult };
-// The review actions a screen may reach. The registry declares `answer` too and
-// this build serves no handler for it, so nothing here can name it.
-export type ReviewVerb = "answer" | "decline";
+// The review actions a screen may reach through an opened-vault bridge.
+export type ReviewVerb = "answer" | "confirm" | "decline";
 // What became of the last review verb a person used, held beside the question
 // it was used on. An outcome belongs to one question, so a screen that moves to
 // another must not keep showing it.
@@ -293,6 +295,7 @@ export type ReviewActions = {
   // between a model's structure and the ledger would have a second door with
   // nothing behind it.
   answer: (questionId: string, said: string) => Promise<ActionResult>;
+  confirm?: (proposalId: string, said: string, asked: string) => Promise<ActionResult>;
   decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;
   reread: () => Promise<FeatureResult<ReviewData>>;
 };

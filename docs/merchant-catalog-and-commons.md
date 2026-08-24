@@ -26,12 +26,13 @@
 
 ### MER-42 — Every lookup considers both keys
 **State:** enforced
-**Code:** product/viva/ledger/projection/merchants.py:59 (`merchant_keys_of`), :96 (`merchant_graded`)
-**Test:** product/tests/test_merchant_keys.py::test_a_descriptor_keyed_answer_still_reads, product/tests/test_merchant_keys.py::test_the_brand_wins_a_tie, product/tests/test_merchant_keys.py::test_a_persons_answer_beats_a_models_whichever_key_it_is_under
+**Code:** product/viva/ledger/projection/merchants.py:59 (`merchant_keys_of`), :96 (`merchant_graded`); product/viva/ingest/categorize.py (`assign_merchant_category`)
+**Test:** product/tests/test_merchant_keys.py::test_a_descriptor_keyed_answer_still_reads, product/tests/test_merchant_keys.py::test_the_brand_wins_a_tie, product/tests/test_merchant_keys.py::test_a_persons_answer_beats_a_models_whichever_key_it_is_under, product/tests/test_questions.py::test_answering_a_resolved_numbered_merchant_closes_that_exact_question
 
 1. A movement's candidate keys are the brand a resolver named and the normalized descriptor, in that order.
 2. The highest-graded record among the candidates answers; ties go to the brand.
 3. Knowledge recorded before grammars existed sits under the descriptor and is not stranded by a lookup that only knew the brand.
+4. A question's resolved key is recorded exactly when the projection already holds it; only an unresolved raw descriptor is normalized again before filing.
 
 ### MER-43 — The sync reaches only merchants this vault holds
 **State:** enforced

@@ -75,6 +75,10 @@ terms, and a return is an annual truth that many other documents corroborate.
 
 ## Open
 
+- The current card profile and value-retry prompt exclude summary rows in the
+  technical suite; a live-model re-read of real-vault document 17 is still
+  required to show that the summary is omitted, genuine payments remain, and
+  the document reaches the correct ingest state.
 - The mortgage statement and 1098 gap: the compound-payment split is unanswerable until one is read, and it is the highest-value document gap open.
 - Realized gains, short versus long term, plus wash sales: brokerage ingest reads them and discards them today.
 - Retirement statements: positions plus employer match, which is a second income shape and not a variant of the first.

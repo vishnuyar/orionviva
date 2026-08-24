@@ -258,7 +258,7 @@ describe("vault", () => {
       expect(getByRole("heading", { name: "Is this your account?" })).toBeInTheDocument();
       expect(queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
       expect(getByRole("button", { name: "Set aside for now" })).toBeInTheDocument();
-      expect(getByText("Setting a question aside is connected, and so is answering one in your own words. Proposing a change, confirming one, and correcting a document are not.")).toBeInTheDocument();
+      expect(getByText("Setting a question aside, answering in your own words, and confirming or declining a resulting proposal are connected. Correcting a document is not.")).toBeInTheDocument();
       // The read supplies an invitation to answer in a sentence. Nothing here
       // can take one, so a real vault's invitation is never put to a person.
       expect(queryByText("Write an answer")).not.toBeInTheDocument();
@@ -347,11 +347,11 @@ describe("vault", () => {
       expect(getByText("Nothing needs you right now", { selector: "strong" })).toBeInTheDocument();
       expect(queryByRole("button", { name: "Open the sample vault" })).not.toBeInTheDocument();
       await user.click(getByRole("button", { name: /activity.*what moved/i }));
-      // Activity is a read now. A vault that knows of nothing moving says so,
+      // Activity is a read. A vault that knows of nothing moving says so,
       // which is not the same as nothing having moved.
       expect(getAllByText(moments.activity_empty).length).toBeGreaterThan(0);
       await user.click(getByRole("button", { name: /trust.*how it works/i }));
-      // Trust is a read now, and a vault that has sent nothing says so with the
+      // Trust is a read, and a vault that has sent nothing says so with the
       // same prominence as one that has. That emptiness is the record.
       expect(getAllByText(moments.outbound_none).length).toBeGreaterThan(0);
       await user.click(getByRole("button", { name: /accounts.*where money sits/i }));

@@ -7,7 +7,7 @@ import { outcomePresentation, resolveReviewSelection, workingPresentation } from
 // What a screen needs to use the review verb this build serves. Every source a
 // screen can be given carries the verb, so there is no state in which the
 // controls are absent.
-export type ReviewActionControls = { state: ReviewActionState; onAnswer: (questionId: string, said: string) => void; onDecline: (questionId: string, reason: DeclineReason) => void };
+export type ReviewActionControls = { state: ReviewActionState; onAnswer: (questionId: string, said: string) => void; onConfirm?: (questionId: string, proposalId: string, said: string, asked: string) => void; onDecline: (questionId: string, reason: DeclineReason) => void };
 type ReviewProps = { result: FeatureResult<ReviewData>; selectedQueue: string; onSelectQueue: (id: string) => void; actions: ReviewActionControls };
 
 // Whether this read can say what is still open. Only the read's own states
@@ -43,12 +43,18 @@ function ReviewQueue({ queue, selectedId, onSelectQueue }: { queue: readonly Rev
 // layout for itself. It is never lifted out of the flow to hold the bottom of
 // the viewport, where it would paint and take clicks over whatever the person
 // has scrolled under it.
-function ActionOutcomeNotice({ state, unread }: { state: ReviewActionState; unread: boolean }) {
+function ActionOutcomeNotice({ state, unread, actions }: { state: ReviewActionState; unread: boolean; actions: ReviewActionControls }) {
   const notice = state.state === "idle" ? null
     : state.state === "working" ? workingPresentation(state.verb)
       : outcomePresentation(state.verb, state.result);
   const unreadable = notice && state.state === "settled" && unread ? "This screen could not read the queue afterwards, so it no longer knows what is still open." : "";
-  return <><div className="visually-hidden" role="status" aria-live="polite">{notice ? `${notice.title}. ${notice.detail}${unreadable ? ` ${unreadable}` : ""}` : ""}</div>{notice ? <div className="review-outcome"><strong id="review-outcome-title" tabIndex={-1}>{notice.title}</strong><p>{notice.detail}</p>{unreadable ? <p>{unreadable}</p> : null}</div> : null}</>;
+  const proposal = state.state === "settled" && state.result.state === "settled" && state.result.outcome.kind === "proposal" ? state.result.outcome : null;
+  const deciding = actions.state.state === "working";
+  const decide = (said: "yes" | "no") => {
+    if (!proposal?.proposalId || deciding || state.state !== "settled") return;
+    actions.onConfirm?.(state.questionId, proposal.proposalId, said, proposal.proposalSummary || proposal.message);
+  };
+  return <><div className="visually-hidden" role="status" aria-live="polite">{notice ? `${notice.title}. ${notice.detail}${unreadable ? ` ${unreadable}` : ""}` : ""}</div>{notice ? <div className="review-outcome"><strong id="review-outcome-title" tabIndex={-1}>{notice.title}</strong><p>{notice.detail}</p>{proposal?.proposalId && actions.onConfirm ? <div className="review-set-aside-controls"><button className="primary-button" type="button" aria-disabled={deciding} onClick={() => decide("yes")}>Confirm this proposal</button><button className="secondary-button" type="button" aria-disabled={deciding} onClick={() => decide("no")}>Decline this proposal</button></div> : null}{unreadable ? <p>{unreadable}</p> : null}</div> : null}</>;
 }
 
 // The control a person pressed stays focusable for as long as the vault is
@@ -61,7 +67,7 @@ function SetAsideControls({ question, actions }: { question: ReviewView; actions
   return <section className="review-set-aside" aria-labelledby="review-set-aside-title">
     <h4 id="review-set-aside-title">Set this question aside</h4>
     <p>Setting a question aside does not delete it. It comes back on its own when the amount behind it, or the number of movements it covers, changes.</p>
-    <p>Setting a question aside is connected, and so is answering one in your own words. Proposing a change, confirming one, and correcting a document are not.</p>
+    <p>Setting a question aside, answering in your own words, and confirming or declining a resulting proposal are connected. Correcting a document is not.</p>
     <div className="review-set-aside-controls">
       <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "review-set-aside-waiting" : undefined} onClick={() => setAside("not_now")}>Set aside for now</button>
       <button className="secondary-button" type="button" aria-disabled={working} aria-describedby={working ? "review-set-aside-waiting" : undefined} onClick={() => setAside("dont_know")}>Set aside: I do not know</button>
@@ -130,5 +136,5 @@ export function Review({ result, selectedQueue, onSelectQueue, actions }: Review
     const pending = data.meta.pending;
     const pendingAddendum = pending === null || pending.count === 0 ? "" : pending.count === 1 ? " 1 set-aside item remains. Opening it is not available in this preview." : ` ${pending.count} set-aside items remain. Opening them is not available in this preview.`;
     return <section className="feature-panel review-inspection"><ReviewHeader total={data.meta.total} />{!data.queue.length ? <div className="empty-state"><strong id="review-empty-title" tabIndex={-1}>Nothing needs you right now</strong><span>{`There are no open questions in the current review read.${pendingAddendum}`}</span></div> : <div className="review-inspection-layout"><ReviewQueue queue={data.queue} selectedId={activeId} onSelectQueue={onSelectQueue} />{selection.state === "ready" ? <aside className="review-selected"><div className="detail-panel-label">Selected question</div><h3 id="selected-question-title" tabIndex={-1}>{selection.question.label || "Question text was not supplied by this read."}</h3><QuestionDetail question={selection.question} actions={actions} invite={data.meta.invite} /></aside> : <SelectionState state={selection} />}</div>}<MoreFromRead data={data} /></section>;
-  }}</PanelStateView><ActionOutcomeNotice state={actions.state} unread={queueUnread(result)} /></div>;
+  }}</PanelStateView><ActionOutcomeNotice state={actions.state} unread={queueUnread(result)} actions={actions} /></div>;
 }

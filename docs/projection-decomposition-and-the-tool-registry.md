@@ -27,13 +27,14 @@
 ### PROJ-62 — a structured filter object, validated against the vault's own vocabulary
 **State:** enforced
 **Code:** product/viva/tools/ledger_common.py:112
-**Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates
+**Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates, product/tests/test_tool_vocabulary.py::test_native_query_schema_discriminates_filters_by_read_family
 
 1. A read takes a typed filter object, never a query string and never SQL.
 2. Every filter value is validated against the vault's own learned values — its accounts, categories, tags, counterparties and currencies — and a value the vault does not hold refuses, naming the values it does hold.
 3. A filter a read would ignore refuses and names what that read supports, rather than being accepted and dropped.
 4. The enumerations of `entity` and `group_by` are schema this project owns; the legal *values* are read from the vault, never listed in code.
 5. A date window is either explicit inclusive edges or the named latest complete calendar month. The named period resolves to explicit edges before the read, using the newest ended month shared by posted statement coverage.
+6. The native schema discriminates by entity and aggregate metric, so it offers only the filters that family honors; the dispatcher retains the same refusal for callers that bypass native validation.
 
 ### PROJ-63 — the registry contract is modality-neutral
 **State:** enforced
@@ -87,12 +88,13 @@
 ### PROJ-4 — a refusal is a reviewed sentence chosen by machine tag
 **State:** enforced
 **Code:** product/viva/tools/runner.py:350
-**Test:** product/tests/test_speak.py::test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag
+**Test:** product/tests/test_speak.py::test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag, product/tests/test_tool_vocabulary.py::test_an_identical_refused_call_stops_on_the_first_repeat
 
 1. A refused turn speaks a reviewed persona-pack sentence selected by tag; nothing is composed, nothing is bound, and no model call is spent.
 2. Every tag the runner can refuse with has exactly one reviewed sentence, and the bijection is enforced at build time.
 3. A turn that reached delivery with nothing, or spent its whole budget of calls, may also speak the cause of the read that stopped it, from the closed set of speakable refusals held beside the envelope.
 4. A tag the machine does not know is not spoken as one.
+5. Repeating a byte-equivalent deterministically refused call ends the turn on its first repeat, preserves the read's diagnosis, and spends no further planner calls on the same request.
 
 ### PROJ-5 — a property of a figure the machine holds is placed by the machine
 **State:** enforced

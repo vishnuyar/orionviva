@@ -189,6 +189,9 @@ export function privateTransferActions(client: BridgeClient): VaultTransferActio
 export function privateReviewActions(client: BridgeClient): ReviewActions {
   return {
     answer: (questionId, said) => acted(client.answerQuestion(questionId, said)),
+    confirm: (proposalId, said, asked) => client.confirmProposal
+      ? acted(client.confirmProposal(proposalId, said, asked))
+      : Promise.resolve({ state: "unserved" }),
     decline: (questionId, reason) => acted(client.declineQuestion(questionId, reason)),
     reread: () => readReviewFeature(client),
   };

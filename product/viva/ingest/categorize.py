@@ -126,14 +126,22 @@ def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
     and the sharper nature signal; supplying it records a `MerchantEnriched`
     rather than a `MerchantCategorized`."""
     grade = VERIFIED if by == "human" else UNVERIFIED
-    log.info("merchant: %s %r -> %r (%s)", by, merchant, normalize_category(category), grade)
+    # Preserve a merchant key the projection already holds; normalize only a
+    # descriptor that has not resolved to a held identity.
+    projection = ledger.projection()
+    held = set(projection.merchant_categories())
+    held.update(projection.merchant_key_of(m) for m in projection.movements())
+    supplied = str(merchant or "").strip()
+    merchant_key = supplied if supplied in held else normalize_merchant(supplied)
+    log.info("merchant: %s %r -> %r (%s)", by, merchant_key,
+             normalize_category(category), grade)
     if subcategory:
         ledger.append(merchant_enriched(
-            normalize_merchant(merchant), normalize_category(category),
+            merchant_key, normalize_category(category),
             subcategory=subcategory.strip().lower(), grade=grade,
             occurred_at=date.today().isoformat(), by=by))
         return
-    ledger.append(merchant_categorized(normalize_merchant(merchant),
+    ledger.append(merchant_categorized(merchant_key,
                                        normalize_category(category), grade,
                                        date.today().isoformat(), by=by))
 

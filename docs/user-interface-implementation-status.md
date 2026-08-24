@@ -43,7 +43,7 @@ fixtures remain for deterministic presentation-state coverage.
 
 The live path provides financial picture and account evidence, movement
 activity, document capture and rescan, process-local jobs and cancellation,
-review answer and decline, Ask Viva text turns, capability-derived navigation,
+review answer, proposal confirmation and decline, Ask Viva text turns, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
 identity, vault export and restore, maintenance, and privacy-filtered diagnostic
 export. Trust refreshes after each Ask Viva turn, separates configured routes
@@ -82,6 +82,7 @@ operation column is additionally checked by the desktop architecture gate.
 | `viva.maintenance.diagnose` | yes | opened vault | yes |
 | `viva.maintenance.run` | yes | opened vault | yes |
 | `viva.review.answer` | yes | opened vault | yes |
+| `viva.review.confirm` | yes | opened vault | yes |
 | `viva.review.decline` | yes | opened vault | yes |
 | `viva.settings.confirm` | yes | before a vault opens | yes |
 | `viva.settings.propose` | yes | before a vault opens | yes |
@@ -97,6 +98,7 @@ operation column is additionally checked by the desktop architecture gate.
 | --- | --- |
 | `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Job state and cancellation are process-local. Restart recovery is absent, so an interrupted document job cannot resume after the sidecar exits. |
 | `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Documents destination. |
+| `has-file desktop/src/features/review/Review.tsx` | A proposal can be confirmed or declined while its answer outcome remains open, but ordinary navigation clears the client's proposal identity while the opened-vault bridge retains the proposal. Returning to Review cannot reach that retained proposal. |
 | `has-file desktop/src/features/activity/Activity.tsx` | Activity is a live read, but category and tag editing, transaction correction, and transfer confirmation are not registered desktop actions. |
 | `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Ask Viva is connected for text, but no read supplies recorded conversation turns; the drawer can show only the answer returned to its current question. There is no microphone, speech recognition, or audio playback path; the reply shape is only voice-ready. |
 | `no-file product/viva/surface/connections.py` | No account-aggregation surface exists. Documents and the sample vault are the acquisition paths. |

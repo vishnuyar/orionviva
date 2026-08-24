@@ -191,8 +191,8 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-47** | silence by ranking, never by hiding | enforced | [the-question-queue.md](the-question-queue.md) | `test_the_tail_is_summarized_never_dropped` |
 | **MON-48** | question text is a deterministic template from the persona pack | enforced | [the-question-queue.md](the-question-queue.md) | `test_question_text_no_longer_lives_in_code` |
 | **MON-49** | every question declares what structure an answer has | enforced | [the-question-queue.md](the-question-queue.md) | `test_the_model_never_supplies_a_figure` |
-| **MON-50** | there is no button path and no second way in | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_reply_she_could_not_read_leaves_the_question_where_it_was` |
-| **MON-51** | a confirmation is a question, not a second door (X3) | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
+| **MON-50** | a substantive answer has no button payload | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_reply_she_could_not_read_leaves_the_question_where_it_was` |
+| **MON-51** | confirmation is an explicit typed decision (X3) | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
 | **MON-52** | a nature question is raised only where the evidence is weak | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_ordinary_known_merchant_is_never_asked_about` |
 | **MON-53** | a rhythm question is one proposal per counterparty and direction, licensed by the catalog | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_standing_prior_raises_one_grouped_proposal_per_pair` |
 | **MON-54** | a stake is money already measured | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_question_is_ranked_on_money_already_measured` |

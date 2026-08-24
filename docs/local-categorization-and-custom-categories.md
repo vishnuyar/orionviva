@@ -9,12 +9,13 @@
 
 ### MON-90 — a peer descriptor is ruled per transaction, never everywhere
 **State:** enforced
-**Code:** product/viva/listen.py:566 (`generalizes = merchant and is_shareable(descriptor) and not instrument`)
+**Code:** product/viva/listen.py:566 (`generalizes = merchant and is_shareable(descriptor) and not instrument`); product/viva/engine.py (`_write_answer`)
 **Test:** product/tests/test_questions.py::test_a_peer_payment_is_scoped_to_itself_not_a_rule
 
 1. A commercial merchant's ruling is scoped to the merchant and settles every payment to it.
 2. A peer or instrument descriptor is scoped to the single movement.
 3. A movement-scoped answer covering more than one movement with no key is refused rather than quietly applied to the whole conduit bucket.
+4. Answering a one-scoped merchant question assigns the category only to the movement keys the question carried; it creates no merchant-wide prior.
 
 ### MON-91 — a custom category is personal, and what crosses to a model is the shareable part of the vocabulary
 **State:** enforced
@@ -66,7 +67,7 @@ The scale is what made the boundary concrete: a real enrichment run left a large
 - `product/viva/listen.py:168` cites this document's rule by its former id, `D2`. The rule is now MON-91; the comment is stale until someone with the code lane fixes it.
 
 - A first-class `CategoryDefined` event (name, colour, icon) is unbuilt, so there is nothing a picker can enumerate, rename, or style. The implicit half — a label exists by being used — is what is built.
-- No custom-category surface exists. This note was anchored to "the presentation layer", a milestone that has passed twice without it; re-anchor it to a named slice before scheduling.
+- A Review answer can assign a category the vault already knows to one peer movement. No surface can mint, enumerate, rename or style a custom category; that needs the first-class category work above.
 - Near-duplicate labels a fold cannot close: `Groceries` lands on `groceries`, and `Grocery` still mints a second category beside it ([issue #7](https://github.com/vishnuyar/orionviva/issues/7)). Closing it needs either a fence, which contradicts MON-91, or a stemming rule, which is the keyword-table class of workaround this project has deleted twice. The ruling is Vishnu's.
 - Learned auto-apply for peer descriptors — "this counterpart is usually rent" — is a later projection over the recorded assignments, exactly as merchant learning was; nothing here forecloses it and nothing needs re-ingesting.
 - Merchant-as-Party and counterpart identity resolution are deferred.

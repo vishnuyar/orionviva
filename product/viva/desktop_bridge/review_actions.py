@@ -43,6 +43,9 @@ class ReviewActions:
 
     def __init__(self, vault: Any) -> None:
         self._vault = vault
+        # This opened-vault bridge retains each unapplied proposal. The caller
+        # receives an opaque identity for confirming the retained structure.
+        self._proposals: dict[str, dict] = {}
 
     def answer(self, payload: dict[str, Any]) -> dict[str, Any]:
         """One reply to one question, in a person's own words.
@@ -55,7 +58,18 @@ class ReviewActions:
         from viva.engine import answer_question
 
         question_id, said = _answer_request(payload)
-        return outcome_of(answer_question(self._vault, question_id, said)).as_dict()
+        result = answer_question(self._vault, question_id, said)
+        proposal = result.get("proposal")
+        # Only an accepted answer that requests confirmation opens a proposal.
+        # Diagnostic proposal context on a refusal is not retained.
+        if (result.get("ok") is True and result.get("confirm") is True
+                and isinstance(proposal, dict)):
+            import secrets
+            proposal_id = secrets.token_urlsafe(18)
+            self._proposals[proposal_id] = dict(proposal)
+            result = {**result,
+                      "proposal": {**proposal, "proposal_id": proposal_id}}
+        return outcome_of(result).as_dict()
 
     def decline(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Set one question aside. It returns when its stake moves."""
@@ -63,6 +77,28 @@ class ReviewActions:
 
         question_id, reason = _decline_request(payload)
         return outcome_of(decline_question(self._vault, question_id, reason)).as_dict()
+
+    def confirm(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Confirm or reject the exact proposal an answer returned.
+
+        Proposals are transient and unapplied. The caller sends the opaque
+        identity of the inspected proposal with the person's yes-or-no
+        sentence; the engine applies the server-held structure through the
+        same typed confirmation slot as the terminal workflow. A no is an
+        explicit decline and writes nothing.
+        """
+        from viva.engine import confirm_proposal
+
+        proposal_id, said, asked = _confirm_request(payload)
+        proposal = self._proposals.get(proposal_id)
+        if proposal is None:
+            from viva.persona import moment
+            return ActionOutcome("refused", moment("reply_question_closed"),
+                                 reason="proposal_not_open").as_dict()
+        result = confirm_proposal(self._vault, proposal, said, asked=asked)
+        if result.get("ok"):
+            self._proposals.pop(proposal_id, None)
+        return outcome_of(result).as_dict()
 
 
 def outcome_of(result: Mapping[str, Any]) -> ActionOutcome:
@@ -73,10 +109,10 @@ def outcome_of(result: Mapping[str, Any]) -> ActionOutcome:
     a reply settled by a document that has not arrived says is false; and the
     machine name for a refusal is ``why``.
 
-    Nothing infers a kind from the shape of a reply. A reply this vocabulary
-    has no word for — one held for a confirmation, which is transient and does
-    not cross this bridge — raises :class:`UnreadableOutcome` rather than being
-    read as the nearest word.
+    Nothing infers a kind from the shape of a reply. A proposal crosses as an
+    explicit unapplied outcome; any other reply this vocabulary has no word
+    for raises :class:`UnreadableOutcome` rather than being read as the nearest
+    word.
     """
     from viva.persona import moment
 
@@ -135,6 +171,28 @@ def _decline_request(payload: Mapping[str, Any]) -> tuple[str, str]:
         raise BridgeRequestError(
             "reason must be one of: " + ", ".join(sorted(DECLINE_REASONS)))
     return _question_id(payload), reason
+
+
+def _confirm_request(payload: Mapping[str, Any]) -> tuple[str, str, str]:
+    """An inspected proposal's identity, confirmation sentence, and prompt."""
+    from viva.reply import MAX_REPLY_TOKENS
+
+    allowed = {"proposal_id", "said", "asked"}
+    _fenced(payload, allowed, "viva.review.confirm")
+    proposal_id = payload.get("proposal_id")
+    if not isinstance(proposal_id, str) or not proposal_id.strip():
+        raise BridgeRequestError("proposal_id must be a non-empty string")
+    said = payload.get("said")
+    if not isinstance(said, str) or not said.strip():
+        raise BridgeRequestError("said must be a non-empty string")
+    if len(said) > MAX_REPLY_TOKENS * 8:
+        raise BridgeRequestError("said is longer than a reply may be")
+    asked = payload.get("asked", "")
+    if not isinstance(asked, str):
+        raise BridgeRequestError("asked must be a string")
+    if len(asked) > MAX_REPLY_TOKENS * 8:
+        raise BridgeRequestError("asked is longer than a question may be")
+    return proposal_id, said, asked
 
 
 def _fenced(payload: Mapping[str, Any], allowed: set[str], operation: str) -> None:

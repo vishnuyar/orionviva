@@ -73,6 +73,44 @@ def test_an_unknown_merchant_asks_what_it_is_scoped_to_the_merchant(tmp_path):
     assert "ACME HARDWARE" in q["text"]
 
 
+def test_answering_a_resolved_numbered_merchant_closes_that_exact_question(
+        tmp_path, monkeypatch):
+    """A resolved key is already an identity, not a descriptor to normalize."""
+    from viva import engine
+    from viva.ledger import account_opened, simple_transaction
+    from viva.ledger.merchant_keys import MerchantKeys
+    from viva.ledger.merchants import normalize_merchant
+    from viva.vault import Vault
+
+    key = "sample merchant 1201"
+
+    def resolved(rows):
+        return MerchantKeys({(account, description): key
+                             for account, _institution, _kind, description
+                             in rows})
+
+    store = EventStore.open(tmp_path / "events.jsonl", "pw")
+    ledger = Ledger(store, resolve_keys=resolved)
+    ledger.append(account_opened("chk", "depository", "Checking", "USD",
+                                 "2026-01-01"))
+    ledger.append(simple_transaction("chk", "-20.00", "SAMPLE MERCHANT #1201",
+                                     "2026-03-05"))
+    vault = Vault(ledger=ledger, raw=RawStore.open(tmp_path / "raw", "pw"),
+                  directory=tmp_path)
+    (question,) = [q for q in open_questions(ledger, as_of="2026-04-01")[
+        "questions"] if q["kind"] == MERCHANT]
+    assert question["refs"]["merchant"] == key
+    monkeypatch.setattr(engine, "_interpreter", lambda: None)
+
+    outcome = engine.answer_question(vault, question["id"], "other")
+
+    assert outcome["ok"] is True
+    assert key in ledger.projection().merchant_categories()
+    assert normalize_merchant(key) != key
+    assert not [q for q in open_questions(ledger, as_of="2026-04-01")[
+        "questions"] if q["id"] == question["id"]]
+
+
 def test_a_merchant_question_counts_the_movements_its_money_is_over(tmp_path):
     """One population per sentence.
 

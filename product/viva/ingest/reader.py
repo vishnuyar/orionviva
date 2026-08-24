@@ -95,7 +95,7 @@ EMBEDDED_FRAME = "untrusted-frame-v1"
 # not normalize means the JSON was fine and one field is wrong, so the re-ask
 # names that field.
 RETRY_SYNTAX = "retry-syntax-v1"
-RETRY_VALUE = "retry-value-v1"
+RETRY_VALUE = "retry-value-v2"
 _SLOT = "{{DOCUMENT_TEXT}}"
 
 

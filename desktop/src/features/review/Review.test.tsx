@@ -34,7 +34,7 @@ describe("Review inspection surface", () => {
     // Said once, in the panel holding the controls it is about, rather than
     // three times over one screen.
     expect(container.querySelectorAll(".review-set-aside p")).toHaveLength(2);
-    expect(getByText("Setting a question aside is connected, and so is answering one in your own words. Proposing a change, confirming one, and correcting a document are not.")).toBeInTheDocument();
+    expect(getByText("Setting a question aside, answering in your own words, and confirming or declining a resulting proposal are connected. Correcting a document is not.")).toBeInTheDocument();
     expect(getByText("Source document unavailable")).toBeInTheDocument();
     // This question declares no slots, so nothing said in words settles it and
     // there is no box to write in.
@@ -134,8 +134,8 @@ describe("Review inspection surface", () => {
     const { getAllByRole, getByRole, getByText, queryByRole } = render(<Review result={ready(data([question("live-question")]))} selectedQueue="live-question" onSelectQueue={noAction} actions={actions} />);
 
     expect(getByText("Setting a question aside does not delete it. It comes back on its own when the amount behind it, or the number of movements it covers, changes.")).toBeInTheDocument();
-    // Answering is not connected in this version, so no control offers it and
-    // nothing on this screen invites a sentence it would then refuse.
+    // This question declares no slots, so no answer control offers a sentence
+    // that the engine has said cannot settle it.
     expect(queryByRole("textbox")).not.toBeInTheDocument();
     expect(queryByRole("button", { name: /record this answer/i })).not.toBeInTheDocument();
     // Neither control may read as an answer: declining is setting aside, and a
@@ -184,7 +184,7 @@ describe("Review inspection surface", () => {
     expect(getByText("Set aside until something changes.")).toBeInTheDocument();
 
     rerender(<Review {...props} actions={acted({ state: "settled", questionId: "live-question", verb: "answer", result: { state: "settled", outcome: { kind: "proposal", message: "Nothing was recorded.", reason: "" } } })} />);
-    expect(getByText("Held for a confirmation this screen cannot give")).toBeInTheDocument();
+    expect(getByText("Held for your confirmation")).toBeInTheDocument();
     expect(getByText("Nothing was recorded.")).toBeInTheDocument();
     expect(queryByText("Answered")).not.toBeInTheDocument();
 
@@ -199,6 +199,22 @@ describe("Review inspection surface", () => {
 
     rerender(<Review {...props} actions={settled("stale", "This read has moved on.")} />);
     expect(getByText("Out of date")).toBeInTheDocument();
+  });
+
+  it("shows an inspectable proposal and sends explicit confirm or decline decisions", () => {
+    const onConfirm = vi.fn();
+    const proposal: ReviewActionState = { state: "settled", questionId: "live-question", verb: "answer",
+      result: { state: "settled", outcome: { kind: "proposal", message: "Nothing was recorded.", reason: "",
+        proposalId: "proposal-1", proposalSummary: "Open Sample Loan." } } };
+    const { getByRole, getByText } = render(<Review result={ready(data([question("live-question")]))}
+      selectedQueue="live-question" onSelectQueue={noAction}
+      actions={{ state: proposal, onAnswer: noAnswer, onConfirm, onDecline: noAction }} />);
+
+    expect(getByText("Open Sample Loan.")).toBeInTheDocument();
+    fireEvent.click(getByRole("button", { name: "Confirm this proposal" }));
+    fireEvent.click(getByRole("button", { name: "Decline this proposal" }));
+    expect(onConfirm).toHaveBeenNthCalledWith(1, "live-question", "proposal-1", "yes", "Open Sample Loan.");
+    expect(onConfirm).toHaveBeenNthCalledWith(2, "live-question", "proposal-1", "no", "Open Sample Loan.");
   });
 
   it("names each way a verb can fail to answer without calling any of them a refusal", () => {

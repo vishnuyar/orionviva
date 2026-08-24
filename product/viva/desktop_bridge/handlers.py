@@ -88,10 +88,8 @@ def _surface_capabilities(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "protocol": CURRENT_PROTOCOL.wire(),
         "capabilities": json.loads(serialize_registry()),
-        # Which destinations a read actually reaches, derived from the registry
-        # by the registry. The interface used to carry a hand-written
-        # vocabulary in place of this, which is a second answer to a question
-        # only one side can answer.
+        # The destinations reached by registered reads, derived from the same
+        # registry that declares them.
         "destinations": served_destinations(),
     }
 
@@ -189,6 +187,7 @@ def handlers_for_opened_vault(
     return BridgeDispatcher({
         **reads.handlers,
         REVIEW_OPERATIONS["answer"]: actions.answer,
+        REVIEW_OPERATIONS["confirm"]: actions.confirm,
         REVIEW_OPERATIONS["decline"]: actions.decline,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
         DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,

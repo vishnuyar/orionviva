@@ -71,6 +71,31 @@ describe("review adapter", () => {
     }
   });
 
+  it("keeps an inspectable proposal and its opaque confirmation identity", () => {
+    expect(adaptActionOutcome({ kind: "proposal", message: "Nothing changed.",
+      state: { proposal_id: "proposal-1", summary: "Open Sample Loan." }, reason: null }))
+      .toEqual({ kind: "proposal", message: "Nothing changed.", reason: "",
+        proposalId: "proposal-1", proposalSummary: "Open Sample Loan." });
+  });
+
+  it("keeps the document terminal state as a client-readable barrier", () => {
+    expect(adaptActionOutcome({ kind: "completed", message: "Saved but not read.",
+      state: { job_id: "upload-1", terminal_state: "read_yielded_nothing",
+        ingest_action: "parked", reading: "read_yielded_nothing" }, reason: null }))
+      .toEqual({ kind: "completed", message: "Saved but not read.", reason: "",
+        jobId: "upload-1", terminalState: "read_yielded_nothing",
+        ingestAction: "parked", reading: "read_yielded_nothing" });
+  });
+
+  it("rejects partial or unknown document terminal states", () => {
+    const outcome = { kind: "completed", message: "Finished.", reason: null };
+    expect(adaptActionOutcome({ ...outcome, state: { terminal_state: "posted" } })).toBeNull();
+    expect(adaptActionOutcome({ ...outcome, state: { ingest_action: "posted" } })).toBeNull();
+    expect(adaptActionOutcome({ ...outcome, state: { terminal_state: "finished", ingest_action: "posted" } })).toBeNull();
+    expect(adaptActionOutcome({ ...outcome, state: { terminal_state: "posted", ingest_action: "done" } })).toBeNull();
+    expect(adaptActionOutcome({ ...outcome, state: { terminal_state: "posted", ingest_action: "posted", reading: "maybe" } })).toBeNull();
+  });
+
   it("refuses to read a refusal that carries no machine reason", () => {
     expect(adaptActionOutcome({ kind: "refused", message: "Not recorded.", state: null, reason: null })).toBeNull();
     expect(adaptActionOutcome({ kind: "refused", message: "Not recorded.", state: null, reason: "" })).toBeNull();

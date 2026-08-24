@@ -126,6 +126,7 @@ turn begins, and no value a read was called with is ever in them.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
@@ -412,6 +413,7 @@ def run(question: str, planner, registry: Registry,
     offered rather than an instruction it is asked to follow."""
     ground = _Ground(question=question)
     transcript: list[ToolResult] = []
+    refused_calls: set[str] = set()
     shape: Shape | None = None
     result = None
     while result is None:
@@ -501,6 +503,24 @@ def run(question: str, planner, registry: Registry,
             transcript.append(called)
             if called.ok:
                 ground.stamp(called)
+            else:
+                # Stop on the first byte-equivalent repeat of a deterministically
+                # refused call. The result retains the ordinary refusal word,
+                # names the repeated-call failure, and carries the last read's
+                # diagnosis.
+                fingerprint = json.dumps(
+                    {"tool": step["tool"], "args": step.get("args") or {}},
+                    sort_keys=True, separators=(",", ":"), default=str)
+                if fingerprint in refused_calls:
+                    result = _refused(
+                        "call_budget_exhausted",
+                        "Planner repeated an identical deterministically "
+                        f"refused call to {step['tool']!r}; recovery stopped "
+                        "before further calls or transcript growth.",
+                        [t.to_dict() for t in transcript], len(transcript),
+                        shape, diagnosis=_diagnosed(transcript,
+                                                     registry.names()))
+                refused_calls.add(fingerprint)
         else:
             result = _refused("bad_plan", "The planner's step names neither a "
                               "shape, a tool nor a delivery.",

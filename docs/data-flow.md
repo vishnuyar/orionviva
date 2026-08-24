@@ -92,6 +92,10 @@ the read side.
   without an explicit yes
   ([from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md),
   [viva-listens-and-speaks.md](viva-listens-and-speaks.md)).
+- **The confirmation.** Where an answer returns a Proposal, the opened-vault
+  bridge retains its unapplied structure and gives the interface an opaque
+  identity plus the summary a person inspects. A yes or no crosses through the
+  same typed confirmation slot; the client never sends proposal legs back.
 - **The ruling.** A correction is an event, applied as a graded overlay on the
   read side; nothing posted is rewritten. A decline snapshots the stake, so a
   declined question stays quiet until the evidence changes — no timers
@@ -155,6 +159,10 @@ provenance and caveats — a float fails construction — and every panel declar
 one state from a closed vocabulary, so progressive disclosure is a contract
 rather than a pile of frontend conditionals
 ([user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md)).
+Document actions additionally cross with separate terminal, ingest and reading
+states, so a captured file is not presented as one that posted. A proposal
+crosses with an opaque identity and inspectable summary while its structure
+remains in the opened-vault bridge.
 
 ## What runs when nobody asked
 

@@ -219,6 +219,7 @@ export function App() {
   }
   function declineQuestion(questionId: string, reason: DeclineReason) { void control.declineQuestion(questionId, reason); }
   function answerQuestion(questionId: string, said: string) { void control.answerQuestion(questionId, said); }
+  function confirmProposal(questionId: string, proposalId: string, said: string, asked: string) { void control.confirmProposal(questionId, proposalId, said, asked); }
   // A dropped file changed the screen without the person asking, so the move
   // goes through the same navigation every other screen change goes through,
   // any open drawer is dismissed so the receipt is neither inert nor hidden
@@ -252,9 +253,8 @@ export function App() {
     setPendingDocumentFocus({ target: "document", documentId: target.document.id, requestId: session.requestId, nonce: ++pendingFocusNonce.current });
     if (fromDrawer) evidenceDialog.closeWithoutRestore();
   }
-  // This form opens a vault and never makes one unless a person ticked the box
-  // saying to. A path typed with a letter wrong used to answer as an opened,
-  // brand-new empty vault, which reads as their records having vanished.
+  // This form opens a vault and creates one only when the person selected the
+  // creation option. An invalid path is reported without opening an empty vault.
   //
   // The transport answers one request before it reads the next, so a second
   // press while the vault is answering sends nothing. What the control says
@@ -314,7 +314,7 @@ export function App() {
           {session.destination === "overview" && <Overview result={surface.overview} reviewResult={surface.review} activityResult={surface.activity} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} selectedAccount={session.selectedAccount} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} />}
           {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments() } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
-          {session.destination === "review" && <Review result={surface.review} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} actions={{ state: session.reviewAction, onAnswer: answerQuestion, onDecline: declineQuestion }} />}
+          {session.destination === "review" && <Review result={surface.review} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} actions={{ state: session.reviewAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} />}
           {session.destination === "activity" && <Activity result={surface.activity} onOpenEvidence={openEvidenceDocument} />}
           {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file) } : null} />}
         </FeatureBoundary>}

@@ -30,6 +30,7 @@ export type OutcomePresentation = { title: string; detail: string };
 // so a title never names an act the person did not perform.
 const verbWords: Record<ReviewVerb, { working: string; completed: string; refused: string; waiting: string }> = {
   answer: { working: "Reading your answer", completed: "Answered", refused: "Not answered", waiting: "Waiting on a document" },
+  confirm: { working: "Applying your decision", completed: "Decision recorded", refused: "Decision not recorded", waiting: "Waiting" },
   decline: { working: "Setting this question aside", completed: "Set aside", refused: "Not set aside", waiting: "Nothing set aside yet" },
 };
 
@@ -50,7 +51,7 @@ export function outcomePresentation(verb: ReviewVerb, result: ActionResult): Out
     case "completed": return { title: words.completed, detail };
     case "refused": return { title: words.refused, detail };
     case "waiting": return { title: words.waiting, detail };
-    case "proposal": return { title: "Held for a confirmation this screen cannot give", detail };
+    case "proposal": return { title: "Held for your confirmation", detail: result.outcome.proposalSummary || detail };
     case "set_aside": return { title: "Question set aside", detail };
     case "stale": return { title: "Out of date", detail };
   }
