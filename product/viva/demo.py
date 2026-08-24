@@ -340,7 +340,8 @@ def _states_every_screen_can_be_in(vault) -> None:
     Each is written with the constructor the real path writes it with. A state
     reached any other way would render correctly and be unreachable."""
     from .ledger import Provenance, read_recorded, simple_transaction
-    from .ledger.events import agent_acted, question_declined, transfer_linked
+    from .ledger.events import (agent_acted, question_declined, transfer_linked,
+                                transfer_suggested)
 
     # Money between a person's own pockets, on the same day, in both
     # directions. Activity reads a linked pair as a transfer rather than as
@@ -352,6 +353,14 @@ def _states_every_screen_can_be_in(vault) -> None:
     vault.ledger.append(simple_transaction(
         "acct:rainy-day-savings", "600.00", "transfer from checking",
         "2026-06-18"))
+    # A second pair is deliberately a suggestion, so the real Activity fixture
+    # carries the reachable none, suggested and linked relationship states.
+    vault.ledger.append(simple_transaction(
+        "acct:everyday-checking", "-275.00", "possible transfer to savings",
+        "2026-06-22"))
+    vault.ledger.append(simple_transaction(
+        "acct:rainy-day-savings", "275.00", "possible transfer from checking",
+        "2026-06-23"))
     moved = {movement.description: movement.key
              for movement in vault.ledger.projection().movements()}
     out, back = (moved.get("transfer to savings"),
@@ -359,7 +368,16 @@ def _states_every_screen_can_be_in(vault) -> None:
     if out and back:
         vault.ledger.append(transfer_linked(
             out, back, "corroborated",
-            {"same_day": True, "same_amount": True}, "2026-06-19", by="auto"))
+            {"same_day": True, "same_amount": True,
+             "decided_by": "named_account"}, "2026-06-19", by="auto"))
+    possible_out, possible_back = (
+        moved.get("possible transfer to savings"),
+        moved.get("possible transfer from checking"))
+    if possible_out and possible_back:
+        vault.ledger.append(transfer_suggested(
+            possible_out, [possible_back],
+            {"verdict": "suggested", "amount": "275.00", "currency": "USD"},
+            "2026-06-23"))
 
     # A question somebody set aside. The queue's other state, and the one that
     # is only reachable by having answered: a vault where nothing was ever

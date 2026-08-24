@@ -25,7 +25,9 @@ def build_artifact(root: Path = ROOT) -> dict[str, Any]:
     """Build a JSON-safe, stable projection of the Python surface contract."""
     _surface_import_path(root)
     from viva.surface import CURRENT_PROTOCOL, capabilities
-    from viva.surface.models import ActionOutcome, FigureView, PanelState
+    from viva.surface.models import (ActionOutcome, FigureView, PanelState,
+                                     ProofEmphasis, ProofPresentation,
+                                     ProofReason)
 
     registry = []
     fixtures = []
@@ -63,6 +65,9 @@ def build_artifact(root: Path = ROOT) -> dict[str, Any]:
         "fixtures": fixtures,
         "models": {
             "FigureView": dataclass_fields(FigureView),
+            "ProofPresentation": dataclass_fields(ProofPresentation),
+            "ProofEmphasis": [emphasis.value for emphasis in ProofEmphasis],
+            "ProofReason": [reason.value for reason in ProofReason],
             "PanelState": [state.value for state in PanelState],
             "ActionOutcome": dataclass_fields(ActionOutcome),
         },

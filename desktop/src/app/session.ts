@@ -1,5 +1,5 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
-import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, TrustActionState, TrustData, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, TrustActionState, TrustData, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -17,6 +17,7 @@ export type SurfaceSession = {
   selectedPrompt: string;
   notice: Notice | null;
   reviewAction: ReviewActionState;
+  activityAction: ActivityCorrectionState;
   captureAction: CaptureActionState;
   cancelAction: CancelActionState;
   // What the sidecar last said it was doing, newest last. Every row here was
@@ -72,6 +73,10 @@ export type SessionAction =
   | { type: "select-prompt"; id: string }
   | { type: "review-acting"; requestId: number; questionId: string; verb: ReviewVerb }
   | { type: "review-acted"; requestId: number; questionId: string; verb: ReviewVerb; result: ActionResult; review: FeatureResult<ReviewData> }
+  | { type: "activity-correcting"; requestId: number; movementId: string; verb: ActivityCorrectionVerb }
+  | { type: "activity-outcome"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
+  | { type: "activity-refreshed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot }
+  | { type: "activity-refresh-failed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
   | { type: "capturing"; requestId: number }
   | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
   | { type: "job-progress"; requestId: number; job: JobView }
@@ -127,6 +132,7 @@ export function initialSession(): SurfaceSession {
     selectedPrompt: "",
     notice: null,
     reviewAction: { state: "idle" },
+    activityAction: { state: "idle" },
     captureAction: { state: "idle" },
     cancelAction: { state: "idle" },
     jobs: [],
@@ -198,7 +204,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, activityAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId) return state;
       return {
@@ -213,6 +219,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedPrompt: "",
         notice: { kind: "acknowledged", text: "Reading available surfaces from this device…" },
         reviewAction: { state: "idle" },
+        activityAction: { state: "idle" },
         captureAction: { state: "idle" },
         cancelAction: { state: "idle" },
         jobs: [],
@@ -288,6 +295,28 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         reviewAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result },
       };
     }
+    case "activity-correcting":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, activityAction: { state: "working", movementId: action.movementId, verb: action.verb } };
+    case "activity-outcome":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, activityAction: { state: "refreshing", movementId: action.movementId, verb: action.verb, result: action.result } };
+    case "activity-refreshed": {
+      if (action.requestId !== state.requestId) return state;
+      const ids = selectedIds(action.snapshot);
+      return {
+        ...state,
+        snapshot: action.snapshot,
+        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
+        selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
+        selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
+        activityAction: { state: "settled", movementId: action.movementId, verb: action.verb, result: action.result, refresh: "refreshed" },
+      };
+    }
+    case "activity-refresh-failed":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, activityAction: { state: "settled", movementId: action.movementId, verb: action.verb, result: action.result, refresh: "failed" } };
     case "capturing":
       if (action.requestId !== state.requestId) return state;
       return { ...state, captureAction: { state: "working", result: state.captureAction.state === "idle" ? null : state.captureAction.result } };

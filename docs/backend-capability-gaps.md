@@ -29,16 +29,14 @@ one executable source rather than another prose snapshot.
 - **Account aggregation.** A person can open a local or sample vault and upload
   documents, but no bank-connection or aggregation capability is registered.
   Manual, encrypted capture remains the only acquisition path.
-- **Evidence-presentation emphasis and suppressibility.** Figures carry their
-  grade, label, exactness, coverage, records, provenance, and caveats, but the
-  surface contract does not yet distinguish routine evidence detail from truth
-  that must remain visible. No backend declaration currently licenses a desktop
-  preference to suppress repeated positive assurance.
-- **Activity correction actions.** The ledger supports categories, tags, and
-  transfer relationships, but `activity.movements` is read-only and advertises
-  no category, tag, transaction-correction, or transfer-confirmation action. A
-  future surface must keep the one-category partition separate from the
-  many-tag overlay and must re-read backend state after an action outcome.
+- **Activity correction breadth.** `activity.movements` now advertises
+  movement-scoped assignment from a complete bounded existing-category
+  vocabulary, complete-set tag replacement from a complete bounded existing-tag
+  vocabulary, and backend-qualified transfer confirmation, rejection and
+  unlinking. It does not expose nature editing, merchant-wide changes, new
+  category or tag creation, or bulk correction. Inherited merchant tags also
+  keep complete-set movement replacement unavailable when that action could not
+  remove the effective overlay honestly.
 - **Grounded obligation projection.** The stream and rhythm machinery derives
   flows, observed cadence and amount stability, first and last occurrences,
   and confirmed or measured periodicities. The recurring-spending ledger read
@@ -106,7 +104,9 @@ The current desktop reaches account overview, activity, document upload and
 rescan, job state and cancellation, review answer, proposal confirmation and decline, Ask Viva,
 settings proposal and confirmation, outbound history, update lifecycle, vault
 export and restore, maintenance, diagnostics, sample-vault opening, capability
-discovery, and build identity. These no longer belong in a backend gap list.
+discovery, build identity, backend-declared quiet proof, and the bounded Activity
+category, tag and transfer actions described above. These no longer belong in a
+backend gap list.
 
 ## Open
 

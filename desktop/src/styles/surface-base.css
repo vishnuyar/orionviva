@@ -30,6 +30,10 @@
 .evidence-coverage-line { display: block; }
 .evidence-omission > span { display: block; }
 .hero-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--ink); font-size: var(--text-caption); }
+.proof-caveats { display: grid; gap: var(--space-xs); margin: 0; padding-left: var(--space-lg); color: var(--rust); font-size: var(--text-caption); line-height: var(--leading-body); }
+.proof-qualifications { display: grid; gap: var(--space-xs); margin: 0; padding-left: var(--space-lg); color: var(--rust); font-size: var(--text-caption); line-height: var(--leading-body); }
+.account-card > .proof-caveats { margin: 0 var(--space-lg) var(--space-sm); }
+.account-card > .proof-qualifications { margin: 0 var(--space-lg) var(--space-sm); }
 .hero-meta button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; color: #719079; background: transparent; font-size: 11px; font-weight: 700; }
 .figure-footnote { display: grid; gap: 4px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #ebe5d7; color: #8f998f; }
 .figure-footnote span { color: #63746a; font-size: 11px; font-weight: 700; }

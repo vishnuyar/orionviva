@@ -331,6 +331,14 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "stood_behind_corroborated": frozenset(),
     "stood_behind_unverified":   frozenset(),
     "stood_behind_conflicted":   frozenset(),
+    # Compact surface proof is selected from structured reasons before any
+    # wording. These lines disclose conditions the existing grade and boundary
+    # families do not necessarily say: arithmetic rounding, a missing evidence
+    # condition, an explicit stale ruling, and mixed measurement dates.
+    "proof_inexact":          frozenset(),
+    "proof_missing_evidence": frozenset(),
+    "proof_stale_boundary":   frozenset(),
+    "proof_mixed_vintage":    frozenset(),
     # And above a block of rows, over the one read those lines came from. Those
     # figures are among the answer's, so a person reading both sentences reads
     # one set inside another and never two claims that can disagree. The two
@@ -532,6 +540,26 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "activity_transfer":               frozenset(),
     "activity_provisional":            frozenset(),
     "activity_unsettled":              frozenset(),
+    "activity_category_recorded":      frozenset({"category"}),
+    "activity_category_unchanged":     frozenset({"category"}),
+    "activity_tags_recorded":          frozenset({"count"}),
+    "activity_tags_unchanged":         frozenset(),
+    "activity_movement_stale":         frozenset(),
+    "activity_correction_refused":     frozenset(),
+    "activity_tags_scope_refused":     frozenset(),
+    "activity_transfer_suggested":     frozenset({"count"}),
+    "activity_transfer_suggestion_incomplete": frozenset({"count"}),
+    "activity_transfer_relationship":  frozenset({
+        "source_date", "source_description", "source_account", "source_amount",
+        "counterpart_date", "counterpart_description", "counterpart_account",
+        "counterpart_amount",
+    }),
+    "activity_transfer_linked_human":  frozenset(),
+    "activity_transfer_linked_evidence": frozenset(),
+    "activity_transfer_confirmed":     frozenset(),
+    "activity_transfer_rejected":      frozenset(),
+    "activity_transfer_unlinked":      frozenset(),
+    "activity_transfer_state_stale":   frozenset(),
     # What is said when a person names a folder. These are kept apart because
     # they ask for completely different next steps: a folder holding no vault,
     # a path that is not a folder at all, a vault this passphrase will not

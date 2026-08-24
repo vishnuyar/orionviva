@@ -3,11 +3,11 @@
   "fixtures": [
     {
       "capability_id": "activity.movements",
-      "contract": "ActivityMovements.v1",
+      "contract": "ActivityMovements.v3",
       "id": "activity.movements.ready",
       "payload": {
         "capability_id": "activity.movements",
-        "contract": "ActivityMovements.v1"
+        "contract": "ActivityMovements.v3"
       },
       "state": "ready"
     },
@@ -63,11 +63,11 @@
     },
     {
       "capability_id": "overview.accounts",
-      "contract": "AccountOverview.v1",
+      "contract": "AccountOverview.v2",
       "id": "overview.accounts.ready",
       "payload": {
         "capability_id": "overview.accounts",
-        "contract": "AccountOverview.v1"
+        "contract": "AccountOverview.v2"
       },
       "state": "ready"
     },
@@ -140,6 +140,7 @@
       "exactness",
       "as_of",
       "coverage",
+      "proof_presentation",
       "grade_description",
       "record_ids",
       "provenance",
@@ -153,14 +154,39 @@
       "needs_input",
       "unavailable",
       "failed"
+    ],
+    "ProofEmphasis": [
+      "routine",
+      "required"
+    ],
+    "ProofPresentation": [
+      "emphasis",
+      "reasons",
+      "qualifications"
+    ],
+    "ProofReason": [
+      "conflict",
+      "uncertain_basis",
+      "inexact",
+      "caveat",
+      "stale_boundary",
+      "mixed_vintage",
+      "incomplete_coverage",
+      "missing_evidence"
     ]
   },
   "protocol": "2.0",
   "registry": [
     {
-      "actions": [],
+      "actions": [
+        "assign_category",
+        "replace_tags",
+        "confirm_transfer",
+        "reject_transfer",
+        "unlink_transfer"
+      ],
       "availability": "when a vault is open",
-      "contract": "ActivityMovements.v1",
+      "contract": "ActivityMovements.v3",
       "destination": "activity",
       "disposition": "surface",
       "entrypoint": null,
@@ -172,7 +198,8 @@
       "owner": "viva.surface.activity",
       "reason": null,
       "trust_effect": [
-        "reads_data"
+        "reads_data",
+        "writes_event"
       ]
     },
     {
@@ -619,7 +646,7 @@
     {
       "actions": [],
       "availability": "when a vault is open",
-      "contract": "AccountOverview.v1",
+      "contract": "AccountOverview.v2",
       "destination": "overview",
       "disposition": "surface",
       "entrypoint": null,

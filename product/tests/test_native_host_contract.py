@@ -17,7 +17,8 @@ from pathlib import Path
 import pytest
 
 from viva.desktop_bridge.__main__ import Sidecar, _open_vault
-from viva.desktop_bridge.handlers import (CONVERSATION_OPERATIONS,
+from viva.desktop_bridge.handlers import (ACTIVITY_OPERATIONS,
+                                           CONVERSATION_OPERATIONS,
                                            DOCUMENTS_OPERATIONS,
                                            MAINTENANCE_OPERATIONS,
                                            RESCAN_OPERATIONS,
@@ -101,6 +102,11 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # says is decided by the field list it is built from, so a caller has
     # nowhere to widen it from.
     MAINTENANCE_OPERATIONS["diagnose"]: {"file"},
+    ACTIVITY_OPERATIONS["assign_category"]: {"movement_key", "category_id"},
+    ACTIVITY_OPERATIONS["replace_tags"]: {"movement_key", "tag_ids"},
+    ACTIVITY_OPERATIONS["confirm_transfer"]: {"movement_key", "counterpart_key"},
+    ACTIVITY_OPERATIONS["reject_transfer"]: {"movement_key"},
+    ACTIVITY_OPERATIONS["unlink_transfer"]: {"movement_key", "counterpart_key"},
     SETTINGS_READ: set(),
     # What happens when a new version exists. It reports a fact about this
     # process, so there is nothing a caller could name — and the shape of the
@@ -129,6 +135,16 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
                                     "_run_request"),
     MAINTENANCE_OPERATIONS["diagnose"]: (BRIDGE_PACKAGE / "trust_actions.py",
                                          "_diagnose_request"),
+    ACTIVITY_OPERATIONS["assign_category"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_category_request"),
+    ACTIVITY_OPERATIONS["replace_tags"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_tag_request"),
+    ACTIVITY_OPERATIONS["confirm_transfer"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_transfer_pair_request"),
+    ACTIVITY_OPERATIONS["reject_transfer"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_transfer_movement_request"),
+    ACTIVITY_OPERATIONS["unlink_transfer"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_transfer_pair_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

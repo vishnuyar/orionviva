@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, ConversationDialogShell } from "./App";
 // The sentences a person is told, read from the pack that ships them.
-import moments from "../../../product/viva/persona/pack-v31/moments.json";
+import moments from "../../../product/viva/persona/pack-v33/moments.json";
 // The sample vault as the backend answers for it, produced by running the
 // product rather than authored here.
 import sampleVault from "../../../product/viva/surface/fixtures/overview-parity-v1.json";
@@ -55,7 +55,7 @@ function installCapturedAnimationFrames() {
 // What a live activity read answers with. A stub that omitted it would make
 // every destination test in this file also a test of what happens when Activity
 // cannot be read.
-const activityPayload = { state: "absent", sentence: moments.activity_empty, beyond: { count: 0 } };
+const activityPayload = { state: "absent", sentence: moments.activity_empty, items: [], beyond: { count: 0 }, vocabularies: { categories: { items: [], complete: true, limit: 40 }, tags: { items: [], complete: true, limit: 40, max_selected: 40, max_label_length: 80 } } };
 const trustPayload = { state: "ready", notes: [], outbound: { state: "ready", sentence: moments.outbound_none, call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [{ id: "scope", sentence: moments.outbound_scope }, { id: "anchoring", sentence: moments.outbound_no_anchor }] } };
 
 // The sample vault, as the backend actually answers for it. These are the same

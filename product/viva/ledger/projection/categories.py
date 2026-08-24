@@ -338,6 +338,25 @@ def tags_of(core: ProjectionCore, m) -> list[str]:
     return sorted({canonical_tag(core, t) for t in list(own) + list(shared)})
 
 
+def movement_tags_of(core: ProjectionCore, m) -> list[str]:
+    """The complete movement-scoped tag overlay, without merchant tags."""
+    return sorted({canonical_tag(core, t)
+                   for t in core._movement_tags.get(m.key, []) if t})
+
+
+def inherited_tags_of(core: ProjectionCore, m) -> list[str]:
+    """The merchant-scoped tags this movement inherits.
+
+    These remain visible in the effective set, but a movement-only replacement
+    cannot remove them.  Activity uses this distinction only to withhold an
+    action it could not honestly complete at movement scope.
+    """
+    shared = next((core._merchant_tags[k]
+                   for k in merchants_view.merchant_keys_of(core, m)
+                   if core._merchant_tags.get(k)), [])
+    return sorted({canonical_tag(core, t) for t in shared if t})
+
+
 def tag_aliases(core: ProjectionCore) -> dict[str, str]:
     """Tag-vocabulary aliases, kept apart from category aliases: a tag
     "poker" and a category "poker" are different things, and merging one

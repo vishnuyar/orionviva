@@ -4,8 +4,33 @@ from pathlib import Path
 
 import pytest
 
-from viva.surface import CURRENT_PROTOCOL, ActionOutcome, FigureView, PanelState, ProtocolVersion
+from viva.persona import STOOD_BEHIND_MOMENT, moment
+from viva.surface import (
+    CURRENT_PROTOCOL,
+    ActionOutcome,
+    FigureView,
+    PanelState,
+    ProofEmphasis,
+    ProofPresentation,
+    ProofReason,
+    ProtocolVersion,
+    freshness_confirmed_on,
+    proof_presentation_from_evidence,
+)
 from viva.surface.models import FigureGrade
+from viva.tools.envelope import bounded
+
+
+ROUTINE_PROOF = ProofPresentation(ProofEmphasis.ROUTINE)
+QUALIFICATION_COPY = {
+    "grade_qualification": moment(STOOD_BEHIND_MOMENT + "verified"),
+    "inexact_qualification": moment("proof_inexact"),
+    "missing_evidence_qualification": moment("proof_missing_evidence"),
+    "stale_qualification": moment("proof_stale_boundary"),
+    "mixed_vintage_qualification": moment("proof_mixed_vintage"),
+    "boundary_qualifications": (
+        moment("card_boundary_selected_account", account="Test account"),),
+}
 
 
 def test_protocol_accepts_additive_minor_changes_only():
@@ -38,6 +63,7 @@ def test_figure_serializes_exact_decimal_and_evidence():
         exactness="exact",
         as_of="2026-06-30",
         coverage="checking and savings statements, Jan-Jun 2026",
+        proof_presentation=ROUTINE_PROOF,
         record_ids=("statement-1",),
         provenance="Read from statement-1, page 1.",
         caveats=("one page is held",),
@@ -45,8 +71,220 @@ def test_figure_serializes_exact_decimal_and_evidence():
     payload = figure.as_dict()
     assert payload["exact_value"] == "48240.18"
     assert payload["grade"] == "corroborated"
+    assert payload["proof_presentation"] == {
+        "emphasis": "routine",
+        "reasons": [],
+        "qualifications": [],
+    }
     assert payload["record_ids"] == ["statement-1"]
     assert isinstance(Decimal(payload["exact_value"]), Decimal)
+
+
+def test_proof_presentation_is_closed_and_cannot_hide_a_required_reason():
+    assert {item.value for item in ProofEmphasis} == {"routine", "required"}
+    assert {item.value for item in ProofReason} == {
+        "conflict",
+        "uncertain_basis",
+        "inexact",
+        "caveat",
+        "stale_boundary",
+        "mixed_vintage",
+        "incomplete_coverage",
+        "missing_evidence",
+    }
+    with pytest.raises(TypeError):
+        ProofPresentation("routine")
+    with pytest.raises(ValueError):
+        ProofPresentation(ProofEmphasis.REQUIRED)
+    with pytest.raises(ValueError):
+        ProofPresentation(ProofEmphasis.ROUTINE, (ProofReason.CONFLICT,))
+    with pytest.raises(TypeError):
+        ProofPresentation(ProofEmphasis.REQUIRED, ("conflict",))
+    with pytest.raises(TypeError):
+        ProofPresentation(
+            ProofEmphasis.REQUIRED, (ProofReason.CONFLICT,), ("",))
+    assert ProofPresentation(
+        ProofEmphasis.REQUIRED,
+        (ProofReason.CONFLICT,),
+        ("Reviewed qualification.",),
+    ).as_dict()["qualifications"] == ["Reviewed qualification."]
+
+
+def test_only_a_positively_established_evidence_state_is_routine():
+    presentation = proof_presentation_from_evidence(
+        grade=FigureGrade.CORROBORATED,
+        exactness="exact",
+        boundary=bounded(whole=True),
+        record_ids=("statement-1",),
+        caveats=(),
+        freshness_confirmed=True,
+        mixed_vintage=False,
+        **QUALIFICATION_COPY,
+    )
+
+    assert presentation == ROUTINE_PROOF
+
+
+@pytest.mark.parametrize(
+    ("change", "reason", "qualification"),
+    [
+        ({"grade": FigureGrade.CONFLICTED,
+          "grade_qualification": moment(STOOD_BEHIND_MOMENT + "conflicted")},
+         ProofReason.CONFLICT,
+         moment(STOOD_BEHIND_MOMENT + "conflicted")),
+        ({"grade": FigureGrade.UNVERIFIED,
+          "grade_qualification": moment(STOOD_BEHIND_MOMENT + "unverified")},
+         ProofReason.UNCERTAIN_BASIS,
+         moment(STOOD_BEHIND_MOMENT + "unverified")),
+        ({"exactness": "rounded"}, ProofReason.INEXACT,
+         moment("proof_inexact")),
+        ({"caveats": ("arbitrary backend copy",)}, ProofReason.CAVEAT,
+         "arbitrary backend copy"),
+        ({"boundary": bounded(whole=False)}, ProofReason.INCOMPLETE_COVERAGE,
+         QUALIFICATION_COPY["boundary_qualifications"][0]),
+        ({"freshness_confirmed": False}, ProofReason.STALE_BOUNDARY,
+         moment("proof_stale_boundary")),
+        ({"mixed_vintage": True}, ProofReason.MIXED_VINTAGE,
+         moment("proof_mixed_vintage")),
+        ({"record_ids": ()}, ProofReason.MISSING_EVIDENCE,
+         moment("proof_missing_evidence")),
+    ],
+)
+def test_structured_evidence_conditions_require_condition_specific_copy(
+    change, reason, qualification
+):
+    facts = {
+        "grade": FigureGrade.VERIFIED,
+        "exactness": "exact",
+        "boundary": bounded(whole=True),
+        "record_ids": ("statement-1",),
+        "caveats": (),
+        "freshness_confirmed": True,
+        "mixed_vintage": False,
+        **QUALIFICATION_COPY,
+    }
+    facts.update(change)
+
+    presentation = proof_presentation_from_evidence(**facts)
+
+    assert presentation.emphasis is ProofEmphasis.REQUIRED
+    assert reason in presentation.reasons
+    assert qualification in presentation.qualifications
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("grade", None),
+        ("exactness", None),
+        ("boundary", None),
+        ("record_ids", None),
+        ("caveats", None),
+        ("freshness_confirmed", None),
+        ("mixed_vintage", None),
+    ],
+)
+def test_missing_policy_facts_never_become_routine(field, value):
+    facts = {
+        "grade": FigureGrade.VERIFIED,
+        "exactness": "exact",
+        "boundary": bounded(whole=True),
+        "record_ids": ("statement-1",),
+        "caveats": (),
+        "freshness_confirmed": True,
+        "mixed_vintage": False,
+        **QUALIFICATION_COPY,
+    }
+    facts[field] = value
+
+    presentation = proof_presentation_from_evidence(**facts)
+
+    assert presentation.emphasis is ProofEmphasis.REQUIRED
+    assert ProofReason.MISSING_EVIDENCE in presentation.reasons
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("grade", "settled"),
+        ("exactness", "precise"),
+        ("boundary", {"whole": "yes"}),
+        ("record_ids", (None,)),
+        ("caveats", "no caveats"),
+        ("freshness_confirmed", 1),
+        ("mixed_vintage", "no"),
+    ],
+)
+def test_invalid_policy_facts_never_become_routine(field, value):
+    facts = {
+        "grade": FigureGrade.VERIFIED,
+        "exactness": "exact",
+        "boundary": bounded(whole=True),
+        "record_ids": ("statement-1",),
+        "caveats": (),
+        "freshness_confirmed": True,
+        "mixed_vintage": False,
+        **QUALIFICATION_COPY,
+    }
+    facts[field] = value
+
+    presentation = proof_presentation_from_evidence(**facts)
+
+    assert presentation.emphasis is ProofEmphasis.REQUIRED
+    assert ProofReason.MISSING_EVIDENCE in presentation.reasons
+
+
+def test_freshness_uses_structured_days_without_inventing_an_age_threshold():
+    assert freshness_confirmed_on(("2026-06-30",), "2026-06-30") is True
+    assert freshness_confirmed_on(
+        ("2026-06-30", "2026-06-30"), "2026-06-30") is True
+    assert freshness_confirmed_on(("2026-06-29",), "2026-06-30") is None
+    assert freshness_confirmed_on((), "2026-06-30") is None
+    # Date comparison itself invents no ruling. The existing mixed-vintage
+    # flag is passed to the policy separately and tested above.
+    assert freshness_confirmed_on(
+        ("2026-06-29", "2026-06-30"), "2026-06-30") is None
+    assert freshness_confirmed_on(
+        ("2026-06-30", "2026-06-29"), "2026-06-30") is None
+
+
+def test_policy_uses_caveat_presence_without_interpreting_its_copy():
+    facts = {
+        "grade": FigureGrade.VERIFIED,
+        "exactness": "exact",
+        "boundary": bounded(whole=True),
+        "record_ids": ("statement-1",),
+        "freshness_confirmed": True,
+        "mixed_vintage": False,
+        **QUALIFICATION_COPY,
+    }
+
+    first = proof_presentation_from_evidence(
+        **facts, caveats=("This sentence contains verified and routine.",))
+    second = proof_presentation_from_evidence(
+        **facts, caveats=("Completely different words.",))
+
+    assert first.reasons == second.reasons == (ProofReason.CAVEAT,)
+    assert first.qualifications == (
+        "This sentence contains verified and routine.",)
+    assert second.qualifications == ("Completely different words.",)
+
+
+def test_a_required_reason_without_backend_copy_is_refused():
+    facts = {
+        "grade": FigureGrade.CONFLICTED,
+        "exactness": "exact",
+        "boundary": bounded(whole=True),
+        "record_ids": ("statement-1",),
+        "caveats": (),
+        "freshness_confirmed": True,
+        "mixed_vintage": False,
+        **QUALIFICATION_COPY,
+    }
+    facts["grade_qualification"] = ""
+
+    with pytest.raises(ValueError, match="conflict has no qualification"):
+        proof_presentation_from_evidence(**facts)
 
 
 @pytest.mark.parametrize("field", ["id", "measure", "as_of", "coverage"])
@@ -62,6 +300,7 @@ def test_figure_rejects_missing_identity_fields(field):
         exactness="exact",
         as_of="2026-06-30",
         coverage="checking and savings statements, Jan-Jun 2026",
+        proof_presentation=ROUTINE_PROOF,
     )
     kwargs[field] = ""
     with pytest.raises(ValueError):
@@ -70,7 +309,8 @@ def test_figure_rejects_missing_identity_fields(field):
 
 def test_figure_rejects_float_values():
     with pytest.raises(TypeError):
-        FigureView("x", 1.2, "$1.20", "USD", "balance", FigureGrade.VERIFIED, "Verified", "exact", "today", "one record")
+        FigureView("x", 1.2, "$1.20", "USD", "balance", FigureGrade.VERIFIED,
+                   "Verified", "exact", "today", "one record", ROUTINE_PROOF)
 
 
 def test_figure_rejects_blank_currency_and_keeps_json_safe_lists():
@@ -85,6 +325,7 @@ def test_figure_rejects_blank_currency_and_keeps_json_safe_lists():
         exactness="exact",
         as_of="2026-06-30",
         coverage="checking statements, Jan-Jun 2026",
+        proof_presentation=ROUTINE_PROOF,
     )
     payload = figure.as_dict()
     assert payload["currency"] is None
@@ -105,6 +346,7 @@ def test_figure_rejects_blank_currency_and_keeps_json_safe_lists():
             exactness="exact",
             as_of="2026-06-30",
             coverage="checking statements, Jan-Jun 2026",
+            proof_presentation=ROUTINE_PROOF,
         )
 
 
@@ -130,6 +372,7 @@ def test_figure_declares_a_measure_the_vocabulary_holds():
             exactness="exact",
             as_of="2026-06-30",
             coverage="one account, as of one day",
+            proof_presentation=ROUTINE_PROOF,
         )
 
     for measure in MEASURES:

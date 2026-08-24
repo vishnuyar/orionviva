@@ -1,7 +1,7 @@
 import { BridgeRefusal, BridgeUnreadable, REQUEST_REFUSED } from "../bridge/contracts";
 import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
-import { adaptActivity } from "./adapters/activity";
+import { adaptActivity, adaptActivityActionOutcome } from "./adapters/activity";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
 import { adaptTurn } from "./adapters/conversation";
 import { isRecord } from "./adapters/primitives";
@@ -13,7 +13,7 @@ import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import type { ActionResult, ActivityActionResult, ActivityActions, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -46,6 +46,17 @@ async function acted(call: Promise<unknown>): Promise<ActionResult> {
   }
   const outcome = adaptActionOutcome(replied.value);
   return outcome === null ? { state: "unreadable" } : { state: "settled", outcome };
+}
+
+async function activityActed(call: Promise<unknown>): Promise<ActivityActionResult> {
+  const [replied] = await Promise.allSettled([call]);
+  if (replied.status === "rejected") {
+    if (replied.reason instanceof BridgeRefusal) return replied.reason.code === REQUEST_REFUSED ? { state: "unserved" } : { state: "unreadable" };
+    if (replied.reason instanceof BridgeUnreadable) return { state: "unreadable" };
+    return { state: "unanswered" };
+  }
+  const outcome = adaptActivityActionOutcome(replied.value);
+  return outcome ? { state: "settled", outcome } : { state: "unreadable" };
 }
 
 async function readReviewFeature(client: BridgeClient): Promise<FeatureResult<ReviewData>> {
@@ -194,6 +205,19 @@ export function privateReviewActions(client: BridgeClient): ReviewActions {
       : Promise.resolve({ state: "unserved" }),
     decline: (questionId, reason) => acted(client.declineQuestion(questionId, reason)),
     reread: () => readReviewFeature(client),
+  };
+}
+
+// Movement corrections carry only the durable movement identity and the
+// complete desired value. The action reply is deliberately not treated as a
+// read: every surface is read again by the session after it arrives.
+export function privateActivityActions(client: BridgeClient): ActivityActions {
+  return {
+    assignCategory: (movementId, categoryId) => activityActed(client.assignActivityCategory(movementId, categoryId)),
+    replaceTags: (movementId, tagIds) => activityActed(client.replaceActivityTags(movementId, tagIds)),
+    confirmTransfer: (movementId, counterpartId) => activityActed(client.confirmActivityTransfer(movementId, counterpartId)),
+    rejectTransfer: (movementId) => activityActed(client.rejectActivityTransfer(movementId)),
+    unlinkTransfer: (movementId, counterpartId) => activityActed(client.unlinkActivityTransfer(movementId, counterpartId)),
   };
 }
 

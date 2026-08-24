@@ -79,11 +79,11 @@ wrong when it was written.
 This document has two halves, and the split is the point. Once work exists, the
 code and its design document are the record, and a historical slice label only
 tells a reader where in a queue it once sat — so the built half is organised by
-capability, and reading it answers what the product does today. The unbuilt half
-is organised by dependency-ordered cycle family. Each family receives its own
-approved brief and may produce one or more vertical slices without reusing or
-renumbering the frozen historical labels; for planned work, the order and
-dependency path are the content.
+capability, and reading it answers what the product does today. The remaining
+unbuilt half is organised by dependency-ordered cycle family. Each family
+receives its own approved brief and may produce one or more vertical slices
+without reusing or renumbering the frozen historical labels; for planned work,
+the order and dependency path are the content.
 
 The approach remains data-first: each future capability seeds or composes a
 reusable block rather than a standalone feature, and the trust signal rides the
@@ -109,47 +109,33 @@ a Tauri shell over the packaged Python sidecar. Versioned capabilities and
 reviewed read models cross one allowlisted JSON-lines boundary; the desktop
 renders figures, grades, dates, coverage, caveats and citations without doing
 financial arithmetic. Private and persistent sample vaults use the live bridge,
-while fixtures cover deterministic presentation states. Current reachability
-and remaining gaps live in
+while fixtures cover deterministic presentation states. Canonical Overview
+figures declare compact proof `routine` or `required` from structured backend
+evidence. A durable device-local preference defaults off and removes only
+routine compact assurance; required reviewed qualifications remain visible and
+the complete Evidence drawer remains preference-independent. Activity exposes
+current category, the complete effective tag set and backend-qualified transfer
+state, then offers only the explicit row actions the backend advertises: assign
+an existing category, replace the complete movement tag set, confirm or reject
+a suggested transfer, or unlink a live one. Each action returns a typed outcome
+and the desktop completes a full fresh surface read before replacing its
+financial picture; it does not infer transfer candidates or patch a row
+optimistically.
+Current reachability and remaining gaps live in
 [user-interface-implementation-status.md](user-interface-implementation-status.md).
 
 *Instruments and tooling.* Rebuild replays stored claims through today's parsers into a new vault, free and with no model calls, testing the parsers against yesterday's replies. Reingest re-reads the stored originals through today's prompts at real cost and reports regressions. Reset rebuilds the log with categorization dropped and a person's own rulings preserved. An interpretation eval scores sentence-reading against a frozen synthetic key with the confidently-wrong rate as the headline and a hard disqualification on any fabricated split or amount, and a run that could not reach the model is never scored. A model admission exam grades candidates on a frozen corpus across input modes and publishes no composite leaderboard.
 
-**What is planned, and why in this order.**
+**What remains planned, and why in this order.**
 
 These are cycle families, not historical slices, and none receives an old slice
-label. They are planned direction rather than built behaviour. Each family still
-needs its own approved brief, and each capability travels as one vertical slice:
-product projection or event, reviewed `viva.surface` contract, capability and
-operation disposition, fixtures, installed-interface consumer and tests. A new
-shell is not a substitute for any missing layer.
-
-### Cycle family 1 — quiet proof and correction reachability
-
-**Product capability.** A later brief must distinguish routine evidence detail
-from attention-required or blocking truth, make material uncertainty
-non-suppressible by construction, and register category, tag and transfer
-corrections as backend actions that return a typed outcome and refreshed read.
-
-**Surface contract.** The reviewed contract must say which presentation detail
-is suppressible without changing the grade, citation, record identity, caveat or
-agent-visible evidence. Correction operations must carry typed outcomes rather
-than invite the desktop to infer what happened.
-
-**Interface consumer.** The installed desktop may store one generic preference
-for routine verification detail, remove repeated positive assurance from the
-default picture, and submit corrections through registered actions. It must
-keep mandatory qualifications and the complete evidence drawer reachable and
-must not switch on grade words or mutate financial state optimistically.
-
-**Dependency.** This is first because every later picture, proposal and action
-needs the existing one-way surface boundary to carry visibility and outcome
-policy explicitly before more financial meaning crosses it.
-
-**Acceptance condition.** Toggling routine detail changes no payload or
-financial fact; unverified, conflicted, stale, incomplete or caveated truth
-remains plainly qualified without a grade-specific frontend branch; and the
-full receipt remains reachable from every displayed figure.
+label. Cycle family 1 is delivered and is described by capability in the built
+half above; the remaining numbers are not renumbered. Families 2–7 are planned
+direction rather than built behaviour. Each still needs its own approved brief,
+and each capability travels as one vertical slice: product projection or event,
+reviewed `viva.surface` contract, capability and operation disposition,
+fixtures, installed-interface consumer and tests. A new shell is not a
+substitute for any missing layer.
 
 ### Cycle family 2 — obligations and quiet findings
 
@@ -172,10 +158,11 @@ relevant account and only registered inspect, ask-Viva and set-aside gestures.
 This creates no notification centre, push path, urgency mechanic, Viva
 initiation or new top-level destination.
 
-**Dependency.** It follows quiet proof because every finding needs the same
-mandatory-visibility and receipt rules, and correction outcomes must already be
-backend-owned. Grounded recurrence also waits on sufficiently settled nature
-and category semantics; time alone does not make a noisy rhythm an obligation.
+**Dependency.** It follows the built quiet-proof capability because every
+finding needs the same mandatory-visibility policy, and correction outcomes
+must already be backend-owned. Grounded recurrence also waits on sufficiently
+settled nature and category semantics; time alone does not make a noisy rhythm
+an obligation.
 
 **Acceptance condition.** No qualified item means no rendered panel and no
 announced absence; a rhythm below the due threshold is not called a bill due;
@@ -200,7 +187,7 @@ and supplied series. A what-if gesture sends a scenario request; sorting,
 rounding or local editing performs no financial recalculation.
 
 **Dependency.** This composes the existing spending, income and balance reads
-with family 2's grounded obligations and family 1's evidence policy. Later goal
+with family 2's grounded obligations and the built evidence policy. Later goal
 inputs may strengthen the result, but their absence must be represented rather
 than guessed ahead of family 5.
 
@@ -227,8 +214,8 @@ normal refusal, wait or stale result into an invented error.
 
 **Dependency.** It follows the first picture-side utilities so conversation can
 explain the same backend meanings rather than create a parallel product. It
-also depends on family 1's correction reachability, typed outcomes and refreshed
-reads.
+also depends on the built Activity correction reachability, typed outcomes and
+refreshed reads.
 
 **Acceptance condition.** An earlier answer may supply context but never
 evidence for a later figure; a correction survives a new session and changes
@@ -314,8 +301,9 @@ outside the declared, gated operation inventory.
 
 **The stack, end to end.** The first version gave one honest answer, and the
 built half consolidates a financial picture on a small set of re-composed
-blocks. The planned order first makes proof quieter without weakening it, then
-adds obligations and quiet findings, current-period control, durable
+blocks and now makes routine proof quieter without weakening required
+qualification. The remaining planned order adds obligations and quiet findings,
+current-period control, durable
 conversation and correction, goals and plans, deterministic scenarios, and
 finally drafted action behind explicit confirmation. Each later feature is the
 same vertical path through product, surface and interface, not a new shell.

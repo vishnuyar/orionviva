@@ -18,7 +18,7 @@ from viva.desktop_bridge import vault_surface
 from viva.persona import moment
 from viva.vault import Vault
 from viva.surface import CURRENT_PROTOCOL, action_operations, serialize_registry
-from viva.surface import FigureView
+from viva.surface import FigureView, ProofEmphasis, ProofPresentation
 from viva.surface.models import FigureGrade
 
 
@@ -150,6 +150,7 @@ def test_surface_handler_can_return_a_json_safe_contract_model():
         exactness="exact",
         as_of="2026-06-30",
         coverage="checking and savings statements",
+        proof_presentation=ProofPresentation(ProofEmphasis.ROUTINE),
     )
     handlers = {"viva.surface.snapshot": lambda _payload: {"figure": figure.as_dict()}}
 

@@ -39,7 +39,7 @@ cover sidecar identity before release.
 
 **Which gate holds which half.** The Python half is a declared three-tier map: the engine, `viva.surface` and `viva.desktop_bridge` are named tiers, each module belongs to exactly one of them, and the permitted edges between them are declared as a set. The test parses every module in the product package into a syntax tree, resolves relative imports to the module names they name, and reports any edge that is not declared. The frontend tier is decided by resolution rather than by a name prefix: a module belongs to it when its top-level name resolves to a path inside the desktop tree, and the test refuses to run if that tree is not there. Assertion 3 is now the map rather than something it forbids: the bridge may import the surface and the engine, the surface may import the engine, and the engine may import neither. The TypeScript half belongs entirely to `desktop/scripts/check-ui-boundaries.mjs`, which drives the TypeScript compiler's own tokenizer, carries its own declared map of what each directory may import, and runs in the desktop CI job. No Python test reads TypeScript to decide an import boundary. Two protocol tests in `product/tests/test_surface_contract.py` do read `desktop/src/bridge/contracts.ts` and `desktop/src/tauri-host.ts`, on a different subject: each host declares the frame protocol version once, and those tests compare that declaration against the version the sidecar speaks. Comparing two declarations is not a boundary rule, and it belongs to the protocol rule rather than to this one.
 
-**Exception:** the Node checker's map closes the import list for `desktop/src/features/**`, `components/**`, `surface/adapters/**`, `bridge/**` and `surface/fixtures/**`, forbids the native dialog import by name in the app shell and the documents feature, and permits `window` only under `bridge/` and at `tauri-host.ts`. It does not cover files sitting directly in `desktop/src/app/` other than the app shell, the top level of `desktop/src/surface/`, or root-level modules such as `main.tsx`; one of those could import a native plugin and no gate would say so. Nothing checks that the TypeScript client sends the operation names and payload fields the sidecar serves, which is the other half of assertion 1. Both gaps are the Node checker's to close, by extending the map it already has.
+**Exception:** the Node checker's map closes the import list for `desktop/src/features/**`, `components/**`, `surface/adapters/**`, `bridge/**` and `surface/fixtures/**`, forbids the native dialog import by name in the app shell and the documents feature, and permits `window` only under `bridge/` and at `tauri-host.ts`. It does not cover files sitting directly in `desktop/src/app/` other than the app shell, the top level of `desktop/src/surface/`, or root-level modules such as `main.tsx`; one of those could import a native plugin and no gate would say so. The documentation gate compares every operation the Python table declares with the literal operation names the TypeScript client consumes, and client tests pin payloads for current bounded calls, including every Activity correction. No cross-language gate derives every request payload schema from one authority. The remaining gaps belong to the Node checker and contract gates: extend the path map and replace checked payload examples with an exhaustive coupling when a registry can supply one.
 
 ### VOICE-102 — the interface renders values and computes no financial fact
 **State:** enforced-with-exception
@@ -54,14 +54,18 @@ cover sidecar identity before release.
 
 ### VOICE-103 — every figure crossing the boundary proves itself
 **State:** enforced-with-exception
-**Code:** product/viva/surface/models.py:44 (`FigureView.__post_init__`)
-**Test:** product/tests/test_surface_contract.py::test_figure_rejects_float_values
+**Code:** product/viva/surface/models.py:44 (`FigureView.__post_init__`), product/viva/surface/proof.py
+**Test:** product/tests/test_surface_contract.py::test_figure_rejects_float_values, ::test_proof_presentation_is_closed_and_cannot_hide_a_required_reason
 
 1. A figure carries an exact decimal string, never a float, and a float fails construction.
 2. A figure without identity, measure, as-of date or coverage does not come into being.
 3. A figure carries its grade, a reviewed plain-language grade label, exactness, record ids, provenance and named caveats.
 4. Currency is present for money and absent for counts and rates; a blank currency is refused.
 5. The model never supplies a number from its own head; it only ever routes numbers from the ledger, and an answer's confidence language inherits the weakest grade it stands on.
+6. Every canonical figure declares compact proof `routine` or `required` from
+   structured evidence state. Routine proof has no reasons or qualifications;
+   required proof carries both machine reasons and reviewed qualifications, so
+   suppressibility is never inferred from a grade word in the interface.
 
 **Exception:** only the second clause of assertion 4 is enforced. `product/viva/surface/models.py` refuses a currency that is present and blank, and nothing ties currency presence to what the figure measures, though the measure it declares is now a word from the closed vocabulary (VOICE-104).
 
@@ -377,13 +381,16 @@ destination and contract. And obligations arrive as a registry entry:
 `obligations.read` with its availability rule, trust effect, contract and
 Overview and Account consumers, so "Viva noticed" appears only once a real
 obligation exists and no new shell or top-level navigation item is needed.
-Finally, a future progressive-proof slice may let a local "Show verification
-details" preference hide only evidence detail the surface contract marks as
-suppressible. The adapter switches on that presentation declaration, never on
-a grade word; mandatory uncertainty and caveats remain visible, the complete
-Evidence drawer stays reachable, and changing the preference changes neither
-the payload nor anything an authorised agent can inspect. That slice still
-requires its own approved brief and does not describe the current interface.
+Finally, the progressive-proof case is now built. `AccountOverview.v2` gives
+each canonical figure a closed `proof_presentation` declaration, and a local
+versioned **Show verification details** preference hides only compact assurance
+the backend marks `routine`. The adapter switches on that declaration, never
+on a grade word; required backend-authored qualifications and caveats remain
+visible, and changing the preference changes neither the payload nor anything
+an authorised agent can inspect. The complete Evidence drawer remains
+preference-independent for the canonical figures that already opened it; the
+change does not turn Activity amount strings or recent-signal strings into
+figures with receipts.
 
 **The demo vault is a product requirement, not sample decoration.** Install,
 choose sample data, see a clearly fictional but mature financial picture, try

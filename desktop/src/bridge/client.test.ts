@@ -40,6 +40,35 @@ describe("bridge transport framing", () => {
     expect(frames[0].payload).toEqual({ question_id: "question-2", reason: "dont_know" });
   });
 
+  it("sends only the exact Activity movement and desired-value identities", async () => {
+    const frames: BridgeRequest[] = [];
+    const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
+      frames.push(frame);
+      return { protocol: "2.0", request_id: frame.requestId, ok: true, result: { kind: "completed", message: "Recorded.", state: null, reason: null } as T };
+    } });
+
+    await client.assignActivityCategory("movement:key", "groceries");
+    await client.replaceActivityTags("movement:key", ["japan", "tax"]);
+    await client.replaceActivityTags("movement:key", []);
+    await client.confirmActivityTransfer("movement:key", "movement:counterpart");
+    await client.rejectActivityTransfer("movement:key");
+    await client.unlinkActivityTransfer("movement:key", "movement:counterpart");
+
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.activity.replace_tags", "viva.activity.replace_tags", "viva.activity.confirm_transfer", "viva.activity.reject_transfer", "viva.activity.unlink_transfer"]);
+    expect(frames.map((frame) => frame.payload)).toEqual([
+      { movement_key: "movement:key", category_id: "groceries" },
+      { movement_key: "movement:key", tag_ids: ["japan", "tax"] },
+      { movement_key: "movement:key", tag_ids: [] },
+      { movement_key: "movement:key", counterpart_key: "movement:counterpart" },
+      { movement_key: "movement:key" },
+      { movement_key: "movement:key", counterpart_key: "movement:counterpart" },
+    ]);
+    expect(frames.map((frame) => Object.keys(frame.payload).sort())).toEqual([
+      ["category_id", "movement_key"], ["movement_key", "tag_ids"], ["movement_key", "tag_ids"],
+      ["counterpart_key", "movement_key"], ["movement_key"], ["counterpart_key", "movement_key"],
+    ]);
+  });
+
   it("frames proposal confirmation by opaque identity and a yes-or-no sentence", async () => {
     const frames: BridgeRequest[] = [];
     const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {

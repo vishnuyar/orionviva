@@ -303,6 +303,12 @@ class LedgerProjection:
     def tags_of(self, m: MovementInfo) -> list[str]:
         return _categories.tags_of(self._core, m)
 
+    def movement_tags_of(self, m: MovementInfo) -> list[str]:
+        return _categories.movement_tags_of(self._core, m)
+
+    def inherited_tags_of(self, m: MovementInfo) -> list[str]:
+        return _categories.inherited_tags_of(self._core, m)
+
     def tag_aliases(self) -> dict[str, str]:
         return _categories.tag_aliases(self._core)
 

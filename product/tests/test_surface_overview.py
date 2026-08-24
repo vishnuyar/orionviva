@@ -23,6 +23,7 @@ from viva.tools import envelope
 from viva.tools.boundary import account_written, named_slice, statements
 from viva.tools.envelope import (BY_ACCOUNT, BY_CURRENCY, GAP_REASONS,
                                  SELECTED_KINDS)
+from viva.tools.ledger_common import MIXED_VINTAGE
 
 
 def _events(*extra):
@@ -78,6 +79,43 @@ def test_a_panel_says_ready_only_when_every_row_carries_its_figure():
     assert picture["state"] == PanelState.READY.value
     assert picture["issues"] == []
     assert all(row["balance"] for row in picture["accounts"])
+
+
+def test_a_same_day_complete_corroborated_figure_declares_routine_proof():
+    """The policy has a live surface path, not only a unit-test fixture.
+
+    One measured account, read on its evidence day, supplies every structured
+    fact needed to establish that its compact assurance may recede.  The proof
+    decision adds a field and changes none of the receipt it classifies.
+    """
+    figure = overview(
+        LedgerProjection(_events()), "en-US", "2026-06-30"
+    )["accounts"][0]["balance"]
+
+    assert figure["proof_presentation"] == {
+        "emphasis": "routine",
+        "reasons": [],
+        "qualifications": [],
+    }
+    assert figure["grade"] == "corroborated"
+    assert figure["exactness"] == "exact"
+    assert figure["coverage"]
+    assert "doc-one" in figure["record_ids"]
+    assert figure["citations"]
+    assert "caveats" in figure
+
+
+def test_an_older_single_day_requires_proof_without_being_called_stale():
+    """No threshold turns an older statement into a financial ruling."""
+    figure = overview(
+        LedgerProjection(_events()), "en-US", "2026-09-30"
+    )["accounts"][0]["balance"]
+
+    assert figure["proof_presentation"]["emphasis"] == "required"
+    assert "missing_evidence" in figure["proof_presentation"]["reasons"]
+    assert "stale_boundary" not in figure["proof_presentation"]["reasons"]
+    assert moment("proof_missing_evidence") in (
+        figure["proof_presentation"]["qualifications"])
 
 
 def test_a_ledger_bucket_is_not_an_account_on_the_picture():
@@ -149,6 +187,21 @@ def test_a_composed_figure_claims_no_page_of_the_part_it_was_summed_from():
     assert citation["document_id"] == "doc-portfolio"
     assert citation["page"] == ""
     assert citation["label"] == ""
+
+
+def test_a_mixed_vintage_account_uses_its_structured_condition_not_copy():
+    figure = overview(
+        LedgerProjection(_investment_events()), "en-US", "2026-06-30"
+    )["accounts"][0]["balance"]
+
+    assert figure["proof_presentation"]["emphasis"] == "required"
+    assert "mixed_vintage" in figure["proof_presentation"]["reasons"]
+    assert "stale_boundary" not in figure["proof_presentation"]["reasons"]
+    assert "missing_evidence" not in figure["proof_presentation"]["reasons"]
+    assert MIXED_VINTAGE in figure["proof_presentation"]["qualifications"]
+    assert moment("proof_mixed_vintage") in (
+        figure["proof_presentation"]["qualifications"])
+    assert figure["caveats"] == []
 
 
 def test_a_figure_carries_no_sentence_written_about_a_different_number():
@@ -1081,6 +1134,21 @@ def test_every_caveat_every_read_declared_is_carried():
 
     assert declared, "neither read declared a caveat; this walks nothing"
     assert carried == declared
+
+
+def test_every_balance_read_caveat_used_by_policy_is_verbatim_on_its_figures():
+    projection = LedgerProjection(_investment_events())
+    declared = tuple(
+        default_registry(projection, "en-US", "2026-09-30")
+        .call(*BALANCES).caveats or ())
+    panel = overview(projection, "en-US", "2026-09-30")
+    figures = [row["balance"] for row in panel["accounts"] if row["balance"]]
+
+    assert declared and figures
+    for figure in figures:
+        assert figure["caveats"] == []
+        for caveat in declared:
+            assert caveat in figure["proof_presentation"]["qualifications"]
 
 
 def test_a_caveat_only_the_net_worth_read_declares_still_reaches_the_payload():

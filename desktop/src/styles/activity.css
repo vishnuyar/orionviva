@@ -39,6 +39,34 @@
 .activity-relationship { display: grid; gap: 7px; }
 .activity-relationship .secondary-button { justify-self: start; min-height: 44px; text-align: left; }
 .activity-panel, .activity-panel *, .activity-list-row, .activity-select, .activity-list-figure, .activity-detail, .activity-detail-grid, .activity-organization-grid, .activity-records li { min-width: 0; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+.activity-movement-classification { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-sm) var(--space-lg); margin: 0; }
+.activity-movement-classification div { display: flex; gap: var(--space-sm); align-items: baseline; }
+.activity-movement-classification dt { color: var(--muted); font-size: var(--text-caption); font-weight: var(--weight-strong); }
+.activity-movement-classification dd { margin: 0; color: var(--ink); font-size: var(--text-caption); }
+.activity-correction { grid-column: 1 / -1; padding-top: var(--space-sm); border-top: 1px solid var(--line); }
+.activity-correction summary { min-height: 44px; display: flex; align-items: center; color: var(--ink); font-size: var(--text-caption); font-weight: var(--weight-strong); cursor: pointer; }
+.activity-correction-forms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); padding-top: var(--space-sm); }
+.activity-correction-forms form { display: grid; align-content: start; gap: var(--space-sm); padding: var(--space-md); border-radius: var(--radius-md); background: var(--panel); }
+.activity-correction-forms form > label, .activity-correction-forms fieldset { display: grid; gap: var(--space-sm); margin: 0; padding: 0; border: 0; color: var(--ink); font-size: var(--text-caption); font-weight: var(--weight-strong); }
+.activity-correction-forms select { min-height: 44px; width: 100%; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--ink); background: var(--paper); font: inherit; }
+.activity-tag-choices { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.activity-tag-choices label { min-height: 44px; display: inline-flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--ink); background: var(--paper); font-size: var(--text-caption); font-weight: var(--weight-medium); }
+.activity-tag-choices input { width: 18px; height: 18px; }
+.activity-correction-forms .secondary-button { justify-self: start; min-height: 44px; }
+.activity-correction-forms .action-explanation { grid-column: 1 / -1; margin: 0; }
+.activity-transfer-correction { grid-column: 1 / -1; display: grid; gap: var(--space-sm); padding: var(--space-md); border-radius: var(--radius-md); background: var(--panel); }
+.activity-transfer-correction h4, .activity-transfer-correction p { margin: 0; }
+.activity-transfer-correction h4 { color: var(--ink); font-size: var(--text-fine); }
+.activity-transfer-correction p, .activity-transfer-correction span { color: var(--muted); font-size: var(--text-caption); line-height: var(--leading-body); }
+.activity-transfer-candidates { display: grid; gap: var(--space-sm); }
+.activity-transfer-candidates article { display: grid; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--paper); }
+.activity-transfer-correction > .secondary-button, .activity-transfer-candidates .secondary-button { justify-self: start; min-height: 44px; }
+.activity-correction-status { display: grid; gap: var(--space-xs); padding: var(--space-md) var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--ink); background: var(--panel); }
+.activity-correction-status.failed { border-color: var(--rust); background: var(--paper); }
+.activity-correction-status strong { font-size: var(--text-fine); }
+.activity-correction-status span { font-size: var(--text-caption); line-height: var(--leading-body); }
+.activity-correction-status:focus-visible, .activity-movement:focus-visible { outline: 3px solid var(--moss); outline-offset: 3px; }
+@media (max-width: 760px) { .activity-correction-forms { grid-template-columns: 1fr; } }
 .proof-links {
   display: flex;
   flex-wrap: wrap;

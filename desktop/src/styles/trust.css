@@ -28,3 +28,9 @@
 .trust-final-limitation { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; padding: 16px; border: 1px solid #ddd9d0; border-radius: 11px; background: #f3f0e8; }
 .trust-final-limitation > div { display: grid; gap: 7px; min-width: 0; }
 .trust-panel, .trust-panel *, .trust-preview-statements li, .trust-note, .trust-capability-row, .trust-identity-state, .trust-final-limitation { min-width: 0; overflow-wrap: anywhere; word-break: break-word; white-space: normal; }
+.trust-surface { display: grid; gap: var(--space-lg); }
+.trust-display-preferences { display: grid; gap: var(--space-sm); max-width: 760px; padding: var(--space-lg); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); }
+.trust-display-preferences h2 { font-size: var(--text-title); }
+.trust-display-preferences p { margin: 0; color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
+.trust-display-preference-choice { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; color: var(--ink); font-size: var(--text-body); font-weight: var(--weight-medium); }
+.trust-display-preference-choice input { width: 18px; height: 18px; margin: 0; }

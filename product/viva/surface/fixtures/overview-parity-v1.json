@@ -15,6 +15,13 @@
           "items": [
             {
               "account": "acct:rainy-day-savings",
+              "actions": [
+                "assign_category"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-30",
               "decided_by": "default",
@@ -26,10 +33,91 @@
               "linked": false,
               "nature": "spending",
               "provisional": false,
-              "sentence": ""
+              "sentence": "",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              }
             },
             {
               "account": "acct:rainy-day-savings",
+              "actions": [
+                "assign_category"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
+              "currency": "USD",
+              "date": "2026-06-23",
+              "decided_by": "own_account",
+              "description": "possible transfer from checking",
+              "direction": "in",
+              "display": "USD 275.00",
+              "exact_value": "275.00",
+              "id": "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0",
+              "linked": false,
+              "nature": "transfer",
+              "provisional": false,
+              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              }
+            },
+            {
+              "account": "acct:everyday-checking",
+              "actions": [
+                "assign_category",
+                "confirm_transfer",
+                "reject_transfer"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
+              "currency": "USD",
+              "date": "2026-06-22",
+              "decided_by": "own_account",
+              "description": "possible transfer to savings",
+              "direction": "out",
+              "display": "USD 275.00",
+              "exact_value": "275.00",
+              "id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "linked": false,
+              "nature": "transfer",
+              "provisional": false,
+              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
+              "tags": [],
+              "transfer": {
+                "candidates": [
+                  {
+                    "account": "Rainy Day Savings",
+                    "currency": "USD",
+                    "date": "2026-06-23",
+                    "description": "possible transfer from checking",
+                    "direction": "in",
+                    "display": "USD 275.00",
+                    "exact_value": "275.00",
+                    "id": "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0",
+                    "relationship": "This would treat 2026-06-22's possible transfer to savings on Everyday Checking (USD 275.00) and 2026-06-23's possible transfer from checking on Rainy Day Savings (USD 275.00) as one transfer between your own accounts, so neither is spending."
+                  }
+                ],
+                "complete": true,
+                "explanation": "1 possible counterpart movement(s) remain from the vault's transfer evidence. Nothing is linked until you confirm one, or reject the whole suggestion.",
+                "limit": 20,
+                "state": "suggested"
+              }
+            },
+            {
+              "account": "acct:rainy-day-savings",
+              "actions": [
+                "assign_category"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-20",
               "decided_by": "ruling",
@@ -41,10 +129,22 @@
               "linked": false,
               "nature": "settlement",
               "provisional": false,
-              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any."
+              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              }
             },
             {
               "account": "acct:rainy-day-savings",
+              "actions": [
+                "assign_category",
+                "unlink_transfer"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-18",
               "decided_by": "linked",
@@ -56,10 +156,34 @@
               "linked": true,
               "nature": "transfer",
               "provisional": false,
-              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any."
+              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
+              "tags": [],
+              "transfer": {
+                "counterpart": {
+                  "account": "Everyday Checking",
+                  "currency": "USD",
+                  "date": "2026-06-18",
+                  "description": "transfer to savings",
+                  "direction": "out",
+                  "display": "USD 600.00",
+                  "exact_value": "600.00",
+                  "id": "|acct:everyday-checking|2026-06-18|-600.00|transfer to savings|0"
+                },
+                "explanation": "The vault linked these movements from corroborating transfer evidence.",
+                "relationship": "This would treat 2026-06-18's transfer from checking on Rainy Day Savings (USD 600.00) and 2026-06-18's transfer to savings on Everyday Checking (USD 600.00) as one transfer between your own accounts, so neither is spending.",
+                "state": "linked"
+              }
             },
             {
               "account": "acct:everyday-checking",
+              "actions": [
+                "assign_category",
+                "unlink_transfer"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-18",
               "decided_by": "linked",
@@ -71,10 +195,33 @@
               "linked": true,
               "nature": "transfer",
               "provisional": false,
-              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any."
+              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
+              "tags": [],
+              "transfer": {
+                "counterpart": {
+                  "account": "Rainy Day Savings",
+                  "currency": "USD",
+                  "date": "2026-06-18",
+                  "description": "transfer from checking",
+                  "direction": "in",
+                  "display": "USD 600.00",
+                  "exact_value": "600.00",
+                  "id": "|acct:rainy-day-savings|2026-06-18|600.00|transfer from checking|0"
+                },
+                "explanation": "The vault linked these movements from corroborating transfer evidence.",
+                "relationship": "This would treat 2026-06-18's transfer to savings on Everyday Checking (USD 600.00) and 2026-06-18's transfer from checking on Rainy Day Savings (USD 600.00) as one transfer between your own accounts, so neither is spending.",
+                "state": "linked"
+              }
             },
             {
               "account": "acct:joint-checking",
+              "actions": [
+                "assign_category"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-14",
               "decided_by": "default",
@@ -86,10 +233,21 @@
               "linked": false,
               "nature": "spending",
               "provisional": false,
-              "sentence": ""
+              "sentence": "",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              }
             },
             {
               "account": "acct:household-card",
+              "actions": [
+                "assign_category"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-11",
               "decided_by": "default",
@@ -101,10 +259,21 @@
               "linked": false,
               "nature": "spending",
               "provisional": false,
-              "sentence": ""
+              "sentence": "",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              }
             },
             {
               "account": "acct:everyday-checking",
+              "actions": [
+                "assign_category"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-08",
               "decided_by": "default",
@@ -116,10 +285,21 @@
               "linked": false,
               "nature": "spending",
               "provisional": false,
-              "sentence": ""
+              "sentence": "",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              }
             },
             {
               "account": "acct:everyday-checking",
+              "actions": [
+                "assign_category"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
               "currency": "USD",
               "date": "2026-06-05",
               "decided_by": "default",
@@ -131,11 +311,98 @@
               "linked": false,
               "nature": "spending",
               "provisional": false,
-              "sentence": ""
+              "sentence": "",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              }
             }
           ],
           "sentence": "Everything below came off a document you added. Which way the money went is read from the kind of account it moved on, never from the sign a statement printed \u2014 on a card, a purchase prints positive.",
-          "state": "ready"
+          "state": "ready",
+          "vocabularies": {
+            "categories": {
+              "complete": true,
+              "items": [
+                {
+                  "id": "dining",
+                  "label": "dining"
+                },
+                {
+                  "id": "entertainment",
+                  "label": "entertainment"
+                },
+                {
+                  "id": "fees",
+                  "label": "fees"
+                },
+                {
+                  "id": "government_nonprofit",
+                  "label": "government_nonprofit"
+                },
+                {
+                  "id": "groceries",
+                  "label": "groceries"
+                },
+                {
+                  "id": "health",
+                  "label": "health"
+                },
+                {
+                  "id": "housing",
+                  "label": "housing"
+                },
+                {
+                  "id": "income",
+                  "label": "income"
+                },
+                {
+                  "id": "loan_payments",
+                  "label": "loan_payments"
+                },
+                {
+                  "id": "other",
+                  "label": "other"
+                },
+                {
+                  "id": "personal_care",
+                  "label": "personal_care"
+                },
+                {
+                  "id": "services",
+                  "label": "services"
+                },
+                {
+                  "id": "shopping",
+                  "label": "shopping"
+                },
+                {
+                  "id": "transfers",
+                  "label": "transfers"
+                },
+                {
+                  "id": "transport",
+                  "label": "transport"
+                },
+                {
+                  "id": "travel",
+                  "label": "travel"
+                },
+                {
+                  "id": "utilities",
+                  "label": "utilities"
+                }
+              ],
+              "limit": 40
+            },
+            "tags": {
+              "complete": true,
+              "items": [],
+              "limit": 40,
+              "max_label_length": 80,
+              "max_selected": 40
+            }
+          }
         },
         "job_id": "parity-activity",
         "surface": "activity"
@@ -295,6 +562,19 @@
                 "grade_label": "verified",
                 "id": "acct:abroad-current",
                 "measure": "balance",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Abroad Current alone. It is good as of 2026-06-30.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:abroad-current",
@@ -329,6 +609,19 @@
                 "grade_label": "verified",
                 "id": "acct:dormant-savings",
                 "measure": "balance",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Dormant Savings alone. It is good as of 2025-11-30.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:dormant-savings",
@@ -363,6 +656,21 @@
                 "grade_label": "conflicted",
                 "id": "acct:everyday-checking",
                 "measure": "balance",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "Read this answer as a discrepancy rather than as fact: at least one figure in it disagrees with its own evidence.",
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Everyday Checking alone. It is good as of 2026-06-30.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "conflict",
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:everyday-checking",
@@ -397,6 +705,19 @@
                 "grade_label": "corroborated",
                 "id": "acct:growth-portfolio",
                 "measure": "balance",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Growth Portfolio alone. It is good as of 2026-05-31.",
+                    "This figure rests on records from more than one date; each part is only as current as the record behind it."
+                  ],
+                  "reasons": [
+                    "caveat",
+                    "incomplete_coverage",
+                    "mixed_vintage"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:growth-portfolio",
@@ -431,6 +752,19 @@
                 "grade_label": "corroborated",
                 "id": "acct:household-card",
                 "measure": "owed",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Household Card alone. It is good as of 2026-06-30.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:household-card",
@@ -465,6 +799,21 @@
                 "grade_label": "conflicted",
                 "id": "acct:joint-checking",
                 "measure": "balance",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "Read this answer as a discrepancy rather than as fact: at least one figure in it disagrees with its own evidence.",
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Joint Checking alone. It is good as of 2026-06-30.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "conflict",
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:joint-checking",
@@ -491,14 +840,29 @@
                 ],
                 "coverage": "This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.",
                 "currency": "USD",
-                "display": "USD 5,162.50",
-                "exact_value": "5162.50",
+                "display": "USD 5,437.50",
+                "exact_value": "5437.50",
                 "exactness": "exact",
                 "grade": "unverified",
                 "grade_description": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
                 "grade_label": "unverified",
                 "id": "acct:rainy-day-savings",
                 "measure": "balance",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "uncertain_basis",
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:rainy-day-savings",
@@ -533,6 +897,19 @@
                 "grade_label": "verified",
                 "id": "acct:travel-card",
                 "measure": "owed",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This figure is over Travel Card alone. It is good as of 2026-06-30.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:travel-card",
@@ -604,6 +981,22 @@
                 "grade_label": "corroborated",
                 "id": "EUR",
                 "measure": "net_worth",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This total covers what you hold in EUR, and nothing held in any other currency.",
+                    "One document you have added is not counted in this total.",
+                    "It is good as of 2026-09-30.",
+                    "The oldest measurement behind it is from 2026-06-30.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:abroad-current"
@@ -691,6 +1084,23 @@
                 "grade_label": "corroborated",
                 "id": "USD",
                 "measure": "net_worth",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This rests on records of more than one date: each part is only as current as the record behind it.",
+                    "This total covers what you hold in USD, and nothing held in any other currency.",
+                    "One account you hold could not be valued, so it is not in this total.",
+                    "One document you have added is not counted in this total.",
+                    "It is good as of 2026-09-30.",
+                    "The oldest measurement behind it is from 2025-11-30.",
+                    "This figure rests on records from more than one date; each part is only as current as the record behind it."
+                  ],
+                  "reasons": [
+                    "caveat",
+                    "incomplete_coverage",
+                    "mixed_vintage"
+                  ]
+                },
                 "provenance": "",
                 "record_ids": [
                   "acct:dormant-savings",
@@ -814,6 +1224,30 @@
               ],
               "text": "May I ask what rent is? You have 1 transaction(s) with it, USD 318.55 in total.",
               "why": "I don't yet have a category for this merchant."
+            },
+            {
+              "amount": "275.00",
+              "count": 1,
+              "currency": "USD",
+              "id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "kind": "transfer",
+              "refs": {
+                "candidates": [
+                  "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0"
+                ],
+                "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "same_money",
+                  "required": true,
+                  "type": "yes_no",
+                  "wants": "A yes or a no is all I need."
+                }
+              ],
+              "text": "On 2026-06-22 you moved USD 275.00 (possible transfer to savings). Was that money moving between your own accounts, rather than being spent?",
+              "why": "1 movement(s) of the same amount within a few days on another account you hold."
             },
             {
               "amount": "160.00",
@@ -1051,37 +1485,14 @@
               ],
               "text": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
               "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "USD",
-              "id": "expectation:statement-currency:acct:joint-checking",
-              "kind": "expectation",
-              "refs": {
-                "document": "a newer statement",
-                "registry_entry": "statement-currency",
-                "subject": "acct:joint-checking"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "My picture of Joint Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
-              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
             }
           ],
           "state": "ready",
           "tail": {
             "amount": "0",
-            "count": 3
+            "count": 4
           },
-          "total": 13
+          "total": 14
         },
         "job_id": "parity-review",
         "surface": "review"

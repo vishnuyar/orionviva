@@ -42,13 +42,21 @@ declares. A private vault and persistent sample vault both use the live bridge;
 fixtures remain for deterministic presentation-state coverage.
 
 The live path provides financial picture and account evidence, movement
-activity, document capture and rescan, process-local jobs and cancellation,
+activity with movement-scoped existing-choice category, complete-set tag and
+backend-qualified transfer correction, document capture and rescan,
+process-local jobs and cancellation,
 review answer, proposal confirmation and decline, Ask Viva text turns, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
 identity, vault export and restore, maintenance, and privacy-filtered diagnostic
 export. Trust refreshes after each Ask Viva turn, separates configured routes
 from provider-reported identities, leaves older ambiguous model fields
 unlabelled, and reports tokens only for calls whose providers supplied usage.
+Canonical Overview figures also consume the backend's `routine` or `required`
+proof presentation declaration. A durable device-local **Show verification
+details** preference defaults off and removes only routine compact assurance;
+required backend-authored qualifications remain in the picture, and the
+complete Evidence drawer remains preference-independent, with its route and
+payload identity preserved.
 
 ## Coverage tables
 
@@ -74,6 +82,11 @@ operation column is additionally checked by the desktop architecture gate.
 | `bridge.handshake` | yes | before a vault opens | yes |
 | `bridge.open_demo_vault` | no | explicit sidecar open branch | yes |
 | `bridge.open_vault` | no | explicit sidecar open branch | yes |
+| `viva.activity.assign_category` | yes | opened vault | yes |
+| `viva.activity.confirm_transfer` | yes | opened vault | yes |
+| `viva.activity.reject_transfer` | yes | opened vault | yes |
+| `viva.activity.replace_tags` | yes | opened vault | yes |
+| `viva.activity.unlink_transfer` | yes | opened vault | yes |
 | `viva.conversation.ask` | yes | opened vault | yes |
 | `viva.documents.cancel` | yes | opened vault | yes |
 | `viva.documents.rescan` | yes | opened vault | yes |
@@ -99,7 +112,7 @@ operation column is additionally checked by the desktop architecture gate.
 | `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Job state and cancellation are process-local. Restart recovery is absent, so an interrupted document job cannot resume after the sidecar exits. |
 | `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Documents destination. |
 | `has-file desktop/src/features/review/Review.tsx` | A proposal can be confirmed or declined while its answer outcome remains open, but ordinary navigation clears the client's proposal identity while the opened-vault bridge retains the proposal. Returning to Review cannot reach that retained proposal. |
-| `has-file desktop/src/features/activity/Activity.tsx` | Activity is a live read, but category and tag editing, transaction correction, and transfer confirmation are not registered desktop actions. |
+| `has-file desktop/src/features/activity/Activity.tsx` | Activity now reaches movement-scoped existing-choice category correction, complete-set tag replacement where the backend advertises it, and backend-qualified transfer confirmation, rejection and unlinking. The desktop neither infers transfer candidates nor offers nature editing, merchant-wide changes, new labels, or bulk editing. |
 | `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Ask Viva is connected for text, but no read supplies recorded conversation turns; the drawer can show only the answer returned to its current question. There is no microphone, speech recognition, or audio playback path; the reply shape is only voice-ready. |
 | `no-file product/viva/surface/connections.py` | No account-aggregation surface exists. Documents and the sample vault are the acquisition paths. |
 | `has-name product/viva/surface/outbound.py#outbound` | Trust reports outbound model calls and explicitly reports that no independent anchoring exists; it does not create external anchors or issuer signatures. |

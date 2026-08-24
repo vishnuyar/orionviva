@@ -168,13 +168,17 @@ export type EvidenceLink = { targetDocumentId: string; label: string; relation: 
 // is written once, by the one writer of accounts, and two sides each resolving
 // a path is two systems describing one fact.
 export type UnmeasuredAccount = { account: string; name: string; sentence: string };
+// Whether the compact proof summary may recede is financial presentation
+// policy supplied by the product. Reasons are machine audit data; the desktop
+// neither renders nor interprets them.
+export type ProofPresentation = { emphasis: "routine" | "required"; reasons: readonly string[]; qualifications: readonly string[] };
 
 // A figure carries two reviewed sentences about reaching its own evidence:
 // what the control announces and what the drawer that opens is titled. Both
 // are written by the read that composed the figure, because two figures held
 // in two currencies must be told apart by a person who cannot see them, and a
 // name composed here would be the same name twice.
-export type FigureView = { id: string; display: string; exactValue: string; currency: string; measure: FigureMeasure; grade: FigureGrade; gradeLabel: string; gradeDescription: string; asOf: string; coverage: readonly string[]; caveats: string[]; evidenceLinks: EvidenceLink[]; exactness?: string | null; recordIds?: readonly string[]; evidenceLabel?: string; evidenceHeading?: string; unmeasured?: readonly UnmeasuredAccount[] };
+export type FigureView = { id: string; display: string; exactValue: string; currency: string; measure: FigureMeasure; grade: FigureGrade; gradeLabel: string; gradeDescription: string; proofPresentation: ProofPresentation; asOf: string; coverage: readonly string[]; caveats: string[]; evidenceLinks: EvidenceLink[]; exactness?: string | null; recordIds?: readonly string[]; evidenceLabel?: string; evidenceHeading?: string; unmeasured?: readonly UnmeasuredAccount[] };
 export type DocumentPhase = "captured" | "queued" | "reading" | "held" | "parked" | "read_ready" | "verified" | "unresolved";
 // `contribution` is the reviewed sentence saying what this document put on the
 // books — a figure and the account it was attested on, or the line for a
@@ -184,7 +188,7 @@ export type SurfaceDocument = { id: string; name: string; contribution?: string;
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
 export type DocumentJob = { id: string; label: string; state: "running" | "paused" | "done"; detail: string; progress: string };
 export type OutboundRecord = { id: string; label: string; state: "queued" | "sent" | "blocked"; detail: string; destination: string };
-export type AccountView = { id: string; name: string; kind: string; measure: "balance" | "owed" | null; exactValue: string; currency: string; display: string; grade: FigureGrade; gradeLabel: string; gradeDescription: string; note: string | null; asOf: string; coverage: string | null; provenance: string | null; evidenceLinks: EvidenceLink[]; state: PanelState; caveats?: readonly string[]; exactness?: string | null; recordIds?: readonly string[] };
+export type AccountView = { id: string; name: string; kind: string; measure: "balance" | "owed" | null; exactValue: string; currency: string; display: string; grade: FigureGrade; gradeLabel: string; gradeDescription: string; proofPresentation: ProofPresentation; note: string | null; asOf: string; coverage: string | null; provenance: string | null; evidenceLinks: EvidenceLink[]; state: PanelState; caveats?: readonly string[]; exactness?: string | null; recordIds?: readonly string[] };
 // One thing a question needs back. `wants` is the queue's own sentence saying
 // what kind of thing that is, and `choices` is the closed vocabulary an answer
 // must land in — the vocabulary tokens. Both are the backend's.
@@ -232,8 +236,34 @@ export type ReviewData = { queue: ReviewView[]; count: number; meta: { total: nu
 // beside it, because a sign and a word saying the same thing are two chances to
 // disagree. `sentence` is empty on an ordinary spending row and is never
 // composed here.
-export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; sentence: string; decidedBy: string; provisional: boolean; linked: boolean };
-export type ActivityData = { sentence: string; movements: readonly MovementView[]; beyond: { count: number } };
+export type ActivityVocabularyItem = { id: string; label: string };
+export type ActivityCategoryVocabulary = { items: readonly ActivityVocabularyItem[]; complete: boolean; limit: number };
+export type ActivityTagVocabulary = ActivityCategoryVocabulary & { maxSelected: number; maxLabelLength: number };
+export type ActivityRowAction = "assign_category" | "replace_tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
+export type ActivityTransferReference = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string };
+export type ActivityTransferState =
+  | { state: "none" }
+  | { state: "suggested"; explanation: string; candidates: readonly (ActivityTransferReference & { relationship: string })[]; complete: boolean; limit: number }
+  | { state: "linked"; explanation: string; counterpart: ActivityTransferReference; relationship: string };
+export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; sentence: string; decidedBy: string; provisional: boolean; linked: boolean; category: { id: string | null; label: string; valid: boolean }; tags: readonly ActivityVocabularyItem[]; tagsValid: boolean; transfer: ActivityTransferState | null; actions: readonly ActivityRowAction[] };
+export type ActivityData = { sentence: string; movements: readonly MovementView[]; beyond: { count: number }; vocabularies: { categories: ActivityCategoryVocabulary; tags: ActivityTagVocabulary } };
+export type ActivityCorrectionVerb = "category" | "tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
+export type ActivityActionOutcome = { kind: "completed" | "refused" | "stale"; message: string; reason: string };
+export type ActivityActionResult =
+  | { state: "settled"; outcome: ActivityActionOutcome }
+  | Exclude<ActionResult, { state: "settled" }>;
+export type ActivityCorrectionState =
+  | { state: "idle" }
+  | { state: "working"; movementId: string; verb: ActivityCorrectionVerb }
+  | { state: "refreshing"; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
+  | { state: "settled"; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; refresh: "refreshed" | "failed" };
+export type ActivityActions = {
+  assignCategory: (movementId: string, categoryId: string) => Promise<ActivityActionResult>;
+  replaceTags: (movementId: string, tagIds: readonly string[]) => Promise<ActivityActionResult>;
+  confirmTransfer: (movementId: string, counterpartId: string) => Promise<ActivityActionResult>;
+  rejectTransfer: (movementId: string) => Promise<ActivityActionResult>;
+  unlinkTransfer: (movementId: string, counterpartId: string) => Promise<ActivityActionResult>;
+};
 // One figure a spoken or written answer stated, and the route back to what it
 // rests on. `written` is the words the sentence wrote the figure as, so the
 // figure under the sentence is the figure in it — not a second rendering of the

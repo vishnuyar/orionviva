@@ -20,6 +20,7 @@ export type SettingsControls = {
   onPropose: (kind: "presentation" | "model", fields: Record<string, string>) => void;
   onConfirm: (kind: "presentation" | "model", fields: Record<string, string>, digest: string, key: string) => void;
 };
+export type DisplayPreferenceControls = { showVerificationDetails: boolean; onChange: (value: boolean) => void };
 export type TransferControls = { state: TransferActionState; onExport: (archive: string) => void; onRestore: (archive: string, directory: string, passphrase: string) => void };
 
 // The one sentence this panel says about the last copy. What the vault
@@ -141,6 +142,14 @@ function VaultCopy({ transfer }: { transfer: TransferControls }) {
     {working ? <span className="action-explanation" id="trust-transfer-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
     <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
     {said ? <p className="trust-transfer-answer">{said}</p> : null}
+  </section>;
+}
+
+function DisplayPreferences({ controls }: { controls: DisplayPreferenceControls }) {
+  return <section className="trust-display-preferences" aria-labelledby="trust-display-preferences-title">
+    <div><div className="detail-panel-label">Local display preference</div><h2 id="trust-display-preferences-title">Display on this device</h2></div>
+    <label className="trust-display-preference-choice"><input type="checkbox" checked={controls.showVerificationDetails} aria-describedby="trust-display-preference-description" onChange={(event) => controls.onChange(event.target.checked)} /><span>Show verification details</span></label>
+    <p id="trust-display-preference-description">Routine verification summaries may recede when this is off. Required qualifications remain visible, and every figure's complete receipt stays available.</p>
   </section>;
 }
 
@@ -274,6 +283,6 @@ function TrustReady({ data, identity, lifecycle, transfer, settings, maintenance
   return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">Supplied Trust view</div><h2>Trust and limitations</h2><p>These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history.</p></header><EngineRow identity={identity} /><UpdateLifecycle lifecycle={lifecycle} /><Absences absences={data.absences ?? []} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{maintenance ? <Maintenance controls={maintenance} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>No Trust notes supplied</strong><span>The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.</span></div> : <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} /></section>}</section>;
 }
 
-export function Trust({ result, identity, lifecycle, transfer, settings, maintenance }: { result: FeatureResult<TrustData>; identity: FeatureResult<EngineIdentity>; lifecycle: FeatureResult<UpdateLifecycleView>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
-  return <PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes are shown below.", needsInput: "Some Trust details need more information. Supplied notes are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The vault is still open." } }}>{(data) => <TrustReady data={data} identity={identity} lifecycle={lifecycle} transfer={transfer} settings={settings} maintenance={maintenance} />}</PanelStateView>;
+export function Trust({ result, identity, lifecycle, transfer, settings, maintenance, displayPreference = { showVerificationDetails: false, onChange: () => {} } }: { result: FeatureResult<TrustData>; identity: FeatureResult<EngineIdentity>; lifecycle: FeatureResult<UpdateLifecycleView>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null; displayPreference?: DisplayPreferenceControls }) {
+  return <div className="trust-surface"><DisplayPreferences controls={displayPreference} /><PanelStateView result={result} copy={{ partial: "Some Trust details are unavailable. Supplied notes are shown below.", needsInput: "Some Trust details need more information. Supplied notes are shown below.", unavailable: { title: "Trust details unavailable", detail: "Trust and maintenance details are not connected to this vault read." }, failed: { title: "Trust details could not be read", detail: "Trust and maintenance details could not be read. The vault is still open." } }}>{(data) => <TrustReady data={data} identity={identity} lifecycle={lifecycle} transfer={transfer} settings={settings} maintenance={maintenance} />}</PanelStateView></div>;
 }

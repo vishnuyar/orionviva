@@ -170,10 +170,14 @@ def test_a_tag_cannot_be_attached_to_something_that_is_not_money(tmp_path):
                         scope="account")
 
 
-def test_activity_does_not_advertise_tag_writes_before_the_surface_exists():
-    """The old web UI disappeared, so its skipped source-text assertion could
-    never protect anything. Until the desktop exposes distinct category and tag
-    actions, the capability registry must not claim that either write exists."""
+def test_activity_keeps_category_and_tag_writes_scoped_among_transfer_actions():
+    """Category and tags stay separate, and neither generic nor merchant-wide
+    authority enters through the Activity capability."""
     from viva.surface.capabilities import capability_for
 
-    assert capability_for("activity.movements").actions == ()
+    actions = capability_for("activity.movements").actions
+    assert actions == (
+        "assign_category", "replace_tags", "confirm_transfer",
+        "reject_transfer", "unlink_transfer")
+    assert not ({"create_category", "create_tag", "assign_nature",
+                 "categorize_merchant", "tag_merchant"} & set(actions))

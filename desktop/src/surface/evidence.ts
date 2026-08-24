@@ -1,6 +1,12 @@
-import type { AccountView, DocumentsData, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, SurfaceDocument, SurfaceSnapshot, UnmeasuredAccount } from "./types";
+import type { AccountView, DocumentsData, EvidenceLink, FeatureResult, FigureGrade, FigureMeasure, FigureView, ProofPresentation, SurfaceDocument, SurfaceSnapshot, UnmeasuredAccount } from "./types";
 
 export type GradePresentation = { grade: FigureGrade; label: string; description: string };
+
+// Compact presentation reads only the closed backend policy and the local
+// preference. Grade and machine reason words are deliberately absent.
+export function showCompactProof(proof: ProofPresentation, showVerificationDetails: boolean): boolean {
+  return proof.emphasis === "required" || showVerificationDetails;
+}
 
 export function gradePresentation(value: string | undefined): GradePresentation {
   switch (value) {

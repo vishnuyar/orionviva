@@ -15,6 +15,16 @@ const noTransfer: TransferControls["onExport"] = () => {};
 const noRestore: TransferControls["onRestore"] = () => {};
 
 describe("Trust surface", () => {
+  it("keeps the local display preference available without a vault read", () => {
+    const changed: boolean[] = [];
+    const view = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} displayPreference={{ showVerificationDetails: false, onChange: (value) => changed.push(value) }} result={{ state: "absent", reason: "not_read" }} />);
+    const control = view.getByRole("checkbox", { name: "Show verification details" });
+    expect(control).not.toBeChecked();
+    expect(view.getByText(/Required qualifications remain visible/)).toBeInTheDocument();
+    fireEvent.click(control);
+    expect(changed).toEqual([true]);
+  });
+
   it("renders every FeatureResult boundary and the honest empty state", () => {
     const { getByText, queryByText, rerender } = render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={{ state: "absent", reason: "not_read" }} />);
     expect(queryByText("Trust details unavailable")).not.toBeInTheDocument();

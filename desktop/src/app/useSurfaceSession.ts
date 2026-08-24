@@ -2,8 +2,12 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource, sampleSource } from "../surface/sources";
-import type { ActionResult, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
+import type { ActionResult, ActivityActionResult, ActivityActions, ActivityCorrectionVerb, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, SurfaceSnapshot, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
+
+function fullSurfaceRereadFailed(snapshot: SurfaceSnapshot): boolean {
+  return [snapshot.overview, snapshot.documents, snapshot.review, snapshot.activity, snapshot.trust].some((result) => result.state === "failed");
+}
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
 // vault; `several` is refused and `none` is a person changing their mind.
@@ -23,6 +27,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const configuring = useRef(false);
   const asking = useRef(false);
   const maintaining = useRef(false);
+  const correctingActivity = useRef(false);
   // Every verb this session has comes from the source, and before a vault is
   // open there is no source and therefore no verb. A screen asks whether it
   // has one; nothing here invents a verb that would have to refuse.
@@ -33,6 +38,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const conversationActions = session.source?.conversationActions ?? null;
   const trustActions = session.source?.trustActions ?? null;
   const reviewActions = session.source?.reviewActions ?? null;
+  const activityActions = session.source?.activityActions ?? null;
   const source = session.source;
 
   // What is in force, asked once per source. It is this machine's rather than
@@ -88,6 +94,35 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     const review = await actions.reread();
     if (requestId.current !== nextRequestId) return;
     dispatch({ type: "review-acted", requestId: nextRequestId, questionId, verb, result, review });
+  }
+
+  // One movement correction at a time. The old snapshot remains on screen
+  // through both the write and the full read that follows it. An action reply
+  // is a receipt, not financial data, so no row is patched from it; only the
+  // completed source load may replace the picture.
+  async function runActivityCorrection(verb: ActivityCorrectionVerb, movementId: string, run: (actions: ActivityActions) => Promise<ActivityActionResult>) {
+    const actions = activityActions;
+    const activeSource = source;
+    if (!actions || !activeSource || !movementId.trim() || correctingActivity.current) return;
+    correctingActivity.current = true;
+    const nextRequestId = requestId.current;
+    dispatch({ type: "activity-correcting", requestId: nextRequestId, movementId, verb });
+    try {
+      const result = await run(actions);
+      if (requestId.current === nextRequestId) dispatch({ type: "activity-outcome", requestId: nextRequestId, movementId, verb, result });
+      try {
+        const snapshot = await activeSource.load();
+        if (requestId.current === nextRequestId) {
+          dispatch(fullSurfaceRereadFailed(snapshot)
+            ? { type: "activity-refresh-failed", requestId: nextRequestId, movementId, verb, result }
+            : { type: "activity-refreshed", requestId: nextRequestId, movementId, verb, result, snapshot });
+        }
+      } catch {
+        if (requestId.current === nextRequestId) dispatch({ type: "activity-refresh-failed", requestId: nextRequestId, movementId, verb, result });
+      }
+    } finally {
+      correctingActivity.current = false;
+    }
   }
 
   // One document, one request, one answer. The vault is read again once the
@@ -275,6 +310,25 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     settingsAvailable: Boolean(settingsActions),
     askAvailable: Boolean(conversationActions),
     trustAvailable: Boolean(trustActions),
+    activityCorrectionAvailable: Boolean(activityActions),
+    async assignActivityCategory(movementId: string, categoryId: string) {
+      if (!categoryId.trim()) return;
+      await runActivityCorrection("category", movementId, (actions) => actions.assignCategory(movementId, categoryId));
+    },
+    async replaceActivityTags(movementId: string, tagIds: readonly string[]) {
+      await runActivityCorrection("tags", movementId, (actions) => actions.replaceTags(movementId, tagIds));
+    },
+    async confirmActivityTransfer(movementId: string, counterpartId: string) {
+      if (!counterpartId.trim()) return;
+      await runActivityCorrection("confirm_transfer", movementId, (actions) => actions.confirmTransfer(movementId, counterpartId));
+    },
+    async rejectActivityTransfer(movementId: string) {
+      await runActivityCorrection("reject_transfer", movementId, (actions) => actions.rejectTransfer(movementId));
+    },
+    async unlinkActivityTransfer(movementId: string, counterpartId: string) {
+      if (!counterpartId.trim()) return;
+      await runActivityCorrection("unlink_transfer", movementId, (actions) => actions.unlinkTransfer(movementId, counterpartId));
+    },
     // One at a time. `spend` is the person's own word and is never inferred:
     // the agent reaches a model, so a run nobody said to spend on plans and
     // stops at the line where money starts.

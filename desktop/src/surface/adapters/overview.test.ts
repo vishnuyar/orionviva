@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { gradePresentation } from "../evidence";
+import moments from "../../../../product/viva/persona/pack-v33/moments.json";
+import { gradePresentation, showCompactProof } from "../evidence";
 import { adaptOverview, adaptOverviewPanel } from "./overview";
 
 describe("overview adapter", () => {
@@ -47,6 +48,57 @@ describe("overview adapter", () => {
     expect(result?.accounts[0]).toMatchObject({ exactness: "rounded", recordIds: ["acct:a", "doc-1"], caveats: ["One limit."] });
   });
 
+  it("accepts only the complete empty routine invariant and fails every malformed variant visible", () => {
+    const result = adaptOverview({ accounts: [
+      { account: "routine", balance: { proof_presentation: { emphasis: "routine", reasons: [], qualifications: [] } } },
+      { account: "required", balance: { proof_presentation: { emphasis: "required", reasons: ["conflict"], qualifications: ["The records disagree."] } } },
+      { account: "routine-reason", balance: { proof_presentation: { emphasis: "routine", reasons: ["conflict"], qualifications: [] } } },
+      { account: "routine-qualification", balance: { proof_presentation: { emphasis: "routine", reasons: [], qualifications: ["A required line."] } } },
+      { account: "missing-reasons", balance: { proof_presentation: { emphasis: "routine", qualifications: [] } } },
+      { account: "missing-qualifications", balance: { proof_presentation: { emphasis: "routine", reasons: [] } } },
+      { account: "malformed-reasons", balance: { proof_presentation: { emphasis: "routine", reasons: "none", qualifications: [] } } },
+      { account: "malformed-qualifications", balance: { proof_presentation: { emphasis: "routine", reasons: [], qualifications: ["kept", 3] } } },
+      { account: "missing", balance: {} },
+      { account: "unknown", balance: { proof_presentation: { emphasis: "invented", reasons: ["machine_only"], qualifications: ["Backend line."] } } },
+      { account: "malformed", balance: { proof_presentation: "routine" } },
+    ] });
+    expect(result?.accounts.map((account) => account.proofPresentation)).toEqual([
+      { emphasis: "routine", reasons: [], qualifications: [] },
+      { emphasis: "required", reasons: ["conflict"], qualifications: ["The records disagree."] },
+      { emphasis: "required", reasons: ["conflict"], qualifications: [] },
+      { emphasis: "required", reasons: [], qualifications: ["A required line."] },
+      { emphasis: "required", reasons: [], qualifications: [] },
+      { emphasis: "required", reasons: [], qualifications: [] },
+      { emphasis: "required", reasons: [], qualifications: [] },
+      { emphasis: "required", reasons: [], qualifications: ["kept"] },
+      { emphasis: "required", reasons: [], qualifications: [] },
+      { emphasis: "required", reasons: ["machine_only"], qualifications: ["Backend line."] },
+      { emphasis: "required", reasons: [], qualifications: [] },
+    ]);
+  });
+
+  it("keeps reviewed qualifications visible off for caveat, inexact, mixed or stale, and missing-basis wire cases", () => {
+    const fixtures = [
+      { id: "caveated", reasons: ["caveat"], qualifications: ["A supplied caveat changes how this figure should be used."], extra: { caveats: ["A supplied caveat changes how this figure should be used."] } },
+      { id: "inexact", reasons: ["inexact"], qualifications: [moments.proof_inexact], extra: { exactness: "rounded" } },
+      { id: "mixed-stale", reasons: ["mixed_vintage", "stale_boundary"], qualifications: [moments.proof_mixed_vintage, moments.proof_stale_boundary], extra: { as_of: "2025-11-30" } },
+      { id: "missing-basis", reasons: ["uncertain_basis"], qualifications: [moments.stood_behind_unverified], extra: {} },
+    ];
+    const result = adaptOverview({ accounts: fixtures.map((fixture) => ({
+      account: fixture.id,
+      balance: { ...fixture.extra, proof_presentation: { emphasis: "required", reasons: fixture.reasons, qualifications: fixture.qualifications } },
+    })) });
+
+    expect(result).not.toBeNull();
+    result!.accounts.forEach((account, index) => {
+      expect(account.proofPresentation.qualifications, account.id).toEqual(fixtures[index].qualifications);
+      expect(showCompactProof(account.proofPresentation, false), account.id).toBe(true);
+    });
+    expect(result!.accounts[0].caveats).toEqual(fixtures[0].qualifications);
+    expect(result!.accounts[1].exactness).toBe("rounded");
+    expect(result!.accounts[2].proofPresentation.reasons).toEqual(["mixed_vintage", "stale_boundary"]);
+  });
+
   it("never composes the reviewed grade sentence out of the ladder word", () => {
     const sentence = "Read this answer as verified: the reviewed sentence the backend wrote.";
     const result = adaptOverview({ accounts: [{ account: "a", balance: { grade: "verified", grade_label: "verified", grade_description: sentence } }] });
@@ -89,10 +141,10 @@ describe("overview adapter", () => {
     const coverage = "This total covers a set the backend named and this side did not.";
     const figureCoverage = "This part of the picture is over a boundary the backend declared.";
     const result = adaptOverview({ accounts: [], picture: { coverage, read_on: "2026-08-21", figures: [
-      { id: "AAA", display: "AAA 1.00", exact_value: "1.00", currency: "AAA", measure: "net_worth", grade: "corroborated", grade_label: "corroborated", grade_description: "One reviewed sentence.", as_of: "2026-08-21", coverage: [figureCoverage], unmeasured: [{ account: "acct:unvalued", name: "An account written by the read", sentence: "The reviewed sentence for why it is not in this total." }, { account: "", name: "No identity", sentence: "About nothing." }, { account: "acct:no-sentence", name: "No sentence" }, { account: "acct:no-name", sentence: "No name." }], boundary: { unmeasured: [{ account: "acct:unvalued", reason: "unobserved", settled_by: "unreviewed ledger text" }] }, exactness: "exact", record_ids: ["acct:one", ""], caveats: [], citations: [{ document_id: "doc-1", relation: "attests", page: "", label: "" }], evidence_label: "A reviewed sentence naming the control.", evidence_heading: "A reviewed heading naming the drawer." },
+      { id: "AAA", display: "AAA 1.00", exact_value: "1.00", currency: "AAA", measure: "net_worth", grade: "corroborated", grade_label: "corroborated", grade_description: "One reviewed sentence.", proof_presentation: { emphasis: "routine", reasons: [], qualifications: [] }, as_of: "2026-08-21", coverage: [figureCoverage], unmeasured: [{ account: "acct:unvalued", name: "An account written by the read", sentence: "The reviewed sentence for why it is not in this total." }, { account: "", name: "No identity", sentence: "About nothing." }, { account: "acct:no-sentence", name: "No sentence" }, { account: "acct:no-name", sentence: "No name." }], boundary: { unmeasured: [{ account: "acct:unvalued", reason: "unobserved", settled_by: "unreviewed ledger text" }] }, exactness: "exact", record_ids: ["acct:one", ""], caveats: [], citations: [{ document_id: "doc-1", relation: "attests", page: "", label: "" }], evidence_label: "A reviewed sentence naming the control.", evidence_heading: "A reviewed heading naming the drawer." },
     ] } });
     expect(result?.picture).toEqual({ coverage, readOn: "2026-08-21", withheld: [], unplaced: [], figures: [
-      { id: "AAA", display: "AAA 1.00", exactValue: "1.00", currency: "AAA", measure: "net_worth", grade: "corroborated", gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", asOf: "2026-08-21", coverage: [figureCoverage], caveats: [], evidenceLinks: [{ targetDocumentId: "doc-1", relation: "attests", page: "", label: "" }], exactness: "exact", recordIds: ["acct:one"], evidenceLabel: "A reviewed sentence naming the control.", evidenceHeading: "A reviewed heading naming the drawer.", unmeasured: [{ account: "acct:unvalued", name: "An account written by the read", sentence: "The reviewed sentence for why it is not in this total." }] },
+      { id: "AAA", display: "AAA 1.00", exactValue: "1.00", currency: "AAA", measure: "net_worth", grade: "corroborated", gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "routine", reasons: [], qualifications: [] }, asOf: "2026-08-21", coverage: [figureCoverage], caveats: [], evidenceLinks: [{ targetDocumentId: "doc-1", relation: "attests", page: "", label: "" }], exactness: "exact", recordIds: ["acct:one"], evidenceLabel: "A reviewed sentence naming the control.", evidenceHeading: "A reviewed heading naming the drawer.", unmeasured: [{ account: "acct:unvalued", name: "An account written by the read", sentence: "The reviewed sentence for why it is not in this total." }] },
     ] });
   });
 

@@ -96,6 +96,11 @@ export type BridgeClient = {
   // What moved, and which way. Direction is the read's: on a card a purchase
   // posts positive, and a shell reading the sign would have it backwards.
   readActivity: () => Promise<SurfaceReadResult>;
+  assignActivityCategory: (movementKey: string, categoryId: string) => Promise<unknown>;
+  replaceActivityTags: (movementKey: string, tagIds: readonly string[]) => Promise<unknown>;
+  confirmActivityTransfer: (movementKey: string, counterpartKey: string) => Promise<unknown>;
+  rejectActivityTransfer: (movementKey: string) => Promise<unknown>;
+  unlinkActivityTransfer: (movementKey: string, counterpartKey: string) => Promise<unknown>;
   // Who answered and which build of it. Asked before a vault is open, because
   // the build that cannot open one is exactly the build somebody needs named.
   handshake: () => Promise<unknown>;

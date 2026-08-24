@@ -29,7 +29,7 @@ describe("shell", () => {
     expect(getByText("Selected account")).toBeInTheDocument();
     expect(getByRole("button", { name: /open accounts/i })).toBeInTheDocument();
     expect(getByText("Rainy Day Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
-    expect(getByText("This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.")).toBeInTheDocument();
+    expect(getAllByText("This figure is over Rainy Day Savings alone. It is good as of 2026-06-01.")).toHaveLength(2);
   });
 
   it("pairs every overview account amount with a distinct stable-id source control", async () => {
@@ -63,6 +63,22 @@ describe("shell", () => {
     expect(savingsCard.querySelector(".account-card-button")?.contains(proof as Node)).toBe(false);
   });
 
+  it("keeps the live incomplete-coverage qualification in spotlight cards and account rows with details off", async () => {
+    const user = userEvent.setup();
+    const overview = sampleVault.reads.overview.result.data as { accounts: Array<{ account: string; balance: { coverage: string; proof_presentation: { qualifications: string[] } } }> };
+    const live = overview.accounts.find((account) => account.account === "acct:rainy-day-savings")!;
+    const qualification = live.balance.coverage;
+    expect(live.balance.proof_presentation.qualifications).toContain(qualification);
+
+    const view = await openSample();
+    const spotlight = [...view.container.querySelectorAll<HTMLElement>(".account-card")].find((card) => card.textContent?.includes("Rainy Day Savings"))!;
+    expect(spotlight.textContent).toContain(qualification);
+
+    await user.click(view.getByRole("button", { name: "AccountsWhere money sits" }));
+    const row = [...view.container.querySelectorAll<HTMLElement>(".detail-row")].find((entry) => entry.textContent?.includes("Rainy Day Savings"))!;
+    expect(row.textContent).toContain(qualification);
+  });
+
   it("moves through shell destinations without leaving the page", async () => {
     const user = userEvent.setup();
     const { getByRole, getByText } = await openSample();
@@ -70,6 +86,50 @@ describe("shell", () => {
     expect(getByRole("heading", { name: "Documents" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Add a document" })).toBeInTheDocument();
     expect(getByRole("heading", { name: "Documents in this vault read" })).toBeInTheDocument();
+  });
+
+  it("runs an advertised Activity correction through the installed shell and focuses the reread row", async () => {
+    const user = userEvent.setup();
+    const activity = {
+      state: "ready", sentence: moments.activity_scope, beyond: { count: 0 },
+      vocabularies: { categories: { items: [{ id: "food", label: "Food" }, { id: "housing", label: "Housing" }], complete: true, limit: 40 }, tags: { items: [{ id: "trip", label: "Trip" }], complete: true, limit: 40, max_selected: 40, max_label_length: 80 } },
+      items: [{ id: "movement:key", date: "2026-06-01", description: "Corner shop", account: "acct:one", direction: "out", exact_value: "12.00", currency: "USD", display: "USD 12.00", nature: "spending", sentence: "", decided_by: "default", provisional: false, linked: false, category: { id: "food", label: "Food" }, tags: [{ id: "trip", label: "Trip" }], transfer: { state: "none" }, actions: ["assign_category", "replace_tags"] }],
+    };
+    const view = await openSample({ activity });
+    await user.click(view.getByRole("button", { name: "ActivityWhat moved" }));
+    await user.click(view.getByText(/Correct category or tags/));
+    await user.selectOptions(view.getByRole("combobox", { name: /Category for/ }), "housing");
+    await user.click(view.getByRole("button", { name: /Save category for/ }));
+
+    await waitFor(() => expect(view.getByText("Correction recorded")).toBeInTheDocument());
+    expect(view.getByText("The full picture was read again.")).toBeInTheDocument();
+    expect(view.getByText("Corner shop").closest("li")).toHaveFocus();
+    // The action receipt never patches financial data. This stub's full read
+    // still says Food, so the screen still says Food after a completed reply.
+    expect(view.getAllByText("Food").length).toBeGreaterThan(0);
+  });
+
+  it("renders the installed v3 parity suggestion and link only from their reviewed transfer fields", async () => {
+    const user = userEvent.setup();
+    const raw = sampleReads.activity.result.data as { items: Array<{ transfer: { state: string; explanation?: string; relationship?: string; candidates?: Array<{ relationship: string }> } }> };
+    const suggested = raw.items.find((row) => row.transfer.state === "suggested")?.transfer;
+    const linked = raw.items.find((row) => row.transfer.state === "linked")?.transfer;
+    if (!suggested?.explanation || !suggested.candidates?.[0] || !linked?.explanation || !linked.relationship) throw new Error("live v3 parity fixture is missing transfer authority");
+    const view = await openSample();
+    await user.click(view.getByRole("button", { name: "ActivityWhat moved" }));
+    const suggestionSummary = view.getAllByText("Correct category or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("possible transfer to savings"));
+    if (!suggestionSummary) throw new Error("installed suggested row correction is missing");
+    await user.click(suggestionSummary);
+    expect(view.getByText(suggested.explanation)).toBeInTheDocument();
+    expect(view.getByText(suggested.candidates[0].relationship)).toBeInTheDocument();
+    expect(view.getByRole("button", { name: /Confirm transfer for/ })).toBeInTheDocument();
+    expect(view.getByRole("button", { name: /Reject transfer suggestion for/ })).toBeInTheDocument();
+    const linkSummary = view.getAllByText("Correct category or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("transfer from checking"));
+    if (!linkSummary) throw new Error("installed linked row correction is missing");
+    await user.click(linkSummary);
+    expect(view.getAllByText(linked.explanation).length).toBeGreaterThan(0);
+    expect(view.getAllByText(linked.relationship).length).toBeGreaterThan(0);
+    expect(view.getAllByRole("button", { name: /Unlink transfer for/ }).some((button) => button.getAttribute("aria-label")?.startsWith("Unlink transfer for 2026-06-18, transfer from checking,"))).toBe(true);
   });
 
   it("keeps the sample source before facts with one page heading and one current destination", async () => {
@@ -252,7 +312,8 @@ describe("shell", () => {
     await user.click(getByRole("button", { name: "ReviewWhat needs you" }));
     expect(getByRole("heading", { name: "Review queue" })).toBeInTheDocument();
     expect(getByText("Open-question total from this read")).toBeInTheDocument();
-    expect(getByText("13", { selector: ".review-summary > strong" })).toBeInTheDocument();
+    const reviewTotal = (sampleReads.review.result.data as { total: number }).total;
+    expect(getByText(String(reviewTotal), { selector: ".review-summary > strong" })).toBeInTheDocument();
     expect(container.querySelector(".nav-count")).toBeNull();
   });
 });

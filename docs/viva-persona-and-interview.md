@@ -7,7 +7,7 @@
 
 ### VOICE-25 — the butler is Viva, and the persona guide is seed content for data packs
 **State:** enforced
-**Code:** product/viva/persona/pack-v32/ (each newer pack adds a family and copies the rest verbatim; pack-v32 adds the keyless-model confirmation and the recorded-conversation absence)
+**Code:** product/viva/persona/pack-v35/ (each newer pack adds a family and copies the rest verbatim; pack-v35 adds the reviewed Activity transfer relationship, evidence-state and outcome copy over pack-v34's movement-scoped category and tag correction outcomes)
 **Test:** product/tests/test_persona_pack.py::test_every_intent_has_a_phrasing_and_no_orphans
 
 1. [viva-persona.md](viva-persona.md) is the standing definition of traits, principles, question content and "I don't know" handling.

@@ -25,6 +25,74 @@ class FigureGrade(StrEnum):
     CONFLICTED = "conflicted"
 
 
+class ProofEmphasis(StrEnum):
+    """Whether compact proof may recede in a presentation."""
+
+    ROUTINE = "routine"
+    REQUIRED = "required"
+
+
+class ProofReason(StrEnum):
+    """Structured reasons compact proof must remain visible.
+
+    These are audit data, never sentences and never instructions for an
+    interface to translate into financial copy.  The deliberately neutral
+    ``INEXACT`` and ``CAVEAT`` names make no materiality claim the current
+    structured evidence does not carry.
+    """
+
+    CONFLICT = "conflict"
+    UNCERTAIN_BASIS = "uncertain_basis"
+    INEXACT = "inexact"
+    CAVEAT = "caveat"
+    STALE_BOUNDARY = "stale_boundary"
+    MIXED_VINTAGE = "mixed_vintage"
+    INCOMPLETE_COVERAGE = "incomplete_coverage"
+    MISSING_EVIDENCE = "missing_evidence"
+
+
+@dataclass(frozen=True)
+class ProofPresentation:
+    """Closed presentation policy for one canonical figure."""
+
+    emphasis: ProofEmphasis
+    reasons: tuple[ProofReason, ...] = ()
+    qualifications: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.emphasis, ProofEmphasis):
+            raise TypeError("proof emphasis is a member of ProofEmphasis")
+        if not isinstance(self.reasons, tuple) or any(
+            not isinstance(reason, ProofReason) for reason in self.reasons
+        ):
+            raise TypeError("proof reasons are a tuple of ProofReason values")
+        if len(self.reasons) != len(set(self.reasons)):
+            raise ValueError("proof reasons are unique")
+        if not isinstance(self.qualifications, tuple) or any(
+            not isinstance(line, str) or not line.strip()
+            for line in self.qualifications
+        ):
+            raise TypeError("proof qualifications are non-empty backend copy")
+        if len(self.qualifications) != len(set(self.qualifications)):
+            raise ValueError("proof qualifications are unique")
+        if self.emphasis is ProofEmphasis.ROUTINE and (
+            self.reasons or self.qualifications
+        ):
+            raise ValueError("routine proof has no required qualification")
+        if self.emphasis is ProofEmphasis.REQUIRED and (
+            not self.reasons or not self.qualifications
+        ):
+            raise ValueError(
+                "required proof names why and carries backend qualification copy")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "emphasis": self.emphasis.value,
+            "reasons": [reason.value for reason in self.reasons],
+            "qualifications": list(self.qualifications),
+        }
+
+
 class CitationRelation(StrEnum):
     """How a document stands to the figure that cites it.
 
@@ -91,6 +159,7 @@ class FigureView:
     exactness: str
     as_of: str
     coverage: str
+    proof_presentation: ProofPresentation
     grade_description: str = ""
     record_ids: tuple[str, ...] = ()
     provenance: str = ""
@@ -115,6 +184,8 @@ class FigureView:
             raise TypeError("provenance is one sentence, never a list of them")
         if any(not isinstance(item, Citation) for item in self.citations):
             raise TypeError("a citation is the model this module owns")
+        if not isinstance(self.proof_presentation, ProofPresentation):
+            raise TypeError("proof_presentation is the closed surface model")
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -129,6 +200,7 @@ class FigureView:
             "exactness": self.exactness,
             "as_of": self.as_of,
             "coverage": self.coverage,
+            "proof_presentation": self.proof_presentation.as_dict(),
             "record_ids": list(self.record_ids),
             "provenance": self.provenance,
             "citations": [citation.as_dict() for citation in self.citations],

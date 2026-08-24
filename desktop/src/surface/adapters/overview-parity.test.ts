@@ -10,8 +10,8 @@ import fixture from "../../../../product/viva/surface/fixtures/overview-parity-v
 // against the other is a claim about provenance rather than a claim that two
 // strings this side wrote happen to agree: change a line here and these bytes
 // no longer match it.
-import moments from "../../../../product/viva/persona/pack-v31/moments.json";
-import { resolveEvidenceTarget } from "../evidence";
+import moments from "../../../../product/viva/persona/pack-v33/moments.json";
+import { resolveEvidenceTarget, showCompactProof } from "../evidence";
 import type { DocumentsData, FeatureResult } from "../types";
 import { adaptDocuments } from "./documents";
 import { adaptOverview, adaptOverviewPanel } from "./overview";
@@ -112,6 +112,15 @@ describe("the overview a real vault produces, read by the real adapter", () => {
       expect(account.gradeLabel, account.id).toBe(balance.grade_label);
       expect(account.gradeDescription, account.id).toBe(balance.grade_description);
       expect(account.note, account.id).toBe(balance.grade_description);
+      expect(account.proofPresentation, account.id).toEqual(balance.proof_presentation);
+      expect(["routine", "required"], account.id).toContain(account.proofPresentation.emphasis);
+      if (account.proofPresentation.emphasis === "routine") {
+        expect(account.proofPresentation.reasons, account.id).toEqual([]);
+        expect(account.proofPresentation.qualifications, account.id).toEqual([]);
+      } else {
+        expect(account.proofPresentation.reasons.length, account.id).toBeGreaterThan(0);
+        expect(account.proofPresentation.qualifications.length, account.id).toBeGreaterThan(0);
+      }
       expect(account.gradeDescription.trim(), account.id).not.toBe("");
       expect(account.gradeDescription, account.id).not.toContain(`is ${account.gradeLabel}.`);
     }
@@ -152,7 +161,37 @@ describe("the overview a real vault produces, read by the real adapter", () => {
       expect(LADDER, figure.id).toContain(figure.grade);
       expect(figure.recordIds?.length ?? 0, figure.id).toBeGreaterThan(0);
       expect(figure.evidenceLinks.length, figure.id).toBeGreaterThan(0);
+      expect(["routine", "required"], figure.id).toContain(figure.proofPresentation.emphasis);
+      expect(figure.proofPresentation, figure.id).toEqual(payloadPicture.figures.find((payload) => payload.id === figure.id)?.proof_presentation);
+      if (figure.proofPresentation.emphasis === "routine") {
+        expect(figure.proofPresentation.reasons, figure.id).toEqual([]);
+        expect(figure.proofPresentation.qualifications, figure.id).toEqual([]);
+      } else {
+        expect(figure.proofPresentation.reasons.length, figure.id).toBeGreaterThan(0);
+        expect(figure.proofPresentation.qualifications.length, figure.id).toBeGreaterThan(0);
+      }
     }
+  });
+
+  it("carries live caveat, mixed-vintage, and missing-basis qualifications as backend-authored lines", () => {
+    const figures = [...overview!.accounts, ...overview!.picture.figures];
+    for (const reason of ["caveat", "mixed_vintage", "uncertain_basis"] as const) {
+      const matching = figures.filter((figure) => figure.proofPresentation.reasons.includes(reason));
+      expect(matching.length, reason).toBeGreaterThan(0);
+      for (const figure of matching) {
+        expect(figure.proofPresentation.emphasis, `${reason}:${figure.id}`).toBe("required");
+        expect(figure.proofPresentation.qualifications.length, `${reason}:${figure.id}`).toBeGreaterThan(0);
+        expect(showCompactProof(figure.proofPresentation, false), `${reason}:${figure.id}`).toBe(true);
+      }
+    }
+    const missingEvidence = figures.filter((figure) => figure.proofPresentation.reasons.includes("missing_evidence"));
+    const mixedVintage = figures.filter((figure) => figure.proofPresentation.reasons.includes("mixed_vintage"));
+    expect(missingEvidence.length).toBeGreaterThan(0);
+    expect(mixedVintage.length).toBeGreaterThan(0);
+    for (const figure of missingEvidence) expect(figure.proofPresentation.qualifications, figure.id).toContain(moments.proof_missing_evidence);
+    for (const figure of mixedVintage) expect(figure.proofPresentation.qualifications, figure.id).toContain(moments.proof_mixed_vintage);
+    expect(moments.proof_missing_evidence).not.toBe(moments.proof_mixed_vintage);
+    expect(moments.proof_inexact).not.toBe(moments.proof_stale_boundary);
   });
 
   it("writes no part of the picture, and adds no figure to any other", () => {
@@ -263,7 +302,7 @@ describe("the overview a real vault produces, read by the real adapter", () => {
       expect(Object.keys(figure).sort(), figure.id).toEqual([
         "asOf", "caveats", "coverage", "currency", "display", "evidenceHeading", "evidenceLabel",
         "evidenceLinks", "exactValue", "exactness", "grade", "gradeDescription", "gradeLabel",
-        "id", "measure", "recordIds", "unmeasured",
+        "id", "measure", "proofPresentation", "recordIds", "unmeasured",
       ]);
       for (const left of figure.unmeasured ?? []) expect(Object.keys(left).sort(), left.account).toEqual(["account", "name", "sentence"]);
     }

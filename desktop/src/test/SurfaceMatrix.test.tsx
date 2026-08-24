@@ -5,7 +5,7 @@ import { Overview } from "../features/overview/Overview";
 import type { ActivityData, FeatureResult, OverviewData, ReviewData, ReviewView } from "../surface/types";
 import { LONG_TRUTH, absent, failed, makeAccount, makeOverview, makePicture, makeSurfaceScenario, needsInput, partial, ready, unavailable } from "./surfaceScenarios";
 
-const actions = { onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
+const actions = { showVerificationDetails: false, onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
 const overviewActions = { ...actions, onOpenReviewQuestion: vi.fn(), onNavigate: vi.fn() };
 const absentReview = absent<ReviewData>();
 

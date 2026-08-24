@@ -1,5 +1,5 @@
 import { gradePresentation } from "../evidence";
-import type { AccountView, EvidenceLink, EvidenceRelation, FeatureIssue, FigureMeasure, FigureView, OverviewData, PanelState, PictureView, UnmeasuredAccount, UnplacedAccount, WithheldCurrency } from "../types";
+import type { AccountView, EvidenceLink, EvidenceRelation, FeatureIssue, FigureMeasure, FigureView, OverviewData, PanelState, PictureView, ProofPresentation, UnmeasuredAccount, UnplacedAccount, WithheldCurrency } from "../types";
 import { isRecord, record, textValue, uniqueRecordsById } from "./primitives";
 
 // The words a citation may stand in to its figure. The set is the backend's,
@@ -42,6 +42,22 @@ function measure(value: unknown): FigureMeasure | null {
   return MEASURES.find((known) => known === named) ?? null;
 }
 
+// Missing or unreadable policy fails visible. Reasons are carried for audit and
+// tests but never become interface copy or another policy input.
+function proofPresentation(value: unknown): ProofPresentation {
+  const supplied = record(value);
+  const reasonsValid = Array.isArray(supplied.reasons) && supplied.reasons.every((reason) => typeof reason === "string");
+  const qualificationsValid = Array.isArray(supplied.qualifications) && supplied.qualifications.every((qualification) => typeof qualification === "string");
+  const reasons = Array.isArray(supplied.reasons) ? supplied.reasons.filter((reason): reason is string => typeof reason === "string") : [];
+  const qualifications = Array.isArray(supplied.qualifications) ? supplied.qualifications.filter((qualification): qualification is string => typeof qualification === "string") : [];
+  const routine = supplied.emphasis === "routine" && reasonsValid && qualificationsValid && reasons.length === 0 && qualifications.length === 0;
+  return {
+    emphasis: routine ? "routine" : "required",
+    reasons,
+    qualifications,
+  };
+}
+
 // One currency's part of the picture. Every field is the backend's; a figure
 // that arrives without an identity or without a measure this side can label is
 // left out rather than shown with a hole in it.
@@ -63,6 +79,7 @@ function pictureFigure(raw: Record<string, unknown>): FigureView | null {
     // One whole reviewed sentence as the backend wrote it; never composed here
     // out of the ladder word.
     gradeDescription: backendGradeDescription.trim() ? backendGradeDescription : evidence.description,
+    proofPresentation: proofPresentation(raw.proof_presentation),
     asOf: textValue(raw.as_of),
     // One line each, in the order the read put them in. Joining them here
     // would make a paragraph of sentences a person is meant to meet one at a
@@ -164,6 +181,7 @@ export function adaptOverview(raw: unknown): OverviewData | null {
       // One whole reviewed sentence as the backend wrote it; never composed
       // here out of the ladder word.
       gradeDescription: backendGradeDescription.trim() ? backendGradeDescription : evidence.description,
+      proofPresentation: proofPresentation(balance.proof_presentation),
       note: backendGradeDescription.trim() ? backendGradeDescription : null,
       asOf: textValue(balance.as_of) || textValue(balance.dated),
       coverage: textValue(balance.coverage) || null,

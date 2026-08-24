@@ -155,7 +155,7 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         "viva.surface.overview",
         CapabilityDestination.OVERVIEW,
         "when a vault is open",
-        "AccountOverview.v1",
+        "AccountOverview.v2",
         (),
         # This read writes no event, calls no model and sends nothing outward.
         (TrustEffect.READS_DATA,),
@@ -207,12 +207,12 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         "viva.surface.activity",
         CapabilityDestination.ACTIVITY,
         "when a vault is open",
-        "ActivityMovements.v1",
-        (),
-        # It reads the ledger and composes rows. It writes nothing, reaches no
-        # model and sends nothing: which way money went is arithmetic over what
-        # a document already said.
-        (TrustEffect.READS_DATA,),
+        "ActivityMovements.v3",
+        ("assign_category", "replace_tags", "confirm_transfer",
+         "reject_transfer", "unlink_transfer"),
+        # The read is local; its explicit movement actions append human
+        # category, tag or transfer events and never call a model or egress.
+        (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
     ),
     _surface(
         "documents.jobs",

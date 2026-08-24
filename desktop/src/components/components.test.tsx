@@ -11,11 +11,26 @@ import { UNSPOKEN_REPLY, channelPresentation } from "./actionChannel";
 const noAction = () => {};
 const noticeIcons = { acknowledged: <span>acknowledged-mark</span>, refused: <span>refused-mark</span> };
 import { PanelStateView, type PanelStateCopy } from "./PanelStateView";
+import { ProofQualifications } from "./ProofCaveats";
 import { ProofLinks } from "./ProofLinks";
 import { SourceDisclosure } from "./SourceDisclosure";
 import { StatusNotice } from "./StatusNotice";
 
 const copy: PanelStateCopy = { partial: "Partial copy", needsInput: "Needs input copy", unavailable: { title: "Unavailable", detail: "Unavailable detail" }, failed: { title: "Failed", detail: "Failed detail" } };
+
+describe("required proof qualifications", () => {
+  it("renders backend lines byte-for-byte and removes only exact already-visible duplicates", () => {
+    const exact = "  Backend spacing remains intact.  ";
+    const view = render(<ProofQualifications proof={{ emphasis: "required", reasons: ["inexact"], qualifications: ["Already visible.", exact] }} alreadyRendered={["Already visible."]} />);
+    expect(view.queryByText("Already visible.")).not.toBeInTheDocument();
+    expect(view.getByRole("list", { name: "Required qualifications" }).querySelector("li")?.textContent).toBe(exact);
+  });
+
+  it("adds no qualification list to valid routine proof", () => {
+    const view = render(<ProofQualifications proof={{ emphasis: "routine", reasons: [], qualifications: [] }} />);
+    expect(view.queryByRole("list", { name: "Required qualifications" })).not.toBeInTheDocument();
+  });
+});
 const sampleDisclosure: SurfaceSnapshot["disclosure"] = { title: "Sample vault", subtitle: "Nothing here is real", detail: "Every account in this vault was invented." };
 function Broken(): never { throw new Error("feature only"); }
 
@@ -96,7 +111,7 @@ describe("shared surface components", () => {
 
   it("renders a canonical figure as a dialog trigger", () => {
     const onOpen = vi.fn();
-    const projected = accountEvidenceFigure({ id: "account", name: "Card", kind: "card", measure: "owed", exactValue: "101", currency: "USD", display: "$101", grade: "verified", gradeLabel: "Verified", gradeDescription: "Verified", note: null, asOf: "today", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
+    const projected = accountEvidenceFigure({ id: "account", name: "Card", kind: "card", measure: "owed", exactValue: "101", currency: "USD", display: "$101", grade: "verified", gradeLabel: "Verified", gradeDescription: "Verified", proofPresentation: { emphasis: "routine", reasons: [], qualifications: [] }, note: null, asOf: "today", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
     const { getByRole } = render(<Figure figure={projected} onOpenEvidence={onOpen} />);
     // The control is named by the amount it shows, so a person who cannot see
     // the screen hears the number; the invitation to leave it for the evidence
@@ -114,7 +129,7 @@ describe("shared surface components", () => {
   });
 
   it("renders the complete evidence drawer in reviewed section order", () => {
-    const account = { id: "account", name: "Card", kind: "card", measure: "owed" as const, exactValue: "101", currency: "USD", display: "$101", grade: "verified" as const, gradeLabel: "Verified", gradeDescription: "Verified", note: null, asOf: "today", coverage: "monthly", provenance: "Statement page 1", evidenceLinks: [{ targetDocumentId: "doc", label: "Card statement", relation: "same_account" as const, page: "page 1" }], state: "ready" as const, exactness: "rounded", recordIds: ["record-card-1"] };
+    const account = { id: "account", name: "Card", kind: "card", measure: "owed" as const, exactValue: "101", currency: "USD", display: "$101", grade: "verified" as const, gradeLabel: "Verified", gradeDescription: "Verified", proofPresentation: { emphasis: "routine" as const, reasons: [], qualifications: [] }, note: null, asOf: "today", coverage: "monthly", provenance: "Statement page 1", evidenceLinks: [{ targetDocumentId: "doc", label: "Card statement", relation: "same_account" as const, page: "page 1" }], state: "ready" as const, exactness: "rounded", recordIds: ["record-card-1"] };
     const snapshot: SurfaceSnapshot = { disclosure: sampleDisclosure, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [account] } }, documents: { state: "ready", data: { documents: [{ id: "doc", name: "card.pdf", state: "Verified", phaseLabel: "Verified", detail: "", source: "", pages: "1", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const open = vi.fn();
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
@@ -131,7 +146,7 @@ describe("shared surface components", () => {
   });
 
   it("keeps the Evidence shell dismissible when its body throws and resets for another figure", () => {
-    const first = { id: "first", name: "First account", kind: "deposit", measure: "balance" as const, exactValue: "", currency: "USD", display: "$1", grade: "verified" as const, gradeLabel: "Verified", gradeDescription: "Verified", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
+    const first = { id: "first", name: "First account", kind: "deposit", measure: "balance" as const, exactValue: "", currency: "USD", display: "$1", grade: "verified" as const, gradeLabel: "Verified", gradeDescription: "Verified", proofPresentation: { emphasis: "routine" as const, reasons: [], qualifications: [] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
     const second = { ...first, id: "second", name: "Second account", display: "$2" };
     const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [first, second] } }, documents: { state: "unavailable", reason: "none" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const dismiss = vi.fn();
@@ -150,7 +165,7 @@ describe("shared surface components", () => {
   it("renders backend-supplied unavailable-grade copy without changing unavailable semantics", () => {
     const customLabel = "Backend attested — custom";
     const customDescription = "Verified by the private-vault attestation service.";
-    const account = { id: "live-custom", name: "Attested account", kind: "deposit", measure: "balance" as const, exactValue: "101", currency: "USD", display: "Canonical account display", grade: "unavailable" as const, gradeLabel: customLabel, gradeDescription: customDescription, note: null, asOf: "2026-08-18", coverage: "Statement period", provenance: "Private statement page 1", evidenceLinks: [], state: "ready" as const };
+    const account = { id: "live-custom", name: "Attested account", kind: "deposit", measure: "balance" as const, exactValue: "101", currency: "USD", display: "Canonical account display", grade: "unavailable" as const, gradeLabel: customLabel, gradeDescription: customDescription, proofPresentation: { emphasis: "required" as const, reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "2026-08-18", coverage: "Statement period", provenance: "Private statement page 1", evidenceLinks: [], state: "ready" as const };
     const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [account] } }, documents: { state: "ready", data: { documents: [], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] } }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
 
@@ -162,7 +177,7 @@ describe("shared surface components", () => {
   });
 
   it("keeps missing and conflicted figure identities bounded", () => {
-    const base = { id: "account", name: "Card", kind: "card", measure: "balance" as const, exactValue: "1", currency: "", display: "$1", grade: "unavailable" as const, gradeLabel: "", gradeDescription: "", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
+    const base = { id: "account", name: "Card", kind: "card", measure: "balance" as const, exactValue: "1", currency: "", display: "$1", grade: "unavailable" as const, gradeLabel: "", gradeDescription: "", proofPresentation: { emphasis: "required" as const, reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
     const makeSnapshot = (accounts: typeof base[]): SurfaceSnapshot => ({ disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts } }, documents: { state: "unavailable", reason: "none" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } });
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, rerender } = render(<EvidenceDrawer snapshot={makeSnapshot([])} selection={{ figureId: "account:account" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
@@ -172,7 +187,7 @@ describe("shared surface components", () => {
   });
 
   it("keeps unavailable live figure metadata and document targets explicit", () => {
-    const account = { id: "live", name: "Live account", kind: "", measure: null, exactValue: "raw-secret-937.25", currency: "", display: "", grade: "unavailable" as const, gradeLabel: "", gradeDescription: "", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [{ targetDocumentId: "doc", label: "Live statement", relation: "same_account" as const, page: "" }], state: "ready" as const };
+    const account = { id: "live", name: "Live account", kind: "", measure: null, exactValue: "raw-secret-937.25", currency: "", display: "", grade: "unavailable" as const, gradeLabel: "", gradeDescription: "", proofPresentation: { emphasis: "required" as const, reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [{ targetDocumentId: "doc", label: "Live statement", relation: "same_account" as const, page: "" }], state: "ready" as const };
     const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [account] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, queryByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "account:live" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
@@ -196,17 +211,16 @@ describe("shared surface components", () => {
   // The drawer's default sentence about an unsupplied measurement type is for
   // a figure the read named none for, and this is not one.
   it("names what a picture figure measures instead of printing a machinery sentence", () => {
-    const figure = { id: "AAA", display: "AAA 1.00", exactValue: "", currency: "AAA", measure: "net_worth" as const, grade: "corroborated" as const, gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", asOf: "2026-08-21", coverage: ["A boundary the read declared."], caveats: [], evidenceLinks: [] };
+    const figure = { id: "AAA", display: "AAA 1.00", exactValue: "", currency: "AAA", measure: "net_worth" as const, grade: "corroborated" as const, gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "routine" as const, reasons: [], qualifications: [] }, asOf: "2026-08-21", coverage: ["A boundary the read declared."], caveats: [], evidenceLinks: [] };
     const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, accounts: [] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, queryByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "net-worth:AAA" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);
     expect(getByText("Net worth")).toBeInTheDocument();
     expect(queryByText("Measurement type was not supplied by this read.")).not.toBeInTheDocument();
-    // The picture's coverage claims are rendered once, on the card, one line
-    // each. A second rendering here runs them together and trains the eye to
-    // skip the one that differs.
-    expect(queryByText("A boundary the read declared.")).not.toBeInTheDocument();
-    expect(queryByText("Coverage")).not.toBeInTheDocument();
+    // The complete receipt retains the boundary even when compact proof on the
+    // picture is quiet.
+    expect(queryByText("A boundary the read declared.")).toBeInTheDocument();
+    expect(queryByText("Coverage")).toBeInTheDocument();
   });
 
   // The panel's sentence counts the accounts a read could not value and never
@@ -215,8 +229,8 @@ describe("shared surface components", () => {
   // it existed the drawer told a person no limits were stated about a figure
   // whose own boundary declared one.
   it("names the accounts the read could not value instead of saying none were stated", () => {
-    const figure = { id: "AAA", display: "AAA 1.00", exactValue: "", currency: "AAA", measure: "net_worth" as const, grade: "corroborated" as const, gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", asOf: "2026-08-21", coverage: ["A boundary the read declared."], caveats: [], evidenceLinks: [], unmeasured: [{ account: "acct:named-row", name: "Rainy Day Savings", sentence: "Nothing has measured Rainy Day Savings, so it is not in this total." }, { account: "acct:second-row", name: "Sample Home Loan", sentence: "A figure could not be put on Sample Home Loan, so it is not in this total." }] };
-    const row = { id: "acct:named-row", name: "A different name for the same account", kind: "Depository", measure: "balance" as const, exactValue: "", currency: "AAA", display: "AAA 2.00", grade: "verified" as const, gradeLabel: "verified", gradeDescription: "One reviewed sentence.", note: null, asOf: "2026-08-21", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
+    const figure = { id: "AAA", display: "AAA 1.00", exactValue: "", currency: "AAA", measure: "net_worth" as const, grade: "corroborated" as const, gradeLabel: "corroborated", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "routine" as const, reasons: [], qualifications: [] }, asOf: "2026-08-21", coverage: ["A boundary the read declared."], caveats: [], evidenceLinks: [], unmeasured: [{ account: "acct:named-row", name: "Rainy Day Savings", sentence: "Nothing has measured Rainy Day Savings, so it is not in this total." }, { account: "acct:second-row", name: "Sample Home Loan", sentence: "A figure could not be put on Sample Home Loan, so it is not in this total." }] };
+    const row = { id: "acct:named-row", name: "A different name for the same account", kind: "Depository", measure: "balance" as const, exactValue: "", currency: "AAA", display: "AAA 2.00", grade: "verified" as const, gradeLabel: "verified", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "routine" as const, reasons: [], qualifications: [] }, note: null, asOf: "2026-08-21", coverage: null, provenance: null, evidenceLinks: [], state: "ready" as const };
     const snapshot: SurfaceSnapshot = { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, accounts: [row] } }, documents: { state: "unavailable", reason: "not connected" }, review: { state: "absent", reason: "" }, activity: { state: "absent", reason: "" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
     const badge = (grade: ReturnType<typeof accountEvidenceFigure>["grade"]) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />;
     const { getByText, queryByText } = render(<EvidenceDrawer snapshot={snapshot} selection={{ figureId: "net-worth:AAA" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={badge} />);

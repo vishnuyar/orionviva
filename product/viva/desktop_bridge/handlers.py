@@ -39,6 +39,8 @@ RESCAN_CAPABILITY = "documents.rescan"
 RESCAN_OPERATIONS = action_operations_for(RESCAN_CAPABILITY)
 SETTINGS_CAPABILITY = "settings.configuration"
 SETTINGS_OPERATIONS = action_operations_for(SETTINGS_CAPABILITY)
+ACTIVITY_CAPABILITY = "activity.movements"
+ACTIVITY_OPERATIONS = action_operations_for(ACTIVITY_CAPABILITY)
 
 
 class BridgeRequestError(ValueError):
@@ -165,6 +167,7 @@ def handlers_for_opened_vault(
     happened, which is what makes this testable without a bridge.
     """
 
+    from .activity_actions import ActivityActions
     from .conversation_actions import ConversationActions
     from .document_actions import DocumentActions
     from .jobs import JobRegistry
@@ -184,6 +187,7 @@ def handlers_for_opened_vault(
     sweeps = RescanActions(vault, jobs)
     talking = ConversationActions(vault, jobs)
     trust = TrustActions(vault, jobs)
+    activity_actions = ActivityActions(vault)
     return BridgeDispatcher({
         **reads.handlers,
         REVIEW_OPERATIONS["answer"]: actions.answer,
@@ -197,4 +201,9 @@ def handlers_for_opened_vault(
         CONVERSATION_OPERATIONS["ask"]: talking.ask,
         MAINTENANCE_OPERATIONS["run"]: trust.run,
         MAINTENANCE_OPERATIONS["diagnose"]: trust.diagnose,
+        ACTIVITY_OPERATIONS["assign_category"]: activity_actions.assign_category,
+        ACTIVITY_OPERATIONS["replace_tags"]: activity_actions.replace_tags,
+        ACTIVITY_OPERATIONS["confirm_transfer"]: activity_actions.confirm_transfer,
+        ACTIVITY_OPERATIONS["reject_transfer"]: activity_actions.reject_transfer,
+        ACTIVITY_OPERATIONS["unlink_transfer"]: activity_actions.unlink_transfer,
     })

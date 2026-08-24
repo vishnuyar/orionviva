@@ -22,6 +22,7 @@ from ..tools.boundary import (SELECTED_TERMS, UNPOSTED, account_written,
 from ..ledger.projection.movements import leading_account
 from ..tools.envelope import BY_ACCOUNT, BY_CURRENCY, GAP_REASONS
 from .models import Citation, CitationRelation, FigureGrade, FigureView, PanelState
+from .proof import freshness_confirmed_on, proof_presentation_from_evidence
 
 # The family of wordings a figure standing on its own is said in. The lines a
 # run places after a clause open with a word pointing back at what was just
@@ -132,8 +133,10 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
     if result.ok:
         by_account = _figures_by_account(result.figures)
         for row in result.data["balances"]:
-            account, issue = _account(row, by_account.get(row["record_id"], []),
-                                      known, locale)
+            account, issue = _account(
+                row, by_account.get(row["record_id"], []), known, locale,
+                today, tuple(result.caveats or ()),
+                _account_mixed_vintage(projection, row["record_id"]))
             accounts.append(account)
             if issue is not None:
                 issues.append(issue)
@@ -153,7 +156,8 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
         }
         account, issue = _account(
             {"record_id": info.account, "kind": info.kind,
-             "name": info.name}, [], known, locale)
+             "name": info.name}, [], known, locale, today,
+            tuple(result.caveats or ()), None)
         accounts.append(account)
         if issue is not None:
             issues.append(issue)
@@ -227,6 +231,14 @@ def _figures_by_account(figures) -> dict:
     return out
 
 
+def _account_mixed_vintage(projection, account: str) -> bool | None:
+    """The projection's structured vintage fact for one account figure."""
+    values = tuple(projection.composed_values(account))
+    if not values:
+        return None
+    return any(value.mixed_vintage for value in values)
+
+
 def _account_named(fig: dict) -> str:
     """The one account a figure declares it was taken over, or "".
 
@@ -239,8 +251,9 @@ def _account_named(fig: dict) -> str:
     return named.pop() if len(named) == 1 else ""
 
 
-def _account(row: dict, figures: list, known: dict,
-             locale: str) -> tuple[dict, dict | None]:
+def _account(row: dict, figures: list, known: dict, locale: str,
+             read_on: str, read_caveats: tuple,
+             mixed_vintage: bool | None) -> tuple[dict, dict | None]:
     """One account row, with its figure where the figure can be shown whole.
 
     Returns ``(row, issue)``. The row is always returned; only the figure is
@@ -259,7 +272,8 @@ def _account(row: dict, figures: list, known: dict,
     code = _withheld(figures)
     if code is None:
         try:
-            figure = _figure(row, figures[0], known, locale)
+            figure = _figure(row, figures[0], known, locale, read_on,
+                             read_caveats, mixed_vintage)
         except (ValueError, TypeError):
             # FigureView refuses to be built without identity, measure, date
             # and coverage; what it refuses is withheld rather than checked a
@@ -290,7 +304,8 @@ def _withheld(figures: list) -> str | None:
     return None
 
 
-def _figure(row: dict, fig: dict, known: dict, locale: str) -> FigureView:
+def _figure(row: dict, fig: dict, known: dict, locale: str, read_on: str,
+            read_caveats: tuple, mixed_vintage: bool | None) -> FigureView:
     """One account's worth, as a figure already interpreted for a reader.
 
     Every fact in it is the read's; what is decided here is the words. The
@@ -299,18 +314,36 @@ def _figure(row: dict, fig: dict, known: dict, locale: str) -> FigureView:
     word the read chose. Raises where the read supplied too little to build a
     figure."""
     grade = FigureGrade(fig["grade"])
+    written = render.money(fig["value"], fig["currency"], locale=locale)
+    grade_description = moment(STOOD_BEHIND_MOMENT + grade.value)
+    coverage = _coverage(fig, known)
     return FigureView(
         id=row["record_id"],
         exact_value=str(fig["value"]),
-        display=str(render.money(fig["value"], fig["currency"], locale=locale)),
+        display=str(written),
         currency=fig["currency"] or None,
         measure=fig["quantity"],
         grade=grade,
         grade_label=grade.value,
-        grade_description=moment(STOOD_BEHIND_MOMENT + grade.value),
+        grade_description=grade_description,
         exactness=fig["exactness"],
         as_of=fig["dated"],
-        coverage=_coverage(fig, known),
+        coverage=coverage,
+        proof_presentation=proof_presentation_from_evidence(
+            grade=grade,
+            exactness=fig.get("exactness"),
+            boundary=fig.get("boundary"),
+            record_ids=fig.get("record_ids"),
+            caveats=read_caveats,
+            freshness_confirmed=freshness_confirmed_on(
+                (str(fig.get("dated", "")),), read_on),
+            mixed_vintage=mixed_vintage,
+            grade_qualification=grade_description,
+            inexact_qualification=moment("proof_inexact"),
+            missing_evidence_qualification=moment("proof_missing_evidence"),
+            stale_qualification=moment("proof_stale_boundary"),
+            mixed_vintage_qualification=moment("proof_mixed_vintage"),
+            boundary_qualifications=(coverage,)),
         record_ids=tuple(fig["record_ids"]),
         # Where the figure came from is said by the citation. The balances
         # view's own prose is not carried: it describes an account's balance,
@@ -407,7 +440,8 @@ def _picture(result, locale: str, today: str, held: dict,
         # below keep it.
         if fig["quantity"] != quantity.NET_WORTH:
             continue
-        view = _picture_figure(fig, point, held_in, known, locale)
+        view = _picture_figure(fig, point, held_in, known, locale, today,
+                               tuple(result.caveats or ()))
         if view is None:
             # A currency whose total was kept back is said. A person shown
             # fewer totals than they hold currencies, with nothing beside them,
@@ -563,7 +597,8 @@ def _reach(point: dict, figures: list,
 
 
 def _picture_figure(fig: dict, point: dict, held_in: dict, known: dict,
-                    locale: str) -> dict | None:
+                    locale: str, read_on: str,
+                    result_caveats: tuple) -> dict | None:
     """One currency's part of the picture, ready to render, or None.
 
     None is where it is kept back: a figure whose boundary this surface has no
@@ -587,25 +622,43 @@ def _picture_figure(fig: dict, point: dict, held_in: dict, known: dict,
     grade = FigureGrade(fig["grade"])
     beneath = _beneath(point.get("lines") or [], fig["currency"], held_in)
     lines = _picture_coverage(fig, declared, unmeasured, beneath, known)
+    written = render.money(fig["value"], fig["currency"], locale=locale)
+    grade_description = moment(STOOD_BEHIND_MOMENT + grade.value)
     try:
         view = FigureView(
             # One figure per currency, so the currency is what tells them
             # apart on this surface.
             id=fig["currency"],
             exact_value=str(fig["value"]),
-            display=str(render.money(fig["value"], fig["currency"],
-                                     locale=locale)),
+            display=str(written),
             currency=fig["currency"] or None,
             measure=fig["quantity"],
             grade=grade,
             grade_label=grade.value,
-            grade_description=moment(STOOD_BEHIND_MOMENT + grade.value),
+            grade_description=grade_description,
             exactness=fig["exactness"],
             as_of=fig["dated"],
             # The model holds one sentence; what is emitted is the ordered
             # list below. Joining here is what keeps the model's own refusal to
             # be built without a coverage line doing its work.
             coverage=" ".join(lines),
+            proof_presentation=proof_presentation_from_evidence(
+                grade=grade,
+                exactness=fig.get("exactness"),
+                boundary=fig.get("boundary"),
+                record_ids=fig.get("record_ids"),
+                caveats=tuple(result_caveats),
+                freshness_confirmed=freshness_confirmed_on(
+                    tuple(str(row.get("as_of", "")) for row in beneath),
+                    read_on),
+                mixed_vintage=_picture_mixed_vintage(beneath),
+                grade_qualification=grade_description,
+                inexact_qualification=moment("proof_inexact"),
+                missing_evidence_qualification=moment(
+                    "proof_missing_evidence"),
+                stale_qualification=moment("proof_stale_boundary"),
+                mixed_vintage_qualification=moment("proof_mixed_vintage"),
+                boundary_qualifications=tuple(lines)),
             record_ids=tuple(sorted({row["account"] for row in beneath})),
             citations=_picture_citations(beneath, grade),
             # A caveat is about the set the read took, not about this
@@ -634,6 +687,14 @@ def _picture_figure(fig: dict, point: dict, held_in: dict, known: dict,
         "unmeasured": _unmeasured(unmeasured, known),
         **_announced(fig["currency"]),
     }
+
+
+def _picture_mixed_vintage(beneath: list[dict]) -> bool | None:
+    """Read the net-worth point's closed per-line vintage flags."""
+    flags = tuple(row.get("mixed_vintage") for row in beneath)
+    if not flags or any(not isinstance(flag, bool) for flag in flags):
+        return None
+    return any(flags)
 
 
 def _picture_coverage(fig: dict, declared: list, unmeasured: list,

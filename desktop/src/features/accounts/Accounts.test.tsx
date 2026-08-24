@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { AccountView, FeatureResult, OverviewData } from "../../surface/types";
 import { Accounts } from "./Accounts";
 
-const account = (id: string, name = `Account ${id}`, kind = "Depository"): AccountView => ({ id, name, kind, measure: "balance", exactValue: "", currency: "USD", display: "$10.00", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "This read did not provide a recognized evidence grade.", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
+const account = (id: string, name = `Account ${id}`, kind = "Depository"): AccountView => ({ id, name, kind, measure: "balance", exactValue: "", currency: "USD", display: "$10.00", grade: "unavailable", gradeLabel: "Evidence status unavailable", gradeDescription: "This read did not provide a recognized evidence grade.", proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" });
 const overview = (accounts: AccountView[]): OverviewData => ({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts });
 const ready = (accounts: AccountView[]): FeatureResult<OverviewData> => ({ state: "ready", data: overview(accounts) });
-const baseProps = { selectedAccount: "", onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
+const baseProps = { selectedAccount: "", showVerificationDetails: false, onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
 
 describe("Accounts stable identity presentation", () => {
   const longId = "A deliberately long supplied truth value stays visible and wraps without truncation across supported narrow viewport boundaries.";
@@ -66,5 +66,27 @@ describe("Accounts stable identity presentation", () => {
     expect(view.getByText("Account identity conflicted")).toBeInTheDocument();
     expect(view.getByRole("heading", { name: "Account selection unavailable" })).toBeInTheDocument();
     expect(view.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("applies routine and required proof generically while keeping caveats and the drawer trigger", () => {
+    const routine = { ...account("routine", "Routine account"), grade: "conflicted" as const, gradeLabel: "Backend routine label", gradeDescription: "Backend routine description", proofPresentation: { emphasis: "routine" as const, reasons: [], qualifications: [] }, note: "Backend routine description", caveats: [] };
+    const required = { ...account("required", "Required account"), grade: "verified" as const, gradeLabel: "Backend required label", gradeDescription: "Backend required description", proofPresentation: { emphasis: "required" as const, reasons: ["machine-only"], qualifications: ["A required backend qualification."] }, note: "Backend required description", caveats: ["A caveat that never recedes."] };
+    const view = render(<Accounts {...baseProps} selectedAccount="routine" showVerificationDetails={false} result={ready([routine, required])} />);
+
+    expect(view.queryByText("Backend routine label")).not.toBeInTheDocument();
+    expect(view.queryByText("Backend routine description")).not.toBeInTheDocument();
+    expect(view.getByText("A caveat that never recedes.")).toBeInTheDocument();
+    expect(view.getByText("A required backend qualification.")).toBeInTheDocument();
+    const requiredRow = view.getAllByRole("button", { name: /Required account/ }).find((button) => button.classList.contains("detail-row-button"));
+    expect(requiredRow).toHaveTextContent("Backend required description");
+    const triggers = view.getAllByRole("button", { name: "$10.00 Routine account balance" });
+    expect(triggers).toHaveLength(2);
+    triggers.forEach((trigger) => trigger.click());
+    expect(baseProps.onOpenFigure).toHaveBeenNthCalledWith(1, "account:routine");
+    expect(baseProps.onOpenFigure).toHaveBeenNthCalledWith(2, "account:routine");
+
+    view.rerender(<Accounts {...baseProps} selectedAccount="routine" showVerificationDetails result={ready([routine, required])} />);
+    expect(view.getAllByText("Backend routine description").length).toBeGreaterThan(0);
+    expect(view.queryByText("machine-only")).not.toBeInTheDocument();
   });
 });

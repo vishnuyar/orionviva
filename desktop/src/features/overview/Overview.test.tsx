@@ -1,4 +1,5 @@
 import { render } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 // The sentences the product ships, read from the pack that ships them. A
 // sentence typed out here would be an assertion about words nobody released.
@@ -11,7 +12,7 @@ import { Overview } from "./Overview";
 // filling the pack's own frame rather than restating anything it says.
 const SLOT = "{currency}";
 
-const actions = { onSelectAccount: vi.fn(), onOpenReviewQuestion: vi.fn(), onNavigate: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
+const actions = { showVerificationDetails: false, onSelectAccount: vi.fn(), onOpenReviewQuestion: vi.fn(), onNavigate: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
 const noReview: FeatureResult<ReviewData> = { state: "absent", reason: "not_read" };
 
 function figure(overrides: Partial<FigureView> = {}): FigureView {
@@ -24,6 +25,7 @@ function figure(overrides: Partial<FigureView> = {}): FigureView {
     grade: "corroborated",
     gradeLabel: "corroborated",
     gradeDescription: "One reviewed sentence about how well this is stood behind.",
+    proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] },
     asOf: "",
     coverage: [],
     caveats: [],
@@ -214,6 +216,71 @@ describe("the picture on the overview", () => {
     expect(actions.onOpenFigure).toHaveBeenCalledWith("net-worth:AAA");
   });
 
+  it("uses proof emphasis rather than grade words for compact visibility", () => {
+    const cases = [
+      { grade: "conflicted" as const, emphasis: "routine" as const, preference: false, visible: false },
+      { grade: "verified" as const, emphasis: "required" as const, preference: false, visible: true },
+      { grade: "corroborated" as const, emphasis: "routine" as const, preference: true, visible: true },
+      { grade: "unverified" as const, emphasis: "required" as const, preference: true, visible: true },
+    ];
+    for (const testCase of cases) {
+      const description = `Backend proof sentence for ${testCase.grade}-${testCase.emphasis}-${testCase.preference}.`;
+      const qualification = `Backend qualification for ${testCase.grade}-${testCase.emphasis}-${testCase.preference}.`;
+      const proofPresentation = testCase.emphasis === "routine"
+        ? { emphasis: "routine" as const, reasons: [], qualifications: [] }
+        : { emphasis: "required" as const, reasons: ["machine-reason-never-copy"], qualifications: [qualification] };
+      const result = overview({ figures: [figure({ id: testCase.grade, currency: "USD", display: "USD 1.00", grade: testCase.grade, gradeLabel: `Backend ${testCase.grade}`, gradeDescription: description, proofPresentation })] });
+      const rendered = render(<Overview {...actions} showVerificationDetails={testCase.preference} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+      expect(Boolean(rendered.queryByText(description)), JSON.stringify(testCase)).toBe(testCase.visible);
+      expect(rendered.queryByText("machine-reason-never-copy")).not.toBeInTheDocument();
+      expect(Boolean(rendered.queryByText(qualification)), JSON.stringify(testCase)).toBe(testCase.emphasis === "required");
+      const trigger = rendered.getByRole("button", { name: /USD 1.00 Net worth/i });
+      trigger.click();
+      expect(actions.onOpenFigure).toHaveBeenLastCalledWith(`net-worth:${testCase.grade}`);
+      rendered.unmount();
+    }
+  });
+
+  it("removes routine proof from visual and accessibility order while retaining caveats, coverage, and figure identity", async () => {
+    const user = userEvent.setup();
+    actions.onOpenFigure.mockClear();
+    const description = "Routine compact summary leaves the tree.";
+    const caveat = "A backend caveat remains visible.";
+    const coverage = "A backend boundary remains visible.";
+    const result = overview({ figures: [figure({ id: "same", currency: "USD", display: "USD 2.00", gradeDescription: description, proofPresentation: { emphasis: "routine", reasons: [], qualifications: [] }, caveats: [caveat], coverage: [coverage] })] });
+    const rendered = render(<Overview {...actions} showVerificationDetails={false} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+    const trigger = rendered.getByRole("button", { name: /USD 2.00 Net worth/i });
+    const identity = trigger.getAttribute("aria-labelledby");
+    expect(rendered.queryByText(description)).not.toBeInTheDocument();
+    expect(rendered.queryByLabelText(/corroborated/i)).not.toBeInTheDocument();
+    expect(rendered.getByText(caveat)).toBeInTheDocument();
+    expect(rendered.getByText(coverage)).toBeInTheDocument();
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    expect(actions.onOpenFigure).toHaveBeenLastCalledWith("net-worth:same");
+
+    rendered.rerender(<Overview {...actions} showVerificationDetails result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+    expect(rendered.getByText(description)).toBeInTheDocument();
+    expect(rendered.getByRole("button", { name: /USD 2.00 Net worth/i }).getAttribute("aria-labelledby")).toBe(identity);
+    rendered.getByRole("button", { name: /USD 2.00 Net worth/i }).click();
+    expect(actions.onOpenFigure).toHaveBeenLastCalledWith("net-worth:same");
+    expect(actions.onOpenFigure).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a required grade-description qualification when the spotlight renders a distinct note", () => {
+    const gradeDescription = "The required grade description is not the card note.";
+    const note = "The distinct account note is already visible.";
+    const result: FeatureResult<OverviewData> = { state: "ready", data: {
+      picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] },
+      accounts: [{ id: "account", name: "Account", kind: "Depository", measure: "balance", exactValue: "1", currency: "USD", display: "USD 1.00", grade: "verified", gradeLabel: "Verified", gradeDescription, proofPresentation: { emphasis: "required", reasons: ["incomplete_coverage"], qualifications: [gradeDescription, note] }, note, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
+    } };
+    const rendered = render(<Overview {...actions} showVerificationDetails={false} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+    const card = rendered.container.querySelector(".account-card")!;
+    const qualificationLines = [...card.querySelectorAll(".proof-qualifications li")].map((line) => line.textContent);
+    expect(qualificationLines).toEqual([gradeDescription]);
+    expect(card).toHaveTextContent(note);
+  });
+
   // The words on that row are the read's. Where the read wrote none there is
   // no row: a control this side had to name would be this side writing what a
   // person reads, and a refusal is the honest answer to that.
@@ -307,7 +374,7 @@ describe("the picture on the overview", () => {
     const shared = "EUR 642.10";
     const result: FeatureResult<OverviewData> = { state: "ready", data: {
       picture: { coverage: "A panel sentence.", readOn: "", withheld: [], unplaced: [], figures: [figure({ id: "EUR", currency: "EUR", display: shared, evidenceHeading: "Net worth in EUR" })] },
-      accounts: [{ id: "acct:abroad", name: "Abroad Current", kind: "Depository", measure: "balance", exactValue: "", currency: "EUR", display: shared, grade: "verified", gradeLabel: "verified", gradeDescription: "One reviewed sentence.", note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
+      accounts: [{ id: "acct:abroad", name: "Abroad Current", kind: "Depository", measure: "balance", exactValue: "", currency: "EUR", display: shared, grade: "verified", gradeLabel: "verified", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
       } };
     const rendered = render(<Overview {...actions} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
     const announced = [...rendered.container.querySelectorAll("button")].map((control) => (control.getAttribute("aria-labelledby") ?? "")

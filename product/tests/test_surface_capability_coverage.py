@@ -29,6 +29,7 @@ from viva.surface.capabilities import (
     Maturity,
     TrustEffect,
     capabilities,
+    capability_for,
     command_classifications,
     serialize_registry,
 )
@@ -49,6 +50,13 @@ def test_registered_capabilities_have_unique_ids_and_complete_contracts():
         assert entry.contract
         for effect in entry.trust_effect:
             assert isinstance(effect, TrustEffect), f"{entry.id} declares {effect!r}"
+
+
+def test_overview_contract_advances_with_the_proof_presentation_shape():
+    assert capability_for("overview.accounts").contract == "AccountOverview.v2"
+    assert "AccountOverview.v2" in declared_contracts()
+    assert "AccountOverview.v2" in served_contracts()
+    assert "AccountOverview.v1" not in declared_contracts()
 
 
 def test_maturity_is_read_from_the_operation_table_and_never_typed(monkeypatch):

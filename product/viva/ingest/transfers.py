@@ -244,14 +244,26 @@ def _candidates(proj: LedgerProjection) -> dict:
     dests = [m for m in movements if _flow(m) == "destination"]
     graph: dict[str, list[MovementInfo]] = {}
     for s in sources:
-        matches = [d for d in dests
-                   if d.account != s.account
-                   and d.currency == s.currency
-                   and abs(d.amount) == abs(s.amount)
-                   and _days_apart(s.date, d.date) <= DATE_WINDOW_DAYS]
+        matches = [d for d in dests if is_transfer_candidate(s, d)]
         if matches:
             graph[s.key] = matches
     return graph, {s.key: s for s in sources}
+
+
+def is_transfer_candidate(source: MovementInfo,
+                          destination: MovementInfo) -> bool:
+    """Whether two current movements pass the transfer candidate gate.
+
+    The Activity read uses this same predicate when a persisted suggestion is
+    shown later.  That keeps a once-qualified candidate from remaining
+    actionable after replay has changed either referenced movement.
+    """
+    return (_flow(source) == "source"
+            and _flow(destination) == "destination"
+            and destination.account != source.account
+            and destination.currency == source.currency
+            and abs(destination.amount) == abs(source.amount)
+            and _days_apart(source.date, destination.date) <= DATE_WINDOW_DAYS)
 
 
 def default_profile_for(proj: LedgerProjection):
