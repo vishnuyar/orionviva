@@ -17,7 +17,8 @@ _BAD = '{"doc_type": "checking_statement" this is broken json}'
 def _result(text, cost=0.05):
     return ModelResult(text=text, resolved_model="m", input_tokens=10,
                        output_tokens=20, cost_usd=cost, latency_s=0.1,
-                       request={}, response={})
+                       request={}, response={"usage": {"prompt_tokens": 10,
+                                                        "completion_tokens": 20}})
 
 
 def test_retry_recovers_bad_json():
@@ -32,6 +33,11 @@ def test_retry_recovers_bad_json():
     assert len(calls) == 2                                 # re-asked once
     assert "not valid JSON" in calls[1].lower() or "NOT valid JSON" in calls[1]
     assert abs(rr.cost_usd - 0.10) < 1e-9                  # both calls charged
+    assert len(rr.phases) == 2                             # both requests durable
+    assert [phase.parse_ok for phase in rr.phases] == [False, True]
+    assert [phase.cost_usd for phase in rr.phases] == [0.05, 0.05]
+    assert rr.input_tokens == 20 and rr.output_tokens == 40
+    assert all(phase.usage_reported for phase in rr.phases)
 
 
 def test_no_retry_when_first_read_is_good():
@@ -43,6 +49,7 @@ def test_no_retry_when_first_read_is_good():
 
     rr = read_with_retry(extract, "PROMPT", "doc", "en-US", "USD")
     assert rr.facts is not None and len(calls) == 1        # no wasted retry
+    assert len(rr.phases) == 1
 
 
 def test_gives_up_after_the_retry_and_parks():
@@ -55,3 +62,4 @@ def test_gives_up_after_the_retry_and_parks():
     rr = read_with_retry(extract, "PROMPT", "doc", "en-US", "USD")
     assert rr.facts is None and rr.error is not None       # honestly failed
     assert len(calls) == 2                                 # tried once + one retry
+    assert len(rr.phases) == 2

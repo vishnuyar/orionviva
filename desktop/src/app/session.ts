@@ -1,5 +1,5 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
-import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, TrustActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, TrustActionState, TrustData, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -79,7 +79,7 @@ export type SessionAction =
   | { type: "trust-working"; requestId: number }
   | { type: "trust-settled"; requestId: number; result: ActionResult }
   | { type: "asking"; requestId: number; question: string }
-  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null }
+  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null; trust: FeatureResult<TrustData> }
   | { type: "settings-read"; settings: FeatureResult<SettingsView> }
   | { type: "settings-working" }
   | { type: "settings-proposed"; proposal: SettingsProposal }
@@ -113,11 +113,7 @@ function hasReadFailure(snapshot: SurfaceSnapshot) {
   return [snapshot.overview, snapshot.documents, snapshot.review].some((result) => result.state === "failed");
 }
 
-// Before any vault is open. There used to be a vault here — the fixture demo
-// was the session's starting state, so the app opened onto a picture of
-// somebody else's invented money before anybody had asked for one. The sample
-// vault is a real vault now and is entered deliberately, from one affordance,
-// like the private one.
+// The session before either a sample or private vault is explicitly opened.
 export function initialSession(): SurfaceSession {
   return {
     phase: "settled",
@@ -326,7 +322,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return { ...state, askAction: { state: "working", question: action.question } };
     case "asked":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
+      return { ...state, snapshot: { ...state.snapshot, trust: action.trust }, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
     // Settings survive a vault opening and closing: they are this machine's,
     // not this vault's, and clearing them on a source change would make a
     // person say yes to the same thing twice.

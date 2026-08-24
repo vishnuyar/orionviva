@@ -13,7 +13,7 @@ import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import type { ActionResult, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -61,6 +61,11 @@ async function readDocumentsFeature(client: BridgeClient): Promise<FeatureResult
 async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<JobsData>> {
   const [read] = await Promise.allSettled([client.readJobs()]);
   return settled(read, (value) => adaptJobs(value.data));
+}
+
+async function readTrustFeature(client: BridgeClient): Promise<FeatureResult<TrustData>> {
+  const [read] = await Promise.allSettled([client.readTrust()]);
+  return settled(read, (value) => adaptTrust(value.data));
 }
 
 // What the sidecar declares about itself and about its own registry, read here
@@ -133,6 +138,10 @@ export function privateConversationActions(client: BridgeClient): ConversationAc
       const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
       return { result, turn };
     },
+    // A completed turn durably appends one outbound event per model exchange.
+    // Read Trust after the turn so the snapshot cannot remain the one taken
+    // when the vault first opened.
+    rereadTrust: () => readTrustFeature(client),
   };
 }
 

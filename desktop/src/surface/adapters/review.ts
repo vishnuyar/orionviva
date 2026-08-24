@@ -4,7 +4,7 @@ import { isRecord, optionalNonNegativeInteger, textValue, uniqueRecordsById } fr
 // The closed vocabulary an action answers in. A kind outside it is a reply
 // this interface cannot read, and is refused rather than mapped to the
 // nearest word.
-const OUTCOME_KINDS: readonly ActionOutcome[] = ["completed", "refused", "proposal", "waiting", "stale"];
+const OUTCOME_KINDS: readonly ActionOutcome[] = ["completed", "refused", "proposal", "waiting", "stale", "set_aside"];
 
 export function adaptActionOutcome(raw: unknown): ActionOutcomeView | null {
   if (!isRecord(raw)) return null;

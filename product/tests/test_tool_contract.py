@@ -99,11 +99,30 @@ def test_balances_match_the_projection_and_carry_grades(proj, registry):
     # as its weakest part.
     # A card measures what is owed, and it is written and declared as that.
     assert figures["Signature Card — owed"]["grade"] == UNVERIFIED
+
+
+def test_an_unmeasured_asserted_liability_is_not_reported_as_zero(proj):
+    from viva.ledger import LedgerProjection, account_opened
+    from viva.ledger.events import ASSERTED
+
+    asserted = account_opened(
+        "Liabilities:Mortgage:Home", "liability", "Home Mortgage", "USD",
+        "2026-02-01", origin=ASSERTED)
+    projection = LedgerProjection([*_events(), asserted])
+
+    result = ledger_tools.query_ledger(projection, {"entity": "balances"})
+
+    assert result.ok
+    assert not any(f["what"] == "Home Mortgage — owed"
+                   for f in result.figures)
+    assert any("not reported as zero" in caveat for caveat in result.caveats)
+    assert any(item.get("account") == "Liabilities:Mortgage:Home"
+               for item in result.identifiers)
     assert result.grade == UNVERIFIED
     assert "doc-jan" in result.record_ids
     rows = {r["record_id"]: r for r in result.data["balances"]}
     assert "amount" not in rows["chk"] and "grade" not in rows["chk"]
-    assert rows["chk"]["explanation"]
+    assert rows["chk"]["evidence_limitation"]
 
 
 def test_unknown_account_refusal_names_the_known_ones(registry):
@@ -233,14 +252,15 @@ def test_a_total_across_currencies_refuses_rather_than_adding_them():
         assert any(f["currency"] == "USD" for f in one.figures)
 
 
-def test_income_refuses_a_window_rather_than_ignoring_it(registry):
-    """A lifetime figure presented as the answer to a dated question is a
-    wrong number; income refuses the filter instead."""
+def test_income_honours_a_window_instead_of_returning_lifetime(registry):
+    """A dated question gets a dated zero, not a lifetime figure."""
     result = registry.call("query_ledger",
                            {"entity": "aggregate", "metric": "income",
                             "filters": {"window": {"from": "2027-01-01"}}})
-    assert not result.ok and result.refusal == "filter_unsupported"
-    assert "currency" in result.data["supported_filters"]
+    assert result.ok
+    assert result.data["window"] == {"from": "2027-01-01"}
+    assert result.data["by_currency"] == {"USD": "0"}
+    assert any("2027-01-01" in fig["what"] for fig in result.figures)
 
 
 def test_income_names_its_sources_and_says_it_is_lifetime(proj, registry):
@@ -250,6 +270,171 @@ def test_income_names_its_sources_and_says_it_is_lifetime(proj, registry):
     expected = {k: str(v) for k, v in proj.income_by_currency().items()}
     assert result.data["by_currency"] == expected
     assert any("lifetime" in c for c in result.caveats)
+
+
+def test_latest_complete_calendar_month_resolves_to_explicit_dates(registry):
+    args = {"filters": {"window": {
+        "preset": "latest_complete_calendar_month"}}}
+
+    summary = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "spending",
+                         **args})
+    rows = registry.call("list_movements", args)
+
+    expected = {"from": "2026-01-01", "to": "2026-01-31"}
+    assert summary.ok and summary.data["total"] == "100.00"
+    assert summary.covers
+    assert rows.ok and rows.data["window"] == expected
+    assert rows.data["total"] == 4
+
+
+def test_windowed_income_separates_sources_from_unexplained_inflows():
+    projection = LedgerProjection([
+        *_events(),
+        transaction_recorded([
+            Posting("chk", "1000.00", VERIFIED),
+            Posting("Income:Salary", "-1000.00", VERIFIED),
+        ], "PAYROLL", "2026-01-10", provenance=_p("doc-jan")),
+        transaction_recorded([
+            Posting("chk", "40.00", CORROBORATED),
+            Posting("Income:Uncategorized", "-40.00", UNVERIFIED),
+        ], "UNEXPLAINED CREDIT", "2026-01-18", provenance=_p("doc-jan")),
+        transaction_recorded([
+            Posting("chk", "900.00", VERIFIED),
+            Posting("Income:Salary", "-900.00", VERIFIED),
+        ], "PAYROLL", "2026-02-10", provenance=_p("doc-feb")),
+    ])
+    result = default_registry(projection, today="2026-03-01").call(
+        "query_ledger", {"entity": "aggregate", "metric": "income",
+                         "filters": {"window": {
+                             "preset": "latest_complete_calendar_month"}}})
+
+    assert result.ok
+    assert result.data["window"] == {
+        "from": "2026-01-01", "to": "2026-01-31"}
+    assert result.data["by_source"] == {"Income:Salary": "1000.00"}
+    assert result.data["by_currency"] == {"USD": "1000.00"}
+    assert result.data["unexplained_inflows"] == "40.00"
+    assert any(fig["quantity"] == quantity.GROSS_FLOW
+               and fig["value"] == "40.00" for fig in result.figures)
+
+
+def test_income_and_surplus_never_add_or_relabel_different_currencies():
+    """Currency filters select transaction lines before income is summed."""
+    projection = LedgerProjection([
+        account_opened("usd", "depository", "USD account", "USD",
+                       "2026-01-01"),
+        account_opened("eur", "depository", "EUR account", "EUR",
+                       "2026-01-01"),
+        transaction_recorded([
+            Posting("usd", "100.00", VERIFIED),
+            Posting("Income:Salary", "-100.00", VERIFIED),
+        ], "USD PAY", "2026-01-10", provenance=_p("doc-usd")),
+        transaction_recorded([
+            Posting("eur", "200.00", VERIFIED),
+            Posting("Income:Salary", "-200.00", VERIFIED),
+        ], "EUR PAY", "2026-01-10", provenance=_p("doc-eur")),
+    ])
+    registry = default_registry(projection, today="2026-02-01")
+
+    all_income = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "income"})
+    usd_income = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "income",
+                         "filters": {"currency": "USD"}})
+    eur_income = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "income",
+                         "filters": {"currency": "EUR"}})
+
+    assert all_income.data["by_currency"] == {"EUR": "200.00",
+                                               "USD": "100.00"}
+    assert usd_income.data["by_currency"] == {"USD": "100.00"}
+    assert eur_income.data["by_currency"] == {"EUR": "200.00"}
+    assert all(f["currency"] in ("", "USD") for f in usd_income.figures)
+
+    usd_surplus = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "surplus",
+                         "filters": {"currency": "USD"}})
+    assert usd_surplus.ok
+    assert usd_surplus.data["attributed_income"] == "100.00"
+    assert usd_surplus.data["surplus"] == "100.00"
+
+    unexplained = LedgerProjection([
+        account_opened("usd", "depository", "USD account", "USD",
+                       "2026-01-01"),
+        account_opened("eur", "depository", "EUR account", "EUR",
+                       "2026-01-01"),
+        transaction_recorded([
+            Posting("usd", "10.00", VERIFIED),
+            Posting("Income:Uncategorized", "-10.00", UNVERIFIED),
+        ], "USD CREDIT", "2026-01-10", provenance=_p("doc-usd")),
+        transaction_recorded([
+            Posting("eur", "20.00", VERIFIED),
+            Posting("Income:Uncategorized", "-20.00", UNVERIFIED),
+        ], "EUR CREDIT", "2026-01-10", provenance=_p("doc-eur")),
+    ])
+    mixed_surplus = default_registry(unexplained).call(
+        "query_ledger", {"entity": "aggregate", "metric": "surplus"})
+    assert not mixed_surplus.ok
+    assert mixed_surplus.refusal == "mixed_currencies"
+    assert set(mixed_surplus.data["currencies"]) == {"USD", "EUR"}
+
+
+def test_weakest_evidence_ranks_accounts_and_transactions_together(registry):
+    result = registry.call(
+        "query_ledger", {"entity": "aggregate",
+                         "metric": "weakest_evidence"})
+
+    assert result.ok
+    records = result.data["records"]
+    assert {row["record_type"] for row in records} == {
+        "account", "movement"}
+    assert records == sorted(records, key=lambda row: row["rank"])
+    assert records[0]["grade"] == UNVERIFIED
+    assert result.data["ordering"] == (
+        "weakest grade, then largest absolute magnitude")
+    assert all("amount" not in row for row in records)
+    assert result.figures
+
+
+def test_stalest_balance_returns_date_age_amount_and_unbounded_impact(proj):
+    result = default_registry(proj, today="2026-03-01").call(
+        "query_ledger", {"entity": "aggregate", "metric": "stalest_balance"})
+
+    assert result.ok
+    assert result.data["account"] == "brk"
+    assert result.data["date"] == "2026-01-31"
+    assert result.data["age_days"] == 29
+    assert {figure["quantity"] for figure in result.figures} >= {
+        quantity.BALANCE, quantity.TIME, quantity.COUNT}
+    assert any("no supported upper bound" in caveat
+               for caveat in result.caveats)
+
+
+def test_period_surplus_has_its_own_quantity_and_excludes_unexplained_inflows():
+    projection = LedgerProjection([
+        *_events(),
+        transaction_recorded([
+            Posting("chk", "1000.00", VERIFIED),
+            Posting("Income:Salary", "-1000.00", VERIFIED),
+        ], "PAYROLL", "2026-01-10", provenance=_p("doc-jan")),
+        transaction_recorded([
+            Posting("chk", "40.00", CORROBORATED),
+            Posting("Income:Uncategorized", "-40.00", UNVERIFIED),
+        ], "UNEXPLAINED CREDIT", "2026-01-18", provenance=_p("doc-jan")),
+    ])
+    result = default_registry(projection, today="2026-03-01").call(
+        "query_ledger", {"entity": "aggregate", "metric": "surplus",
+                         "filters": {"window": {
+                             "preset": "latest_complete_calendar_month"}}})
+
+    assert result.ok
+    assert result.data["attributed_income"] == "1000.00"
+    assert result.data["counted_spending"] == "100.00"
+    assert result.data["surplus"] == "900.00"
+    assert result.data["unexplained_inflows"] == "40.00"
+    assert any(figure["quantity"] == quantity.NET_MOVEMENT
+               and figure["value"] == "900.00" for figure in result.figures)
 
 
 def test_filters_an_entity_would_ignore_are_refused(registry):
@@ -467,17 +652,17 @@ def _probe_vault(factor="1", more=0):
                                       provenance=_p("doc-one")))
         evs.append(account_opened(f"extra{n}", "depository", f"Extra {n}",
                                   "USD", "2026-01-01"))
-        evs.append(opening_balance_observed(f"extra{n}", scaled("10.00"),
+        evs.append(opening_balance_observed(f"extra{n}", "0.00",
                                             "2026-01-01", _p("doc-one")))
         evs.append(position_observed("brk", f"SYNTH FUND {n}", "1",
-                                     scaled("10.00"), "USD", "2026-01-31",
+                                     "0.00", "USD", "2026-01-31",
                                      provenance=_p("doc-one")))
         evs.append(document_captured(f"doc-more-{n}", f"more{n}.pdf", 10,
                                      "bank_statement", 0.9, "2026-02-01"))
         evs.append(agent_acted("enrich_unknown", "enrich", f"more-{n}", "done",
                                "2026-02-03", calls=1))
         evs.append(question_declined(f"q-more-{n}", "nature", "2026-02-03",
-                                     amount=scaled("300.00")))
+                                     amount="0.00"))
     proj = LedgerProjection(evs)
     return default_registry(proj), proj
 
@@ -501,7 +686,7 @@ def _enumerated_args(schema: dict) -> list:
     return combos
 
 
-def _every_figure(factor="1", more=0) -> dict:
+def _every_figure(factor="1", more=0, stable_only=False) -> dict:
     """Every figure every registered tool emits over one vault, by what it
     says it is. A tool no call here reaches fails the coverage check, so a new
     tool cannot join the registry unexercised."""
@@ -531,6 +716,12 @@ def _every_figure(factor="1", more=0) -> dict:
         if not result.ok:
             continue
         reached.add(name)
+        # Capped rankings and winner selections can replace labels when records
+        # are added, so the monotonic-label set excludes those reads.
+        if (stable_only and name == "query_ledger"
+                and args.get("metric") in {
+                    "weakest_evidence", "stalest_balance"}):
+            continue
         for fig in result.figures:
             out[fig["what"]] = fig
     assert reached == set(registry.names()), (
@@ -550,8 +741,10 @@ def test_every_figure_a_tool_emits_says_what_it_measures():
     a count; one that follows neither — a date, a zero — is left alone."""
     plain = _every_figure()
     scaled = _every_figure(factor="7")
-    longer = _every_figure(more=2)
-    assert len(plain) > 20 and set(plain) <= set(longer)
+    stable_plain = _every_figure(stable_only=True)
+    stable_longer = _every_figure(more=2, stable_only=True)
+    # Every stable figure remains reachable when records are added.
+    assert set(stable_plain) <= set(stable_longer)
     assert set(plain) == set(scaled)
     for what, fig in plain.items():
         currency = fig["currency"]
@@ -559,15 +752,24 @@ def test_every_figure_a_tool_emits_says_what_it_measures():
             f"{what!r} carries {currency!r} as its currency, which is neither "
             "a code nor nothing at all")
         if currency:
-            Decimal(fig["value"])          # an amount is a number, or nothing
-        if fig["value"] != scaled[what]["value"]:
-            assert currency, (
+            value = Decimal(fig["value"])  # an amount is a number, or nothing
+            if value:
+                assert fig["value"] != scaled[what]["value"], (
+                    f"{what!r} claims {currency}, but does not follow the "
+                    "amounts; it is a count wearing a currency label")
+        else:
+            assert fig["value"] == scaled[what]["value"], (
                 f"{what!r} follows the amounts, so it is money, and it states "
                 "no currency")
-        elif fig["value"] != longer.get(what, fig)["value"]:
-            assert not currency, (
-                f"{what!r} follows the number of rows, so it counts things, "
-                f"and it claims to be an amount in {currency}")
+    for what, fig in stable_plain.items():
+        currency = fig["currency"]
+        if fig["value"] != stable_longer[what]["value"] and currency:
+            # Adding records can also change money. A changed value that calls
+            # itself money must independently follow the amount-scaling probe;
+            # otherwise it is really a row count wearing a currency label.
+            assert fig["value"] != scaled[what]["value"], (
+                f"{what!r} follows the number of rows but not their amounts, "
+                f"so it counts things and cannot claim {currency}")
 
 
 def test_no_tool_can_emit_a_figure_that_does_not_say_what_it_measures():

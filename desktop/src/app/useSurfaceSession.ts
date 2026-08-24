@@ -295,7 +295,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
       try {
         const { result, turn } = await conversationActions.ask(question.trim(), mirrored);
-        if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn });
+        const trust = await conversationActions.rereadTrust();
+        if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, trust });
       } finally {
         asking.current = false;
       }

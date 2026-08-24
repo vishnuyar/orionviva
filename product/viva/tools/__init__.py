@@ -42,7 +42,7 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
         fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today)))
     registry.register(ToolSpec(
         name="list_movements", params=ledger_tools.LIST_MOVEMENTS_PARAMS,
-        fn=lambda args: ledger_tools.list_movements(proj, args)))
+        fn=lambda args: ledger_tools.list_movements(proj, args, today)))
     registry.register(ToolSpec(
         name="check_completeness", params=_NO_PARAMS,
         fn=lambda args: ledger_tools.check_completeness(proj, args)))

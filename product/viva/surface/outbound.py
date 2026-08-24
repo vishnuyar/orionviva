@@ -69,7 +69,12 @@ def outbound(events: Iterable[Any], locale: str = "") -> dict[str, Any]:
 
     phases = Counter(_phase(call) for call in calls)
     models = Counter(_model(call) for call in calls if _model(call))
+    reported_models = Counter(_reported_model(call) for call in calls
+                              if _reported_model(call))
+    legacy_models = Counter(_legacy_model(call) for call in calls
+                            if _legacy_model(call))
     days = sorted(_day(call) for call in calls if _day(call))
+    tokens = _tokens(calls)
     return {
         "state": PanelState.READY.value,
         "sentence": moment("outbound_some"),
@@ -88,7 +93,19 @@ def outbound(events: Iterable[Any], locale: str = "") -> dict[str, Any]:
         "models": [
             {"name": name, "count": count} for name, count in sorted(models.items())
         ],
-        "model_sentence": moment("outbound_models", count=render.count(len(models))),
+        **({"reported_models": [
+            {"name": name, "count": count}
+            for name, count in sorted(reported_models.items())
+        ]} if reported_models else {}),
+        **({"legacy_models": [
+            {"name": name, "count": count}
+            for name, count in sorted(legacy_models.items())
+        ]} if legacy_models else {}),
+        **({"tokens": tokens} if tokens is not None else {}),
+        "model_sentence": moment(
+            "outbound_models",
+            count=render.count(len(set(models) | set(reported_models)
+                                   | set(legacy_models)))),
         "span": ({
             "first": days[0], "last": days[-1],
             "sentence": moment("outbound_window",
@@ -119,6 +136,7 @@ def _nothing_left() -> dict[str, Any]:
         "call_count": 0,
         "phases": [],
         "models": [],
+        "legacy_models": [],
         "model_sentence": "",
         "span": None,
         "cost": None,
@@ -141,7 +159,24 @@ def _phase(call: Any) -> str:
 
 def _model(call: Any) -> str:
     body = getattr(call, "body", {}) or {}
+    if body.get("model_role") != "configured_route":
+        return ""
     model = body.get("model", "")
+    return model.strip() if isinstance(model, str) else ""
+
+
+def _legacy_model(call: Any) -> str:
+    """A model value whose configured/provider role is not recorded."""
+    body = getattr(call, "body", {}) or {}
+    if body.get("model_role") == "configured_route":
+        return ""
+    model = body.get("model", "")
+    return model.strip() if isinstance(model, str) else ""
+
+
+def _reported_model(call: Any) -> str:
+    body = getattr(call, "body", {}) or {}
+    model = body.get("resolved_model", "")
     return model.strip() if isinstance(model, str) else ""
 
 
@@ -152,6 +187,32 @@ def _day(call: Any) -> str:
     four in the morning, which is not a fact this record exists to publish."""
     occurred = getattr(call, "occurred_at", "")
     return occurred[:10] if isinstance(occurred, str) and len(occurred) >= 10 else ""
+
+
+def _tokens(calls: list[Any]) -> dict[str, int] | None:
+    """Provider-reported token totals, only where at least one was measured."""
+    inputs = outputs = measured = 0
+    for call in calls:
+        body = getattr(call, "body", {}) or {}
+        # The marker makes zero measurable. Positive unmarked counters also
+        # represent usage; unmarked zero remains absent.
+        explicit = body.get("usage_reported") is True
+        found = False
+        for field, target in (("input_tokens", "input"),
+                              ("output_tokens", "output")):
+            value = body.get(field)
+            if isinstance(value, int) and not isinstance(value, bool) \
+                    and value >= 0 and (explicit or value > 0):
+                if target == "input":
+                    inputs += value
+                else:
+                    outputs += value
+                found = True
+        measured += int(found)
+    if not measured:
+        return None
+    return {"input": inputs, "output": outputs, "total": inputs + outputs,
+            "measured_calls": measured}
 
 
 def _cost(calls: list[Any], locale: str) -> dict[str, Any] | None:

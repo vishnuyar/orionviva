@@ -203,15 +203,8 @@ function EngineRow({ identity }: { identity: FeatureResult<EngineIdentity> }) {
   </section>;
 }
 
-// Everything this vault has ever sent, as the read composed it. Every sentence
-// here was written on the other side of the bridge, including both absences:
-// what the record does not cover, and that nothing outside this machine holds a
-// hash of any of it. A screen that wrote its own caveats would write them out
-// of date the day the capability landed, and nothing would go red.
-//
-// A vault that has sent nothing renders the same panel with the same
-// prominence. The emptiness is the record, and hiding it would keep the promise
-// by having nothing to show rather than by showing it.
+// Renders the outbound record and its backend-composed absences. An empty
+// outbound history remains a ready record and uses the same panel prominence.
 function OutboundRecord({ record }: { record: OutboundRecordView }) {
   return <section className="trust-outbound" aria-labelledby="trust-outbound-title">
     <h3 id="trust-outbound-title">Everything this vault has sent</h3>
@@ -219,7 +212,10 @@ function OutboundRecord({ record }: { record: OutboundRecordView }) {
     {record.phases.length ? <ul className="trust-outbound-phases">{record.phases.map((phase) => <li key={phase.id}>{phase.sentence}</li>)}</ul> : null}
     {record.span ? <p>{record.span.sentence}</p> : null}
     {record.modelSentence ? <p>{record.modelSentence}</p> : null}
-    {record.models.length ? <dl className="trust-outbound-models">{record.models.map((model) => <div key={model.name}><dt>{model.name}</dt><dd>{model.count}</dd></div>)}</dl> : null}
+    {record.models.length ? <><h4>Configured routes</h4><dl className="trust-outbound-models">{record.models.map((model) => <div key={model.name}><dt>{model.name}</dt><dd>{model.count}</dd></div>)}</dl></> : null}
+    {record.reportedModels?.length ? <><h4>Models reported by providers</h4><dl className="trust-outbound-models">{record.reportedModels.map((model) => <div key={model.name}><dt>{model.name}</dt><dd>{model.count}</dd></div>)}</dl></> : null}
+    {record.legacyModels?.length ? <><h4>Older calls with model role unavailable</h4><p>These calls predate separate configured and provider model fields, so their recorded model names cannot be labelled as either.</p><dl className="trust-outbound-models">{record.legacyModels.map((model) => <div key={model.name}><dt>{model.name}</dt><dd>{model.count}</dd></div>)}</dl></> : null}
+    {record.tokens ? <><h4>Provider-reported tokens</h4><dl className="trust-outbound-models"><div><dt>Input</dt><dd>{record.tokens.input}</dd></div><div><dt>Output</dt><dd>{record.tokens.output}</dd></div><div><dt>Total</dt><dd>{record.tokens.total}</dd></div><div><dt>Calls reporting usage</dt><dd>{record.tokens.measuredCalls} of {record.callCount}</dd></div></dl></> : null}
     {record.cost ? <p className="trust-outbound-cost">{record.cost.sentence}</p> : null}
     {record.absences.length ? <ul className="trust-outbound-absences">{record.absences.map((absence) => <li key={absence.id}>{absence.sentence}</li>)}</ul> : null}
   </section>;
@@ -272,14 +268,8 @@ function NoteRows({ notes }: { notes: readonly TrustNote[] }) {
 }
 
 function TrustReady({ data, identity, lifecycle, transfer, settings, maintenance }: { data: TrustData; identity: FeatureResult<EngineIdentity>; lifecycle: FeatureResult<UpdateLifecycleView>; transfer: TransferControls | null; settings: SettingsControls | null; maintenance: MaintenanceControls | null }) {
-  // A vault that has sent nothing is not an empty Trust screen: the outbound
-  // record is present and says so, which is the whole of what this destination
-  // is for.
-  //
-  // This screen used to carry a second version of itself for the sample vault
-  // — thirteen authored rows saying which capabilities the preview did not
-  // have. They described a fixture. What is here now describes a vault, and
-  // the sample vault is one, so it answers the same questions the same way.
+  // A ready outbound record keeps Trust non-empty even when it reports no calls.
+  // Sample and private vaults render the same vault-backed Trust data.
   const empty = !data.notes.length && !data.outbound && !(data.absences ?? []).length;
   return <section className="feature-panel trust-panel"><header className="trust-header"><div className="detail-panel-label">Supplied Trust view</div><h2>Trust and limitations</h2><p>These notes are shown exactly as supplied by the Trust view. This interface does not independently verify them or establish a complete outbound, integrity, anchoring, or recovery history.</p></header><EngineRow identity={identity} /><UpdateLifecycle lifecycle={lifecycle} /><Absences absences={data.absences ?? []} />{data.outbound ? <OutboundRecord record={data.outbound} /> : null}{maintenance ? <Maintenance controls={maintenance} /> : null}{settings ? <Configuration controls={settings} /> : null}{transfer ? <VaultCopy transfer={transfer} /> : null}{empty ? <div className="empty-state"><strong>No Trust notes supplied</strong><span>The supplied Trust view contains no notes. This does not establish zero outbound, model, or maintenance activity, or any integrity or recovery status.</span></div> : <section className="trust-notes" aria-labelledby="trust-notes-title"><h3 id="trust-notes-title">Notes supplied by this Trust view</h3><p>A supplied note is displayed text, not an independently verified guarantee or complete history.</p><NoteRows notes={data.notes} /></section>}</section>;
 }

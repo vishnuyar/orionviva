@@ -33,10 +33,17 @@ class TxnLine:
     amount: Decimal
     grade: str
     provenance: Provenance
+    # Currency belongs to the real account leg that gave this posting meaning.
+    # Counter accounts (Income:*, Expenses:*) do not have independent account
+    # metadata, so the transaction fold carries the sole real-leg currency onto
+    # every line. Empty means the transaction could not be attributed to one
+    # currency and must never be relabelled by a read.
+    currency: str = ""
 
     def to_dict(self) -> dict:
         return {"date": self.date, "description": self.description,
                 "amount": str(self.amount), "grade": self.grade,
+                "currency": self.currency,
                 "provenance": self.provenance.to_dict()}
 
 
@@ -427,23 +434,36 @@ class ProjectionCore:
                 bucket[instrument] = record
 
         elif et == "TransactionRecorded":
+            postings = list(postings_of(event))
+            # A normal transaction has one currency even though one of its
+            # legs is a synthetic income/expense account. Infer it only from
+            # already-declared account metadata; ambiguity remains empty.
+            currencies = {
+                self._acct[p.account].currency
+                for p in postings
+                if p.account in self._acct and self._acct[p.account].currency
+            }
+            transaction_currency = next(iter(currencies)) \
+                if len(currencies) == 1 else ""
             if did:
                 self._posted.add(did)
-            for _p in postings_of(event):
+            for _p in postings:
                 if _p.account == "Income:Salary":
                     self._decomposed.add((event.body.get("description", ""),
                                           event.occurred_at, str(-_p.amount)))
             # A new descriptor may resolve differently once the ACH corpus
             # grows, so the key map is dropped rather than extended.
             self._mkeys, self._mkeys_of = None, {}
-            for p in postings_of(event):
+            for p in postings:
                 st = self._state(p.account)
                 st.seen = True
                 st.balance += p.amount           # transaction postings only (no OBE)
                 st.lines.append(TxnLine(
                     date=event.occurred_at,
                     description=event.body.get("description", ""),
-                    amount=p.amount, grade=p.grade, provenance=event.provenance))
+                    amount=p.amount, grade=p.grade,
+                    provenance=event.provenance,
+                    currency=st.currency or transaction_currency))
                 # Period deltas exclude the opening seed (that's tracked apart),
                 # so reconciliation is opening + period == closing.
                 if p.account != EQUITY_OPENING:

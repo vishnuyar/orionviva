@@ -35,6 +35,10 @@ class ModelPhase:
     input_mode: str = "text+image"
     parse_ok: bool = True
     error: str | None = None
+    resolved_model: str = ""
+    # Token counters are meaningful only if the provider response actually
+    # carried usage. Adapter defaults of zero are not measurements.
+    usage_reported: bool = False
 
 
 @dataclass
@@ -59,6 +63,8 @@ class ReadResult:
     input_tokens: int = 0
     output_tokens: int = 0
     phases: list[ModelPhase] = field(default_factory=list)
+    resolved_model: str = ""
+    usage_reported: bool = False
 
 
 @dataclass

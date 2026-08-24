@@ -3,6 +3,7 @@
 import datetime
 import hashlib
 import json
+import re
 
 import pytest
 
@@ -179,7 +180,10 @@ def _turn(tool_calls=None, text="", raw_arguments=None):
                     finish_reason="tool_calls" if calls else "stop",
                     input_tokens=10, output_tokens=5, cost_usd=0.001,
                     latency_s=0.1, resolved_model="scripted-model",
-                    request={"messages": "elided"}, response={"scripted": True})
+                    request={"messages": "elided"},
+                    response={"scripted": True,
+                              "usage": {"prompt_tokens": 10,
+                                        "completion_tokens": 5}})
 
 
 class ChatScript:
@@ -702,6 +706,7 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
     for event in log.events:
         assert event.body["phase"] == "speak"
         assert event.body["model"] == "pinned-model"
+        assert event.body["resolved_model"] == "scripted-model"
         assert event.body["input_mode"] == "native-tools"
         assert event.body["parse_ok"] is True
         payload = json.loads(event.body["response_text"])
@@ -712,6 +717,15 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
         assert payload["verdict"]["answered"] is True
     assert log.events[0].body["doc_id"] == "speak:s-test:1:1"
     assert log.events[-1].body["doc_id"] == "speak:s-test:1:3"
+    from viva.surface.outbound import outbound
+    record = outbound(log.events)
+    assert record["call_count"] == 3
+    assert record["models"] == [{"name": "pinned-model", "count": 3}]
+    assert record["reported_models"] == [
+        {"name": "scripted-model", "count": 3}]
+    assert record["span"]["last"] == "2026-02-06"
+    assert record["tokens"] == {
+        "input": 30, "output": 15, "total": 45, "measured_calls": 3}
     # What was said is kept as the structure it was, so a sentence can be shown
     # standing on what it stood on.
     kept = json.loads(log.events[-1].body["response_text"])
@@ -720,6 +734,154 @@ def test_a_session_records_every_exchange_in_the_ledger(registry):
                                                      "quantity": "balance",
                                                      "scope": ["account"]}]
     assert kept["bindings"] == {"balance": {"figure": "f1"}}
+
+
+# The ten acceptance questions and the exact read plans expected for each.
+LIVE_ACCEPTANCE_ROUTES = {
+    "What is my current net worth? Separate directly supported figures from estimates, stale balances, and accounts that are not counted.": [
+        ("query_ledger", {"entity": "aggregate", "metric": "net_worth"}),
+    ],
+    "List each account in this vault with its latest supported balance, statement date, and evidence quality. Say clearly where the records are incomplete.": [
+        ("query_ledger", {"entity": "balances"}),
+        ("check_completeness", {}),
+    ],
+    "For the most recent complete calendar month represented in this vault, how much did I spend, and what were the three largest spending categories? State the exact date range and what was excluded.": [
+        ("query_ledger", {"entity": "aggregate", "metric": "spending",
+                          "group_by": "category",
+                          "filters": {"window": {
+                              "preset": "latest_complete_calendar_month"}}}),
+    ],
+    "For that same month, what were the three largest individual spending movements? Give the date, counterparty, amount, account, and any uncertainty for each.": [
+        ("list_movements", {"filters": {"window": {
+            "from": "2026-01-01", "to": "2026-01-31"}}}),
+    ],
+    "How much income is supported by the records in the most recent complete calendar month, and which sources contributed to it? Separate attributed income from unexplained inflows.": [
+        ("query_ledger", {"entity": "aggregate", "metric": "income",
+                          "filters": {"window": {
+                              "preset": "latest_complete_calendar_month"}}}),
+    ],
+    "Compare supported income with supported spending for the most recent complete calendar month. What was the resulting surplus or shortfall, and what prevents that comparison from being complete?": [
+        ("query_ledger", {"entity": "aggregate", "metric": "surplus",
+                          "filters": {"window": {
+                              "preset": "latest_complete_calendar_month"}}}),
+    ],
+    "Which account balance is stalest, how old is it, and how much could that staleness affect the financial picture?": [
+        ("query_ledger", {"entity": "aggregate",
+                          "metric": "stalest_balance"}),
+    ],
+    "Which transactions or balances currently have the weakest evidence quality? List the most financially significant ones first and explain the limitation.": [
+        ("query_ledger", {"entity": "aggregate",
+                          "metric": "weakest_evidence"}),
+    ],
+    "What recurring spending patterns are supported by this vault, and which three recurring counterparties account for the most spending? State the period covered.": [
+        ("query_ledger", {"entity": "aggregate",
+                          "metric": "recurring_spending"}),
+    ],
+    "Give me a concise financial health summary based only on this vault: liquidity, debt, recent cash flow, and the three most important gaps I should resolve before trusting the picture.": [
+        ("query_ledger", {"entity": "balances"}),
+        ("query_ledger", {"entity": "aggregate", "metric": "surplus",
+                          "filters": {"window": {
+                              "preset": "latest_complete_calendar_month"}}}),
+        ("check_completeness", {}),
+    ],
+}
+
+
+class _AcceptanceRoutingProvider:
+    """Return deterministic tool calls for the ten acceptance questions."""
+
+    def __init__(self):
+        self.calls = 0
+        self.seen = []
+
+    def converse(self, messages, tools):
+        self.seen.append([dict(message) for message in messages])
+        question = next(message["content"] for message in reversed(messages)
+                        if message.get("role") == "user")
+        self.calls += 1
+        if self.calls == 1:
+            return _turn([_shape_call((
+                "The requested read establishes {value}.",
+                [("value", "money", "balance", "whole")]))])
+        route = LIVE_ACCEPTANCE_ROUTES[question]
+        if question.startswith("For that same month"):
+            # Resolve the follow-up period from the prior answer.
+            prior_answer = next(
+                (message.get("content", "") for message in reversed(messages)
+                 if message.get("role") == "assistant"
+                 and isinstance(message.get("content"), str)
+                 and message.get("content")), "")
+            dates = re.findall(r"\d{4}-\d{2}-\d{2}", prior_answer)
+            if len(dates) < 2:
+                raise AssertionError("same-month route had no resolved prior period")
+            route = [("list_movements", {"filters": {"window": {
+                "from": dates[-2], "to": dates[-1]}}})]
+        calls = [_call(name, args, call_id=f"accept-{index}")
+                 for index, (name, args) in enumerate(route, 1)]
+        return _turn(calls)
+
+
+def test_the_ten_exact_live_questions_plan_complete_deterministic_reads():
+    """The ten questions plan valid reads in one continuous conversation."""
+    from _tool_test_support import _events as acceptance_events
+    registry = default_registry(LedgerProjection(acceptance_events()),
+                                today="2026-03-01")
+    prior = []
+    planned_by_question = {}
+    for question, expected in LIVE_ACCEPTANCE_ROUTES.items():
+        provider = _AcceptanceRoutingProvider()
+        planner = NativePlanner(provider, prior)
+        context = {"question": question, "results": [],
+                   "calls_remaining": 12, "shaped": False}
+        shaped = planner(context)
+        assert "shape" in shaped
+
+        context["shaped"] = True
+        context["results"].append({"tool": SHAPE_TOOL, "ok": True})
+        planned = []
+        for index in range(len(expected)):
+            step = planner(context)
+            planned.append((step["tool"], step["args"]))
+            if index + 1 < len(expected):
+                context["results"].append({"tool": step["tool"], "ok": True})
+        planned_by_question[question] = planned
+        assert planned == expected
+        outcomes = []
+        for name, args in planned:
+            outcome = registry.call(name, args)
+            assert outcome.refusal != "invalid_arguments", (question, name,
+                                                              outcome.text)
+            outcomes.append(outcome)
+        prior_answer = "The grounded acceptance read completed."
+        if question.startswith("For the most recent complete calendar month"):
+            period = next(
+                cut for figure in outcomes[0].figures
+                for cut in figure.get("boundary", {}).get("cut", [])
+                if cut.get("kind") == "period")
+            prior_answer = (f"The resolved period was {period['value']} through "
+                            f"{period['to']}.")
+        prior.append((question, prior_answer))
+
+    questions = list(LIVE_ACCEPTANCE_ROUTES)
+    same_month = planned_by_question[questions[3]][0][1]
+    assert same_month["filters"]["window"] == {
+        "from": "2026-01-01", "to": "2026-01-31"}
+
+
+def test_same_month_routing_changes_when_the_prior_resolved_month_changes():
+    question = list(LIVE_ACCEPTANCE_ROUTES)[3]
+    provider = _AcceptanceRoutingProvider()
+    planner = NativePlanner(provider, [
+        ("Which month?", "The resolved period was 2026-02-01 through 2026-02-28.")])
+    context = {"question": question, "results": [],
+               "calls_remaining": 4, "shaped": False}
+    assert "shape" in planner(context)
+    context.update(shaped=True, results=[{"tool": SHAPE_TOOL, "ok": True}])
+
+    step = planner(context)
+
+    assert step == {"tool": "list_movements", "args": {"filters": {"window": {
+        "from": "2026-02-01", "to": "2026-02-28"}}}}
 
 
 def test_the_capture_says_which_exchange_authored_a_sentence_and_what_broke(

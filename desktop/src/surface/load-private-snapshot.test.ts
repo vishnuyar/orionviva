@@ -7,16 +7,14 @@ import { privateSource, sampleSource } from "./sources";
 function client(data: Partial<Record<SurfaceName, unknown>> = {}): BridgeClient {
   const defaults: Record<SurfaceName, unknown> = { overview: { accounts: [] }, documents: { documents: [] }, review: { questions: [], total: 0 }, jobs: { state: "absent", jobs: [], running: [] }, trust: { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } }, activity: { state: "absent", sentence: "Nothing has moved.", beyond: { count: 0 } } };
   const read = async (surface: SurfaceName) => ({ surface, job_id: `test-${surface}`, data: surface in data ? data[surface] : defaults[surface] });
-  return { openVault: async () => undefined, openSampleVault: async () => ({ title: "a frame title", detail: "a frame detail", leave: "a way out" }), readOverview: () => read("overview"), readDocuments: () => read("documents"), readReview: () => read("review"), readJobs: () => read("jobs"), readTrust: () => read("trust"), readActivity: () => read("activity"), handshake: async () => ({ protocol: "2.0", transport: "json-lines", revision: "abcdef123456" }), readCapabilities: async () => ({ protocol: "2.0", capabilities: [], destinations: { overview: true, documents: true, review: true } }), askViva: async () => ({ kind: "completed", message: "Something.", state: { question: "what?", text: "Something.", answered: true, refusal: "", grade: "", grade_sentence: "", figures: [], spoken: { may_speak: true, withheld: "", parts: ["text"], text: "Something.", grade_sentence: "", citation_sentence: "", local_only: "Local only." } }, reason: null }), answerQuestion: async () => ({ kind: "completed", message: "Recorded.", state: null, reason: null }), declineQuestion: async () => ({ kind: "completed", message: "Set aside.", state: null, reason: null }), cancelJob: async () => ({ kind: "completed", message: "Stopped.", state: null, reason: null }), readLifecycle: async () => ({ state: "absent", revision: "abcdef123456", origin: "packaged", origin_sentence: "a sentence about how this copy got here", sentence: "a sentence about no channel", notes: [] }), readSettings: async () => ({ state: "ready", locale: "en-US", currency: "USD", adapter: "", model: "", base_url: "", key_set: false, can_send: false }), proposeSettings: async () => ({ kind: "proposal", message: "Here is what would change.", state: { kind: "presentation", changes: { locale: "en-IN" }, sends: false, digest: "abc123" }, reason: null }), confirmSettings: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }), rescanDocuments: async () => ({ kind: "completed", message: "Nothing changed.", state: { sentence: "Nothing changed.", changes: [], standing: [], link_count: 0 }, reason: null }), runMaintenance: async () => ({ kind: "completed", message: "Planned.", state: { dry_run: true, calls_spent: 0 }, reason: null }), writeDiagnostic: async () => ({ kind: "completed", message: "Written.", state: { file: "/tmp/d.json" }, reason: null }), exportVault: async () => ({ kind: "completed", message: "Copied.", state: null, reason: null }), restoreVault: async () => ({ kind: "completed", message: "Back.", state: null, reason: null }), uploadDocument: async () => ({ kind: "completed", message: "Saved.", state: null, reason: null }) };
+  return { openVault: async () => undefined, openSampleVault: async () => ({ title: "a frame title", detail: "a frame detail", leave: "a way out" }), readOverview: () => read("overview"), readDocuments: () => read("documents"), readReview: () => read("review"), readJobs: () => read("jobs"), readTrust: () => read("trust"), readActivity: () => read("activity"), handshake: async () => ({ protocol: "2.0", transport: "json-lines", revision: "abcdef123456" }), readCapabilities: async () => ({ protocol: "2.0", capabilities: [], destinations: { overview: true, documents: true, review: true } }), askViva: async () => ({ kind: "completed", message: "Something.", state: { question: "what?", text: "Something.", answered: true, refusal: "", grade: "", grade_sentence: "", figures: [], spoken: { may_speak: true, withheld: "", parts: ["text"], text: "Something.", grade_sentence: "", citation_sentence: "", local_only: "Local only." } }, reason: null }), answerQuestion: async () => ({ kind: "completed", message: "Recorded.", state: null, reason: null }), declineQuestion: async () => ({ kind: "set_aside", message: "Set aside.", state: null, reason: null }), cancelJob: async () => ({ kind: "completed", message: "Stopped.", state: null, reason: null }), readLifecycle: async () => ({ state: "absent", revision: "abcdef123456", origin: "packaged", origin_sentence: "a sentence about how this copy got here", sentence: "a sentence about no channel", notes: [] }), readSettings: async () => ({ state: "ready", locale: "en-US", currency: "USD", adapter: "", model: "", base_url: "", key_set: false, can_send: false }), proposeSettings: async () => ({ kind: "proposal", message: "Here is what would change.", state: { kind: "presentation", changes: { locale: "en-IN" }, sends: false, digest: "abc123" }, reason: null }), confirmSettings: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }), rescanDocuments: async () => ({ kind: "completed", message: "Nothing changed.", state: { sentence: "Nothing changed.", changes: [], standing: [], link_count: 0 }, reason: null }), runMaintenance: async () => ({ kind: "completed", message: "Planned.", state: { dry_run: true, calls_spent: 0 }, reason: null }), writeDiagnostic: async () => ({ kind: "completed", message: "Written.", state: { file: "/tmp/d.json" }, reason: null }), exportVault: async () => ({ kind: "completed", message: "Copied.", state: null, reason: null }), restoreVault: async () => ({ kind: "completed", message: "Back.", state: null, reason: null }), uploadDocument: async () => ({ kind: "completed", message: "Saved.", state: null, reason: null }) };
 }
 
 describe("surface loading boundary", () => {
 
   it("reads the sample vault through the same loader as a private one", async () => {
-    // The sample used to be a second implementation of this seam, loading
-    // fixtures composed in the shell. It is a vault now, so it comes back
-    // through the same reads, and the only thing that tells it apart is the
-    // frame the sidecar sent to draw around it.
+    // Both vault kinds use the same reads; only the sample frame distinguishes
+    // the sample source.
     const bridge = client();
     const sample = sampleSource(bridge, { title: "a frame title", detail: "a frame detail", leave: "a way out" });
     const snapshot = await sample.load();
@@ -128,8 +126,25 @@ describe("surface loading boundary", () => {
       expect(typeof source.reviewActions.decline).toBe("function");
       expect(typeof source.reviewActions.reread).toBe("function");
     }
-    await expect(actions.decline("q-1", "not_now")).resolves.toEqual({ state: "settled", outcome: { kind: "completed", message: "Set aside.", reason: "" } });
+    await expect(actions.decline("q-1", "not_now")).resolves.toEqual({ state: "settled", outcome: { kind: "set_aside", message: "Set aside.", reason: "" } });
     await expect(actions.reread()).resolves.toEqual({ state: "ready", data: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } });
+  });
+
+  it("offers a fresh Trust read beside every Ask Viva action", async () => {
+    let reads = 0;
+    const base = client();
+    const source = privateSource({
+      ...base,
+      readTrust: async () => ({
+        surface: "trust", job_id: "trust-after-ask",
+        data: { state: "ready", notes: [], outbound: { state: "ready", sentence: "One call left.", call_count: ++reads, phases: [], models: [], reported_models: [], model_sentence: "", span: null, cost: null, absences: [] } },
+      }),
+    });
+
+    const reread = await source.conversationActions?.rereadTrust();
+
+    expect(reads).toBe(1);
+    expect(reread).toMatchObject({ state: "ready", data: { outbound: { callCount: 1, sentence: "One call left." } } });
   });
 
   it("keeps four unlike replies to one verb in four channels", async () => {

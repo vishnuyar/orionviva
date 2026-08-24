@@ -137,15 +137,16 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         doc_id, filename, len(data), rr.doc_type, rr.doc_type_confidence,
         captured_at, Provenance(doc_id=doc_id)))
 
-    # The claims layer: persist the verbatim model output for any real read. A
-    # two-phase read records one ReadRecorded per phase (classify + extract); a
-    # legacy single-call reader (or stub) records one via the flat fields.
+    # Persist each phase's verbatim model output. Readers exposing only the flat
+    # result fields produce one recorded read.
     if rr.phases:
         for ph in rr.phases:
             ledger.append(read_recorded(
                 doc_id, ph.model, ph.prompt_version, ph.input_mode, ph.raw_text,
                 ph.cost_usd, ph.input_tokens, ph.output_tokens, ph.parse_ok,
-                ph.error, captured_at, Provenance(doc_id=doc_id), phase=ph.phase))
+                ph.error, captured_at, Provenance(doc_id=doc_id), phase=ph.phase,
+                resolved_model=ph.resolved_model,
+                usage_reported=ph.usage_reported))
             log.info("ingest: stored ReadRecorded phase=%s (model=%s cost=$%.4f "
                      "parse_ok=%s resp_chars=%d)", ph.phase, ph.model, ph.cost_usd,
                      ph.parse_ok, len(ph.raw_text))
@@ -153,7 +154,9 @@ def capture_and_ingest(raw: RawStore, ledger: Ledger, data: bytes,
         ledger.append(read_recorded(
             doc_id, rr.model, rr.prompt_version, rr.input_mode, rr.raw_text,
             rr.cost_usd, rr.input_tokens, rr.output_tokens,
-            rr.facts is not None, rr.error, captured_at, Provenance(doc_id=doc_id)))
+            rr.facts is not None, rr.error, captured_at, Provenance(doc_id=doc_id),
+            resolved_model=rr.resolved_model,
+            usage_reported=rr.usage_reported))
         log.info("ingest: stored ReadRecorded (model=%s cost=$%.4f parse_ok=%s "
                  "resp_chars=%d)", rr.model, rr.cost_usd, rr.facts is not None,
                  len(rr.raw_text))

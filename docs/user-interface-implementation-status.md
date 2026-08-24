@@ -46,7 +46,9 @@ activity, document capture and rescan, process-local jobs and cancellation,
 review answer and decline, Ask Viva text turns, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
 identity, vault export and restore, maintenance, and privacy-filtered diagnostic
-export.
+export. Trust refreshes after each Ask Viva turn, separates configured routes
+from provider-reported identities, leaves older ambiguous model fields
+unlabelled, and reports tokens only for calls whose providers supplied usage.
 
 ## Coverage tables
 

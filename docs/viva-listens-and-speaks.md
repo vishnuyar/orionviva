@@ -7,13 +7,14 @@
 
 ### VOICE-50 — a Proposal is the only path to a change, and it is never applied unconfirmed
 **State:** enforced
-**Code:** product/viva/listen.py:340 (`Proposal`), :658 (`apply_proposal`), product/viva/engine.py:165 (`confirm_proposal`)
-**Test:** product/tests/test_listen.py::test_applying_is_a_separate_explicit_act
+**Code:** product/viva/listen.py (`Proposal`, `apply_proposal`), product/viva/engine.py (`confirm_proposal`), product/viva/desktop_bridge/review_actions.py (`outcome_of`)
+**Test:** product/tests/test_listen.py::test_applying_is_a_separate_explicit_act, product/tests/test_review_actions.py::test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written
 
 1. A Proposal is a structured, un-applied intent: what it would change, how much money it moves, the evidence behind it, how confident it is, how to reverse it.
 2. Proposing and applying are separate acts; anything but a yes writes nothing.
 3. A proposal states what it does not know, and names each meaning once.
 4. X3 is satisfied structurally rather than by prompt: a Proposal is by definition not applied until confirmed.
+5. The interface boundary preserves an unconfirmed Proposal as `proposal`, never as a completed write or an unreadable outcome; setting a question aside is likewise its own `set_aside` outcome rather than an answered question.
 
 ### VOICE-51 — the interpreter never supplies a figure
 **State:** enforced

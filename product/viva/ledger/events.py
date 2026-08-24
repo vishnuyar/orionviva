@@ -272,10 +272,11 @@ def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
                   response_text: str, cost_usd: float, input_tokens: int,
                   output_tokens: int, parse_ok: bool, parse_error: str | None,
                   occurred_at: str, provenance: Provenance | None = None,
-                  phase: str = "extract") -> Event:
-    """What a model asserted, verbatim, on one read: the model and prompt
-    version, the input mode, the raw response text, the cost and token counts,
-    and whether the response parsed.
+                  phase: str = "extract", resolved_model: str = "",
+                  usage_reported: bool | None = None) -> Event:
+    """What a model asserted, verbatim, on one read: configured and reported
+    model identities, prompt version, input mode, raw response text, cost,
+    provider-reported token counts where present, and parse status.
 
     A two-phase read records one of these per phase — ``phase='classify'`` (the
     type decision) and ``phase='extract'`` (the figures) — each with its own
@@ -283,15 +284,29 @@ def read_recorded(doc_id: str, model: str, prompt_version: str, input_mode: str,
 
     The request is not stored; it is reconstructable from the captured raw
     document plus the versioned prompt."""
-    return Event(
-        "ReadRecorded", occurred_at,
-        body={"doc_id": doc_id, "model": model, "prompt_version": prompt_version,
-              "input_mode": input_mode, "response_text": response_text,
-              "cost_usd": cost_usd, "input_tokens": input_tokens,
-              "output_tokens": output_tokens, "parse_ok": parse_ok,
-              "parse_error": parse_error, "phase": phase},
-        provenance=provenance or Provenance(doc_id=doc_id),
-    )
+    body = {"doc_id": doc_id, "model": model,
+            # This marker makes `model` a configured route. Without it, readers
+            # treat the field's role as unknown.
+            "model_role": "configured_route",
+            "prompt_version": prompt_version, "input_mode": input_mode,
+            "response_text": response_text, "cost_usd": cost_usd,
+            "parse_ok": parse_ok, "parse_error": parse_error,
+            "phase": phase}
+    # The configured route and the provider's reported model are separate audit
+    # facts; the reported field is omitted when the provider supplies none.
+    if resolved_model:
+        body["resolved_model"] = resolved_model
+    # Positive counters without an explicit marker count as measured usage;
+    # zero requires the marker because an adapter default is not a measurement.
+    measured = (usage_reported is True
+                or (usage_reported is None
+                    and (input_tokens > 0 or output_tokens > 0)))
+    if measured:
+        body.update({"input_tokens": input_tokens,
+                     "output_tokens": output_tokens,
+                     "usage_reported": True})
+    return Event("ReadRecorded", occurred_at, body=body,
+                 provenance=provenance or Provenance(doc_id=doc_id))
 
 
 def transfer_linked(movement_a: str, movement_b: str, grade: str,

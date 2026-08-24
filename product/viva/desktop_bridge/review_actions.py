@@ -90,7 +90,14 @@ def outcome_of(result: Mapping[str, Any]) -> ActionOutcome:
         return ActionOutcome("refused", message or moment("reply_ask_again"),
                              reason=why)
     if "proposal" in result:
-        raise UnreadableOutcome(moment("outcome_held"))
+        # A proposal is an unapplied state awaiting a separate confirmation.
+        proposal = result.get("proposal")
+        state = proposal if isinstance(proposal, dict) else None
+        return ActionOutcome("proposal", message or moment("outcome_held"),
+                             state=state)
+    if result.get("disposition") == "set_aside":
+        return ActionOutcome("set_aside", message or moment("not_now_ack",
+                                                             name_part=""))
     if result.get("recorded") is False:
         return ActionOutcome("waiting", message or moment("reply_document_awaited"))
     return ActionOutcome("completed", message or moment("reply_recorded"))

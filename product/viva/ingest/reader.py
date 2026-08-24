@@ -102,18 +102,9 @@ _SLOT = "{{DOCUMENT_TEXT}}"
 def _with_embedded(prompt: str, embedded_text: str) -> tuple[str, str]:
     """Compose the trusted prompt with the document's own text, framed.
 
-    Returns (text, frame_version). The document's text arrives from a file
-    somebody else wrote and reaches the model verbatim; before this it was
-    appended behind a one-line hint with no closing delimiter, which left it in
-    the last position a model reads — the strongest place an instruction can
-    sit. A PDF can carry text that is invisible on the page and still extracts,
-    so "it does not look like an instruction" is not something a person can
-    check by looking.
-
-    The frame closes the block and re-states the task after it, so the last
-    words are the trusted ones. A transcript that contains the closing tag
-    itself would otherwise end the block early and put the rest back outside it,
-    so any occurrence is defanged rather than passed through."""
+    Returns ``(text, frame_version)``. The frame closes the untrusted document
+    block and restates the trusted task afterwards. Embedded closing tags are
+    defanged so document text cannot terminate its own frame."""
     frame = prompt_library.fragment(EMBEDDED_FRAME)
     before, after = frame.split(_SLOT, 1)
     safe = embedded_text.replace("</untrusted_document_text>",
@@ -121,7 +112,19 @@ def _with_embedded(prompt: str, embedded_text: str) -> tuple[str, str]:
     return prompt + "\n\n" + before + safe + after, EMBEDDED_FRAME
 
 
-def classify(adapter, pages: list[PageImage], embedded_text: str
+def _usage_reported(response: object) -> bool:
+    """Whether a provider response contains token usage, not adapter zeros."""
+    if not isinstance(response, dict):
+        return False
+    usage = response.get("usage")
+    if not isinstance(usage, dict):
+        return False
+    return any(key in usage for key in (
+        "prompt_tokens", "completion_tokens", "input_tokens", "output_tokens"))
+
+
+def classify(adapter, pages: list[PageImage], embedded_text: str,
+             configured_model: str = ""
              ) -> tuple[str, float, ModelPhase]:
     """Phase 1: name the document.
 
@@ -139,10 +142,12 @@ def classify(adapter, pages: list[PageImage], embedded_text: str
     log.info("reader: classified %r (conf=%.2f, cost $%.4f)",
              doc_type, conf, result.cost_usd)
     phase = ModelPhase(
-        phase="classify", model=result.resolved_model, prompt_version=version,
+        phase="classify", model=configured_model or result.resolved_model,
+        resolved_model=result.resolved_model, prompt_version=version,
         raw_text=result.text, cost_usd=result.cost_usd,
         input_tokens=result.input_tokens, output_tokens=result.output_tokens,
-        input_mode="text+image", parse_ok=doc_type != "unknown")
+        input_mode="text+image", parse_ok=doc_type != "unknown",
+        usage_reported=_usage_reported(result.response))
     return doc_type, conf, phase
 
 
@@ -159,7 +164,8 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
              len(pages), len(embedded_text), locale, currency)
     adapter = adapter_for(spec)
 
-    doc_type, conf, classify_phase = classify(adapter, pages, embedded_text)
+    doc_type, conf, classify_phase = classify(
+        adapter, pages, embedded_text, configured_model=spec.model)
 
     composed = extraction_prompt_for(doc_type)
     if composed is None:
@@ -183,7 +189,7 @@ def read_statement(pdf_bytes: bytes, doc_id: str, spec: ModelSpec,
     prompt_version = f"{prompt_version}+{frame_version}"
     rr = read_with_retry(lambda p: adapter.extract(pages, p), framed,
                          doc_id, locale, currency, prompt_version=prompt_version,
-                         parse_fn=parse_fn)
+                         parse_fn=parse_fn, configured_model=spec.model)
     # The extract prompt does not ask the model to re-decide the type, so the
     # classification is stamped onto the facts and the result.
     rr.doc_type = doc_type
@@ -268,20 +274,23 @@ def build_reader():
 
 def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
                     currency: str, prompt_version: str = "",
-                    max_retries: int = 1, parse_fn=from_model_json) -> ReadResult:
+                    max_retries: int = 1, parse_fn=from_model_json,
+                    configured_model: str = "") -> ReadResult:
     """The extract phase: call the model and parse, re-asking on a parse failure.
 
     ``extract(prompt) -> ModelResult`` is injected, so this runs without the
     network; ``parse_fn`` is the type's facts parser. Retries up to
     ``max_retries`` times, and the retry names the offending field for a value
     error and asks for valid JSON for a syntax error. ``cost_usd`` on the result
-    is the total across every attempt. Returns a ReadResult carrying one extract
-    phase, with ``facts=None`` and ``error`` set when it never parsed."""
+    is the total across every attempt. Every outbound request is retained as a
+    distinct extract phase; ``facts=None`` and ``error`` are set when none
+    parsed."""
     result = extract(prompt)
     facts, err = parse_fn(result.text, doc_id, locale, currency)
     total_cost = result.cost_usd
     tries = 0
     used_versions: set[str] = set()
+    attempts = [(result, prompt_version, err)]
     while err is not None and tries < max_retries:
         tries += 1
         log.warning("reader: parse FAILED (%s); re-asking the model (retry %d)",
@@ -299,6 +308,10 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
         result = extract(retry_prompt)
         total_cost += result.cost_usd
         facts, err = parse_fn(result.text, doc_id, locale, currency)
+        attempt_version = prompt_version
+        for extra in sorted(used_versions):
+            attempt_version = f"{attempt_version}+{extra}"
+        attempts.append((result, attempt_version, err))
 
     log.info("reader: model %s replied %d chars, cost $%.4f (parse_ok=%s%s)",
              result.resolved_model, len(result.text), total_cost, err is None,
@@ -308,15 +321,27 @@ def read_with_retry(extract, prompt: str, doc_id: str, locale: str,
     for extra in sorted(used_versions):
         prompt_version = f"{prompt_version}+{extra}"
 
-    phase = ModelPhase(
-        phase="extract", model=result.resolved_model,
-        prompt_version=prompt_version, raw_text=result.text, cost_usd=total_cost,
-        input_tokens=result.input_tokens, output_tokens=result.output_tokens,
-        input_mode="text+image", parse_ok=err is None, error=err)
-    common = dict(raw_text=result.text, model=result.resolved_model,
+    phases = [ModelPhase(
+        phase="extract",
+        model=configured_model or attempt.resolved_model,
+        resolved_model=attempt.resolved_model,
+        prompt_version=attempt_version, raw_text=attempt.text,
+        cost_usd=attempt.cost_usd,
+        input_tokens=attempt.input_tokens, output_tokens=attempt.output_tokens,
+        input_mode="text+image", parse_ok=attempt_error is None,
+        error=attempt_error,
+        usage_reported=_usage_reported(attempt.response))
+        for attempt, attempt_version, attempt_error in attempts]
+    input_tokens = sum(attempt.input_tokens for attempt, _, _ in attempts)
+    output_tokens = sum(attempt.output_tokens for attempt, _, _ in attempts)
+    common = dict(raw_text=result.text,
+                  model=configured_model or result.resolved_model,
+                  resolved_model=result.resolved_model,
                   prompt_version=prompt_version, input_mode="text+image",
-                  cost_usd=total_cost, input_tokens=result.input_tokens,
-                  output_tokens=result.output_tokens, phases=[phase])
+                  cost_usd=total_cost, input_tokens=input_tokens,
+                  output_tokens=output_tokens, phases=phases,
+                  usage_reported=any(_usage_reported(attempt.response)
+                                     for attempt, _, _ in attempts))
     if err is not None:
         doc_type, conf = _peek_classification(result.text)
         log.warning("reader: parse still FAILED after retry (%s); classified %r",

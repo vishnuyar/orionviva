@@ -585,7 +585,11 @@ def decline_question(vault: Vault, question_id: str,
         q["id"], q["kind"], _today(), reason=reason,
         amount=q["amount"], count=q["count"], pack_version=ACTIVE_PACK))
     ack = "dont_know_ack" if reason == "dont_know" else "not_now_ack"
-    return {"ok": True, "message": moment(ack, name_part="")}
+    # This is a settled action, but it is not an answered question.  Carry the
+    # disposition explicitly so every caller can distinguish a recorded answer
+    # from a question that was deliberately set aside.
+    return {"ok": True, "disposition": "set_aside",
+            "message": moment(ack, name_part="")}
 
 
 def tag(vault: Vault, subject: str, tags: list, scope: str = "movement") -> dict:

@@ -32,9 +32,7 @@ describe("surface session", () => {
     expect(retainSelection("b", [])).toBe("");
   });
   it("starts with no vault open and no verbs, rather than inside somebody's invented money", () => {
-    // The fixture demo used to be the starting state, so the app opened onto a
-    // picture before anybody had asked for one. Both vaults are entered
-    // deliberately now, and this is what says so.
+    // Both sample and private vaults require an explicit open action.
     const state = initialSession();
     expect(state.phase).toBe("settled");
     expect(state.source).toBeNull();
@@ -66,6 +64,20 @@ describe("surface session", () => {
     expect(settled.selectedAccount).toBe("account-live");
     expect(settled.selectedDocument).toBe("document-live");
     expect(settled.selectedQueue).toBe("question-live");
+  });
+
+  it("replaces the Trust read with the one taken after an Ask Viva call", () => {
+    const before = { ...initialSession(), requestId: 7, source: liveSource, snapshot: readyLive() };
+    const trust = { state: "ready" as const, data: { notes: [], outbound: { sentence: "One call left.", callCount: 1, phases: [], models: [], reportedModels: [{ name: "provider-model", count: 1 }], modelSentence: "", span: null, cost: null, absences: [] } } };
+
+    const after = sessionReducer(before, {
+      type: "asked", requestId: 7, question: "What changed?", trust,
+      result: { state: "settled", outcome: { kind: "completed", message: "Answered.", reason: "" } },
+      turn: null,
+    });
+
+    expect(after.snapshot.trust).toBe(trust);
+    expect(after.snapshot.overview).toBe(before.snapshot.overview);
   });
 
   it("retains a valid stable selection and falls back after removal", () => {
@@ -254,10 +266,7 @@ describe("surface session", () => {
   });
 
   it("a verb pressed with no vault open does nothing rather than answering for one", async () => {
-    // Every verb comes from the source, and before a vault is open there is no
-    // source. The sample vault used to be the standing source, so a verb
-    // pressed here reached a fixture that refused; now nothing is reached at
-    // all, and nothing is claimed about a vault nobody opened.
+    // Every verb comes from an opened source; without one, no vault is read.
     const { result } = renderHook(() => useSurfaceSession());
     const before = JSON.stringify(result.current.session.snapshot.review);
 

@@ -18,23 +18,24 @@
 
 ### ING-41 — Three layers: claims, facts, projection
 **State:** enforced
-**Code:** product/viva/ledger/events.py:271 (`read_recorded`, the claims layer), :214 (`statement_held`, facts with their finding), product/viva/ledger/ledger.py (projection rebuilt from the log)
-**Test:** product/tests/test_pipeline.py::test_cached_projection_matches_a_fresh_replay, product/tests/test_pipeline.py::test_real_read_stores_the_claims_layer
+**Code:** product/viva/ledger/events.py (`read_recorded`, the claims layer), product/viva/ingest/pipeline.py (`capture_and_ingest` records every model phase), product/viva/ledger/ledger.py (projection rebuilt from the log)
+**Test:** product/tests/test_pipeline.py::test_cached_projection_matches_a_fresh_replay, product/tests/test_pipeline.py::test_real_read_stores_the_claims_layer, product/tests/test_reader_two_phase.py::test_each_extract_retry_becomes_its_own_outbound_event, product/tests/test_outbound_record.py::test_configured_and_provider_reported_models_are_recorded_separately
 
 1. The claims layer holds what a model asserted, verbatim, per run, with its model and prompt version. It is append-only.
 2. The facts layer holds what survived verification, carrying a grade, the verification result, and provenance pointers.
 3. The projection layer is query-shaped and rebuildable at any time from the event log; it is never independently authoritative.
+4. Every outbound request is its own recorded claim, including a failed parse that is retried. New records keep the configured route separate from the provider-reported model identity, and token counts are present only when the provider reported usage; records without the model-role marker remain explicitly unclassified.
 
 ### ING-42 — An amount is a value and a currency
 **State:** enforced-with-exception
-**Code:** product/viva/ledger/events.py:160 (currency on the account), product/viva/ingest/statement.py:65 (currency on the statement), product/viva/ledger/projection/movements.py:70 (currency on the projected movement)
-**Test:** core/tests/test_normalize.py::test_currency_conflict_is_invalid_not_silently_resolved, product/tests/test_postings.py::test_posting_rejects_float
+**Code:** product/viva/ledger/events.py (currency on the account), product/viva/ingest/statement.py (currency on the statement), product/viva/ledger/projection/core.py (`TxnLine.currency` carries the transaction currency), product/viva/ledger/projection/movements.py (currency on the projected movement)
+**Test:** core/tests/test_normalize.py::test_currency_conflict_is_invalid_not_silently_resolved, product/tests/test_postings.py::test_posting_rejects_float, product/tests/test_tool_contract.py::test_income_and_surplus_never_add_or_relabel_different_currencies
 
 1. No field, computation or display assumes one currency.
 2. Amounts are exact Decimal; a float raises rather than being coerced.
 3. Totals are reported per currency rather than summed across currencies.
 
-**Exception:** `Posting` carries `(account, amount, grade)` and no currency of its own — product/viva/ledger/events.py:74-88. A posting's currency is recovered from the account and the statement it came from, so the pairing is real at the movement level and absent at the leg level.
+**Exception:** `Posting` carries `(account, amount, grade)` and no currency of its own. During replay, the transaction fold carries the sole declared real-account currency onto every line, including synthetic income and expense counter-legs; an ambiguous transaction currency stays empty. The pairing is therefore explicit on projected lines and absent from the stored posting primitive.
 
 ### ING-43 — A transaction is a list of postings that sum to zero
 **State:** enforced
@@ -96,11 +97,12 @@
 
 ### ING-49 — Completeness is data
 **State:** enforced-with-exception
-**Code:** product/viva/tools/ledger_audit.py:9 (`check_completeness`), product/viva/tools/ledger_common.py:400 (`_attested_coverage` — what each account's statements attest, and what falls short of the window asked for)
-**Test:** product/tests/test_tool_contract.py::test_completeness_counts_the_held_document, product/tests/test_tool_runner.py::test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so, product/tests/test_tool_runner.py::test_a_window_outside_what_is_attested_covers_nothing_and_says_which
+**Code:** product/viva/tools/ledger_audit.py (`check_completeness`), product/viva/tools/ledger_common.py (`_attested_coverage` and `_resolve_window_preset`)
+**Test:** product/tests/test_tool_contract.py::test_completeness_counts_the_held_document, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates, product/tests/test_tool_runner.py::test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so, product/tests/test_tool_runner.py::test_a_window_outside_what_is_attested_covers_nothing_and_says_which
 
 1. What is missing is one query rather than an inference: `check_completeness` reports every document held, posted and awaiting review, and the date each account's evidence is good as of.
 2. Every aggregate states its coverage honestly — the periods its statements attest, and a caveat naming each account in scope that falls short.
+3. The latest complete calendar month is derived from posted coverage and resolves to explicit inclusive dates before an aggregate or movement read runs.
 
 **Exception:** the commitment also had an account carry an *expected cadence* ("monthly statement, ~5th") so that a statement nobody sent is itself a gap. `account_opened` (product/viva/ledger/events.py:160) has no cadence field, and a gap is detectable only where a posted statement's opening fails to continue from the balance held (`GAP`, product/viva/ingest/pipeline_models.py:61). A period with no statement at all is silence rather than a named hole.
 

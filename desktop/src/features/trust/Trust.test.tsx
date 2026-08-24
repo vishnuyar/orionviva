@@ -158,6 +158,35 @@ describe("everything this vault has sent", () => {
     expect(getByText("It cost USD 0.30.")).toBeInTheDocument();
   });
 
+  it("keeps configured routes separate from provider-reported models", () => {
+    const { getByRole, getByText } = withRecord({
+      sentence: moments.outbound_some, callCount: 1,
+      models: [{ name: "configured-alias", count: 1 }],
+      reportedModels: [{ name: "resolved-model-2026", count: 1 }],
+      tokens: { input: 120, output: 30, total: 150, measuredCalls: 1 },
+    });
+
+    expect(getByRole("heading", { name: "Configured routes" })).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Models reported by providers" })).toBeInTheDocument();
+    expect(getByText("configured-alias")).toBeInTheDocument();
+    expect(getByText("resolved-model-2026")).toBeInTheDocument();
+    expect(getByRole("heading", { name: "Provider-reported tokens" })).toBeInTheDocument();
+    expect(getByText("150")).toBeInTheDocument();
+    expect(getByText("1 of 1")).toBeInTheDocument();
+  });
+
+  it("does not relabel historical model names as configured routes", () => {
+    const { getByRole, getByText, queryByRole } = withRecord({
+      sentence: moments.outbound_some, callCount: 1,
+      legacyModels: [{ name: "provider/legacy-revision", count: 1 }],
+    });
+
+    expect(getByRole("heading", { name: "Older calls with model role unavailable" })).toBeInTheDocument();
+    expect(getByText("provider/legacy-revision")).toBeInTheDocument();
+    expect(queryByRole("heading", { name: "Configured routes" })).not.toBeInTheDocument();
+    expect(queryByRole("heading", { name: "Models reported by providers" })).not.toBeInTheDocument();
+  });
+
   it("shows no total at all where the read carried none", () => {
     const { queryByText } = withRecord({ sentence: moments.outbound_some, callCount: 1 });
     expect(queryByText(/cost/i)).not.toBeInTheDocument();

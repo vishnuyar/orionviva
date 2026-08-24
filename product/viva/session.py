@@ -108,7 +108,9 @@ class Session:
                 cost_usd=ex.cost_usd, input_tokens=ex.input_tokens,
                 output_tokens=ex.output_tokens, parse_ok=ex.parse_ok,
                 parse_error=ex.parse_error or None,
-                occurred_at=self._today(), phase="speak"))
+                occurred_at=self._today(), phase="speak",
+                resolved_model=ex.resolved_model,
+                usage_reported=ex.usage_reported))
 
 
 

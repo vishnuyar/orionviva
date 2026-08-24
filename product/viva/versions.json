@@ -26,7 +26,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v14"
+      "active": "tools-v15"
     },
     "classify": {
       "in": "prompts",
@@ -165,6 +165,7 @@
     "tools-v12": "f0b37107e4aeff5f",
     "tools-v13": "23e6eb58d0e4f750",
     "tools-v14": "05d0cf5cc6042c03",
+    "tools-v15": "4727c138392cce8e",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",

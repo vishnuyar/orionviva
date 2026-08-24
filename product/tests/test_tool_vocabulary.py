@@ -956,8 +956,8 @@ def test_a_group_whose_name_is_no_calendar_month_names_no_slice():
 
 def _income_vault(*currencies):
     """A projection with one account per currency named and one attributed
-    income, as `(projection, registry)`. An income bucket carries no currency
-    of its own, so the accounts decide what the income read groups under."""
+    income, as `(projection, registry)`. The transaction fold carries the
+    real account leg's currency onto its synthetic income counter-leg."""
     evs = [account_opened(f"acct-{n}", "depository", f"Account {n}", currency,
                           "2026-01-01")
            for n, currency in enumerate(currencies)]
@@ -977,12 +977,9 @@ def test_income_cuts_by_a_currency_only_where_the_vault_holds_it():
     """The income read writes a slice only for a key the vault's own currency
     vocabulary knows — the set a `currency` filter is validated against.
 
-    An income bucket carries no currency of its own, so where the accounts
-    declare more than one the read groups everything under a key naming no
-    currency anybody holds. Cutting by that key would say the income was
-    narrowed to a currency the person holds nothing in, and a block of rows
-    over the read would print it as a line. With no figure naming a slice, such
-    a block refuses instead."""
+    The counter account itself carries no independent currency; its transaction
+    line carries the currency of the real account leg. Another account in a
+    different currency must not make that known line ambiguous."""
     proj, registry = _income_vault("USD")
     held = {info.currency for info in proj.account_infos() if info.currency}
     result = registry.call("query_ledger", {"entity": "aggregate",
@@ -999,10 +996,10 @@ def test_income_cuts_by_a_currency_only_where_the_vault_holds_it():
     assert result.ok, result.text
     figures = [f for f in result.figures if f["quantity"] == quantity.INCOME]
     assert figures
-    # The precondition: the read did group under a key no account declares.
-    assert set(result.data["by_currency"]) - held
+    assert set(result.data["by_currency"]) == {"USD"}
     for fig in figures:
-        assert "cut" not in fig["boundary"], fig["what"]
+        assert fig["boundary"]["cut"] == [{"kind": "currency",
+                                             "value": "USD"}]
 
 
 def _read_call(kind: str, filters: dict) -> tuple:
@@ -1296,6 +1293,10 @@ _EVERY_READ = (
     ("query_ledger", {"entity": "vocabulary", "group_by": "account"}),
     ("query_ledger", {"entity": "aggregate", "metric": "spending"}),
     ("query_ledger", {"entity": "aggregate", "metric": "income"}),
+    ("query_ledger", {"entity": "aggregate", "metric": "recurring_spending"}),
+    ("query_ledger", {"entity": "aggregate", "metric": "surplus"}),
+    ("query_ledger", {"entity": "aggregate", "metric": "stalest_balance"}),
+    ("query_ledger", {"entity": "aggregate", "metric": "weakest_evidence"}),
     ("query_ledger", {"entity": "aggregate", "metric": "net_worth"}),
     ("list_movements", {"filters": {"account": "chk"}}),
     ("check_completeness", {}),

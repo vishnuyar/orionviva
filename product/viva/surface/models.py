@@ -146,7 +146,8 @@ class ActionOutcome:
     reason: str | None = None
 
     def __post_init__(self) -> None:
-        allowed = {"completed", "refused", "proposal", "waiting", "stale"}
+        allowed = {"completed", "refused", "proposal", "waiting", "stale",
+                   "set_aside"}
         if self.kind not in allowed:
             raise ValueError(f"unknown action outcome: {self.kind!r}")
         if self.kind == "refused" and not self.reason:

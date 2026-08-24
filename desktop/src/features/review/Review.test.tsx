@@ -149,7 +149,7 @@ describe("Review inspection surface", () => {
 
   it("keeps what happened on the screen after the question it happened to has gone", () => {
     const props = { selectedQueue: "set-aside-question", onSelectQueue: noAction, onOpenEvidence: noAction };
-    const settled = acted({ state: "settled", questionId: "set-aside-question", verb: "decline", result: { state: "settled", outcome: { kind: "completed", message: "Set aside until something changes.", reason: "" } } });
+    const settled = acted({ state: "settled", questionId: "set-aside-question", verb: "decline", result: { state: "settled", outcome: { kind: "set_aside", message: "Set aside until something changes.", reason: "" } } });
     const { getByRole, getByText, rerender } = render(<Review {...props} result={ready(data([question("set-aside-question")]))} actions={settled} />);
 
     // The question leaves the queue and the selection moves on. What became of
@@ -163,7 +163,7 @@ describe("Review inspection surface", () => {
     // person sets the same question aside twice.
     rerender(<Review {...props} result={{ state: "failed", reason: "read_failed" }} actions={settled} />);
     expect(getByText("Review could not be read")).toBeInTheDocument();
-    expect(getByText("Set aside")).toBeInTheDocument();
+    expect(getByText("Question set aside")).toBeInTheDocument();
     expect(getByText("Set aside until something changes.")).toBeInTheDocument();
   });
 
@@ -178,10 +178,15 @@ describe("Review inspection surface", () => {
 
     // A title saying "Recorded" over a sentence about a question being set
     // aside would describe an act the person did not perform.
-    rerender(<Review {...props} actions={settled("completed", "Set aside until something changes.")} />);
-    expect(getByText("Set aside")).toBeInTheDocument();
+    rerender(<Review {...props} actions={settled("set_aside", "Set aside until something changes.")} />);
+    expect(getByText("Question set aside")).toBeInTheDocument();
     expect(queryByText("Recorded")).not.toBeInTheDocument();
     expect(getByText("Set aside until something changes.")).toBeInTheDocument();
+
+    rerender(<Review {...props} actions={acted({ state: "settled", questionId: "live-question", verb: "answer", result: { state: "settled", outcome: { kind: "proposal", message: "Nothing was recorded.", reason: "" } } })} />);
+    expect(getByText("Held for a confirmation this screen cannot give")).toBeInTheDocument();
+    expect(getByText("Nothing was recorded.")).toBeInTheDocument();
+    expect(queryByText("Answered")).not.toBeInTheDocument();
 
     rerender(<Review {...props} actions={settled("refused", "That question is no longer open.", "not_open")} />);
     expect(getByText("Not set aside")).toBeInTheDocument();
@@ -269,7 +274,7 @@ describe("Review inspection surface", () => {
 
   it("says the queue could not be read again beside the write that took", () => {
     const props = { selectedQueue: "set-aside-question", onSelectQueue: noAction, onOpenEvidence: noAction };
-    const settled = acted({ state: "settled", questionId: "set-aside-question", verb: "decline", result: { state: "settled", outcome: { kind: "completed", message: "Set aside until something changes.", reason: "" } } });
+    const settled = acted({ state: "settled", questionId: "set-aside-question", verb: "decline", result: { state: "settled", outcome: { kind: "set_aside", message: "Set aside until something changes.", reason: "" } } });
     const unread = "This screen could not read the queue afterwards, so it no longer knows what is still open.";
 
     const { getByRole, getByText, queryByText, rerender } = render(<Review {...props} result={ready(data([question("next-question")]))} actions={settled} />);
@@ -278,14 +283,14 @@ describe("Review inspection surface", () => {
     // A person told only that the write took would believe the list under it,
     // and after a failed re-read there is no list this screen can stand on.
     rerender(<Review {...props} result={{ state: "failed", reason: "read_failed" }} actions={settled} />);
-    expect(getByText("Set aside")).toBeInTheDocument();
+    expect(getByText("Question set aside")).toBeInTheDocument();
     expect(getByText(unread)).toBeInTheDocument();
     expect(getByRole("status")).toHaveTextContent(unread);
 
     // And what focus lands on when neither a question nor the empty state is
     // left on the screen.
-    expect(getByText("Set aside")).toHaveAttribute("id", "review-outcome-title");
-    expect(getByText("Set aside")).toHaveAttribute("tabindex", "-1");
+    expect(getByText("Question set aside")).toHaveAttribute("id", "review-outcome-title");
+    expect(getByText("Question set aside")).toHaveAttribute("tabindex", "-1");
   });
 });
 

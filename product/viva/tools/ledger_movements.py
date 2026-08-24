@@ -22,6 +22,21 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                                i.account for i in _real_accounts(proj)))
     if "currency" in filters:
         infos = [i for i in infos if i.currency == filters["currency"]]
+    selected_infos = list(infos)
+    # An asserted loan account exists, but until a balance or dated holding has
+    # been observed its replay value of zero is only the additive identity. It
+    # is not evidence that nothing is owed. Keep such accounts in the boundary
+    # and identifiers, but emit no monetary figure for them.
+    infos = [i for i in infos
+             if i.origin != "asserted"
+             or _has_measured_value(proj, i.account)]
+    if "account" in filters and selected_infos and not infos:
+        return refusal(
+            TOOL, "balance_unobserved",
+            f"No balance has been observed for '{filters['account']}'. The "
+            "account exists, but zero would mean 'nothing owed or held' and "
+            "the ledger has not established that.",
+            known_accounts=_known(i.account for i in _real_accounts(proj)))
     # What narrowed this read. Whether a figure is whole is read off this same
     # list, so the two cannot disagree: `bounded` refuses a figure that claims
     # to cover everything while also naming what it leaves out.
@@ -33,7 +48,13 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         ba = proj.balance(info.account)
         row = ba.to_dict()
         row.update({"record_id": info.account, "name": info.name,
-                    "kind": info.kind})
+                    "kind": info.kind,
+                    # Requested-field coverage for account-list questions.
+                    # These are attributes of the same emitted figure, not a
+                    # second monetary claim hidden in the payload.
+                    "latest_evidence_date": ba.dated,
+                    "evidence_grade": ba.grade,
+                    "evidence_limitation": ba.explanation})
         rows.append(row)
         record_ids.append(info.account)
         if ba.provenance.doc_id:
@@ -50,7 +71,7 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         values.extend((row, value) for value in composed)
     if not rows:
         return refusal(TOOL, "no_accounts",
-                       "I don't have any balance-holding accounts on file yet.")
+                       "I don't have any measured account balances on file yet.")
     # One account's balance is one account's balance, whatever it is asked for:
     # it covers one of the accounts held, and it says so where the whole of
     # them is more than one, and names which one it is either way — beside
@@ -89,15 +110,16 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                               counted=len(rows), held=holds,
                               selected=narrowed,
                               cut=cut_set(narrowed))))
+    unmeasured = [i.account for i in selected_infos if i not in infos]
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
-        identifiers=_identifiers(proj, (r["record_id"] for r in rows)),
+        identifiers=_identifiers(proj, (i.account for i in selected_infos)),
         # The amount, its grade, its currency and its as-of date travel as
         # figures. What stays here is what a figure cannot carry: which account
         # this is, and why its grade is what it is.
         data={"balances": [{k: v for k, v in r.items()
                             if k not in ("amount", "currency", "grade",
-                                         "dated", "as_of")}
+                                         "dated", "as_of", "explanation")}
                            for r in rows]},
         grade=weakest(value.grade for _r, value in values),
         dated=min((value.as_of for _r, value in values if value.as_of),
@@ -105,11 +127,26 @@ def _query_balances(proj, filters: dict) -> ToolResult:
         record_ids=sorted(set(record_ids)),
         caveats=([MIXED_VINTAGE]
                  if any(_mixed_vintage(value.dates) for _r, value in values)
-                 else []),
+                 else []) + [
+                     f"No balance has been observed for {account}; it is not "
+                     "reported as zero and is not included in these figures."
+                     for account in unmeasured
+                 ],
         coverage=("Included: " + "; ".join(
             f"{r['name'] or r['record_id']} (as of {value.as_of or 'unknown'}, "
             f"{value.grade})" for r, value in values)),
         text=f"{len(rows)} account balance(s), each with its grade and source.")
+
+
+def _has_measured_value(proj, account: str) -> bool:
+    """Whether an account has a dated stock measurement.
+
+    Transactions alone do not establish a current balance without a starting
+    point. Dated composed values cover ordinary observed balances and
+    investment positions while excluding the synthetic zero of a newly
+    asserted liability.
+    """
+    return any(value.as_of for value in proj.composed_values(account))
 
 
 def _matching_rows(proj, filters: dict) -> tuple[list, dict]:
@@ -215,7 +252,8 @@ def _query_transactions(proj, filters: dict) -> ToolResult:
         # and the totals, never a second copy of them.
         data={"count": len(rows), "money_in": str(money_in),
               "money_out": str(money_out), "net": str(money_in - money_out),
-              "accounts": len(by_account), "months": len(by_month)},
+              "accounts": len(by_account), "months": len(by_month),
+              "window": dict(filters.get("window") or {})},
         figures=figures, grade=grade,
         record_ids=record_ids, covers=covers, caveats=caveats,
         coverage=f"{len(rows)} movement(s) matched the filters.",
@@ -259,10 +297,13 @@ def _as_tool(result: ToolResult, tool: str) -> ToolResult:
     return result
 
 
-def list_movements(proj, args: dict) -> ToolResult:
+def list_movements(proj, args: dict, today: str = "") -> ToolResult:
     """The individual rows, for a question narrow enough to name what it is
     about. A call carrying none of `NARROWING` refuses as `too_broad`."""
-    filters = args.get("filters") or {}
+    filters, window_problem = _resolve_window_preset(
+        proj, args.get("filters") or {}, today)
+    if window_problem is not None:
+        return _as_tool(window_problem, LIST_TOOL)
     if not any(f in filters for f in NARROWING):
         return refusal(
             LIST_TOOL, "too_broad",
@@ -325,7 +366,8 @@ def list_movements(proj, args: dict) -> ToolResult:
                      + " to see the rest.")
     return ToolResult(
         tool=LIST_TOOL, ok=True, data={"movements": shown, "shown": len(shown),
-                                       "total": total},
+                                       "total": total,
+                                       "window": dict(filters.get("window") or {})},
         figures=figures,
         # A counterparty is named by its key, which is what a figure of this
         # read declares its scope as and what a follow-up filter takes back. A

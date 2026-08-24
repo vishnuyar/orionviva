@@ -1,7 +1,7 @@
 export type Destination = "overview" | "accounts" | "activity" | "documents" | "review" | "trust";
 export type FigureGrade = "verified" | "corroborated" | "unverified" | "conflicted" | "unavailable" | "not_applicable";
 export type PanelState = "absent" | "ready" | "partial" | "needs_input" | "unavailable" | "failed";
-export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "stale";
+export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "stale" | "set_aside";
 // What an action answered with: the kind of thing that happened, the sentence
 // Viva would say to the person, and the machine reason a refusal carries.
 // `jobId` is the identity the sidecar minted for the work this outcome came
@@ -246,6 +246,7 @@ export type SpokenTurn = { maySpeak: boolean; withheld: string; parts: readonly 
 export type TurnView = { question: string; text: string; answered: boolean; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; spoken: SpokenTurn };
 export type ConversationActions = {
   ask: (question: string, mirrored: boolean) => Promise<{ result: ActionResult; turn: TurnView | null }>;
+  rereadTrust: () => Promise<FeatureResult<TrustData>>;
 };
 export type AskActionState =
   | { state: "idle" }
@@ -269,6 +270,9 @@ export type OutboundRecordView = {
   callCount: number;
   phases: readonly OutboundLine[];
   models: readonly OutboundModel[];
+  reportedModels?: readonly OutboundModel[];
+  legacyModels?: readonly OutboundModel[];
+  tokens?: { input: number; output: number; total: number; measuredCalls: number };
   modelSentence: string;
   span: { first: string; last: string; sentence: string } | null;
   cost: { exactValue: string; currency: string; display: string; sentence: string } | null;

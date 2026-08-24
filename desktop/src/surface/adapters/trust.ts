@@ -46,11 +46,21 @@ export function adaptOutbound(raw: unknown): OutboundRecordView | null {
   const cost = isRecord(raw.cost) && textValue(raw.cost.sentence).trim()
     ? { exactValue: textValue(raw.cost.exact_value), currency: textValue(raw.cost.currency), display: textValue(raw.cost.display), sentence: textValue(raw.cost.sentence) }
     : null;
+  const inputTokens = isRecord(raw.tokens) ? optionalNonNegativeInteger(raw.tokens.input) : undefined;
+  const outputTokens = isRecord(raw.tokens) ? optionalNonNegativeInteger(raw.tokens.output) : undefined;
+  const totalTokens = isRecord(raw.tokens) ? optionalNonNegativeInteger(raw.tokens.total) : undefined;
+  const measuredCalls = isRecord(raw.tokens) ? optionalNonNegativeInteger(raw.tokens.measured_calls) : undefined;
+  const tokens = inputTokens !== undefined && outputTokens !== undefined && totalTokens !== undefined && measuredCalls !== undefined
+    ? { input: inputTokens, output: outputTokens, total: totalTokens, measuredCalls }
+    : undefined;
   return {
     sentence,
     callCount,
     phases: (Array.isArray(raw.phases) ? raw.phases : []).map(line).filter((row): row is OutboundLine => row !== null),
     models: (Array.isArray(raw.models) ? raw.models : []).map(model).filter((row): row is OutboundModel => row !== null),
+    reportedModels: (Array.isArray(raw.reported_models) ? raw.reported_models : []).map(model).filter((row): row is OutboundModel => row !== null),
+    legacyModels: (Array.isArray(raw.legacy_models) ? raw.legacy_models : []).map(model).filter((row): row is OutboundModel => row !== null),
+    tokens,
     modelSentence: textValue(raw.model_sentence),
     span,
     cost,

@@ -51,6 +51,7 @@ export function outcomePresentation(verb: ReviewVerb, result: ActionResult): Out
     case "refused": return { title: words.refused, detail };
     case "waiting": return { title: words.waiting, detail };
     case "proposal": return { title: "Held for a confirmation this screen cannot give", detail };
+    case "set_aside": return { title: "Question set aside", detail };
     case "stale": return { title: "Out of date", detail };
   }
 }

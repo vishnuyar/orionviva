@@ -28,6 +28,7 @@ live projection it was built over.
 from __future__ import annotations
 
 import calendar
+import datetime
 from decimal import Decimal
 from functools import lru_cache
 
@@ -116,7 +117,9 @@ QUERY_LEDGER_PARAMS = {
                    "enum": ["balances", "transactions", "holdings",
                             "aggregate", "vocabulary"]},
         "metric": {"type": "string",
-                   "enum": ["spending", "income", "net_worth"]},
+                   "enum": ["spending", "income", "recurring_spending",
+                            "surplus", "stalest_balance",
+                            "weakest_evidence", "net_worth"]},
         "group_by": {"type": "string",
                      "enum": ["category", "subcategory", "tag", "merchant",
                               "account", "currency"]},
@@ -132,7 +135,9 @@ QUERY_LEDGER_PARAMS = {
                 "currency": {"type": "string"},
                 "window": {"type": "object",
                            "properties": {"from": {"type": "string"},
-                                          "to": {"type": "string"}}},
+                                          "to": {"type": "string"},
+                                          "preset": {"type": "string",
+                                                     "enum": ["latest_complete_calendar_month"]}}},
             },
         },
     },
@@ -369,6 +374,73 @@ def _check_filters(proj, filters: dict) -> ToolResult | None:
         data.update(extra)
     return refusal(TOOL, MANY_BAD_FILTERS,
                    "; ".join(text for _, text, _ in faults), **data)
+
+
+def _resolve_window_preset(proj, filters: dict,
+                           today: str = "") -> tuple[dict, ToolResult | None]:
+    """Resolve a named period to explicit inclusive edges before a read.
+
+    The latest complete month is the newest ended calendar month wholly
+    attested by every balance-holding account that has posted coverage.
+    Accounts with no posted run stay visible through normal coverage caveats;
+    they do not make every historical month unanswerable.
+    """
+    out = dict(filters)
+    window = dict(out.get("window") or {})
+    preset = window.get("preset", "")
+    if not preset:
+        return out, None
+    if set(window) - {"preset"}:
+        return out, refusal(
+            TOOL, "window_conflict",
+            "A window preset cannot be combined with explicit from/to edges.")
+    if preset != "latest_complete_calendar_month":
+        return out, refusal(TOOL, "unknown_window_preset",
+                            f"No window preset '{preset}' exists.")
+
+    bound = today or _today()
+    try:
+        today_date = datetime.date.fromisoformat(bound[:10])
+    except ValueError:
+        return out, refusal(TOOL, "bad_date",
+                            f"today must be an ISO date, got '{bound}'.")
+
+    common: set[str] | None = None
+    covered_accounts = 0
+    for info in _real_accounts(proj):
+        months: set[str] = set()
+        runs = proj.attested_runs(info.account)
+        if not runs:
+            continue
+        covered_accounts += 1
+        for start, end in runs:
+            try:
+                start_date = datetime.date.fromisoformat(start[:10])
+                end_date = datetime.date.fromisoformat(end[:10])
+            except ValueError:
+                continue
+            cursor = start_date.replace(day=1)
+            while cursor <= end_date:
+                month_end = cursor.replace(
+                    day=calendar.monthrange(cursor.year, cursor.month)[1])
+                if cursor >= start_date and month_end <= end_date \
+                        and month_end < today_date:
+                    months.add(cursor.strftime("%Y-%m"))
+                cursor = (month_end + datetime.timedelta(days=1)).replace(day=1)
+        common = months if common is None else common & months
+
+    if not covered_accounts or not common:
+        return out, refusal(
+            TOOL, "no_complete_calendar_month",
+            "The posted statement coverage does not establish one complete "
+            "calendar month shared by the accounts it covers.")
+    month = max(common)
+    year, index = int(month[:4]), int(month[5:])
+    out["window"] = {
+        "from": f"{month}-01",
+        "to": f"{month}-{calendar.monthrange(year, index)[1]:02d}",
+    }
+    return out, None
 
 
 def _in_window(date: str, window: dict) -> bool:
@@ -624,7 +696,11 @@ _SUPPORTED_FILTERS = {
     "holdings": {"account", "currency"},
     "aggregate:spending": {"account", "category", "tag", "merchant",
                            "currency", "window"},
-    "aggregate:income": {"currency"},
+    "aggregate:income": {"currency", "window"},
+    "aggregate:recurring_spending": {"currency"},
+    "aggregate:surplus": {"currency", "window"},
+    "aggregate:stalest_balance": set(),
+    "aggregate:weakest_evidence": {"currency"},
     "aggregate:net_worth": set(),
     "vocabulary": set(),
 }
@@ -632,4 +708,4 @@ _SUPPORTED_FILTERS = {
 
 
 
-__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', 'MANY_BAD_FILTERS', '_check_filters', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']
+__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']

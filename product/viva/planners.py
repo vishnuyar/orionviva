@@ -260,6 +260,16 @@ class Exchange:
     # shapes authored and refused, and of why, is made of.
     authored_shape: bool = False
     defect: str = ""
+    usage_reported: bool = False
+
+
+def _provider_reported_usage(response: object) -> bool:
+    """True only when the raw provider response contains token counters."""
+    if not isinstance(response, dict):
+        return False
+    usage = response.get("usage")
+    return isinstance(usage, dict) and any(key in usage for key in (
+        "prompt_tokens", "completion_tokens", "input_tokens", "output_tokens"))
 
 
 class NativePlanner:
@@ -327,7 +337,8 @@ class NativePlanner:
                 modality=self.modality, request=turn.request,
                 response=turn.response, input_tokens=turn.input_tokens,
                 output_tokens=turn.output_tokens, cost_usd=turn.cost_usd,
-                latency_s=turn.latency_s, resolved_model=turn.resolved_model)
+                latency_s=turn.latency_s, resolved_model=turn.resolved_model,
+                usage_reported=_provider_reported_usage(turn.response))
             self.exchanges.append(exchange)
             self._messages.append(turn.message)
 
@@ -469,7 +480,8 @@ class TextPlanner:
                 modality=self.modality, request=result.request,
                 response=result.response, input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens, cost_usd=result.cost_usd,
-                latency_s=result.latency_s, resolved_model=result.resolved_model)
+                latency_s=result.latency_s, resolved_model=result.resolved_model,
+                usage_reported=_provider_reported_usage(result.response))
             self.exchanges.append(exchange)
 
             step, problem = self._read(result.text)

@@ -562,12 +562,18 @@ def test_an_answer_the_document_settles_is_not_reported_as_recorded():
     assert outcome.message == "The document itself settles this one."
 
 
+def test_a_proposal_is_a_readable_held_outcome():
+    outcome = outcome_of(
+        {"ok": True, "confirm": True,
+         "proposal": {"scope": "attribute"}})
+
+    assert outcome.kind == "proposal"
+    assert outcome.state == {"scope": "attribute"}
+
+
 def test_a_reply_this_vocabulary_has_no_word_for_raises_rather_than_guessing():
-    """Three shapes raise rather than mapping to the nearest word: a reply held
-    for a confirmation, a reply that does not say whether it was accepted, and
-    a refusal that names no reason."""
+    """An ambiguous success and a refusal with no reason remain unreadable."""
     for unreadable in (
-        {"ok": True, "confirm": True, "proposal": {"scope": "attribute"}},
         {"action": "posted", "message": "Posted."},
         {"ok": False, "message": "No."},
     ):

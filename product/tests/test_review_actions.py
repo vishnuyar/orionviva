@@ -81,7 +81,7 @@ def test_setting_a_question_aside_moves_it_into_the_set_aside_count(tmp_path):
                             "reason": "not_now"})
 
     after = sidecar.review()
-    assert outcome["kind"] == "completed"
+    assert outcome["kind"] == "set_aside"
     assert outcome["message"], "an outcome always says what happened"
     assert after["total"] == before["total"] - 1
     assert after["pending"]["count"] == set_aside_before + 1
@@ -121,6 +121,29 @@ def test_a_plainly_written_answer_reaches_the_queue_with_no_model_named(tmp_path
     # Whichever it was, it was the vault's own answer rather than an operation
     # the allowlist would not take.
     assert answered["message"]
+
+
+def test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written():
+    """A proposal crosses the bridge as an unapplied outcome."""
+    from viva.desktop_bridge.review_actions import outcome_of
+
+    proposed = {"summary": "Classify these as transfers to Brokerage.",
+                "confirm_accounts": ["Assets:Investments:Brokerage"]}
+    outcome = outcome_of({"ok": True, "confirm": True,
+                          "proposal": proposed})
+
+    assert outcome.kind == "proposal"
+    assert outcome.state == proposed
+    assert outcome.message
+
+
+def test_an_answer_that_sets_a_question_aside_has_its_own_outcome_kind():
+    from viva.desktop_bridge.review_actions import outcome_of
+
+    outcome = outcome_of({"ok": True, "disposition": "set_aside",
+                          "message": "Set aside until evidence arrives."})
+
+    assert outcome.kind == "set_aside"
 
 
 # ------------------------------------------------- answering, the single door

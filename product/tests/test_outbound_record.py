@@ -80,12 +80,61 @@ def test_the_distinct_models_and_the_span_are_the_charters_own_case():
                                               count=render.count(2))
 
 
+def test_configured_and_provider_reported_models_are_recorded_separately():
+    call = _call(model="configured/route")
+    call.body["resolved_model"] = "provider/model-revision"
+
+    record = outbound([call])
+
+    assert record["models"] == [{"name": "configured/route", "count": 1}]
+    assert record["reported_models"] == [
+        {"name": "provider/model-revision", "count": 1}]
+
+
+def test_historical_model_values_are_not_relabelled_as_configured_routes():
+    call = _call(model="provider/legacy-revision")
+    call.body.pop("model_role")
+    call.body.pop("resolved_model", None)
+
+    record = outbound([call])
+
+    assert record["models"] == []
+    assert record["legacy_models"] == [
+        {"name": "provider/legacy-revision", "count": 1}]
+    assert "reported_models" not in record
+
+
 def test_a_cost_is_summed_over_the_digits_recorded_rather_than_over_floats():
-    """A person may be reading this against a bill. The sum is of the digits
-    the log wrote, not of the binary approximations of them."""
+    """Cost totals sum the recorded decimal digits exactly."""
     record = outbound([_call(cost=0.1), _call(cost=0.2)])
 
     assert record["cost"]["exact_value"] == "0.3"
+
+
+def test_provider_reported_tokens_are_summed_without_inventing_missing_calls():
+    calls = [_call(), _call()]
+    calls[0].body.update({"input_tokens": 10, "output_tokens": 20})
+    calls[1].body.update({"input_tokens": 7, "output_tokens": 3})
+
+    assert outbound(calls)["tokens"] == {
+        "input": 17, "output": 23, "total": 40, "measured_calls": 2}
+
+    calls[0].body.pop("input_tokens")
+    calls[0].body.pop("output_tokens")
+    calls[1].body.pop("input_tokens")
+    calls[1].body.pop("output_tokens")
+    assert "tokens" not in outbound(calls)
+
+
+def test_explicit_adapter_zero_without_provider_usage_is_not_a_measurement():
+    call = read_recorded("doc-1", "route", "p-v1", "text", "{}", 0.0,
+                         0, 0, True, None, "2026-07-01",
+                         resolved_model="provider-model",
+                         usage_reported=False)
+
+    assert "input_tokens" not in call.body
+    assert "output_tokens" not in call.body
+    assert "tokens" not in outbound([call])
 
 
 def test_a_vault_whose_calls_recorded_no_price_gets_no_total_rather_than_zero():

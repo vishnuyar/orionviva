@@ -27,12 +27,13 @@
 ### PROJ-62 — a structured filter object, validated against the vault's own vocabulary
 **State:** enforced
 **Code:** product/viva/tools/ledger_common.py:112
-**Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary
+**Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates
 
 1. A read takes a typed filter object, never a query string and never SQL.
 2. Every filter value is validated against the vault's own learned values — its accounts, categories, tags, counterparties and currencies — and a value the vault does not hold refuses, naming the values it does hold.
 3. A filter a read would ignore refuses and names what that read supports, rather than being accepted and dropped.
 4. The enumerations of `entity` and `group_by` are schema this project owns; the legal *values* are read from the vault, never listed in code.
+5. A date window is either explicit inclusive edges or the named latest complete calendar month. The named period resolves to explicit edges before the read, using the newest ended month shared by posted statement coverage.
 
 ### PROJ-63 — the registry contract is modality-neutral
 **State:** enforced
@@ -370,12 +371,6 @@ longer say is [the-suggestions-channel.md](the-suggestions-channel.md).
   third object nothing here computes. *What a count is a count of* is chartered
   beside it — a count of things found cites only what it found, so a count of
   none cites nothing and refuses at the citation gate.
-- Income narrowed by a currency can record its narrowing nowhere. On a vault
-  whose accounts declare more than one currency, the income read groups under a
-  key matching no currency a filter may name, so narrowing by a currency the
-  vault does hold comes back with no figures at all, and that same placeholder
-  key is what the figure declares as its currency. The cause is upstream of the
-  tools, in how an income bucket with no currency of its own is attributed.
 - A date is checked structurally and is ASCII-only by accident: the ISO check
   tests its digits with `str.isdigit` and the month parse with `int`, both of
   which accept non-ASCII decimal digits, and `int` accepts a leading sign. It is
@@ -391,8 +386,10 @@ longer say is [the-suggestions-channel.md](the-suggestions-channel.md).
 - Two things are dead weight rather than mechanism: `check_completeness`'s
   per-account date figures, which can fill no hole, and the run-wide pool of days
   the runner records at two sites and reads nowhere.
-- The standing real-vault run. A model authoring a shape before any read does it,
-  and does it first time; the condition nobody costed is the *channel* — one
-  model emitted no tool call in twenty native-protocol replies and never reached
-  a shape at all. Whether this design works is a per-model question with a real
-  answer, and the answer differs.
+- The standing real-vault run. The ten acceptance questions now have a
+  deterministic provider-double test that checks their read plans, including a
+  follow-up period carried through conversation history. That proves the
+  registry routes and reads; it does not prove that a live model authors a
+  usable shape and tool plan first time, or that the resulting answer is true of
+  the real vault. Whether this design works remains a per-model, real-data
+  question for the Witness.

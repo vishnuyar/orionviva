@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from .ledger_common import *
 from .ledger_aggregates import (_aggregate_income, _aggregate_net_worth,
-                                _aggregate_spending, _query_holdings)
+                                _aggregate_recurring_spending,
+                                _aggregate_spending, _aggregate_stalest_balance,
+                                _aggregate_surplus,
+                                _aggregate_weakest_evidence, _query_holdings)
 from .ledger_movements import (_query_balances, _query_transactions)
 
 # ------------------------------------------------------------- the vocabulary
@@ -114,7 +117,10 @@ def _unsupported_filters(kind: str, filters: dict) -> ToolResult | None:
 
 def query_ledger(proj, args: dict, locale: str = "",
                  today: str = "") -> ToolResult:
-    filters = args.get("filters", {})
+    filters, window_problem = _resolve_window_preset(
+        proj, args.get("filters", {}), today)
+    if window_problem is not None:
+        return window_problem
     bad = _check_filters(proj, filters)
     if bad is not None:
         return bad
@@ -170,12 +176,21 @@ def query_ledger(proj, args: dict, locale: str = "",
     if not metric:
         return refusal(TOOL, "missing_metric",
                        "entity 'aggregate' needs a metric: spending, income, "
-                       "or net_worth.")
+                       "recurring_spending, surplus, stalest_balance, "
+                       "weakest_evidence, or net_worth.")
     if metric == "spending":
         return _aggregate_spending(proj, filters,
                                    args.get("group_by", "category"), locale)
     if metric == "income":
         return _aggregate_income(proj, filters)
+    if metric == "recurring_spending":
+        return _aggregate_recurring_spending(proj, filters)
+    if metric == "surplus":
+        return _aggregate_surplus(proj, filters)
+    if metric == "stalest_balance":
+        return _aggregate_stalest_balance(proj, today or _today())
+    if metric == "weakest_evidence":
+        return _aggregate_weakest_evidence(proj, filters)
     return _aggregate_net_worth(proj, args.get("as_of"), today or _today())
 
 

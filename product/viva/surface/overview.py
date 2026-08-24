@@ -128,8 +128,8 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
     result = registry.call(*BALANCES)
     aggregate = registry.call(*NET_WORTH)
     accounts, issues = [], []
+    known = _known(result) if result.ok else {}
     if result.ok:
-        known = _known(result)
         by_account = _figures_by_account(result.figures)
         for row in result.data["balances"]:
             account, issue = _account(row, by_account.get(row["record_id"], []),
@@ -137,6 +137,26 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
             accounts.append(account)
             if issue is not None:
                 issues.append(issue)
+    # Include every real account in the picture. An account with no observed
+    # stock value carries its identity with no monetary figure, including when
+    # every account is unmeasured.
+    shown = {row["account"] for row in accounts}
+    for info in projection.account_infos():
+        if info.kind not in ("depository", "liability", "investment"):
+            continue
+        if info.account in shown:
+            continue
+        known[info.account] = {
+            "account": info.account,
+            "currency": info.currency,
+            "number_masked": "",
+        }
+        account, issue = _account(
+            {"record_id": info.account, "kind": info.kind,
+             "name": info.name}, [], known, locale)
+        accounts.append(account)
+        if issue is not None:
+            issues.append(issue)
     return {
         # Ready only where every row carries a figure; any withheld figure
         # makes the panel partial.

@@ -18,6 +18,7 @@ from merchantcore.enrich import (BILLING_PERIODS, BILLINGS, KIND_BUSINESS,
                                  KIND_INSTRUMENT, KIND_PEER, KINDS)
 from merchantcore.profile import Profile, Template
 from viva import persona
+from viva.tools import ledger_tools
 from viva.engine import _write_answer, record_rhythm
 from viva.ledger import EventStore, Ledger, account_opened, simple_transaction
 from viva.ledger.events import (CORROBORATED, PERIODICITIES, SCOPE_ATTRIBUTE,
@@ -178,6 +179,24 @@ def test_a_measured_rhythm_says_what_the_records_measured():
     assert q["refs"]["billing_period"] == "annual"
     assert q["refs"]["proposed"] == ["monthly"]
     assert q["why"] == say("rhythm_why_measured")
+
+
+def test_a_measured_rhythm_is_available_to_financial_reporting():
+    proj = _proj(_monthly(), extra=[_prior(BRAND, "standing", "annual")])
+
+    result = ledger_tools.query_ledger(
+        proj, {"entity": "aggregate", "metric": "recurring_spending"})
+
+    assert result.ok
+    assert result.data["count"] == 1
+    assert result.data["patterns"] == [{
+        "merchant": BRAND, "periods": ["monthly"], "count": 4,
+        "measured": True, "confirmed": False,
+        "dated_from": "2026-01-05", "dated_to": "2026-04-05",
+    }]
+    assert result.figures[0]["value"] == "59.96"
+    assert result.figures[0]["currency"] == "USD"
+    assert "not a forecast" in result.caveats[0]
 
 
 def test_a_steady_rhythm_the_vocabulary_cannot_name_proposes_nothing_from_it():

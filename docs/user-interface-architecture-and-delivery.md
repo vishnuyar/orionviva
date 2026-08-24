@@ -89,7 +89,7 @@ cover sidecar identity before release.
 **Code:** product/viva/surface/models.py:71 (`ActionOutcome`)
 **Test:** product/tests/test_surface_contract.py::test_panel_states_and_action_outcomes_are_closed
 
-1. Every action returns one of: completed, refused, proposal, waiting, stale.
+1. Every action returns one of: completed, refused, proposal, waiting, stale, `set_aside`.
 2. A refused action requires a machine reason; construction fails without one.
 3. The interface never infers what happened.
 
@@ -261,8 +261,8 @@ date, coverage, the records behind it, provenance available now, and named
 caveats. A **panel state** is one of six explicit values, which turns
 progressive disclosure into a contract instead of frontend conditionals. An
 **action outcome** says what happened — completed, refused, proposal, waiting,
-stale — because an ambiguous `ok` forces the interface to infer, and inference
-is where quiet wrongness lives.
+stale, `set_aside` — because an ambiguous `ok` forces the interface to infer,
+and inference is where quiet wrongness lives.
 
 **The capability registry is how a feature becomes visible, or deliberately not.**
 It is both a backend inventory and the UI's progressive-disclosure input, and it

@@ -417,9 +417,11 @@ the review's item order.**
 The review's most consequential sequencing claim — that the builder's real
 vault already holds recorded model egress, so the outbound ledger is owed now —
 has verified machinery and an unverified fact. Terminal ingest writes one
-recorded-read event per single-phase read and two per two-phase read; a
-projection composed over those events rendered model, phase, prompt version,
-cost, tokens, parse status and document, and survived a close-and-reopen.
+recorded-read event per outbound request, including every retry. The claims
+record retains phase, prompt version, cost, parse status and response, keeps the
+configured route separate from the provider-reported model, and records token
+counts only where the provider supplied usage. Trust renders phase, model roles,
+reported token totals, cost and span, and refreshes after an Ask Viva turn.
 Whether the *real* vault holds those events, how far back, and at what cost, is
 a fact about encrypted contents that only the Witness may open, and two
 conditions gate it in code: the writer fires only where a model actually ran,
@@ -502,8 +504,10 @@ already live* points at a document that gave the rule away.
 
 **Qualified — "purpose" is not a field.** The recorded model-call event carries
 no field of that name. The nearest is `phase`, a closed three-value vocabulary.
-Model, cost, verbatim response, tokens and parse status are all present as the
-review claims.
+Configured route, provider-reported model, cost, verbatim response and parse
+status are present; token counts are present only where the provider reported
+usage. Records predating the model-role marker keep their model identity
+unclassified rather than relabelled.
 
 **Qualified — the escape hatch's reach.** *Explore fictional sample data* is
 present on three of six destinations rather than on nearly every empty screen.

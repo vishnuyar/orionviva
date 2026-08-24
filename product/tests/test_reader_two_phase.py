@@ -13,7 +13,8 @@ from vivacore.models.base import ModelResult, PageImage
 def _result(text, cost=0.01):
     return ModelResult(text=text, resolved_model="m", input_tokens=5,
                        output_tokens=5, cost_usd=cost, latency_s=0.0,
-                       request={}, response={})
+                       request={}, response={"usage": {"prompt_tokens": 5,
+                                                        "completion_tokens": 5}})
 
 
 class _FakeAdapter:
@@ -33,13 +34,17 @@ def _pages(n):
 
 def test_classify_uses_only_the_first_page_and_records_a_phase():
     adapter = _FakeAdapter('{"doc_type":"credit_card_statement","doc_type_confidence":0.97}')
-    doc_type, conf, phase = classify(adapter, _pages(5), "embedded text")
+    doc_type, conf, phase = classify(adapter, _pages(5), "embedded text",
+                                     configured_model="configured-route")
     assert doc_type == "credit_card_statement" and conf == 0.97
     assert adapter.image_counts == [1]            # cheap: one image, not all five
     # The frame that holds the document's own text apart from the instructions
     # is part of what produced the reading, so it is named in the recorded
     # version and the whole id resolves back to the exact trusted text.
     assert phase.phase == "classify"
+    assert phase.model == "configured-route"
+    assert phase.resolved_model == "m"
+    assert phase.usage_reported
     assert phase.prompt_version == "classify-v2+untrusted-frame-v1"
     from viva.ingest import prompt_library
     assert prompt_library.resolve(phase.prompt_version)
@@ -102,13 +107,41 @@ def test_two_phase_read_records_both_claims(tmp_path):
                       TxnFact("2026-01-20", "Payment", Decimal("-50.00"))])
     rr = ReadResult(
         doc_type="credit_card_statement", doc_type_confidence=0.97, facts=facts,
-        phases=[ModelPhase("classify", "m", "classify-v1", "{...}", 0.001),
-                ModelPhase("extract", "m", "extract:base-v1+card-v1", _EXTRACT_JSON, 0.02)])
+        phases=[ModelPhase("classify", "configured-route", "classify-v1",
+                          "{...}", 0.001, resolved_model="provider-classifier"),
+                ModelPhase("extract", "configured-route",
+                           "extract:base-v1+card-v1", _EXTRACT_JSON, 0.02,
+                           resolved_model="provider-extractor")])
     res = capture_and_ingest(raw, ledger, b"card.pdf", _reads(rr),
                              captured_at="2026-02-01")
     assert res.action == POSTED
     phases = sorted(e.body["phase"] for e in _read_recordeds(ledger))
     assert phases == ["classify", "extract"]      # nothing thrown away
+    calls = _read_recordeds(ledger)
+    assert {e.body["model"] for e in calls} == {"configured-route"}
+    assert {e.body["resolved_model"] for e in calls} == {
+        "provider-classifier", "provider-extractor"}
+
+
+def test_each_extract_retry_becomes_its_own_outbound_event(tmp_path):
+    raw, ledger = _stores(tmp_path)
+    replies = iter([_result("{broken json"), _result(_EXTRACT_JSON)])
+    rr = read_with_retry(lambda prompt: next(replies), "PROMPT", "temporary",
+                         "en-US", "USD", prompt_version="extract:base-v1",
+                         configured_model="configured-route")
+    rr.doc_type = "credit_card_statement"
+    rr.facts.doc_type = "credit_card_statement"
+
+    result = capture_and_ingest(raw, ledger, b"card-with-retry.pdf", _reads(rr),
+                                captured_at="2026-02-01")
+
+    assert result.action == POSTED
+    calls = _read_recordeds(ledger)
+    assert len(calls) == 2
+    assert [event.body["parse_ok"] for event in calls] == [False, True]
+    assert {event.body["model"] for event in calls} == {"configured-route"}
+    assert sum(event.body["input_tokens"] for event in calls) == 10
+    assert sum(event.body["output_tokens"] for event in calls) == 10
 
 
 def test_unsupported_type_records_only_the_cheap_classify(tmp_path):
