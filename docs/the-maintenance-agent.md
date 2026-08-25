@@ -16,7 +16,7 @@ the *upkeep* direction: what Viva does to its own knowledge between questions.
 
 1. `observe` reads the vault; `policy.assess` is pure — no ledger, no model, no clock — and returns `Action`s with estimated costs; `act.perform` does one action; `run.wake` holds the budget and the cooldown.
 2. `--dry-run` runs the same planning function and stops before the first model call, writing nothing.
-3. `assess` is deterministic: the same inputs yield the same list in the same order — grammars, then brands, then waits.
+3. `assess` is deterministic: the same inputs yield the same list in the same order — grammars, already-known catalog records to sync for free, unknown brands to enrich, then waits.
 4. Nothing raises out of `act`; every failure comes back as an `Outcome` with a reason.
 5. The plan is remade after every action, so the ceiling means what it says.
 
@@ -77,10 +77,11 @@ the *upkeep* direction: what Viva does to its own knowledge between questions.
 **Code:** product/viva/agent/policy.py:53 (`AUTONOMOUS`)
 **Test:** product/tests/test_policy.py::test_enrichment_does_not_act_unattended_while_the_crossing_is_ungated, product/tests/test_policy.py::test_mechanics_are_autonomous_and_publishing_is_not
 
-1. `AUTONOMOUS` holds `induce_missing` and `reinduce_drifted`; `enrich_unknown` is not among them.
-2. An enrichment is planned, costed and proposed, and a person allows it.
-3. Anything restoring `enrich_unknown` to the autonomous set says first what closed the enrichment crossing.
-4. Induction is unaffected: it reads lines the vault already holds and writes a grammar.
+1. `AUTONOMOUS` holds `induce_missing`, `reinduce_drifted` and the zero-call `sync_known`; `enrich_unknown` is not among them.
+2. Applying a record already present in the local or shipped catalog is planned separately, costs no model call and writes only matching `MerchantEnriched` events into this vault.
+3. An enrichment is planned, costed and proposed, and a person allows it.
+4. Anything restoring `enrich_unknown` to the autonomous set says first what closed the enrichment crossing.
+5. Induction is unaffected: it reads lines the vault already holds and writes a grammar.
 
 ### MER-57 — The agent proposes nothing for a kind that names no party
 **State:** enforced

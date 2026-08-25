@@ -150,6 +150,20 @@ def do_induce(action, obs, best_of: int = BEST_OF) -> Outcome:
 # --------------------------------------------------------------------- enrich
 
 
+def do_sync(vault, action, obs) -> Outcome:
+    """Apply records already present in the catalog. Never calls a model."""
+    from ..ingest import sync_merchant_records
+
+    try:
+        synced = sync_merchant_records(vault.ledger, obs.catalog, obs.offered)
+    except Exception as e:                                  # noqa: BLE001
+        log.warning("agent: catalog sync failed: %s", e)
+        return Outcome("failed", detail=f"{type(e).__name__}: {e}"[:200])
+    return Outcome("done", calls=0,
+                   detail=f"{synced} known brand(s) synced to the ledger",
+                   result={"synced": synced})
+
+
 def do_enrich(vault, action, obs) -> Outcome:
     """Enrich the brands the catalog has no record for. Never raises."""
     from ..ingest import enrich_merchants
@@ -181,6 +195,8 @@ def perform(vault, action, obs, best_of: int = BEST_OF) -> Outcome:
     this module has no handler for. Never raises."""
     if action.kind in ("induce", "reinduce"):
         return do_induce(action, obs, best_of=best_of)
+    if action.kind == "sync":
+        return do_sync(vault, action, obs)
     if action.kind == "enrich":
         return do_enrich(vault, action, obs)
     return Outcome("failed", detail=f"no hands for a {action.kind!r} action yet")

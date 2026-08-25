@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 # What an action costs, in model calls, so a budget can be applied before
 # anything runs. For induction this is calls PER ATTEMPT (merchantcore's
 # MAX_ROUNDS); an estimate multiplies it by the rule's `best_of`.
-CALLS = {"induce": 3, "reinduce": 3, "enrich": 1}   # enrich: per batch of ~40
+CALLS = {"induce": 3, "reinduce": 3, "sync": 0,
+         "enrich": 1}   # enrich: per batch of ~40
 
 # The rules, as data: the thresholds each one fires on and the sentence it
 # reports itself with.
@@ -40,6 +41,10 @@ RULES = {
         "min_brands": 1,
         "why": "brands with no record, and a record is bought once and kept",
     },
+    "sync_known": {
+        "min_records": 1,
+        "why": "this vault holds merchants the local catalog already knows",
+    },
 }
 
 # Rules an agent may act on unattended. Anything not listed here is proposed
@@ -52,7 +57,7 @@ RULES = {
 # be read ahead of the spend to see what is about to cross. The corroboration
 # gate narrows what crosses without closing that case, so an enrichment is
 # proposed and waits for a person.
-AUTONOMOUS = frozenset({"induce_missing", "reinduce_drifted"})
+AUTONOMOUS = frozenset({"induce_missing", "reinduce_drifted", "sync_known"})
 
 # Rules that change what other people see. A human ratifies these, always.
 NEEDS_RATIFICATION = frozenset({"publish_grammar", "publish_merchant"})
@@ -70,7 +75,7 @@ class Action:
     """One thing that could be done now, with the evidence for doing it."""
 
     rule: str
-    kind: str                       # induce | reinduce | enrich | publish | ask
+    kind: str                       # induce | reinduce | sync | enrich | publish | ask
     target: str                     # "Northgate/depository", "brands", …
     why: str
     evidence: dict = field(default_factory=dict)
@@ -88,13 +93,15 @@ class Action:
 
 
 def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
+           known_records_to_sync: int = 0,
            rules: dict | None = None) -> list:
     """Everything worth doing to this vault right now, most valuable first.
 
     Pure: no model calls, no writes, no questions. `pairs` and `recent` are
     `{(institution, kind): {descriptor: movements}}` all-time and recent; `store`
     is a `ProfileStore`. Deterministic: the same inputs always yield the same
-    list, in the same order — grammars, then brands, then waits.
+    list, in the same order — grammars, known-record sync, unknown-brand
+    enrichment, then waits.
     """
     from merchantcore.induce import drift
     from merchantcore.profile import is_inducible
@@ -138,6 +145,12 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
                 evidence={"profile": current.id, "measured": current.measured,
                           "recent": d["recent"], "drop": d["recent_drop"]}))
 
+    if known_records_to_sync >= cfg["sync_known"]["min_records"]:
+        out.append(Action(
+            rule="sync_known", kind="sync", target="brands",
+            why=cfg["sync_known"]["why"], estimated_calls=CALLS["sync"],
+            evidence={"known_records_to_sync": known_records_to_sync}))
+
     if unknown_brands >= cfg["enrich_unknown"]["min_brands"]:
         out.append(Action(
             rule="enrich_unknown", kind="enrich", target="brands",
@@ -145,9 +158,11 @@ def assess(pairs: dict, recent: dict, store, unknown_brands: int = 0,
             estimated_calls=max(1, (unknown_brands + 39) // 40) * CALLS["enrich"],
             evidence={"unknown_brands": unknown_brands}))
 
-    # Grammars first, brands second, waits last: a grammar changes how a brand
-    # is keyed, so induction has to run before enrichment.
-    order = {"induce": 0, "reinduce": 1, "enrich": 2, "publish": 3, "wait": 4}
+    # Grammars first, known records second, unknown brands third, waits last: a
+    # grammar changes how a brand is keyed, so induction has to run before
+    # either catalog operation.
+    order = {"induce": 0, "reinduce": 1, "sync": 2, "enrich": 3,
+             "publish": 4, "wait": 5}
     return sorted(out, key=lambda a: (order.get(a.kind, 9), a.target))
 
 

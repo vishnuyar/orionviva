@@ -274,25 +274,12 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
         unanswered = catalog.mark_unanswered(
             k for k in batch if k not in records and k not in transport)
 
-    # Sync: import catalog records the ledger does not already reflect at an
-    # equal or higher grade. Idempotent.
-    #
-    # Only for merchants this vault actually holds — the ones it offered, plus
-    # the ones its ledger already carries a record for. The catalog is shared
-    # across every vault on the machine and may be seeded, so a record about a
-    # merchant this vault never paid appends no event to this vault's log.
-    existing = proj.merchant_categories()
-    held = set(offered) | set(existing)
-    synced = 0
-    for key, r in catalog.records().items():
-        if key not in held:
-            continue
-        cur = existing.get(key)
-        if cur is None or _GRADE_RANK.get(r.grade, 0) > _GRADE_RANK.get(cur.get("grade"), 0):
-            ledger.append(merchant_enriched(
-                r.key, r.category, r.subcategory, r.canonical_name,
-                r.attributes, r.grade, date.today().isoformat()))
-            synced += 1
+    # Applying records the catalog already holds is deliberately a separate,
+    # zero-call operation too. Enrichment uses it after buying new knowledge;
+    # the maintenance agent also uses it on its own so a new vault containing
+    # only already-known merchants does not need an unknown merchant merely to
+    # trigger the free sync.
+    synced = sync_merchant_records(ledger, catalog, offered)
     withheld = len([s for s in streams if s.is_person])
     if submitted or enriched or synced:
         log.info("merchants: offered %d brand(s), submitted %d, enriched %d, "
@@ -301,6 +288,44 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
     return {"submitted": submitted, "enriched": enriched, "synced": synced,
             "unanswered": unanswered, "minted": minted,
             "offered": len(offered), "withheld_people": withheld}
+
+
+def merchant_records_to_sync(ledger: Ledger, catalog, offered=()) -> dict:
+    """Catalog records this vault can apply without a model call.
+
+    ``offered`` names the merchant keys derived from this vault's eligible
+    counterparty streams. Records already held by the ledger are included too,
+    so a stronger catalog record can replace an older prior. A shared or
+    shipped record about a merchant this vault never encountered is excluded.
+
+    Pure: returns ``{key: MerchantRecord}`` and writes nothing.
+    """
+    existing = ledger.projection().merchant_categories()
+    held = set(offered) | set(existing)
+    return {
+        key: record for key, record in catalog.records().items()
+        if key in held and (
+            key not in existing
+            or _GRADE_RANK.get(record.grade, 0)
+            > _GRADE_RANK.get(existing[key].get("grade"), 0)
+        )
+    }
+
+
+def sync_merchant_records(ledger: Ledger, catalog, offered=()) -> int:
+    """Append already-known catalog records as vault events, for free.
+
+    The selection is the same one enrichment has always used and is
+    idempotent. Keeping it callable without an extractor is what separates
+    local catalog reuse from the permission-gated model crossing.
+    """
+    records = merchant_records_to_sync(ledger, catalog, offered)
+    for record in records.values():
+        ledger.append(merchant_enriched(
+            record.key, record.category, record.subcategory,
+            record.canonical_name, record.attributes, record.grade,
+            date.today().isoformat()))
+    return len(records)
 
 
 def export_catalog(ledger: Ledger) -> dict:

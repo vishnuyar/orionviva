@@ -80,8 +80,8 @@ def test_the_journal_carries_no_descriptor_and_no_amount(tmp_path):
     _act(ledger, outcome="done", produced="chase-depository-v1")
     body = ledger.projection().agent_log()[0]
     assert set(body["stake"]) <= {"distinct_lines", "movements", "unknown_brands",
-                                  "profile", "measured", "recent", "drop",
-                                  "machinery"}
+                                  "known_records_to_sync", "profile", "measured",
+                                  "recent", "drop", "machinery"}
     assert all(isinstance(v, (int, float, str)) for v in body["stake"].values())
 
 
@@ -283,6 +283,40 @@ def test_an_existing_grammar_is_not_re_induced(homed, tmp_path):
 
 
 # --------------------------------------------------- the catalog's memory
+
+
+def test_a_new_vault_syncs_known_merchants_without_a_model_call(
+        homed, tmp_path, monkeypatch):
+    """Catalog reuse is the free half of enrichment, not a side effect of
+    finding at least one unknown brand.
+
+    A new vault whose only merchant is already in this installation's catalog
+    must receive that record with a zero-call budget and no model configured.
+    """
+    from merchantcore import Catalog, MerchantRecord
+
+    catalog = Catalog(tmp_path / "mc" / "catalog.json")
+    catalog.add(MerchantRecord(
+        key="alpha shop ltd", canonical_name="Alpha Shop",
+        category="shopping", subcategory="books and media",
+        grade="corroborated"))
+    vault = _vault_with(tmp_path / "v", ["ALPHA SHOP LTD"])
+
+    def model_must_not_run(_name):
+        raise AssertionError("syncing an existing record reached the model")
+
+    monkeypatch.setattr("viva.agent.act._extractor", model_must_not_run)
+    run = wake(vault, remaining_calls=0)
+
+    assert run.calls_spent == 0
+    assert not run.could_not_spend
+    assert [(a.kind, o.outcome, o.calls) for a, o in run.performed] == [
+        ("sync", "done", 0)]
+    assert run.observation["unknown_brands"] == 0
+    assert run.observation["known_records_to_sync"] == 1
+    record = vault.ledger.projection().merchant_categories()["alpha shop ltd"]
+    assert record["category"] == "shopping"
+    assert record["subcategory"] == "books and media"
 
 
 def test_a_merchant_the_model_could_not_name_is_not_asked_about_again(tmp_path):

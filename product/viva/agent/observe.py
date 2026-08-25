@@ -7,6 +7,8 @@ profile store and the merchant catalog off disk, and builds the arguments
 `unknown_brands` is the count `Catalog.submit` would newly queue — offered
 hints, minus what the catalog already has a record for, minus what is already
 queued — so it matches the number of calls an enrichment would actually make.
+`known_records_to_sync` is the separate free half: catalog records this vault
+can apply immediately without sending anything to a model.
 
 Design rationale: docs/the-maintenance-agent.md
 """
@@ -25,6 +27,7 @@ class Observation:
     pairs: dict = field(default_factory=dict)      # (inst, kind) -> {descriptor: n}
     recent: dict = field(default_factory=dict)     # the same, last N days
     unknown_brands: int = 0                        # brands a call would newly buy
+    known_records_to_sync: int = 0                 # held catalog records, zero calls
     offered: dict = field(default_factory=dict)    # brand key -> Hint, what may cross
     store: object = None                           # ProfileStore
     catalog: object = None                         # Catalog
@@ -41,7 +44,8 @@ class Observation:
                                         if _is_inducible(k[1])]),
                 "grammars": len(self.store.ids()) if self.store else 0,
                 "brands_offered": len(self.offered),
-                "unknown_brands": self.unknown_brands}
+                "unknown_brands": self.unknown_brands,
+                "known_records_to_sync": self.known_records_to_sync}
 
 
 def _is_inducible(kind: str) -> bool:
@@ -69,6 +73,7 @@ def observe(vault, recent_days: int = 120) -> Observation:
     Makes no model calls and works with no model configured, so a dry run takes
     this same path. `recent_days` is the window the drift check calls recent."""
     from ..induce_profile import _pairs, profile_store
+    from ..ingest import merchant_records_to_sync
     from ..ledger.hints import enrichment_hints
     from ..ledger.streams import build_streams
 
@@ -110,10 +115,13 @@ def observe(vault, recent_days: int = 120) -> Observation:
     queued = catalog.queued()
     unknown = len([k for k in offered
                    if catalog.get(k) is None and k not in queued])
+    known_to_sync = len(merchant_records_to_sync(
+        vault.ledger, catalog, offered))
 
     return Observation(
         pairs=dict(pairs), recent=dict(recent),
-        unknown_brands=unknown, offered=offered,
+        unknown_brands=unknown, known_records_to_sync=known_to_sync,
+        offered=offered,
         store=store, catalog=catalog, proj=proj,
         profile_for=profile_for, kind_for=kind_for,
         movements=len(movements))

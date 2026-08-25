@@ -123,7 +123,9 @@ def _plan(obs, rules: dict | None, ceiling_left: int):
 
     Pure with respect to the vault: it reads, and writes nothing."""
     actions = assess(obs.pairs, obs.recent, obs.store,
-                     unknown_brands=obs.unknown_brands, rules=rules)
+                     unknown_brands=obs.unknown_brands,
+                     known_records_to_sync=obs.known_records_to_sync,
+                     rules=rules)
     live, cooled = cool(actions, obs.proj.agent_attempts())
     # `wait` and `ask` are reported but never performed and never budgeted.
     doable = [a for a in live if a.kind not in ("wait", "ask")]
@@ -131,10 +133,18 @@ def _plan(obs, rules: dict | None, ceiling_left: int):
     return actions, cooled, fits, deferred
 
 
+def _needs_model(action) -> bool:
+    """Whether performing this action crosses the configured model edge."""
+    return action.kind in ("induce", "reinduce", "enrich")
+
+
 def wake(vault, remaining_calls: int | None = None, dry_run: bool = False,
          best_of_override: int | None = None, rules: dict | None = None,
          recent_days: int = 120) -> Run:
-    """One wake. Returns a `Run`; the only events it writes are `AgentActed`.
+    """One wake. Returns a `Run`; each action writes an `AgentActed` record.
+
+    A free catalog sync also writes the `MerchantEnriched` events it applies;
+    model-backed actions write their own artifacts as before.
 
     The observation and the plan are remade after every action, so the budget is
     applied to current estimates. Each (rule, target) is attempted at most once
@@ -160,20 +170,25 @@ def wake(vault, remaining_calls: int | None = None, dry_run: bool = False,
                                             "line where money starts"))
                          for a in fits]
         return run
-    if fits and not model_configured():
+    configured = model_configured()
+    if any(_needs_model(action) for action in fits) and not configured:
         run.could_not_spend = (
             "no model configured — set VIVA_MODEL_ADAPTER and VIVA_MODEL "
             "(and the key), or in ./.env")
-        run.deferred = fits + deferred
-        return run
 
     attempted: set = set()
     while True:
         _, _, fits, deferred = _plan(obs, rules, ceiling - run.calls_spent)
         todo = [a for a in fits if (a.rule, a.target) not in attempted]
+        blocked = []
+        if not configured:
+            blocked = [a for a in todo if _needs_model(a)]
+            todo = [a for a in todo if not _needs_model(a)]
         if not todo:
-            run.deferred = [a for a in deferred
-                            if (a.rule, a.target) not in attempted]
+            run.deferred = [
+                a for a in blocked + deferred
+                if (a.rule, a.target) not in attempted
+            ]
             break
 
         action = todo[0]

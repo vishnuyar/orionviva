@@ -78,6 +78,18 @@ def test_grammars_are_ordered_before_brands(tmp_path):
     assert [a.kind for a in acts] == ["induce", "enrich"]
 
 
+def test_known_catalog_records_are_a_free_action_separate_from_enrichment(
+        tmp_path):
+    acts = assess({}, {}, _store(tmp_path), unknown_brands=0,
+                  known_records_to_sync=3)
+    assert len(acts) == 1
+    assert acts[0].kind == "sync"
+    assert acts[0].rule == "sync_known"
+    assert acts[0].autonomous
+    assert acts[0].estimated_calls == 0
+    assert acts[0].evidence == {"known_records_to_sync": 3}
+
+
 # --- the division of labour -------------------------------------------------
 
 def test_mechanics_are_autonomous_and_publishing_is_not():
@@ -86,7 +98,7 @@ def test_mechanics_are_autonomous_and_publishing_is_not():
     wrong for everybody, and no automated check catches the failure that
     matters — a grammar can cover 90% of lines while putting cities in {brand},
     and only reading it finds that."""
-    assert {"induce_missing", "reinduce_drifted"} <= AUTONOMOUS
+    assert {"induce_missing", "reinduce_drifted", "sync_known"} <= AUTONOMOUS
     assert not (AUTONOMOUS & NEEDS_RATIFICATION)
     assert {"publish_grammar", "publish_merchant"} <= NEEDS_RATIFICATION
 

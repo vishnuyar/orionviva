@@ -20,7 +20,9 @@ from .categorize import (SEED_CATEGORIES, assign_category,
                          rule_category_same_as,
                          rule_tag_same_as, tag_merchant, tag_movement,
                          rule_merchant_nature,
-                         enrich_merchants, export_catalog, normalize_category,
+                         enrich_merchants, export_catalog,
+                         merchant_records_to_sync, normalize_category,
+                         sync_merchant_records,
                          suggest_categories)
 from .merchants import NORMALIZER_VERSION, is_shareable, normalize_merchant
 from .paystub import Deduction, PayStubFacts, from_paystub_json
@@ -48,7 +50,8 @@ __all__ = [
     "rule_category_same_as", "rule_tag_same_as",
     "tag_movement", "tag_merchant",
     "rule_merchant_nature",
-    "enrich_merchants", "export_catalog", "normalize_merchant", "is_shareable",
+    "enrich_merchants", "merchant_records_to_sync", "sync_merchant_records",
+    "export_catalog", "normalize_merchant", "is_shareable",
     "NORMALIZER_VERSION",
     "HeldItem", "held_items", "other_holds", "apply_human_correction",
     "apply_identity_ruling",
