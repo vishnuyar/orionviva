@@ -46,6 +46,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     readJobs: () => read("jobs"),
     readTrust: () => read("trust"),
     readActivity: () => read("activity"),
+    setAsideFinding: (findingId: string) => request("viva.overview.set_aside_finding", { finding_id: findingId }),
     assignActivityCategory: (movementKey: string, categoryId: string) => request("viva.activity.assign_category", { movement_key: movementKey, category_id: categoryId }),
     replaceActivityTags: (movementKey: string, tagIds: readonly string[]) => request("viva.activity.replace_tags", { movement_key: movementKey, tag_ids: [...tagIds] }),
     confirmActivityTransfer: (movementKey: string, counterpartKey: string) => request("viva.activity.confirm_transfer", { movement_key: movementKey, counterpart_key: counterpartKey }),

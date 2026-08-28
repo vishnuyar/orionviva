@@ -209,6 +209,100 @@ class FigureView:
 
 
 @dataclass(frozen=True)
+class ObligationView:
+    """One grounded outgoing expectation, already worded for presentation."""
+
+    id: str
+    subject: str
+    cadence: str
+    expected_date: str
+    status: str
+    basis: str
+    amount_display: str
+    amount_min: str
+    amount_max: str
+    currency: str
+    grade: str
+    headline: str
+    explanation: str
+    coverage: str
+    record_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    account_ids: tuple[str, ...]
+    caveats: tuple[str, ...] = ()
+    required_visibility: bool = False
+    actions: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not all((self.id, self.subject, self.cadence, self.expected_date,
+                    self.status, self.basis, self.headline, self.explanation,
+                    self.coverage)):
+            raise ValueError("an obligation requires identity, basis, date and reviewed copy")
+        if self.status not in ("due", "expected"):
+            raise ValueError("an obligation is due or expected")
+        if self.basis not in ("confirmed", "measured", "observed"):
+            raise ValueError("an obligation basis is confirmed, measured or observed")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id, "subject": self.subject, "cadence": self.cadence,
+            "expected_date": self.expected_date, "status": self.status,
+            "basis": self.basis, "amount_display": self.amount_display,
+            "amount_min": self.amount_min, "amount_max": self.amount_max,
+            "currency": self.currency, "grade": self.grade,
+            "headline": self.headline, "explanation": self.explanation,
+            "coverage": self.coverage, "record_ids": list(self.record_ids),
+            "evidence_ids": list(self.evidence_ids),
+            "account_ids": list(self.account_ids), "caveats": list(self.caveats),
+            "required_visibility": self.required_visibility,
+            "actions": list(self.actions),
+        }
+
+
+@dataclass(frozen=True)
+class FindingView:
+    """One backend-ranked change, with its complete reviewed explanation."""
+
+    id: str
+    kind: str
+    subject: str
+    importance: int
+    amount_display: str
+    exact_value: str
+    currency: str
+    dated: str
+    headline: str
+    explanation: str
+    coverage: str
+    record_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    account_ids: tuple[str, ...]
+    required_visibility: bool = True
+    actions: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not all((self.id, self.kind, self.subject, self.headline,
+                    self.explanation, self.coverage)):
+            raise ValueError("a finding requires identity, kind and reviewed copy")
+        if self.importance < 1:
+            raise ValueError("finding importance is a positive backend rank")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id, "kind": self.kind, "subject": self.subject,
+            "importance": self.importance, "amount_display": self.amount_display,
+            "exact_value": self.exact_value, "currency": self.currency,
+            "dated": self.dated, "headline": self.headline,
+            "explanation": self.explanation, "coverage": self.coverage,
+            "record_ids": list(self.record_ids),
+            "evidence_ids": list(self.evidence_ids),
+            "account_ids": list(self.account_ids),
+            "required_visibility": self.required_visibility,
+            "actions": list(self.actions),
+        }
+
+
+@dataclass(frozen=True)
 class ActionOutcome:
     """An explicit result; callers never infer meaning from a bare ``ok``."""
 

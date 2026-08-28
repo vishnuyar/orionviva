@@ -72,6 +72,16 @@
       "state": "ready"
     },
     {
+      "capability_id": "overview.obligations",
+      "contract": "ObligationsAndFindings.v1",
+      "id": "overview.obligations.ready",
+      "payload": {
+        "capability_id": "overview.obligations",
+        "contract": "ObligationsAndFindings.v1"
+      },
+      "state": "ready"
+    },
+    {
       "capability_id": "review.questions",
       "contract": "QuestionQueue.v1",
       "id": "review.questions.ready",
@@ -146,6 +156,46 @@
       "provenance",
       "citations",
       "caveats"
+    ],
+    "FindingView": [
+      "id",
+      "kind",
+      "subject",
+      "importance",
+      "amount_display",
+      "exact_value",
+      "currency",
+      "dated",
+      "headline",
+      "explanation",
+      "coverage",
+      "record_ids",
+      "evidence_ids",
+      "account_ids",
+      "required_visibility",
+      "actions"
+    ],
+    "ObligationView": [
+      "id",
+      "subject",
+      "cadence",
+      "expected_date",
+      "status",
+      "basis",
+      "amount_display",
+      "amount_min",
+      "amount_max",
+      "currency",
+      "grade",
+      "headline",
+      "explanation",
+      "coverage",
+      "record_ids",
+      "evidence_ids",
+      "account_ids",
+      "caveats",
+      "required_visibility",
+      "actions"
     ],
     "PanelState": [
       "absent",
@@ -659,6 +709,27 @@
       "reason": null,
       "trust_effect": [
         "reads_data"
+      ]
+    },
+    {
+      "actions": [
+        "set_aside_finding"
+      ],
+      "availability": "when a vault is open and its records support an obligation or finding",
+      "contract": "ObligationsAndFindings.v1",
+      "destination": "overview",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "overview.obligations.ready"
+      ],
+      "id": "overview.obligations",
+      "maturity": "stable",
+      "owner": "viva.surface.obligations",
+      "reason": null,
+      "trust_effect": [
+        "reads_data",
+        "writes_event"
       ]
     },
     {

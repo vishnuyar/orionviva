@@ -41,6 +41,8 @@ SETTINGS_CAPABILITY = "settings.configuration"
 SETTINGS_OPERATIONS = action_operations_for(SETTINGS_CAPABILITY)
 ACTIVITY_CAPABILITY = "activity.movements"
 ACTIVITY_OPERATIONS = action_operations_for(ACTIVITY_CAPABILITY)
+OBLIGATIONS_CAPABILITY = "overview.obligations"
+OBLIGATIONS_OPERATIONS = action_operations_for(OBLIGATIONS_CAPABILITY)
 
 
 class BridgeRequestError(ValueError):
@@ -171,6 +173,7 @@ def handlers_for_opened_vault(
     from .conversation_actions import ConversationActions
     from .document_actions import DocumentActions
     from .jobs import JobRegistry
+    from .obligation_actions import ObligationActions
     from .review_actions import ReviewActions
     from .rescan_actions import RescanActions
     from .trust_actions import TrustActions
@@ -188,6 +191,7 @@ def handlers_for_opened_vault(
     talking = ConversationActions(vault, jobs)
     trust = TrustActions(vault, jobs)
     activity_actions = ActivityActions(vault)
+    obligation_actions = ObligationActions(vault)
     return BridgeDispatcher({
         **reads.handlers,
         REVIEW_OPERATIONS["answer"]: actions.answer,
@@ -206,4 +210,5 @@ def handlers_for_opened_vault(
         ACTIVITY_OPERATIONS["confirm_transfer"]: activity_actions.confirm_transfer,
         ACTIVITY_OPERATIONS["reject_transfer"]: activity_actions.reject_transfer,
         ACTIVITY_OPERATIONS["unlink_transfer"]: activity_actions.unlink_transfer,
+        OBLIGATIONS_OPERATIONS["set_aside_finding"]: obligation_actions.set_aside,
     })

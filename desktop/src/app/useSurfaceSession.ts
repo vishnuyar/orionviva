@@ -16,6 +16,7 @@ export type CaptureGesture = "none" | "one" | "several";
 export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void) {
   const [session, dispatch] = useReducer(sessionReducer, undefined, initialSession);
   const [hostBridge] = useState(createDetectedBridgeClient);
+  const [settingAsideFindingId, setSettingAsideFindingId] = useState("");
   const requestId = useRef(0);
   const dropped = useRef(onDropped);
   dropped.current = onDropped;
@@ -28,6 +29,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const asking = useRef(false);
   const maintaining = useRef(false);
   const correctingActivity = useRef(false);
+  const settingAsideFinding = useRef(false);
   // Every verb this session has comes from the source, and before a vault is
   // open there is no source and therefore no verb. A screen asks whether it
   // has one; nothing here invents a verb that would have to refuse.
@@ -39,6 +41,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const trustActions = session.source?.trustActions ?? null;
   const reviewActions = session.source?.reviewActions ?? null;
   const activityActions = session.source?.activityActions ?? null;
+  const overviewActions = session.source?.overviewActions ?? null;
   const source = session.source;
 
   // What is in force, asked once per source. It is this machine's rather than
@@ -311,6 +314,30 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     askAvailable: Boolean(conversationActions),
     trustAvailable: Boolean(trustActions),
     activityCorrectionAvailable: Boolean(activityActions),
+    findingActionsAvailable: Boolean(overviewActions),
+    async setAsideFinding(findingId: string) {
+      const actions = overviewActions;
+      const activeSource = source;
+      if (!actions || !activeSource || !findingId.trim() || settingAsideFinding.current) return;
+      settingAsideFinding.current = true;
+      setSettingAsideFindingId(findingId);
+      const nextRequestId = requestId.current;
+      try {
+        const result = await actions.setAsideFinding(findingId);
+        const snapshot = await activeSource.load();
+        if (requestId.current !== nextRequestId) return;
+        dispatch({ type: "loaded", requestId: nextRequestId, snapshot });
+        dispatch({ type: "notice", notice: result.state === "settled"
+          ? { kind: result.outcome.kind === "set_aside" ? "acknowledged" : "refused", text: result.outcome.message }
+          : { kind: "refused", text: "The finding could not be set aside because the vault did not return a readable answer." } });
+      } catch {
+        if (requestId.current === nextRequestId) dispatch({ type: "notice", notice: { kind: "refused", text: "The finding could not be set aside because the vault could not be read again." } });
+      } finally {
+        settingAsideFinding.current = false;
+        setSettingAsideFindingId("");
+      }
+    },
+    settingAsideFindingId,
     async assignActivityCategory(movementId: string, categoryId: string) {
       if (!categoryId.trim()) return;
       await runActivityCorrection("category", movementId, (actions) => actions.assignCategory(movementId, categoryId));

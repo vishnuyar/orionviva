@@ -15,7 +15,14 @@ describe("overview adapter", () => {
   });
 
   it("accepts only an explicit empty reviewed overview collection", () => {
-    expect(adaptOverview({ accounts: [] })).toEqual({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [] });
+    expect(adaptOverview({ accounts: [] })).toEqual({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], utility: { state: "absent", obligations: [], findings: [], findingCount: 0 } });
+  });
+
+  it("carries reviewed obligations and ranked findings without computing or sorting them", () => {
+    const result = adaptOverview({ accounts: [], utility: { state: "ready", finding_count: 4, obligations: [{ id: "ob-1", subject: "Rent", cadence: "monthly", expected_date: "2026-09-01", status: "due", basis: "measured", amount_display: "$1,200.00", amount_min: "1200.00", amount_max: "1200.00", currency: "USD", grade: "corroborated", headline: "Rent is due September 1.", explanation: "The measured amount is $1,200.00.", coverage: "Measured from three records.", account_ids: ["checking"], record_ids: ["m1"], evidence_ids: ["doc-1"], caveats: [], required_visibility: false, actions: ["inspect", "ask_viva", "invented"] }], findings: [{ id: "find-1", kind: "fee_observed", subject: "Bank fee", importance: 50, amount_display: "$12.00", exact_value: "12.00", currency: "USD", dated: "2026-08-27", headline: "A fee was observed.", explanation: "The ledger categorized this movement as a fee.", coverage: "Seen once.", record_ids: ["m2"], evidence_ids: [], account_ids: ["checking"], required_visibility: true, actions: ["set_aside", "ask_viva"] }] } });
+    expect(result?.utility).toMatchObject({ state: "ready", findingCount: 4 });
+    expect(result?.utility?.obligations[0]).toMatchObject({ id: "ob-1", expectedDate: "2026-09-01", amountDisplay: "$1,200.00", actions: ["inspect", "ask_viva"] });
+    expect(result?.utility?.findings[0]).toMatchObject({ id: "find-1", importance: 50, actions: ["set_aside", "ask_viva"] });
   });
 
   it("uses stable returned ids and removes duplicates after reorder", () => {

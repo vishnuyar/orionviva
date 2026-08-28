@@ -343,12 +343,17 @@ def excluded_from_spending(core: ProjectionCore) -> list[MovementInfo]:
 
 
 def spending_by_currency(core: ProjectionCore) -> dict[str, Decimal]:
-    """Depository outflows per currency, as positive magnitudes, excluding
-    non-spending natures. Superseded by ``spending_by_category``, which is
-    the full view; kept for callers that predate it."""
+    """Real spending per currency, as positive magnitudes.
+
+    Currency is only a partition of the same population every other spending
+    aggregate reads.  In particular, card purchases count and transfers,
+    provisional movements and mixed movements do not.  Keeping that predicate
+    in one place prevents two totals both labelled ``spending`` from describing
+    different sets of movements.
+    """
     out: dict[str, Decimal] = {}
     for m in movements(core):
-        if m.kind != "depository" or m.amount >= 0 or m.nature != SPENDING:
+        if not counts_as_spending(m):
             continue
-        out[m.currency] = out.get(m.currency, Decimal("0")) + (-m.amount)
+        out[m.currency] = out.get(m.currency, Decimal("0")) + abs(m.amount)
     return out

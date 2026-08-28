@@ -24,6 +24,14 @@ Counts and operation names are deliberately not copied here. Tests compare the
 registry, operation table, status tables, and desktop client so those facts have
 one executable source rather than another prose snapshot.
 
+The grounded obligations and quiet-findings slice is live. It reuses the
+existing rhythm evidence, advances monthly and annual dates with calendar
+semantics, distinguishes exact amounts from ranges, calls an item due only
+inside adequate evidence coverage, ranks deterministic findings in the
+backend, and records set-aside as an evidence-staked append-only event. The
+typed Overview contract and desktop consume that projection without a new
+destination, notification path, urgency mechanic or Viva initiation.
+
 ## Capabilities still absent or incomplete
 
 - **Account aggregation.** A person can open a local or sample vault and upload
@@ -37,19 +45,6 @@ one executable source rather than another prose snapshot.
   category or tag creation, or bulk correction. Inherited merchant tags also
   keep complete-set movement replacement unavailable when that action could not
   remove the effective overlay honestly.
-- **Grounded obligation projection.** The stream and rhythm machinery derives
-  flows, observed cadence and amount stability, first and last occurrences,
-  and confirmed or measured periodicities. The recurring-spending ledger read
-  reports supported arrangements already observed; it is not a forecast. No
-  projection yet computes a sufficiently grounded next expected date, expected
-  amount or honest range, confidence, coverage, or threshold for saying an
-  obligation is *due*.
-- **Pattern and finding exposure.** Deterministic stream and rhythm machinery
-  exists, the diagnostic stream report consumes it, and `query_ledger` can read
-  supported recurring spending. There is no registered `find_patterns` verb
-  and no typed surface for recurring, subscription, fee, duplicate,
-  amount-change, anomaly, or income-interruption findings, including ranking
-  and evidence-staked set-aside outcomes.
 - **Current-period runway.** No deterministic projection combines liquid
   balances, expected income, obligations, planned spending, goal
   contributions, and completeness into a bounded available-funds or runway

@@ -396,4 +396,21 @@ describe("the picture on the overview", () => {
     const rendered = view(overview({ figures: [figure({ coverage: ["A boundary."] })] }));
     for (const tone of ["inflow", "outflow", "neutral"]) expect(rendered.container.querySelectorAll(`.${tone}`), tone).toHaveLength(0);
   });
+
+  it("shows reviewed utility copy and routes only the actions the backend supplied", async () => {
+    const user = userEvent.setup();
+    const inspect = vi.fn();
+    const ask = vi.fn();
+    const setAside = vi.fn();
+    const result: FeatureResult<OverviewData> = { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], utility: { state: "ready", findingCount: 1, obligations: [{ id: "ob-1", subject: "Rent", cadence: "monthly", expectedDate: "2026-09-01", status: "due", basis: "measured", amountDisplay: "$1,200.00", amountMin: "1200", amountMax: "1200", currency: "USD", grade: "corroborated", headline: "Rent is due September 1.", explanation: "The measured amount is $1,200.00.", coverage: "Measured from three records.", recordIds: ["m1"], evidenceIds: ["doc-1"], accountIds: ["checking"], caveats: [], requiredVisibility: false, actions: ["inspect", "ask_viva"] }], findings: [{ id: "find-1", kind: "fee_observed", subject: "Fee", importance: 50, amountDisplay: "$12.00", exactValue: "12", currency: "USD", dated: "2026-08-27", headline: "A fee was observed.", explanation: "The ledger categorized it as a fee.", coverage: "Seen once.", recordIds: ["m2"], evidenceIds: [], accountIds: ["checking"], requiredVisibility: true, actions: ["ask_viva", "set_aside"] }] } } };
+    const rendered = render(<Overview {...actions} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" onInspectDocument={inspect} onAskViva={ask} onSetAsideFinding={setAside} />);
+    expect(rendered.getByText("Rent is due September 1.")).toBeInTheDocument();
+    expect(rendered.getByText("A fee was observed.")).toBeInTheDocument();
+    await user.click(rendered.getByRole("button", { name: "Inspect" }));
+    await user.click(rendered.getAllByRole("button", { name: "Ask Viva" })[0]);
+    await user.click(rendered.getByRole("button", { name: "Set aside" }));
+    expect(inspect).toHaveBeenCalledWith("doc-1");
+    expect(ask).toHaveBeenCalledOnce();
+    expect(setAside).toHaveBeenCalledWith("find-1");
+  });
 });

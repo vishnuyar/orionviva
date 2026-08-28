@@ -37,8 +37,9 @@ from .operations import (
     served_contracts,
     validate_operations,
 )
-from .models import (ActionOutcome, Citation, CitationRelation, FigureView,
-                     PanelState, ProofEmphasis, ProofPresentation, ProofReason)
+from .models import (ActionOutcome, Citation, CitationRelation, FindingView,
+                     FigureView, ObligationView, PanelState, ProofEmphasis,
+                     ProofPresentation, ProofReason)
 from .proof import freshness_confirmed_on, proof_presentation_from_evidence
 from .protocol import CURRENT_PROTOCOL, ProtocolVersion, ProtocolVersionError
 
@@ -63,6 +64,8 @@ __all__ = [
     "CURRENT_PROTOCOL",
     "DECLARED_OPERATIONS",
     "FigureView",
+    "FindingView",
+    "ObligationView",
     "PanelState",
     "ProofEmphasis",
     "ProofPresentation",

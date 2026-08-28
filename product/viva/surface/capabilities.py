@@ -161,6 +161,17 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         (TrustEffect.READS_DATA,),
     ),
     _surface(
+        "overview.obligations",
+        "viva.surface.obligations",
+        CapabilityDestination.OVERVIEW,
+        "when a vault is open and its records support an obligation or finding",
+        "ObligationsAndFindings.v1",
+        ("set_aside_finding",),
+        # The read is deterministic and local. Setting one finding aside writes
+        # only its identity and evidence stake; it changes no financial row.
+        (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
+    ),
+    _surface(
         "review.questions",
         "viva.ask",
         CapabilityDestination.REVIEW,

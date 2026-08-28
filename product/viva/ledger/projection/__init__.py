@@ -21,7 +21,8 @@ from ..events import Event
 from . import (accounts as _accounts, activity as _activity,
                balances as _balances, categories as _categories,
                coverage as _coverage, merchants as _merchants,
-               movements as _movements, positions as _positions,
+               movements as _movements, obligations as _obligations,
+               positions as _positions,
                rhythm as _rhythm, rulings as _rulings, tiers as _tiers)
 from .accounts import AccountInfo, Resolution
 from .balances import BalanceAnswer
@@ -31,13 +32,14 @@ from .movements import (BY_CATEGORY, BY_DEFAULT, BY_LINK, BY_OWN_ACCOUNT,
                         MovementInfo, _NATURE_OF_MAJOR, movement_key,
                         nature_of_legs)
 from .positions import ComposedValue, PositionRecord
+from .obligations import Finding, Obligation
 from .rhythm import RhythmComponent, RhythmHypothesis
 from .tiers import (TIER_SETTLED, TIER_STRUCTURAL, TIER_UNENRICHED,
                     TIER_UNKNOWN)
 
 __all__ = [
     "AccountInfo", "BalanceAnswer", "ComposedValue", "LedgerProjection",
-    "MovementInfo", "PositionRecord", "ProjectionCore", "Resolution",
+    "Finding", "MovementInfo", "Obligation", "PositionRecord", "ProjectionCore", "Resolution",
     "RhythmComponent", "RhythmHypothesis", "TxnLine",
     "UnknownAccountError", "movement_key", "nature_of_legs",
     "SPENDING", "TRANSFER", "SETTLEMENT", "MIXED",
@@ -357,6 +359,19 @@ class LedgerProjection:
 
     def rhythm_hypotheses(self) -> list[RhythmHypothesis]:
         return _rhythm.rhythm_hypotheses(self._core)
+
+    # ---------------------------------------------------------- obligations
+
+    def obligations(self, today: str) -> list[Obligation]:
+        return _obligations.obligations(self._core, today)
+
+    def findings(self, today: str, *, include_set_aside: bool = False,
+                 limit: int | None = None) -> list[Finding]:
+        return _obligations.findings(
+            self._core, today, include_set_aside=include_set_aside, limit=limit)
+
+    def finding_set_asides(self) -> dict[str, dict]:
+        return _obligations.finding_set_asides(self._core)
 
     # -------------------------------------------------------------- positions
 

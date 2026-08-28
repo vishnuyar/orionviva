@@ -94,3 +94,52 @@
   font-size: var(--text-caption);
   line-height: var(--leading-body);
 }
+
+.utility-section,
+.finding-block,
+.utility-card {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.utility-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-lg);
+}
+
+.utility-card {
+  align-content: start;
+  padding: var(--space-xl);
+  border-radius: var(--radius-lg);
+}
+
+.utility-card-topline,
+.utility-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.utility-card p,
+.utility-card small,
+.account-obligation {
+  margin: 0;
+}
+
+.utility-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: var(--space-sm);
+}
+
+.utility-subheading {
+  margin-top: var(--space-lg);
+}
+
+.account-obligation {
+  color: var(--ink);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}

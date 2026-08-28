@@ -225,7 +225,10 @@ export type PictureView = {
   withheld: readonly WithheldCurrency[];
   unplaced: readonly UnplacedAccount[];
 };
-export type OverviewData = { picture: PictureView; accounts: AccountView[] };
+export type ObligationView = { id: string; subject: string; cadence: string; expectedDate: string; status: "due" | "expected"; basis: "confirmed" | "measured" | "observed"; amountDisplay: string; amountMin: string; amountMax: string; currency: string; grade: string; headline: string; explanation: string; coverage: string; recordIds: readonly string[]; evidenceIds: readonly string[]; accountIds: readonly string[]; caveats: readonly string[]; requiredVisibility: boolean; actions: readonly ("inspect" | "ask_viva")[] };
+export type FindingView = { id: string; kind: string; subject: string; importance: number; amountDisplay: string; exactValue: string; currency: string; dated: string; headline: string; explanation: string; coverage: string; recordIds: readonly string[]; evidenceIds: readonly string[]; accountIds: readonly string[]; requiredVisibility: boolean; actions: readonly ("inspect" | "ask_viva" | "set_aside")[] };
+export type UtilityView = { state: "ready" | "absent"; obligations: readonly ObligationView[]; findings: readonly FindingView[]; findingCount: number };
+export type OverviewData = { picture: PictureView; accounts: AccountView[]; utility?: UtilityView };
 // One reviewed sentence for the whole panel, written by the backend, empty
 // when the panel has nothing to say. It is never composed here and never
 // repeated per row.
@@ -263,6 +266,9 @@ export type ActivityActions = {
   confirmTransfer: (movementId: string, counterpartId: string) => Promise<ActivityActionResult>;
   rejectTransfer: (movementId: string) => Promise<ActivityActionResult>;
   unlinkTransfer: (movementId: string, counterpartId: string) => Promise<ActivityActionResult>;
+};
+export type OverviewActions = {
+  setAsideFinding: (findingId: string) => Promise<ActionResult>;
 };
 // One figure a spoken or written answer stated, and the route back to what it
 // rests on. `written` is the words the sentence wrote the figure as, so the

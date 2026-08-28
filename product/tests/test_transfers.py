@@ -146,8 +146,9 @@ def test_cross_document_corroboration_closes_the_gap(tmp_path):
                 and "corrobor" in (ln.provenance.note or "")]
     assert supplied and supplied[0].grade == "corroborated"
     assert supplied[0].provenance.doc_id != ""      # points at the counterparty doc
-    # And the pair is netted: the $2400 is not spending, only the $100 groceries.
-    assert proj.spending_by_currency() == {"USD": Decimal("100.00")}
+    # The supplied $2400 pair is netted. The $100 checking purchase and $500
+    # card purchase are both spending under the shared nature predicate.
+    assert proj.spending_by_currency() == {"USD": Decimal("600.00")}
 
 
 def test_corroboration_heals_in_either_order(tmp_path):
@@ -159,7 +160,7 @@ def test_corroboration_heals_in_either_order(tmp_path):
     proj = ledger.projection()
     assert proj.balance(account_id_for(card)).amount == Decimal("500.00")
     assert proj.balance(account_id_for(card)).grade == "corroborated"
-    assert proj.spending_by_currency() == {"USD": Decimal("100.00")}   # netted
+    assert proj.spending_by_currency() == {"USD": Decimal("600.00")}   # netted
 
 
 def test_a_real_misread_is_not_falsely_corroborated(tmp_path):
@@ -237,7 +238,7 @@ def test_multi_leg_corroboration_supplies_a_missing_payments_section(tmp_path):
     supplied = [ln for ln in proj.transactions(account_id_for(card))
                 if "corrobor" in (ln.provenance.note or "")]
     assert len(supplied) == 2 and all(s.grade == "corroborated" for s in supplied)
-    assert proj.spending_by_currency() == {"USD": Decimal("100.00")}
+    assert proj.spending_by_currency() == {"USD": Decimal("300.00")}
 
 
 def test_sweep_links_previously_ingested_statements(tmp_path):

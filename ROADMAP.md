@@ -21,7 +21,7 @@ For what is actually built, in detail, see
 
 ## Phase 2 — Explain & advise
 - [ ] Ask-anything over the full financial picture, in plain language.
-- [ ] Obligations and quiet findings: expected payments, recurring charges,
+- [x] Obligations and quiet findings: expected payments, recurring charges,
   fees, anomalies, and trends appear in the picture; Viva never initiates and
   the product never notifies.
 - [ ] Current-period control: a bounded view of available funds and runway,

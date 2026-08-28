@@ -147,7 +147,7 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-3** | spending is shape and nature together | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_transfers_never_appear_as_a_spending_line_item` |
 | **MON-4** | weak evidence excludes the money and says so | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_a_suggested_implication_is_provisional_not_silent` |
 | **MON-5** | a ruling whose legs disagree is mixed, and is neither counted nor dropped | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_a_compound_payment_is_neither_counted_nor_dropped` |
-| **MON-6** | every spending aggregate is on the nature predicate | **contradicted** | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `product/tests/test_nature.py:71 (asserts the divergence)` |
+| **MON-6** | every spending aggregate is on the nature predicate | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_currency_and_category_partition_the_same_spending_population` |
 | **MON-7** | which way the money went has one derivation (M2) | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_a_card_purchase_reads_as_money_out` |
 | **MON-8** | the own-account rung is looser than the auto-link bar, deliberately | enforced | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | `test_an_asserted_account_does_not_make_its_own_payments_internal` |
 | **MON-9** | nature is derived, and no event says it | by-review | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) | — |
@@ -659,7 +659,6 @@ not been. Grouped by why the gap exists.
 | **ING-90** | Two timelines per fact: when it happened, and when we learned it | by-review-with-exception | [data-model-considerations.md](data-model-considerations.md) |
 | **MER-26** | `queued` and `pending` answer different questions | by-review | [merchantcore-package.md](merchantcore-package.md) |
 | **MER-59** | The enrichment run names the catalog it loaded | by-review | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) |
-| **MON-6** | every spending aggregate is on the nature predicate | contradicted-by-code | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) |
 | **MON-9** | nature is derived, and no event says it | by-review | [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md) |
 | **MON-20** | the alias maps are built during replay, not per lookup | by-review | [categories-and-tags.md](categories-and-tags.md) |
 | **MON-28** | cost is never presented as value, and no model is involved | by-review | [net-worth.md](net-worth.md) |
@@ -782,12 +781,12 @@ not been. Grouped by why the gap exists.
 | **VOICE-121** | a synthetic fixture proves rendering, never parity | untestable | [user-interface-implementation-status.md](user-interface-implementation-status.md) |
 | **VOICE-133** | five words, five layers, and none of them is a synonym | untestable | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) |
 
-**Total: 135 of 483 rules are pinned by no test.**
+**Total: 134 of 483 rules are pinned by no test.**
 ---
 
 ## Rules the code contradicts
 
-Twelve rows stand here. Each names where the rule is written and where the code
+Eleven rows stand here. Each names where the rule is written and where the code
 disagrees with it. A contradiction is a ruling owed, not a bug report: for
 several of these the code is right and the sentence is stale. One row is now
 narrower than the heading above it — VOICE-135's code no longer contradicts it
@@ -799,7 +798,6 @@ TypeScript tests, and moving it even that far is the product owner's.
 | --- | --- | --- |
 | **T7** — IDs are permanent; fingerprints are versioned<br>[design-invariants.md:76](design-invariants.md) | Two fields, two jobs: a permanent random id, and a separate versioned content fingerprint. | One content-derived string does both. A document's id is the SHA-256 of its own bytes (`product/viva/ingest/raw_store.py:45`); a movement is keyed by that id plus account, date, amount, description and occurrence (`product/viva/ledger/projection/movements.py:18`). The `uuid4` at `product/viva/ledger/events.py:127` is referenced by nothing. |
 | **ADR-007** — a permanent random identity and a versioned content fingerprint<br>[decisions/ADR-007-record-identity.md:13](decisions/ADR-007-record-identity.md) | The same decision, stated as the one-way door it was. | Same divergence as T7: `product/viva/ingest/raw_store.py:45`, `product/viva/ledger/projection/movements.py:18`, `product/viva/ledger/events.py:127`. |
-| **MON-6** — every spending aggregate is on the nature predicate<br>[honest-aggregates-and-the-learning-loop.md:56](honest-aggregates-and-the-learning-loop.md) | Every aggregate that states spending counts card purchases and excludes non-`spending` natures (M1). | `spending_by_currency` inlines *depository outflows only* (`product/viva/ledger/projection/movements.py:345`), so it omits every card purchase, while four callers print it as the spending headline: `product/viva/rescan.py:60`, `product/viva/debug/vault.py:87`, `product/viva/desktop_bridge/vault_surface.py:59`, `bench/synthetic/run_corpus.py:170`. `product/tests/test_nature.py:71` asserts the divergence. |
 | **ING-4** — a claim's identity is its value and position, never its label<br>[extraction-and-confidence.md:47](extraction-and-confidence.md) | Two extractions are matched on printed value and page position; a model-authored label is an annotation, never a join key. | `bench/vivabench/keybuild.py:113` indexes drafts on `(type, normalized label)` and merges with `setdefault`, so the label *is* the join key and later claims in a bucket are dropped silently. `core/vivacore/claims.py:30` returns that same tuple from `Claim.key()`. |
 | **ING-13** — ingestion processes a page at a time<br>[document-preprocessing.md:36](document-preprocessing.md) | A document is extracted page by page, so one bad page is one bad page and no read is capped by a whole-document output ceiling. | `product/viva/ingest/reader.py:118` passes the whole `pages` list to one `adapter.extract` call; the ceiling is handled by continuation (`core/vivacore/models/anthropic_adapter.py:42`). Only the classify pass is bounded to one page (`product/viva/ingest/reader.py:70`). The bench does read page-at-a-time (`bench/vivabench/runner.py:118`), so exam and product differ. |
 | **PROG-9** — a claim's identity is its value, page and region<br>[benchmark-harness-design.md:34](benchmark-harness-design.md) | A claim is identified by `(value, page, region)`; the label is an annotation. | Same site as ING-4: `core/vivacore/claims.py:30` and `bench/vivabench/keybuild.py:113`. Page, region and page-namespaced group are written onto every claim by the runner and read by nothing. |

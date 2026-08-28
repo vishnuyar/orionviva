@@ -1130,9 +1130,15 @@
             "withheld": []
           },
           "spending_by_currency": {
-            "USD": "438.55"
+            "USD": "598.55"
           },
-          "state": "ready"
+          "state": "ready",
+          "utility": {
+            "finding_count": 0,
+            "findings": [],
+            "obligations": [],
+            "state": "absent"
+          }
         },
         "job_id": "parity-overview",
         "surface": "overview"

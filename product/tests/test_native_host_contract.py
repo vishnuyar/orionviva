@@ -21,6 +21,7 @@ from viva.desktop_bridge.handlers import (ACTIVITY_OPERATIONS,
                                            CONVERSATION_OPERATIONS,
                                            DOCUMENTS_OPERATIONS,
                                            MAINTENANCE_OPERATIONS,
+                                           OBLIGATIONS_OPERATIONS,
                                            RESCAN_OPERATIONS,
                                            REVIEW_OPERATIONS,
                                            SETTINGS_OPERATIONS,
@@ -107,6 +108,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     ACTIVITY_OPERATIONS["confirm_transfer"]: {"movement_key", "counterpart_key"},
     ACTIVITY_OPERATIONS["reject_transfer"]: {"movement_key"},
     ACTIVITY_OPERATIONS["unlink_transfer"]: {"movement_key", "counterpart_key"},
+    OBLIGATIONS_OPERATIONS["set_aside_finding"]: {"finding_id"},
     SETTINGS_READ: set(),
     # What happens when a new version exists. It reports a fact about this
     # process, so there is nothing a caller could name — and the shape of the
@@ -145,6 +147,8 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
         BRIDGE_PACKAGE / "activity_actions.py", "_transfer_movement_request"),
     ACTIVITY_OPERATIONS["unlink_transfer"]: (
         BRIDGE_PACKAGE / "activity_actions.py", "_transfer_pair_request"),
+    OBLIGATIONS_OPERATIONS["set_aside_finding"]: (
+        BRIDGE_PACKAGE / "obligation_actions.py", "_request"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

@@ -13,7 +13,7 @@ import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptActionOutcome, adaptReview } from "./adapters/review";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, ActivityActionResult, ActivityActions, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import type { ActionResult, ActivityActionResult, ActivityActions, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -219,6 +219,10 @@ export function privateActivityActions(client: BridgeClient): ActivityActions {
     rejectTransfer: (movementId) => activityActed(client.rejectActivityTransfer(movementId)),
     unlinkTransfer: (movementId, counterpartId) => activityActed(client.unlinkActivityTransfer(movementId, counterpartId)),
   };
+}
+
+export function privateOverviewActions(client: BridgeClient): OverviewActions | null {
+  return client.setAsideFinding ? { setAsideFinding: (findingId) => acted(client.setAsideFinding!(findingId)) } : null;
 }
 
 export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"]): Promise<SurfaceSnapshot> {

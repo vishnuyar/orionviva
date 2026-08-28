@@ -388,6 +388,10 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
             "withheld": [],
             "unplaced": [],
         },
+        "utility": {
+            "state": "absent", "obligations": [], "findings": [],
+            "finding_count": 0,
+        },
     }
     # A panel earns its existence from data: an empty vault has no paperwork,
     # and says so rather than reporting a successful read of nothing.

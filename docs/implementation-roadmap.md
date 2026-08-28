@@ -121,6 +121,20 @@ a suggested transfer, or unlink a live one. Each action returns a typed outcome
 and the desktop completes a full fresh surface read before replacing its
 financial picture; it does not infer transfer candidates or patch a row
 optimistically.
+
+*Obligations and quiet findings.* The projection reuses settled stream and
+rhythm evidence rather than inventing a second recurrence engine. Three or more
+steady observations can support a measured monthly or annual expectation;
+calendar advancement preserves the day where possible, exact amounts remain
+exact and varying amounts remain ranges, and an expectation is called due only
+while evidence coverage is adequate. Stale outgoing and incoming rhythms,
+amount changes, exact duplicate candidates, resolved fees and newly grounded
+recurrence become typed, backend-ranked findings. Set-aside records the whole
+current stake as an append-only event, so the finding stays quiet at that stake
+and returns when evidence or the machinery version changes. Overview renders
+*Coming up*, at most three findings and relevant account context; all copy,
+ordering, visibility and available actions cross the reviewed surface contract,
+and no notification or Viva-initiation path exists.
 Current reachability and remaining gaps live in
 [user-interface-implementation-status.md](user-interface-implementation-status.md).
 
@@ -129,45 +143,13 @@ Current reachability and remaining gaps live in
 **What remains planned, and why in this order.**
 
 These are cycle families, not historical slices, and none receives an old slice
-label. Cycle family 1 is delivered and is described by capability in the built
-half above; the remaining numbers are not renumbered. Families 2–7 are planned
+label. Cycle families 1 and 2 are delivered and are described by capability in the built
+half above; the remaining numbers are not renumbered. Families 3–7 are planned
 direction rather than built behaviour. Each still needs its own approved brief,
 and each capability travels as one vertical slice: product projection or event,
 reviewed `viva.surface` contract, capability and operation disposition,
 fixtures, installed-interface consumer and tests. A new shell is not a
 substitute for any missing layer.
-
-### Cycle family 2 — obligations and quiet findings
-
-**Product capability.** A later brief must complete a grounded obligation
-projection with subject, cadence, expected date, expected amount or honest
-range, confidence, records and coverage; set the threshold between *due* and
-*usually appears around*; and expose deterministic recurring, subscription,
-fee, duplicate, amount-change, anomaly and income-interruption findings. Ranking
-and set-aside decisions belong to the backend, and a set-aside snapshots its
-stake so it stays quiet until evidence or machinery changes.
-
-**Surface contract.** Typed obligation, finding and short-brief models must
-carry explicit panel state, headline, explanation, importance, evidence,
-coverage, available action and required visibility. The desktop composes none
-of them.
-
-**Interface consumer.** The existing Overview may gain *Coming up* and at most
-three backend-ranked *What changed* items, with obligation context on the
-relevant account and only registered inspect, ask-Viva and set-aside gestures.
-This creates no notification centre, push path, urgency mechanic, Viva
-initiation or new top-level destination.
-
-**Dependency.** It follows the built quiet-proof capability because every
-finding needs the same mandatory-visibility policy, and correction outcomes
-must already be backend-owned. Grounded recurrence also waits on sufficiently
-settled nature and category semantics; time alone does not make a noisy rhythm
-an obligation.
-
-**Acceptance condition.** No qualified item means no rendered panel and no
-announced absence; a rhythm below the due threshold is not called a bill due;
-set-aside persists as a backend decision until its stake moves; and every money
-figure retains its receipt.
 
 ### Cycle family 3 — current-period control
 
@@ -301,8 +283,8 @@ outside the declared, gated operation inventory.
 
 **The stack, end to end.** The first version gave one honest answer, and the
 built half consolidates a financial picture on a small set of re-composed
-blocks and now makes routine proof quieter without weakening required
-qualification. The remaining planned order adds obligations and quiet findings,
+blocks, makes routine proof quieter without weakening required qualification,
+and adds grounded obligations with quiet findings. The remaining planned order adds
 current-period control, durable
 conversation and correction, goals and plans, deterministic scenarios, and
 finally drafted action behind explicit confirmation. Each later feature is the
@@ -319,6 +301,7 @@ same vertical path through product, surface and interface, not a new shell.
 - The conversation has met the author's real vault, and what the runs found is not settled. A wrong number reached a person, carrying its grade and its citation correctly, from four compounding faults of which none was in the shape mechanism. And *swapping the model changes phrasing rather than answers* is false as written: one local model emitted no tool call in twenty replies and so answered nothing at all, which makes the property per-model rather than a property of the design, with the shipped default on the wrong side of it.
 - Two done criteria for the speaking slice still have no test: that a document's own text cannot make Viva act, and that swapping the model changes phrasing rather than answers.
 - The wiring between the model and the citation gate is unpinned: the gate is tested hard and its supply line is not.
-- The speaking path has no quiet-finding projection to read. Quiet findings remain planned picture state and do not authorise Viva to initiate or notify.
+- The speaking path has no quiet-finding tool to call. Quiet findings are built
+  picture state, but do not authorise Viva to initiate or notify.
 - Where this sits against the product phases: `ROADMAP.md`'s foundations phase is complete, and the organize-and-consolidate phase is in progress — transfer-linking and the evidence-bounded net-worth curve are built, account aggregation is not.
 - Anchoring has never run and nothing schedules it; it is trust hardening's work.

@@ -172,12 +172,10 @@ structurally impossible).
   by rail and separate their directional flows; rhythm hypotheses measure and
   decompose cadence and amount stability, consult confirmed rhythm rulings, and
   feed the diagnostic report and a supported-recurring-spending mode of
-  `query_ledger`. That read reports observed arrangements, not future findings
-  or obligations. `list_obligations` is incomplete on the same substrate: first
-  and last occurrences, cadence, amount stability, and confirmed or measured
-  periodicities exist, but no code computes a sufficiently grounded next
-  expected date, expected amount or honest range, confidence, coverage, or the
-  evidence threshold at which the word *due* is allowed. `search_documents` is
+  `query_ledger`. Overview now has a separate grounded obligation and
+  quiet-finding projection with expected dates, amount shapes, coverage and the
+  due threshold, but neither `find_patterns` nor `list_obligations` is a
+  registered agent read. `search_documents` is
   blocked at the data layer: originals are stored content-addressed, there is no
   text index, and what is captured per document is the model's response text
   rather than the document's own. `project`, `recall`, `remember` and `correct`

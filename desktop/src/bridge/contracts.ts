@@ -96,6 +96,7 @@ export type BridgeClient = {
   // What moved, and which way. Direction is the read's: on a card a purchase
   // posts positive, and a shell reading the sign would have it backwards.
   readActivity: () => Promise<SurfaceReadResult>;
+  setAsideFinding?: (findingId: string) => Promise<unknown>;
   assignActivityCategory: (movementKey: string, categoryId: string) => Promise<unknown>;
   replaceActivityTags: (movementKey: string, tagIds: readonly string[]) => Promise<unknown>;
   confirmActivityTransfer: (movementKey: string, counterpartKey: string) => Promise<unknown>;

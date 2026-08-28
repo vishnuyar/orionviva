@@ -54,13 +54,15 @@
 2. A `mixed` movement is provisional, is not in spending, and appears in `undecomposed()` with the document that would settle the split.
 
 ### MON-6 — every spending aggregate is on the nature predicate
-**State:** contradicted-by-code
-**Code:** product/viva/ledger/projection/movements.py:345 (`spending_by_currency`)
-**Test:** product/tests/test_nature.py:71 (asserts the divergence)
+**State:** enforced
+**Code:** product/viva/ledger/projection/movements.py:345 (`spending_by_currency` delegates to `counts_as_spending`)
+**Test:** product/tests/test_nature.py::test_currency_and_category_partition_the_same_spending_population
 
 1. Every aggregate that states spending counts card purchases and excludes non-`spending` natures.
 
-**Contradiction:** the doc says every downstream aggregate excludes anything not `spending`, and M1 says a card purchase is spending ([design-invariants.md](design-invariants.md)). `spending_by_currency` (movements.py:345) instead inlines its own test — depository outflows only — so it **omits every card purchase**, and it is what four callers print or use as the spending headline: `rescan.py:60` and `debug/vault.py:87` both label it *"external spending (transfers excluded)"* directly above a category breakdown computed on the correct population; `desktop_bridge/vault_surface.py:59` publishes it; `bench/synthetic/run_corpus.py:170` picks a currency from it. `test_nature.py:71` asserts the two disagree (560.00 by category, 60.00 by currency). Not resolved here.
+Currency and category are now partitions of the same population: both include
+card purchases and both exclude transfers, provisional movements and mixed
+movements through `counts_as_spending`.
 
 ### MON-7 — which way the money went has one derivation (M2)
 **State:** enforced

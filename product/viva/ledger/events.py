@@ -795,6 +795,34 @@ def question_declined(question_id: str, kind: str, occurred_at: str,
     )
 
 
+# A finding is set aside under its own identity and current evidence stake.
+# It is not a question and recording this event answers nothing about money.
+FINDING_SET_ASIDE = "FindingSetAside"
+
+
+def finding_set_aside(finding_id: str, kind: str, stake: dict,
+                      occurred_at: str, by: str = "human",
+                      provenance: Provenance | None = None) -> Event:
+    """Keep one deterministic finding quiet while its evidence is unchanged.
+
+    The caller supplies the stake produced by the live finding projection, not
+    a duration.  A later read compares the whole JSON-safe snapshot and shows
+    the finding again when evidence or the machinery version moves.
+    """
+    if not str(finding_id or "").strip():
+        raise ValueError("a set-aside must name the finding it quiets")
+    if not str(kind or "").strip():
+        raise ValueError("a set-aside must name the finding kind")
+    if not isinstance(stake, dict) or not stake:
+        raise ValueError("a set-aside requires the finding's non-empty stake")
+    return Event(
+        FINDING_SET_ASIDE, occurred_at,
+        body={"finding_id": finding_id, "kind": kind,
+              "stake": dict(stake), "by": by},
+        provenance=provenance or Provenance(),
+    )
+
+
 # --------------------------------------------------------------------------
 # The agent acted on its own: the journal of work done unattended.
 #

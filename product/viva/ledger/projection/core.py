@@ -187,6 +187,9 @@ class ProjectionCore:
         # the stake (amount, count) the question showed when it was set aside.
         # The queue compares against the live stake; this only remembers.
         self._declined: dict[str, dict] = {}
+        # Findings set aside at the exact evidence stake a person saw. The
+        # finding projection compares it to the live stake and uses no clock.
+        self._finding_set_asides: dict[str, dict] = {}
         self._agent_log: list[dict] = []
         # Own-account token index, built lazily and invalidated when a new
         # account is opened. Recognizes an internal movement when no transfer
@@ -345,6 +348,13 @@ class ProjectionCore:
             # a read about money cites a document.
             self._declined[event.body["question_id"]] = {
                 **event.body, "event_id": event.event_id}
+
+        elif et == "FindingSetAside":
+            # Last decision wins. If a finding returns on changed evidence and
+            # is set aside again, this replaces the old snapshot.
+            self._finding_set_asides[event.body["finding_id"]] = {
+                **event.body, "occurred_at": event.occurred_at,
+                "event_id": event.event_id}
 
         elif et == "AgentActed":
             # Kept in arrival order and never collapsed, so the log answers both

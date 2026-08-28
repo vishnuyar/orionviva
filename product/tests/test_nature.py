@@ -68,7 +68,29 @@ def test_payment_to_my_own_card_is_not_spending_even_unlinked(tmp_path):
     assert payment.nature_reason == BY_OWN_ACCOUNT
     # The headline excludes it; only the real outflow counts.
     assert sum(proj.spending_by_category().values()) == Decimal("560.00")  # 500 card + 60
-    assert proj.spending_by_currency() == {"USD": Decimal("60.00")}
+    assert proj.spending_by_currency() == {"USD": Decimal("560.00")}
+
+
+def test_currency_and_category_partition_the_same_spending_population(tmp_path):
+    """The two views may group differently, but neither may silently select a
+    different meaning of spending."""
+    raw, ledger = _vault(tmp_path)
+    card = StatementFacts(
+        doc_id="", doc_type="credit_card_statement", doc_type_confidence=0.98,
+        account_ref="Chase Freedom Rise", currency="USD",
+        opening_amount=Decimal("0"), opening_date="2026-01-01",
+        closing_amount=Decimal("500.00"), closing_date="2026-01-31",
+        transactions=[TxnFact("2026-01-05", "COSTCO WHSE", Decimal("500.00"))],
+        account_number="7799", institution="Chase")
+    capture_and_ingest(raw, ledger, b"card-partition",
+                       lambda data, did: _stamp(card, did), captured_at="2026-02-01")
+    _checking(raw, ledger,
+              [("2026-03-10", "Payment To Chase Card Ending IN 7799", "-400.00"),
+               ("2026-03-12", "WHOLE FOODS MKT", "-60.00")])
+
+    proj = ledger.projection()
+    assert sum(proj.spending_by_currency().values()) == sum(
+        proj.spending_by_category().values())
 
 
 def test_a_linked_transfer_reports_the_link_as_its_reason(tmp_path):

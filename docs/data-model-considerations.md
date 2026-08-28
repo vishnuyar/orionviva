@@ -204,5 +204,7 @@ plus per-type checks, never by a per-region schema.
 - Pay-stub deductions that are also facts elsewhere — a retirement contribution appears on the stub and on the retirement statement, two observations of one fact.
 - Vesting: owned versus vested is either a position attribute or a provision, and no real document has settled it.
 - Joint accounts and households: Party exists so another person's card is representable, but the product stays single-user with multi-party data, and the shared product is a door the schema declines to close.
-- Asset, Obligation and Provision have no implementation; the ontology above is ahead of the ledger on those three.
+- Asset and Provision have no implementation; the ontology above is ahead of
+  the ledger on those two. Obligation now has a read-side projection over
+  grounded recurring movements; it is not a posted account or accrual.
 - Generic claim extraction on an `unknown` document (ING-40's second half). Today a type with no projector is parked after the classify pass, so nothing is extracted for fewer checks to apply to.

@@ -44,6 +44,8 @@ fixtures remain for deterministic presentation-state coverage.
 The live path provides financial picture and account evidence, movement
 activity with movement-scoped existing-choice category, complete-set tag and
 backend-qualified transfer correction, document capture and rescan,
+calendar-aware upcoming obligations and the backend's top three quiet findings
+with inspect, Ask Viva and evidence-staked set-aside gestures,
 process-local jobs and cancellation,
 review answer, proposal confirmation and decline, Ask Viva text turns, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
@@ -94,6 +96,7 @@ operation column is additionally checked by the desktop architecture gate.
 | `viva.lifecycle.read` | yes | before a vault opens | yes |
 | `viva.maintenance.diagnose` | yes | opened vault | yes |
 | `viva.maintenance.run` | yes | opened vault | yes |
+| `viva.overview.set_aside_finding` | yes | opened vault | yes |
 | `viva.review.answer` | yes | opened vault | yes |
 | `viva.review.confirm` | yes | opened vault | yes |
 | `viva.review.decline` | yes | opened vault | yes |

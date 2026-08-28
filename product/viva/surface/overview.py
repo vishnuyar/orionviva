@@ -23,6 +23,7 @@ from ..ledger.projection.movements import leading_account
 from ..tools.envelope import BY_ACCOUNT, BY_CURRENCY, GAP_REASONS
 from .models import Citation, CitationRelation, FigureGrade, FigureView, PanelState
 from .proof import freshness_confirmed_on, proof_presentation_from_evidence
+from .obligations import utility
 
 # The family of wordings a figure standing on its own is said in. The lines a
 # run places after a clause open with a word pointing back at what was just
@@ -182,6 +183,10 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
         "account_count": len(accounts),
         "spending_by_currency": {currency: str(amount) for currency, amount
                                  in projection.spending_by_currency().items()},
+        # The utility block is composed by its own reviewed surface. Overview
+        # carries it whole and the interface renders it whole; neither this
+        # financial-picture composer nor the desktop re-ranks or recalculates.
+        "utility": utility(projection, locale, today),
         # And the picture as one thing: what it covers, what day it is good
         # for, and one figure per currency. Nothing adds them together — there
         # is no rate with a source, a date and a grade of its own, so a total

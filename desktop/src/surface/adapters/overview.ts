@@ -1,5 +1,5 @@
 import { gradePresentation } from "../evidence";
-import type { AccountView, EvidenceLink, EvidenceRelation, FeatureIssue, FigureMeasure, FigureView, OverviewData, PanelState, PictureView, ProofPresentation, UnmeasuredAccount, UnplacedAccount, WithheldCurrency } from "../types";
+import type { AccountView, EvidenceLink, EvidenceRelation, FeatureIssue, FindingView, FigureMeasure, FigureView, ObligationView, OverviewData, PanelState, PictureView, ProofPresentation, UnmeasuredAccount, UnplacedAccount, UtilityView, WithheldCurrency } from "../types";
 import { isRecord, record, textValue, uniqueRecordsById } from "./primitives";
 
 // The words a citation may stand in to its figure. The set is the backend's,
@@ -35,6 +35,38 @@ function evidenceLinks(balance: Record<string, unknown>): EvidenceLink[] {
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map(textValue).filter((item) => item.trim().length > 0) : [];
+}
+
+const OBLIGATION_ACTIONS = ["inspect", "ask_viva"] as const;
+const FINDING_ACTIONS = ["inspect", "ask_viva", "set_aside"] as const;
+
+function closedActions<T extends string>(value: unknown, allowed: readonly T[]): T[] {
+  return stringList(value).filter((action): action is T => allowed.some((known) => known === action));
+}
+
+function obligation(value: unknown): ObligationView | null {
+  const row = record(value);
+  const id = textValue(row.id);
+  const status = row.status === "due" || row.status === "expected" ? row.status : null;
+  const basis = row.basis === "confirmed" || row.basis === "measured" || row.basis === "observed" ? row.basis : null;
+  if (!id || status === null || basis === null || !textValue(row.headline) || !textValue(row.explanation) || !textValue(row.coverage)) return null;
+  return { id, subject: textValue(row.subject), cadence: textValue(row.cadence), expectedDate: textValue(row.expected_date), status, basis, amountDisplay: textValue(row.amount_display), amountMin: textValue(row.amount_min), amountMax: textValue(row.amount_max), currency: textValue(row.currency), grade: textValue(row.grade), headline: textValue(row.headline), explanation: textValue(row.explanation), coverage: textValue(row.coverage), recordIds: stringList(row.record_ids), evidenceIds: stringList(row.evidence_ids), accountIds: stringList(row.account_ids), caveats: stringList(row.caveats), requiredVisibility: row.required_visibility === true, actions: closedActions(row.actions, OBLIGATION_ACTIONS) };
+}
+
+function finding(value: unknown): FindingView | null {
+  const row = record(value);
+  const id = textValue(row.id);
+  const importance = typeof row.importance === "number" && Number.isInteger(row.importance) && row.importance > 0 ? row.importance : 0;
+  if (!id || !importance || !textValue(row.kind) || !textValue(row.headline) || !textValue(row.explanation) || !textValue(row.coverage)) return null;
+  return { id, kind: textValue(row.kind), subject: textValue(row.subject), importance, amountDisplay: textValue(row.amount_display), exactValue: textValue(row.exact_value), currency: textValue(row.currency), dated: textValue(row.dated), headline: textValue(row.headline), explanation: textValue(row.explanation), coverage: textValue(row.coverage), recordIds: stringList(row.record_ids), evidenceIds: stringList(row.evidence_ids), accountIds: stringList(row.account_ids), requiredVisibility: row.required_visibility === true, actions: closedActions(row.actions, FINDING_ACTIONS) };
+}
+
+function utility(value: unknown): UtilityView {
+  const block = record(value);
+  const obligations = (Array.isArray(block.obligations) ? block.obligations : []).map(obligation).filter((row): row is ObligationView => row !== null);
+  const findings = (Array.isArray(block.findings) ? block.findings : []).map(finding).filter((row): row is FindingView => row !== null);
+  const findingCount = typeof block.finding_count === "number" && Number.isInteger(block.finding_count) && block.finding_count >= findings.length ? block.finding_count : findings.length;
+  return { state: block.state === "ready" ? "ready" : "absent", obligations, findings, findingCount };
 }
 
 function measure(value: unknown): FigureMeasure | null {
@@ -193,7 +225,7 @@ export function adaptOverview(raw: unknown): OverviewData | null {
       recordIds: stringList(balance.record_ids),
     };
   });
-  return { picture: picture(raw.picture), accounts };
+  return { picture: picture(raw.picture), accounts, utility: utility(raw.utility) };
 }
 
 export type OverviewPanel = { state: PanelState; issues: FeatureIssue[] };
