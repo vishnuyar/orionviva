@@ -25,6 +25,8 @@ def test_sidecar_build_script_has_reproducible_target_and_output_contract():
         assert argument in source
     assert SIDECAR_NAME in source
     assert "sys.executable" in source or "python -m build" in source
+    assert "VIVA_BUILD_REVISION_FILE" in source
+    assert "build_revision()" in source
 
 
 def test_sidecar_build_script_emits_tauri_external_bin_name():

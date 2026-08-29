@@ -17,6 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import prepare_native_release as release  # noqa: E402
+import viva.revision as revision  # noqa: E402
 
 from viva.desktop_bridge.handlers import default_handlers
 from viva.desktop_bridge.rpc import dispatch_frame
@@ -71,6 +72,14 @@ def test_a_build_that_wrote_its_revision_down_was_packaged():
     step does."""
     assert origin_of("abcdef123456", written=True) == PACKAGED
     assert lifecycle("abcdef123456", True)["origin_sentence"] == moment("update_installed_build")
+
+
+def test_a_packaged_dirty_tree_keeps_its_honest_revision_mark(tmp_path, monkeypatch):
+    monkeypatch.setattr(revision, "_package_root", lambda: tmp_path)
+    (tmp_path / revision.REVISION_FILE).write_text(
+        "abcdef123456+changes\n", encoding="utf-8")
+
+    assert revision.source_revision() == "abcdef123456+changes"
 
 
 def test_a_build_answering_out_of_a_tree_was_not_packaged():

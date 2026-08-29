@@ -7,7 +7,7 @@
 
 ### VOICE-25 — the butler is Viva, and the persona guide is seed content for data packs
 **State:** enforced
-**Code:** product/viva/persona/pack-v36/ (each newer pack adds a family and copies the rest verbatim; pack-v36 adds the reviewed obligation, quiet-finding and set-aside copy over pack-v35's Activity transfer relationship, evidence-state and outcome copy)
+**Code:** product/viva/persona/pack-v38/ (each newer pack adds a family and copies the rest verbatim; pack-v38 refines current-period evidence, exclusion and plural copy over pack-v37's initial current-period family)
 **Test:** product/tests/test_persona_pack.py::test_every_intent_has_a_phrasing_and_no_orphans
 
 1. [viva-persona.md](viva-persona.md) is the standing definition of traits, principles, question content and "I don't know" handling.
@@ -125,7 +125,6 @@ should be designed around Viva rather than have her added to it.
 
 - The copywriter workflow: model drafts and author reviews, or author writes and model critiques?
 - The voice eval. Correctness has a confidently-wrong rate; nothing yet measures "sounds like Viva", and the author's ear is the honest answer for now.
-- When the real presentation layer's design conversation happens, and what it should be shaped by.
 - Whether live per-question phrasing is ever earned, and what specific moments would earn it.
 
 The asset interview this document seeded is superseded by

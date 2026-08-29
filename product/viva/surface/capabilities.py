@@ -112,6 +112,7 @@ def _surface(
     trust_effect: tuple[TrustEffect, ...],
     *,
     entrypoint: str | None = None,
+    fixture_states: tuple[str, ...] = ("ready",),
 ) -> CapabilitySpec:
     return CapabilitySpec(
         id=id,
@@ -122,7 +123,7 @@ def _surface(
         contract=contract,
         actions=actions,
         trust_effect=trust_effect,
-        fixture_ids=(f"{id}.ready",),
+        fixture_ids=tuple(f"{id}.{state}" for state in fixture_states),
         entrypoint=entrypoint,
     )
 
@@ -170,6 +171,16 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         # The read is deterministic and local. Setting one finding aside writes
         # only its identity and evidence stake; it changes no financial row.
         (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
+    ),
+    _surface(
+        "overview.current_period",
+        "viva.surface.current_period",
+        CapabilityDestination.OVERVIEW,
+        "when a vault holds an issuer-backed depository balance",
+        "CurrentPeriodControl.v1",
+        (),
+        (TrustEffect.READS_DATA,),
+        fixture_states=("ready", "limited", "refused"),
     ),
     _surface(
         "review.questions",

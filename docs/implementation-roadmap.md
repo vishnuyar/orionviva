@@ -135,6 +135,19 @@ and returns when evidence or the machinery version changes. Overview renders
 *Coming up*, at most three findings and relevant account context; all copy,
 ordering, visibility and available actions cross the reviewed surface contract,
 and no notification or Viva-initiation path exists.
+
+*Current-period control.* One deterministic, per-currency projection starts
+from issuer-backed depository balances and applies only confirmed or strongly
+measured recurring income and obligations over the next thirty days. Expected
+income contributes nothing to the lower bound until it arrives; varying
+obligations widen the range, missed income is not rolled forward, and unlike
+currencies are never combined. The whole answer carries its horizon, weakest
+grade, evidence dates, accounts, records, assumptions, exclusions, missing
+inputs and backend-authored balance series and tooltips. Because planned
+spending and goal contributions do not exist yet, the product calls the result
+*known remainder*, never spend permission or runway. Overview renders the
+ready, limited or refused result without arithmetic, and older, undated or
+conflicted balances weaken visibly without an invented expiry rule.
 Current reachability and remaining gaps live in
 [user-interface-implementation-status.md](user-interface-implementation-status.md).
 
@@ -143,40 +156,13 @@ Current reachability and remaining gaps live in
 **What remains planned, and why in this order.**
 
 These are cycle families, not historical slices, and none receives an old slice
-label. Cycle families 1 and 2 are delivered and are described by capability in the built
-half above; the remaining numbers are not renumbered. Families 3–7 are planned
+label. Cycle families 1–3 are delivered and are described by capability in the
+built half above; the remaining numbers are not renumbered. Families 4–7 are planned
 direction rather than built behaviour. Each still needs its own approved brief,
 and each capability travels as one vertical slice: product projection or event,
 reviewed `viva.surface` contract, capability and operation disposition,
 fixtures, installed-interface consumer and tests. A new shell is not a
 substitute for any missing layer.
-
-### Cycle family 3 — current-period control
-
-**Product capability.** A later brief must add a deterministic projection over
-liquid balances, expected income, known obligations, available planned spending
-and goal contributions, and completeness. It must return a bounded result,
-horizon, assumptions, weakest grade, coverage, caveats and a range wherever one
-exact amount is not justified, and must refuse *safe to spend* when the evidence
-supports only an amount uncommitted among records currently seen.
-
-**Surface contract.** Runway or available funds must cross as a whole answer,
-never a bare number, with the assumptions, boundaries and evidence that would
-change it. Any chart series and tooltip text are backend-supplied.
-
-**Interface consumer.** The desktop renders the result, horizon, assumptions
-and supplied series. A what-if gesture sends a scenario request; sorting,
-rounding or local editing performs no financial recalculation.
-
-**Dependency.** This composes the existing spending, income and balance reads
-with family 2's grounded obligations and the built evidence policy. Later goal
-inputs may strengthen the result, but their absence must be represented rather
-than guessed ahead of family 5.
-
-**Acceptance condition.** Missing or stale inputs weaken or refuse the claim in
-the backend before it crosses the surface; the interface cannot produce a
-different answer; and every assumption and source behind the headline remains
-reachable.
 
 ### Cycle family 4 — durable conversation and correction
 
@@ -284,8 +270,8 @@ outside the declared, gated operation inventory.
 **The stack, end to end.** The first version gave one honest answer, and the
 built half consolidates a financial picture on a small set of re-composed
 blocks, makes routine proof quieter without weakening required qualification,
-and adds grounded obligations with quiet findings. The remaining planned order adds
-current-period control, durable
+adds grounded obligations with quiet findings, and projects a bounded
+current-period remainder. The remaining planned order adds durable
 conversation and correction, goals and plans, deterministic scenarios, and
 finally drafted action behind explicit confirmation. Each later feature is the
 same vertical path through product, surface and interface, not a new shell.

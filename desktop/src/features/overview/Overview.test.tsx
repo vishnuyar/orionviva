@@ -3,8 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 // The sentences the product ships, read from the pack that ships them. A
 // sentence typed out here would be an assertion about words nobody released.
-import moments from "../../../../product/viva/persona/pack-v31/moments.json";
+import moments from "../../../../product/viva/persona/pack-v38/moments.json";
 import { EvidenceDrawer } from "../../components/EvidenceDrawer";
+import { currentPeriodEvidenceFigure } from "../../surface/evidence";
 import type { FeatureResult, FigureView, OverviewData, PictureView, ReviewData, SurfaceSnapshot , ActivityData } from "../../surface/types";
 import { Overview } from "./Overview";
 
@@ -412,5 +413,41 @@ describe("the picture on the overview", () => {
     expect(inspect).toHaveBeenCalledWith("doc-1");
     expect(ask).toHaveBeenCalledOnce();
     expect(setAside).toHaveBeenCalledWith("find-1");
+  });
+
+  it("renders every supplied current-period state and opens the whole figure receipt", async () => {
+    const user = userEvent.setup();
+    actions.onOpenFigure.mockClear();
+    const result: FeatureResult<OverviewData> = { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], currentPeriod: { state: "limited", title: moments.current_period_title, kicker: moments.current_period_kicker, horizonStart: "2026-05-01", horizonEnd: "2026-05-31", refusal: "", exclusions: [{ kind: "account", identity: "eur-asserted", reason: "account_not_issuer", sentence: "This EUR account is not included.", currency: "EUR", evidenceDates: [], recordIds: [], evidenceIds: [], accountIds: ["eur-asserted"] }], slices: [{ id: "current-period:USD", currency: "USD", horizonStart: "2026-05-01", horizonEnd: "2026-05-31", headline: "The known remainder is bounded.", explanation: "Backend explanation.", amountDisplay: "USD 900.00 – USD 2,900.00", liquidBalance: "1000.00", expectedIncomeMin: "0", expectedIncomeMax: "2000.00", obligationsMin: "100.00", obligationsMax: "100.00", remainderMin: "900.00", remainderMax: "2900.00", coverage: "Backend coverage.", grade: "verified", gradeLabel: "verified", gradeDescription: "The source records verify this range.", proofPresentation: { emphasis: "required", reasons: ["incomplete_coverage"], qualifications: ["Planned inputs are missing."] }, evidenceLabel: "View the evidence for the USD known remainder.", evidenceHeading: "Evidence for the USD known remainder", assumptions: ["Backend assumption."], caveats: ["Not permission to spend."], missingInputs: ["planned_spending"], completeness: { balances: true, income: true, obligations: true, plannedSpending: false, goals: false }, exclusions: [], evidenceDates: ["2026-05-01"], recordIds: ["m1"], evidenceLinks: [], evidenceIds: [], accountIds: ["checking"], requiredVisibility: true, series: [{ date: "2026-05-01", kind: "balance", subject: "liquid balance", amountDisplay: "USD 1,000.00", amountMin: "1000.00", amountMax: "1000.00", balanceDisplay: "USD 1,000.00", balanceMin: "1000.00", balanceMax: "1000.00", tooltip: "Starting balance tooltip.", evidenceDates: ["2026-05-01"], recordIds: ["m1"], evidenceIds: [], accountIds: ["checking"] }] }] } } };
+
+    const rendered = view(result);
+
+    expect(rendered.getByRole("heading", { name: moments.current_period_title })).toBeInTheDocument();
+    expect(rendered.getByText("USD 900.00 – USD 2,900.00")).toBeInTheDocument();
+    expect(rendered.getByText("Backend assumption.")).toBeInTheDocument();
+    expect(rendered.getByText("Not permission to spend.")).toBeInTheDocument();
+    expect(rendered.getByText("Starting balance tooltip.")).toBeInTheDocument();
+    expect(rendered.getByText("eur-asserted")).toBeInTheDocument();
+    expect(rendered.getByText("This EUR account is not included.")).toBeInTheDocument();
+    expect(rendered.getByRole("article", { name: "The known remainder is bounded." })).toBeInTheDocument();
+    const amount = rendered.getByRole("button", { name: "USD 900.00 – USD 2,900.00 Evidence for the USD known remainder" });
+    await user.click(amount);
+    expect(actions.onOpenFigure).toHaveBeenCalledWith("current-period:USD");
+
+    const drawer = render(<EvidenceDrawer snapshot={snapshotOf(result)} selection={{ figureId: "current-period:USD" }} onDismiss={vi.fn()} onOpenDocument={vi.fn()} renderEvidenceBadge={() => null} />);
+    expect(drawer.getByRole("heading", { level: 2, name: "Evidence for the USD known remainder" })).toBeInTheDocument();
+    expect(drawer.getByText("checking")).toBeInTheDocument();
+    expect(drawer.getAllByText("2026-05-01")).toHaveLength(2);
+    drawer.unmount();
+    rendered.unmount();
+
+    const ready: FeatureResult<OverviewData> = { ...result, data: { ...result.data, currentPeriod: { ...result.data.currentPeriod!, state: "ready" } } };
+    expect(currentPeriodEvidenceFigure({ ...ready.data.currentPeriod!.slices[0], remainderMax: "900.00" }).precision.state).toBe("bounded");
+    const readyView = view(ready);
+    expect(readyView.getByText("USD 900.00 – USD 2,900.00")).toBeInTheDocument();
+    readyView.unmount();
+
+    const refused: FeatureResult<OverviewData> = { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], currentPeriod: { state: "refused", title: moments.current_period_title, kicker: moments.current_period_kicker, horizonStart: "2026-05-01", horizonEnd: "2026-05-31", slices: [], exclusions: [], refusal: "A reviewed refusal." } } };
+    expect(view(refused).getByText("A reviewed refusal.")).toBeInTheDocument();
   });
 });

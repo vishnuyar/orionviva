@@ -32,6 +32,12 @@ backend, and records set-aside as an evidence-staked append-only event. The
 typed Overview contract and desktop consume that projection without a new
 destination, notification path, urgency mechanic or Viva initiation.
 
+Current-period control is also live on Overview. It projects qualified
+recurring income and obligations over issuer-backed depository balances for
+thirty days, independently by currency, and carries the range, completeness,
+assumptions, exclusions, evidence and backend-authored series as one reviewed
+answer. Plans and goals remain absent and are disclosed as missing inputs.
+
 ## Capabilities still absent or incomplete
 
 - **Account aggregation.** A person can open a local or sample vault and upload
@@ -45,10 +51,6 @@ destination, notification path, urgency mechanic or Viva initiation.
   category or tag creation, or bulk correction. Inherited merchant tags also
   keep complete-set movement replacement unavailable when that action could not
   remove the effective overlay honestly.
-- **Current-period runway.** No deterministic projection combines liquid
-  balances, expected income, obligations, planned spending, goal
-  contributions, and completeness into a bounded available-funds or runway
-  answer with assumptions and caveats.
 - **Durable conversation reads.** `conversation.viva` can answer one text turn,
   but no conversation projection or read supplies recorded turns across the
   current drawer or a later session. An earlier answer therefore has no
@@ -100,8 +102,8 @@ rescan, job state and cancellation, review answer, proposal confirmation and dec
 settings proposal and confirmation, outbound history, update lifecycle, vault
 export and restore, maintenance, diagnostics, sample-vault opening, capability
 discovery, build identity, backend-declared quiet proof, and the bounded Activity
-category, tag and transfer actions described above. These no longer belong in a
-backend gap list.
+category, tag and transfer actions described above, plus the bounded
+current-period control. These no longer belong in a backend gap list.
 
 ## Open
 

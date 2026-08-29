@@ -1,19 +1,7 @@
-"""Which build of this engine is running, said where a caller can check it.
+"""Report the packaged or checkout source revision without network access.
 
-A packaged sidecar and a source checkout are two different things and a person
-looking at a bug report needs to know which one answered. The revision is
-therefore read, never guessed: a build writes it into a file beside the package,
-a checkout is asked of git, and a process that can establish neither says so in
-a word rather than reporting a plausible one.
-
-**An unknown revision is a value, not an absence.** A field that vanishes when
-the answer is not known reads, to everything downstream, exactly like a field
-nobody thought to send — so this returns a word that says the fact rather than
-leaving a hole for a reader to interpret.
-
-Nothing here reaches the network, and nothing here reads the working directory:
-the file is found beside this module and the git question is asked of the tree
-this module lives in, so no caller's location can change the answer.
+Packaged builds read ``REVISION`` beside the package; checkouts ask the git
+tree containing this module. Unknown revisions are returned as ``unknown``.
 """
 
 from __future__ import annotations
@@ -24,16 +12,13 @@ import subprocess
 
 log = logging.getLogger(__name__)
 
-# What a build writes, and where. A packaged sidecar has no git tree to ask, so
-# the packaging step is the one that knows, and it writes the answer down.
+# The filename a packaged build places beside the package.
 REVISION_FILE = "REVISION"
 
-# The word for a build that cannot establish its own revision. It is not empty
-# and it is not a plausible-looking hash: both would be read as an answer.
+# The explicit value for a revision that cannot be established.
 UNKNOWN = "unknown"
 
-# How much of a revision is carried. Long enough to be unambiguous in any tree
-# this product will have, short enough to be read aloud.
+# The number of git revision characters carried across the boundary.
 _LENGTH = 12
 
 
@@ -48,19 +33,17 @@ def _written_revision() -> str:
         written = path.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
-    # A file holding something that is not a revision is not a revision. Only
-    # the shape is checked, because checking the value against a tree that may
-    # not be here is a question a packaged build cannot answer.
-    return written if written.isalnum() and len(written) >= 7 else ""
+    # Packaged revisions accept a hash with an optional dirty-tree marker.
+    base, mark, suffix = written.partition("+")
+    valid_mark = (not mark and not suffix) or (mark == "+" and suffix == "changes")
+    return written if base.isalnum() and len(base) >= 7 and valid_mark else ""
 
 
 def _git_revision() -> str:
     """The revision of the tree this module lives in, or empty.
 
-    Asked of this file's own directory rather than of the working directory, so
-    a sidecar started anywhere reports the tree it was loaded from. A tree with
-    uncommitted changes is reported with a mark, because a revision that names
-    a commit the running code does not match is worse than no revision.
+    The lookup is independent of the caller's working directory. Dirty trees
+    append ``+changes``.
     """
     root = _package_root()
     try:

@@ -219,6 +219,16 @@ export function App() {
     control.navigate("review");
     setPendingReviewFocus({ requestId: session.requestId, questionId, nonce: ++reviewFocusNonce.current });
   }
+  function inspectOverviewDocument(documentId: string) {
+    control.selectDocument(documentId);
+    control.navigate("documents");
+    setPendingDocumentFocus({ target: "document", documentId, requestId: session.requestId, nonce: ++pendingFocusNonce.current });
+  }
+  function inspectOverviewAccount(accountId: string) {
+    control.selectAccount(accountId);
+    control.navigate("accounts");
+    requestAnimationFrame(() => pageTitleRef.current?.focus());
+  }
   function declineQuestion(questionId: string, reason: DeclineReason) { void control.declineQuestion(questionId, reason); }
   function answerQuestion(questionId: string, said: string) { void control.answerQuestion(questionId, said); }
   function confirmProposal(questionId: string, proposalId: string, said: string, asked: string) { void control.confirmProposal(questionId, proposalId, said, asked); }
@@ -313,7 +323,7 @@ export function App() {
       <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div>{session.destination !== "trust" && <div className="page-actions"><button className="primary-button" onClick={openDocuments}><FilePlus2 size={17} />Go to documents</button></div>}</div>
         <SourceDisclosure disclosure={surface.disclosure} />
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
-          {session.destination === "overview" && <Overview result={surface.overview} reviewResult={surface.review} activityResult={surface.activity} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={(documentId) => { control.selectDocument(documentId); navigate("documents"); }} onAskViva={control.askAvailable ? () => setOverlay({ kind: "conversation", requestId: session.requestId }) : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
+          {session.destination === "overview" && <Overview result={surface.overview} reviewResult={surface.review} activityResult={surface.activity} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? () => setOverlay({ kind: "conversation", requestId: session.requestId }) : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} />}
           {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments() } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
           {session.destination === "review" && <Review result={surface.review} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} actions={{ state: session.reviewAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} />}

@@ -23,11 +23,24 @@ def fail(message: str) -> "NoReturn":
     raise SystemExit(f"sidecar build: {message}")
 
 
+def build_revision() -> str:
+    """Name the exact source state embedded in this packaged executable."""
+    found = subprocess.run(
+        ["git", "-C", str(ROOT), "rev-parse", "--short=12", "HEAD"],
+        capture_output=True, text=True, check=False)
+    revision = found.stdout.strip()
+    if found.returncode or not revision.isalnum() or len(revision) < 7:
+        fail("git could not establish the source revision for this build")
+    dirty = subprocess.run(
+        ["git", "-C", str(ROOT), "status", "--porcelain"],
+        capture_output=True, text=True, check=False)
+    if dirty.returncode:
+        fail("git could not establish whether the source tree has changes")
+    return f"{revision}+changes" if dirty.stdout.strip() else revision
+
+
 def main() -> int:
-    # Which interpreter, not just which version. `python3` is whatever the
-    # shell's PATH says it is, and a machine with a venv sitting right there can
-    # still run this under a system 3.9 — a version alone leaves nobody any
-    # wiser about where it came from.
+    # Validate the interpreter that is running this build.
     if sys.version_info < (3, 11):
         fail("Python 3.11 or newer is required by the product runtime; "
              f"found {sys.version.split()[0]} ({sys.executable})")
@@ -70,6 +83,10 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="orionviva-sidecar-") as temporary:
         temporary_root = Path(temporary)
+        revision_file = temporary_root / "REVISION"
+        revision_file.write_text(build_revision() + "\n", encoding="utf-8")
+        build_environment = dict(os.environ)
+        build_environment["VIVA_BUILD_REVISION_FILE"] = str(revision_file)
         subprocess.run(
             [
                 *pyinstaller,
@@ -82,6 +99,7 @@ def main() -> int:
                 str(SPEC),
             ],
             cwd=PRODUCT,
+            env=build_environment,
             check=True,
         )
         suffix = ".exe" if "windows" in target else ""

@@ -20,12 +20,16 @@ from typing import Iterable
 from ..events import Event
 from . import (accounts as _accounts, activity as _activity,
                balances as _balances, categories as _categories,
-               coverage as _coverage, merchants as _merchants,
+               coverage as _coverage, current_period as _current_period,
+               merchants as _merchants,
                movements as _movements, obligations as _obligations,
                positions as _positions,
                rhythm as _rhythm, rulings as _rulings, tiers as _tiers)
 from .accounts import AccountInfo, Resolution
 from .balances import BalanceAnswer
+from .current_period import (CurrentPeriodCompleteness, CurrentPeriodResult,
+                             CurrentPeriodSlice, ProjectionExclusion,
+                             ProjectionStep)
 from .core import ProjectionCore, TxnLine, UnknownAccountError
 from .movements import (BY_CATEGORY, BY_DEFAULT, BY_LINK, BY_OWN_ACCOUNT,
                         BY_RULING, MIXED, SETTLEMENT, SPENDING, TRANSFER,
@@ -39,7 +43,9 @@ from .tiers import (TIER_SETTLED, TIER_STRUCTURAL, TIER_UNENRICHED,
 
 __all__ = [
     "AccountInfo", "BalanceAnswer", "ComposedValue", "LedgerProjection",
-    "Finding", "MovementInfo", "Obligation", "PositionRecord", "ProjectionCore", "Resolution",
+    "CurrentPeriodCompleteness", "CurrentPeriodResult", "CurrentPeriodSlice",
+    "Finding", "MovementInfo", "Obligation", "PositionRecord",
+    "ProjectionCore", "ProjectionExclusion", "ProjectionStep", "Resolution",
     "RhythmComponent", "RhythmHypothesis", "TxnLine",
     "UnknownAccountError", "movement_key", "nature_of_legs",
     "SPENDING", "TRANSFER", "SETTLEMENT", "MIXED",
@@ -372,6 +378,12 @@ class LedgerProjection:
 
     def finding_set_asides(self) -> dict[str, dict]:
         return _obligations.finding_set_asides(self._core)
+
+    # ------------------------------------------------------ current period
+
+    def current_period(self, today: str,
+                       horizon_days: int = 30) -> CurrentPeriodResult:
+        return _current_period.current_period(self._core, today, horizon_days)
 
     # -------------------------------------------------------------- positions
 

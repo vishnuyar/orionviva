@@ -392,6 +392,12 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
             "state": "absent", "obligations": [], "findings": [],
             "finding_count": 0,
         },
+        "current_period": {
+                "state": "absent", "title": moment("current_period_title"),
+                "kicker": moment("current_period_kicker"),
+                "horizon_start": "2026-09-30", "horizon_end": "2026-10-30",
+                "slices": [], "exclusions": [], "refusal": "",
+            },
     }
     # A panel earns its existence from data: an empty vault has no paperwork,
     # and says so rather than reporting a successful read of nothing.

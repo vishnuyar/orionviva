@@ -24,7 +24,7 @@ For what is actually built, in detail, see
 - [x] Obligations and quiet findings: expected payments, recurring charges,
   fees, anomalies, and trends appear in the picture; Viva never initiates and
   the product never notifies.
-- [ ] Current-period control: a bounded view of available funds and runway,
+- [x] Current-period control: a bounded known remainder over held funds,
   carrying its horizon, assumptions, coverage, and caveats.
 - [x] Honest-uncertainty surfacing in the desktop: figures and answers carry
   their grades, dates, coverage, caveats, and evidence into the interface.

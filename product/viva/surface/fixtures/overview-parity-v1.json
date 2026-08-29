@@ -927,6 +927,353 @@
             "This rests on records of more than one date: each part is only as current as the record behind it.",
             "This rests on records of more than one date: each part is only as current as the record behind it."
           ],
+          "current_period": {
+            "exclusions": [
+              {
+                "account_ids": [
+                  "acct:growth-portfolio"
+                ],
+                "currency": "USD",
+                "evidence_dates": [],
+                "evidence_ids": [],
+                "identity": "acct:growth-portfolio",
+                "kind": "account",
+                "reason": "account_not_depository",
+                "record_ids": [],
+                "sentence": "Liability and investment accounts are outside liquid funds for this view."
+              },
+              {
+                "account_ids": [
+                  "acct:household-card"
+                ],
+                "currency": "USD",
+                "evidence_dates": [],
+                "evidence_ids": [],
+                "identity": "acct:household-card",
+                "kind": "account",
+                "reason": "account_not_depository",
+                "record_ids": [],
+                "sentence": "Liability and investment accounts are outside liquid funds for this view."
+              },
+              {
+                "account_ids": [
+                  "acct:travel-card"
+                ],
+                "currency": "USD",
+                "evidence_dates": [],
+                "evidence_ids": [],
+                "identity": "acct:travel-card",
+                "kind": "account",
+                "reason": "account_not_depository",
+                "record_ids": [],
+                "sentence": "Liability and investment accounts are outside liquid funds for this view."
+              }
+            ],
+            "horizon_end": "2026-10-30",
+            "horizon_start": "2026-09-30",
+            "kicker": "Projected from this vault",
+            "refusal": "",
+            "slices": [
+              {
+                "account_ids": [
+                  "acct:abroad-current"
+                ],
+                "amount_display": "EUR 642.10 \u2013 EUR 642.10",
+                "assumptions": [
+                  "The horizon is the read day through 30 calendar days later.",
+                  "Expected income contributes nothing to the lower bound until it arrives.",
+                  "Only confirmed or strongly measured recurring money enters this projection."
+                ],
+                "caveats": [
+                  "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
+                  "Planned spending and goal contributions are not represented, so this figure is not permission to spend."
+                ],
+                "citations": [
+                  {
+                    "document_id": "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1",
+                    "label": "abroad-current-2026-06.pdf",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "completeness": {
+                  "balances": true,
+                  "goals": false,
+                  "income": true,
+                  "obligations": true,
+                  "planned_spending": false
+                },
+                "coverage": "This currency slice starts from 1 liquid account and applies 0 qualified future items.",
+                "currency": "EUR",
+                "evidence_dates": [
+                  "2026-06-30"
+                ],
+                "evidence_heading": "Evidence for the EUR known remainder",
+                "evidence_ids": [
+                  "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1"
+                ],
+                "evidence_label": "View the evidence for the EUR known remainder.",
+                "exclusions": [],
+                "expected_income_max": "0",
+                "expected_income_min": "0",
+                "explanation": "This starts with issuer-backed depository balances, subtracts qualified obligations, and treats expected income as money that may not arrive.",
+                "grade": "verified",
+                "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                "grade_label": "verified",
+                "headline": "The known remainder through 2026-10-30 is EUR 642.10 to EUR 642.10.",
+                "horizon_end": "2026-10-30",
+                "horizon_start": "2026-09-30",
+                "id": "current-period:EUR",
+                "liquid_balance": "642.10",
+                "missing_inputs": [
+                  "planned_spending",
+                  "goal_contributions"
+                ],
+                "obligations_max": "0",
+                "obligations_min": "0",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "This is a bounded range rather than one exact amount.",
+                    "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
+                    "Planned spending and goal contributions are not represented, so this figure is not permission to spend.",
+                    "Some evidence needed to establish this figure's current standing is unavailable."
+                  ],
+                  "reasons": [
+                    "inexact",
+                    "caveat",
+                    "incomplete_coverage",
+                    "missing_evidence"
+                  ]
+                },
+                "record_ids": [
+                  "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1"
+                ],
+                "remainder_max": "642.10",
+                "remainder_min": "642.10",
+                "required_visibility": true,
+                "series": [
+                  {
+                    "account_ids": [
+                      "acct:abroad-current"
+                    ],
+                    "amount_display": "EUR 642.10 \u2013 EUR 642.10",
+                    "amount_max": "642.10",
+                    "amount_min": "642.10",
+                    "balance_display": "EUR 642.10 \u2013 EUR 642.10",
+                    "balance_max": "642.10",
+                    "balance_min": "642.10",
+                    "date": "2026-09-30",
+                    "evidence_dates": [
+                      "2026-06-30"
+                    ],
+                    "evidence_ids": [
+                      "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1"
+                    ],
+                    "kind": "balance",
+                    "record_ids": [
+                      "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1"
+                    ],
+                    "subject": "liquid balance",
+                    "tooltip": "Starting liquid balance on 2026-09-30: EUR 642.10 \u2013 EUR 642.10."
+                  }
+                ]
+              },
+              {
+                "account_ids": [
+                  "acct:dormant-savings",
+                  "acct:everyday-checking",
+                  "acct:joint-checking",
+                  "acct:rainy-day-savings"
+                ],
+                "amount_display": "USD 10,748.95 \u2013 USD 10,748.95",
+                "assumptions": [
+                  "The horizon is the read day through 30 calendar days later.",
+                  "Expected income contributes nothing to the lower bound until it arrives.",
+                  "Only confirmed or strongly measured recurring money enters this projection."
+                ],
+                "caveats": [
+                  "At least one starting balance conflicts with its transaction arithmetic, and the conflict remains in this range.",
+                  "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
+                  "Planned spending and goal contributions are not represented, so this figure is not permission to spend.",
+                  "Liability and investment accounts are outside liquid funds for this view."
+                ],
+                "citations": [
+                  {
+                    "document_id": "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+                    "label": "joint-checking-2026-06.pdf",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                    "label": "everyday-checking-2026-06.pdf",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                    "label": "rainy-day-savings-2026-06.pdf",
+                    "page": "",
+                    "relation": "attests"
+                  },
+                  {
+                    "document_id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
+                    "label": "dormant-savings-2025-11.pdf",
+                    "page": "",
+                    "relation": "attests"
+                  }
+                ],
+                "completeness": {
+                  "balances": false,
+                  "goals": false,
+                  "income": true,
+                  "obligations": true,
+                  "planned_spending": false
+                },
+                "coverage": "This currency slice starts from 4 liquid accounts and applies 0 qualified future items.",
+                "currency": "USD",
+                "evidence_dates": [
+                  "2025-11-30",
+                  "2026-06-01",
+                  "2026-06-30"
+                ],
+                "evidence_heading": "Evidence for the USD known remainder",
+                "evidence_ids": [
+                  "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+                  "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                  "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                  "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
+                ],
+                "evidence_label": "View the evidence for the USD known remainder.",
+                "exclusions": [
+                  {
+                    "account_ids": [
+                      "acct:growth-portfolio"
+                    ],
+                    "currency": "USD",
+                    "evidence_dates": [],
+                    "evidence_ids": [],
+                    "identity": "acct:growth-portfolio",
+                    "kind": "account",
+                    "reason": "account_not_depository",
+                    "record_ids": [],
+                    "sentence": "Liability and investment accounts are outside liquid funds for this view."
+                  },
+                  {
+                    "account_ids": [
+                      "acct:household-card"
+                    ],
+                    "currency": "USD",
+                    "evidence_dates": [],
+                    "evidence_ids": [],
+                    "identity": "acct:household-card",
+                    "kind": "account",
+                    "reason": "account_not_depository",
+                    "record_ids": [],
+                    "sentence": "Liability and investment accounts are outside liquid funds for this view."
+                  },
+                  {
+                    "account_ids": [
+                      "acct:travel-card"
+                    ],
+                    "currency": "USD",
+                    "evidence_dates": [],
+                    "evidence_ids": [],
+                    "identity": "acct:travel-card",
+                    "kind": "account",
+                    "reason": "account_not_depository",
+                    "record_ids": [],
+                    "sentence": "Liability and investment accounts are outside liquid funds for this view."
+                  }
+                ],
+                "expected_income_max": "0",
+                "expected_income_min": "0",
+                "explanation": "This starts with issuer-backed depository balances, subtracts qualified obligations, and treats expected income as money that may not arrive.",
+                "grade": "conflicted",
+                "grade_description": "Read this answer as a discrepancy rather than as fact: at least one figure in it disagrees with its own evidence.",
+                "grade_label": "conflicted",
+                "headline": "The known remainder through 2026-10-30 is USD 10,748.95 to USD 10,748.95.",
+                "horizon_end": "2026-10-30",
+                "horizon_start": "2026-09-30",
+                "id": "current-period:USD",
+                "liquid_balance": "10748.95",
+                "missing_inputs": [
+                  "planned_spending",
+                  "goal_contributions"
+                ],
+                "obligations_max": "0",
+                "obligations_min": "0",
+                "proof_presentation": {
+                  "emphasis": "required",
+                  "qualifications": [
+                    "Read this answer as a discrepancy rather than as fact: at least one figure in it disagrees with its own evidence.",
+                    "This is a bounded range rather than one exact amount.",
+                    "At least one starting balance conflicts with its transaction arithmetic, and the conflict remains in this range.",
+                    "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
+                    "Planned spending and goal contributions are not represented, so this figure is not permission to spend.",
+                    "Liability and investment accounts are outside liquid funds for this view.",
+                    "This figure rests on records from more than one date; each part is only as current as the record behind it."
+                  ],
+                  "reasons": [
+                    "conflict",
+                    "inexact",
+                    "caveat",
+                    "incomplete_coverage",
+                    "mixed_vintage"
+                  ]
+                },
+                "record_ids": [
+                  "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+                  "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                  "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                  "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
+                ],
+                "remainder_max": "10748.95",
+                "remainder_min": "10748.95",
+                "required_visibility": true,
+                "series": [
+                  {
+                    "account_ids": [
+                      "acct:dormant-savings",
+                      "acct:everyday-checking",
+                      "acct:joint-checking",
+                      "acct:rainy-day-savings"
+                    ],
+                    "amount_display": "USD 10,748.95 \u2013 USD 10,748.95",
+                    "amount_max": "10748.95",
+                    "amount_min": "10748.95",
+                    "balance_display": "USD 10,748.95 \u2013 USD 10,748.95",
+                    "balance_max": "10748.95",
+                    "balance_min": "10748.95",
+                    "date": "2026-09-30",
+                    "evidence_dates": [
+                      "2025-11-30",
+                      "2026-06-01",
+                      "2026-06-30"
+                    ],
+                    "evidence_ids": [
+                      "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+                      "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                      "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                      "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
+                    ],
+                    "kind": "balance",
+                    "record_ids": [
+                      "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
+                      "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
+                      "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                      "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
+                    ],
+                    "subject": "liquid balance",
+                    "tooltip": "Starting liquid balance on 2026-09-30: USD 10,748.95 \u2013 USD 10,748.95."
+                  }
+                ]
+              }
+            ],
+            "state": "limited",
+            "title": "Next 30 days"
+          },
           "issues": [],
           "picture": {
             "coverage": "7 of the 9 accounts you hold are counted here, so this is not the whole of what you hold.",

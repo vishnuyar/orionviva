@@ -72,6 +72,36 @@
       "state": "ready"
     },
     {
+      "capability_id": "overview.current_period",
+      "contract": "CurrentPeriodControl.v1",
+      "id": "overview.current_period.ready",
+      "payload": {
+        "capability_id": "overview.current_period",
+        "contract": "CurrentPeriodControl.v1"
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "overview.current_period",
+      "contract": "CurrentPeriodControl.v1",
+      "id": "overview.current_period.limited",
+      "payload": {
+        "capability_id": "overview.current_period",
+        "contract": "CurrentPeriodControl.v1"
+      },
+      "state": "limited"
+    },
+    {
+      "capability_id": "overview.current_period",
+      "contract": "CurrentPeriodControl.v1",
+      "id": "overview.current_period.refused",
+      "payload": {
+        "capability_id": "overview.current_period",
+        "contract": "CurrentPeriodControl.v1"
+      },
+      "state": "refused"
+    },
+    {
       "capability_id": "overview.obligations",
       "contract": "ObligationsAndFindings.v1",
       "id": "overview.obligations.ready",
@@ -138,6 +168,75 @@
       "message",
       "state",
       "reason"
+    ],
+    "CurrentPeriodCompletenessView": [
+      "balances",
+      "income",
+      "obligations",
+      "planned_spending",
+      "goals"
+    ],
+    "CurrentPeriodExclusionView": [
+      "kind",
+      "identity",
+      "reason",
+      "sentence",
+      "currency",
+      "evidence_dates",
+      "record_ids",
+      "evidence_ids",
+      "account_ids"
+    ],
+    "CurrentPeriodSliceView": [
+      "id",
+      "currency",
+      "horizon_start",
+      "horizon_end",
+      "headline",
+      "explanation",
+      "amount_display",
+      "liquid_balance",
+      "expected_income_min",
+      "expected_income_max",
+      "obligations_min",
+      "obligations_max",
+      "remainder_min",
+      "remainder_max",
+      "coverage",
+      "grade",
+      "grade_label",
+      "grade_description",
+      "proof_presentation",
+      "evidence_label",
+      "evidence_heading",
+      "assumptions",
+      "caveats",
+      "missing_inputs",
+      "completeness",
+      "exclusions",
+      "evidence_dates",
+      "record_ids",
+      "citations",
+      "evidence_ids",
+      "account_ids",
+      "series",
+      "required_visibility"
+    ],
+    "CurrentPeriodStepView": [
+      "date",
+      "kind",
+      "subject",
+      "amount_display",
+      "amount_min",
+      "amount_max",
+      "balance_display",
+      "balance_min",
+      "balance_max",
+      "tooltip",
+      "evidence_dates",
+      "record_ids",
+      "evidence_ids",
+      "account_ids"
     ],
     "FigureView": [
       "id",
@@ -706,6 +805,26 @@
       "id": "overview.accounts",
       "maturity": "stable",
       "owner": "viva.surface.overview",
+      "reason": null,
+      "trust_effect": [
+        "reads_data"
+      ]
+    },
+    {
+      "actions": [],
+      "availability": "when a vault holds an issuer-backed depository balance",
+      "contract": "CurrentPeriodControl.v1",
+      "destination": "overview",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "overview.current_period.ready",
+        "overview.current_period.limited",
+        "overview.current_period.refused"
+      ],
+      "id": "overview.current_period",
+      "maturity": "stable",
+      "owner": "viva.surface.current_period",
       "reason": null,
       "trust_effect": [
         "reads_data"

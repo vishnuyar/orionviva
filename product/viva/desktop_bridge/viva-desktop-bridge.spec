@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from PyInstaller.building.build_main import Analysis, EXE, PYZ
@@ -6,6 +7,9 @@ from PyInstaller.utils.hooks import collect_data_files
 
 PRODUCT_ROOT = Path(SPECPATH).parents[1]
 REPOSITORY_ROOT = PRODUCT_ROOT.parent
+REVISION_SOURCE = os.environ.get("VIVA_BUILD_REVISION_FILE", "")
+if not REVISION_SOURCE or not Path(REVISION_SOURCE).is_file():
+    raise SystemExit("sidecar build: VIVA_BUILD_REVISION_FILE does not name a revision file")
 
 
 analysis = Analysis(
@@ -20,6 +24,7 @@ analysis = Analysis(
         collect_data_files("viva", include_py_files=False)
         + collect_data_files("vivacore", include_py_files=False)
         + collect_data_files("merchantcore", include_py_files=False)
+        + [(REVISION_SOURCE, "viva")]
     ),
     hiddenimports=[],
     hookspath=[],

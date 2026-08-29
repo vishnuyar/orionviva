@@ -1,5 +1,5 @@
 import { gradePresentation } from "../evidence";
-import type { AccountView, EvidenceLink, EvidenceRelation, FeatureIssue, FindingView, FigureMeasure, FigureView, ObligationView, OverviewData, PanelState, PictureView, ProofPresentation, UnmeasuredAccount, UnplacedAccount, UtilityView, WithheldCurrency } from "../types";
+import type { AccountView, CurrentPeriodCompletenessView, CurrentPeriodExclusionView, CurrentPeriodSliceView, CurrentPeriodStepView, CurrentPeriodView, EvidenceLink, EvidenceRelation, FeatureIssue, FindingView, FigureMeasure, FigureView, ObligationView, OverviewData, PanelState, PictureView, ProofPresentation, UnmeasuredAccount, UnplacedAccount, UtilityView, WithheldCurrency } from "../types";
 import { isRecord, record, textValue, uniqueRecordsById } from "./primitives";
 
 // The words a citation may stand in to its figure. The set is the backend's,
@@ -67,6 +67,44 @@ function utility(value: unknown): UtilityView {
   const findings = (Array.isArray(block.findings) ? block.findings : []).map(finding).filter((row): row is FindingView => row !== null);
   const findingCount = typeof block.finding_count === "number" && Number.isInteger(block.finding_count) && block.finding_count >= findings.length ? block.finding_count : findings.length;
   return { state: block.state === "ready" ? "ready" : "absent", obligations, findings, findingCount };
+}
+
+function currentPeriodStep(value: unknown): CurrentPeriodStepView | null {
+  const row = record(value);
+  const kind = row.kind === "balance" || row.kind === "income" || row.kind === "obligation" ? row.kind : null;
+  if (kind === null || !textValue(row.date) || !textValue(row.subject) || !textValue(row.amount_display) || !textValue(row.balance_display) || !textValue(row.tooltip)) return null;
+  return { date: textValue(row.date), kind, subject: textValue(row.subject), amountDisplay: textValue(row.amount_display), amountMin: textValue(row.amount_min), amountMax: textValue(row.amount_max), balanceDisplay: textValue(row.balance_display), balanceMin: textValue(row.balance_min), balanceMax: textValue(row.balance_max), tooltip: textValue(row.tooltip), evidenceDates: stringList(row.evidence_dates), recordIds: stringList(row.record_ids), evidenceIds: stringList(row.evidence_ids), accountIds: stringList(row.account_ids) };
+}
+
+function currentPeriodCompleteness(value: unknown): CurrentPeriodCompletenessView | null {
+  const row = record(value);
+  const fields = [row.balances, row.income, row.obligations, row.planned_spending, row.goals];
+  if (!fields.every((field) => typeof field === "boolean")) return null;
+  return { balances: row.balances as boolean, income: row.income as boolean, obligations: row.obligations as boolean, plannedSpending: row.planned_spending as boolean, goals: row.goals as boolean };
+}
+
+function currentPeriodExclusion(value: unknown): CurrentPeriodExclusionView | null {
+  const row = record(value);
+  if (!textValue(row.kind) || !textValue(row.identity) || !textValue(row.reason) || !textValue(row.sentence)) return null;
+  return { kind: textValue(row.kind), identity: textValue(row.identity), reason: textValue(row.reason), sentence: textValue(row.sentence), currency: textValue(row.currency), evidenceDates: stringList(row.evidence_dates), recordIds: stringList(row.record_ids), evidenceIds: stringList(row.evidence_ids), accountIds: stringList(row.account_ids) };
+}
+
+function currentPeriodSlice(value: unknown): CurrentPeriodSliceView | null {
+  const row = record(value);
+  const series = (Array.isArray(row.series) ? row.series : []).map(currentPeriodStep).filter((point): point is CurrentPeriodStepView => point !== null);
+  const completeness = currentPeriodCompleteness(row.completeness);
+  const exclusions = (Array.isArray(row.exclusions) ? row.exclusions : []).map(currentPeriodExclusion).filter((item): item is CurrentPeriodExclusionView => item !== null);
+  if (!textValue(row.id) || !textValue(row.currency) || !textValue(row.horizon_start) || !textValue(row.horizon_end) || !textValue(row.headline) || !textValue(row.explanation) || !textValue(row.amount_display) || !textValue(row.coverage) || !textValue(row.grade_label) || !textValue(row.grade_description) || !textValue(row.evidence_label) || !textValue(row.evidence_heading) || completeness === null || !series.length || series[0]?.kind !== "balance") return null;
+  const evidence = gradePresentation(textValue(row.grade) || undefined);
+  return { id: textValue(row.id), currency: textValue(row.currency), horizonStart: textValue(row.horizon_start), horizonEnd: textValue(row.horizon_end), headline: textValue(row.headline), explanation: textValue(row.explanation), amountDisplay: textValue(row.amount_display), liquidBalance: textValue(row.liquid_balance), expectedIncomeMin: textValue(row.expected_income_min), expectedIncomeMax: textValue(row.expected_income_max), obligationsMin: textValue(row.obligations_min), obligationsMax: textValue(row.obligations_max), remainderMin: textValue(row.remainder_min), remainderMax: textValue(row.remainder_max), coverage: textValue(row.coverage), grade: evidence.grade, gradeLabel: textValue(row.grade_label), gradeDescription: textValue(row.grade_description), proofPresentation: proofPresentation(row.proof_presentation), evidenceLabel: textValue(row.evidence_label), evidenceHeading: textValue(row.evidence_heading), assumptions: stringList(row.assumptions), caveats: stringList(row.caveats), missingInputs: stringList(row.missing_inputs), completeness, exclusions, evidenceDates: stringList(row.evidence_dates), recordIds: stringList(row.record_ids), evidenceLinks: evidenceLinks(row), evidenceIds: stringList(row.evidence_ids), accountIds: stringList(row.account_ids), series, requiredVisibility: row.required_visibility === true };
+}
+
+function currentPeriod(value: unknown): CurrentPeriodView {
+  const block = record(value);
+  const slices = (Array.isArray(block.slices) ? block.slices : []).map(currentPeriodSlice).filter((row): row is CurrentPeriodSliceView => row !== null);
+  const exclusions = (Array.isArray(block.exclusions) ? block.exclusions : []).map(currentPeriodExclusion).filter((item): item is CurrentPeriodExclusionView => item !== null);
+  const state = (block.state === "ready" || block.state === "limited") && slices.length ? block.state : block.state === "refused" && textValue(block.refusal) ? "refused" : "absent";
+  return { state, title: textValue(block.title), kicker: textValue(block.kicker), horizonStart: textValue(block.horizon_start), horizonEnd: textValue(block.horizon_end), slices, exclusions, refusal: textValue(block.refusal) };
 }
 
 function measure(value: unknown): FigureMeasure | null {
@@ -225,7 +263,7 @@ export function adaptOverview(raw: unknown): OverviewData | null {
       recordIds: stringList(balance.record_ids),
     };
   });
-  return { picture: picture(raw.picture), accounts, utility: utility(raw.utility) };
+  return { picture: picture(raw.picture), accounts, utility: utility(raw.utility), currentPeriod: currentPeriod(raw.current_period) };
 }
 
 export type OverviewPanel = { state: PanelState; issues: FeatureIssue[] };

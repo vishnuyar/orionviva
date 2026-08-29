@@ -57,7 +57,8 @@ whose import direction is enforced by tests (the boundary rule is in
 
 - `viva/ledger` — the encrypted, hash-chained, append-only event store; the
   event vocabulary; double-entry postings; and the projections (balances, net
-  worth, streams, merchants, statements) replayed from it.
+  worth, streams, obligations, current-period control, merchants, statements)
+  replayed from it.
 - `viva/ingest` — the document pipeline: raw capture, classify, the document
   type registry, extraction, reconciliation diagnosis, review, merchants,
   transfers, categorization.
@@ -183,11 +184,6 @@ the direction documents named beside each seam here.
 - **Audio voice** would be a new modality on the same cited conversation turn,
   never a second answer path
   ([viva-listens-and-speaks.md](viva-listens-and-speaks.md)).
-- **Current-period control** can compose the built grounded obligations and
-  quiet findings with liquid balances and stated plans without adding a
-  notification path or Viva initiation
-  ([the-maintenance-agent.md](the-maintenance-agent.md),
-  [the-suggestions-channel.md](the-suggestions-channel.md)).
 - **Household scope and sync** would move the same encrypted vault through a
   blind relay
   ([multi-device-and-remote-access.md](multi-device-and-remote-access.md)).

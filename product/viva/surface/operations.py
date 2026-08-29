@@ -61,6 +61,7 @@ DECLARED_OPERATIONS: tuple[BridgeOperation, ...] = (
     BridgeOperation(BRIDGE_OPEN_DEMO_VAULT),
     BridgeOperation(SURFACE_CAPABILITIES),
     BridgeOperation(SURFACE_READ, serves=("AccountOverview.v2", "ObligationsAndFindings.v1",
+                                         "CurrentPeriodControl.v1",
                                          "QuestionQueue.v1",
                                          "JobRegistry.v1", "OutboundRecord.v1",
                                          "ActivityMovements.v3")),

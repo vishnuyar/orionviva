@@ -46,6 +46,8 @@ activity with movement-scoped existing-choice category, complete-set tag and
 backend-qualified transfer correction, document capture and rescan,
 calendar-aware upcoming obligations and the backend's top three quiet findings
 with inspect, Ask Viva and evidence-staked set-aside gestures,
+per-currency thirty-day known-remainder ranges and refusals with
+backend-supplied assumptions, exclusions, evidence and balance series,
 process-local jobs and cancellation,
 review answer, proposal confirmation and decline, Ask Viva text turns, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle

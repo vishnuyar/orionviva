@@ -24,6 +24,7 @@ from ..tools.envelope import BY_ACCOUNT, BY_CURRENCY, GAP_REASONS
 from .models import Citation, CitationRelation, FigureGrade, FigureView, PanelState
 from .proof import freshness_confirmed_on, proof_presentation_from_evidence
 from .obligations import utility
+from .current_period import control as current_period_control
 
 # The family of wordings a figure standing on its own is said in. The lines a
 # run places after a clause open with a word pointing back at what was just
@@ -187,6 +188,10 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
         # carries it whole and the interface renders it whole; neither this
         # financial-picture composer nor the desktop re-ranks or recalculates.
         "utility": utility(projection, locale, today),
+        # A projected balance is a separate claim from the historic picture.
+        # It crosses whole, with its horizon, bounds, assumptions and supplied
+        # chart copy; neither Overview nor its consumer performs arithmetic.
+        "current_period": current_period_control(projection, locale, today),
         # And the picture as one thing: what it covers, what day it is good
         # for, and one figure per currency. Nothing adds them together — there
         # is no rate with a source, a date and a grade of its own, so a total

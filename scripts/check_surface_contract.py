@@ -25,9 +25,14 @@ def build_artifact(root: Path = ROOT) -> dict[str, Any]:
     """Build a JSON-safe, stable projection of the Python surface contract."""
     _surface_import_path(root)
     from viva.surface import CURRENT_PROTOCOL, capabilities
-    from viva.surface.models import (ActionOutcome, FindingView, FigureView,
-                                     ObligationView, PanelState, ProofEmphasis,
-                                     ProofPresentation, ProofReason)
+    from viva.surface.models import (ActionOutcome,
+                                     CurrentPeriodCompletenessView,
+                                     CurrentPeriodExclusionView,
+                                     CurrentPeriodSliceView,
+                                     CurrentPeriodStepView, FindingView,
+                                     FigureView, ObligationView, PanelState,
+                                     ProofEmphasis, ProofPresentation,
+                                     ProofReason)
 
     registry = []
     fixtures = []
@@ -51,7 +56,7 @@ def build_artifact(root: Path = ROOT) -> dict[str, Any]:
                 "id": fixture_id,
                 "capability_id": capability.id,
                 "contract": capability.contract,
-                "state": "ready",
+                "state": fixture_id.rsplit(".", 1)[-1],
                 "payload": {"capability_id": capability.id, "contract": capability.contract},
             })
 
@@ -67,6 +72,10 @@ def build_artifact(root: Path = ROOT) -> dict[str, Any]:
             "FigureView": dataclass_fields(FigureView),
             "ObligationView": dataclass_fields(ObligationView),
             "FindingView": dataclass_fields(FindingView),
+            "CurrentPeriodCompletenessView": dataclass_fields(CurrentPeriodCompletenessView),
+            "CurrentPeriodExclusionView": dataclass_fields(CurrentPeriodExclusionView),
+            "CurrentPeriodSliceView": dataclass_fields(CurrentPeriodSliceView),
+            "CurrentPeriodStepView": dataclass_fields(CurrentPeriodStepView),
             "ProofPresentation": dataclass_fields(ProofPresentation),
             "ProofEmphasis": [emphasis.value for emphasis in ProofEmphasis],
             "ProofReason": [reason.value for reason in ProofReason],

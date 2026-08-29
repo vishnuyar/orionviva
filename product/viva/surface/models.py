@@ -303,6 +303,187 @@ class FindingView:
 
 
 @dataclass(frozen=True)
+class CurrentPeriodCompletenessView:
+    """Whether each input family is represented in one currency slice."""
+
+    balances: bool
+    income: bool
+    obligations: bool
+    planned_spending: bool
+    goals: bool
+
+    def as_dict(self) -> dict[str, bool]:
+        return {
+            "balances": self.balances, "income": self.income,
+            "obligations": self.obligations,
+            "planned_spending": self.planned_spending,
+            "goals": self.goals,
+        }
+
+
+@dataclass(frozen=True)
+class CurrentPeriodExclusionView:
+    """One structured omission and its reviewed explanation."""
+
+    kind: str
+    identity: str
+    reason: str
+    sentence: str
+    currency: str
+    evidence_dates: tuple[str, ...]
+    record_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    account_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not all((self.kind, self.identity, self.reason, self.sentence)):
+            raise ValueError("a current-period exclusion names what was omitted")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind, "identity": self.identity,
+            "reason": self.reason, "sentence": self.sentence,
+            "currency": self.currency,
+            "evidence_dates": list(self.evidence_dates),
+            "record_ids": list(self.record_ids),
+            "evidence_ids": list(self.evidence_ids),
+            "account_ids": list(self.account_ids),
+        }
+
+
+@dataclass(frozen=True)
+class CurrentPeriodStepView:
+    """One backend-authored point and tooltip in a projected cash range."""
+
+    date: str
+    kind: str
+    subject: str
+    amount_display: str
+    amount_min: str
+    amount_max: str
+    balance_display: str
+    balance_min: str
+    balance_max: str
+    tooltip: str
+    evidence_dates: tuple[str, ...]
+    record_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+    account_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.kind not in ("balance", "income", "obligation"):
+            raise ValueError("a current-period step has a closed kind")
+        if not all((self.date, self.subject, self.amount_display,
+                    self.balance_display, self.tooltip)):
+            raise ValueError("a current-period step must be ready to render")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "date": self.date, "kind": self.kind, "subject": self.subject,
+            "amount_display": self.amount_display,
+            "amount_min": self.amount_min, "amount_max": self.amount_max,
+            "balance_display": self.balance_display,
+            "balance_min": self.balance_min, "balance_max": self.balance_max,
+            "tooltip": self.tooltip,
+            "evidence_dates": list(self.evidence_dates),
+            "record_ids": list(self.record_ids),
+            "evidence_ids": list(self.evidence_ids),
+            "account_ids": list(self.account_ids),
+        }
+
+
+@dataclass(frozen=True)
+class CurrentPeriodSliceView:
+    """One currency's complete, reviewed current-period answer."""
+
+    id: str
+    currency: str
+    horizon_start: str
+    horizon_end: str
+    headline: str
+    explanation: str
+    amount_display: str
+    liquid_balance: str
+    expected_income_min: str
+    expected_income_max: str
+    obligations_min: str
+    obligations_max: str
+    remainder_min: str
+    remainder_max: str
+    coverage: str
+    grade: str
+    grade_label: str
+    grade_description: str
+    proof_presentation: ProofPresentation
+    evidence_label: str
+    evidence_heading: str
+    assumptions: tuple[str, ...]
+    caveats: tuple[str, ...]
+    missing_inputs: tuple[str, ...]
+    completeness: CurrentPeriodCompletenessView
+    exclusions: tuple[CurrentPeriodExclusionView, ...]
+    evidence_dates: tuple[str, ...]
+    record_ids: tuple[str, ...]
+    citations: tuple[Citation, ...]
+    evidence_ids: tuple[str, ...]
+    account_ids: tuple[str, ...]
+    series: tuple[CurrentPeriodStepView, ...]
+    required_visibility: bool = True
+
+    def __post_init__(self) -> None:
+        if not all((self.id, self.currency, self.horizon_start,
+                    self.horizon_end, self.headline, self.explanation,
+                    self.amount_display, self.coverage, self.grade_label,
+                    self.grade_description, self.evidence_label,
+                    self.evidence_heading)):
+            raise ValueError("a current-period slice must cross as a whole answer")
+        if not self.series or self.series[0].kind != "balance":
+            raise ValueError("a current-period series begins with its balance")
+        if not isinstance(self.proof_presentation, ProofPresentation):
+            raise TypeError("current-period proof uses the closed proof model")
+        if not isinstance(self.completeness, CurrentPeriodCompletenessView):
+            raise TypeError("current-period completeness uses its closed model")
+        if any(not isinstance(item, CurrentPeriodExclusionView)
+               for item in self.exclusions):
+            raise TypeError("current-period exclusions use their closed model")
+        if any(not isinstance(item, Citation) for item in self.citations):
+            raise TypeError("current-period citations use the shared citation model")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id, "currency": self.currency,
+            "horizon_start": self.horizon_start,
+            "horizon_end": self.horizon_end, "headline": self.headline,
+            "explanation": self.explanation,
+            "amount_display": self.amount_display,
+            "liquid_balance": self.liquid_balance,
+            "expected_income_min": self.expected_income_min,
+            "expected_income_max": self.expected_income_max,
+            "obligations_min": self.obligations_min,
+            "obligations_max": self.obligations_max,
+            "remainder_min": self.remainder_min,
+            "remainder_max": self.remainder_max, "coverage": self.coverage,
+            "grade": self.grade, "grade_label": self.grade_label,
+            "grade_description": self.grade_description,
+            "proof_presentation": self.proof_presentation.as_dict(),
+            "evidence_label": self.evidence_label,
+            "evidence_heading": self.evidence_heading,
+            "assumptions": list(self.assumptions),
+            "caveats": list(self.caveats),
+            "missing_inputs": list(self.missing_inputs),
+            "completeness": self.completeness.as_dict(),
+            "exclusions": [item.as_dict() for item in self.exclusions],
+            "evidence_dates": list(self.evidence_dates),
+            "record_ids": list(self.record_ids),
+            "citations": [citation.as_dict() for citation in self.citations],
+            "evidence_ids": list(self.evidence_ids),
+            "account_ids": list(self.account_ids),
+            "series": [point.as_dict() for point in self.series],
+            "required_visibility": self.required_visibility,
+        }
+
+
+@dataclass(frozen=True)
 class ActionOutcome:
     """An explicit result; callers never infer meaning from a bare ``ok``."""
 

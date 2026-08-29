@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import moments from "../../../../product/viva/persona/pack-v33/moments.json";
+import moments from "../../../../product/viva/persona/pack-v38/moments.json";
 import { gradePresentation, showCompactProof } from "../evidence";
 import { adaptOverview, adaptOverviewPanel } from "./overview";
 
@@ -15,7 +15,7 @@ describe("overview adapter", () => {
   });
 
   it("accepts only an explicit empty reviewed overview collection", () => {
-    expect(adaptOverview({ accounts: [] })).toEqual({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], utility: { state: "absent", obligations: [], findings: [], findingCount: 0 } });
+    expect(adaptOverview({ accounts: [] })).toEqual({ picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], utility: { state: "absent", obligations: [], findings: [], findingCount: 0 }, currentPeriod: { state: "absent", title: "", kicker: "", horizonStart: "", horizonEnd: "", slices: [], exclusions: [], refusal: "" } });
   });
 
   it("carries reviewed obligations and ranked findings without computing or sorting them", () => {
@@ -23,6 +23,24 @@ describe("overview adapter", () => {
     expect(result?.utility).toMatchObject({ state: "ready", findingCount: 4 });
     expect(result?.utility?.obligations[0]).toMatchObject({ id: "ob-1", expectedDate: "2026-09-01", amountDisplay: "$1,200.00", actions: ["inspect", "ask_viva"] });
     expect(result?.utility?.findings[0]).toMatchObject({ id: "find-1", importance: 50, actions: ["set_aside", "ask_viva"] });
+  });
+
+  it("carries the current-period range and supplied series without recalculation", () => {
+    const current_period = { state: "limited", title: moments.current_period_title, kicker: moments.current_period_kicker, horizon_start: "2026-05-01", horizon_end: "2026-05-31", refusal: "", slices: [{ id: "current-period:USD", currency: "USD", horizon_start: "2026-05-01", horizon_end: "2026-05-31", headline: "Backend headline", explanation: "Backend explanation", amount_display: "USD 900.00 – USD 2,900.00", liquid_balance: "1000.00", expected_income_min: "0", expected_income_max: "2000.00", obligations_min: "100.00", obligations_max: "100.00", remainder_min: "900.00", remainder_max: "2900.00", coverage: "Backend coverage", grade: "verified", grade_label: "Backend verified", grade_description: "Backend grade description", proof_presentation: { emphasis: "required", reasons: ["incomplete_coverage"], qualifications: ["Backend qualification"] }, evidence_label: "Backend evidence label", evidence_heading: "Backend evidence heading", assumptions: ["Backend assumption"], caveats: ["Backend caveat"], missing_inputs: ["planned_spending"], completeness: { balances: true, income: true, obligations: true, planned_spending: false, goals: false }, exclusions: [], evidence_dates: ["2026-05-01"], record_ids: ["m1"], citations: [{ document_id: "doc-1", relation: "attests", label: "one.pdf", page: "" }], evidence_ids: ["doc-1"], account_ids: ["checking"], required_visibility: true, series: [{ date: "2026-05-01", kind: "balance", subject: "liquid balance", amount_display: "USD 1,000.00", amount_min: "1000.00", amount_max: "1000.00", balance_display: "USD 1,000.00", balance_min: "1000.00", balance_max: "1000.00", tooltip: "Backend tooltip", evidence_dates: ["2026-05-01"], record_ids: ["m1"], evidence_ids: ["doc-1"], account_ids: ["checking"] }] }] };
+
+    const result = adaptOverview({ accounts: [], current_period });
+
+    expect(result?.currentPeriod).toMatchObject({ state: "limited", title: moments.current_period_title, horizonEnd: "2026-05-31" });
+    expect(result?.currentPeriod?.slices[0]).toMatchObject({ remainderMin: "900.00", remainderMax: "2900.00", amountDisplay: "USD 900.00 – USD 2,900.00" });
+    expect(result?.currentPeriod?.slices[0]?.series[0]).toMatchObject({ kind: "balance", balanceDisplay: "USD 1,000.00", tooltip: "Backend tooltip" });
+    expect(result?.currentPeriod?.slices[0]).toMatchObject({ liquidBalance: "1000.00", expectedIncomeMax: "2000.00", obligationsMax: "100.00", evidenceDates: ["2026-05-01"], evidenceLinks: [{ targetDocumentId: "doc-1", relation: "attests", label: "one.pdf", page: "" }] });
+    expect(adaptOverview({ accounts: [], current_period: { ...current_period, state: "ready" } })?.currentPeriod?.state).toBe("ready");
+  });
+
+  it("carries a reviewed current-period refusal and hides malformed answers", () => {
+    const frame = { title: moments.current_period_title, kicker: moments.current_period_kicker, horizon_start: "2026-05-01", horizon_end: "2026-05-31", slices: [] };
+    expect(adaptOverview({ accounts: [], current_period: { ...frame, state: "refused", refusal: "Backend refusal" } })?.currentPeriod).toMatchObject({ state: "refused", refusal: "Backend refusal" });
+    expect(adaptOverview({ accounts: [], current_period: { ...frame, state: "ready", refusal: "" } })?.currentPeriod?.state).toBe("absent");
   });
 
   it("uses stable returned ids and removes duplicates after reorder", () => {

@@ -37,8 +37,11 @@ from .operations import (
     served_contracts,
     validate_operations,
 )
-from .models import (ActionOutcome, Citation, CitationRelation, FindingView,
-                     FigureView, ObligationView, PanelState, ProofEmphasis,
+from .models import (ActionOutcome, Citation, CitationRelation,
+                     CurrentPeriodCompletenessView,
+                     CurrentPeriodExclusionView, CurrentPeriodSliceView,
+                     CurrentPeriodStepView, FindingView, FigureView,
+                     ObligationView, PanelState, ProofEmphasis,
                      ProofPresentation, ProofReason)
 from .proof import freshness_confirmed_on, proof_presentation_from_evidence
 from .protocol import CURRENT_PROTOCOL, ProtocolVersion, ProtocolVersionError
@@ -47,6 +50,8 @@ __all__ = [
     "ActionOutcome",
     "Citation",
     "CitationRelation",
+    "CurrentPeriodCompletenessView",
+    "CurrentPeriodExclusionView",
     "BRIDGE_HANDSHAKE",
     "BRIDGE_OPEN_DEMO_VAULT",
     "LIFECYCLE_READ",
@@ -62,6 +67,8 @@ __all__ = [
     "CapabilityMaturity",
     "CapabilitySpec",
     "CURRENT_PROTOCOL",
+    "CurrentPeriodSliceView",
+    "CurrentPeriodStepView",
     "DECLARED_OPERATIONS",
     "FigureView",
     "FindingView",
