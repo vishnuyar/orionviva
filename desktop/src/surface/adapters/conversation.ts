@@ -1,10 +1,19 @@
-import type { ActionOutcome, ConversationData, ConversationProposal, ConversationTurn, EvidenceLink, EvidenceRelation, SpokenTurn, TurnFigure, TurnView } from "../types";
+import type { ActionOutcome, ConversationData, ConversationGoalDraft, ConversationProposal, ConversationTurn, EvidenceLink, EvidenceRelation, PlanVerb, SpokenTurn, TurnFigure, TurnView } from "../types";
 import { booleanValue, isRecord, textValue } from "./primitives";
+import { adaptPlanDraftView } from "./plans";
 import { adaptQuestions } from "./questions";
 
 const OUTCOMES: readonly ActionOutcome[] = ["completed", "refused", "proposal", "waiting", "stale", "set_aside"];
 const KINDS: readonly ConversationTurn["kind"][] = ["ask", "answer", "decline", "confirm"];
 const RELATIONS: readonly EvidenceRelation[] = ["attests", "corroborates", "same_period", "same_account", "settles_question"];
+const PLAN_VERBS: readonly PlanVerb[] = ["create", "change_terms", "reserve", "release", "pause", "resume", "set_aside"];
+
+function goalDraft(raw: unknown): ConversationGoalDraft | null {
+  if (!isRecord(raw) || !["ready", "needs_input", "refused"].includes(textValue(raw.kind))) return null;
+  const verb = PLAN_VERBS.find((candidate) => candidate === raw.verb);
+  if (!verb) return null;
+  return { kind: raw.kind as ConversationGoalDraft["kind"], message: textValue(raw.message), reason: textValue(raw.reason), verb, draft: adaptPlanDraftView(raw.draft), reviewInPlans: booleanValue(raw.review_in_plans) === true };
+}
 
 function evidenceLink(raw: unknown): EvidenceLink | null {
   if (!isRecord(raw)) return null;
@@ -66,6 +75,7 @@ export function adaptTurn(raw: unknown): TurnView | null {
     gradeSentence: textValue(raw.grade_sentence),
     figures: (Array.isArray(raw.figures) ? raw.figures : []).map(figure).filter((row): row is TurnFigure => row !== null),
     spoken: spoken(raw.spoken),
+    goalDraft: goalDraft(raw.goal_draft),
   };
 }
 

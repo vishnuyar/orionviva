@@ -46,15 +46,63 @@ class ConversationActions:
         product reply rather than a transport failure."""
         from viva.persona import moment
         from viva.speak import _shown
-        from viva.surface.conversation import conversation, unconfigured
+        from viva.surface.conversation import (conversation, plan_draft_turn,
+                                               unconfigured)
 
         from viva.ledger.events import (conversation_turn_opened,
                                         conversation_turn_settled)
 
-        question, mirrored = _ask_request(payload)
+        question, mirrored, plan_request = _ask_request(payload)
         turn_id = secrets.token_urlsafe(18)
         self._vault.ledger.append(conversation_turn_opened(
             turn_id, "ask", question, _today(), mirrored=mirrored))
+        if plan_request:
+            from viva import speak
+            spec = speak.speak_spec()
+            if spec is None:
+                draft_reply = {
+                    "kind": "waiting", "message": moment("plans_empty_body"),
+                    "reason": "model_free_form",
+                    "state": {"draft_state": "needs_input", "verb": "create",
+                              "draft": {}},
+                }
+            else:
+                from viva.goal_binding import bind_goal_request
+                binding = bind_goal_request(self._vault, spec, question)
+                if binding.intent == "other":
+                    draft_reply = None
+                elif binding.intent == "refused":
+                    draft_reply = {
+                        "kind": "refused",
+                        "message": moment(
+                            "refusal_model_unreachable"
+                            if binding.reason == "model_unreachable"
+                            else "plans_action_refused"),
+                        "reason": binding.reason,
+                        "state": {"draft_state": "refused", "verb": "create",
+                                  "draft": {}},
+                    }
+                else:
+                    from .plan_actions import PlanActions
+                    draft_reply = PlanActions(self._vault).draft(binding.payload)
+            if draft_reply is not None:
+                state = dict(draft_reply.get("state") or {})
+                draft_state = str(state.get("draft_state") or "refused")
+                said = plan_draft_turn(
+                    question, str(draft_reply.get("message") or ""),
+                    draft_state, str(state.get("verb") or "create"),
+                    state.get("draft") if isinstance(state.get("draft"), dict)
+                    else None,
+                    str(draft_reply.get("reason") or ""), mirrored)
+                kind = str(draft_reply.get("kind") or "refused")
+                outcome = ActionOutcome(
+                    kind, str(draft_reply.get("message") or ""),
+                    reason=str(draft_reply.get("reason") or "") or None,
+                    state=said)
+                self._vault.ledger.append(conversation_turn_settled(
+                    turn_id, outcome.kind, outcome.message, _today(),
+                    reason=outcome.reason or "", answer=said))
+                return outcome.as_dict()
         session = self._opened()
         if session is None:
             outcome = ActionOutcome(
@@ -286,11 +334,11 @@ def _outcome_of(result: Mapping[str, Any]) -> ActionOutcome:
 outcome_of = _outcome_of
 
 
-def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool]:
+def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool, bool]:
     """Validate a question and whether its answer will be mirrored in text."""
     from viva.reply import MAX_REPLY_TOKENS
 
-    allowed = {"question", "mirrored"}
+    allowed = {"question", "mirrored", "plan_request"}
     unexpected = set(payload) - allowed
     if unexpected:
         raise BridgeRequestError(
@@ -304,7 +352,10 @@ def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool]:
     mirrored = payload.get("mirrored", True)
     if not isinstance(mirrored, bool):
         raise BridgeRequestError("mirrored must be true or false")
-    return question, mirrored
+    plan_request = payload.get("plan_request", False)
+    if not isinstance(plan_request, bool):
+        raise BridgeRequestError("plan_request must be true or false")
+    return question, mirrored, plan_request
 
 
 def _answer_request(payload: Mapping[str, Any]) -> tuple[str, str]:

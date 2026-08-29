@@ -27,6 +27,7 @@ import re
 import unicodedata
 import uuid
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 
 from .streams import IN, OUT
@@ -868,6 +869,177 @@ def conversation_proposal_resolved(
               "outcome": outcome, "message": message, "reason": reason},
         provenance=provenance or Provenance(),
     )
+
+
+# --------------------------------------------------------------------------
+# Save-up goals: desired terms and locally reserved funds are separate facts.
+
+GOAL_CREATED = "GoalCreated"
+GOAL_TERMS_CHANGED = "GoalTermsChanged"
+GOAL_FUNDS_RESERVED = "GoalFundsReserved"
+GOAL_FUNDS_RELEASED = "GoalFundsReleased"
+GOAL_STATE_CHANGED = "GoalStateChanged"
+GOAL_PROPOSAL_RECORDED = "GoalProposalRecorded"
+GOAL_PROPOSAL_RESOLVED = "GoalProposalResolved"
+GOAL_KINDS = ("save_up",)
+GOAL_STATES = ("active", "paused", "set_aside")
+GOAL_RELEASE_REASONS = ("reassigned", "used_elsewhere")
+GOAL_PROPOSAL_VERBS = ("create", "change_terms", "reserve", "release",
+                       "pause", "resume", "set_aside")
+GOAL_PROPOSAL_OUTCOMES = ("completed", "refused", "stale", "set_aside")
+
+
+def _goal_decimal(value, field_name: str) -> str:
+    if isinstance(value, (float, bool)):
+        raise TypeError(f"{field_name} must be Decimal, string, or integer")
+    try:
+        amount = Decimal(value)
+    except Exception as exc:
+        raise ValueError(f"{field_name} must be an exact decimal") from exc
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError(f"{field_name} must be greater than zero")
+    return str(amount)
+
+
+def _goal_terms(goal_id: str, title: str, currency: str, target_amount,
+                target_date: str, monthly_contribution,
+                contribution_day: int | None) -> dict:
+    if not str(goal_id or "").strip():
+        raise ValueError("a goal requires an identity")
+    if not str(title or "").strip():
+        raise ValueError("a goal requires a title")
+    if not str(currency or "").strip():
+        raise ValueError("a goal requires a currency")
+    target = _goal_decimal(target_amount, "target_amount")
+    date_text = str(target_date or "").strip()
+    if date_text:
+        try:
+            date.fromisoformat(date_text)
+        except ValueError:
+            raise ValueError("target_date must be an ISO calendar date") from None
+    contribution = ""
+    if monthly_contribution not in (None, ""):
+        contribution = _goal_decimal(
+            monthly_contribution, "monthly_contribution")
+    if contribution_day is not None and (
+            not isinstance(contribution_day, int)
+            or isinstance(contribution_day, bool)
+            or contribution_day < 1 or contribution_day > 28):
+        raise ValueError("a contribution day must be from 1 to 28")
+    if contribution and contribution_day is None:
+        raise ValueError("a monthly contribution requires a day from 1 to 28")
+    if contribution_day is not None and not contribution and not date_text:
+        raise ValueError("a contribution day requires a target date or contribution")
+    return {
+        "goal_id": str(goal_id).strip(), "kind": "save_up",
+        "title": str(title).strip(), "currency": str(currency).strip().upper(),
+        "target_amount": target, "target_date": date_text,
+        "monthly_contribution": contribution,
+        "contribution_day": contribution_day,
+    }
+
+
+def goal_created(goal_id: str, title: str, currency: str, target_amount,
+                 occurred_at: str, *, target_date: str = "",
+                 monthly_contribution=None, contribution_day: int | None = None,
+                 proposal_id: str = "",
+                 provenance: Provenance | None = None) -> Event:
+    body = _goal_terms(goal_id, title, currency, target_amount, target_date,
+                       monthly_contribution, contribution_day)
+    body["proposal_id"] = str(proposal_id or "")
+    return Event(GOAL_CREATED, occurred_at, body=body,
+                 provenance=provenance or Provenance())
+
+
+def goal_terms_changed(goal_id: str, title: str, currency: str, target_amount,
+                       occurred_at: str, *, target_date: str = "",
+                       monthly_contribution=None,
+                       contribution_day: int | None = None,
+                       proposal_id: str = "",
+                       provenance: Provenance | None = None) -> Event:
+    body = _goal_terms(goal_id, title, currency, target_amount, target_date,
+                       monthly_contribution, contribution_day)
+    body["proposal_id"] = str(proposal_id or "")
+    return Event(GOAL_TERMS_CHANGED, occurred_at, body=body,
+                 provenance=provenance or Provenance())
+
+
+def goal_funds_reserved(goal_id: str, account_id: str, amount,
+                        occurred_at: str, *, proposal_id: str = "",
+                        provenance: Provenance | None = None) -> Event:
+    if not str(goal_id or "").strip() or not str(account_id or "").strip():
+        raise ValueError("a reservation requires goal and account identities")
+    return Event(
+        GOAL_FUNDS_RESERVED, occurred_at,
+        body={"goal_id": str(goal_id).strip(),
+              "account_id": str(account_id).strip(),
+              "amount": _goal_decimal(amount, "reservation amount"),
+              "proposal_id": str(proposal_id or "")},
+        provenance=provenance or Provenance())
+
+
+def goal_funds_released(goal_id: str, account_id: str, amount,
+                        reason: str, occurred_at: str, *, proposal_id: str = "",
+                        provenance: Provenance | None = None) -> Event:
+    if not str(goal_id or "").strip() or not str(account_id or "").strip():
+        raise ValueError("a release requires goal and account identities")
+    if reason not in GOAL_RELEASE_REASONS:
+        raise ValueError(f"release reason must be one of {GOAL_RELEASE_REASONS}")
+    return Event(
+        GOAL_FUNDS_RELEASED, occurred_at,
+        body={"goal_id": str(goal_id).strip(),
+              "account_id": str(account_id).strip(),
+              "amount": _goal_decimal(amount, "release amount"),
+              "reason": reason, "proposal_id": str(proposal_id or "")},
+        provenance=provenance or Provenance())
+
+
+def goal_state_changed(goal_id: str, state: str, occurred_at: str, *,
+                       proposal_id: str = "",
+                       provenance: Provenance | None = None) -> Event:
+    if not str(goal_id or "").strip():
+        raise ValueError("a goal state change requires a goal identity")
+    if state not in GOAL_STATES:
+        raise ValueError(f"goal state must be one of {GOAL_STATES}")
+    return Event(
+        GOAL_STATE_CHANGED, occurred_at,
+        body={"goal_id": str(goal_id).strip(), "state": state,
+              "proposal_id": str(proposal_id or "")},
+        provenance=provenance or Provenance())
+
+
+def goal_proposal_recorded(proposal_id: str, verb: str, summary: str,
+                           proposal: dict, stake: dict, occurred_at: str,
+                           provenance: Provenance | None = None) -> Event:
+    if not str(proposal_id or "").strip():
+        raise ValueError("a goal proposal requires an identity")
+    if verb not in GOAL_PROPOSAL_VERBS:
+        raise ValueError(f"goal proposal verb must be one of {GOAL_PROPOSAL_VERBS}")
+    if not isinstance(proposal, dict) or not proposal:
+        raise ValueError("a goal proposal requires its exact typed payload")
+    if not isinstance(stake, dict) or not stake:
+        raise ValueError("a goal proposal requires its live state stake")
+    return Event(
+        GOAL_PROPOSAL_RECORDED, occurred_at,
+        body={"proposal_id": str(proposal_id).strip(), "verb": verb,
+              "summary": str(summary or ""), "proposal": dict(proposal),
+              "stake": dict(stake)},
+        provenance=provenance or Provenance())
+
+
+def goal_proposal_resolved(proposal_id: str, outcome: str, occurred_at: str,
+                           *, reason: str = "",
+                           provenance: Provenance | None = None) -> Event:
+    if not str(proposal_id or "").strip():
+        raise ValueError("a goal proposal resolution requires an identity")
+    if outcome not in GOAL_PROPOSAL_OUTCOMES:
+        raise ValueError(
+            f"goal proposal outcome must be one of {GOAL_PROPOSAL_OUTCOMES}")
+    return Event(
+        GOAL_PROPOSAL_RESOLVED, occurred_at,
+        body={"proposal_id": str(proposal_id).strip(), "outcome": outcome,
+              "reason": str(reason or "")},
+        provenance=provenance or Provenance())
 
 
 def question_declined(question_id: str, kind: str, occurred_at: str,

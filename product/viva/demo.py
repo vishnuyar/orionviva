@@ -339,7 +339,8 @@ def _states_every_screen_can_be_in(vault) -> None:
 
     Each is written with the constructor the real path writes it with. A state
     reached any other way would render correctly and be unreachable."""
-    from .ledger import Provenance, read_recorded, simple_transaction
+    from .ledger import (Provenance, goal_created, goal_funds_reserved,
+                         read_recorded, simple_transaction)
     from .ledger.events import (agent_acted, question_declined, transfer_linked,
                                 transfer_suggested)
 
@@ -378,6 +379,21 @@ def _states_every_screen_can_be_in(vault) -> None:
             possible_out, [possible_back],
             {"verdict": "suggested", "amount": "275.00", "currency": "USD"},
             "2026-06-23"))
+
+    # A recorded plan backed by an eligible account. Its target and reserved
+    # amount remain separate, and the reservation changes no account posting.
+    created = goal_created(
+        "goal:sample-trip", "Sample journey", "USD", "2400.00",
+        "2026-07-01", target_date="2026-12-15",
+        monthly_contribution="350.00", contribution_day=15,
+        proposal_id="proposal:sample-trip")
+    created.event_id = "event:sample-trip-created"
+    vault.ledger.append(created)
+    reserved = goal_funds_reserved(
+        "goal:sample-trip", "acct:everyday-checking", "600.00",
+        "2026-07-02", proposal_id="proposal:sample-trip-reserve")
+    reserved.event_id = "event:sample-trip-reserved"
+    vault.ledger.append(reserved)
 
     # A question somebody set aside. The queue's other state, and the one that
     # is only reachable by having answered: a vault where nothing was ever

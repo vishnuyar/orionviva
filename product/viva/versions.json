@@ -28,6 +28,10 @@
       "in": "prompts",
       "active": "tools-v15"
     },
+    "goal_binding": {
+      "in": "prompts",
+      "active": "goal-binding-v1"
+    },
     "classify": {
       "in": "prompts",
       "active": "classify-v2"
@@ -42,7 +46,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v39"
+      "active": "pack-v40"
     },
     "schema_pack": {
       "in": "schemas",
@@ -63,6 +67,7 @@
   },
   "released": {
     "classify-v1": "78d4a6f76dda419c",
+    "goal-binding-v1": "e28bad959309eebb",
     "classify-v2": "b0068911c228303a",
     "expectations-v1": "c4fc5008315fec2a",
     "extract-balance-generic-v1": "b7c12fe0406a602e",
@@ -193,6 +198,7 @@
     "pack-v36": "a09e504b51e350b7",
     "pack-v37": "456a509d7a7331ed",
     "pack-v38": "87f3fb3e002edc35",
-    "pack-v39": "643801b4964312fe"
+    "pack-v39": "643801b4964312fe",
+    "pack-v40": "23635571e7912ba5"
   }
 }

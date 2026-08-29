@@ -10,9 +10,10 @@ import { Activity } from "../features/activity/Activity";
 import { ConversationDrawer } from "../features/conversation/ConversationDrawer";
 import { Documents } from "../features/documents/Documents";
 import { Overview } from "../features/overview/Overview";
+import { Plans } from "../features/plans/Plans";
 import { Trust } from "../features/trust/Trust";
 import { resolveEvidenceTarget } from "../surface/evidence";
-import type { ConversationData, DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, QuestionActionState } from "../surface/types";
+import type { ActionResult, ConversationData, ConversationGoalDraft, DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, PlanDraftResult, PlanPayload, QuestionActionState } from "../surface/types";
 import { destinations, standingCopy, standingOf } from "./navigation";
 import { useResponsiveNavigation } from "./useResponsiveNavigation";
 import { useEvidenceDialog } from "./useEvidenceDialog";
@@ -25,6 +26,7 @@ const pageCopy: Record<Destination, { title: string; intro: string }> = {
   accounts: { title: "Accounts", intro: "Each account speaks in its own terms, with measurement dates shown rather than implied." },
   activity: { title: "Activity", intro: "Movements, their supplied context, and the evidence behind each displayed figure." },
   documents: { title: "Documents", intro: "Capture comes first. Reading and posting stay separate." },
+  plans: { title: "Plans", intro: "Targets, local reservations, and future contributions remain separate." },
   trust: { title: "Trust", intro: "What this preview can establish, what is unavailable, and which capabilities are not connected." },
 };
 // One mark per kind of notice, chosen by the word the notice declares. The
@@ -55,10 +57,14 @@ export function App() {
   const proofPreference = useProofPreference();
   const { session } = control;
   const surface = session.snapshot;
+  const plansResult = surface.plans ?? { state: "absent" as const, reason: "not_read" };
   const [vaultDirectory, setVaultDirectory] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [makeVault, setMakeVault] = useState(false);
   const [pickingVaultDirectory, setPickingVaultDirectory] = useState(false);
+  const [planRequested, setPlanRequested] = useState(false);
+  const [conversationPlanDraft, setConversationPlanDraft] = useState<PlanDraftResult | null>(null);
+  const [planActionReceipt, setPlanActionReceipt] = useState<ActionResult | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [pendingDocumentFocus, setPendingDocumentFocus] = useState<PendingDocumentFocus | null>(null);
   const [pendingReviewFocus, setPendingReviewFocus] = useState<PendingReviewFocus | null>(null);
@@ -91,6 +97,7 @@ export function App() {
 
   useEffect(() => { if (overlay?.kind === "evidence" && !evidenceSelection) setOverlay(null); }, [evidenceSelection, overlay]);
   useEffect(() => { if (overlay?.kind === "conversation" && !conversationSelection) setOverlay(null); }, [conversationSelection, overlay]);
+  useEffect(() => { setConversationPlanDraft(null); setPlanActionReceipt(null); }, [session.requestId]);
 
   useEffect(() => {
     if (!pendingDocumentFocus) return undefined;
@@ -210,8 +217,8 @@ export function App() {
   // Leaving a vault is one action, and it takes everything with it: the
   // overlays go, the session is rebuilt from nothing, and no row from the
   // vault that was open survives into the one that is not.
-  function leaveVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); control.resetDemo(); setOverlay(null); }
-  function openSampleVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setOverlay(null); void control.openSampleVault(); }
+  function leaveVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setPlanRequested(false); setConversationPlanDraft(null); setPlanActionReceipt(null); control.resetDemo(); setOverlay(null); }
+  function openSampleVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setPlanRequested(false); setConversationPlanDraft(null); setPlanActionReceipt(null); setOverlay(null); void control.openSampleVault(); }
   function openReviewQuestion(questionId: string) {
     control.selectQueue(questionId);
     setOverlay({ kind: "conversation", requestId: session.requestId });
@@ -275,6 +282,9 @@ export function App() {
     if (openingVault) return;
     if (!control.hostAvailable || !vaultDirectory.trim() || !passphrase) { control.setNotice({ kind: "refused", text: "Enter a vault directory and passphrase to open a local vault." }); return; }
     control.setNotice(null);
+    setPlanRequested(false);
+    setConversationPlanDraft(null);
+    setPlanActionReceipt(null);
     await control.openVault(vaultDirectory.trim(), passphrase, makeVault);
     setPassphrase("");
   }
@@ -287,6 +297,27 @@ export function App() {
   }
 
   const frame = session.source?.frame ?? null;
+  const plansData = plansResult.state === "ready" || plansResult.state === "partial" || plansResult.state === "needs_input" ? plansResult.data : null;
+  const plansServed = standingOf(session.description.registry, "plans") === "served";
+  const plansVisible = plansServed && (planRequested || Boolean(plansData?.goals.length) || Boolean(plansData?.proposals.length));
+  const shownDestinations = destinations.filter((item) => item.id !== "plans" || plansVisible);
+  function focusPlanResult(result: ActionResult) {
+    requestAnimationFrame(() => {
+      const proposalId = result.state === "settled" && result.outcome.kind === "proposal" ? result.outcome.proposalId : "";
+      (proposalId ? document.getElementById(`proposal-${proposalId}`) : document.getElementById("plan-action-outcome"))?.focus();
+    });
+  }
+  const planControls = control.planActionsAvailable ? {
+    draft: async (payload: PlanPayload) => { setPlanActionReceipt(null); return control.draftPlan(payload); },
+    propose: async (payload: PlanPayload) => {
+      const result = await control.proposePlan(payload); setPlanActionReceipt(result);
+      if (result.state === "settled" && result.outcome.kind === "proposal") setConversationPlanDraft(null);
+      focusPlanResult(result); return result;
+    },
+    confirm: async (proposalId: string) => { const result = await control.confirmPlan(proposalId); setPlanActionReceipt(result); focusPlanResult(result); return result; },
+    decline: async (proposalId: string) => { const result = await control.declinePlan(proposalId); setPlanActionReceipt(result); focusPlanResult(result); return result; },
+  } : null;
+  function startPlan() { if (!plansServed) return; setPlanRequested(true); navigate("plans"); requestAnimationFrame(() => pageTitleRef.current?.focus()); }
   return <div className={frame ? "app-shell app-shell-sample" : "app-shell"}>
     {/* One frame, said once, around the whole place — never a qualifier on
         each sentence inside it. A qualifier on one figure quietly claims the
@@ -305,7 +336,7 @@ export function App() {
         <strong>{surface.disclosure.title}</strong><span className="vault-source-subtitle">{surface.disclosure.subtitle}</span><p>{surface.disclosure.detail}</p>
         {control.hostAvailable ? <form className="vault-open-form" onSubmit={openVault}><label>Vault directory<span className="vault-directory-control"><input value={vaultDirectory} onChange={(event) => setVaultDirectory(event.target.value)} placeholder="/path/to/vault" autoComplete="off" />{control.pickerAvailable && <button className="vault-picker-button" type="button" onClick={pickVaultDirectory} aria-disabled={openingVault} aria-describedby={openingVault ? "vault-open-waiting" : undefined}><FolderOpen size={14} />{pickingVaultDirectory ? "Choosing..." : "Choose folder"}</button>}</span></label><label>Passphrase<input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="Enter passphrase" autoComplete="current-password" aria-describedby="vault-passphrase-consequence" /></label><label className="vault-create-choice"><input type="checkbox" checked={makeVault} onChange={(event) => setMakeVault(event.target.checked)} />Make a new vault in that folder</label><p className="vault-passphrase-consequence" id="vault-passphrase-consequence">This opens the vault in the folder you name. If there is none there, nothing is made unless you say so above — a folder named by mistake would otherwise look like an empty vault. Your passphrase is the only key to it. It is not stored anywhere, it cannot be reset, and there is no recovery phrase. If you lose it, everything in this vault is lost with it.</p><button className="secondary-button vault-open-button" type="submit" aria-disabled={openingVault} aria-describedby={openingVault ? "vault-passphrase-consequence vault-open-waiting" : "vault-passphrase-consequence"}>{openingVault ? "Opening vault..." : makeVault ? "Make and open vault" : "Open local vault"}</button>{openingVault ? <span className="action-explanation" id="vault-open-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}</form> : <span className="vault-host-note">Preview mode. A desktop host bridge will enable local vault opening.</span>}
       </div>
-      <nav id="primary-navigation" aria-label="Main navigation"><div className="nav-label">Navigate</div>{destinations.map((item) => {
+      <nav id="primary-navigation" aria-label="Main navigation"><div className="nav-label">Navigate</div>{shownDestinations.map((item) => {
         // What the engine's own registry says about this place, said beside
         // it. Nothing here decides it, and a destination whose standing has
         // not been asked for carries no mark: a mark on everything while an
@@ -319,18 +350,19 @@ export function App() {
     <main className="main-content" inert={Boolean(evidenceSelection) || conversationOpen || (isNarrow && mobileNav) ? true : undefined}>
       <header className="topbar"><button ref={navigationTriggerRef} id="mobile-navigation-trigger" className="icon-button mobile-menu" onClick={openNavigation} aria-label="Open navigation" aria-controls="primary-navigation-drawer" aria-expanded={isNarrow ? mobileNav : false}><Menu size={20} /></button><div className="breadcrumbs"><span>OrionViva</span><ChevronRight size={14} /><strong>{pageCopy[session.destination].title}</strong></div><button className="ask-button" onClick={() => setOverlay({ kind: "conversation", requestId: session.requestId })}><Sparkles size={16} />Ask Viva</button></header>
       <StatusNotice notice={session.notice} onDismiss={() => control.setNotice(null)} icons={noticeIcons} dismissIcon={<X size={15} />} />
-      <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div>{session.destination !== "trust" && <div className="page-actions"><button className="primary-button" onClick={openDocuments}><FilePlus2 size={17} />Go to documents</button></div>}</div>
+      <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div>{session.destination !== "trust" && <div className="page-actions">{plansServed && session.destination !== "plans" ? <button className="secondary-button" onClick={startPlan}>Make a plan</button> : null}<button className="primary-button" onClick={openDocuments}><FilePlus2 size={17} />Go to documents</button></div>}</div>
         <SourceDisclosure disclosure={surface.disclosure} />
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
           {session.destination === "overview" && <Overview result={surface.overview} conversationResult={surface.conversation} activityResult={surface.activity} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? () => setOverlay({ kind: "conversation", requestId: session.requestId }) : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} />}
           {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments() } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
           {session.destination === "activity" && <Activity result={surface.activity} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignCategory: (movementId, categoryId) => void control.assignActivityCategory(movementId, categoryId), onReplaceTags: (movementId, tagIds) => void control.replaceActivityTags(movementId, tagIds), onConfirmTransfer: (movementId, counterpartId) => void control.confirmActivityTransfer(movementId, counterpartId), onRejectTransfer: (movementId) => void control.rejectActivityTransfer(movementId), onUnlinkTransfer: (movementId, counterpartId) => void control.unlinkActivityTransfer(movementId, counterpartId) } : null} onOpenEvidence={openEvidenceDocument} />}
+          {session.destination === "plans" && <Plans result={plansResult} controls={planControls} initialDraft={conversationPlanDraft} receipt={planActionReceipt} onOpenEvidence={openEvidenceDocument} />}
           {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} displayPreference={{ showVerificationDetails: proofPreference.showVerificationDetails, onChange: proofPreference.setShowVerificationDetails }} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file) } : null} />}
         </FeatureBoundary>}
       </div>
     </main>
-    {conversationOpen && <ConversationDialogShell resetKey={`${session.requestId}-conversation`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer result={surface.conversation} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenFigure={openConversationFigure} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean) => void control.askViva(question, mirrored) } : null} controls={{ state: session.questionAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} /></ConversationDialogShell>}
+    {conversationOpen && <ConversationDialogShell resetKey={`${session.requestId}-conversation`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer result={surface.conversation} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenFigure={openConversationFigure} onReviewPlan={(draft: ConversationGoalDraft) => { conversationDialog.cancelPendingRestore(); setPlanRequested(true); setPlanActionReceipt(null); setConversationPlanDraft({ state: "settled", kind: draft.kind, message: draft.message, reason: draft.reason, draft: draft.draft }); control.navigate("plans"); setOverlay(null); requestAnimationFrame(() => (document.getElementById("plans-draft-title") ?? pageTitleRef.current)?.focus()); }} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean, planRequest = false) => void control.askViva(question, mirrored, planRequest) } : null} controls={{ state: session.questionAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} /></ConversationDialogShell>}
     {evidenceSelection && <EvidenceDrawer snapshot={surface} selection={evidenceSelection} drawerRef={evidenceDrawerRef} closeRef={evidenceCloseRef} onDismiss={evidenceDialog.dismissAndRestore} onOpenDocument={(link) => openEvidenceDocument(link, true)} renderEvidenceBadge={(grade) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />} />}
   </div>;
 }

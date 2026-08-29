@@ -32,7 +32,7 @@ def test_limited_answer_carries_reviewed_bounds_assumptions_and_tooltips():
     assert "known remainder" in row["headline"].lower()
     assert "safe to spend" not in row["headline"].lower()
     assert "permission to spend" in " ".join(row["caveats"]).lower()
-    assert row["missing_inputs"] == ["planned_spending", "goal_contributions"]
+    assert row["missing_inputs"] == ["planned_spending"]
     assert [point["kind"] for point in row["series"]] == [
         "balance", "obligation", "income"]
     assert all(point["tooltip"] for point in row["series"])
@@ -41,9 +41,9 @@ def test_limited_answer_carries_reviewed_bounds_assumptions_and_tooltips():
     assert row["obligations_max"] == "100.00"
     assert row["evidence_dates"]
     assert row["completeness"] == {
-        "balances": True, "income": True, "obligations": True,
-        "planned_spending": False, "goals": False,
-    }
+            "balances": True, "income": True, "obligations": True,
+            "planned_spending": False, "goals": True,
+        }
     assert row["exclusions"] == []
     assert row["evidence_label"]
     assert row["evidence_heading"]

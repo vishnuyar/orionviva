@@ -48,6 +48,8 @@ calendar-aware upcoming obligations and the backend's top three quiet findings
 with inspect, Ask Viva and evidence-staked set-aside gestures,
 per-currency thirty-day known-remainder ranges and refusals with
 backend-supplied assumptions, exclusions, evidence and balance series,
+save-up Plans with pure drafts, explicit local reservations, exact persisted
+proposal confirmation, account evidence and durable conversational entry,
 process-local jobs and cancellation,
 one durable conversation for questions, answers, corrections, proposal confirmation and decline, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
@@ -71,6 +73,7 @@ operation column is additionally checked by the desktop architecture gate.
 | Destination | Live read | Registry destination | Claimed by a surfaced capability | Shipped in the interface |
 | --- | --- | --- | --- | --- |
 | `overview` | yes | yes | yes | yes |
+| `plans` | yes | yes | yes | yes |
 | `accounts` | no | yes | no | yes |
 | `activity` | yes | yes | yes | yes |
 | `documents` | yes | yes | yes | yes |
@@ -102,6 +105,10 @@ operation column is additionally checked by the desktop architecture gate.
 | `viva.maintenance.diagnose` | yes | opened vault | yes |
 | `viva.maintenance.run` | yes | opened vault | yes |
 | `viva.overview.set_aside_finding` | yes | opened vault | yes |
+| `viva.plans.confirm` | yes | opened vault | yes |
+| `viva.plans.decline` | yes | opened vault | yes |
+| `viva.plans.draft` | yes | opened vault | yes |
+| `viva.plans.propose` | yes | opened vault | yes |
 | `viva.settings.confirm` | yes | before a vault opens | yes |
 | `viva.settings.propose` | yes | before a vault opens | yes |
 | `viva.settings.read` | yes | before a vault opens | yes |

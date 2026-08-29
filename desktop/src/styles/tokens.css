@@ -41,6 +41,9 @@
   --space-md: 12px;
   --space-lg: 16px;
   --space-xl: 24px;
+  --measure-metric: 9rem;
+  --measure-field: 12rem;
+  --measure-action: 13rem;
   --space-2xl: 32px;
   --space-3xl: 48px;
 

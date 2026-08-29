@@ -191,6 +191,10 @@ class ProjectionCore:
         self._conversation_turns: list[dict] = []
         self._conversation_turn_index: dict[str, int] = {}
         self._conversation_proposals: dict[str, dict] = {}
+        # Save-up goals preserve complete term snapshots and every reservation
+        # movement. Desired targets never become money merely by existing.
+        self._goals: dict[str, dict] = {}
+        self._goal_proposals: dict[str, dict] = {}
         # Findings set aside at the exact evidence stake a person saw. The
         # finding projection compares it to the live stake and uses no clock.
         self._finding_set_asides: dict[str, dict] = {}
@@ -393,6 +397,79 @@ class ProjectionCore:
                     "resolution_turn_id": event.body.get("turn_id", ""),
                     "outcome": event.body.get("outcome", ""),
                     "message": event.body.get("message", ""),
+                    "reason": event.body.get("reason", ""),
+                    "resolved_event_id": event.event_id})
+
+        elif et == "GoalCreated":
+            goal_id = event.body.get("goal_id", "")
+            if goal_id and goal_id not in self._goals:
+                self._goals[goal_id] = {
+                    **event.body, "state": "active",
+                    "created_at": event.occurred_at,
+                    "updated_at": event.occurred_at,
+                    "event_ids": [event.event_id],
+                    "reservations": {}, "reservation_history": [],
+                    "issues": []}
+
+        elif et == "GoalTermsChanged":
+            goal_id = event.body.get("goal_id", "")
+            goal = self._goals.get(goal_id)
+            if goal is not None:
+                for key in ("kind", "title", "currency", "target_amount",
+                            "target_date", "monthly_contribution",
+                            "contribution_day", "proposal_id"):
+                    goal[key] = event.body.get(key, "")
+                goal["updated_at"] = event.occurred_at
+                goal["event_ids"].append(event.event_id)
+
+        elif et in ("GoalFundsReserved", "GoalFundsReleased"):
+            goal_id = event.body.get("goal_id", "")
+            goal = self._goals.get(goal_id)
+            if goal is not None:
+                account_id = event.body.get("account_id", "")
+                amount = Decimal(event.body.get("amount", "0"))
+                direction = Decimal("1") if et == "GoalFundsReserved" else Decimal("-1")
+                before = goal["reservations"].get(account_id, Decimal("0"))
+                applied = amount
+                if direction < 0 and amount > before:
+                    applied = max(before, Decimal("0"))
+                    goal["issues"].append(
+                        f"release_exceeds_reserved:{account_id}:{event.event_id}")
+                goal["reservations"][account_id] = max(
+                    before + direction * applied, Decimal("0"))
+                goal["reservation_history"].append({
+                    **event.body, "kind": "reserved" if direction > 0 else "released",
+                    "applied_amount": str(applied),
+                    "valid": applied == amount,
+                    "occurred_at": event.occurred_at,
+                    "event_id": event.event_id})
+                goal["updated_at"] = event.occurred_at
+                goal["event_ids"].append(event.event_id)
+
+        elif et == "GoalStateChanged":
+            goal_id = event.body.get("goal_id", "")
+            goal = self._goals.get(goal_id)
+            if goal is not None:
+                goal["state"] = event.body.get("state", goal["state"])
+                goal["proposal_id"] = event.body.get("proposal_id", "")
+                goal["updated_at"] = event.occurred_at
+                goal["event_ids"].append(event.event_id)
+
+        elif et == "GoalProposalRecorded":
+            proposal_id = event.body.get("proposal_id", "")
+            if proposal_id and proposal_id not in self._goal_proposals:
+                self._goal_proposals[proposal_id] = {
+                    **event.body, "occurred_at": event.occurred_at,
+                    "event_id": event.event_id, "status": "open",
+                    "outcome": "proposal", "reason": ""}
+
+        elif et == "GoalProposalResolved":
+            proposal_id = event.body.get("proposal_id", "")
+            proposal = self._goal_proposals.get(proposal_id)
+            if proposal is not None and proposal.get("status") == "open":
+                proposal.update({
+                    "status": "resolved",
+                    "outcome": event.body.get("outcome", ""),
                     "reason": event.body.get("reason", ""),
                     "resolved_event_id": event.event_id})
 

@@ -51,4 +51,25 @@ describe("one turn, read", () => {
     expect(silent.spoken.maySpeak).toBe(false);
     expect(silent.spoken.parts).toEqual([]);
   });
+
+  it("carries the exact deterministic goal draft and its Plans route", () => {
+    const raw = {
+      ...reply,
+      goal_draft: {
+        kind: "ready", message: "Draft ready. Nothing was recorded.",
+        reason: "", verb: "create", review_in_plans: true,
+        draft: {
+          verb: "create",
+          payload: { title: "Trip", currency: "USD", target_amount: "600" },
+          calculated: { reserved: "0", remaining: "600", required_monthly: "100", projected_completion_date: "2027-02-28", status: "on_track" },
+        },
+      },
+    };
+
+    expect(adaptTurn(raw)?.goalDraft).toEqual({
+      kind: "ready", message: "Draft ready. Nothing was recorded.",
+      reason: "", verb: "create", reviewInPlans: true,
+      draft: raw.goal_draft.draft,
+    });
+  });
 });

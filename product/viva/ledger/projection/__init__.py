@@ -22,6 +22,7 @@ from . import (accounts as _accounts, activity as _activity,
                balances as _balances, categories as _categories,
                conversation as _conversation,
                coverage as _coverage, current_period as _current_period,
+               goals as _goals,
                merchants as _merchants,
                movements as _movements, obligations as _obligations,
                positions as _positions,
@@ -32,6 +33,8 @@ from .current_period import (CurrentPeriodCompleteness, CurrentPeriodResult,
                              CurrentPeriodSlice, ProjectionExclusion,
                              ProjectionStep)
 from .core import ProjectionCore, TxnLine, UnknownAccountError
+from .goals import (GoalAccountAvailability, GoalAccountExclusion, GoalActivity,
+                    GoalView, UnknownGoalError)
 from .movements import (BY_CATEGORY, BY_DEFAULT, BY_LINK, BY_OWN_ACCOUNT,
                         BY_RULING, MIXED, SETTLEMENT, SPENDING, TRANSFER,
                         MovementInfo, _NATURE_OF_MAJOR, movement_key,
@@ -46,6 +49,8 @@ __all__ = [
     "AccountInfo", "BalanceAnswer", "ComposedValue", "LedgerProjection",
     "CurrentPeriodCompleteness", "CurrentPeriodResult", "CurrentPeriodSlice",
     "Finding", "MovementInfo", "Obligation", "PositionRecord",
+    "GoalAccountAvailability", "GoalAccountExclusion", "GoalActivity",
+    "GoalView", "UnknownGoalError",
     "ProjectionCore", "ProjectionExclusion", "ProjectionStep", "Resolution",
     "RhythmComponent", "RhythmHypothesis", "TxnLine",
     "UnknownAccountError", "movement_key", "nature_of_legs",
@@ -363,6 +368,26 @@ class LedgerProjection:
 
     def conversation_proposal(self, proposal_id: str) -> dict | None:
         return _conversation.conversation_proposal(self._core, proposal_id)
+
+    # ------------------------------------------------------------------ goals
+
+    def goals(self, today: str) -> list[GoalView]:
+        return _goals.goals(self._core, today)
+
+    def goal(self, goal_id: str, today: str) -> GoalView:
+        return _goals.goal(self._core, goal_id, today)
+
+    def goal_proposals(self, *, open_only: bool = False) -> list[dict]:
+        return _goals.goal_proposals(self._core, open_only=open_only)
+
+    def goal_proposal(self, proposal_id: str) -> dict | None:
+        return _goals.goal_proposal(self._core, proposal_id)
+
+    def open_goal_proposals(self) -> list[dict]:
+        return _goals.open_goal_proposals(self._core)
+
+    def goal_account_stake(self, account_id: str, currency: str) -> dict:
+        return _goals.account_stake(self._core, account_id, currency)
 
     # ----------------------------------------------------------------- rhythm
 

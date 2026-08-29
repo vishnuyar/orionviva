@@ -212,14 +212,17 @@ def test_the_request_carries_a_question_and_whether_its_text_is_shown(tmp_path: 
 
     from viva.desktop_bridge.handlers import BridgeRequestError
 
-    assert _ask_request({"question": "what?"}) == ("what?", True)
-    assert _ask_request({"question": "what?", "mirrored": False}) == ("what?", False)
+    assert _ask_request({"question": "what?"}) == ("what?", True, False)
+    assert _ask_request({"question": "what?", "mirrored": False}) == ("what?", False, False)
+    assert _ask_request({"question": "what?", "plan_request": True}) == ("what?", True, True)
     with pytest.raises(BridgeRequestError):
         _ask_request({"question": "what?", "speak": True})
     with pytest.raises(BridgeRequestError):
         _ask_request({"question": "  "})
     with pytest.raises(BridgeRequestError):
         _ask_request({"question": "what?", "mirrored": "yes"})
+    with pytest.raises(BridgeRequestError):
+        _ask_request({"question": "what?", "plan_request": "yes"})
 
 
 def test_the_unconfigured_read_is_unavailable_rather_than_failed():

@@ -17,6 +17,7 @@ const backendParityFixture = "../../../../product/viva/surface/fixtures/overview
 // test that authored its own payloads would agree with itself while
 // disagreeing with the product.
 const shellParityFixture = "../../../product/viva/surface/fixtures/overview-parity-v1.json";
+const plansContractFixture = "../../../../product/viva/surface/fixtures/surface-v1.json";
 // The persona pack the product ships. A test that asserts what a person is
 // told reads the sentence from here; one that types the sentence out passes
 // against words nobody shipped. No production module reads it: the sentences
@@ -26,7 +27,10 @@ const personaPackMoments = /^\.\.\/.*\/product\/viva\/persona\/pack-v\d+\/moment
 // one as a literal is asserting or composing words that already exist
 // somewhere they can be changed; the pack is read, never copied.
 function packSentences(moments) {
-  const sentences = Object.entries(moments).filter(([key]) => key !== "_comment").map(([, value]) => value).filter((value) => typeof value === "string" && value.trim());
+  // Destination titles and compact status labels are vocabulary, not prose.
+  const sentences = Object.entries(moments)
+    .filter(([key]) => key !== "_comment" && key !== "plans_title" && !key.startsWith("plans_status_"))
+    .map(([, value]) => value).filter((value) => typeof value === "string" && value.trim());
   if (!sentences.length) throw new Error("persona pack holds no sentences: the shipped-sentence check would walk an empty set and report a clean bill it could not withhold");
   return sentences;
 }
@@ -89,6 +93,7 @@ function ownerTestImportAllowed(name, specifier) {
   // no others, so the published event type checks the shape the test builds.
   if (name === hostShimTest) return specifier.startsWith("./") || hostShimPackages.has(specifier);
   if (name === "test/SurfaceMatrix.test.tsx") return surfaceMatrixImports.has(specifier);
+  if (name === "features/plans/Plans.test.tsx") return isTestLibrary(specifier) || specifier === "./Plans" || specifier === "../../surface/types" || specifier === "../../surface/adapters/plans" || specifier === plansContractFixture;
   if (name.startsWith("bridge/")) return specifier.startsWith("./");
   if (name.startsWith("components/")) return specifier.startsWith("./") || specifier === "../surface/types" || specifier === "../surface/evidence";
   if (name.startsWith("surface/adapters/")) return specifier.startsWith("./") || specifier === "../types" || specifier === "../evidence" || specifier === backendParityFixture;

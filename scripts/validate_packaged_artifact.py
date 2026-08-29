@@ -47,7 +47,8 @@ UNKNOWN_REVISION = "unknown"
 # What an opened vault must answer. A build that serves four of them is not a
 # build a person can use, and a list this walks is the whole of what is
 # checked, so a surface added later joins it here.
-SURFACES = ("overview", "documents", "conversation", "jobs", "trust", "activity")
+SURFACES = ("overview", "documents", "conversation", "jobs", "trust", "activity",
+            "plans")
 
 
 def fail(message: str) -> NoReturn:

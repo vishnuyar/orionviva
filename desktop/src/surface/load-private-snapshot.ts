@@ -11,9 +11,10 @@ import { adaptLifecycle } from "./adapters/lifecycle";
 import { adaptProposal, adaptSettings } from "./adapters/settings";
 import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
+import { adaptPlanDraftReply, adaptPlans } from "./adapters/plans";
 import { adaptActionOutcome } from "./adapters/questions";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, ActivityActionResult, ActivityActions, ConversationData, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import type { ActionResult, ActivityActionResult, ActivityActions, ConversationData, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ConversationActions, PlanActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -27,6 +28,11 @@ function settledOverview<TRaw extends { data: unknown }>(result: PromiseSettledR
   if (adapted.state !== "ready") return adapted;
   const panel = adaptOverviewPanel((result as PromiseFulfilledResult<TRaw>).value.data);
   return panel.state === "ready" ? adapted : { state: panel.state as "partial" | "needs_input", data: adapted.data, issues: panel.issues };
+}
+function settledPlans<TRaw extends { data: unknown }>(result: PromiseSettledResult<TRaw>): FeatureResult<import("./types").PlansData> {
+  const adapted = settled(result, (read: TRaw) => adaptPlans(read.data));
+  if (adapted.state !== "ready" || adapted.data.state !== "partial") return adapted;
+  return { state: "partial", data: adapted.data, issues: [{ code: "plans_partial", message: "The plans read reported bounded history or availability detail." }] };
 }
 async function acted(call: Promise<unknown>): Promise<ActionResult> {
   const [replied] = await Promise.allSettled([call]);
@@ -143,8 +149,8 @@ export function privateDocumentActions(client: BridgeClient): DocumentActions {
 // turn itself, read only from a reply the vault settled.
 export function privateConversationActions(client: BridgeClient): ConversationActions {
   return {
-    ask: async (question, mirrored) => {
-      const [replied] = await Promise.allSettled([client.askViva(question, mirrored)]);
+    ask: async (question, mirrored, planRequest = false) => {
+      const [replied] = await Promise.allSettled([client.askViva(question, mirrored, planRequest)]);
       const result = await acted(Promise.resolve(replied.status === "fulfilled" ? replied.value : Promise.reject(replied.reason)));
       const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
       return { result, turn };
@@ -217,14 +223,28 @@ export function privateOverviewActions(client: BridgeClient): OverviewActions | 
   return client.setAsideFinding ? { setAsideFinding: (findingId) => acted(client.setAsideFinding!(findingId)) } : null;
 }
 
+export function privatePlanActions(client: BridgeClient): PlanActions {
+  return {
+    draft: async (payload) => {
+      const [reply] = await Promise.allSettled([client.draftPlan(payload)]);
+      if (reply.status === "rejected") return { state: "unanswered" };
+      return adaptPlanDraftReply(reply.value);
+    },
+    propose: (payload) => acted(client.proposePlan(payload)),
+    confirm: (proposalId) => acted(client.confirmPlan(proposalId)),
+    decline: (proposalId) => acted(client.declinePlan(proposalId)),
+  };
+}
+
 export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"]): Promise<SurfaceSnapshot> {
-  const [overviewRead, documentsRead, conversationRead, trustRead, activityRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readTrust(), client.readActivity()]);
+  const [overviewRead, documentsRead, conversationRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readTrust(), client.readActivity(), client.readPlans()]);
   return buildLiveSnapshot(
     settledOverview(overviewRead),
     settled(documentsRead, (read) => adaptDocuments(read.data)),
     settled(conversationRead, (read) => adaptConversation(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
     settled(activityRead, (read) => adaptActivity(read.data)),
+    settledPlans(plansRead),
     disclosure,
   );
 }

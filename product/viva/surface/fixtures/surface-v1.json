@@ -112,6 +112,823 @@
       "state": "ready"
     },
     {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.absent",
+      "payload": {
+        "action": null,
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [],
+          "groups": {
+            "active": [],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "absent",
+          "title": "Plans"
+        }
+      },
+      "state": "absent"
+    },
+    {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.ready",
+      "payload": {
+        "action": null,
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [
+            {
+              "accounts": [
+                {
+                  "as_of": "",
+                  "available": "800",
+                  "available_display": "USD 800.00",
+                  "balance": "1000",
+                  "balance_display": "USD 1,000.00",
+                  "balance_explanation": "Attested closing balance; no opening figure or transactions to corroborate it against.",
+                  "caveats": [
+                    "Attested closing balance; no opening figure or transactions to corroborate it against."
+                  ],
+                  "citations": [
+                    {
+                      "document_id": "fixture-statement",
+                      "label": "checking.pdf",
+                      "page": "1",
+                      "relation": "attests"
+                    }
+                  ],
+                  "currency": "USD",
+                  "dated": "2026-08-29",
+                  "eligible": true,
+                  "evidence_ids": [
+                    "fixture-statement"
+                  ],
+                  "grade": "verified",
+                  "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                  "id": "checking",
+                  "name": "Checking",
+                  "reason": "",
+                  "reserved": "200",
+                  "reserved_display": "USD 200.00",
+                  "sentence": "The recorded balance is USD 1,000.00; USD 200.00 is reserved across plans, leaving USD 800.00 available for plans.",
+                  "source_document_id": "fixture-statement",
+                  "source_note": "",
+                  "source_page": "1",
+                  "source_region": "closing"
+                }
+              ],
+              "actions": [
+                "change_terms",
+                "pause",
+                "reserve",
+                "release"
+              ],
+              "assumptions": [
+                "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence."
+              ],
+              "caveats": [],
+              "contribution_day": 15,
+              "currency": "USD",
+              "deviation": "16.66",
+              "deviation_display": "USD 16.66",
+              "event_ids": [],
+              "explanation": "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence.",
+              "group": "active",
+              "headline": "The target, what is reserved now, and the recorded path are kept separate.",
+              "history": [
+                {
+                  "account_id": "checking",
+                  "amount": "200",
+                  "amount_display": "USD 200.00",
+                  "kind": "reserved",
+                  "occurred_at": "2026-08-02",
+                  "reason": "",
+                  "sentence": "Reserved USD 200.00 locally for this plan. No bank money moved.",
+                  "valid": true
+                }
+              ],
+              "history_note": "",
+              "id": "fixture-goal",
+              "monthly_contribution": "150",
+              "monthly_display": "USD 150.00",
+              "next_contribution_date": "2026-09-15",
+              "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+              "projected_completion_date": "2026-11-15",
+              "remaining": "400",
+              "remaining_display": "USD 400.00",
+              "required_monthly": "133.34",
+              "required_monthly_display": "USD 133.34",
+              "reserved": "200",
+              "reserved_display": "USD 200.00",
+              "state": "active",
+              "status": "on_track",
+              "status_label": "On track",
+              "target_amount": "600",
+              "target_date": "2026-11-15",
+              "target_display": "USD 600.00",
+              "title": "Journey"
+            }
+          ],
+          "groups": {
+            "active": [
+              "fixture-goal"
+            ],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "ready",
+          "title": "Plans"
+        }
+      },
+      "state": "ready"
+    },
+    {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.needs_input",
+      "payload": {
+        "action": {
+          "kind": "waiting",
+          "message": "The draft still needs one of the plan details named below. Nothing has been recorded.",
+          "reason": "contribution_day_required",
+          "state": {
+            "draft": {},
+            "draft_state": "needs_input"
+          }
+        },
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [],
+          "groups": {
+            "active": [],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "absent",
+          "title": "Plans"
+        }
+      },
+      "state": "needs_input"
+    },
+    {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.partial",
+      "payload": {
+        "action": null,
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [
+            {
+              "accounts": [
+                {
+                  "as_of": "",
+                  "available": "1000",
+                  "available_display": "USD 1,000.00",
+                  "balance": "1000",
+                  "balance_display": "USD 1,000.00",
+                  "balance_explanation": "Attested closing balance; no opening figure or transactions to corroborate it against.",
+                  "caveats": [
+                    "Attested closing balance; no opening figure or transactions to corroborate it against."
+                  ],
+                  "citations": [
+                    {
+                      "document_id": "fixture-statement",
+                      "label": "checking.pdf",
+                      "page": "1",
+                      "relation": "attests"
+                    }
+                  ],
+                  "currency": "USD",
+                  "dated": "2026-08-29",
+                  "eligible": true,
+                  "evidence_ids": [
+                    "fixture-statement"
+                  ],
+                  "grade": "verified",
+                  "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                  "id": "checking",
+                  "name": "Checking",
+                  "reason": "",
+                  "reserved": "0",
+                  "reserved_display": "USD 0.00",
+                  "sentence": "The recorded balance is USD 1,000.00; USD 0.00 is reserved across plans, leaving USD 1,000.00 available for plans.",
+                  "source_document_id": "fixture-statement",
+                  "source_note": "",
+                  "source_page": "1",
+                  "source_region": "closing"
+                }
+              ],
+              "actions": [
+                "change_terms",
+                "pause",
+                "reserve",
+                "set_aside"
+              ],
+              "assumptions": [
+                "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence."
+              ],
+              "caveats": [
+                "Some reservation history was withheld because it did not form a valid local reservation change."
+              ],
+              "contribution_day": 15,
+              "currency": "USD",
+              "deviation": "-50.00",
+              "deviation_display": "-USD 50.00",
+              "event_ids": [],
+              "explanation": "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence.",
+              "group": "active",
+              "headline": "The target, what is reserved now, and the recorded path are kept separate.",
+              "history": [
+                {
+                  "account_id": "checking",
+                  "amount": "200",
+                  "amount_display": "USD 200.00",
+                  "kind": "reserved",
+                  "occurred_at": "2026-08-02",
+                  "reason": "",
+                  "sentence": "Reserved USD 200.00 locally for this plan. No bank money moved.",
+                  "valid": true
+                },
+                {
+                  "account_id": "checking",
+                  "amount": "200",
+                  "amount_display": "USD 200.00",
+                  "kind": "released",
+                  "occurred_at": "2026-08-29",
+                  "reason": "used_elsewhere",
+                  "sentence": "Released USD 200.00 back to ordinary availability. No bank money moved.",
+                  "valid": false
+                }
+              ],
+              "history_note": "Some reservation history was withheld because it did not form a valid local reservation change.",
+              "id": "fixture-goal",
+              "monthly_contribution": "150",
+              "monthly_display": "USD 150.00",
+              "next_contribution_date": "2026-09-15",
+              "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+              "projected_completion_date": "2026-12-15",
+              "remaining": "600",
+              "remaining_display": "USD 600.00",
+              "required_monthly": "200.00",
+              "required_monthly_display": "USD 200.00",
+              "reserved": "0",
+              "reserved_display": "USD 0.00",
+              "state": "active",
+              "status": "at_risk",
+              "status_label": "At risk",
+              "target_amount": "600",
+              "target_date": "2026-11-15",
+              "target_display": "USD 600.00",
+              "title": "Journey"
+            }
+          ],
+          "groups": {
+            "active": [
+              "fixture-goal"
+            ],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "partial",
+          "title": "Plans"
+        }
+      },
+      "state": "partial"
+    },
+    {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.refused",
+      "payload": {
+        "action": {
+          "kind": "refused",
+          "message": "That plan action is not available from the current recorded state, so nothing was recorded.",
+          "reason": "reservation_exceeds_available",
+          "state": null
+        },
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [],
+          "groups": {
+            "active": [],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "absent",
+          "title": "Plans"
+        }
+      },
+      "state": "refused"
+    },
+    {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.open",
+      "payload": {
+        "action": {
+          "kind": "proposal",
+          "message": "The exact proposal is held for your confirmation. Nothing in the plan has changed yet.",
+          "reason": null,
+          "state": {
+            "goal_id": "fixture-goal",
+            "proposal_id": "fixture-proposal"
+          }
+        },
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [
+            {
+              "accounts": [
+                {
+                  "as_of": "",
+                  "available": "800",
+                  "available_display": "USD 800.00",
+                  "balance": "1000",
+                  "balance_display": "USD 1,000.00",
+                  "balance_explanation": "Attested closing balance; no opening figure or transactions to corroborate it against.",
+                  "caveats": [
+                    "Attested closing balance; no opening figure or transactions to corroborate it against."
+                  ],
+                  "citations": [
+                    {
+                      "document_id": "fixture-statement",
+                      "label": "checking.pdf",
+                      "page": "1",
+                      "relation": "attests"
+                    }
+                  ],
+                  "currency": "USD",
+                  "dated": "2026-08-29",
+                  "eligible": true,
+                  "evidence_ids": [
+                    "fixture-statement"
+                  ],
+                  "grade": "verified",
+                  "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                  "id": "checking",
+                  "name": "Checking",
+                  "reason": "",
+                  "reserved": "200",
+                  "reserved_display": "USD 200.00",
+                  "sentence": "The recorded balance is USD 1,000.00; USD 200.00 is reserved across plans, leaving USD 800.00 available for plans.",
+                  "source_document_id": "fixture-statement",
+                  "source_note": "",
+                  "source_page": "1",
+                  "source_region": "closing"
+                }
+              ],
+              "actions": [
+                "change_terms",
+                "pause",
+                "reserve",
+                "release"
+              ],
+              "assumptions": [
+                "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence."
+              ],
+              "caveats": [],
+              "contribution_day": 15,
+              "currency": "USD",
+              "deviation": "16.66",
+              "deviation_display": "USD 16.66",
+              "event_ids": [],
+              "explanation": "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence.",
+              "group": "active",
+              "headline": "The target, what is reserved now, and the recorded path are kept separate.",
+              "history": [
+                {
+                  "account_id": "checking",
+                  "amount": "200",
+                  "amount_display": "USD 200.00",
+                  "kind": "reserved",
+                  "occurred_at": "2026-08-02",
+                  "reason": "",
+                  "sentence": "Reserved USD 200.00 locally for this plan. No bank money moved.",
+                  "valid": true
+                }
+              ],
+              "history_note": "",
+              "id": "fixture-goal",
+              "monthly_contribution": "150",
+              "monthly_display": "USD 150.00",
+              "next_contribution_date": "2026-09-15",
+              "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+              "projected_completion_date": "2026-11-15",
+              "remaining": "400",
+              "remaining_display": "USD 400.00",
+              "required_monthly": "133.34",
+              "required_monthly_display": "USD 133.34",
+              "reserved": "200",
+              "reserved_display": "USD 200.00",
+              "state": "active",
+              "status": "on_track",
+              "status_label": "On track",
+              "target_amount": "600",
+              "target_date": "2026-11-15",
+              "target_display": "USD 600.00",
+              "title": "Journey"
+            }
+          ],
+          "groups": {
+            "active": [
+              "fixture-goal"
+            ],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [
+            {
+              "actions": [
+                "confirm",
+                "decline"
+              ],
+              "assumptions": [
+                "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence."
+              ],
+              "consequence": "Confirming records exactly this proposal. It does not send money or change anything at a bank.",
+              "display": {
+                "account_name": "Checking",
+                "amount": "USD 50.00",
+                "plan_name": "Journey"
+              },
+              "exact": {
+                "account_id": "checking",
+                "amount": "50",
+                "goal_id": "fixture-goal"
+              },
+              "goal_id": "fixture-goal",
+              "id": "fixture-proposal",
+              "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+              "summary": "Reserve USD 50.00 from the named account in this vault.",
+              "verb": "reserve"
+            }
+          ],
+          "state": "ready",
+          "title": "Plans"
+        }
+      },
+      "state": "open"
+    },
+    {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.completed",
+      "payload": {
+        "action": {
+          "kind": "completed",
+          "message": "Recorded the exact proposal you confirmed.",
+          "reason": null,
+          "state": {
+            "goal_id": "fixture-goal",
+            "proposal_id": "fixture-proposal"
+          }
+        },
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [
+            {
+              "accounts": [
+                {
+                  "as_of": "",
+                  "available": "800",
+                  "available_display": "USD 800.00",
+                  "balance": "1000",
+                  "balance_display": "USD 1,000.00",
+                  "balance_explanation": "Attested closing balance; no opening figure or transactions to corroborate it against.",
+                  "caveats": [
+                    "Attested closing balance; no opening figure or transactions to corroborate it against."
+                  ],
+                  "citations": [
+                    {
+                      "document_id": "fixture-statement",
+                      "label": "checking.pdf",
+                      "page": "1",
+                      "relation": "attests"
+                    }
+                  ],
+                  "currency": "USD",
+                  "dated": "2026-08-29",
+                  "eligible": true,
+                  "evidence_ids": [
+                    "fixture-statement"
+                  ],
+                  "grade": "verified",
+                  "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                  "id": "checking",
+                  "name": "Checking",
+                  "reason": "",
+                  "reserved": "200",
+                  "reserved_display": "USD 200.00",
+                  "sentence": "The recorded balance is USD 1,000.00; USD 200.00 is reserved across plans, leaving USD 800.00 available for plans.",
+                  "source_document_id": "fixture-statement",
+                  "source_note": "",
+                  "source_page": "1",
+                  "source_region": "closing"
+                }
+              ],
+              "actions": [
+                "change_terms",
+                "pause",
+                "reserve",
+                "release"
+              ],
+              "assumptions": [
+                "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence."
+              ],
+              "caveats": [],
+              "contribution_day": 15,
+              "currency": "USD",
+              "deviation": "16.66",
+              "deviation_display": "USD 16.66",
+              "event_ids": [],
+              "explanation": "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence.",
+              "group": "active",
+              "headline": "The target, what is reserved now, and the recorded path are kept separate.",
+              "history": [
+                {
+                  "account_id": "checking",
+                  "amount": "200",
+                  "amount_display": "USD 200.00",
+                  "kind": "reserved",
+                  "occurred_at": "2026-08-02",
+                  "reason": "",
+                  "sentence": "Reserved USD 200.00 locally for this plan. No bank money moved.",
+                  "valid": true
+                }
+              ],
+              "history_note": "",
+              "id": "fixture-goal",
+              "monthly_contribution": "150",
+              "monthly_display": "USD 150.00",
+              "next_contribution_date": "2026-09-15",
+              "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+              "projected_completion_date": "2026-11-15",
+              "remaining": "400",
+              "remaining_display": "USD 400.00",
+              "required_monthly": "133.34",
+              "required_monthly_display": "USD 133.34",
+              "reserved": "200",
+              "reserved_display": "USD 200.00",
+              "state": "active",
+              "status": "on_track",
+              "status_label": "On track",
+              "target_amount": "600",
+              "target_date": "2026-11-15",
+              "target_display": "USD 600.00",
+              "title": "Journey"
+            }
+          ],
+          "groups": {
+            "active": [
+              "fixture-goal"
+            ],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "ready",
+          "title": "Plans"
+        }
+      },
+      "state": "completed"
+    },
+    {
+      "capability_id": "plans.goals",
+      "contract": "GoalsAndPlans.v1",
+      "id": "plans.goals.stale",
+      "payload": {
+        "action": {
+          "kind": "stale",
+          "message": "The balance or plan changed after this proposal was made, so nothing from it was applied.",
+          "reason": "proposal_basis_changed",
+          "state": {
+            "goal_id": "fixture-goal",
+            "proposal_id": "fixture-proposal"
+          }
+        },
+        "capability_id": "plans.goals",
+        "contract": "GoalsAndPlans.v1",
+        "surface": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [
+            {
+              "accounts": [
+                {
+                  "as_of": "",
+                  "available": "800",
+                  "available_display": "USD 800.00",
+                  "balance": "1000",
+                  "balance_display": "USD 1,000.00",
+                  "balance_explanation": "Attested closing balance; no opening figure or transactions to corroborate it against.",
+                  "caveats": [
+                    "Attested closing balance; no opening figure or transactions to corroborate it against."
+                  ],
+                  "citations": [
+                    {
+                      "document_id": "fixture-statement",
+                      "label": "checking.pdf",
+                      "page": "1",
+                      "relation": "attests"
+                    }
+                  ],
+                  "currency": "USD",
+                  "dated": "2026-08-29",
+                  "eligible": true,
+                  "evidence_ids": [
+                    "fixture-statement"
+                  ],
+                  "grade": "verified",
+                  "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                  "id": "checking",
+                  "name": "Checking",
+                  "reason": "",
+                  "reserved": "200",
+                  "reserved_display": "USD 200.00",
+                  "sentence": "The recorded balance is USD 1,000.00; USD 200.00 is reserved across plans, leaving USD 800.00 available for plans.",
+                  "source_document_id": "fixture-statement",
+                  "source_note": "",
+                  "source_page": "1",
+                  "source_region": "closing"
+                }
+              ],
+              "actions": [
+                "change_terms",
+                "pause",
+                "reserve",
+                "release"
+              ],
+              "assumptions": [
+                "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence."
+              ],
+              "caveats": [],
+              "contribution_day": 15,
+              "currency": "USD",
+              "deviation": "16.66",
+              "deviation_display": "USD 16.66",
+              "event_ids": [],
+              "explanation": "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence.",
+              "group": "active",
+              "headline": "The target, what is reserved now, and the recorded path are kept separate.",
+              "history": [
+                {
+                  "account_id": "checking",
+                  "amount": "200",
+                  "amount_display": "USD 200.00",
+                  "kind": "reserved",
+                  "occurred_at": "2026-08-02",
+                  "reason": "",
+                  "sentence": "Reserved USD 200.00 locally for this plan. No bank money moved.",
+                  "valid": true
+                }
+              ],
+              "history_note": "",
+              "id": "fixture-goal",
+              "monthly_contribution": "150",
+              "monthly_display": "USD 150.00",
+              "next_contribution_date": "2026-09-15",
+              "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+              "projected_completion_date": "2026-11-15",
+              "remaining": "400",
+              "remaining_display": "USD 400.00",
+              "required_monthly": "133.34",
+              "required_monthly_display": "USD 133.34",
+              "reserved": "200",
+              "reserved_display": "USD 200.00",
+              "state": "active",
+              "status": "on_track",
+              "status_label": "On track",
+              "target_amount": "600",
+              "target_date": "2026-11-15",
+              "target_display": "USD 600.00",
+              "title": "Journey"
+            }
+          ],
+          "groups": {
+            "active": [
+              "fixture-goal"
+            ],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "ready",
+          "title": "Plans"
+        }
+      },
+      "state": "stale"
+    },
+    {
       "capability_id": "settings.configuration",
       "contract": "Configuration.v1",
       "id": "settings.configuration.ready",
@@ -190,6 +1007,8 @@
       "expected_income_max",
       "obligations_min",
       "obligations_max",
+      "reserved_for_goals",
+      "goal_contributions",
       "remainder_min",
       "remainder_max",
       "coverage",
@@ -262,6 +1081,89 @@
       "evidence_ids",
       "account_ids",
       "required_visibility",
+      "actions"
+    ],
+    "GoalAccountView": [
+      "id",
+      "name",
+      "currency",
+      "eligible",
+      "balance",
+      "balance_display",
+      "reserved",
+      "reserved_display",
+      "available",
+      "available_display",
+      "grade",
+      "grade_description",
+      "dated",
+      "as_of",
+      "balance_explanation",
+      "source_document_id",
+      "source_page",
+      "source_region",
+      "source_note",
+      "caveats",
+      "sentence",
+      "reason",
+      "evidence_ids",
+      "citations"
+    ],
+    "GoalHistoryView": [
+      "kind",
+      "account_id",
+      "amount",
+      "amount_display",
+      "reason",
+      "occurred_at",
+      "sentence",
+      "valid"
+    ],
+    "GoalPlanView": [
+      "id",
+      "title",
+      "group",
+      "state",
+      "status",
+      "status_label",
+      "headline",
+      "explanation",
+      "currency",
+      "target_amount",
+      "target_display",
+      "target_date",
+      "reserved",
+      "reserved_display",
+      "remaining",
+      "remaining_display",
+      "monthly_contribution",
+      "monthly_display",
+      "contribution_day",
+      "required_monthly",
+      "required_monthly_display",
+      "projected_completion_date",
+      "deviation",
+      "deviation_display",
+      "next_contribution_date",
+      "no_money_moved",
+      "accounts",
+      "history",
+      "history_note",
+      "assumptions",
+      "caveats",
+      "event_ids",
+      "actions"
+    ],
+    "GoalProposalView": [
+      "id",
+      "verb",
+      "goal_id",
+      "summary",
+      "consequence",
+      "no_money_moved",
+      "exact",
+      "display",
+      "assumptions",
       "actions"
     ],
     "ObligationView": [
@@ -839,6 +1741,37 @@
       "id": "overview.obligations",
       "maturity": "stable",
       "owner": "viva.surface.obligations",
+      "reason": null,
+      "trust_effect": [
+        "reads_data",
+        "writes_event"
+      ]
+    },
+    {
+      "actions": [
+        "draft",
+        "propose",
+        "confirm",
+        "decline"
+      ],
+      "availability": "when a vault is open; shown after a goal exists or a draft is requested",
+      "contract": "GoalsAndPlans.v1",
+      "destination": "plans",
+      "disposition": "surface",
+      "entrypoint": null,
+      "fixture_ids": [
+        "plans.goals.absent",
+        "plans.goals.ready",
+        "plans.goals.needs_input",
+        "plans.goals.partial",
+        "plans.goals.refused",
+        "plans.goals.open",
+        "plans.goals.completed",
+        "plans.goals.stale"
+      ],
+      "id": "plans.goals",
+      "maturity": "stable",
+      "owner": "viva.surface.plans",
       "reason": null,
       "trust_effect": [
         "reads_data",

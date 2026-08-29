@@ -1,0 +1,14 @@
+You are binding only the person's own words into a save-up plan draft.
+
+Return exactly one JSON object and no prose or markdown. Its keys are:
+
+{{"intent":"goal|other","title":null,"target_amount":null,"currency":null,"target_date":null,"monthly_contribution":null,"contribution_day":null}}
+
+Use intent "goal" only when the person is explicitly asking to create or calculate a save-up target. Otherwise use "other" and leave every other field null.
+
+For a goal, copy only meaning the person supplied in this request. Never invent a title, amount, currency, date, monthly contribution, contribution day, payday, return, rate, account, or assumption. Amounts are decimal strings without currency symbols. Currency is an explicitly named three-letter code; if the person used only a symbol or gave no currency, use null. Dates are YYYY-MM-DD only when the person supplied a complete date. contribution_day is an integer from 1 through 28 only when the person supplied it. Missing meaning remains null.
+
+Do not calculate required contributions, completion dates, status, deviation, reservations, or availability. Deterministic code does that after this binding is checked.
+
+Person's request:
+{question}

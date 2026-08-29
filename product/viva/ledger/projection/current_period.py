@@ -13,6 +13,7 @@ from decimal import Decimal
 from ..events import ISSUED
 from ..streams import IN
 from . import balances as balances_view
+from . import goals as goals_view
 from . import obligations as obligations_view
 from .core import ProjectionCore, _grade_rank
 from .rhythm import rhythm_hypotheses
@@ -66,6 +67,8 @@ class CurrentPeriodSlice:
     expected_income_max: Decimal
     obligations_min: Decimal
     obligations_max: Decimal
+    reserved_for_goals: Decimal
+    goal_contributions: Decimal
     remainder_min: Decimal
     remainder_max: Decimal
     grade: str
@@ -192,6 +195,36 @@ def _outgoing(core: ProjectionCore, today: date, end: date) \
     return out, exclusions
 
 
+def _goal_contributions(core: ProjectionCore, today: date, end: date) \
+        -> tuple[list[_Expected], list[ProjectionExclusion]]:
+    """Active, recorded contributions still needed inside the horizon."""
+    out = []
+    exclusions = []
+    for goal in goals_view.goals(core, today.isoformat()):
+        if goal.issues:
+            exclusions.append(ProjectionExclusion(
+                kind="goal", identity=goal.goal_id,
+                reason="goal_terms_unreadable", currency=goal.currency))
+            continue
+        if (goal.state != "active" or goal.monthly_contribution is None
+                or goal.contribution_day is None or not goal.remaining):
+            continue
+        remaining = goal.remaining
+        for occurrence in goals_view.contribution_dates(
+                today.isoformat(), goal.contribution_day,
+                through=end.isoformat()):
+            amount = min(goal.monthly_contribution, remaining)
+            out.append(_Expected(
+                kind="goal", subject=goal.title, date=occurrence,
+                amount_min=amount, amount_max=amount,
+                currency=goal.currency, grade="", evidence_dates=(),
+                record_ids=(), account_ids=()))
+            remaining -= amount
+            if not remaining:
+                break
+    return out, exclusions
+
+
 def current_period(core: ProjectionCore, today: str,
                    horizon_days: int = DEFAULT_HORIZON_DAYS) -> CurrentPeriodResult:
     """Project qualified recurring money over issuer depository balances.
@@ -199,7 +232,8 @@ def current_period(core: ProjectionCore, today: str,
     The lower bound assumes expected income does not arrive and every qualified
     obligation lands at its observed maximum.  The upper bound includes every
     qualified income maximum and each obligation minimum.  Neither bound is
-    treated as spend permission: plans and goals are explicitly unrepresented.
+    treated as spend permission: planned discretionary spending remains
+    explicitly unrepresented.
     """
     start = _date(today)
     if not isinstance(horizon_days, int) or isinstance(horizon_days, bool) \
@@ -230,7 +264,11 @@ def current_period(core: ProjectionCore, today: str,
             "balance_accounts": set(), "balance_dates": set(),
             "caveats": [],
         })
-        bucket["balance"] += answer.amount
+        reserved = goals_view.reserved_by_account(core).get(
+            account, Decimal("0"))
+        bucket["balance"] += answer.amount - reserved
+        bucket.setdefault("reserved_for_goals", Decimal("0"))
+        bucket["reserved_for_goals"] += reserved
         bucket["grades"].append(answer.grade)
         bucket["accounts"].add(account)
         bucket["balance_accounts"].add(account)
@@ -258,9 +296,11 @@ def current_period(core: ProjectionCore, today: str,
 
     incoming, incoming_exclusions = _incoming(core, start, end)
     outgoing, outgoing_exclusions = _outgoing(core, start, end)
+    goal_steps, goal_exclusions = _goal_contributions(core, start, end)
     exclusions.extend(incoming_exclusions)
     exclusions.extend(outgoing_exclusions)
-    expected = incoming + outgoing
+    exclusions.extend(goal_exclusions)
+    expected = incoming + outgoing + goal_steps
     for item in expected:
         if item.currency not in by_currency:
             continue
@@ -281,6 +321,7 @@ def current_period(core: ProjectionCore, today: str,
             bucket["caveats"].append("income_interrupted")
         running_low = running_high = bucket["balance"]
         income_max = obligation_min = obligation_max = Decimal("0")
+        goal_total = Decimal("0")
         steps = [ProjectionStep(
             date=start.isoformat(), kind="balance", subject="liquid balance",
             amount_min=bucket["balance"], amount_max=bucket["balance"],
@@ -294,6 +335,10 @@ def current_period(core: ProjectionCore, today: str,
             if row.kind == "income":
                 income_max += row.amount_max
                 running_high += row.amount_max
+            elif row.kind == "goal":
+                goal_total += row.amount_max
+                running_low -= row.amount_max
+                running_high -= row.amount_min
             else:
                 obligation_min += row.amount_min
                 obligation_max += row.amount_max
@@ -313,6 +358,9 @@ def current_period(core: ProjectionCore, today: str,
             expected_income_max=income_max,
             obligations_min=obligation_min,
             obligations_max=obligation_max,
+            reserved_for_goals=bucket.get(
+                "reserved_for_goals", Decimal("0")),
+            goal_contributions=goal_total,
             remainder_min=running_low, remainder_max=running_high,
             grade=_weakest(bucket["grades"]),
             evidence_dates=tuple(sorted(bucket["dates"])),
@@ -323,7 +371,7 @@ def current_period(core: ProjectionCore, today: str,
                          "expected_income_not_guaranteed",
                          "qualified_recurring_money_only"),
             caveats=tuple(sorted(set(bucket["caveats"]))),
-            missing_inputs=("planned_spending", "goal_contributions"),
+            missing_inputs=("planned_spending",),
             completeness=CurrentPeriodCompleteness(
                 balances=not any(row.kind == "account"
                                  for row in relevant_exclusions),
@@ -331,7 +379,9 @@ def current_period(core: ProjectionCore, today: str,
                                for row in relevant_exclusions),
                 obligations=not any(row.kind == "obligation"
                                     for row in relevant_exclusions),
-                planned_spending=False, goals=False),
+                planned_spending=False,
+                goals=not any(row.kind == "goal"
+                              for row in relevant_exclusions)),
             exclusions=relevant_exclusions))
 
     return CurrentPeriodResult(

@@ -3,7 +3,7 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.0";
 
-export type SurfaceName = "overview" | "documents" | "conversation" | "jobs" | "trust" | "activity";
+export type SurfaceName = "overview" | "documents" | "conversation" | "jobs" | "trust" | "activity" | "plans";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
@@ -96,6 +96,11 @@ export type BridgeClient = {
   // What moved, and which way. Direction is the read's: on a card a purchase
   // posts positive, and a shell reading the sign would have it backwards.
   readActivity: () => Promise<SurfaceReadResult>;
+  readPlans: () => Promise<SurfaceReadResult>;
+  draftPlan: (payload: Record<string, unknown>) => Promise<unknown>;
+  proposePlan: (payload: Record<string, unknown>) => Promise<unknown>;
+  confirmPlan: (proposalId: string) => Promise<unknown>;
+  declinePlan: (proposalId: string) => Promise<unknown>;
   setAsideFinding?: (findingId: string) => Promise<unknown>;
   assignActivityCategory: (movementKey: string, categoryId: string) => Promise<unknown>;
   replaceActivityTags: (movementKey: string, tagIds: readonly string[]) => Promise<unknown>;
@@ -151,7 +156,7 @@ export type BridgeClient = {
   // One question, and whether its text will be in front of the person. The
   // second is a fact about this screen rather than a preference: it is the
   // input to the rule that a figure is never spoken with nowhere to check it.
-  askViva: (question: string, mirrored: boolean) => Promise<unknown>;
+  askViva: (question: string, mirrored: boolean, planRequest?: boolean) => Promise<unknown>;
   answerQuestion: (questionId: string, said: string) => Promise<unknown>;
   confirmProposal?: (proposalId: string, said: string, asked: string) => Promise<unknown>;
   declineQuestion: (questionId: string, reason: DeclineReason) => Promise<unknown>;

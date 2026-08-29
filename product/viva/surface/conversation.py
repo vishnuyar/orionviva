@@ -162,6 +162,33 @@ def conversation(turn: Any, shown: dict[str, str],
     }
 
 
+def plan_draft_turn(question: str, message: str, draft_state: str,
+                    verb: str, draft: dict | None, reason: str,
+                    mirrored: bool = True) -> dict[str, Any]:
+    """The same typed plan draft carried through a durable conversation turn.
+
+    This composes no plan math. ``draft`` is exactly the structure returned by
+    the deterministic goal service; the extra fields only let a conversation
+    render it and route the person to the durable Plans workspace.
+    """
+    refused = draft_state == "refused"
+    text = "" if refused else message
+    return {
+        "state": PanelState.READY.value,
+        "question": question,
+        "text": text,
+        "answered": draft_state == "ready",
+        "refusal": message if refused else "",
+        "grade": "", "grade_sentence": "", "figures": [], "gaps": [],
+        "spoken": _spoken(text, "", [], mirrored),
+        "goal_draft": {
+            "kind": draft_state, "message": message, "reason": reason,
+            "verb": verb, "draft": dict(draft or {}),
+            "review_in_plans": True,
+        },
+    }
+
+
 def _figure(figure: dict, shown: dict[str, str], projection: Any = None,
             turn_id: str = "") -> dict[str, Any]:
     """One figure the sentence stated, and the route back to what it rests on.

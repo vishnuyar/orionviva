@@ -34,8 +34,9 @@ For what is actually built, in detail, see
   correction proposals persist and update the picture across sessions. The
   unreleased product starts this contract clean, with no prior-vault migration
   or technical-record backfill.
-- [ ] Goals and plans: draft targets, contributions, payoff paths, and progress
-  from stated assumptions without changing the person's records.
+- [x] Goals and plans: draft save-up targets and contributions, keep desired
+  amounts separate from locally reserved funds, and show deterministic progress
+  without changing the person's records until an exact proposal is confirmed.
 - [ ] Deterministic scenarios: compare affordability, runway, compounding, and
   payoff choices without turning a hypothetical into a plan.
 - [ ] Drafted actions: show the exact proposal and its consequences, re-check

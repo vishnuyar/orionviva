@@ -56,14 +56,15 @@ STATED_ENVIRONMENT: dict[str, str | None] = {
 # them now, because this is the sample vault a person opens — so the interface
 # suite renders these same bytes rather than a set of rows composed in the
 # shell, and a screen that drifts from what the backend sends fails here.
-SURFACES = ("overview", "documents", "conversation", "trust", "activity")
+SURFACES = ("overview", "documents", "conversation", "trust", "activity", "plans")
 
 # What each surface is read with. The day the picture is read on is stated here
 # rather than left to the machine's clock: a total is good as of the day it was
 # asked for, so a read that asked on no stated day would write the day it ran
 # into these bytes and disagree with itself tomorrow.
 PARAMETERS: dict[str, dict] = {"overview": {"read_on": TODAY},
-                               "activity": {"as_of": TODAY}}
+                               "activity": {"as_of": TODAY},
+                               "plans": {"read_on": TODAY}}
 
 
 def _import_path() -> None:

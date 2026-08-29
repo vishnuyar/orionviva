@@ -371,7 +371,7 @@ class CurrentPeriodStepView:
     account_ids: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if self.kind not in ("balance", "income", "obligation"):
+        if self.kind not in ("balance", "income", "obligation", "goal"):
             raise ValueError("a current-period step has a closed kind")
         if not all((self.date, self.subject, self.amount_display,
                     self.balance_display, self.tooltip)):
@@ -408,6 +408,8 @@ class CurrentPeriodSliceView:
     expected_income_max: str
     obligations_min: str
     obligations_max: str
+    reserved_for_goals: str
+    goal_contributions: str
     remainder_min: str
     remainder_max: str
     coverage: str
@@ -461,6 +463,8 @@ class CurrentPeriodSliceView:
             "expected_income_max": self.expected_income_max,
             "obligations_min": self.obligations_min,
             "obligations_max": self.obligations_max,
+            "reserved_for_goals": self.reserved_for_goals,
+            "goal_contributions": self.goal_contributions,
             "remainder_min": self.remainder_min,
             "remainder_max": self.remainder_max, "coverage": self.coverage,
             "grade": self.grade, "grade_label": self.grade_label,
@@ -480,6 +484,168 @@ class CurrentPeriodSliceView:
             "account_ids": list(self.account_ids),
             "series": [point.as_dict() for point in self.series],
             "required_visibility": self.required_visibility,
+        }
+
+
+@dataclass(frozen=True)
+class GoalAccountView:
+    """One account's evidence-bearing availability for local plans."""
+
+    id: str
+    name: str
+    currency: str
+    eligible: bool
+    balance: str = ""
+    balance_display: str = ""
+    reserved: str = ""
+    reserved_display: str = ""
+    available: str = ""
+    available_display: str = ""
+    grade: str = ""
+    grade_description: str = ""
+    dated: str = ""
+    as_of: str = ""
+    balance_explanation: str = ""
+    source_document_id: str = ""
+    source_page: str = ""
+    source_region: str = ""
+    source_note: str = ""
+    caveats: tuple[str, ...] = ()
+    sentence: str = ""
+    reason: str = ""
+    evidence_ids: tuple[str, ...] = ()
+    citations: tuple[Citation, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id, "name": self.name, "currency": self.currency,
+            "eligible": self.eligible, "balance": self.balance,
+            "balance_display": self.balance_display,
+            "reserved": self.reserved,
+            "reserved_display": self.reserved_display,
+            "available": self.available,
+            "available_display": self.available_display,
+            "grade": self.grade, "grade_description": self.grade_description,
+            "dated": self.dated, "as_of": self.as_of,
+            "balance_explanation": self.balance_explanation,
+            "source_document_id": self.source_document_id,
+            "source_page": self.source_page,
+            "source_region": self.source_region,
+            "source_note": self.source_note,
+            "caveats": list(self.caveats), "sentence": self.sentence,
+            "reason": self.reason, "evidence_ids": list(self.evidence_ids),
+            "citations": [item.as_dict() for item in self.citations],
+        }
+
+
+@dataclass(frozen=True)
+class GoalHistoryView:
+    kind: str
+    account_id: str
+    amount: str
+    amount_display: str
+    reason: str
+    occurred_at: str
+    sentence: str
+    valid: bool
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind, "account_id": self.account_id,
+            "amount": self.amount, "amount_display": self.amount_display,
+            "reason": self.reason, "occurred_at": self.occurred_at,
+            "sentence": self.sentence, "valid": self.valid,
+        }
+
+
+@dataclass(frozen=True)
+class GoalPlanView:
+    id: str
+    title: str
+    group: str
+    state: str
+    status: str
+    status_label: str
+    headline: str
+    explanation: str
+    currency: str
+    target_amount: str
+    target_display: str
+    target_date: str
+    reserved: str
+    reserved_display: str
+    remaining: str
+    remaining_display: str
+    monthly_contribution: str
+    monthly_display: str
+    contribution_day: int | None
+    required_monthly: str
+    required_monthly_display: str
+    projected_completion_date: str
+    deviation: str
+    deviation_display: str
+    next_contribution_date: str
+    no_money_moved: str
+    accounts: tuple[GoalAccountView, ...]
+    history: tuple[GoalHistoryView, ...]
+    history_note: str
+    assumptions: tuple[str, ...]
+    caveats: tuple[str, ...]
+    event_ids: tuple[str, ...]
+    actions: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id, "title": self.title, "group": self.group,
+            "state": self.state, "status": self.status,
+            "status_label": self.status_label, "headline": self.headline,
+            "explanation": self.explanation, "currency": self.currency,
+            "target_amount": self.target_amount,
+            "target_display": self.target_display,
+            "target_date": self.target_date, "reserved": self.reserved,
+            "reserved_display": self.reserved_display,
+            "remaining": self.remaining,
+            "remaining_display": self.remaining_display,
+            "monthly_contribution": self.monthly_contribution,
+            "monthly_display": self.monthly_display,
+            "contribution_day": self.contribution_day,
+            "required_monthly": self.required_monthly,
+            "required_monthly_display": self.required_monthly_display,
+            "projected_completion_date": self.projected_completion_date,
+            "deviation": self.deviation,
+            "deviation_display": self.deviation_display,
+            "next_contribution_date": self.next_contribution_date,
+            "no_money_moved": self.no_money_moved,
+            "accounts": [item.as_dict() for item in self.accounts],
+            "history": [item.as_dict() for item in self.history],
+            "history_note": self.history_note,
+            "assumptions": list(self.assumptions),
+            "caveats": list(self.caveats), "event_ids": list(self.event_ids),
+            "actions": list(self.actions),
+        }
+
+
+@dataclass(frozen=True)
+class GoalProposalView:
+    id: str
+    verb: str
+    goal_id: str
+    summary: str
+    consequence: str
+    no_money_moved: str
+    exact: dict[str, Any]
+    display: dict[str, str]
+    assumptions: tuple[str, ...]
+    actions: tuple[str, ...] = ("confirm", "decline")
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id, "verb": self.verb, "goal_id": self.goal_id,
+            "summary": self.summary, "consequence": self.consequence,
+            "no_money_moved": self.no_money_moved, "exact": self.exact,
+            "display": self.display,
+            "assumptions": list(self.assumptions),
+            "actions": list(self.actions),
         }
 
 

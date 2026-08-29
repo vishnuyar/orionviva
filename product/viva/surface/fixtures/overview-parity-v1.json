@@ -1347,7 +1347,7 @@
                 ],
                 "caveats": [
                   "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
-                  "Planned spending and goal contributions are not represented, so this figure is not permission to spend."
+                  "Planned discretionary spending is not represented, so this figure is not permission to spend."
                 ],
                 "citations": [
                   {
@@ -1359,7 +1359,7 @@
                 ],
                 "completeness": {
                   "balances": true,
-                  "goals": false,
+                  "goals": true,
                   "income": true,
                   "obligations": true,
                   "planned_spending": false
@@ -1377,7 +1377,8 @@
                 "exclusions": [],
                 "expected_income_max": "0",
                 "expected_income_min": "0",
-                "explanation": "This starts with issuer-backed depository balances, subtracts qualified obligations, and treats expected income as money that may not arrive.",
+                "explanation": "This starts with issuer-backed depository balances after local goal reservations, subtracts qualified obligations and recorded goal contributions, and treats expected income as money that may not arrive.",
+                "goal_contributions": "0",
                 "grade": "verified",
                 "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
                 "grade_label": "verified",
@@ -1387,8 +1388,7 @@
                 "id": "current-period:EUR",
                 "liquid_balance": "642.10",
                 "missing_inputs": [
-                  "planned_spending",
-                  "goal_contributions"
+                  "planned_spending"
                 ],
                 "obligations_max": "0",
                 "obligations_min": "0",
@@ -1397,7 +1397,7 @@
                   "qualifications": [
                     "This is a bounded range rather than one exact amount.",
                     "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
-                    "Planned spending and goal contributions are not represented, so this figure is not permission to spend.",
+                    "Planned discretionary spending is not represented, so this figure is not permission to spend.",
                     "Some evidence needed to establish this figure's current standing is unavailable."
                   ],
                   "reasons": [
@@ -1413,6 +1413,7 @@
                 "remainder_max": "642.10",
                 "remainder_min": "642.10",
                 "required_visibility": true,
+                "reserved_for_goals": "0",
                 "series": [
                   {
                     "account_ids": [
@@ -1447,7 +1448,7 @@
                   "acct:joint-checking",
                   "acct:rainy-day-savings"
                 ],
-                "amount_display": "USD 10,748.95 \u2013 USD 10,748.95",
+                "amount_display": "USD 9,798.95 \u2013 USD 9,798.95",
                 "assumptions": [
                   "The horizon is the read day through 30 calendar days later.",
                   "Expected income contributes nothing to the lower bound until it arrives.",
@@ -1456,7 +1457,7 @@
                 "caveats": [
                   "At least one starting balance conflicts with its transaction arithmetic, and the conflict remains in this range.",
                   "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
-                  "Planned spending and goal contributions are not represented, so this figure is not permission to spend.",
+                  "Planned discretionary spending is not represented, so this figure is not permission to spend.",
                   "Liability and investment accounts are outside liquid funds for this view."
                 ],
                 "citations": [
@@ -1487,12 +1488,12 @@
                 ],
                 "completeness": {
                   "balances": false,
-                  "goals": false,
+                  "goals": true,
                   "income": true,
                   "obligations": true,
                   "planned_spending": false
                 },
-                "coverage": "This currency slice starts from 4 liquid accounts and applies 0 qualified future items.",
+                "coverage": "This currency slice starts from 4 liquid accounts and applies 1 qualified future item.",
                 "currency": "USD",
                 "evidence_dates": [
                   "2025-11-30",
@@ -1550,18 +1551,18 @@
                 ],
                 "expected_income_max": "0",
                 "expected_income_min": "0",
-                "explanation": "This starts with issuer-backed depository balances, subtracts qualified obligations, and treats expected income as money that may not arrive.",
+                "explanation": "This starts with issuer-backed depository balances after local goal reservations, subtracts qualified obligations and recorded goal contributions, and treats expected income as money that may not arrive.",
+                "goal_contributions": "350.00",
                 "grade": "conflicted",
                 "grade_description": "Read this answer as a discrepancy rather than as fact: at least one figure in it disagrees with its own evidence.",
                 "grade_label": "conflicted",
-                "headline": "The known remainder through 2026-10-30 is USD 10,748.95 to USD 10,748.95.",
+                "headline": "The known remainder through 2026-10-30 is USD 9,798.95 to USD 9,798.95.",
                 "horizon_end": "2026-10-30",
                 "horizon_start": "2026-09-30",
                 "id": "current-period:USD",
-                "liquid_balance": "10748.95",
+                "liquid_balance": "10148.95",
                 "missing_inputs": [
-                  "planned_spending",
-                  "goal_contributions"
+                  "planned_spending"
                 ],
                 "obligations_max": "0",
                 "obligations_min": "0",
@@ -1572,7 +1573,7 @@
                     "This is a bounded range rather than one exact amount.",
                     "At least one starting balance conflicts with its transaction arithmetic, and the conflict remains in this range.",
                     "At least one starting balance predates this read. No expiry was guessed; its date remains part of the evidence.",
-                    "Planned spending and goal contributions are not represented, so this figure is not permission to spend.",
+                    "Planned discretionary spending is not represented, so this figure is not permission to spend.",
                     "Liability and investment accounts are outside liquid funds for this view.",
                     "This figure rests on records from more than one date; each part is only as current as the record behind it."
                   ],
@@ -1590,9 +1591,10 @@
                   "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
                   "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
                 ],
-                "remainder_max": "10748.95",
-                "remainder_min": "10748.95",
+                "remainder_max": "9798.95",
+                "remainder_min": "9798.95",
                 "required_visibility": true,
+                "reserved_for_goals": "600.00",
                 "series": [
                   {
                     "account_ids": [
@@ -1601,12 +1603,12 @@
                       "acct:joint-checking",
                       "acct:rainy-day-savings"
                     ],
-                    "amount_display": "USD 10,748.95 \u2013 USD 10,748.95",
-                    "amount_max": "10748.95",
-                    "amount_min": "10748.95",
-                    "balance_display": "USD 10,748.95 \u2013 USD 10,748.95",
-                    "balance_max": "10748.95",
-                    "balance_min": "10748.95",
+                    "amount_display": "USD 10,148.95 \u2013 USD 10,148.95",
+                    "amount_max": "10148.95",
+                    "amount_min": "10148.95",
+                    "balance_display": "USD 10,148.95 \u2013 USD 10,148.95",
+                    "balance_max": "10148.95",
+                    "balance_min": "10148.95",
                     "date": "2026-09-30",
                     "evidence_dates": [
                       "2025-11-30",
@@ -1627,7 +1629,23 @@
                       "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
                     ],
                     "subject": "liquid balance",
-                    "tooltip": "Starting liquid balance on 2026-09-30: USD 10,748.95 \u2013 USD 10,748.95."
+                    "tooltip": "Starting liquid balance on 2026-09-30: USD 10,148.95 \u2013 USD 10,148.95."
+                  },
+                  {
+                    "account_ids": [],
+                    "amount_display": "USD 350.00 \u2013 USD 350.00",
+                    "amount_max": "350.00",
+                    "amount_min": "350.00",
+                    "balance_display": "USD 9,798.95 \u2013 USD 9,798.95",
+                    "balance_max": "9798.95",
+                    "balance_min": "9798.95",
+                    "date": "2026-10-15",
+                    "evidence_dates": [],
+                    "evidence_ids": [],
+                    "kind": "goal",
+                    "record_ids": [],
+                    "subject": "Sample journey",
+                    "tooltip": "The recorded plan for Sample journey subtracts a planned USD 350.00 \u2013 USD 350.00 on 2026-10-15; nothing is reserved automatically, and the projected range then runs from USD 9,798.95 to USD 9,798.95."
                   }
                 ]
               }
@@ -1850,6 +1868,328 @@
         },
         "job_id": "parity-overview",
         "surface": "overview"
+      }
+    },
+    "plans": {
+      "ok": true,
+      "protocol": "2.0",
+      "request_id": "parity-plans",
+      "result": {
+        "data": {
+          "actions": [
+            "draft",
+            "propose",
+            "confirm",
+            "decline"
+          ],
+          "goals": [
+            {
+              "accounts": [
+                {
+                  "as_of": "",
+                  "available": "1250.00",
+                  "available_display": "USD 1,250.00",
+                  "balance": "1250.00",
+                  "balance_display": "USD 1,250.00",
+                  "balance_explanation": "Attested closing balance; no opening figure or transactions to corroborate it against.",
+                  "caveats": [
+                    "Attested closing balance; no opening figure or transactions to corroborate it against."
+                  ],
+                  "citations": [
+                    {
+                      "document_id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
+                      "label": "dormant-savings-2025-11.pdf",
+                      "page": "1",
+                      "relation": "attests"
+                    }
+                  ],
+                  "currency": "USD",
+                  "dated": "2025-11-30",
+                  "eligible": true,
+                  "evidence_ids": [
+                    "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2"
+                  ],
+                  "grade": "verified",
+                  "grade_description": "Read this answer as verified: every figure in it is attested by the document it came from.",
+                  "id": "acct:dormant-savings",
+                  "name": "Dormant Savings",
+                  "reason": "",
+                  "reserved": "0",
+                  "reserved_display": "USD 0.00",
+                  "sentence": "The recorded balance is USD 1,250.00; USD 0.00 is reserved across plans, leaving USD 1,250.00 available for plans.",
+                  "source_document_id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
+                  "source_note": "closing balance",
+                  "source_page": "1",
+                  "source_region": ""
+                },
+                {
+                  "as_of": "",
+                  "available": "5437.50",
+                  "available_display": "USD 5,437.50",
+                  "balance": "5437.50",
+                  "balance_display": "USD 5,437.50",
+                  "balance_explanation": "Computed by replaying opening balance and transactions; no closing figure was attested to check it against.",
+                  "caveats": [
+                    "Computed by replaying opening balance and transactions; no closing figure was attested to check it against."
+                  ],
+                  "citations": [
+                    {
+                      "document_id": "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                      "label": "rainy-day-savings-2026-06.pdf",
+                      "page": "1",
+                      "relation": "attests"
+                    }
+                  ],
+                  "currency": "USD",
+                  "dated": "2026-06-01",
+                  "eligible": true,
+                  "evidence_ids": [
+                    "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599"
+                  ],
+                  "grade": "unverified",
+                  "grade_description": "Read this answer as unverified: nothing has checked what it rests on, so take it as a working number rather than a settled one.",
+                  "id": "acct:rainy-day-savings",
+                  "name": "Rainy Day Savings",
+                  "reason": "",
+                  "reserved": "0",
+                  "reserved_display": "USD 0.00",
+                  "sentence": "The recorded balance is USD 5,437.50; USD 0.00 is reserved across plans, leaving USD 5,437.50 available for plans.",
+                  "source_document_id": "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
+                  "source_note": "opening balance",
+                  "source_page": "1",
+                  "source_region": ""
+                },
+                {
+                  "as_of": "",
+                  "available": "",
+                  "available_display": "",
+                  "balance": "",
+                  "balance_display": "",
+                  "balance_explanation": "",
+                  "caveats": [],
+                  "citations": [],
+                  "currency": "EUR",
+                  "dated": "",
+                  "eligible": false,
+                  "evidence_ids": [],
+                  "grade": "",
+                  "grade_description": "",
+                  "id": "acct:abroad-current",
+                  "name": "Abroad Current",
+                  "reason": "account_currency_differs",
+                  "reserved": "",
+                  "reserved_display": "",
+                  "sentence": "This account is held in another or unstated currency, so no conversion is assumed.",
+                  "source_document_id": "",
+                  "source_note": "",
+                  "source_page": "",
+                  "source_region": ""
+                },
+                {
+                  "as_of": "",
+                  "available": "",
+                  "available_display": "",
+                  "balance": "",
+                  "balance_display": "",
+                  "balance_explanation": "",
+                  "caveats": [],
+                  "citations": [],
+                  "currency": "USD",
+                  "dated": "",
+                  "eligible": false,
+                  "evidence_ids": [],
+                  "grade": "",
+                  "grade_description": "",
+                  "id": "acct:everyday-checking",
+                  "name": "Everyday Checking",
+                  "reason": "account_balance_conflicted",
+                  "reserved": "",
+                  "reserved_display": "",
+                  "sentence": "This account's balance conflicts with its recorded activity, so it cannot back a new reservation.",
+                  "source_document_id": "",
+                  "source_note": "",
+                  "source_page": "",
+                  "source_region": ""
+                },
+                {
+                  "as_of": "",
+                  "available": "",
+                  "available_display": "",
+                  "balance": "",
+                  "balance_display": "",
+                  "balance_explanation": "",
+                  "caveats": [],
+                  "citations": [],
+                  "currency": "USD",
+                  "dated": "",
+                  "eligible": false,
+                  "evidence_ids": [],
+                  "grade": "",
+                  "grade_description": "",
+                  "id": "acct:growth-portfolio",
+                  "name": "Growth Portfolio",
+                  "reason": "account_not_depository",
+                  "reserved": "",
+                  "reserved_display": "",
+                  "sentence": "This is not a depository account, so it cannot back a reservation.",
+                  "source_document_id": "",
+                  "source_note": "",
+                  "source_page": "",
+                  "source_region": ""
+                },
+                {
+                  "as_of": "",
+                  "available": "",
+                  "available_display": "",
+                  "balance": "",
+                  "balance_display": "",
+                  "balance_explanation": "",
+                  "caveats": [],
+                  "citations": [],
+                  "currency": "USD",
+                  "dated": "",
+                  "eligible": false,
+                  "evidence_ids": [],
+                  "grade": "",
+                  "grade_description": "",
+                  "id": "acct:household-card",
+                  "name": "Household Card",
+                  "reason": "account_not_depository",
+                  "reserved": "",
+                  "reserved_display": "",
+                  "sentence": "This is not a depository account, so it cannot back a reservation.",
+                  "source_document_id": "",
+                  "source_note": "",
+                  "source_page": "",
+                  "source_region": ""
+                },
+                {
+                  "as_of": "",
+                  "available": "",
+                  "available_display": "",
+                  "balance": "",
+                  "balance_display": "",
+                  "balance_explanation": "",
+                  "caveats": [],
+                  "citations": [],
+                  "currency": "USD",
+                  "dated": "",
+                  "eligible": false,
+                  "evidence_ids": [],
+                  "grade": "",
+                  "grade_description": "",
+                  "id": "acct:joint-checking",
+                  "name": "Joint Checking",
+                  "reason": "account_balance_conflicted",
+                  "reserved": "",
+                  "reserved_display": "",
+                  "sentence": "This account's balance conflicts with its recorded activity, so it cannot back a new reservation.",
+                  "source_document_id": "",
+                  "source_note": "",
+                  "source_page": "",
+                  "source_region": ""
+                },
+                {
+                  "as_of": "",
+                  "available": "",
+                  "available_display": "",
+                  "balance": "",
+                  "balance_display": "",
+                  "balance_explanation": "",
+                  "caveats": [],
+                  "citations": [],
+                  "currency": "USD",
+                  "dated": "",
+                  "eligible": false,
+                  "evidence_ids": [],
+                  "grade": "",
+                  "grade_description": "",
+                  "id": "acct:travel-card",
+                  "name": "Travel Card",
+                  "reason": "account_not_depository",
+                  "reserved": "",
+                  "reserved_display": "",
+                  "sentence": "This is not a depository account, so it cannot back a reservation.",
+                  "source_document_id": "",
+                  "source_note": "",
+                  "source_page": "",
+                  "source_region": ""
+                }
+              ],
+              "actions": [
+                "change_terms",
+                "pause",
+                "reserve",
+                "release"
+              ],
+              "assumptions": [
+                "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence."
+              ],
+              "caveats": [],
+              "contribution_day": 15,
+              "currency": "USD",
+              "deviation": "-250.00",
+              "deviation_display": "-USD 250.00",
+              "event_ids": [
+                "event:sample-trip-created",
+                "event:sample-trip-reserved"
+              ],
+              "explanation": "Plan amounts describe an intention. Only the account balances beneath availability carry financial evidence.",
+              "group": "active",
+              "headline": "The target, what is reserved now, and the recorded path are kept separate.",
+              "history": [
+                {
+                  "account_id": "acct:everyday-checking",
+                  "amount": "600.00",
+                  "amount_display": "USD 600.00",
+                  "kind": "reserved",
+                  "occurred_at": "2026-07-02",
+                  "reason": "",
+                  "sentence": "Reserved USD 600.00 locally for this plan. No bank money moved.",
+                  "valid": true
+                }
+              ],
+              "history_note": "",
+              "id": "goal:sample-trip",
+              "monthly_contribution": "350.00",
+              "monthly_display": "USD 350.00",
+              "next_contribution_date": "2026-10-15",
+              "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+              "projected_completion_date": "2027-03-15",
+              "remaining": "1800.00",
+              "remaining_display": "USD 1,800.00",
+              "required_monthly": "600.00",
+              "required_monthly_display": "USD 600.00",
+              "reserved": "600.00",
+              "reserved_display": "USD 600.00",
+              "state": "active",
+              "status": "at_risk",
+              "status_label": "At risk",
+              "target_amount": "2400.00",
+              "target_date": "2026-12-15",
+              "target_display": "USD 2,400.00",
+              "title": "Sample journey"
+            }
+          ],
+          "groups": {
+            "active": [
+              "goal:sample-trip"
+            ],
+            "complete": [],
+            "paused": [],
+            "set_aside": []
+          },
+          "invitation": {
+            "body": "Name an amount and, if you want, a date or monthly path. The first calculation is only a draft and changes nothing.",
+            "title": "Make room for something you want to have."
+          },
+          "no_money_moved": "Reserved here means held out of ordinary availability in this vault. No bank money moved.",
+          "proposals": [],
+          "state": "ready",
+          "title": "Plans"
+        },
+        "job_id": "parity-plans",
+        "surface": "plans"
       }
     },
     "trust": {

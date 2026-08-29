@@ -1,0 +1,158 @@
+.plans-surface {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.plans-create,
+.plans-proposal,
+.goal-card,
+.plans-draft,
+.plans-actions,
+.plans-action-grid,
+.goal-account {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.plans-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--measure-field), 1fr));
+  align-items: end;
+  gap: var(--space-md);
+}
+
+.plans-form label,
+.plans-action-grid label {
+  display: grid;
+  gap: var(--space-xs);
+  color: var(--ink);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-strong);
+}
+
+.plans-form input,
+.plans-action-grid input,
+.plans-action-grid select {
+  width: 100%;
+  min-height: var(--space-3xl);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  background: var(--paper);
+  font: inherit;
+}
+
+.plans-action-state,
+.plans-draft {
+  padding: var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.plans-action-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  font-size: var(--text-fine);
+}
+
+.plans-action-state.needs_input,
+.plans-action-state.rejected {
+  border-color: var(--rust);
+}
+
+.plans-draft dl,
+.goal-metrics,
+.plans-exact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--measure-metric), 1fr));
+  gap: var(--space-md);
+  margin: 0;
+}
+
+.plans-draft dl div,
+.goal-metrics div,
+.plans-exact div {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.plans-draft dt,
+.goal-metrics dt,
+.plans-exact dt {
+  color: var(--muted);
+  font-size: var(--text-caption);
+}
+
+.plans-draft dd,
+.goal-metrics dd,
+.plans-exact dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-fine);
+  font-weight: var(--weight-strong);
+}
+
+.plans-proposal {
+  border-color: var(--gold);
+}
+
+.goal-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: var(--space-lg);
+}
+
+.goal-card header strong {
+  color: var(--ink);
+  font-size: var(--text-title);
+}
+
+.goal-card details,
+.plans-actions {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--line);
+}
+
+.goal-card summary,
+.plans-actions summary {
+  min-height: var(--space-3xl);
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+  font-size: var(--text-fine);
+  font-weight: var(--weight-strong);
+  cursor: pointer;
+}
+
+.goal-account {
+  padding: var(--space-md) 0;
+  color: var(--muted);
+  font-size: var(--text-fine);
+}
+
+.plans-action-grid {
+  grid-template-columns: repeat(auto-fit, minmax(var(--measure-action), 1fr));
+}
+
+.plans-action-grid form {
+  display: grid;
+  align-content: start;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.plans-action-grid > button {
+  align-self: start;
+}
+
+@media (max-width: 760px) {
+  .goal-card header {
+    display: grid;
+  }
+}

@@ -143,9 +143,12 @@ income contributes nothing to the lower bound until it arrives; varying
 obligations widen the range, missed income is not rolled forward, and unlike
 currencies are never combined. The whole answer carries its horizon, weakest
 grade, evidence dates, accounts, records, assumptions, exclusions, missing
-inputs and backend-authored balance series and tooltips. Because planned
-spending and goal contributions do not exist yet, the product calls the result
-*known remainder*, never spend permission or runway. Overview renders the
+inputs and backend-authored balance series and tooltips. Local goal
+reservations reduce the opening availability once, and future contributions
+for active recorded goals enter the horizon once; paused goals keep their
+reservations but contribute no future occurrences. Planned discretionary
+spending still does not exist, so the product calls the result *known
+remainder*, never spend permission or runway. Overview renders the
 ready, limited or refused result without arithmetic, and older, undated or
 conflicted balances weaken visibly without an invented expiry rule.
 Current reachability and remaining gaps live in
@@ -156,9 +159,9 @@ Current reachability and remaining gaps live in
 **What remains planned, and why in this order.**
 
 These are cycle families, not historical slices, and none receives an old slice
-label. Cycle families 1–4 are delivered and are described by capability in the
-built half above; the remaining numbers are not renumbered. Families 5–7 are planned
-direction rather than built behaviour. Each still needs its own approved brief,
+label. Cycle families 1–5 are delivered and are described by capability in the
+built half above; the remaining numbers are not renumbered. Families 6–7 are
+planned direction rather than built behaviour. Each still needs its own approved brief,
 and each capability travels as one vertical slice: product projection or event,
 reviewed `viva.surface` contract, capability and operation disposition,
 fixtures, installed-interface consumer and tests. A new shell is not a
@@ -199,24 +202,31 @@ not reinterpret older technical read records or support prior vault shapes.
 
 ### Cycle family 5 — goals and plans
 
-**Product capability.** A later brief must design explicit goal events and
-projections, distinguish a desired target from funds actually reserved for it,
-and compute contribution, target-date, progress and deviation deterministically.
-A natural-language request may become a typed draft and then a proposal, but it
-does not become a write without confirmation. Composing existing financial
-reads does not remove this backend work.
+**State: delivered.**
 
-**Surface contract.** Goal drafts, proposals, assumptions, alternatives,
-progress and modify, confirm, pause and set-aside outcomes must cross as reviewed
-types with their evidence and state.
+**Product capability.** Explicit save-up goal, reservation, state-change and
+proposal events project a desired target separately from funds reserved
+locally against eligible issuer-backed depository accounts. Contribution,
+target-date, progress and deviation math is deterministic. Form and
+conversational requests return the same pure typed draft, and only confirmation
+of an exact persisted proposal records a change.
 
-**Interface consumer.** A person may state a goal conversationally or through a
-minimal form. A Plans destination is earned only after the registry serves it
-and the vault holds a plan or the person has asked to make one.
+**Surface contract.** `plans.goals` carries goal groups, progress, account
+availability and evidence, reservation history, assumptions, caveats, exact
+open proposals and typed outcomes. The four plan operations are draft,
+propose, confirm and decline; each domain action remains a closed proposal verb.
 
-**Dependency.** Plans depend on family 3's bounded current-period projection and
-family 4's durable proposal and correction path. Goal events and projections
-must exist before a destination claims to present them.
+**Interface consumer.** Ask Viva can bind only the person's stated words into a
+draft and route that same object to Plans. The model-free path routes to the
+minimal form. Plans shows exact terms and consequences before confirmation,
+keeps bank balances distinct from local reservations, and computes no money or
+date itself. The destination appears only after the registry serves it and the
+vault holds a plan or the person has asked to make one.
+
+**Dependency.** Plans compose family 3's bounded current-period projection and
+family 4's durable conversation and outcome vocabulary. Active planned
+contributions now enter current-period arithmetic, while reservations reduce
+ordinary availability without changing institution balances.
 
 **Acceptance condition.** An unreserved goal is never rendered as funded; a
 draft leaves the ledger unchanged; and confirmation records exactly the
@@ -275,12 +285,13 @@ outside the declared, gated operation inventory.
 **Decision recorded: no agent-memory framework.** Rulings are institutional knowledge, not preferences, and the append-only, graded, deterministically-applied event log already avoids the staleness and trustworthy-retrieval problems those frameworks are benchmarking.
 
 **The stack, end to end.** The first version gave one honest answer, and the
-built half consolidates a financial picture on a small set of re-composed
+completed half consolidates a financial picture on a small set of re-composed
 blocks, makes routine proof quieter without weakening required qualification,
 adds grounded obligations with quiet findings, and projects a bounded
-current-period remainder, and carries durable conversation and correction. The
-remaining planned order adds goals and plans, deterministic scenarios, and
-finally drafted action behind explicit confirmation. Each remaining feature is the
+current-period remainder, carries durable conversation and correction, and
+adds recorded save-up Plans with explicit local reservations. The remaining
+planned order adds deterministic scenarios and finally drafted action behind
+explicit confirmation. Each remaining feature is the
 same vertical path through product, surface and interface, not a new shell.
 
 ## Open

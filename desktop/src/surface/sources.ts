@@ -1,6 +1,6 @@
 import type { BridgeClient, SampleFrame } from "../bridge/contracts";
-import { loadPrivateSnapshot, privateActivityActions, privateConversationActions, privateDocumentActions, privateJobStream, privateOverviewActions, privateSettingsActions, privateTransferActions, privateTrustActions, readEngineIdentity, readSurfaceRegistry, readUpdateLifecycle } from "./load-private-snapshot";
-import type { ActivityActions, DocumentActions, EngineIdentity, FeatureResult, JobStream, OverviewActions, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import { loadPrivateSnapshot, privateActivityActions, privateConversationActions, privateDocumentActions, privateJobStream, privateOverviewActions, privatePlanActions, privateSettingsActions, privateTransferActions, privateTrustActions, readEngineIdentity, readSurfaceRegistry, readUpdateLifecycle } from "./load-private-snapshot";
+import type { ActivityActions, DocumentActions, EngineIdentity, FeatureResult, JobStream, OverviewActions, ConversationActions, PlanActions, SettingsActions, SurfaceRegistry, TrustActions, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 // One kind of source, because there is now one kind of vault.
 //
@@ -16,7 +16,7 @@ import type { ActivityActions, DocumentActions, EngineIdentity, FeatureResult, J
 // the shell can put one permanent frame around the place. It is not a
 // rendering switch: no screen branches on it. This source uses it only to
 // choose the permanent frame that says where a person is.
-export type SurfaceSource = { id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: () => Promise<SurfaceSnapshot>; overviewActions?: OverviewActions | null; activityActions: ActivityActions; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
+export type SurfaceSource = { id: "bridge-client"; label: string; description: string; sample: boolean; frame: SampleFrame | null; load: () => Promise<SurfaceSnapshot>; overviewActions?: OverviewActions | null; activityActions: ActivityActions; planActions?: PlanActions | null; documentActions: DocumentActions | null; jobStream: JobStream | null; transferActions: VaultTransferActions | null; settingsActions: SettingsActions | null; conversationActions: ConversationActions | null; trustActions: TrustActions | null; describe: () => Promise<SourceDescription> };
 // What a source says about the engine behind it: which build answered, and
 // which destinations its registry says a read reaches.
 export type SourceDescription = { identity: FeatureResult<EngineIdentity>; registry: FeatureResult<SurfaceRegistry>; lifecycle: FeatureResult<UpdateLifecycleView> };
@@ -40,6 +40,7 @@ export function vaultSource(client: BridgeClient, frame: SampleFrame | null): Su
     load: () => loadPrivateSnapshot(client, { title: label, subtitle, detail: description }),
     overviewActions: privateOverviewActions(client),
     activityActions: privateActivityActions(client),
+    planActions: privatePlanActions(client),
     documentActions: privateDocumentActions(client),
     jobStream: privateJobStream(client),
     transferActions: privateTransferActions(client),

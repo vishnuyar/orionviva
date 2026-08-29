@@ -11,7 +11,7 @@ import { retainSelection } from "./selection";
 const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", sample: false, frame: null, load: async () => liveReadingSnapshot(), activityActions: { assignCategory: async () => ({ state: "unanswered" }), replaceTags: async () => ({ state: "unanswered" }), confirmTransfer: async () => ({ state: "unanswered" }), rejectTransfer: async () => ({ state: "unanswered" }), unlinkTransfer: async () => ({ state: "unanswered" }) }, documentActions: null, jobStream: null, transferActions: null, settingsActions: null, conversationActions: null, trustActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "not asked" }, registry: { state: "unavailable", reason: "not asked" }, lifecycle: { state: "unavailable", reason: "not asked" } }) };
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason?: unknown) => void; const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; }); return { promise, resolve, reject }; }
 function ok<T>(requestId: string, result: T): BridgeResponse<T> { return { protocol: "1.0", request_id: requestId, ok: true, result }; }
-function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : { questions: [], total: 0 }; }
+function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] } : { questions: [], total: 0 }; }
 function activityPayload(categoryId = "groceries", categoryLabel = "Groceries") {
   return {
     state: "ready", sentence: "Everything below came off a document you added.", beyond: { count: 0 },
@@ -35,6 +35,7 @@ function completeSurfacePayload(surface: SurfaceName, refreshed = false): unknow
   if (surface === "documents") return { documents: [] };
   if (surface === "conversation") return { turns: [], questions: [], total: 0 };
   if (surface === "jobs") return { state: "absent", jobs: [], running: [] };
+  if (surface === "plans") return { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] };
   if (surface === "trust") return { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } };
   return refreshed ? activityPayload("housing", "Housing") : activityPayload();
 }
@@ -51,8 +52,8 @@ describe("surface session", () => {
   afterEach(() => { delete window.orionVivaBridge; });
 
   it("owns shell navigation and stable selection behavior", () => {
-    expect(destinations.map((item) => item.id)).toEqual(["overview", "accounts", "activity", "documents", "trust"]);
-    expect(destinations.map((item) => item.label)).toEqual(["Overview", "Accounts", "Activity", "Documents", "Trust"]);
+    expect(destinations.map((item) => item.id)).toEqual(["overview", "accounts", "activity", "documents", "plans", "trust"]);
+    expect(destinations.map((item) => item.label)).toEqual(["Overview", "Accounts", "Activity", "Documents", "Plans", "Trust"]);
     expect(retainSelection("b", ["c", "b", "a"])).toBe("b");
     expect(retainSelection("b", ["c", "a"])).toBe("c");
     expect(retainSelection("b", [])).toBe("");
@@ -400,15 +401,15 @@ describe("surface session", () => {
     if (result.current.session.snapshot.activity.state === "ready") expect(result.current.session.snapshot.activity.data.movements[0].category.id).toBe("groceries");
     act(() => { void result.current.replaceActivityTags("movement:key", []); });
     expect(frames.filter((frame) => frame.operation.startsWith("viva.activity."))).toHaveLength(1);
-    expect(frames.filter((frame) => frame.operation === "viva.surface.read")).toHaveLength(5);
+    expect(frames.filter((frame) => frame.operation === "viva.surface.read")).toHaveLength(6);
 
     await act(async () => { refreshGate.resolve(); await pending; });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind: "completed" } } });
     if (result.current.session.snapshot.activity.state === "ready") expect(result.current.session.snapshot.activity.data.movements[0].category.id).toBe("housing");
     const relevant = frames.filter((frame) => frame.operation.startsWith("viva.activity.") || frame.operation === "viva.surface.read");
-    expect(relevant.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(relevant.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
     expect(relevant[0].payload).toEqual({ movement_key: "movement:key", category_id: "housing" });
-    expect(relevant.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity"]);
+    expect(relevant.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity", "plans"]);
   });
 
   it.each(["refused", "stale"] as const)("fully rereads after a typed %s Activity outcome", async (kind) => {
@@ -425,14 +426,14 @@ describe("surface session", () => {
     frames.length = 0;
     await act(async () => { await result.current.replaceActivityTags("movement:key", []); });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind } } });
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.replace_tags", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.replace_tags", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
   });
 
   it.each([
     ["confirm", "viva.activity.confirm_transfer", { movement_key: "movement:key", counterpart_key: "movement:counterpart" }],
     ["reject", "viva.activity.reject_transfer", { movement_key: "movement:key" }],
     ["unlink", "viva.activity.unlink_transfer", { movement_key: "movement:key", counterpart_key: "movement:counterpart" }],
-  ] as const)("frames %s transfer correction before the mandatory five-surface reread", async (verb, operation, expectedPayload) => {
+  ] as const)("frames %s transfer correction before the mandatory full-surface reread", async (verb, operation, expectedPayload) => {
     const frames: BridgeRequest[] = [];
     window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
       frames.push(frame);
@@ -450,9 +451,9 @@ describe("surface session", () => {
       else await result.current.unlinkActivityTransfer("movement:key", "movement:counterpart");
     });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind: "completed" } } });
-    expect(frames.map((frame) => frame.operation)).toEqual([operation, "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(frames.map((frame) => frame.operation)).toEqual([operation, "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
     expect(frames[0].payload).toEqual(expectedPayload);
-    expect(frames.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity"]);
+    expect(frames.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity", "plans"]);
   });
 
   it("retains the suggested transfer through confirm and refresh, then replaces it only from the full reread", async () => {
@@ -501,7 +502,7 @@ describe("surface session", () => {
     frames.length = 0;
     await act(async () => { await result.current.assignActivityCategory("movement:key", "housing"); });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "unreadable" } });
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
   });
 
   it("retains the old full picture and outcome when any post-write surface read is invalid", async () => {

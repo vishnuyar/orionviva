@@ -414,8 +414,9 @@ stale on an existing surface?*
 
 **Later roadmap work arrives as vertical features rather than new shells.**
 Obligations, fees, anomalies and subscriptions enter the quiet noticed state and
-the relevant account detail. Budgets and goals earn a Plans destination only
-after a first plan exists or someone asks for one. Loans, insurance, tax and FX
+the relevant account detail. Save-up goals have earned a Plans destination,
+shown only after a first plan exists or someone asks to make one; future budget
+work composes there rather than opening a parallel shell. Loans, insurance, tax and FX
 extend instrument and document modules and Viva's tools. Selective disclosure
 becomes Proofs inside Trust; household support becomes a scope switch over the
 same projections; multi-device sync becomes Devices under vault settings; and

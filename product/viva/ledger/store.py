@@ -30,6 +30,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from collections.abc import Callable, Iterable
 from typing import Iterator
 
 from ..crypto import (KdfParams, CryptoError, new_vault_header,
@@ -172,6 +173,15 @@ class EventStore:
         Durable before it returns: the line is flushed and fsynced, so a record
         this method has returned is a record on the platter.
         """
+        return self.append_atomically(lambda _events: (event,))[0]
+
+    def append_atomically(
+        self, decide: Callable[[tuple[Event, ...]], Iterable[Event]]
+    ) -> list[dict]:
+        """Run ``decide`` under the writer lock and append its events in order.
+
+        ``decide`` receives a fresh replay of the current event stream.
+        """
         with self.path.open("a") as f:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX)
             try:
@@ -180,32 +190,42 @@ class EventStore:
                 # still the tail, and a rescan is only paid for when it is not.
                 if self.path.stat().st_size != self._size:
                     self._reread_tail()
-
-                seq = self._count
-                prev = self._last_hash
-                payload = {
-                    "seq": seq,
-                    "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "event": event.to_dict(),
-                }
-                aad = f"{seq}:{prev}".encode("utf-8")
-                sealed = seal(self._key, _canonical(payload).encode("utf-8"), aad)
-                rec_hash = _record_hash(seq, prev, sealed)
-                record = {"seq": seq, "prev_hash": prev, "sealed": sealed,
-                          "record_hash": rec_hash}
-
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                f.flush()
-                os.fsync(f.fileno())
-
-                self._last_hash = rec_hash
-                self._count += 1
-                self._size = self.path.stat().st_size
-                self._seal_head()
+                current = tuple(self.events())
+                events = tuple(decide(current))
+                if any(not isinstance(item, Event) for item in events):
+                    raise TypeError("an atomic append decision returns only events")
+                records = []
+                lines = []
+                for event in events:
+                    seq = self._count
+                    prev = self._last_hash
+                    payload = {
+                        "seq": seq,
+                        "recorded_at": time.strftime(
+                            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "event": event.to_dict(),
+                    }
+                    aad = f"{seq}:{prev}".encode("utf-8")
+                    sealed = seal(
+                        self._key, _canonical(payload).encode("utf-8"), aad)
+                    rec_hash = _record_hash(seq, prev, sealed)
+                    record = {"seq": seq, "prev_hash": prev,
+                              "sealed": sealed, "record_hash": rec_hash}
+                    lines.append(json.dumps(record, ensure_ascii=False) + "\n")
+                    records.append(record)
+                    self._last_hash = rec_hash
+                    self._count += 1
+                if lines:
+                    f.write("".join(lines))
+                    f.flush()
+                    os.fsync(f.fileno())
+                    self._size = self.path.stat().st_size
+                    self._seal_head()
             finally:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-        log.debug("append seq=%d type=%s", seq, event.event_type)
-        return record
+        for record, event in zip(records, events):
+            log.debug("append seq=%d type=%s", record["seq"], event.event_type)
+        return records
 
     # -------------------------------------------------------------- the head
 
@@ -261,6 +281,7 @@ class EventStore:
         for _seq, _prev, _sealed, rec_hash in self._iter_raw():
             self._last_hash = rec_hash
             self._count += 1
+        self._size = self.path.stat().st_size
 
     # ------------------------------------------------------------------- reads
 

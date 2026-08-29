@@ -29,6 +29,7 @@ _EXCLUSIONS = {
     "incoming_not_qualified": "current_period_exclusion_income_unqualified",
     "incoming_interrupted": "current_period_income_interrupted",
     "obligation_not_qualified": "current_period_exclusion_obligation_unqualified",
+    "goal_terms_unreadable": "current_period_exclusion_goal_unreadable",
 }
 
 
@@ -140,6 +141,8 @@ def _slice(projection, row, locale: str) -> CurrentPeriodSliceView:
         expected_income_max=str(row.expected_income_max),
         obligations_min=str(row.obligations_min),
         obligations_max=str(row.obligations_max),
+        reserved_for_goals=str(row.reserved_for_goals),
+        goal_contributions=str(row.goal_contributions),
         remainder_min=str(row.remainder_min),
         remainder_max=str(row.remainder_max),
         coverage=moment(_coverage_key(account_count, step_count),

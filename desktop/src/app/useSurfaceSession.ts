@@ -2,11 +2,11 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource, sampleSource } from "../surface/sources";
-import type { ActionResult, ActivityActionResult, ActivityActions, ActivityCorrectionVerb, ConversationActions, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, QuestionVerb, SettingsProposal, SurfaceSnapshot, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
+import type { ActionResult, ActivityActionResult, ActivityActions, ActivityCorrectionVerb, ConversationActions, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, PlanDraftResult, PlanPayload, QuestionVerb, SettingsProposal, SurfaceSnapshot, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 function fullSurfaceRereadFailed(snapshot: SurfaceSnapshot): boolean {
-  return [snapshot.overview, snapshot.documents, snapshot.conversation, snapshot.activity, snapshot.trust].some((result) => result.state === "failed");
+  return [snapshot.overview, snapshot.documents, snapshot.conversation, snapshot.activity, snapshot.plans, snapshot.trust].some((result) => result?.state === "failed");
 }
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
@@ -30,6 +30,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const maintaining = useRef(false);
   const correctingActivity = useRef(false);
   const settingAsideFinding = useRef(false);
+  const planning = useRef(false);
   // Every verb this session has comes from the source, and before a vault is
   // open there is no source and therefore no verb. A screen asks whether it
   // has one; nothing here invents a verb that would have to refuse.
@@ -41,6 +42,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const trustActions = session.source?.trustActions ?? null;
   const activityActions = session.source?.activityActions ?? null;
   const overviewActions = session.source?.overviewActions ?? null;
+  const planActions = session.source?.planActions ?? null;
   const source = session.source;
 
   // What is in force, asked once per source. It is this machine's rather than
@@ -206,6 +208,24 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     }
   }
 
+  async function runPlanMutation(run: (actions: NonNullable<typeof planActions>) => Promise<ActionResult>): Promise<ActionResult> {
+    const actions = planActions;
+    const activeSource = source;
+    if (!actions || !activeSource || planning.current) return { state: "unserved" };
+    planning.current = true;
+    const nextRequestId = requestId.current;
+    try {
+      const result = await run(actions);
+      const snapshot = await activeSource.load();
+      if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot });
+      return result;
+    } catch {
+      return { state: "unanswered" };
+    } finally {
+      planning.current = false;
+    }
+  }
+
   return {
     session,
     hostAvailable: Boolean(hostBridge),
@@ -314,6 +334,23 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     trustAvailable: Boolean(trustActions),
     activityCorrectionAvailable: Boolean(activityActions),
     findingActionsAvailable: Boolean(overviewActions),
+    planActionsAvailable: Boolean(planActions),
+    async draftPlan(payload: PlanPayload): Promise<PlanDraftResult> {
+      if (!planActions || planning.current) return { state: "unserved" };
+      planning.current = true;
+      try { return await planActions.draft(payload); }
+      catch { return { state: "unanswered" }; }
+      finally { planning.current = false; }
+    },
+    proposePlan(payload: PlanPayload) {
+      return runPlanMutation((actions) => actions.propose(payload));
+    },
+    confirmPlan(proposalId: string) {
+      return runPlanMutation((actions) => actions.confirm(proposalId));
+    },
+    declinePlan(proposalId: string) {
+      return runPlanMutation((actions) => actions.decline(proposalId));
+    },
     async setAsideFinding(findingId: string) {
       const actions = overviewActions;
       const activeSource = source;
@@ -368,13 +405,13 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // One question at a time. `mirrored` says the drawer showing the answer is
     // open, which is a fact about this screen rather than a preference: it is
     // what decides whether anything may be spoken.
-    async askViva(question: string, mirrored: boolean) {
+    async askViva(question: string, mirrored: boolean, planRequest = false) {
       if (!conversationActions || !question.trim() || asking.current) return;
       asking.current = true;
       const nextRequestId = requestId.current;
       dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
       try {
-        const { result, turn } = await conversationActions.ask(question.trim(), mirrored);
+        const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest);
         const [conversation, trust] = await Promise.all([conversationActions.reread(), conversationActions.rereadTrust()]);
         if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, conversation, trust });
       } finally {

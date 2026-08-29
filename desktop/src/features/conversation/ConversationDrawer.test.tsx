@@ -85,4 +85,37 @@ describe("durable Viva conversation", () => {
     expect(view.getByText("No conversation yet")).toBeInTheDocument();
     expect(view.queryByText(/supplied conversation/i)).not.toBeInTheDocument();
   });
+
+  it("routes the same conversational draft to Plans for review", () => {
+    const onReviewPlan = vi.fn();
+    const goalDraft = {
+      kind: "ready", message: "Draft ready. Nothing was recorded.",
+      reason: "", verb: "create", reviewInPlans: true,
+      draft: {
+        verb: "create",
+        payload: { title: "Trip", currency: "USD", target_amount: "600" },
+        calculated: { reserved: "0", remaining: "600", required_monthly: "100", projected_completion_date: "2027-02-28", status: "on_track" },
+      },
+    } as const;
+    const answer: TurnView = {
+      question: "Make a savings goal", text: goalDraft.message,
+      answered: true, refusal: "", grade: "", gradeSentence: "",
+      figures: [], spoken: { maySpeak: true, withheld: "", parts: [], text: goalDraft.message, gradeSentence: "", citationSentence: "", localOnly: "" },
+      goalDraft,
+    };
+    const view = render(<ConversationDrawer result={ready({ turns: [turn({ answer })], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} onReviewPlan={onReviewPlan} ask={null} controls={controls} />);
+
+    fireEvent.click(view.getByRole("button", { name: "Review in Plans" }));
+    expect(onReviewPlan).toHaveBeenCalledWith(goalDraft);
+  });
+
+  it("uses an explicit plan gesture instead of guessing from the question's words", () => {
+    const onAsk = vi.fn();
+    const view = render(<ConversationDrawer result={ready({ turns: [], questions })} selectedQueue="" onSelectQueue={vi.fn()} onOpenFigure={openFigure} ask={{ state: { state: "idle" }, onAsk }} controls={controls} />);
+
+    fireEvent.change(view.getByLabelText("Your question"), { target: { value: "Build a rainy-day fund" } });
+    fireEvent.click(view.getByRole("button", { name: "Draft a save-up plan" }));
+
+    expect(onAsk).toHaveBeenCalledWith("Build a rainy-day fund", true, true);
+  });
 });

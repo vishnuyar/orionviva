@@ -28,6 +28,7 @@ class CapabilityDestination(StrEnum):
     VIVA = "viva"
     TRUST = "trust"
     SETTINGS = "settings"
+    PLANS = "plans"
     NONE = "none"
 
 
@@ -180,6 +181,17 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         (),
         (TrustEffect.READS_DATA,),
         fixture_states=("ready", "limited", "refused"),
+    ),
+    _surface(
+        "plans.goals",
+        "viva.surface.plans",
+        CapabilityDestination.PLANS,
+        "when a vault is open; shown after a goal exists or a draft is requested",
+        "GoalsAndPlans.v1",
+        ("draft", "propose", "confirm", "decline"),
+        (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
+        fixture_states=("absent", "ready", "needs_input", "partial",
+                        "refused", "open", "completed", "stale"),
     ),
     _surface(
         "conversation.viva",

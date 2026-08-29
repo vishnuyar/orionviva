@@ -114,7 +114,7 @@ function selectedIds(snapshot: SurfaceSnapshot) {
 }
 
 function hasReadFailure(snapshot: SurfaceSnapshot) {
-  return [snapshot.overview, snapshot.documents, snapshot.conversation].some((result) => result.state === "failed");
+  return [snapshot.overview, snapshot.documents, snapshot.conversation, snapshot.plans].some((result) => result?.state === "failed");
 }
 
 // The session before either a sample or private vault is explicitly opened.
@@ -179,6 +179,7 @@ export function unopenedSnapshot(): SurfaceSnapshot {
     documents: { state: "absent", reason: "no_vault" },
     activity: { state: "absent", reason: "no_vault" },
     conversation: { state: "absent", reason: "no_vault" },
+    plans: { state: "absent", reason: "no_vault" },
     trust: { state: "absent", reason: "no_vault" },
   };
 }
@@ -194,6 +195,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
     documents: { state: "absent", reason: "reading" },
     activity: { state: "absent", reason: "reading" },
     conversation: { state: "absent", reason: "reading" },
+    plans: { state: "absent", reason: "reading" },
     trust: { state: "absent", reason: "reading" },
   };
 }

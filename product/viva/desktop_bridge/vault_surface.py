@@ -25,7 +25,7 @@ class OpenedVaultSurfaceProvider:
     """
 
     _SURFACES = frozenset(("overview", "documents", "conversation", "jobs", "trust",
-                           "activity"))
+                           "activity", "plans"))
 
     def __init__(self, vault: Vault, jobs: Any = None) -> None:
         self._vault = vault
@@ -47,7 +47,16 @@ class OpenedVaultSurfaceProvider:
             return self._trust()
         if surface == "activity":
             return self._activity(params)
+        if surface == "plans":
+            return self._plans(params)
         return self._conversation(params)
+
+    def _plans(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        from ..surface.plans import plans
+
+        projection = self._vault.ledger.fresh_projection()
+        return plans(projection, locale_from_env(),
+                     parameters.get("read_on") or _now())
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         """Open the projection and hand it to the surface that composes it.

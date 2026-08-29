@@ -5,7 +5,9 @@ from decimal import Decimal
 import pytest
 
 from viva.ledger import (LedgerProjection, Provenance, account_opened,
-                         closing_balance_observed, simple_transaction)
+                         closing_balance_observed, goal_created,
+                         goal_funds_reserved, goal_state_changed,
+                         simple_transaction)
 from viva.ledger.events import ASSERTED, CORROBORATED, merchant_enriched
 
 
@@ -52,12 +54,54 @@ def test_projected_remainder_is_a_range_over_qualified_recurring_money():
     assert row.remainder_max == Decimal("2900.00")
     assert [step.kind for step in row.steps] == [
         "balance", "obligation", "income"]
-    assert row.missing_inputs == ("planned_spending", "goal_contributions")
+    assert row.missing_inputs == ("planned_spending",)
     assert row.evidence_dates == (
         "2026-01-05", "2026-01-15", "2026-02-15", "2026-03-15",
         "2026-04-05", "2026-04-15", "2026-05-01")
     assert row.completeness.planned_spending is False
-    assert row.completeness.goals is False
+    assert row.completeness.goals is True
+
+
+def test_reserved_funds_and_future_contributions_are_composed_once():
+    events = [
+        account_opened("checking", "depository", "Checking", "USD",
+                       "2026-01-01"),
+        closing_balance_observed("checking", "1000", "2026-05-01"),
+        goal_created(
+            "trip", "Trip", "USD", "600", "2026-04-01",
+            target_date="2026-10-15", monthly_contribution="100",
+            contribution_day=15),
+        goal_funds_reserved("trip", "checking", "200", "2026-04-02"),
+    ]
+
+    row = LedgerProjection(events).current_period("2026-05-01").slices[0]
+
+    assert row.liquid_balance == Decimal("800")
+    assert row.reserved_for_goals == Decimal("200")
+    assert row.goal_contributions == Decimal("100")
+    assert [(step.kind, step.amount_max) for step in row.steps] == [
+        ("balance", Decimal("800")), ("goal", Decimal("100"))]
+    assert row.remainder_min == row.remainder_max == Decimal("700")
+    assert row.completeness.goals is True
+
+
+def test_paused_goal_keeps_reservation_but_stops_future_contributions():
+    events = [
+        account_opened("checking", "depository", "Checking", "USD",
+                       "2026-01-01"),
+        closing_balance_observed("checking", "1000", "2026-05-01"),
+        goal_created(
+            "trip", "Trip", "USD", "600", "2026-04-01",
+            monthly_contribution="100", contribution_day=15),
+        goal_funds_reserved("trip", "checking", "200", "2026-04-02"),
+        goal_state_changed("trip", "paused", "2026-04-03"),
+    ]
+
+    row = LedgerProjection(events).current_period("2026-05-01").slices[0]
+
+    assert row.liquid_balance == Decimal("800")
+    assert row.goal_contributions == Decimal("0")
+    assert [step.kind for step in row.steps] == ["balance"]
 
 
 def test_expected_income_never_enters_the_lower_bound_before_it_arrives():

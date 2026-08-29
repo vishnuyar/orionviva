@@ -8,6 +8,7 @@ export const destinations: Array<{ id: Destination; label: string; eyebrow: stri
   { id: "accounts", label: "Accounts", eyebrow: "Where money sits" },
   { id: "activity", label: "Activity", eyebrow: "What moved" },
   { id: "documents", label: "Documents", eyebrow: "What supports it" },
+  { id: "plans", label: "Plans", eyebrow: "What you are making room for" },
   { id: "trust", label: "Trust", eyebrow: "How it works" },
 ];
 

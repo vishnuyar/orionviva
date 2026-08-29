@@ -22,6 +22,7 @@ from viva.desktop_bridge.handlers import (ACTIVITY_OPERATIONS,
                                            DOCUMENTS_OPERATIONS,
                                            MAINTENANCE_OPERATIONS,
                                            OBLIGATIONS_OPERATIONS,
+                                           PLANS_OPERATIONS,
                                            RESCAN_OPERATIONS,
                                            SETTINGS_OPERATIONS,
                                            TRANSFER_OPERATIONS,
@@ -90,9 +91,9 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # and is never on a proposal, in a reply or in a digest.
     # A question, and whether its text will be in front of the person. The
     # second is a fact about the caller's own screen and the input to the rule
-    # that a figure is never spoken with nowhere to check it — not a switch for
-    # speech, which is why there is no field here that could be one.
-    CONVERSATION_OPERATIONS["ask"]: {"question", "mirrored"},
+    # that a figure is never spoken with nowhere to check it. `plan_request`
+    # marks an explicit request for a plan draft.
+    CONVERSATION_OPERATIONS["ask"]: {"question", "mirrored", "plan_request"},
     # Spending is a word rather than a default, and a budget is a number of
     # model calls. There is no field naming what to work on: a wake goes over
     # the whole vault, and a caller pointing it somewhere would be asserting a
@@ -108,6 +109,16 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     ACTIVITY_OPERATIONS["reject_transfer"]: {"movement_key"},
     ACTIVITY_OPERATIONS["unlink_transfer"]: {"movement_key", "counterpart_key"},
     OBLIGATIONS_OPERATIONS["set_aside_finding"]: {"finding_id"},
+    PLANS_OPERATIONS["draft"]: {
+        "verb", "title", "currency", "target_amount", "target_date",
+        "monthly_contribution", "contribution_day", "goal_id", "account_id",
+        "amount", "reason"},
+    PLANS_OPERATIONS["propose"]: {
+        "verb", "title", "currency", "target_amount", "target_date",
+        "monthly_contribution", "contribution_day", "goal_id", "account_id",
+        "amount", "reason"},
+    PLANS_OPERATIONS["confirm"]: {"proposal_id"},
+    PLANS_OPERATIONS["decline"]: {"proposal_id"},
     SETTINGS_READ: set(),
     # What happens when a new version exists. It reports a fact about this
     # process, so there is nothing a caller could name — and the shape of the
@@ -148,6 +159,14 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
         BRIDGE_PACKAGE / "activity_actions.py", "_transfer_pair_request"),
     OBLIGATIONS_OPERATIONS["set_aside_finding"]: (
         BRIDGE_PACKAGE / "obligation_actions.py", "_request"),
+    PLANS_OPERATIONS["draft"]: (
+        BRIDGE_PACKAGE / "plan_actions.py", "_goal_request"),
+    PLANS_OPERATIONS["propose"]: (
+        BRIDGE_PACKAGE / "plan_actions.py", "_goal_request"),
+    PLANS_OPERATIONS["confirm"]: (
+        BRIDGE_PACKAGE / "plan_actions.py", "_proposal_id"),
+    PLANS_OPERATIONS["decline"]: (
+        BRIDGE_PACKAGE / "plan_actions.py", "_proposal_id"),
 }
 
 # The reviewed request contract: what the protocol decoder reads off a frame.

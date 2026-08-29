@@ -4,7 +4,7 @@ import { loadPrivateSnapshot } from "./load-private-snapshot";
 import { privateSource } from "./sources";
 
 const read = (surface: SurfaceName, data: unknown) => Promise.resolve({ surface, job_id: `job-${surface}`, data });
-function client(conversation: unknown = { state: "ready", turns: [], questions: [], total: 0 }): BridgeClient {
+function client(conversation: unknown = { state: "ready", turns: [], questions: [], total: 0 }, planRead: unknown = { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }): BridgeClient {
   return {
     openVault: async () => undefined,
     openSampleVault: async () => null,
@@ -14,6 +14,11 @@ function client(conversation: unknown = { state: "ready", turns: [], questions: 
     readJobs: () => read("jobs", { state: "absent", jobs: [], running: [] }),
     readTrust: () => read("trust", { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } }),
     readActivity: () => read("activity", { state: "ready", sentence: "", items: [], beyond: { count: 0 }, vocabularies: { categories: { items: [], complete: true, limit: 40 }, tags: { items: [], complete: true, limit: 40, max_selected: 40, max_label_length: 80 } } }),
+    readPlans: () => read("plans", planRead),
+    draftPlan: async () => ({ kind: "ready", message: "Draft ready.", draft: {} }),
+    proposePlan: async () => ({ kind: "proposed", message: "Held.", state: null, reason: null }),
+    confirmPlan: async () => ({ kind: "completed", message: "Recorded.", state: null, reason: null }),
+    declinePlan: async () => ({ kind: "set_aside", message: "Set aside.", state: null, reason: null }),
     handshake: async () => ({ protocol: "2.0", transport: "json-lines", revision: "test" }),
     readCapabilities: async () => ({ protocol: "2.0", capabilities: [], destinations: { overview: true, documents: true, viva: true } }),
     uploadDocument: async () => ({ kind: "completed", message: "Saved.", state: null, reason: null }),
@@ -60,5 +65,10 @@ describe("private conversation surface", () => {
   it("fails the conversation read closed when a turn is malformed", async () => {
     const snapshot = await loadPrivateSnapshot(client({ state: "ready", turns: [{ kind: "ask" }], questions: [], total: 0 }));
     expect(snapshot.conversation).toEqual({ state: "failed", reason: "invalid_payload" });
+  });
+
+  it("keeps a partial Plans read partial at the panel boundary", async () => {
+    const snapshot = await loadPrivateSnapshot(client(undefined, { state: "partial", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }));
+    expect(snapshot.plans?.state).toBe("partial");
   });
 });

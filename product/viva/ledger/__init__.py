@@ -13,7 +13,10 @@ from .events import (ACT_OUTCOMES, AGENT_ACTED, CONFLICTED, CORROBORATED,
                      correction_applied, document_captured, merchant_categorized,
                      opening_balance_observed, postings_of, read_recorded,
                      statement_held, transaction_recorded, transfer_linked,
-                     transfer_suggested, transfer_unlinked)
+                     transfer_suggested, transfer_unlinked,
+                     goal_created, goal_terms_changed, goal_funds_reserved,
+                     goal_funds_released, goal_state_changed,
+                     goal_proposal_recorded, goal_proposal_resolved)
 from .merchants import (NORMALIZER_VERSION, is_shareable, normalize_merchant)
 from .postings import (EQUITY_OPENING, EXPENSE_UNCATEGORIZED,
                        INCOME_UNCATEGORIZED, TRANSFERS_UNCATEGORIZED,
@@ -34,6 +37,9 @@ __all__ = [
     "statement_held", "correction_applied", "read_recorded",
     "transfer_linked", "transfer_unlinked", "transfer_suggested",
     "category_assigned", "merchant_categorized",
+    "goal_created", "goal_terms_changed", "goal_funds_reserved",
+    "goal_funds_released", "goal_state_changed",
+    "goal_proposal_recorded", "goal_proposal_resolved",
     "agent_acted", "AGENT_ACTED", "ACT_OUTCOMES",
     "normalize_merchant", "is_shareable", "NORMALIZER_VERSION",
     "simple_transaction", "split_transaction", "transaction_balances",

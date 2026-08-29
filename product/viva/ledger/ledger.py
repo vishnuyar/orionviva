@@ -12,6 +12,7 @@ filtered projection on demand.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from typing import Iterator
 
 from .events import Event
@@ -45,6 +46,26 @@ class Ledger:
     def projection(self) -> LedgerProjection:
         """The live 'now' projection — always current, never re-replayed."""
         return self._proj
+
+    def fresh_projection(self) -> LedgerProjection:
+        """Replay the durable stream, including writes from other instances."""
+        return LedgerProjection(self.store.events(), resolve_keys=self._resolve_keys)
+
+    def append_atomically(
+        self, decide: Callable[[LedgerProjection], Iterable[Event]]
+    ) -> list[dict]:
+        """Compare against a locked fresh projection and append one decision."""
+        chosen: list[Event] = []
+
+        def choose(events: tuple[Event, ...]) -> tuple[Event, ...]:
+            projection = LedgerProjection(events, resolve_keys=self._resolve_keys)
+            chosen.extend(decide(projection))
+            return tuple(chosen)
+
+        records = self.store.append_atomically(choose)
+        # Refresh the live projection from the complete stream.
+        self._proj = self.fresh_projection()
+        return records
 
     def projection_as_of(self, as_of: str | None) -> LedgerProjection:
         """A projection as of a past date. None returns the live one; otherwise

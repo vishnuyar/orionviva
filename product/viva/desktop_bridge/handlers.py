@@ -41,6 +41,8 @@ ACTIVITY_CAPABILITY = "activity.movements"
 ACTIVITY_OPERATIONS = action_operations_for(ACTIVITY_CAPABILITY)
 OBLIGATIONS_CAPABILITY = "overview.obligations"
 OBLIGATIONS_OPERATIONS = action_operations_for(OBLIGATIONS_CAPABILITY)
+PLANS_CAPABILITY = "plans.goals"
+PLANS_OPERATIONS = action_operations_for(PLANS_CAPABILITY)
 
 
 class BridgeRequestError(ValueError):
@@ -172,6 +174,7 @@ def handlers_for_opened_vault(
     from .document_actions import DocumentActions
     from .jobs import JobRegistry
     from .obligation_actions import ObligationActions
+    from .plan_actions import PlanActions
     from .rescan_actions import RescanActions
     from .trust_actions import TrustActions
     from .vault_actions import VaultTransferActions
@@ -188,6 +191,7 @@ def handlers_for_opened_vault(
     trust = TrustActions(vault, jobs)
     activity_actions = ActivityActions(vault)
     obligation_actions = ObligationActions(vault)
+    plan_actions = PlanActions(vault)
     return BridgeDispatcher({
         **reads.handlers,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
@@ -207,4 +211,8 @@ def handlers_for_opened_vault(
         ACTIVITY_OPERATIONS["reject_transfer"]: activity_actions.reject_transfer,
         ACTIVITY_OPERATIONS["unlink_transfer"]: activity_actions.unlink_transfer,
         OBLIGATIONS_OPERATIONS["set_aside_finding"]: obligation_actions.set_aside,
+        PLANS_OPERATIONS["draft"]: plan_actions.draft,
+        PLANS_OPERATIONS["propose"]: plan_actions.propose,
+        PLANS_OPERATIONS["confirm"]: plan_actions.confirm,
+        PLANS_OPERATIONS["decline"]: plan_actions.decline,
     })
