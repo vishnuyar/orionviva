@@ -13,11 +13,11 @@
     },
     {
       "capability_id": "conversation.viva",
-      "contract": "ConversationTurn.v1",
+      "contract": "ConversationTimeline.v1",
       "id": "conversation.viva.ready",
       "payload": {
         "capability_id": "conversation.viva",
-        "contract": "ConversationTurn.v1"
+        "contract": "ConversationTimeline.v1"
       },
       "state": "ready"
     },
@@ -108,16 +108,6 @@
       "payload": {
         "capability_id": "overview.obligations",
         "contract": "ObligationsAndFindings.v1"
-      },
-      "state": "ready"
-    },
-    {
-      "capability_id": "review.questions",
-      "contract": "QuestionQueue.v1",
-      "id": "review.questions.ready",
-      "payload": {
-        "capability_id": "review.questions",
-        "contract": "QuestionQueue.v1"
       },
       "state": "ready"
     },
@@ -438,10 +428,13 @@
     },
     {
       "actions": [
-        "ask"
+        "ask",
+        "answer",
+        "confirm",
+        "decline"
       ],
-      "availability": "when the vault is open and the conversation engine is configured",
-      "contract": "ConversationTurn.v1",
+      "availability": "when a vault is open",
+      "contract": "ConversationTimeline.v1",
       "destination": "viva",
       "disposition": "surface",
       "entrypoint": "viva.speak",
@@ -449,12 +442,13 @@
         "conversation.viva.ready"
       ],
       "id": "conversation.viva",
-      "maturity": "preview",
-      "owner": "viva.speak",
+      "maturity": "stable",
+      "owner": "viva.conversation",
       "reason": null,
       "trust_effect": [
         "reads_data",
         "may_call_model",
+        "may_egress",
         "writes_event"
       ]
     },
@@ -615,7 +609,7 @@
       "id": "diagnostic.tiers",
       "maturity": "preview",
       "owner": "viva.debug.tiers",
-      "reason": "tier diagnostics explain engine question states and are not the Review contract",
+      "reason": "tier diagnostics explain engine question states and are not the conversation contract",
       "trust_effect": [
         "reads_data"
       ]
@@ -849,31 +843,6 @@
       "trust_effect": [
         "reads_data",
         "writes_event"
-      ]
-    },
-    {
-      "actions": [
-        "answer",
-        "confirm",
-        "decline"
-      ],
-      "availability": "when the vault has open questions",
-      "contract": "QuestionQueue.v1",
-      "destination": "review",
-      "disposition": "surface",
-      "entrypoint": "viva.ask",
-      "fixture_ids": [
-        "review.questions.ready"
-      ],
-      "id": "review.questions",
-      "maturity": "stable",
-      "owner": "viva.ask",
-      "reason": null,
-      "trust_effect": [
-        "reads_data",
-        "writes_event",
-        "may_call_model",
-        "may_egress"
       ]
     },
     {

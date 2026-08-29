@@ -126,7 +126,7 @@ cover sidecar identity before release.
 1. The bridge validates a protocol version, dispatches an allowlisted operation, emits job-state frames and serializes the result.
 2. It computes no total, infers no grade, decides no movement's direction and manufactures no user-facing caveat.
 3. The allowlist snapshot cannot be mutated after the dispatcher is created, and handler failures return safe error frames rather than raising.
-4. Every action a capability declares reaches the sidecar as an operation of its own — `viva.review.decline`, not a generic `act` carrying an action name — derived from the registry rather than written by hand, so the operation table read on its own is the complete list of everything that can touch a vault. An action no handler serves is a declared operation the allowlist refuses; this build serves all of them, and declaring a new action without one fails a test rather than reaching a person as a button that says no.
+4. Every action a capability declares reaches the sidecar as an operation of its own — `viva.conversation.decline`, not a generic `act` carrying an action name — derived from the registry rather than written by hand, so the operation table read on its own is the complete list of everything that can touch a vault. An action no handler serves is a declared operation the allowlist refuses; this build serves all of them, and declaring a new action without one fails a test rather than reaching a person as a button that says no.
 
 **Exception:** document work now has a live job registry, progress records,
 polling, and cancellation. The native request loop still does not subscribe to
@@ -293,13 +293,13 @@ adding an action stays a registry change, and a gate compares the two. It also
 keeps `serves` precise, where a generic verb would serve five contracts at once
 and tell the maturity signal nothing.
 
-**What each destination holds.** Seven of them, and the map is the part a
-reader needs before any of the rules above mean anything.
+**What each product surface holds.** This map is the part a reader needs before
+any of the rules above mean anything.
 
 - **Overview — the opening picture:** a quiet completeness line of
   current-through dates and named gaps; net worth by currency, never a false
   converted grand total; account cards with kind-aware semantics; recent inflow
-  and outflow summaries; the highest-consequence review items; a quiet "Viva
+  and outflow summaries; the highest-consequence questions; a quiet "Viva
   noticed" area only when a real finding exists; and a persistent add-document
   affordance. An empty vault shows a greeting, a document drop, and "Explore
   with sample data".
@@ -318,14 +318,12 @@ reader needs before any of the rules above mean anything.
   selection, the captured, read, verified, posted, held and parked states, what
   a document contributed, why something waits, and focused correction. With no
   reader configured it says so (**VOICE-114**).
-- **Review:** the surface for `viva.ask` — consequence-ranked questions, a
-  summarized tail, one natural-language answer box, evidence and scope, focused
-  reconciliation, pending items, respected declines, and proposal and
-  confirmation where X3 requires it.
-- **Viva:** summoned through a stable button or shortcut, opening a side panel
-  or a dedicated workspace. Text and voice share one session, spoken replies are
-  mirrored in text, and every figure opens the same Evidence drawer used
-  everywhere else.
+- **Viva conversation:** summoned through a stable button, opening one side
+  panel that holds durable turns, consequence-ranked questions, one
+  natural-language answer path, evidence and scope, pending items, respected
+  declines, and proposal confirmation where X3 requires it. Text and later
+  voice share this one session, and every figure opens the same Evidence drawer
+  used everywhere else.
 - **Trust and settings:** every outbound event and its purpose; model calls and
   maintenance-call budgets; maintenance actions and outcomes; vault integrity;
   application and protocol versions; provider and network permission; locale and
@@ -334,7 +332,7 @@ reader needs before any of the rules above mean anything.
 
 **Not every command deserves a button.** The product shows outcomes and
 decisions; it does not reproduce terminal output screen for screen. Asking goes
-to Review and speaking to Viva; upload goes to Documents, with rescan and
+to the Viva conversation; upload goes to Documents, with rescan and
 healing as background work reported there; the maintenance agent goes to
 maintenance activity and Trust; merchant enrichment stays proposed maintenance
 until its privacy boundary closes; grammar induction is private maintenance
@@ -394,7 +392,7 @@ figures with receipts.
 
 **The demo vault is a product requirement, not sample decoration.** Install,
 choose sample data, see a clearly fictional but mature financial picture, try
-Review and Viva and evidence and documents, reset at will, and create a private
+the Viva conversation, evidence and documents, reset at will, and create a private
 vault only when ready. Its fixtures cover empty, sparse, mature, stale,
 conflicted, mixed-currency, held-document, provisional-spending and
 missing-account states, and contain no transformed real financial data. Preview
@@ -438,7 +436,12 @@ Steward has answered the question above.
   platform still need explicit governance. The Tauri/React/sidecar shape,
   `viva.surface` boundary, capability registry, and impact gates are implemented
   decisions rather than pre-build questions.
-- Whether Review and Activity read list-shaped projections through `viva.surface` directly, or through the conversation's own block. Not a capability question — a question of which is the source of a list a person sees. This document does not take it. **Documents is settled, in a delegated run and reversible by the product owner.** The ruling: the documents read is composed by a module in the surface package, as a pure function of a projection, the set of originals the vault still holds, and whether this machine names a reader — not through the tool registry the overview goes through, and not through the conversation's block, which exists nowhere in this tree. The grounds are the difference between the two reads. The overview goes through the registry because it composes a **figure**, and a number on a screen has to be the number a conversation would say. The documents read composes no figure; it lists the agent's own paperwork. Routing it through the registry would mean inventing a new entity in a closed vocabulary. Whether the same answer holds for Review, where a queue is neither a figure nor paperwork, is left open above. A projection can be re-pointed later where an event schema could not be un-written, so this is a two-way door and reversing it costs one call site. **This is a ruling taken in a delegated run in the product owner's absence, not an approval by him.**
+- The earlier question about whether the question queue and conversation should
+  be separate is settled: they are one `conversation` read and one installed
+  interface. Overview consumes the question summary from that same read; it
+  does not hold a parallel question snapshot. Activity remains its own
+  list-shaped projection because it is a primary financial surface rather than
+  conversational state.
 - **Where a coverage claim belongs, settled for a figure that stands for the whole picture.** A figure over one account carries its own coverage line, naming the account it is over and the day it is good for. A figure standing for the whole picture is over none of the accounts it composed, so it may inherit none of their boundaries: it carries what the read itself declared — the currency it was cut to, how many accounts could not be valued, how many documents are not counted in it, the day the read was made and the oldest measurement beneath it — while **how far the picture reaches is one claim about the whole answer and is said once, at the panel, over the figures the panel actually shows.** That sentence answers *how many accounts* and a person reads it as *is this everything*, so where every account is counted it still says whether anything else is missing — chosen by the boolean the read declares about itself, and carrying its own resolution rather than handing off to the line after it — what else is short of whole is said on a figure, which is a different card and may be one of several, so a sentence that depends on what follows it depends on a layout it cannot see. What it is counted against is the union of the accounts the read ranged over and the accounts the vault holds, because a read is authoritative about what it valued and not about what a person has: an account a ruling brought into being that nothing has been posted to reaches no read at all. That panel sentence **counts and never names**: a list of account names is the one thing on that screen a person cannot un-share, and the names are already on the cards below it. MON-27 looks like it conflicts with that and does not — it requires that an account the point cannot value is named with the reason and never dropped, and it is: the unvalued accounts ride the figure's own declared boundary and reach the evidence drawer. **The point names and the sentence counts**, and that is the whole of the reconciliation, written here so a later cycle does not derive it again. The rule has one bound, and it is the ground the rule stands on rather than an exception to it: the panel counts rather than names **where the names are already on the screen**. An account no currency can be found for is beneath no figure, and so appears on no card, in no line and in no drawer — the redundancy the rule rests on does not reach it, and the panel names it, because a name nowhere is not privacy but concealment.
 - What a breakdown looks like on a screen. A turn can enumerate in text — a name and an amount per line, the set's grade above, the read's tail sentence below — and that decides nothing about the visual form.
 - The pull-request template, CODEOWNERS, and branch protection over the surface, schema, bridge, desktop and impact maps.

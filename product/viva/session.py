@@ -46,7 +46,8 @@ class Session:
 
     def __init__(self, registry, planner_factory, ledger=None, model: str = "",
                  max_calls: int = DEFAULT_MAX_CALLS,
-                 session_id: str = "", today=None, locale: str = ""):
+                 session_id: str = "", today=None, locale: str = "",
+                 prior_turns=()):
         self._registry = registry
         self._planner_factory = planner_factory
         self._ledger = ledger
@@ -57,10 +58,13 @@ class Session:
         self._locale = locale
         self._session_id = session_id or uuid.uuid4().hex[:12]
         self._today = today or (lambda: datetime.date.today().isoformat())
+        # Restored turns supply text context; new turns bind current tool evidence.
+        self._prior_turns = [(str(question), str(answer))
+                             for question, answer in prior_turns]
         self.turns: list[Turn] = []
 
     def ask(self, question: str) -> Turn:
-        prior = [(t.question, t.said) for t in self.turns]
+        prior = self._prior_turns + [(t.question, t.said) for t in self.turns]
         planner = self._planner_factory(prior)
         result = run(question, planner, self._registry,
                      max_calls=self._max_calls, locale=self._locale)

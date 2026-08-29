@@ -24,7 +24,7 @@ class OpenedVaultSurfaceProvider:
     bridge operations.
     """
 
-    _SURFACES = frozenset(("overview", "documents", "review", "jobs", "trust",
+    _SURFACES = frozenset(("overview", "documents", "conversation", "jobs", "trust",
                            "activity"))
 
     def __init__(self, vault: Vault, jobs: Any = None) -> None:
@@ -47,7 +47,7 @@ class OpenedVaultSurfaceProvider:
             return self._trust()
         if surface == "activity":
             return self._activity(params)
-        return self._review(params)
+        return self._conversation(params)
 
     def _overview(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
         """Open the projection and hand it to the surface that composes it.
@@ -117,8 +117,6 @@ class OpenedVaultSurfaceProvider:
             # person checks a claim or takes it.
             "absences": [
                 {"id": "anchoring", "sentence": moment("trust_no_anchoring")},
-                {"id": "conversation_history",
-                 "sentence": moment("trust_no_conversation_history")},
             ] + ([{"id": "maintenance",
                    "sentence": moment("trust_no_maintenance_yet")}]
                  if not self._vault.ledger.projection().agent_log() else []),
@@ -140,7 +138,9 @@ class OpenedVaultSurfaceProvider:
             return {"state": "absent", "jobs": [], "running": []}
         return self._jobs.read()
 
-    def _review(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+    def _conversation(self, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        from ..surface.conversation import timeline
+
         projection = self._vault.ledger.projection()
         queue = open_questions(
             projection,
@@ -149,7 +149,7 @@ class OpenedVaultSurfaceProvider:
             jurisdiction=parameters.get("jurisdiction", ""),
             locale=parameters.get("locale", ""),
         )
-        return {"state": "ready", **queue}
+        return timeline(projection, queue)
 
 
 def _now() -> str:

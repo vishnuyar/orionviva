@@ -160,7 +160,7 @@ autonomy, with the finding's confidence as the dial.
 ## Open
 
 - Rung 1, the automated targeted re-read, is unbuilt. It is the first *repair* model call and waits until the human-ask rate justifies the plumbing and the spend.
-- The correction surface itself: showing the source crop and collecting a ruling in one tap is designed; today a ruling arrives through the review path.
+- The correction surface itself: showing the source crop and collecting a ruling in one tap is designed; today a ruling arrives through the Viva conversation's question and proposal path.
 - Nothing pins the diagnosis version to its rules, so a rule change that forgets to bump the version would be invisible.
 - Whether the finding shape survives a document family with no arithmetic identity at all — the case that would decide whether the ladder is genuinely universal.
 - This design may graduate to an ADR once the finding shape has proven itself across a second document type.

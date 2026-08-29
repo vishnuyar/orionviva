@@ -51,10 +51,6 @@ answer. Plans and goals remain absent and are disclosed as missing inputs.
   category or tag creation, or bulk correction. Inherited merchant tags also
   keep complete-set movement replacement unavailable when that action could not
   remove the effective overlay honestly.
-- **Durable conversation reads.** `conversation.viva` can answer one text turn,
-  but no conversation projection or read supplies recorded turns across the
-  current drawer or a later session. An earlier answer therefore has no
-  durable conversation contract, and must never be reused as evidence.
 - **Goal events and projections.** There is no explicit goal store or event
   vocabulary and no deterministic target, contribution, progress, or deviation
   projection. Existing proposal and ruling events do not make that substrate a
@@ -62,13 +58,13 @@ answer. Plans and goals remain absent and are disclosed as missing inputs.
 - **Deterministic scenarios.** No registered `project` read or scenario library
   supplies amortisation, compounding, payoff, runway, or affordability results
   with enumerated assumptions and inherited evidentiary basis.
-- **General drafted-and-confirmed financial action.** Review and settings have
+- **General drafted-and-confirmed financial action.** Conversation and settings have
   bounded proposal-and-confirm flows, but there is no general action model that
   records a complete financial-action draft, re-checks its basis immediately
   before application, and records proposal, consent, and outcome separately.
   Any future execution belongs to separately gated action capabilities outside
   the agent's read-tool registry.
-- **Audio voice.** `conversation.viva` provides one text conversation session
+- **Audio voice.** `conversation.viva` provides a durable text conversation
   and a voice-ready reply shape, but no microphone, speech recognition, or audio
   playback implementation exists. Voice must remain a modality on the same
   cited turn rather than a second answer path.
@@ -98,12 +94,18 @@ surface capability. A roadmap checkbox alone does not authorize it.
 ## Closed by the live desktop bridge
 
 The current desktop reaches account overview, activity, document upload and
-rescan, job state and cancellation, review answer, proposal confirmation and decline, Ask Viva,
+rescan, job state and cancellation, durable conversation, question answering, proposal confirmation and decline,
 settings proposal and confirmation, outbound history, update lifecycle, vault
 export and restore, maintenance, diagnostics, sample-vault opening, capability
 discovery, build identity, backend-declared quiet proof, and the bounded Activity
 category, tag and transfer actions described above, plus the bounded
 current-period control. These no longer belong in a backend gap list.
+
+The durable conversation is a clean-start contract. It stores turns, typed
+outcomes, citations and correction proposals as ledger events; it re-fetches
+current evidence on each turn and uses prior turns only as context. Earlier
+technical read records are deliberately not treated as conversation history,
+and no migration exists because no public vault predates this capability.
 
 ## Open
 

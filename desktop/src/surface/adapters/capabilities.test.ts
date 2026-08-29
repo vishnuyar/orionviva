@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { adaptIdentity, adaptRegistry } from "./capabilities";
 
-const declared = { overview: true, accounts: false, activity: false, documents: true, review: true, viva: false, trust: false, settings: false, none: false };
+const declared = { overview: true, accounts: false, activity: false, documents: true, viva: true, trust: false, settings: false, none: false };
 
 describe("the registry the sidecar derived", () => {
   it("carries the sidecar's answer for every destination this shell has a screen for", () => {
     expect(adaptRegistry({ destinations: declared })).toEqual({
-      served: { overview: true, accounts: false, activity: false, documents: true, review: true, trust: false },
+      served: { overview: true, accounts: false, activity: false, documents: true, trust: false },
       undeclared: [],
     });
   });
@@ -15,7 +15,7 @@ describe("the registry the sidecar derived", () => {
     // Two different faults. One is a capability that has not landed; the other
     // is this shell showing a place the product has never heard of, which is
     // this side's own doing and must not be reported as the product's.
-    const { served, undeclared } = adaptRegistry({ destinations: { overview: true, documents: true, review: true } })!;
+    const { served, undeclared } = adaptRegistry({ destinations: { overview: true, documents: true, viva: true } })!;
     expect(undeclared).toEqual(["accounts", "activity", "trust"]);
     expect(served.accounts).toBe(false);
   });

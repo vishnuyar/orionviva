@@ -4,7 +4,7 @@ import shell from "./shell.css?raw";
 import surfaceBase from "./surface-base.css?raw";
 import documents from "./documents.css?raw";
 import surfacePrimitives from "./surface-primitives.css?raw";
-import review from "./review.css?raw";
+import review from "./questions.css?raw";
 import surfaceDetails from "./surface-details.css?raw";
 import conversation from "./conversation.css?raw";
 import activity from "./activity.css?raw";

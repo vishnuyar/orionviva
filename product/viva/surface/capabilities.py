@@ -25,7 +25,6 @@ class CapabilityDestination(StrEnum):
     ACCOUNTS = "accounts"
     ACTIVITY = "activity"
     DOCUMENTS = "documents"
-    REVIEW = "review"
     VIVA = "viva"
     TRUST = "trust"
     SETTINGS = "settings"
@@ -183,31 +182,15 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         fixture_states=("ready", "limited", "refused"),
     ),
     _surface(
-        "review.questions",
-        "viva.ask",
-        CapabilityDestination.REVIEW,
-        "when the vault has open questions",
-        "QuestionQueue.v1",
-        ("answer", "confirm", "decline"),
-        # The effects are what this capability may do, not what one build of
-        # it serves. Its entrypoint reads a typed sentence with the extractor
-        # the environment configured, so a model may be called and bytes may
-        # leave the machine, whichever of its actions a surface reaches.
-        (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT,
-         TrustEffect.MAY_CALL_MODEL, TrustEffect.MAY_EGRESS),
-        entrypoint="viva.ask",
-    ),
-    _surface(
         "conversation.viva",
-        "viva.speak",
+        "viva.conversation",
         CapabilityDestination.VIVA,
-        "when the vault is open and the conversation engine is configured",
-        "ConversationTurn.v1",
-        # Asking is the whole of it. Voice is a skin over this same turn rather
-        # than a second action: text and voice share one session and one
-        # runtime, so a second verb here would be a second answering path.
-        ("ask",),
-        (TrustEffect.READS_DATA, TrustEffect.MAY_CALL_MODEL, TrustEffect.WRITES_EVENT),
+        "when a vault is open",
+        "ConversationTimeline.v1",
+        # The deterministic queue and question verbs share this conversation.
+        ("ask", "answer", "confirm", "decline"),
+        (TrustEffect.READS_DATA, TrustEffect.MAY_CALL_MODEL,
+         TrustEffect.MAY_EGRESS, TrustEffect.WRITES_EVENT),
         entrypoint="viva.speak",
     ),
     _surface(
@@ -435,7 +418,7 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         "diagnostic.tiers",
         "viva.debug.tiers",
         CapabilityDisposition.DEVELOPER_ONLY,
-        "tier diagnostics explain engine question states and are not the Review contract",
+        "tier diagnostics explain engine question states and are not the conversation contract",
         entrypoint="viva.debug.tiers",
         trust_effect=(TrustEffect.READS_DATA,),
     ),

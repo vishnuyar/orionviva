@@ -1,5 +1,5 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
-import type { ActionResult, ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, CancelActionState, CaptureActionState, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, ReviewActionState, ReviewData, ReviewVerb, AskActionState, SettingsActionState, TrustActionState, TrustData, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, CancelActionState, CaptureActionState, ConversationData, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, QuestionActionState, QuestionQueueData, QuestionVerb, AskActionState, SettingsActionState, TrustActionState, TrustData, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -16,7 +16,7 @@ export type SurfaceSession = {
   selectedAccount: string;
   selectedPrompt: string;
   notice: Notice | null;
-  reviewAction: ReviewActionState;
+  questionAction: QuestionActionState;
   activityAction: ActivityCorrectionState;
   captureAction: CaptureActionState;
   cancelAction: CancelActionState;
@@ -71,8 +71,8 @@ export type SessionAction =
   | { type: "select-queue"; id: string }
   | { type: "select-account"; id: string }
   | { type: "select-prompt"; id: string }
-  | { type: "review-acting"; requestId: number; questionId: string; verb: ReviewVerb }
-  | { type: "review-acted"; requestId: number; questionId: string; verb: ReviewVerb; result: ActionResult; review: FeatureResult<ReviewData> }
+  | { type: "question-acting"; requestId: number; questionId: string; verb: QuestionVerb }
+  | { type: "question-acted"; requestId: number; questionId: string; verb: QuestionVerb; result: ActionResult; conversation: FeatureResult<ConversationData> }
   | { type: "activity-correcting"; requestId: number; movementId: string; verb: ActivityCorrectionVerb }
   | { type: "activity-outcome"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
   | { type: "activity-refreshed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot }
@@ -84,7 +84,7 @@ export type SessionAction =
   | { type: "trust-working"; requestId: number }
   | { type: "trust-settled"; requestId: number; result: ActionResult }
   | { type: "asking"; requestId: number; question: string }
-  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null; trust: FeatureResult<TrustData> }
+  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> }
   | { type: "settings-read"; settings: FeatureResult<SettingsView> }
   | { type: "settings-working" }
   | { type: "settings-proposed"; proposal: SettingsProposal }
@@ -104,18 +104,17 @@ function dataOf<T>(result: FeatureResult<T>): T | null {
 function selectedIds(snapshot: SurfaceSnapshot) {
   const overview = dataOf(snapshot.overview);
   const documents = dataOf(snapshot.documents);
-  const review = dataOf(snapshot.review);
   const conversation = dataOf(snapshot.conversation);
   return {
     documents: documents?.documents.map((item) => item.id) ?? [],
-    queue: review?.queue.map((item) => item.id) ?? [],
+    queue: conversation?.questions.queue.map((item) => item.id) ?? [],
     accounts: overview?.accounts.map((item) => item.id) ?? [],
-    prompts: conversation?.prompts.map((item) => item.id) ?? [],
+    prompts: [],
   };
 }
 
 function hasReadFailure(snapshot: SurfaceSnapshot) {
-  return [snapshot.overview, snapshot.documents, snapshot.review].some((result) => result.state === "failed");
+  return [snapshot.overview, snapshot.documents, snapshot.conversation].some((result) => result.state === "failed");
 }
 
 // The session before either a sample or private vault is explicitly opened.
@@ -131,7 +130,7 @@ export function initialSession(): SurfaceSession {
     selectedAccount: "",
     selectedPrompt: "",
     notice: null,
-    reviewAction: { state: "idle" },
+    questionAction: { state: "idle" },
     activityAction: { state: "idle" },
     captureAction: { state: "idle" },
     cancelAction: { state: "idle" },
@@ -178,7 +177,6 @@ export function unopenedSnapshot(): SurfaceSnapshot {
     },
     overview: { state: "absent", reason: "no_vault" },
     documents: { state: "absent", reason: "no_vault" },
-    review: { state: "absent", reason: "no_vault" },
     activity: { state: "absent", reason: "no_vault" },
     conversation: { state: "absent", reason: "no_vault" },
     trust: { state: "absent", reason: "no_vault" },
@@ -194,7 +192,6 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
     },
     overview: { state: "absent", reason: "reading" },
     documents: { state: "absent", reason: "reading" },
-    review: { state: "absent", reason: "reading" },
     activity: { state: "absent", reason: "reading" },
     conversation: { state: "absent", reason: "reading" },
     trust: { state: "absent", reason: "reading" },
@@ -204,7 +201,7 @@ export function liveReadingSnapshot(): SurfaceSnapshot {
 export function sessionReducer(state: SurfaceSession, action: SessionAction): SurfaceSession {
   switch (action.type) {
     case "opening":
-      return { ...state, phase: "opening", requestId: action.requestId, notice: null, reviewAction: { state: "idle" }, activityAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
+      return { ...state, phase: "opening", requestId: action.requestId, notice: null, questionAction: { state: "idle" }, activityAction: { state: "idle" }, captureAction: { state: "idle" }, cancelAction: { state: "idle" }, jobs: [], description: unasked(), transferAction: { state: "idle" }, rescanAction: { state: "idle" }, askAction: { state: "idle" }, trustAction: { state: "idle" } };
     case "reading":
       if (action.requestId !== state.requestId) return state;
       return {
@@ -218,7 +215,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         selectedAccount: "",
         selectedPrompt: "",
         notice: { kind: "acknowledged", text: "Reading available surfaces from this device…" },
-        reviewAction: { state: "idle" },
+        questionAction: { state: "idle" },
         activityAction: { state: "idle" },
         captureAction: { state: "idle" },
         cancelAction: { state: "idle" },
@@ -275,24 +272,24 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     // What became of a capture is not cleared. It is a receipt for something
     // durable that was written to the vault, and it belongs to the session
     // rather than to the screen a person happened to be on when it landed.
-    case "navigate": return { ...state, destination: action.destination, reviewAction: { state: "idle" } };
+    case "navigate": return { ...state, destination: action.destination, questionAction: { state: "idle" } };
     case "select-document": return { ...state, selectedDocument: action.id };
     case "select-queue":
-      return { ...state, selectedQueue: action.id, reviewAction: { state: "idle" } };
-    case "review-acting":
+      return { ...state, selectedQueue: action.id, questionAction: { state: "idle" } };
+    case "question-acting":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, reviewAction: { state: "working", questionId: action.questionId, verb: action.verb } };
-    case "review-acted": {
+      return { ...state, questionAction: { state: "working", questionId: action.questionId, verb: action.verb } };
+    case "question-acted": {
       if (action.requestId !== state.requestId) return state;
-      // The read that follows a write replaces only review. Nothing else was
-      // asked for, so nothing else is claimed to have been re-read.
-      const snapshot = { ...state.snapshot, review: action.review };
+      // The read that follows a write replaces the one conversation. Nothing
+      // else is claimed to have been re-read.
+      const snapshot = { ...state.snapshot, conversation: action.conversation };
       const ids = selectedIds(snapshot);
       return {
         ...state,
         snapshot,
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
-        reviewAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result },
+        questionAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result },
       };
     }
     case "activity-correcting":
@@ -351,7 +348,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return { ...state, askAction: { state: "working", question: action.question } };
     case "asked":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, snapshot: { ...state.snapshot, trust: action.trust }, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
+      return { ...state, snapshot: { ...state.snapshot, conversation: action.conversation, trust: action.trust }, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
     // Settings survive a vault opening and closing: they are this machine's,
     // not this vault's, and clearing them on a source change would make a
     // person say yes to the same thing twice.

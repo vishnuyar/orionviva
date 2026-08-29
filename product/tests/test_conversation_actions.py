@@ -1,8 +1,6 @@
-"""The review loop, from a bridge frame to the ledger and back to the read.
+"""Exercise the conversation loop from bridge frames to ledger reads.
 
-The queue is how the vault gets more honest, so what this file holds is that a
-person setting a question aside reaches it and that the read moves afterwards.
-Every name and figure here is invented.
+Every name and financial value is synthetic.
 """
 
 from __future__ import annotations
@@ -20,8 +18,7 @@ from viva.vault import Vault
 
 
 def _vault(tmp_path) -> Vault:
-    """One vault holding a single statement, which is enough to be asked
-    about: an uncategorised merchant and a statement whose period has ended."""
+    """Return a synthetic vault with one open merchant question."""
     raw = RawStore.open(tmp_path / "raw", "pw")
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
     vault = Vault(ledger=ledger, raw=raw, directory=tmp_path)
@@ -61,26 +58,23 @@ class _Sidecar:
         assert response["ok"] is False, response
         return response
 
-    def review(self) -> dict:
+    def conversation(self) -> dict:
         return self.send("viva.surface.read",
-                         {"surface": "review", "parameters": {"limit": 10}})["data"]
+                         {"surface": "conversation", "parameters": {"limit": 10}})["data"]
 
 
 def test_setting_a_question_aside_moves_it_into_the_set_aside_count(tmp_path):
-    """The whole loop: the read says what is open, a question is set aside, and
-    the next read reports it waiting rather than gone. A decline does not
-    destroy a question — the read already counts what is waiting, so a person
-    can see where it went."""
+    """A set-aside question leaves the open count and enters the pending count."""
     sidecar = _Sidecar(_vault(tmp_path))
-    before = sidecar.review()
+    before = sidecar.conversation()
     assert before["total"] >= 1
     set_aside_before = before["pending"]["count"]
 
-    outcome = sidecar.send("viva.review.decline",
+    outcome = sidecar.send("viva.conversation.decline",
                            {"question_id": before["questions"][0]["id"],
                             "reason": "not_now"})
 
-    after = sidecar.review()
+    after = sidecar.conversation()
     assert outcome["kind"] == "set_aside"
     assert outcome["message"], "an outcome always says what happened"
     assert after["total"] == before["total"] - 1
@@ -88,44 +82,38 @@ def test_setting_a_question_aside_moves_it_into_the_set_aside_count(tmp_path):
 
 
 def test_a_question_set_aside_twice_refuses_the_second_time(tmp_path):
-    """A stale caller cannot set aside something that is no longer being asked.
-    The second attempt is refused in words, with a machine reason beside them,
-    and nothing else in the read moves."""
+    """A stale second set-aside request refuses without moving the read."""
     sidecar = _Sidecar(_vault(tmp_path))
-    question_id = sidecar.review()["questions"][0]["id"]
-    sidecar.send("viva.review.decline",
+    question_id = sidecar.conversation()["questions"][0]["id"]
+    sidecar.send("viva.conversation.decline",
                  {"question_id": question_id, "reason": "not_now"})
-    settled = sidecar.review()
+    settled = sidecar.conversation()
 
-    outcome = sidecar.send("viva.review.decline",
+    outcome = sidecar.send("viva.conversation.decline",
                            {"question_id": question_id, "reason": "not_now"})
 
     assert outcome["kind"] == "refused"
     assert outcome["reason"]
     assert outcome["message"]
-    assert sidecar.review()["total"] == settled["total"]
+    assert sidecar.conversation()["total"] == settled["total"]
 
 
 def test_a_plainly_written_answer_reaches_the_queue_with_no_model_named(tmp_path):
-    """A sentence is a sentence, whatever this machine has been told to do.
-    With no model named the filler degrades to the identity, so a plainly
-    written reply is answered on a machine that sends nothing — and anything
-    else is refused rather than guessed at."""
+    """A plain reply completes or refuses through the vault's answer path."""
     sidecar = _Sidecar(_vault(tmp_path))
-    question = sidecar.review()["questions"][0]
+    question = sidecar.conversation()["questions"][0]
 
-    answered = sidecar.send("viva.review.answer",
+    answered = sidecar.send("viva.conversation.answer",
                             {"question_id": question["id"], "said": "groceries"})
 
     assert answered["kind"] in ("completed", "refused")
-    # Whichever it was, it was the vault's own answer rather than an operation
-    # the allowlist would not take.
+    # Either result is an ordinary answer-path outcome.
     assert answered["message"]
 
 
 def test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written():
     """A proposal crosses the bridge as an unapplied outcome."""
-    from viva.desktop_bridge.review_actions import outcome_of
+    from viva.desktop_bridge.conversation_actions import outcome_of
 
     proposed = {"summary": "Classify these as transfers to Brokerage.",
                 "confirm_accounts": ["Assets:Investments:Brokerage"]}
@@ -139,7 +127,7 @@ def test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written():
 
 def test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account(
         tmp_path, monkeypatch):
-    from viva.desktop_bridge.review_actions import ReviewActions
+    from viva.desktop_bridge.conversation_actions import ConversationActions
     from viva.ledger.events import SCOPE_MOVEMENT
     from viva.listen import Proposal
 
@@ -150,15 +138,20 @@ def test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account(
         scope=SCOPE_MOVEMENT, subject=movement.key,
         legs=[{"major": "asset", "account": account}],
         new_accounts=[account], currency="USD", said="this was a loan")
-    actions = ReviewActions(vault)
+    actions = ConversationActions(vault)
+    question_id = __import__(
+        "viva.questions", fromlist=["open_questions"]
+    ).open_questions(vault.ledger.projection())["questions"][0]["id"]
     monkeypatch.setattr("viva.engine.answer_question", lambda *_args, **_kwargs: {
         "ok": True, "confirm": True, "proposal": proposal.to_dict()})
-    proposed = actions.answer({"question_id": "question-1",
+    proposed = actions.answer({"question_id": question_id,
                                "said": "this was a loan"})
     proposal_id = proposed["state"]["proposal_id"]
     assert proposed["kind"] == "proposal" and proposed["state"]["summary"]
 
-    outcome = actions.confirm({"proposal_id": proposal_id, "said": "yes"})
+    # Proposal state survives recreating the bridge adapter.
+    outcome = ConversationActions(vault).confirm(
+        {"proposal_id": proposal_id, "said": "yes"})
 
     assert outcome["kind"] == "completed"
     assert account in {info.account
@@ -170,7 +163,7 @@ def test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account(
 
 def test_bridge_can_decline_a_held_proposal_without_writing(tmp_path,
                                                             monkeypatch):
-    from viva.desktop_bridge.review_actions import ReviewActions
+    from viva.desktop_bridge.conversation_actions import ConversationActions
     from viva.ledger.events import SCOPE_MOVEMENT
     from viva.listen import Proposal
 
@@ -181,44 +174,48 @@ def test_bridge_can_decline_a_held_proposal_without_writing(tmp_path,
                                "account": "Assets:Loans:Sample Person"}],
                         new_accounts=["Assets:Loans:Sample Person"],
                         currency="USD")
-    actions = ReviewActions(vault)
+    actions = ConversationActions(vault)
+    from viva.questions import open_questions
+    question_id = open_questions(vault.ledger.projection())["questions"][0]["id"]
     monkeypatch.setattr("viva.engine.answer_question", lambda *_args, **_kwargs: {
         "ok": True, "confirm": True, "proposal": proposal.to_dict()})
-    proposed = actions.answer({"question_id": "question-1",
+    proposed = actions.answer({"question_id": question_id,
                                "said": "this was a loan"})
     proposal_id = proposed["state"]["proposal_id"]
 
     outcome = actions.confirm({"proposal_id": proposal_id, "said": "no"})
 
-    assert outcome["kind"] == "completed"
+    assert outcome["kind"] == "set_aside"
     assert "Assets:Loans:Sample Person" not in {
         info.account for info in vault.ledger.projection().account_infos()}
-    assert proposal_id not in actions._proposals
+    assert vault.ledger.projection().conversation_proposal(
+        proposal_id)["status"] == "resolved"
 
 
 def test_a_refused_answer_does_not_leave_an_unreachable_proposal(tmp_path,
                                                                  monkeypatch):
-    """A proposal exists only when the answer opened its confirmation door.
-    Diagnostic proposal context on a refusal is neither returned nor retained
-    under an opaque identity nobody could reach."""
-    from viva.desktop_bridge.review_actions import ReviewActions
+    """A refused answer neither returns nor retains diagnostic proposal data."""
+    from viva.desktop_bridge.conversation_actions import ConversationActions
 
-    actions = ReviewActions(_vault(tmp_path))
+    vault = _vault(tmp_path)
+    actions = ConversationActions(vault)
+    from viva.questions import open_questions
+    question_id = open_questions(vault.ledger.projection())["questions"][0]["id"]
     monkeypatch.setattr("viva.engine.answer_question", lambda *_args, **_kwargs: {
         "ok": False, "why": "needs_name", "message": "What should I call it?",
         "proposal": {"summary": "Open an unnamed account."}})
 
-    outcome = actions.answer({"question_id": "question-1",
+    outcome = actions.answer({"question_id": question_id,
                               "said": "this was a loan"})
 
     assert outcome["kind"] == "refused"
     assert outcome["reason"] == "needs_name"
     assert outcome["state"] is None
-    assert actions._proposals == {}
+    assert vault.ledger.projection().conversation_proposals(open_only=True) == []
 
 
 def test_an_answer_that_sets_a_question_aside_has_its_own_outcome_kind():
-    from viva.desktop_bridge.review_actions import outcome_of
+    from viva.desktop_bridge.conversation_actions import outcome_of
 
     outcome = outcome_of({"ok": True, "disposition": "set_aside",
                           "message": "Set aside until evidence arrives."})
@@ -226,32 +223,27 @@ def test_an_answer_that_sets_a_question_aside_has_its_own_outcome_kind():
     assert outcome.kind == "set_aside"
 
 
-# ------------------------------------------------- answering, the single door
+# ------------------------------------------------------------ answer requests
 
 
 def test_the_answer_action_is_served_and_takes_a_question_and_a_sentence(tmp_path):
-    """Nothing but the question and the sentence crosses. A caller that could
-    send slot values would be filling the question's slots itself, and the
-    check that stands between a model's structure and the ledger would have a
-    second door with nothing behind it."""
+    """The served answer action accepts a question identity and sentence."""
     from viva.desktop_bridge.handlers import handlers_for_opened_vault
 
     handlers = handlers_for_opened_vault(object()).handlers
 
-    assert "viva.review.answer" in handlers
+    assert "viva.conversation.answer" in handlers
 
 
 def test_answering_a_question_that_is_not_open_refuses_with_a_reason(tmp_path):
-    """The question is looked up in the live queue rather than taken from the
-    caller, so a stale screen cannot answer something that is no longer being
-    asked."""
-    from viva.desktop_bridge.review_actions import ReviewActions
+    """Answering a question absent from the live queue refuses with a reason."""
+    from viva.desktop_bridge.conversation_actions import ConversationActions
     from viva.persona import moment
     from viva.vault import Vault
 
     vault = Vault.open(tmp_path / "vault", "pw")
 
-    answered = ReviewActions(vault).answer(
+    answered = ConversationActions(vault).answer(
         {"question_id": "nothing-is-asking-this", "said": "yes"})
 
     assert answered["kind"] == "refused"
@@ -261,7 +253,7 @@ def test_answering_a_question_that_is_not_open_refuses_with_a_reason(tmp_path):
 
 def test_an_answer_request_takes_those_two_fields_and_no_others(tmp_path):
     from viva.desktop_bridge.handlers import BridgeRequestError
-    from viva.desktop_bridge.review_actions import _answer_request
+    from viva.desktop_bridge.conversation_actions import _answer_request
 
     with pytest.raises(BridgeRequestError):
         _answer_request({"question_id": "q", "said": "yes", "same_account": "yes"})
@@ -272,9 +264,7 @@ def test_an_answer_request_takes_those_two_fields_and_no_others(tmp_path):
 
 
 def test_a_slot_says_what_it_wants_back_in_words_and_names_its_vocabulary():
-    """The same declaration the inbound check reads, said in words a person can
-    act on. A surface writing it would be writing the second half of a contract
-    whose first half lives in code."""
+    """A slot exposes the answer shape and its closed vocabulary in words."""
     from viva.persona import moment
     from viva.reply import Slot
     from viva.schemas import ANSWER_CHOICE, ANSWER_YES_NO
@@ -289,8 +279,7 @@ def test_a_slot_says_what_it_wants_back_in_words_and_names_its_vocabulary():
 
 
 def test_what_a_person_may_answer_with_is_never_narrowed_to_what_a_model_is_told():
-    """Narrowing what a model is told costs the model a prior. It must never
-    cost the person an answer."""
+    """Model hints do not narrow the answers a person may give."""
     from viva.reply import Slot
     from viva.schemas import ANSWER_CHOICE
 

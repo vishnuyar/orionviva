@@ -5,7 +5,7 @@ import { destinations, standingCopy, standingOf } from "./navigation";
 const registry = (served: Partial<Record<string, boolean>>, undeclared: string[] = []): FeatureResult<SurfaceRegistry> => ({
   state: "ready",
   data: {
-    served: { overview: false, accounts: false, activity: false, documents: false, review: false, trust: false, ...served },
+    served: { overview: false, accounts: false, activity: false, documents: false, trust: false, ...served },
     undeclared: undeclared as SurfaceRegistry["undeclared"],
   },
 });
@@ -35,9 +35,9 @@ describe("what a place a person can stand is owed", () => {
   });
 
   it("has a standing for every place it offers", () => {
-    const registryRead = registry({ overview: true, documents: true, review: true });
+    const registryRead = registry({ overview: true, documents: true });
     expect(destinations.map((item) => standingOf(registryRead, item.id))).toEqual([
-      "served", "unserved", "unserved", "served", "served", "unserved",
+      "served", "unserved", "unserved", "served", "unserved",
     ]);
   });
 });

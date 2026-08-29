@@ -8,7 +8,7 @@ import { isRecord, textValue } from "./primitives";
 // nothing here shows; a destination here the registry does not declare is a
 // screen claiming machinery — and the read below reports the second as
 // unserved rather than quietly treating it as fine.
-const DESTINATIONS: readonly Destination[] = ["overview", "accounts", "activity", "documents", "review", "trust"];
+const DESTINATIONS: readonly Destination[] = ["overview", "accounts", "activity", "documents", "trust"];
 
 // Whether a read reaches each destination, as the sidecar derived it. Nothing
 // here works it out: the rule lives in the registry, and a second derivation on

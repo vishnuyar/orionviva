@@ -36,7 +36,7 @@ not cross, and this document is that boundary.
 
 ### VOICE-136 — a destination and a control render only when the registry and a served read say so
 **State:** contradicted
-**Code:** `desktop/src/app/navigation.ts:3` hand-writes six destination memberships. Runtime standing is derived from the capability registry, but membership is not. The destinations table in [user-interface-implementation-status.md](user-interface-implementation-status.md) shows that `accounts` has neither its own live read nor a claiming capability and still ships; Activity and Trust now have both.
+**Code:** `desktop/src/app/navigation.ts` hand-writes five destination memberships. Runtime standing is derived from the capability registry, but membership is not. The destinations table in [user-interface-implementation-status.md](user-interface-implementation-status.md) shows that `accounts` has neither its own live read nor a claiming capability and still ships; Activity and Trust now have both.
 **Test:** none — the subject is what the interface renders, whose tests are TypeScript, and the rule index collects test names by parsing Python. The gate this rule wants is a comparison between the shipped destination list and the registry, and it belongs to the registry cycle.
 
 1. Navigation is a projection of the capability registry. A destination appears when a surfaced capability claims it **and** its live read is served for this vault and this build.
@@ -45,7 +45,7 @@ not cross, and this document is that boundary.
 4. An empty vault's product is small and entirely alive. The absence of a destination is never explained in navigation.
 5. The demo is a destination set of its own and does not widen the live product's navigation.
 
-**Why a hand-written list is the wrong shape.** Six destinations are typed into
+**Why a hand-written list is the wrong shape.** Five destinations are typed into
 one array, and Accounts is not claimed as a destination by a surfaced
 capability even though it is furnished from the overview read. A
 person who opens Accounts is told the product has an accounts screen and then
@@ -83,7 +83,7 @@ it is the first work the gate needs. **The owner is the registry cycle.**
 
 ### VOICE-137 — one absence sentence per panel; the full account lives in Trust
 **State:** contradicted
-**Code:** Twenty-seven fields render as *"… not supplied by this read"* (twenty-six in the past tense, one in the present) across three interface modules: `desktop/src/features/review/Review.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. `desktop/src/features/documents/Documents.tsx:86` renders a six-item enumeration headed *"Unavailable in this preview"*. `desktop/src/app/App.tsx:277` carries a standing admission in the sidebar footer, on every destination at once.
+**Code:** Multiple field-level absence sentences remain across `desktop/src/features/conversation/Questions.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. Documents also renders an enumeration headed *"Unavailable in this preview"*, and the sidebar carries a standing admission on every destination at once.
 **Test:** none — the subject is rendered copy and its tests are TypeScript. A count of absence sentences per panel is checkable against a rendered component, and that check has no owner until the craft slice.
 
 1. A panel states at most one absence, in one plain sentence, and only when the absence changes what the person should do next.
@@ -126,7 +126,7 @@ of a figure is not absence copy and this rule never reaches it.
 
 ### VOICE-138 — the interface speaks about the person's money, never about its machinery
 **State:** contradicted
-**Code:** `desktop/src/app/App.tsx:212` tells a person *"Documents are not available in the current vault read."* `desktop/src/features/review/Review.tsx:94` tells them *"The contract supplies no mapping from this guidance to a specific question."* `desktop/src/features/review/Review.tsx:74` makes a raw question identifier a primary detail row. Four interface modules — `desktop/src/features/accounts/Accounts.tsx:37`, `desktop/src/features/activity/Activity.tsx:37`, `desktop/src/features/review/Review.tsx:28` and `desktop/src/features/trust/Trust.tsx:60` — render *identity conflicted* as a person-facing headline.
+**Code:** Conversation no longer renders raw question IDs, contract vocabulary or a separate identity-conflict headline. It still uses person-facing *supplied* wording, while Accounts, Activity and Trust retain identity-conflict wording.
 **Test:** none, and none is wanted in this shape. A build check for this rule would be a text match over component source, and that is refused; see the argument below.
 
 1. Contract and delivery vocabulary does not reach a person on a primary surface: *read*, *supplied*, *contract*, *vault read*, *preview* used as a noun, *identity conflicted*.
@@ -510,7 +510,7 @@ usage. Records predating the model-role marker keep their model identity
 unclassified rather than relabelled.
 
 **Qualified — the escape hatch's reach.** *Explore fictional sample data* is
-present on three of six destinations rather than on nearly every empty screen.
+present on three of five destinations rather than on nearly every empty screen.
 It is on every live empty state that exists, which is the substance of the
 claim; but a deletion pass touches less surface than the wording implies.
 

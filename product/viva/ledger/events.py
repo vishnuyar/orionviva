@@ -771,6 +771,105 @@ DECLINE_DONT_KNOW = "dont_know"    # "I don't know" — the same silence
 DECLINE_REASONS = (DECLINE_NOT_NOW, DECLINE_DONT_KNOW)
 
 
+# Durable product conversation events; raw model-call capture remains separate.
+CONVERSATION_TURN_OPENED = "ConversationTurnOpened"
+CONVERSATION_TURN_SETTLED = "ConversationTurnSettled"
+CONVERSATION_PROPOSAL_RECORDED = "ConversationProposalRecorded"
+CONVERSATION_PROPOSAL_RESOLVED = "ConversationProposalResolved"
+CONVERSATION_TURN_KINDS = ("ask", "answer", "decline", "confirm")
+CONVERSATION_OUTCOMES = ("completed", "refused", "proposal", "waiting",
+                         "stale", "set_aside")
+
+
+def conversation_turn_opened(turn_id: str, kind: str, prompt: str,
+                             occurred_at: str, *, said: str = "",
+                             question_id: str = "",
+                             mirrored: bool = True,
+                             provenance: Provenance | None = None) -> Event:
+    """Record the words and target that opened one conversation turn."""
+    if not str(turn_id or "").strip():
+        raise ValueError("a conversation turn requires an identity")
+    if kind not in CONVERSATION_TURN_KINDS:
+        raise ValueError(
+            f"conversation turn kind must be one of {CONVERSATION_TURN_KINDS}")
+    if not str(prompt or "").strip():
+        raise ValueError("a conversation turn requires the prompt that opened it")
+    if kind in ("answer", "decline") and not str(question_id or "").strip():
+        raise ValueError("a queue reply must name the question it answers")
+    return Event(
+        CONVERSATION_TURN_OPENED, occurred_at,
+        body={"turn_id": turn_id, "kind": kind, "prompt": prompt,
+              "said": said, "question_id": question_id,
+              "mirrored": bool(mirrored)},
+        provenance=provenance or Provenance(),
+    )
+
+
+def conversation_turn_settled(turn_id: str, outcome: str, message: str,
+                              occurred_at: str, *, reason: str = "",
+                              answer: dict | None = None,
+                              proposal_id: str = "",
+                              provenance: Provenance | None = None) -> Event:
+    """Record the terminal product-facing result of one conversation turn."""
+    if not str(turn_id or "").strip():
+        raise ValueError("a settled conversation turn requires an identity")
+    if outcome not in CONVERSATION_OUTCOMES:
+        raise ValueError(
+            f"conversation outcome must be one of {CONVERSATION_OUTCOMES}")
+    if outcome == "refused" and not str(reason or "").strip():
+        raise ValueError("a refused conversation turn requires a reason")
+    if outcome == "proposal" and not str(proposal_id or "").strip():
+        raise ValueError("a proposal outcome requires a proposal identity")
+    return Event(
+        CONVERSATION_TURN_SETTLED, occurred_at,
+        body={"turn_id": turn_id, "outcome": outcome, "message": message,
+              "reason": reason, "answer": dict(answer or {}),
+              "proposal_id": proposal_id},
+        provenance=provenance or Provenance(),
+    )
+
+
+def conversation_proposal_recorded(
+        proposal_id: str, turn_id: str, question_id: str, summary: str,
+        proposal: dict, stake: dict, occurred_at: str,
+        provenance: Provenance | None = None) -> Event:
+    """Persist the exact unapplied correction and the state it was based on."""
+    if not str(proposal_id or "").strip() or not str(turn_id or "").strip():
+        raise ValueError("a conversation proposal requires proposal and turn identities")
+    if not str(question_id or "").strip():
+        raise ValueError("a conversation correction must name its question")
+    if not isinstance(proposal, dict) or not proposal:
+        raise ValueError("a conversation proposal requires its typed structure")
+    if not isinstance(stake, dict) or not stake:
+        raise ValueError("a conversation proposal requires its evidence stake")
+    return Event(
+        CONVERSATION_PROPOSAL_RECORDED, occurred_at,
+        body={"proposal_id": proposal_id, "turn_id": turn_id,
+              "question_id": question_id, "summary": summary,
+              "proposal": dict(proposal), "stake": dict(stake)},
+        provenance=provenance or Provenance(),
+    )
+
+
+def conversation_proposal_resolved(
+        proposal_id: str, turn_id: str, outcome: str, message: str,
+        occurred_at: str, *, reason: str = "",
+        provenance: Provenance | None = None) -> Event:
+    """Close one persisted proposal without deleting what was proposed."""
+    if not str(proposal_id or "").strip() or not str(turn_id or "").strip():
+        raise ValueError("a proposal resolution requires proposal and turn identities")
+    if outcome not in ("completed", "refused", "stale", "set_aside"):
+        raise ValueError("a proposal resolution requires a terminal outcome")
+    if outcome == "refused" and not str(reason or "").strip():
+        raise ValueError("a refused proposal resolution requires a reason")
+    return Event(
+        CONVERSATION_PROPOSAL_RESOLVED, occurred_at,
+        body={"proposal_id": proposal_id, "turn_id": turn_id,
+              "outcome": outcome, "message": message, "reason": reason},
+        provenance=provenance or Provenance(),
+    )
+
+
 def question_declined(question_id: str, kind: str, occurred_at: str,
                       reason: str = DECLINE_NOT_NOW, amount: str = "",
                       count: int = 0, pack_version: str = "",

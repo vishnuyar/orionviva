@@ -25,8 +25,6 @@ from viva.surface import (
 # for an action it no longer declares raises here. A declared action with no
 # handler below is not in the allowlist and is refused as an operation the
 # sidecar does not serve.
-REVIEW_CAPABILITY = "review.questions"
-REVIEW_OPERATIONS = action_operations_for(REVIEW_CAPABILITY)
 DOCUMENTS_CAPABILITY = "documents.ingest"
 DOCUMENTS_OPERATIONS = action_operations_for(DOCUMENTS_CAPABILITY)
 TRANSFER_CAPABILITY = "vault.transfer"
@@ -174,7 +172,6 @@ def handlers_for_opened_vault(
     from .document_actions import DocumentActions
     from .jobs import JobRegistry
     from .obligation_actions import ObligationActions
-    from .review_actions import ReviewActions
     from .rescan_actions import RescanActions
     from .trust_actions import TrustActions
     from .vault_actions import VaultTransferActions
@@ -184,7 +181,6 @@ def handlers_for_opened_vault(
     reads = handlers_with_surface_provider(
         OpenedVaultSurfaceProvider(vault, jobs), progress_sink
     )
-    actions = ReviewActions(vault)
     captures = DocumentActions(vault, jobs)
     transfers = VaultTransferActions(vault, jobs)
     sweeps = RescanActions(vault, jobs)
@@ -194,15 +190,15 @@ def handlers_for_opened_vault(
     obligation_actions = ObligationActions(vault)
     return BridgeDispatcher({
         **reads.handlers,
-        REVIEW_OPERATIONS["answer"]: actions.answer,
-        REVIEW_OPERATIONS["confirm"]: actions.confirm,
-        REVIEW_OPERATIONS["decline"]: actions.decline,
         DOCUMENTS_OPERATIONS["upload"]: captures.upload,
         DOCUMENTS_OPERATIONS["cancel"]: captures.cancel,
         TRANSFER_OPERATIONS["export"]: transfers.export,
         TRANSFER_OPERATIONS["restore"]: transfers.restore,
         RESCAN_OPERATIONS["rescan"]: sweeps.run,
         CONVERSATION_OPERATIONS["ask"]: talking.ask,
+        CONVERSATION_OPERATIONS["answer"]: talking.answer,
+        CONVERSATION_OPERATIONS["confirm"]: talking.confirm,
+        CONVERSATION_OPERATIONS["decline"]: talking.decline,
         MAINTENANCE_OPERATIONS["run"]: trust.run,
         MAINTENANCE_OPERATIONS["diagnose"]: trust.diagnose,
         ACTIVITY_OPERATIONS["assign_category"]: activity_actions.assign_category,

@@ -47,7 +47,7 @@ from viva.surface import ActionOutcome
 
 from .handlers import BridgeRequestError
 from .jobs import JobCancelled, JobRegistry
-from .review_actions import UnreadableOutcome
+from .conversation_actions import UnreadableOutcome
 
 # Why a capture was refused, in the machine's own words. An outcome refuses to
 # be built without one, so each of these travels beside the sentence a person

@@ -1,6 +1,6 @@
 # Experience Vision — a day with Viva, and the machinery each moment demands
 
-**State:** design-only
+**State:** partial
 **Rules:** VOICE-30, VOICE-31, VOICE-33, VOICE-34, VOICE-36
 
 The debug surface that existed was deliberately not this. See
@@ -20,12 +20,12 @@ for the delivery direction proposed since.
 4. There is no scheduler, notifier or push path in the product.
 
 ### VOICE-31 — the product opens as a picture, not a chat
-**State:** unmet
-**Code:** desktop/src/app/App.tsx
+**State:** by-review
+**Code:** desktop/src/app/App.tsx, desktop/src/features/conversation/ConversationDrawer.tsx
 **Test:** none
 
 1. Opening OrionViva shows the financial picture — net worth, accounts, trends — not a chat window. **This half holds:** the shell opens on `overview`, titled *Your financial picture* (desktop/src/app/App.tsx:20, :36), and conversation is a summoned overlay (:44).
-2. Conversation is a surface you summon, and it shares the evidence machinery every other figure uses. **This half does not:** the conversation surface has no live turn or read integration ([user-interface-implementation-status.md](user-interface-implementation-status.md), Open).
+2. Conversation is a surface you summon, and it shares the evidence machinery every other figure uses. **Built for text:** the summoned drawer reads durable turns, current citations, open questions and correction proposals through one live conversation contract. Voice remains absent.
 
 A panel earns its existence from data — day one is a greeting and a drop zone,
 the first statement births an account card, the third month births trends. The

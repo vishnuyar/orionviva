@@ -3,7 +3,7 @@ import type { BridgeClient } from "../bridge/contracts";
 import { adaptDocuments } from "./adapters/documents";
 import { adaptActivity, adaptActivityActionOutcome } from "./adapters/activity";
 import { adaptIdentity, adaptRegistry } from "./adapters/capabilities";
-import { adaptTurn } from "./adapters/conversation";
+import { adaptConversation, adaptTurn } from "./adapters/conversation";
 import { isRecord } from "./adapters/primitives";
 import { adaptJobs, adaptProgress } from "./adapters/jobs";
 import { adaptRescan } from "./adapters/rescan";
@@ -11,9 +11,9 @@ import { adaptLifecycle } from "./adapters/lifecycle";
 import { adaptProposal, adaptSettings } from "./adapters/settings";
 import { adaptTrust } from "./adapters/trust";
 import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
-import { adaptActionOutcome, adaptReview } from "./adapters/review";
+import { adaptActionOutcome } from "./adapters/questions";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, ActivityActionResult, ActivityActions, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ReviewActions, ReviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import type { ActionResult, ActivityActionResult, ActivityActions, ConversationData, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ConversationActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -59,9 +59,9 @@ async function activityActed(call: Promise<unknown>): Promise<ActivityActionResu
   return outcome ? { state: "settled", outcome } : { state: "unreadable" };
 }
 
-async function readReviewFeature(client: BridgeClient): Promise<FeatureResult<ReviewData>> {
-  const [read] = await Promise.allSettled([client.readReview()]);
-  return settled(read, (value) => adaptReview(value.data));
+async function readConversationFeature(client: BridgeClient): Promise<FeatureResult<ConversationData>> {
+  const [read] = await Promise.allSettled([client.readConversation()]);
+  return settled(read, (value) => adaptConversation(value.data));
 }
 
 async function readDocumentsFeature(client: BridgeClient): Promise<FeatureResult<DocumentsData>> {
@@ -149,6 +149,12 @@ export function privateConversationActions(client: BridgeClient): ConversationAc
       const turn = replied.status === "fulfilled" && isRecord(replied.value) ? adaptTurn(replied.value.state) : null;
       return { result, turn };
     },
+    answer: (questionId, said) => acted(client.answerQuestion(questionId, said)),
+    confirm: (proposalId, said, asked) => client.confirmProposal
+      ? acted(client.confirmProposal(proposalId, said, asked))
+      : Promise.resolve({ state: "unserved" }),
+    decline: (questionId, reason) => acted(client.declineQuestion(questionId, reason)),
+    reread: () => readConversationFeature(client),
     // A completed turn durably appends one outbound event per model exchange.
     // Read Trust after the turn so the snapshot cannot remain the one taken
     // when the vault first opened.
@@ -194,20 +200,6 @@ export function privateTransferActions(client: BridgeClient): VaultTransferActio
   };
 }
 
-// The write side of the review capability, and the read that follows it. An
-// action never throws at a screen: what came back is a result the screen can
-// render, including the case where the reply could not be read at all.
-export function privateReviewActions(client: BridgeClient): ReviewActions {
-  return {
-    answer: (questionId, said) => acted(client.answerQuestion(questionId, said)),
-    confirm: (proposalId, said, asked) => client.confirmProposal
-      ? acted(client.confirmProposal(proposalId, said, asked))
-      : Promise.resolve({ state: "unserved" }),
-    decline: (questionId, reason) => acted(client.declineQuestion(questionId, reason)),
-    reread: () => readReviewFeature(client),
-  };
-}
-
 // Movement corrections carry only the durable movement identity and the
 // complete desired value. The action reply is deliberately not treated as a
 // read: every surface is read again by the session after it arrives.
@@ -226,11 +218,11 @@ export function privateOverviewActions(client: BridgeClient): OverviewActions | 
 }
 
 export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"]): Promise<SurfaceSnapshot> {
-  const [overviewRead, documentsRead, reviewRead, trustRead, activityRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readReview(), client.readTrust(), client.readActivity()]);
+  const [overviewRead, documentsRead, conversationRead, trustRead, activityRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readTrust(), client.readActivity()]);
   return buildLiveSnapshot(
     settledOverview(overviewRead),
     settled(documentsRead, (read) => adaptDocuments(read.data)),
-    settled(reviewRead, (read) => adaptReview(read.data)),
+    settled(conversationRead, (read) => adaptConversation(read.data)),
     settled(trustRead, (read) => adaptTrust(read.data)),
     settled(activityRead, (read) => adaptActivity(read.data)),
     disclosure,

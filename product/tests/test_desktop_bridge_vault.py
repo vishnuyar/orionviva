@@ -71,7 +71,7 @@ def _read(vault: Vault, surface: str, events: list[Any] | None = None) -> dict[s
 def test_concrete_provider_reads_empty_open_vault_as_json_safe_surfaces(tmp_path: Path):
     vault = Vault.open(tmp_path / "empty-vault", "test-passphrase")
 
-    for surface in ("overview", "documents", "review"):
+    for surface in ("overview", "documents", "conversation"):
         result = _read(vault, surface)
         json.dumps(result)
         assert result["surface"] == surface
@@ -83,7 +83,7 @@ def test_concrete_provider_reads_open_vault_and_keeps_surface_payloads_json_safe
     opened = Vault.open(directory, "test-passphrase")
     reopened = Vault.open(directory, "test-passphrase")
 
-    for surface in ("overview", "documents", "review"):
+    for surface in ("overview", "documents", "conversation"):
         result = _read(reopened, surface)
         assert result["surface"] == surface
         json.dumps(result["data"], allow_nan=False)

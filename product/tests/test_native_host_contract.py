@@ -23,7 +23,6 @@ from viva.desktop_bridge.handlers import (ACTIVITY_OPERATIONS,
                                            MAINTENANCE_OPERATIONS,
                                            OBLIGATIONS_OPERATIONS,
                                            RESCAN_OPERATIONS,
-                                           REVIEW_OPERATIONS,
                                            SETTINGS_OPERATIONS,
                                            TRANSFER_OPERATIONS,
                                            default_handlers,
@@ -64,9 +63,9 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     BRIDGE_OPEN_VAULT: {"vault_directory", "passphrase", "create"},
     SURFACE_CAPABILITIES: set(),
     SURFACE_READ: {"surface", "parameters", "job_id"},
-    REVIEW_OPERATIONS["answer"]: {"question_id", "said"},
-    REVIEW_OPERATIONS["confirm"]: {"proposal_id", "said", "asked"},
-    REVIEW_OPERATIONS["decline"]: {"question_id", "reason"},
+    CONVERSATION_OPERATIONS["answer"]: {"question_id", "said"},
+    CONVERSATION_OPERATIONS["confirm"]: {"proposal_id", "said", "asked"},
+    CONVERSATION_OPERATIONS["decline"]: {"question_id", "reason"},
     # One field, and that is the whole fence: a caller with nowhere to put an
     # identity cannot assert one, so the constraint is kept by the shape of the
     # request rather than by a check that could be relaxed.
@@ -124,9 +123,9 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
 PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
     BRIDGE_OPEN_VAULT: (BRIDGE_PACKAGE / "__main__.py", "_open_vault"),
     SURFACE_READ: (BRIDGE_PACKAGE / "surface_read.py", "_read_request"),
-    REVIEW_OPERATIONS["answer"]: (BRIDGE_PACKAGE / "review_actions.py", "_answer_request"),
-    REVIEW_OPERATIONS["confirm"]: (BRIDGE_PACKAGE / "review_actions.py", "_confirm_request"),
-    REVIEW_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "review_actions.py", "_decline_request"),
+    CONVERSATION_OPERATIONS["answer"]: (BRIDGE_PACKAGE / "conversation_actions.py", "_answer_request"),
+    CONVERSATION_OPERATIONS["confirm"]: (BRIDGE_PACKAGE / "conversation_actions.py", "_confirm_request"),
+    CONVERSATION_OPERATIONS["decline"]: (BRIDGE_PACKAGE / "conversation_actions.py", "_decline_request"),
     DOCUMENTS_OPERATIONS["upload"]: (BRIDGE_PACKAGE / "document_actions.py", "_upload_request"),
     DOCUMENTS_OPERATIONS["cancel"]: (BRIDGE_PACKAGE / "document_actions.py", "_cancel_request"),
     TRANSFER_OPERATIONS["restore"]: (BRIDGE_PACKAGE / "vault_actions.py", "_restore_request"),

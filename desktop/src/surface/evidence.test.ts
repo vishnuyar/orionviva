@@ -7,7 +7,7 @@ const account: AccountView = { id: "account", name: "Card", kind: "card", measur
 const documents: DocumentsData = { documents: [{ id: "doc", name: "doc.pdf", state: "Verified", phaseLabel: "Verified", detail: "", source: "", pages: "1", provenance: "", evidenceLinks: [] }], readingSentence: "", captureQueue: [], processingJobs: [], outboundRecords: [] };
 
 function snapshot(accounts: AccountView[] = [account]): SurfaceSnapshot {
-  return { disclosure: { title: "Private vault", subtitle: "Opened", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, accounts } }, documents: { state: "ready", data: documents }, review: { state: "absent", reason: "" }, activity: { state: "unavailable", reason: "not connected" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
+  return { disclosure: { title: "Private vault", subtitle: "Opened", detail: "" }, overview: { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [figure], withheld: [], unplaced: [] }, accounts } }, documents: { state: "ready", data: documents }, activity: { state: "unavailable", reason: "not connected" }, conversation: { state: "absent", reason: "" }, trust: { state: "absent", reason: "" } };
 }
 
 describe("evidence figure projection", () => {
@@ -71,5 +71,17 @@ describe("evidence figure projection", () => {
     expect(resolveEvidenceTarget({ state: "unavailable", reason: "none" }, "doc").state).toBe("documents_unavailable");
     expect(resolveEvidenceTarget({ state: "ready", data: documents }, "missing").state).toBe("missing_document");
     expect(resolveEvidenceTarget({ state: "ready", data: { ...documents, documents: [documents.documents[0], { ...documents.documents[0], name: "duplicate.pdf" }] } }, "doc").state).toBe("conflicted_identity");
+  });
+
+  it("resolves a durable conversation figure without exposing raw record identities", () => {
+    const state = snapshot();
+    state.conversation = { state: "ready", data: { turns: [{ id: "turn-1", kind: "ask", occurredAt: "2026-08-29", prompt: "What changed?", said: "", questionId: "", outcome: "completed", message: "", reason: "", proposal: null, answer: { question: "What changed?", text: "It moved by USD 20.00.", answered: true, refusal: "", grade: "verified", gradeSentence: "The records verify this figure.", figures: [{ id: "f1", evidenceId: "conversation:turn-1:f1", written: "USD 20.00", grade: "verified", what: "the balance change", recordIds: ["private-record-id"], evidenceLinks: [{ targetDocumentId: "doc", label: "doc.pdf", relation: "attests", page: "" }] }], spoken: { maySpeak: true, withheld: "", parts: [], text: "", gradeSentence: "", citationSentence: "", localOnly: "" } } }], questions: { queue: [], count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } } } };
+
+    const resolved = resolveEvidenceFigure(state, "conversation:turn-1:f1");
+    expect(resolved.state).toBe("ready");
+    if (resolved.state !== "ready") return;
+    expect(resolved.figure.variant).toBe("conversation");
+    expect(resolved.figure.evidenceLinks[0].targetDocumentId).toBe("doc");
+    expect(resolved.figure.recordIds.state).toBe("unavailable");
   });
 });

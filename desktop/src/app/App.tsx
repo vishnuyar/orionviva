@@ -10,10 +10,9 @@ import { Activity } from "../features/activity/Activity";
 import { ConversationDrawer } from "../features/conversation/ConversationDrawer";
 import { Documents } from "../features/documents/Documents";
 import { Overview } from "../features/overview/Overview";
-import { Review } from "../features/review/Review";
 import { Trust } from "../features/trust/Trust";
 import { resolveEvidenceTarget } from "../surface/evidence";
-import type { DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, ReviewActionState, ReviewData } from "../surface/types";
+import type { ConversationData, DeclineReason, Destination, EvidenceLink, FeatureResult, NoticeKind, QuestionActionState } from "../surface/types";
 import { destinations, standingCopy, standingOf } from "./navigation";
 import { useResponsiveNavigation } from "./useResponsiveNavigation";
 import { useEvidenceDialog } from "./useEvidenceDialog";
@@ -26,13 +25,12 @@ const pageCopy: Record<Destination, { title: string; intro: string }> = {
   accounts: { title: "Accounts", intro: "Each account speaks in its own terms, with measurement dates shown rather than implied." },
   activity: { title: "Activity", intro: "Movements, their supplied context, and the evidence behind each displayed figure." },
   documents: { title: "Documents", intro: "Capture comes first. Reading and posting stay separate." },
-  review: { title: "Review", intro: "One quiet place to inspect questions returned by the current read." },
   trust: { title: "Trust", intro: "What this preview can establish, what is unavailable, and which capabilities are not connected." },
 };
 // One mark per kind of notice, chosen by the word the notice declares. The
 // tick is reachable only from the kind that means something happened, and a
 // refusal carries no mark at all: its border says what it is, as it does on
-// the review screen.
+// the conversation.
 const noticeIcons: Record<NoticeKind, ReactNode> = { acknowledged: <Check />, refused: null };
 type Overlay = null | { kind: "navigation" } | { kind: "conversation"; requestId: number } | { kind: "evidence"; selection: { figureId: string; requestId: number } };
 type PendingDocumentFocus =
@@ -43,9 +41,9 @@ type PendingReviewFocus = { requestId: number; questionId: string; nonce: number
 // Whether the question a verb was used on is still being asked. Only the
 // read's own states carry a queue; anything else cannot say either way, and
 // reports false so that focus is left where it is.
-function reviewQueueHolds(review: FeatureResult<ReviewData>, questionId: string): boolean {
-  if (review.state !== "ready" && review.state !== "partial" && review.state !== "needs_input") return false;
-  return review.data.queue.some((question) => question.id === questionId);
+function conversationHoldsQuestion(conversation: FeatureResult<ConversationData>, questionId: string): boolean {
+  if (conversation.state !== "ready" && conversation.state !== "partial" && conversation.state !== "needs_input") return false;
+  return conversation.data.questions.queue.some((question) => question.id === questionId);
 }
 
 export function ConversationDialogShell({ resetKey, drawerRef, closeRef, onDismiss, children }: { resetKey: string; drawerRef: RefObject<HTMLElement | null>; closeRef: RefObject<HTMLButtonElement | null>; onDismiss: () => void; children: ReactNode }) {
@@ -68,7 +66,7 @@ export function App() {
   const activePendingFocusNonce = useRef<number | null>(null);
   const reviewFocusNonce = useRef(0);
   const activeReviewFocusNonce = useRef<number | null>(null);
-  const settledReviewAction = useRef<ReviewActionState | null>(null);
+  const settledReviewAction = useRef<QuestionActionState | null>(null);
   const mobileNav = overlay?.kind === "navigation";
   const isNarrow = useResponsiveNavigation();
   const navigationTriggerRef = useRef<HTMLButtonElement>(null);
@@ -117,7 +115,7 @@ export function App() {
 
   useEffect(() => {
     if (!pendingReviewFocus) return undefined;
-    if (session.requestId !== pendingReviewFocus.requestId || session.destination !== "review" || session.selectedQueue !== pendingReviewFocus.questionId) {
+    if (session.requestId !== pendingReviewFocus.requestId || !conversationOpen || session.selectedQueue !== pendingReviewFocus.questionId) {
       activeReviewFocusNonce.current = null;
       setPendingReviewFocus(null);
       return undefined;
@@ -133,7 +131,7 @@ export function App() {
       cancelAnimationFrame(frame);
       if (activeReviewFocusNonce.current === pendingReviewFocus.nonce) activeReviewFocusNonce.current = null;
     };
-  }, [pendingReviewFocus, session.destination, session.requestId, session.selectedQueue]);
+  }, [conversationOpen, pendingReviewFocus, session.requestId, session.selectedQueue]);
 
   // A write that took leaves focus on a control that has gone with the
   // question it belonged to. Focus therefore moves, one frame later once the
@@ -143,15 +141,15 @@ export function App() {
   // write that was refused moved nothing, so focus stays on the control the
   // person must use again.
   useEffect(() => {
-    const acted = session.reviewAction;
+    const acted = session.questionAction;
     if (acted.state !== "settled" || settledReviewAction.current === acted) return undefined;
     settledReviewAction.current = acted;
-    if (session.destination !== "review" || reviewQueueHolds(surface.review, acted.questionId)) return undefined;
+    if (!conversationOpen || conversationHoldsQuestion(surface.conversation, acted.questionId)) return undefined;
     const frame = requestAnimationFrame(() => {
-      (document.getElementById("selected-question-title") ?? document.getElementById("review-empty-title") ?? document.getElementById("review-outcome-title"))?.focus();
+      (document.getElementById("selected-question-title") ?? document.getElementById("review-empty-title") ?? document.getElementById("conversation-action-outcome"))?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [session.destination, session.reviewAction, surface.review]);
+  }, [conversationOpen, session.questionAction, surface.conversation]);
 
   useEffect(() => {
     if (!isNarrow && mobileNav) {
@@ -216,7 +214,7 @@ export function App() {
   function openSampleVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setOverlay(null); void control.openSampleVault(); }
   function openReviewQuestion(questionId: string) {
     control.selectQueue(questionId);
-    control.navigate("review");
+    setOverlay({ kind: "conversation", requestId: session.requestId });
     setPendingReviewFocus({ requestId: session.requestId, questionId, nonce: ++reviewFocusNonce.current });
   }
   function inspectOverviewDocument(documentId: string) {
@@ -254,6 +252,7 @@ export function App() {
     if (gesture === "several") refuseSeveral();
   }
   function openFigure(figureId: string) { setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId } }); }
+  function openConversationFigure(figureId: string) { conversationDialog.cancelPendingRestore(); setOverlay({ kind: "evidence", selection: { figureId, requestId: session.requestId } }); }
   function openEvidenceDocument(link: EvidenceLink, fromDrawer = false) {
     const target = resolveEvidenceTarget(surface.documents, link.targetDocumentId);
     const label = link.label.trim() || "Source label unavailable";
@@ -323,16 +322,15 @@ export function App() {
       <div className="content-wrap"><div className="page-heading"><div><div className="kicker">{pageCopy[session.destination].intro}</div><h1 ref={pageTitleRef} id="page-title" tabIndex={-1}>{pageCopy[session.destination].title}</h1></div>{session.destination !== "trust" && <div className="page-actions"><button className="primary-button" onClick={openDocuments}><FilePlus2 size={17} />Go to documents</button></div>}</div>
         <SourceDisclosure disclosure={surface.disclosure} />
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
-          {session.destination === "overview" && <Overview result={surface.overview} reviewResult={surface.review} activityResult={surface.activity} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? () => setOverlay({ kind: "conversation", requestId: session.requestId }) : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
+          {session.destination === "overview" && <Overview result={surface.overview} conversationResult={surface.conversation} activityResult={surface.activity} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? () => setOverlay({ kind: "conversation", requestId: session.requestId }) : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} />}
           {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments() } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
-          {session.destination === "review" && <Review result={surface.review} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} actions={{ state: session.reviewAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} />}
           {session.destination === "activity" && <Activity result={surface.activity} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignCategory: (movementId, categoryId) => void control.assignActivityCategory(movementId, categoryId), onReplaceTags: (movementId, tagIds) => void control.replaceActivityTags(movementId, tagIds), onConfirmTransfer: (movementId, counterpartId) => void control.confirmActivityTransfer(movementId, counterpartId), onRejectTransfer: (movementId) => void control.rejectActivityTransfer(movementId), onUnlinkTransfer: (movementId, counterpartId) => void control.unlinkActivityTransfer(movementId, counterpartId) } : null} onOpenEvidence={openEvidenceDocument} />}
           {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} displayPreference={{ showVerificationDetails: proofPreference.showVerificationDetails, onChange: proofPreference.setShowVerificationDetails }} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file) } : null} />}
         </FeatureBoundary>}
       </div>
     </main>
-    {conversationOpen && <ConversationDialogShell resetKey={`${session.requestId}-conversation`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer result={surface.conversation} selectedPrompt={session.selectedPrompt} onSelectPrompt={control.selectPrompt} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean) => void control.askViva(question, mirrored) } : null} /></ConversationDialogShell>}
+    {conversationOpen && <ConversationDialogShell resetKey={`${session.requestId}-conversation`} drawerRef={conversationDrawerRef} closeRef={conversationCloseRef} onDismiss={conversationDialog.dismissAndRestore}><ConversationDrawer result={surface.conversation} selectedQueue={session.selectedQueue} onSelectQueue={control.selectQueue} onOpenFigure={openConversationFigure} ask={control.askAvailable ? { state: session.askAction, onAsk: (question: string, mirrored: boolean) => void control.askViva(question, mirrored) } : null} controls={{ state: session.questionAction, onAnswer: answerQuestion, onConfirm: confirmProposal, onDecline: declineQuestion }} /></ConversationDialogShell>}
     {evidenceSelection && <EvidenceDrawer snapshot={surface} selection={evidenceSelection} drawerRef={evidenceDrawerRef} closeRef={evidenceCloseRef} onDismiss={evidenceDialog.dismissAndRestore} onOpenDocument={(link) => openEvidenceDocument(link, true)} renderEvidenceBadge={(grade) => <EvidenceBadge grade={grade.grade} label={grade.label} description={grade.description} />} />}
   </div>;
 }

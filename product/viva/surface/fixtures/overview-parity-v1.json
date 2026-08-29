@@ -408,6 +408,367 @@
         "surface": "activity"
       }
     },
+    "conversation": {
+      "ok": true,
+      "protocol": "2.0",
+      "request_id": "parity-conversation",
+      "result": {
+        "data": {
+          "answered_by_document": "This one is answered by the document itself \u2014 add it below whenever you have it to hand.",
+          "invite": "Tell me in your own words",
+          "pending": {
+            "count": 0
+          },
+          "questions": [
+            {
+              "amount": "3402.10",
+              "count": 1,
+              "currency": "USD",
+              "id": "reconciliation:954c491baddd",
+              "kind": "reconciliation",
+              "refs": {
+                "doc_id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071"
+              },
+              "scope": "one",
+              "slots": [],
+              "text": "Your acct:everyday-checking statement for 2026-08-01 \u2013 2026-08-31 doesn't continue from the balance I hold. A statement in between looks to be missing \u2014 do you happen to have one?",
+              "why": "It opens at USD 3,081.45; my chain ends elsewhere."
+            },
+            {
+              "amount": "318.55",
+              "count": 1,
+              "currency": "USD",
+              "id": "merchant:rent",
+              "kind": "merchant",
+              "refs": {
+                "categories": [
+                  "income",
+                  "transfers",
+                  "loan_payments",
+                  "fees",
+                  "groceries",
+                  "dining",
+                  "shopping",
+                  "transport",
+                  "travel",
+                  "utilities",
+                  "housing",
+                  "health",
+                  "personal_care",
+                  "entertainment",
+                  "services",
+                  "government_nonprofit",
+                  "other"
+                ],
+                "example": "rent",
+                "merchant": "rent",
+                "movements": []
+              },
+              "scope": "pattern",
+              "slots": [
+                {
+                  "choices": [
+                    "income",
+                    "transfers",
+                    "loan_payments",
+                    "fees",
+                    "groceries",
+                    "dining",
+                    "shopping",
+                    "transport",
+                    "travel",
+                    "utilities",
+                    "housing",
+                    "health",
+                    "personal_care",
+                    "entertainment",
+                    "services",
+                    "government_nonprofit",
+                    "other"
+                  ],
+                  "name": "category",
+                  "required": true,
+                  "type": "choice",
+                  "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
+                }
+              ],
+              "text": "May I ask what rent is? You have 1 transaction(s) with it, USD 318.55 in total.",
+              "why": "I don't yet have a category for this merchant."
+            },
+            {
+              "amount": "275.00",
+              "count": 1,
+              "currency": "USD",
+              "id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "kind": "transfer",
+              "refs": {
+                "candidates": [
+                  "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0"
+                ],
+                "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "same_money",
+                  "required": true,
+                  "type": "yes_no",
+                  "wants": "A yes or a no is all I need."
+                }
+              ],
+              "text": "On 2026-06-22 you moved USD 275.00 (possible transfer to savings). Was that money moving between your own accounts, rather than being spent?",
+              "why": "1 movement(s) of the same amount within a few days on another account you hold."
+            },
+            {
+              "amount": "160.00",
+              "count": 1,
+              "currency": "USD",
+              "id": "merchant:annual fee",
+              "kind": "merchant",
+              "refs": {
+                "categories": [
+                  "income",
+                  "transfers",
+                  "loan_payments",
+                  "fees",
+                  "groceries",
+                  "dining",
+                  "shopping",
+                  "transport",
+                  "travel",
+                  "utilities",
+                  "housing",
+                  "health",
+                  "personal_care",
+                  "entertainment",
+                  "services",
+                  "government_nonprofit",
+                  "other"
+                ],
+                "example": "annual fee",
+                "merchant": "annual fee",
+                "movements": []
+              },
+              "scope": "pattern",
+              "slots": [
+                {
+                  "choices": [
+                    "income",
+                    "transfers",
+                    "loan_payments",
+                    "fees",
+                    "groceries",
+                    "dining",
+                    "shopping",
+                    "transport",
+                    "travel",
+                    "utilities",
+                    "housing",
+                    "health",
+                    "personal_care",
+                    "entertainment",
+                    "services",
+                    "government_nonprofit",
+                    "other"
+                  ],
+                  "name": "category",
+                  "required": true,
+                  "type": "choice",
+                  "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
+                }
+              ],
+              "text": "May I ask what annual fee is? You have 1 transaction(s) with it, USD 160.00 in total.",
+              "why": "I don't yet have a category for this merchant."
+            },
+            {
+              "amount": "120.00",
+              "count": 1,
+              "currency": "USD",
+              "id": "merchant:utilities",
+              "kind": "merchant",
+              "refs": {
+                "categories": [
+                  "income",
+                  "transfers",
+                  "loan_payments",
+                  "fees",
+                  "groceries",
+                  "dining",
+                  "shopping",
+                  "transport",
+                  "travel",
+                  "utilities",
+                  "housing",
+                  "health",
+                  "personal_care",
+                  "entertainment",
+                  "services",
+                  "government_nonprofit",
+                  "other"
+                ],
+                "example": "utilities",
+                "merchant": "utilities",
+                "movements": []
+              },
+              "scope": "pattern",
+              "slots": [
+                {
+                  "choices": [
+                    "income",
+                    "transfers",
+                    "loan_payments",
+                    "fees",
+                    "groceries",
+                    "dining",
+                    "shopping",
+                    "transport",
+                    "travel",
+                    "utilities",
+                    "housing",
+                    "health",
+                    "personal_care",
+                    "entertainment",
+                    "services",
+                    "government_nonprofit",
+                    "other"
+                  ],
+                  "name": "category",
+                  "required": true,
+                  "type": "choice",
+                  "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
+                }
+              ],
+              "text": "May I ask what utilities is? You have 1 transaction(s) with it, USD 120.00 in total.",
+              "why": "I don't yet have a category for this merchant."
+            },
+            {
+              "amount": "0",
+              "count": 1,
+              "currency": "USD",
+              "id": "expectation:investment-1099",
+              "kind": "expectation",
+              "refs": {
+                "document": "1099 (B and DIV) from the broker",
+                "registry_entry": "investment-1099",
+                "subject": "Growth Portfolio"
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "have_it",
+                  "required": true,
+                  "type": "yes_no",
+                  "wants": "A yes or a no is all I need."
+                }
+              ],
+              "text": "You hold Growth Portfolio. Its 1099 (B and DIV) from the broker would tell me what was truly gained or lost \u2014 detail I currently have to leave aside. Do you have this year's?",
+              "why": "Realized gains and dividends of USD 0.00 are on your books; the tax form is what attests them."
+            },
+            {
+              "amount": "0",
+              "count": 1,
+              "currency": "EUR",
+              "id": "expectation:statement-currency:acct:abroad-current",
+              "kind": "expectation",
+              "refs": {
+                "document": "a newer statement",
+                "registry_entry": "statement-currency",
+                "subject": "acct:abroad-current"
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "have_it",
+                  "required": true,
+                  "type": "yes_no",
+                  "wants": "A yes or a no is all I need."
+                }
+              ],
+              "text": "My picture of Abroad Current ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+            },
+            {
+              "amount": "0",
+              "count": 1,
+              "currency": "USD",
+              "id": "expectation:statement-currency:acct:dormant-savings",
+              "kind": "expectation",
+              "refs": {
+                "document": "a newer statement",
+                "registry_entry": "statement-currency",
+                "subject": "acct:dormant-savings"
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "have_it",
+                  "required": true,
+                  "type": "yes_no",
+                  "wants": "A yes or a no is all I need."
+                }
+              ],
+              "text": "My picture of Dormant Savings ends at 2025-11-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+            },
+            {
+              "amount": "0",
+              "count": 1,
+              "currency": "USD",
+              "id": "expectation:statement-currency:acct:everyday-checking",
+              "kind": "expectation",
+              "refs": {
+                "document": "a newer statement",
+                "registry_entry": "statement-currency",
+                "subject": "acct:everyday-checking"
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "have_it",
+                  "required": true,
+                  "type": "yes_no",
+                  "wants": "A yes or a no is all I need."
+                }
+              ],
+              "text": "My picture of Everyday Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+            },
+            {
+              "amount": "0",
+              "count": 1,
+              "currency": "USD",
+              "id": "expectation:statement-currency:acct:household-card",
+              "kind": "expectation",
+              "refs": {
+                "document": "a newer statement",
+                "registry_entry": "statement-currency",
+                "subject": "acct:household-card"
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "have_it",
+                  "required": true,
+                  "type": "yes_no",
+                  "wants": "A yes or a no is all I need."
+                }
+              ],
+              "text": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
+              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
+            }
+          ],
+          "state": "ready",
+          "tail": {
+            "amount": "0",
+            "count": 4
+          },
+          "total": 14,
+          "turns": []
+        },
+        "job_id": "parity-conversation",
+        "surface": "conversation"
+      }
+    },
     "documents": {
       "ok": true,
       "protocol": "2.0",
@@ -1491,366 +1852,6 @@
         "surface": "overview"
       }
     },
-    "review": {
-      "ok": true,
-      "protocol": "2.0",
-      "request_id": "parity-review",
-      "result": {
-        "data": {
-          "answered_by_document": "This one is answered by the document itself \u2014 add it below whenever you have it to hand.",
-          "invite": "Tell me in your own words",
-          "pending": {
-            "count": 0
-          },
-          "questions": [
-            {
-              "amount": "3402.10",
-              "count": 1,
-              "currency": "USD",
-              "id": "reconciliation:954c491baddd",
-              "kind": "reconciliation",
-              "refs": {
-                "doc_id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071"
-              },
-              "scope": "one",
-              "slots": [],
-              "text": "Your acct:everyday-checking statement for 2026-08-01 \u2013 2026-08-31 doesn't continue from the balance I hold. A statement in between looks to be missing \u2014 do you happen to have one?",
-              "why": "It opens at USD 3,081.45; my chain ends elsewhere."
-            },
-            {
-              "amount": "318.55",
-              "count": 1,
-              "currency": "USD",
-              "id": "merchant:rent",
-              "kind": "merchant",
-              "refs": {
-                "categories": [
-                  "income",
-                  "transfers",
-                  "loan_payments",
-                  "fees",
-                  "groceries",
-                  "dining",
-                  "shopping",
-                  "transport",
-                  "travel",
-                  "utilities",
-                  "housing",
-                  "health",
-                  "personal_care",
-                  "entertainment",
-                  "services",
-                  "government_nonprofit",
-                  "other"
-                ],
-                "example": "rent",
-                "merchant": "rent",
-                "movements": []
-              },
-              "scope": "pattern",
-              "slots": [
-                {
-                  "choices": [
-                    "income",
-                    "transfers",
-                    "loan_payments",
-                    "fees",
-                    "groceries",
-                    "dining",
-                    "shopping",
-                    "transport",
-                    "travel",
-                    "utilities",
-                    "housing",
-                    "health",
-                    "personal_care",
-                    "entertainment",
-                    "services",
-                    "government_nonprofit",
-                    "other"
-                  ],
-                  "name": "category",
-                  "required": true,
-                  "type": "choice",
-                  "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
-                }
-              ],
-              "text": "May I ask what rent is? You have 1 transaction(s) with it, USD 318.55 in total.",
-              "why": "I don't yet have a category for this merchant."
-            },
-            {
-              "amount": "275.00",
-              "count": 1,
-              "currency": "USD",
-              "id": "transfer:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
-              "kind": "transfer",
-              "refs": {
-                "candidates": [
-                  "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0"
-                ],
-                "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "same_money",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "On 2026-06-22 you moved USD 275.00 (possible transfer to savings). Was that money moving between your own accounts, rather than being spent?",
-              "why": "1 movement(s) of the same amount within a few days on another account you hold."
-            },
-            {
-              "amount": "160.00",
-              "count": 1,
-              "currency": "USD",
-              "id": "merchant:annual fee",
-              "kind": "merchant",
-              "refs": {
-                "categories": [
-                  "income",
-                  "transfers",
-                  "loan_payments",
-                  "fees",
-                  "groceries",
-                  "dining",
-                  "shopping",
-                  "transport",
-                  "travel",
-                  "utilities",
-                  "housing",
-                  "health",
-                  "personal_care",
-                  "entertainment",
-                  "services",
-                  "government_nonprofit",
-                  "other"
-                ],
-                "example": "annual fee",
-                "merchant": "annual fee",
-                "movements": []
-              },
-              "scope": "pattern",
-              "slots": [
-                {
-                  "choices": [
-                    "income",
-                    "transfers",
-                    "loan_payments",
-                    "fees",
-                    "groceries",
-                    "dining",
-                    "shopping",
-                    "transport",
-                    "travel",
-                    "utilities",
-                    "housing",
-                    "health",
-                    "personal_care",
-                    "entertainment",
-                    "services",
-                    "government_nonprofit",
-                    "other"
-                  ],
-                  "name": "category",
-                  "required": true,
-                  "type": "choice",
-                  "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
-                }
-              ],
-              "text": "May I ask what annual fee is? You have 1 transaction(s) with it, USD 160.00 in total.",
-              "why": "I don't yet have a category for this merchant."
-            },
-            {
-              "amount": "120.00",
-              "count": 1,
-              "currency": "USD",
-              "id": "merchant:utilities",
-              "kind": "merchant",
-              "refs": {
-                "categories": [
-                  "income",
-                  "transfers",
-                  "loan_payments",
-                  "fees",
-                  "groceries",
-                  "dining",
-                  "shopping",
-                  "transport",
-                  "travel",
-                  "utilities",
-                  "housing",
-                  "health",
-                  "personal_care",
-                  "entertainment",
-                  "services",
-                  "government_nonprofit",
-                  "other"
-                ],
-                "example": "utilities",
-                "merchant": "utilities",
-                "movements": []
-              },
-              "scope": "pattern",
-              "slots": [
-                {
-                  "choices": [
-                    "income",
-                    "transfers",
-                    "loan_payments",
-                    "fees",
-                    "groceries",
-                    "dining",
-                    "shopping",
-                    "transport",
-                    "travel",
-                    "utilities",
-                    "housing",
-                    "health",
-                    "personal_care",
-                    "entertainment",
-                    "services",
-                    "government_nonprofit",
-                    "other"
-                  ],
-                  "name": "category",
-                  "required": true,
-                  "type": "choice",
-                  "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
-                }
-              ],
-              "text": "May I ask what utilities is? You have 1 transaction(s) with it, USD 120.00 in total.",
-              "why": "I don't yet have a category for this merchant."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "USD",
-              "id": "expectation:investment-1099",
-              "kind": "expectation",
-              "refs": {
-                "document": "1099 (B and DIV) from the broker",
-                "registry_entry": "investment-1099",
-                "subject": "Growth Portfolio"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "You hold Growth Portfolio. Its 1099 (B and DIV) from the broker would tell me what was truly gained or lost \u2014 detail I currently have to leave aside. Do you have this year's?",
-              "why": "Realized gains and dividends of USD 0.00 are on your books; the tax form is what attests them."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "EUR",
-              "id": "expectation:statement-currency:acct:abroad-current",
-              "kind": "expectation",
-              "refs": {
-                "document": "a newer statement",
-                "registry_entry": "statement-currency",
-                "subject": "acct:abroad-current"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "My picture of Abroad Current ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
-              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "USD",
-              "id": "expectation:statement-currency:acct:dormant-savings",
-              "kind": "expectation",
-              "refs": {
-                "document": "a newer statement",
-                "registry_entry": "statement-currency",
-                "subject": "acct:dormant-savings"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "My picture of Dormant Savings ends at 2025-11-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
-              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "USD",
-              "id": "expectation:statement-currency:acct:everyday-checking",
-              "kind": "expectation",
-              "refs": {
-                "document": "a newer statement",
-                "registry_entry": "statement-currency",
-                "subject": "acct:everyday-checking"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "My picture of Everyday Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
-              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "USD",
-              "id": "expectation:statement-currency:acct:household-card",
-              "kind": "expectation",
-              "refs": {
-                "document": "a newer statement",
-                "registry_entry": "statement-currency",
-                "subject": "acct:household-card"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
-              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
-            }
-          ],
-          "state": "ready",
-          "tail": {
-            "amount": "0",
-            "count": 4
-          },
-          "total": 14
-        },
-        "job_id": "parity-review",
-        "surface": "review"
-      }
-    },
     "trust": {
       "ok": true,
       "protocol": "2.0",
@@ -1861,10 +1862,6 @@
             {
               "id": "anchoring",
               "sentence": "Nothing here is anchored anywhere outside this machine. There is no external anchoring built: no third party holds a hash of your records, nobody could tell you whether this vault has been altered, and none of what you see rests on anything but this machine being honest with you."
-            },
-            {
-              "id": "conversation_history",
-              "sentence": "This build cannot show the recorded turns from questions you have asked Viva."
             }
           ],
           "notes": [],

@@ -63,7 +63,7 @@
 
 ### MON-50 — a substantive answer has no button payload
 **State:** enforced
-**Code:** product/viva/reply.py:536 (a closed vocabulary is validation, not a payload); desktop/src/features/review/Review.tsx (`AnswerControls`)
+**Code:** product/viva/reply.py:536 (a closed vocabulary is validation, not a payload); desktop/src/features/conversation/Questions.tsx (`AnswerControls`)
 **Test:** product/tests/test_ask.py::test_a_reply_she_could_not_read_leaves_the_question_where_it_was
 
 1. A question's substantive answer offers no clickable payload; it enters as the person's sentence and is read through the slots the question declared.
@@ -73,11 +73,11 @@
 
 ### MON-51 — confirmation is an explicit typed decision (X3)
 **State:** enforced
-**Code:** product/viva/listen.py:538 (`propose`), :658 (`apply_proposal`); product/viva/desktop_bridge/review_actions.py (`ReviewActions.confirm`)
-**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written, product/tests/test_review_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
+**Code:** product/viva/listen.py:538 (`propose`), :658 (`apply_proposal`); product/viva/desktop_bridge/conversation_actions.py (`ConversationActions.confirm`)
+**Test:** product/tests/test_ask.py::test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written, product/tests/test_conversation_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
 
 1. An answer that would do something irreversible comes back as a proposal stating in plain words what it would do.
-2. The decision is a declared `yes_no` slot, filled either from the person's words or by an explicit confirm-or-decline control and decided by code (product/tests/test_ask.py::test_a_confirmation_is_read_as_language_not_as_a_word; desktop/src/features/review/Review.test.tsx).
+2. The decision is a declared `yes_no` slot, filled either from the person's words or by an explicit confirm-or-decline control and decided by code (product/tests/test_ask.py::test_a_confirmation_is_read_as_language_not_as_a_word; desktop/src/features/conversation/Questions.test.tsx).
 3. A proposal never confirmed leaves the ledger untouched (product/tests/test_ask.py::test_a_proposal_that_is_never_confirmed_leaves_the_ledger_untouched).
 4. The opened-vault bridge retains the proposed structure and gives the interface only an opaque identity, summary and decision sentence; a client cannot submit replacement legs.
 

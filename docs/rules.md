@@ -472,7 +472,7 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-26** | the model is a copywriter at design time, not at run time | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag` |
 | **VOICE-27** | one question at a time, with the tail summarized | enforced | [viva-persona-and-interview.md](viva-persona-and-interview.md) | `test_an_account_with_a_schema_is_asked_one_thing_at_a_time` +3 |
 | **VOICE-30** | Viva is summoned, never ambient | untestable | [experience-vision.md](experience-vision.md) | — |
-| **VOICE-31** | the product opens as a picture, not a chat | **unmet** | [experience-vision.md](experience-vision.md) | — |
+| **VOICE-31** | the product opens as a picture, not a chat | by-review | [experience-vision.md](experience-vision.md) | — |
 | **VOICE-33** | a capture surface creates no hosted data | **unmet** | [experience-vision.md](experience-vision.md) | — |
 | **VOICE-34** | a spoken answer is mirrored in text | **unmet** | [experience-vision.md](experience-vision.md) | — |
 | **VOICE-36** | a correction is an event, permanently remembered | enforced *(exception)* | [experience-vision.md](experience-vision.md) | `test_reset_drops_model_categorization_but_keeps_my_rulings` +1 |
@@ -541,7 +541,7 @@ What Viva may say, how she is asked, and what a figure must carry to cross into 
 | **VOICE-128** | tags gain account scope, and the model copies the person's word | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | — |
 | **VOICE-129** | cycle 1 is deterministic, and a model selector must beat it on measured grounds | enforced | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_an_account_with_a_schema_is_asked_one_thing_at_a_time` |
 | **VOICE-130** | jurisdiction is an attribute of the account, and the country tag is derived | **unmet** | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) | `test_a_jurisdiction_scoped_question_does_not_travel` |
-| **VOICE-131** | the sentence and the parse are captured verbatim | **unmet** | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | — |
+| **VOICE-131** | the sentence and the parse are captured verbatim | enforced | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) | `test_interpretation_exchanges_are_captured_as_outbound_evidence` |
 | **VOICE-132** | a gap carries the address its measurement is re-taken at | enforced | [user-interface-implementation-status.md](user-interface-implementation-status.md) | `test_an_anchored_gap_resolves_at_the_address_it_names` +3 |
 | **VOICE-133** | five words, five layers, and none of them is a synonym | untestable | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) | — |
 | **VOICE-134** | the interface says receipt; the contract keeps citation | **unmet** | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) | — |
@@ -632,7 +632,7 @@ not been. Grouped by why the gap exists.
 
 ### Built, or partly built, and pinned by nothing
 
-56 rules.
+57 rules.
 
 | Rule | Name | State | Doc |
 | --- | --- | --- | --- |
@@ -686,6 +686,7 @@ not been. Grouped by why the gap exists.
 | **PROJ-60** | a small core with view modules behind a facade | by-review | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) |
 | **T6** | Nothing leaves silently | by-review | [design-invariants.md](design-invariants.md) |
 | **VOICE-110** | compiled frontend output is never committed | by-review-with-exception | [user-interface-architecture-and-delivery.md](user-interface-architecture-and-delivery.md) |
+| **VOICE-31** | the product opens as a picture, not a chat | by-review | [experience-vision.md](experience-vision.md) |
 | **VOICE-135** | `disabled` is reserved for nothing; `aria-disabled` says a control is busy | contradicted-by-code | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) |
 | **VOICE-136** | a destination and a control render only when the registry and a served read say so | contradicted-by-code | [surface-charter.md](surface-charter.md) |
 | **VOICE-137** | one absence sentence per panel; the full account lives in Trust | contradicted-by-code | [surface-charter.md](surface-charter.md) |
@@ -693,7 +694,7 @@ not been. Grouped by why the gap exists.
 
 ### Nothing to test — the mechanism is not built
 
-60 rules.
+58 rules.
 
 | Rule | Name | State | Doc |
 | --- | --- | --- | --- |
@@ -734,7 +735,6 @@ not been. Grouped by why the gap exists.
 | **SPINE-11** | A row in the index states a decision, never that it is built | unmet | [decisions/README.md](decisions/README.md) |
 | **SPINE-12** | An invariant joins the checklist by deliberate decision | unmet | [design-invariants.md](design-invariants.md) |
 | **VOICE-15** | she works in the background, and the work is quiet | unmet | [viva-persona.md](viva-persona.md) |
-| **VOICE-31** | the product opens as a picture, not a chat | unmet | [experience-vision.md](experience-vision.md) |
 | **VOICE-33** | a capture surface creates no hosted data | unmet | [experience-vision.md](experience-vision.md) |
 | **VOICE-34** | a spoken answer is mirrored in text | unmet | [experience-vision.md](experience-vision.md) |
 | **VOICE-65** | a card that fails is a card that failed, never a ledger that failed | unmet | [the-surface-cards.md](the-surface-cards.md) |
@@ -749,7 +749,6 @@ not been. Grouped by why the gap exists.
 | **VOICE-124** | seed small, generate on first encounter, promote on review | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
 | **VOICE-125** | no amounts and no currency in the interview envelope | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
 | **VOICE-128** | tags gain account scope, and the model copies the person's word | unmet | [the-interview-and-the-schema-pack.md](the-interview-and-the-schema-pack.md) |
-| **VOICE-131** | the sentence and the parse are captured verbatim | unmet | [viva-listens-and-speaks.md](viva-listens-and-speaks.md) |
 | **VOICE-134** | the interface says receipt; the contract keeps citation | unmet | [the-words-the-interface-uses.md](the-words-the-interface-uses.md) |
 | **VOICE-140** | craft is a gate: tokens, and keyboard reach | unmet | [surface-charter.md](surface-charter.md) |
 | **VOICE-141** | the receipt goes to the passage | unmet | [surface-charter.md](surface-charter.md) |
@@ -803,7 +802,7 @@ TypeScript tests, and moving it even that far is the product owner's.
 | **PROG-9** — a claim's identity is its value, page and region<br>[benchmark-harness-design.md:34](benchmark-harness-design.md) | A claim is identified by `(value, page, region)`; the label is an annotation. | Same site as ING-4: `core/vivacore/claims.py:30` and `bench/vivabench/keybuild.py:113`. Page, region and page-namespaced group are written onto every claim by the runner and read by nothing. |
 | **PROG-17** — a frozen key's hash is stable<br>[benchmark-harness-design.md:111](benchmark-harness-design.md) | Freezing twice yields the identical key and hash, so a re-run can prove it used the same key. | `bench/vivabench/cli.py:183` re-reads the audit worksheet and appends every resolved row to `key.entries` on every invocation; `bench/vivabench/keybuild.py:158` only sets the flag and hashes what it is handed. Entries grow each pass and each pass commits a different hash. |
 | **PROG-23** — `viva-bench report` emits the scorecards<br>[benchmark-harness-architecture.md:42](benchmark-harness-architecture.md) | `report` writes scorecards as markdown and JSON per (model, doc type, locale). | `bench/vivabench/cli.py:287` registers `report` as a bare alias of `cmd_score` without the `--mode` flag `cmd_score` reads (`:233`), so every invocation raises `AttributeError` before a record is read. `bench/tests/` has no CLI coverage. `score` works. |
-| **VOICE-135** — `disabled` is reserved for nothing; `aria-disabled` says a control is busy<br>[the-words-the-interface-uses.md:34](the-words-the-interface-uses.md) | `disabled` is reserved for nothing: a control the screen cannot perform at all does not render, and a control it can perform and is only busy with carries `aria-disabled`, so the person keeps the control under their hands. | The attribute appears in no JSX under `desktop/src`, and `desktop/scripts/check-ui-boundaries.mjs` holds it out of the whole tree. The folder picker and the vault-open submit in `desktop/src/app/App.tsx` and the review screen's set-aside controls in `desktop/src/features/review/Review.tsx` all carry `aria-disabled` while the vault answers, stay focusable, and refuse a second press in their own handler. Nothing in the code contradicts the rule any longer; what keeps the row here is that no test this index can read holds any of it, and moving the word is the product owner's. |
-| **VOICE-136** — a destination and a control render only when the registry and a served read say so<br>[surface-charter.md:37](surface-charter.md) | Navigation is a projection of the capability registry: a destination renders when a surfaced capability claims it and its live read is served, and an affordance renders only when the operation behind it is served and allowlisted. | `desktop/src/app/navigation.ts:3` still hand-writes six destination memberships while deriving their runtime standing. Activity and Trust are now claimed and live; Accounts still ships without its own live read or claiming capability, so the rule remains contradicted for one destination. |
-| **VOICE-137** — one absence sentence per panel; the full account lives in Trust<br>[surface-charter.md:83](surface-charter.md) | A panel states at most one absence, in one plain sentence, and only when the absence changes what the person should do next; the enumeration of what this build cannot do lives on Trust and nowhere else. | Twenty-seven fields render as "… not supplied by this read", twenty-six of them in the past tense and one in the present, in `desktop/src/features/review/Review.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. `desktop/src/features/documents/Documents.tsx:86` renders a six-item enumeration headed "Unavailable in this preview", and `desktop/src/app/App.tsx:277` carries a standing admission in the sidebar footer, on every destination at once. |
-| **VOICE-138** — the interface speaks about the person's money, never about its machinery<br>[surface-charter.md:125](surface-charter.md) | Contract and delivery vocabulary does not reach a person on a primary surface, and no raw identifier is a primary label. | `desktop/src/app/App.tsx:212` says "Documents are not available in the current vault read."; `desktop/src/features/review/Review.tsx:94` says "The contract supplies no mapping from this guidance to a specific question."; `desktop/src/features/review/Review.tsx:74` makes a raw question identifier a primary detail row; and `desktop/src/features/accounts/Accounts.tsx:37`, `desktop/src/features/activity/Activity.tsx:37`, `desktop/src/features/review/Review.tsx:28` and `desktop/src/features/trust/Trust.tsx:60` render "identity conflicted" as a person-facing headline. |
+| **VOICE-135** — `disabled` is reserved for nothing; `aria-disabled` says a control is busy<br>[the-words-the-interface-uses.md:34](the-words-the-interface-uses.md) | `disabled` is reserved for nothing: a control the screen cannot perform at all does not render, and a control it can perform and is only busy with carries `aria-disabled`, so the person keeps the control under their hands. | The attribute appears in no JSX under `desktop/src`, and `desktop/scripts/check-ui-boundaries.mjs` holds it out of the whole tree. The folder picker and vault-open submit in `desktop/src/app/App.tsx` and the conversation's set-aside controls in `desktop/src/features/conversation/Questions.tsx` all carry `aria-disabled` while the vault answers, stay focusable, and refuse a second press in their own handler. Nothing in the code contradicts the rule any longer; what keeps the row here is that no test this index can read holds any of it, and moving the word is the product owner's. |
+| **VOICE-136** — a destination and a control render only when the registry and a served read say so<br>[surface-charter.md:37](surface-charter.md) | Navigation is a projection of the capability registry: a destination renders when a surfaced capability claims it and its live read is served, and an affordance renders only when the operation behind it is served and allowlisted. | `desktop/src/app/navigation.ts` still hand-writes five destination memberships while deriving their runtime standing. Activity and Trust are now claimed and live; Accounts still ships without its own live read or claiming capability, so the rule remains contradicted for one destination. |
+| **VOICE-137** — one absence sentence per panel; the full account lives in Trust<br>[surface-charter.md:83](surface-charter.md) | A panel states at most one absence, in one plain sentence, and only when the absence changes what the person should do next; the enumeration of what this build cannot do lives on Trust and nowhere else. | Multiple field-level absence sentences remain in `desktop/src/features/conversation/Questions.tsx`, `desktop/src/features/documents/Documents.tsx` and `desktop/src/components/EvidenceDrawer.tsx`. `desktop/src/features/documents/Documents.tsx` also renders an enumeration headed "Unavailable in this preview", and the sidebar carries a standing admission on every destination. |
+| **VOICE-138** — the interface speaks about the person's money, never about its machinery<br>[surface-charter.md:125](surface-charter.md) | Contract and delivery vocabulary does not reach a person on a primary surface, and no raw identifier is a primary label. | Conversation no longer renders raw question IDs, contract vocabulary or a separate identity-conflict headline. The remaining contradiction includes person-facing "supplied" wording there and identity-conflict wording in Accounts, Activity and Trust. |

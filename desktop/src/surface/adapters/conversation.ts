@@ -1,5 +1,18 @@
-import type { SpokenTurn, TurnFigure, TurnView } from "../types";
+import type { ActionOutcome, ConversationData, ConversationProposal, ConversationTurn, EvidenceLink, EvidenceRelation, SpokenTurn, TurnFigure, TurnView } from "../types";
 import { booleanValue, isRecord, textValue } from "./primitives";
+import { adaptQuestions } from "./questions";
+
+const OUTCOMES: readonly ActionOutcome[] = ["completed", "refused", "proposal", "waiting", "stale", "set_aside"];
+const KINDS: readonly ConversationTurn["kind"][] = ["ask", "answer", "decline", "confirm"];
+const RELATIONS: readonly EvidenceRelation[] = ["attests", "corroborates", "same_period", "same_account", "settles_question"];
+
+function evidenceLink(raw: unknown): EvidenceLink | null {
+  if (!isRecord(raw)) return null;
+  const targetDocumentId = textValue(raw.document_id);
+  const relation = RELATIONS.find((candidate) => candidate === raw.relation);
+  if (!targetDocumentId || !relation) return null;
+  return { targetDocumentId, label: textValue(raw.label), relation, page: textValue(raw.page) };
+}
 
 // One figure the sentence stated. A figure with no identity is dropped: it
 // could not be tied back to anything, and a row that cannot be followed is a
@@ -10,10 +23,12 @@ function figure(raw: unknown): TurnFigure | null {
   if (!id) return null;
   return {
     id,
+    evidenceId: textValue(raw.evidence_id),
     written: textValue(raw.written),
     grade: textValue(raw.grade),
     what: textValue(raw.what),
     recordIds: Array.isArray(raw.record_ids) ? raw.record_ids.map(textValue).filter((record) => record) : [],
+    evidenceLinks: (Array.isArray(raw.evidence_links) ? raw.evidence_links : []).map(evidenceLink).filter((link): link is EvidenceLink => link !== null),
   };
 }
 
@@ -52,4 +67,41 @@ export function adaptTurn(raw: unknown): TurnView | null {
     figures: (Array.isArray(raw.figures) ? raw.figures : []).map(figure).filter((row): row is TurnFigure => row !== null),
     spoken: spoken(raw.spoken),
   };
+}
+
+function proposal(raw: unknown): ConversationProposal | null {
+  if (!isRecord(raw)) return null;
+  const id = textValue(raw.id);
+  if (!id) return null;
+  return { id, summary: textValue(raw.summary), status: textValue(raw.status), outcome: textValue(raw.outcome), message: textValue(raw.message), reason: textValue(raw.reason) };
+}
+
+function timelineTurn(raw: unknown): ConversationTurn | null {
+  if (!isRecord(raw)) return null;
+  const id = textValue(raw.id);
+  const kind = KINDS.find((candidate) => candidate === raw.kind);
+  const outcome = OUTCOMES.find((candidate) => candidate === raw.outcome);
+  if (!id || !kind || !outcome) return null;
+  return {
+    id,
+    kind,
+    occurredAt: textValue(raw.occurred_at),
+    prompt: textValue(raw.prompt),
+    said: textValue(raw.said),
+    questionId: textValue(raw.question_id),
+    outcome,
+    message: textValue(raw.message),
+    reason: textValue(raw.reason),
+    answer: adaptTurn(raw.answer),
+    proposal: proposal(raw.proposal),
+  };
+}
+
+export function adaptConversation(raw: unknown): ConversationData | null {
+  if (!isRecord(raw) || !Array.isArray(raw.turns)) return null;
+  const questions = adaptQuestions(raw);
+  if (!questions) return null;
+  const turns = raw.turns.map(timelineTurn);
+  if (turns.some((turn) => turn === null)) return null;
+  return { turns: turns as ConversationTurn[], questions };
 }

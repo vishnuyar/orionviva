@@ -42,7 +42,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     ...(transport.subscribeToJobProgress ? { subscribeToJobProgress: transport.subscribeToJobProgress } : {}),
     readOverview: (parameters) => read("overview", parameters),
     readDocuments: () => read("documents"),
-    readReview: (parameters) => read("review", parameters),
+    readConversation: (parameters) => read("conversation", parameters),
     readJobs: () => read("jobs"),
     readTrust: () => read("trust"),
     readActivity: () => read("activity"),
@@ -65,9 +65,9 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     exportVault: (archive: string) => request("viva.vault.export", { archive }),
     restoreVault: (archive: string, directory: string, passphrase: string) => request("viva.vault.restore", { archive, directory, passphrase }),
     askViva: (question: string, mirrored: boolean) => request("viva.conversation.ask", { question, mirrored }),
-    answerQuestion: (questionId: string, said: string) => request("viva.review.answer", { question_id: questionId, said }),
-    confirmProposal: (proposalId: string, said: string, asked: string) => request("viva.review.confirm", { proposal_id: proposalId, said, asked }),
-    declineQuestion: (questionId, reason: DeclineReason) => request("viva.review.decline", { question_id: questionId, reason }),
+    answerQuestion: (questionId: string, said: string) => request("viva.conversation.answer", { question_id: questionId, said }),
+    confirmProposal: (proposalId: string, said: string, asked: string) => request("viva.conversation.confirm", { proposal_id: proposalId, said, asked }),
+    declineQuestion: (questionId, reason: DeclineReason) => request("viva.conversation.decline", { question_id: questionId, reason }),
     // The payload is the path and nothing else. A job identity is the
     // sidecar's to mint, so this side never sends one and the field set alone
     // refuses one that was sent.

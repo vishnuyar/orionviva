@@ -140,7 +140,6 @@ describe("shell", () => {
       ["AccountsWhere money sits", ".feature-panel"],
       ["ActivityWhat moved", ".activity-panel"],
       ["DocumentsWhat supports it", ".documents-surface"],
-      ["ReviewWhat needs you", ".review-inspection"],
       ["TrustHow it works", ".trust-panel"],
     ] as const;
     for (const [name, selector] of destinations) {
@@ -221,7 +220,6 @@ describe("shell", () => {
     ["Accounts", "AccountsWhere money sits"],
     ["Activity", "ActivityWhat moved"],
     ["Documents", "DocumentsWhat supports it"],
-    ["Review", "ReviewWhat needs you"],
     ["Trust", "TrustHow it works"],
   ] as const)("leaves the sample vault from %s and takes the whole session with it", async (destination, navigationName) => {
     // Leaving is one action, and nothing from the vault survives it: not the
@@ -238,7 +236,6 @@ describe("shell", () => {
     if (destination === "Overview") fireEvent.click(view.container.querySelectorAll(".account-card-button")[1]);
     if (destination === "Accounts") fireEvent.click(view.container.querySelectorAll(".detail-row-button")[1]);
     if (destination === "Documents") fireEvent.click(view.container.querySelectorAll(".document-list .detail-row-button")[1]);
-    if (destination === "Review") fireEvent.click(view.container.querySelectorAll(".review-question-row")[1]);
 
     await user.click(view.getAllByRole("button", { name: moments.sample_frame_leave })[0]);
 
@@ -306,13 +303,13 @@ describe("shell", () => {
     }
   });
 
-  it("shows the supplied review total without adding a navigation count", async () => {
+  it("shows the supplied question total inside Viva without adding a navigation count", async () => {
     const user = userEvent.setup();
     const { container, getByRole, getByText } = await openSample();
-    await user.click(getByRole("button", { name: "ReviewWhat needs you" }));
-    expect(getByRole("heading", { name: "Review queue" })).toBeInTheDocument();
-    expect(getByText("Open-question total from this read")).toBeInTheDocument();
-    const reviewTotal = (sampleReads.review.result.data as { total: number }).total;
+    await user.click(getByRole("button", { name: "Ask Viva" }));
+    expect(getByRole("heading", { name: "Questions for you" })).toBeInTheDocument();
+    expect(getByText("Open questions")).toBeInTheDocument();
+    const reviewTotal = (sampleReads.conversation.result.data as { total: number }).total;
     expect(getByText(String(reviewTotal), { selector: ".review-summary > strong" })).toBeInTheDocument();
     expect(container.querySelector(".nav-count")).toBeNull();
   });

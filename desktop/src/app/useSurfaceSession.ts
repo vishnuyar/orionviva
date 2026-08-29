@@ -2,11 +2,11 @@ import { useEffect, useReducer, useRef, useState } from "react";
 import { createDetectedBridgeClient } from "../bridge/client";
 import { BridgeRefusal, OPEN_REFUSALS } from "../bridge/contracts";
 import { privateSource, sampleSource } from "../surface/sources";
-import type { ActionResult, ActivityActionResult, ActivityActions, ActivityCorrectionVerb, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, ReviewActions, ReviewVerb, SettingsProposal, SurfaceSnapshot, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
+import type { ActionResult, ActivityActionResult, ActivityActions, ActivityCorrectionVerb, ConversationActions, DeclineReason, Destination, DocumentActions, EvidenceLink, JobView, Notice, QuestionVerb, SettingsProposal, SurfaceSnapshot, TransferVerb, TrustActions, VaultTransferActions } from "../surface/types";
 import { initialSession, liveReadingSnapshot, sessionReducer } from "./session";
 
 function fullSurfaceRereadFailed(snapshot: SurfaceSnapshot): boolean {
-  return [snapshot.overview, snapshot.documents, snapshot.review, snapshot.activity, snapshot.trust].some((result) => result.state === "failed");
+  return [snapshot.overview, snapshot.documents, snapshot.conversation, snapshot.activity, snapshot.trust].some((result) => result.state === "failed");
 }
 
 // What a gesture carrying files turned out to be. Only `one` reaches the
@@ -39,7 +39,6 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const settingsActions = session.source?.settingsActions ?? null;
   const conversationActions = session.source?.conversationActions ?? null;
   const trustActions = session.source?.trustActions ?? null;
-  const reviewActions = session.source?.reviewActions ?? null;
   const activityActions = session.source?.activityActions ?? null;
   const overviewActions = session.source?.overviewActions ?? null;
   const source = session.source;
@@ -85,18 +84,18 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     return () => { gone = true; stop?.(); };
   }, [jobStream]);
 
-  // One review verb at a time. The sidecar answers one request before reading
+  // One question verb at a time. The sidecar answers one request before reading
   // the next, so a second press while the first is in flight would queue behind
   // it and report against a queue that has already moved.
-  async function runReviewVerb(verb: ReviewVerb, questionId: string, run: (actions: ReviewActions) => Promise<ActionResult>) {
-    const actions = reviewActions;
-    if (!actions || !questionId.trim() || session.reviewAction.state === "working") return;
+  async function runQuestionVerb(verb: QuestionVerb, questionId: string, run: (actions: ConversationActions) => Promise<ActionResult>) {
+    const actions = conversationActions;
+    if (!actions || !questionId.trim() || session.questionAction.state === "working") return;
     const nextRequestId = requestId.current;
-    dispatch({ type: "review-acting", requestId: nextRequestId, questionId, verb });
+    dispatch({ type: "question-acting", requestId: nextRequestId, questionId, verb });
     const result = await run(actions);
-    const review = await actions.reread();
+    const conversation = await actions.reread();
     if (requestId.current !== nextRequestId) return;
-    dispatch({ type: "review-acted", requestId: nextRequestId, questionId, verb, result, review });
+    dispatch({ type: "question-acted", requestId: nextRequestId, questionId, verb, result, conversation });
   }
 
   // One movement correction at a time. The old snapshot remains on screen
@@ -376,8 +375,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
       try {
         const { result, turn } = await conversationActions.ask(question.trim(), mirrored);
-        const trust = await conversationActions.rereadTrust();
-        if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, trust });
+        const [conversation, trust] = await Promise.all([conversationActions.reread(), conversationActions.rereadTrust()]);
+        if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, conversation, trust });
       } finally {
         asking.current = false;
       }
@@ -442,13 +441,13 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     selectDocument(id: string) { dispatch({ type: "select-document", id }); },
     selectQueue(id: string) { dispatch({ type: "select-queue", id }); },
     async answerQuestion(questionId: string, said: string) {
-      await runReviewVerb("answer", questionId, (actions) => actions.answer(questionId, said));
+      await runQuestionVerb("answer", questionId, (actions) => actions.answer(questionId, said));
     },
     async confirmProposal(questionId: string, proposalId: string, said: string, asked: string) {
-      await runReviewVerb("confirm", questionId, (actions) => actions.confirm?.(proposalId, said, asked) ?? Promise.resolve({ state: "unserved" }));
+      await runQuestionVerb("confirm", questionId, (actions) => actions.confirm?.(proposalId, said, asked) ?? Promise.resolve({ state: "unserved" }));
     },
     async declineQuestion(questionId: string, reason: DeclineReason) {
-      await runReviewVerb("decline", questionId, (actions) => actions.decline(questionId, reason));
+      await runQuestionVerb("decline", questionId, (actions) => actions.decline(questionId, reason));
     },
     selectAccount(id: string) { dispatch({ type: "select-account", id }); },
     selectPrompt(id: string) { dispatch({ type: "select-prompt", id }); },

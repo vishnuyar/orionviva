@@ -1,32 +1,14 @@
-"""Injected vault-backed conversation: one question, one turn, one answer.
+"""Adapt an opened vault to durable conversation and correction handlers.
 
-This module knows neither the vault implementation nor the desktop transport. A
-sidecar entry point injects one already-open vault and gets back the handler for
-asking a question.
-
-**The session is the sidecar's.** It lives for as long as the vault is open, so
-turns share context the way the engine intends, and nothing on the far side of
-the bridge holds one — a caller that could hand a session back could hand back
-one nobody had. VOICE-34 requires that text and voice share one session and one
-runtime, and this is that session: a voice surface asks the same operation and
-reads the same turn.
-
-**A turn is a blocking request rather than a job.** This is one of the five
-reserved interface unknowns, and it is answered the narrow way: the reply is the
-turn. A job would let a person leave the screen while their question was being
-asked, and there is nowhere for the answer to arrive that they could then check
-it against — which is the same reason a spoken answer is not given without its
-text mirror.
-
-**Nothing is asked of a model this machine has not been told to reach.** With no
-model named there is no branch here that calls one: the planner factory answers
-with nothing, and what comes back is a reviewed sentence saying so and naming
-where a person would say yes.
+The adapter owns one lazily built session for the opened vault. Turns are
+blocking requests, and no model is called until one is configured.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+import datetime
+import secrets
 from typing import Any
 
 from viva.surface import ActionOutcome
@@ -34,16 +16,18 @@ from viva.surface import ActionOutcome
 from .handlers import BridgeRequestError
 from .jobs import JobCancelled, JobRegistry
 
-# Why a question was refused, in the machine's own words.
+# Machine reasons for unconfigured and cancelled requests.
 UNCONFIGURED = "no_model_named"
 CANCELLED = "job_cancelled"
 
-# The steps one turn declares. Asking is one step because the engine runs a turn
-# as one gated run and reports at its end; splitting it would claim granularity
-# this handler does not have.
+# Progress states exposed for one blocking ask turn.
 ASKED = "asked"
 SAID = "said"
 TURN_STEPS = (ASKED, SAID)
+
+
+class UnreadableOutcome(RuntimeError):
+    """Raised when the engine answered in a shape no outcome word describes."""
 
 
 class ConversationActions:
@@ -57,69 +41,184 @@ class ConversationActions:
     def ask(self, payload: dict[str, Any]) -> dict[str, Any]:
         """One question, and the turn it produced.
 
-        The turn is answered as a `proposal` outcome when it refused and a
-        `completed` one when it answered, because those are the vocabulary's
-        own words for a reply that settled and one that did not — and a refusal
-        here is Viva declining to state something she cannot stand behind,
-        which is an ordinary reply rather than a failure."""
+        The turn is answered as `completed` when it states an answer and
+        `refused` when Viva cannot stand behind one. A refusal is an ordinary
+        product reply rather than a transport failure."""
         from viva.persona import moment
         from viva.speak import _shown
         from viva.surface.conversation import conversation, unconfigured
 
+        from viva.ledger.events import (conversation_turn_opened,
+                                        conversation_turn_settled)
+
         question, mirrored = _ask_request(payload)
+        turn_id = secrets.token_urlsafe(18)
+        self._vault.ledger.append(conversation_turn_opened(
+            turn_id, "ask", question, _today(), mirrored=mirrored))
         session = self._opened()
         if session is None:
-            return ActionOutcome(
+            outcome = ActionOutcome(
                 "refused", moment("conversation_unconfigured"),
-                reason=UNCONFIGURED, state=unconfigured()).as_dict()
+                reason=UNCONFIGURED, state=unconfigured())
+            self._vault.ledger.append(conversation_turn_settled(
+                turn_id, outcome.kind, outcome.message, _today(),
+                reason=outcome.reason or "", answer=outcome.state))
+            return outcome.as_dict()
         job = self._jobs.open("viva.conversation.ask", TURN_STEPS)
         try:
             with job:
                 job.checkpoint()
                 turn = session.ask(question)
                 job.reached(ASKED)
-                said = conversation(turn, _shown(turn.result), mirrored)
+                said = conversation(
+                    turn, _shown(turn.result), mirrored,
+                    projection=self._vault.ledger.projection(),
+                    turn_id=turn_id)
                 job.reached(SAID)
-                return ActionOutcome(
+                outcome = ActionOutcome(
                     "completed" if said["answered"] else "refused",
                     said["text"] or said["refusal"],
                     reason=None if said["answered"] else "not_answered",
-                    state={"job_id": job.job_id, **said}).as_dict()
+                    state={"job_id": job.job_id, **said})
+                self._vault.ledger.append(conversation_turn_settled(
+                    turn_id, outcome.kind, outcome.message, _today(),
+                    reason=outcome.reason or "", answer=said))
+                return outcome.as_dict()
         except JobCancelled:
-            return ActionOutcome("refused", moment("jobs_stopped"),
-                                 reason=CANCELLED,
-                                 state={"job_id": job.job_id}).as_dict()
+            outcome = ActionOutcome("refused", moment("jobs_stopped"),
+                                    reason=CANCELLED,
+                                    state={"job_id": job.job_id})
+            self._vault.ledger.append(conversation_turn_settled(
+                turn_id, outcome.kind, outcome.message, _today(),
+                reason=outcome.reason or "", answer=outcome.state))
+            return outcome.as_dict()
+
+    def answer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Answer one live question and persist the complete outcome."""
+        from viva.engine import answer_question
+        from viva.ledger.events import (
+            conversation_proposal_recorded, conversation_turn_opened,
+            conversation_turn_settled)
+        from viva.questions import find_question
+
+        question_id, said = _answer_request(payload)
+        question = find_question(self._vault.ledger, question_id)
+        if question is None:
+            from viva.persona import moment
+            return ActionOutcome("refused", moment("reply_question_closed"),
+                                 reason="not_open").as_dict()
+        turn_id = secrets.token_urlsafe(18)
+        self._vault.ledger.append(conversation_turn_opened(
+            turn_id, "answer", question.text, _today(), said=said,
+            question_id=question.id))
+        result = answer_question(self._vault, question.id, said)
+        proposal = result.get("proposal")
+        proposal_id = ""
+        if (result.get("ok") is True and result.get("confirm") is True
+                and isinstance(proposal, dict)):
+            proposal_id = secrets.token_urlsafe(18)
+            result = {**result, "proposal": {
+                **proposal, "proposal_id": proposal_id}}
+            self._vault.ledger.append(conversation_proposal_recorded(
+                proposal_id, turn_id, question.id,
+                str(proposal.get("summary") or ""), proposal,
+                _question_stake(question), _today()))
+        outcome = _outcome_of(result)
+        self._vault.ledger.append(conversation_turn_settled(
+            turn_id, outcome.kind, outcome.message, _today(),
+            reason=outcome.reason or "", answer=outcome.state,
+            proposal_id=proposal_id))
+        return outcome.as_dict()
+
+    def decline(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Set one live question aside inside the durable timeline."""
+        from viva.engine import decline_question
+        from viva.ledger.events import (conversation_turn_opened,
+                                        conversation_turn_settled)
+        from viva.questions import find_question
+
+        question_id, reason = _decline_request(payload)
+        question = find_question(self._vault.ledger, question_id)
+        if question is None:
+            from viva.persona import moment
+            return ActionOutcome("refused", moment("reply_question_closed"),
+                                 reason="not_open").as_dict()
+        turn_id = secrets.token_urlsafe(18)
+        self._vault.ledger.append(conversation_turn_opened(
+            turn_id, "decline", question.text, _today(),
+            question_id=question.id))
+        outcome = _outcome_of(decline_question(
+            self._vault, question.id, reason))
+        self._vault.ledger.append(conversation_turn_settled(
+            turn_id, outcome.kind, outcome.message, _today(),
+            reason=outcome.reason or ""))
+        return outcome.as_dict()
+
+    def confirm(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Confirm the exact persisted proposal only while its basis is live."""
+        from viva.engine import confirm_proposal
+        from viva.ledger.events import (
+            conversation_proposal_resolved, conversation_turn_opened,
+            conversation_turn_settled)
+        from viva.persona import moment
+        from viva.questions import find_question
+
+        proposal_id, said, asked = _confirm_request(payload)
+        proposal = self._vault.ledger.projection().conversation_proposal(
+            proposal_id)
+        if proposal is None or proposal.get("status") != "open":
+            return ActionOutcome("refused", moment("reply_question_closed"),
+                                 reason="proposal_not_open").as_dict()
+        turn_id = secrets.token_urlsafe(18)
+        summary = str(proposal.get("summary") or asked or "Confirm correction")
+        self._vault.ledger.append(conversation_turn_opened(
+            turn_id, "confirm", summary, _today(), said=said))
+        question = find_question(
+            self._vault.ledger, str(proposal.get("question_id") or ""))
+        if question is None or _question_stake(question) != proposal.get("stake"):
+            outcome = ActionOutcome(
+                "stale", moment("reply_question_closed"),
+                reason="proposal_basis_changed")
+        else:
+            result = confirm_proposal(
+                self._vault, dict(proposal.get("proposal") or {}), said,
+                asked=asked or summary)
+            if result.get("ok") and result.get("confirmed") is False:
+                outcome = ActionOutcome(
+                    "set_aside", str(result.get("message") or ""))
+            else:
+                outcome = _outcome_of(result)
+        # Refused interpretations leave the proposal open; terminal or stale
+        # outcomes resolve it.
+        if outcome.kind != "refused":
+            self._vault.ledger.append(conversation_proposal_resolved(
+                proposal_id, turn_id, outcome.kind, outcome.message, _today(),
+                reason=outcome.reason or ""))
+        self._vault.ledger.append(conversation_turn_settled(
+            turn_id, outcome.kind, outcome.message, _today(),
+            reason=outcome.reason or ""))
+        return outcome.as_dict()
 
     def _opened(self):
-        """The one session this sidecar holds, or nothing.
-
-        Built on first use rather than at open, so a vault opened on a machine
-        that names no model costs nothing and reaches nothing. It is not rebuilt
-        after that: turns share context, and a second session would be a second
-        conversation wearing the first one's screen."""
+        """Return the lazily built session for this opened vault, if configured."""
         if self._session is not None:
             return self._session
         from viva import speak
 
-        # Read off the module rather than imported by name, so a test that
-        # replaces it replaces the one this handler asks. A machine that names
-        # no model answers here and reaches nothing.
+        # Module lookup lets tests replace the same configuration used here.
         spec = speak.speak_spec()
         if spec is None:
             return None
         self._session = _session_for(self._vault, spec,
                                      speak.planner_factory(spec),
-                                     speak.max_calls_from_env())
+                                     speak.max_calls_from_env(),
+                                     _prior_context(
+                                         self._vault.ledger.projection()))
         return self._session
 
 
-def _session_for(vault, spec, factory, max_calls):
-    """One session over one vault, with the tool registry the engine builds.
-
-    The registry reads the projection, which is what keeps a conversation
-    answering about the vault that is open rather than about one it was handed
-    at some earlier moment. Separated into its own function so a test can build
-    a session without a model and without reaching a planner."""
+def _session_for(vault, spec, factory, max_calls, prior_turns=()):
+    """Build a session over the opened vault's current projection registry."""
     from viva.env import locale_from_env
     from viva.speak import Session
     from viva.tools import default_registry
@@ -127,17 +226,68 @@ def _session_for(vault, spec, factory, max_calls):
     locale = locale_from_env()
     return Session(default_registry(vault.ledger.projection(), locale), factory,
                    ledger=vault.ledger, model=getattr(spec, "model", ""),
-                   max_calls=max_calls, locale=locale)
+                   max_calls=max_calls, locale=locale,
+                   prior_turns=prior_turns)
+
+
+def _prior_context(projection) -> list[tuple[str, str]]:
+    """Past visible ask turns as text context, never as current evidence."""
+    out = []
+    for row in projection.conversation_turns():
+        if row.get("kind") != "ask":
+            continue
+        if row.get("outcome") not in ("completed", "refused"):
+            continue
+        answer = row.get("answer") or {}
+        said = str(answer.get("text") or answer.get("refusal")
+                   or row.get("message") or "")
+        if said:
+            out.append((str(row.get("prompt") or ""), said))
+    return out
+
+
+def _question_stake(question) -> dict[str, Any]:
+    """The deterministic question state a persisted proposal depends on."""
+    return {
+        "id": question.id, "kind": question.kind,
+        "amount": str(question.amount), "currency": question.currency,
+        "count": question.count, "scope": question.scope,
+        "slots": [slot.to_dict() for slot in question.slots],
+        "refs": dict(question.refs),
+    }
+
+
+def _outcome_of(result: Mapping[str, Any]) -> ActionOutcome:
+    from viva.persona import moment
+
+    if "ok" not in result:
+        raise UnreadableOutcome(moment("outcome_unstated"))
+    message = str(result.get("message") or "")
+    if not result["ok"]:
+        why = str(result.get("why") or "")
+        if not why:
+            raise UnreadableOutcome(moment("outcome_unexplained"))
+        return ActionOutcome("refused", message or moment("reply_ask_again"),
+                             reason=why)
+    if "proposal" in result:
+        proposal = result.get("proposal")
+        state = proposal if isinstance(proposal, dict) else None
+        return ActionOutcome("proposal", message or moment("outcome_held"),
+                             state=state)
+    if result.get("disposition") == "set_aside":
+        return ActionOutcome("set_aside", message or moment(
+            "not_now_ack", name_part=""))
+    if result.get("recorded") is False:
+        return ActionOutcome("waiting", message or moment(
+            "reply_document_awaited"))
+    return ActionOutcome("completed", message or moment("reply_recorded"))
+
+
+outcome_of = _outcome_of
 
 
 def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool]:
-    """What a question carries: the question, and whether its text is shown.
-
-    `mirrored` is the caller stating a fact about its own screen — whether what
-    Viva says will be in front of the person. It is not a preference and it is
-    not a switch for speech: it is the input to the rule that a figure is never
-    spoken with nowhere to check it, and a caller that says no gets nothing to
-    speak rather than a quieter answer."""
+    """Validate a question and whether its answer will be mirrored in text."""
     from viva.reply import MAX_REPLY_TOKENS
 
     allowed = {"question", "mirrored"}
@@ -155,3 +305,59 @@ def _ask_request(payload: Mapping[str, Any]) -> tuple[str, bool]:
     if not isinstance(mirrored, bool):
         raise BridgeRequestError("mirrored must be true or false")
     return question, mirrored
+
+
+def _answer_request(payload: Mapping[str, Any]) -> tuple[str, str]:
+    from viva.reply import MAX_REPLY_TOKENS
+    allowed = {"question_id", "said"}
+    _fenced(payload, allowed, "viva.conversation.answer")
+    question_id = _nonempty(payload, "question_id")
+    said = _nonempty(payload, "said")
+    if len(said) > MAX_REPLY_TOKENS * 8:
+        raise BridgeRequestError("said is longer than a reply may be")
+    return question_id, said
+
+
+def _decline_request(payload: Mapping[str, Any]) -> tuple[str, str]:
+    from viva.ledger.events import DECLINE_REASONS
+    allowed = {"question_id", "reason"}
+    _fenced(payload, allowed, "viva.conversation.decline")
+    question_id = _nonempty(payload, "question_id")
+    reason = payload.get("reason", DECLINE_REASONS[0])
+    if reason not in DECLINE_REASONS:
+        raise BridgeRequestError(
+            "reason must be one of: " + ", ".join(sorted(DECLINE_REASONS)))
+    return question_id, str(reason)
+
+
+def _confirm_request(payload: Mapping[str, Any]) -> tuple[str, str, str]:
+    from viva.reply import MAX_REPLY_TOKENS
+    allowed = {"proposal_id", "said", "asked"}
+    _fenced(payload, allowed,
+            "viva.conversation.confirm")
+    proposal_id = _nonempty(payload, "proposal_id")
+    said = _nonempty(payload, "said")
+    asked = payload.get("asked", "")
+    if not isinstance(asked, str):
+        raise BridgeRequestError("asked must be a string")
+    if len(said) > MAX_REPLY_TOKENS * 8 or len(asked) > MAX_REPLY_TOKENS * 8:
+        raise BridgeRequestError("confirmation text is too long")
+    return proposal_id, said, asked
+
+
+def _fenced(payload: Mapping[str, Any], allowed: set[str], operation: str) -> None:
+    unexpected = set(payload) - allowed
+    if unexpected:
+        raise BridgeRequestError(
+            f"{operation} does not accept fields: {', '.join(sorted(unexpected))}")
+
+
+def _nonempty(payload: Mapping[str, Any], name: str) -> str:
+    value = payload.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise BridgeRequestError(f"{name} must be a non-empty string")
+    return value.strip()
+
+
+def _today() -> str:
+    return datetime.date.today().isoformat()

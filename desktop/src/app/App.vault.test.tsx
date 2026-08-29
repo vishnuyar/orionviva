@@ -208,7 +208,9 @@ describe("vault", () => {
           ? { as_of: "2026-08-18", accounts: [{ account: "live-account", name: "Private checking", kind: "deposit", currency: "USD", balance: { amount: "101.25", grade: "conflicted", dated: "2026-08-18" } }] }
           : surface === "documents"
             ? { documents: [{ id: "live-document", doc_type: "statement", resolved: false, raw_available: true }] }
-            : { questions: [{ id: "live-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, tail: { count: 0, amount: "0" }, pending: { count: 0 }, invite: "Write an answer", answered_by_document: "A document answers this" };
+            : surface === "conversation"
+              ? { turns: [], questions: [{ id: "live-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, tail: { count: 0, amount: "0" }, pending: { count: 0 }, invite: "Write an answer", answered_by_document: "A document answers this" }
+              : surface === "trust" ? trustPayload : activityPayload;
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
     };
@@ -254,7 +256,7 @@ describe("vault", () => {
       expect(queryByRole("button", { name: /choose a/i })).not.toBeInTheDocument();
       expect(queryByText("Document capture unavailable")).not.toBeInTheDocument();
 
-      await user.click(getByRole("button", { name: /review.*what needs you/i }));
+      await user.click(getByRole("button", { name: /ask viva/i }));
       expect(getByRole("heading", { name: "Is this your account?" })).toBeInTheDocument();
       expect(queryByRole("textbox", { name: "Your answer" })).not.toBeInTheDocument();
       expect(getByRole("button", { name: "Set aside for now" })).toBeInTheDocument();
@@ -263,6 +265,7 @@ describe("vault", () => {
       // can take one, so a real vault's invitation is never put to a person.
       expect(queryByText("Write an answer")).not.toBeInTheDocument();
       expect(queryByText(/invites an answer in a sentence/)).not.toBeInTheDocument();
+      await user.click(getByRole("button", { name: /close viva conversation/i }));
 
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
       expect(getAllByText("No vault open")[0]).toBeInTheDocument();
@@ -322,7 +325,7 @@ describe("vault", () => {
               ? trustPayload
               : payload.surface === "activity"
                 ? activityPayload
-              : { questions: [], total: 0 };
+              : { turns: [], questions: [], total: 0 };
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface: payload.surface, job_id: "job", data } as T };
       },
     };
@@ -343,9 +346,9 @@ describe("vault", () => {
       await user.click(getByRole("button", { name: /documents.*what supports it/i }));
       expect(getByText("No documents yet", { selector: "strong" })).toBeInTheDocument();
       expect(getAllByRole("button", { name: "Open the sample vault" })[0]).toBeInTheDocument();
-      await user.click(getByRole("button", { name: /review.*what needs you/i }));
+      await user.click(getByRole("button", { name: /ask viva/i }));
       expect(getByText("Nothing needs you right now", { selector: "strong" })).toBeInTheDocument();
-      expect(queryByRole("button", { name: "Open the sample vault" })).not.toBeInTheDocument();
+      await user.click(getByRole("button", { name: /close viva conversation/i }));
       await user.click(getByRole("button", { name: /activity.*what moved/i }));
       // Activity is a read. A vault that knows of nothing moving says so,
       // which is not the same as nothing having moved.

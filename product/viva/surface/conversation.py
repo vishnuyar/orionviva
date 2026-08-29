@@ -56,8 +56,79 @@ ANNOUNCE_CITATIONS = "citations"
 SPOKEN_PARTS = (SPEAK_TEXT, SPEAK_GRADE, ANNOUNCE_CITATIONS)
 
 
+def timeline(projection: Any, queue: dict[str, Any]) -> dict[str, Any]:
+    """Compose durable turns, correction proposals, and open questions."""
+    proposals = {
+        row["proposal_id"]: row
+        for row in projection.conversation_proposals()
+    }
+    proposals_by_turn: dict[str, list[dict[str, Any]]] = {}
+    for proposal in proposals.values():
+        proposals_by_turn.setdefault(
+            str(proposal.get("turn_id") or ""), []).append(proposal)
+    turns = [_timeline_turn(row, proposals, proposals_by_turn, projection) for row in
+             projection.conversation_turns()]
+    return {
+        "state": PanelState.READY.value,
+        "turns": turns,
+        "questions": [dict(question) for question in queue.get("questions", [])],
+        "total": int(queue.get("total", len(queue.get("questions", [])))),
+        "tail": dict(queue.get("tail") or {"count": 0, "amount": ""}),
+        "pending": dict(queue.get("pending") or {"count": 0}),
+        "invite": str(queue.get("invite", "")),
+        "answered_by_document": str(queue.get("answered_by_document", "")),
+    }
+
+
+def _timeline_turn(row: dict[str, Any],
+                   proposals: dict[str, dict[str, Any]],
+                   proposals_by_turn: dict[str, list[dict[str, Any]]],
+                   projection: Any) -> dict[str, Any]:
+    proposal_id = str(row.get("proposal_id") or "")
+    proposal = proposals.get(proposal_id)
+    if proposal is None:
+        interrupted = proposals_by_turn.get(
+            str(row.get("turn_id") or ""), [])
+        if len(interrupted) == 1:
+            proposal = interrupted[0]
+            proposal_id = str(proposal.get("proposal_id") or "")
+    shown_proposal = None
+    if proposal is not None:
+        shown_proposal = {
+            "id": proposal_id,
+            "summary": str(proposal.get("summary") or ""),
+            "status": str(proposal.get("status") or ""),
+            "outcome": str(proposal.get("outcome") or ""),
+            "message": str(proposal.get("message") or ""),
+            "reason": str(proposal.get("reason") or ""),
+        }
+    answer = dict(row.get("answer") or {})
+    figures = []
+    for figure in answer.get("figures", []):
+        if not isinstance(figure, dict):
+            continue
+        figures.append(_figure_receipt(
+            figure, projection, str(row.get("turn_id") or "")))
+    if figures or "figures" in answer:
+        answer["figures"] = figures
+    return {
+        "id": str(row.get("turn_id") or ""),
+        "kind": str(row.get("kind") or ""),
+        "occurred_at": str(row.get("occurred_at") or ""),
+        "prompt": str(row.get("prompt") or ""),
+        "said": str(row.get("said") or ""),
+        "question_id": str(row.get("question_id") or ""),
+        "outcome": str(row.get("outcome") or ""),
+        "message": str(row.get("message") or ""),
+        "reason": str(row.get("reason") or ""),
+        "answer": answer,
+        "proposal": shown_proposal,
+    }
+
+
 def conversation(turn: Any, shown: dict[str, str],
-                 mirrored: bool = True) -> dict[str, Any]:
+                 mirrored: bool = True, *, projection: Any = None,
+                 turn_id: str = "") -> dict[str, Any]:
     """One turn, as a screen renders it and as a voice would speak it.
 
     ``shown`` maps a figure's identity to the words it was written as in the
@@ -71,7 +142,8 @@ def conversation(turn: Any, shown: dict[str, str],
     result = getattr(turn, "result", None)
     if result is None:
         return {"state": PanelState.ABSENT.value, "reason": "no_turn"}
-    figures = [_figure(figure, shown) for figure in getattr(result, "figures", [])]
+    figures = [_figure(figure, shown, projection, turn_id)
+               for figure in getattr(result, "figures", [])]
     grade = getattr(result, "grade", "") or ""
     return {
         "state": PanelState.READY.value,
@@ -90,7 +162,8 @@ def conversation(turn: Any, shown: dict[str, str],
     }
 
 
-def _figure(figure: dict, shown: dict[str, str]) -> dict[str, Any]:
+def _figure(figure: dict, shown: dict[str, str], projection: Any = None,
+            turn_id: str = "") -> dict[str, Any]:
     """One figure the sentence stated, and the route back to what it rests on.
 
     `record_ids` is the route. It is carried whether or not anything is spoken,
@@ -98,7 +171,7 @@ def _figure(figure: dict, shown: dict[str, str]) -> dict[str, Any]:
     sentence a person hears and the sentence they can open are the same
     sentence."""
     identity = str(figure.get("id", ""))
-    return {
+    return _figure_receipt({
         "id": identity,
         # The words this figure was written as in the sentence, so the figure
         # under the sentence is the figure in it.
@@ -106,6 +179,35 @@ def _figure(figure: dict, shown: dict[str, str]) -> dict[str, Any]:
         "grade": figure.get("grade", "") or figure.get("kind", ""),
         "what": figure.get("what", ""),
         "record_ids": [str(record) for record in figure.get("record_ids", [])],
+    }, projection, turn_id)
+
+
+def _figure_receipt(figure: dict[str, Any], projection: Any,
+                    turn_id: str) -> dict[str, Any]:
+    """Add captured-document links and a turn-scoped selection identity.
+
+    Record identities not known as captured documents remain audit-only.
+    """
+    identity = str(figure.get("id") or "")
+    record_ids = [str(record) for record in figure.get("record_ids", [])]
+    links = []
+    if projection is not None:
+        documents = set(projection.captured_docs())
+        filenames = projection.captured_filenames()
+        links = [{
+            "document_id": record_id,
+            "label": str(filenames.get(record_id) or ""),
+            "relation": "attests",
+            "page": "",
+        } for record_id in record_ids if record_id in documents]
+    evidence_id = (f"conversation:{turn_id}:{identity}"
+                   if turn_id and identity else "")
+    return {
+        **figure,
+        "id": identity,
+        "record_ids": record_ids,
+        "evidence_id": evidence_id,
+        "evidence_links": links,
     }
 
 
@@ -117,7 +219,7 @@ def _spoken(text: str, grade: str, figures: list[dict],
     line is the pack's, and the sentence announcing a citation is the pack's.
     A surface that assembled its own would be speaking a figure under wording
     nobody reviewed."""
-    cited = [figure for figure in figures if figure["record_ids"]]
+    cited = [figure for figure in figures if figure["evidence_links"]]
     if not mirrored:
         return {
             "may_speak": False,

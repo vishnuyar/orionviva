@@ -3,10 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 // The sentences the product ships, read from the pack that ships them. A
 // sentence typed out here would be an assertion about words nobody released.
-import moments from "../../../../product/viva/persona/pack-v38/moments.json";
+import moments from "../../../../product/viva/persona/pack-v39/moments.json";
 import { EvidenceDrawer } from "../../components/EvidenceDrawer";
 import { currentPeriodEvidenceFigure } from "../../surface/evidence";
-import type { FeatureResult, FigureView, OverviewData, PictureView, ReviewData, SurfaceSnapshot , ActivityData } from "../../surface/types";
+import type { ConversationData, FeatureResult, FigureView, OverviewData, PictureView, SurfaceSnapshot , ActivityData } from "../../surface/types";
 import { Overview } from "./Overview";
 
 // The one slot the announcement lines take. Naming it here keeps the test
@@ -14,7 +14,7 @@ import { Overview } from "./Overview";
 const SLOT = "{currency}";
 
 const actions = { showVerificationDetails: false, onSelectAccount: vi.fn(), onOpenReviewQuestion: vi.fn(), onNavigate: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
-const noReview: FeatureResult<ReviewData> = { state: "absent", reason: "not_read" };
+const noConversation: FeatureResult<ConversationData> = { state: "absent", reason: "not_read" };
 
 function figure(overrides: Partial<FigureView> = {}): FigureView {
   return {
@@ -45,11 +45,11 @@ function overview(picture: Partial<PictureView> = {}): FeatureResult<OverviewDat
 const noActivity: FeatureResult<ActivityData> = { state: "absent", reason: "not_read" };
 
 function view(result: FeatureResult<OverviewData>) {
-  return render(<Overview {...actions} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+  return render(<Overview {...actions} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
 }
 
 function snapshotOf(result: FeatureResult<OverviewData>): SurfaceSnapshot {
-  return { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: result, documents: { state: "absent", reason: "not_read" }, review: noReview, activity: { state: "absent", reason: "not_read" }, conversation: { state: "absent", reason: "not_read" }, trust: { state: "absent", reason: "not_read" } };
+  return { disclosure: { title: "Private vault", subtitle: "Opened on this device", detail: "" }, overview: result, documents: { state: "absent", reason: "not_read" }, activity: { state: "absent", reason: "not_read" }, conversation: noConversation, trust: { state: "absent", reason: "not_read" } };
 }
 
 describe("the picture on the overview", () => {
@@ -231,7 +231,7 @@ describe("the picture on the overview", () => {
         ? { emphasis: "routine" as const, reasons: [], qualifications: [] }
         : { emphasis: "required" as const, reasons: ["machine-reason-never-copy"], qualifications: [qualification] };
       const result = overview({ figures: [figure({ id: testCase.grade, currency: "USD", display: "USD 1.00", grade: testCase.grade, gradeLabel: `Backend ${testCase.grade}`, gradeDescription: description, proofPresentation })] });
-      const rendered = render(<Overview {...actions} showVerificationDetails={testCase.preference} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+      const rendered = render(<Overview {...actions} showVerificationDetails={testCase.preference} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
       expect(Boolean(rendered.queryByText(description)), JSON.stringify(testCase)).toBe(testCase.visible);
       expect(rendered.queryByText("machine-reason-never-copy")).not.toBeInTheDocument();
       expect(Boolean(rendered.queryByText(qualification)), JSON.stringify(testCase)).toBe(testCase.emphasis === "required");
@@ -249,7 +249,7 @@ describe("the picture on the overview", () => {
     const caveat = "A backend caveat remains visible.";
     const coverage = "A backend boundary remains visible.";
     const result = overview({ figures: [figure({ id: "same", currency: "USD", display: "USD 2.00", gradeDescription: description, proofPresentation: { emphasis: "routine", reasons: [], qualifications: [] }, caveats: [caveat], coverage: [coverage] })] });
-    const rendered = render(<Overview {...actions} showVerificationDetails={false} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+    const rendered = render(<Overview {...actions} showVerificationDetails={false} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
     const trigger = rendered.getByRole("button", { name: /USD 2.00 Net worth/i });
     const identity = trigger.getAttribute("aria-labelledby");
     expect(rendered.queryByText(description)).not.toBeInTheDocument();
@@ -260,7 +260,7 @@ describe("the picture on the overview", () => {
     await user.keyboard("{Enter}");
     expect(actions.onOpenFigure).toHaveBeenLastCalledWith("net-worth:same");
 
-    rendered.rerender(<Overview {...actions} showVerificationDetails result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+    rendered.rerender(<Overview {...actions} showVerificationDetails result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
     expect(rendered.getByText(description)).toBeInTheDocument();
     expect(rendered.getByRole("button", { name: /USD 2.00 Net worth/i }).getAttribute("aria-labelledby")).toBe(identity);
     rendered.getByRole("button", { name: /USD 2.00 Net worth/i }).click();
@@ -275,7 +275,7 @@ describe("the picture on the overview", () => {
       picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] },
       accounts: [{ id: "account", name: "Account", kind: "Depository", measure: "balance", exactValue: "1", currency: "USD", display: "USD 1.00", grade: "verified", gradeLabel: "Verified", gradeDescription, proofPresentation: { emphasis: "required", reasons: ["incomplete_coverage"], qualifications: [gradeDescription, note] }, note, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
     } };
-    const rendered = render(<Overview {...actions} showVerificationDetails={false} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+    const rendered = render(<Overview {...actions} showVerificationDetails={false} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
     const card = rendered.container.querySelector(".account-card")!;
     const qualificationLines = [...card.querySelectorAll(".proof-qualifications li")].map((line) => line.textContent);
     expect(qualificationLines).toEqual([gradeDescription]);
@@ -377,7 +377,7 @@ describe("the picture on the overview", () => {
       picture: { coverage: "A panel sentence.", readOn: "", withheld: [], unplaced: [], figures: [figure({ id: "EUR", currency: "EUR", display: shared, evidenceHeading: "Net worth in EUR" })] },
       accounts: [{ id: "acct:abroad", name: "Abroad Current", kind: "Depository", measure: "balance", exactValue: "", currency: "EUR", display: shared, grade: "verified", gradeLabel: "verified", gradeDescription: "One reviewed sentence.", proofPresentation: { emphasis: "required", reasons: ["test"], qualifications: ["A reviewed qualification."] }, note: null, asOf: "", coverage: null, provenance: null, evidenceLinks: [], state: "ready" }],
       } };
-    const rendered = render(<Overview {...actions} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" />);
+    const rendered = render(<Overview {...actions} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" />);
     const announced = [...rendered.container.querySelectorAll("button")].map((control) => (control.getAttribute("aria-labelledby") ?? "")
       .split(" ").map((id) => rendered.container.querySelector(`[id="${id}"]`)?.textContent ?? "").join(" ").trim() || control.textContent || "");
     const figuresNamed = announced.filter((name) => name.startsWith(shared));
@@ -404,7 +404,7 @@ describe("the picture on the overview", () => {
     const ask = vi.fn();
     const setAside = vi.fn();
     const result: FeatureResult<OverviewData> = { state: "ready", data: { picture: { coverage: "", readOn: "", figures: [], withheld: [], unplaced: [] }, accounts: [], utility: { state: "ready", findingCount: 1, obligations: [{ id: "ob-1", subject: "Rent", cadence: "monthly", expectedDate: "2026-09-01", status: "due", basis: "measured", amountDisplay: "$1,200.00", amountMin: "1200", amountMax: "1200", currency: "USD", grade: "corroborated", headline: "Rent is due September 1.", explanation: "The measured amount is $1,200.00.", coverage: "Measured from three records.", recordIds: ["m1"], evidenceIds: ["doc-1"], accountIds: ["checking"], caveats: [], requiredVisibility: false, actions: ["inspect", "ask_viva"] }], findings: [{ id: "find-1", kind: "fee_observed", subject: "Fee", importance: 50, amountDisplay: "$12.00", exactValue: "12", currency: "USD", dated: "2026-08-27", headline: "A fee was observed.", explanation: "The ledger categorized it as a fee.", coverage: "Seen once.", recordIds: ["m2"], evidenceIds: [], accountIds: ["checking"], requiredVisibility: true, actions: ["ask_viva", "set_aside"] }] } } };
-    const rendered = render(<Overview {...actions} result={result} reviewResult={noReview} activityResult={noActivity} selectedAccount="" onInspectDocument={inspect} onAskViva={ask} onSetAsideFinding={setAside} />);
+    const rendered = render(<Overview {...actions} result={result} conversationResult={noConversation} activityResult={noActivity} selectedAccount="" onInspectDocument={inspect} onAskViva={ask} onSetAsideFinding={setAside} />);
     expect(rendered.getByText("Rent is due September 1.")).toBeInTheDocument();
     expect(rendered.getByText("A fee was observed.")).toBeInTheDocument();
     await user.click(rendered.getByRole("button", { name: "Inspect" }));

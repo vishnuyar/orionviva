@@ -37,6 +37,31 @@ describe("dialogs", () => {
     expect(getByRole("dialog", { name: "Viva conversation" })).toContainElement(document.activeElement as HTMLElement | null);
   });
 
+  it("hands one conversation receipt to the shared Evidence drawer and keeps focus in the active surface", async () => {
+    const user = userEvent.setup();
+    const conversation = {
+      state: "ready", invite: "", answered_by_document: "", pending: { count: 0 }, questions: [], total: 0, turns: [{
+        id: "turn-1", kind: "ask", occurred_at: "2026-08-29", prompt: "What changed?", said: "", question_id: "", outcome: "completed", message: "", reason: "", proposal: null,
+        answer: {
+          question: "What changed?", text: "Your balance changed.", answered: true, refusal: "", grade: "verified", grade_sentence: "The statement verifies this figure.",
+          figures: [{ id: "figure-1", evidence_id: "conversation:turn-1:figure-1", written: "USD 20.00", grade: "verified", what: "The balance change", record_ids: ["record-secret-1"], evidence_links: [{ document_id: "0ea3d7d4441eef067e35c39ec91898390d8e9b973585de8c741d737a96d00660", label: "Travel card statement", relation: "attests", page: "page 1" }] }],
+          spoken: { may_speak: true, withheld: "", parts: ["text", "grade", "citations"], text: "Your balance changed.", grade_sentence: "The statement verifies this figure.", citation_sentence: "What that rests on is on the screen.", local_only: "On this machine or not at all." },
+        },
+      }],
+    };
+    const { getByRole, queryByRole } = await openSample({ conversation });
+
+    await user.click(getByRole("button", { name: "Ask Viva" }));
+    const receipt = getByRole("button", { name: "USD 20.00 The balance change", description: "View evidence for The balance change" });
+    expect(document.body).not.toHaveTextContent("record-secret-1");
+    await user.click(receipt);
+
+    expect(queryByRole("dialog", { name: "Viva conversation" })).not.toBeInTheDocument();
+    expect(getByRole("dialog", { name: "Evidence for The balance change" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Close evidence" })).toHaveFocus();
+    expect(getByRole("button", { name: "Open travel-card-2026-06.pdf" })).toBeInTheDocument();
+  });
+
   it("lets a keyboard user dismiss the Viva dialog with Escape", async () => {
     const user = userEvent.setup();
     const { getByRole, queryByRole } = await openSample();
@@ -280,10 +305,10 @@ describe("dialogs", () => {
     installResponsiveMatchMedia(1440);
   });
 
-  it("shows the selected queue item inside review", async () => {
+  it("shows the selected queue item inside Viva", async () => {
     const user = userEvent.setup();
     const { getAllByText, getByRole, getByText } = await openSample();
-    await user.click(getByRole("button", { name: "ReviewWhat needs you" }));
+    await user.click(getByRole("button", { name: "Ask Viva" }));
     await user.click(getByRole("button", { name: /May I ask what annual fee is/i }));
     expect(getByRole("heading", { name: /May I ask what/ })).toBeInTheDocument();
     expect(getByText("Set this question aside")).toBeInTheDocument();
@@ -299,37 +324,36 @@ describe("dialogs", () => {
     expect(queryByRole("button", { name: /^Confirm$/i })).not.toBeInTheDocument();
   });
 
-  it("does not resurrect Overview review focus after leaving Review", async () => {
+  it("does not resurrect Overview question focus after closing Viva", async () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getAllByRole, getByRole } = await openSample();
       fireEvent.click(getAllByRole("button", { name: "View question" })[1]);
-      fireEvent.click(getByRole("button", { name: /trust.*how it works/i }));
-      fireEvent.click(getByRole("button", { name: /review.*what needs you/i }));
-      getByRole("heading", { name: "Review" }).focus();
+      fireEvent.click(getByRole("button", { name: "Close Viva conversation" }));
+      getByRole("heading", { name: "Your financial picture" }).focus();
       frames.runCaptured();
-      expect(getByRole("heading", { name: /May I ask what/ })).not.toHaveFocus();
+      expect(getByRole("heading", { name: "Your financial picture" })).toHaveFocus();
     } finally {
       frames.restore();
     }
   });
 
-  it("does not resurrect Overview review focus after the selected identity changes", async () => {
+  it("keeps the selected question when Viva is closed and opened again", async () => {
     const frames = installCapturedAnimationFrames();
     try {
       const { getAllByRole, getByRole } = await openSample();
       fireEvent.click(getAllByRole("button", { name: "View question" })[1]);
       fireEvent.click(getByRole("button", { name: /Your acct:everyday-checking statement/i }));
       fireEvent.click(getByRole("button", { name: /May I ask what annual fee is/i }));
-      getByRole("heading", { name: "Review" }).focus();
-      frames.runCaptured();
-      expect(getByRole("heading", { name: /May I ask what/ })).not.toHaveFocus();
+      fireEvent.click(getByRole("button", { name: "Close Viva conversation" }));
+      fireEvent.click(getByRole("button", { name: "Ask Viva" }));
+      expect(getByRole("heading", { name: /May I ask what/ })).toBeInTheDocument();
     } finally {
       frames.restore();
     }
   });
 
-  it("does not resurrect Overview review focus after the vault is closed", async () => {
+  it("does not resurrect Overview question focus after the vault is closed", async () => {
     const frames = installCapturedAnimationFrames();
     const restore = installSampleBridge();
     try {
@@ -343,12 +367,11 @@ describe("dialogs", () => {
       // vault is closed before that frame runs, so the focus it captured names
       // a question on a screen nobody is looking at any more.
       fireEvent.click(getAllByRole("button", { name: "View question" })[0]);
+      fireEvent.click(getByRole("button", { name: "Close Viva conversation" }));
       await user.click(getAllByRole("button", { name: "Close this vault" })[0]);
-      await user.click(getByRole("button", { name: /review.*what needs you/i }));
-      getByRole("heading", { name: "Review" }).focus();
       frames.runCaptured();
       expect(document.querySelector("#selected-question-title")).toBeNull();
-      expect(getByRole("heading", { name: "Review" })).toHaveFocus();
+      expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
     } finally {
       restore();
       frames.restore();
@@ -383,16 +406,16 @@ describe("dialogs", () => {
     expect(getByText("Dormant Savings", { selector: ".coverage-account-title" })).toBeInTheDocument();
   });
 
-  it("keeps the selected review question when navigation moves away and back", async () => {
+  it("keeps the selected question when Viva closes and reopens", async () => {
     const user = userEvent.setup();
     const { getAllByText, getByRole, getByText } = await openSample();
 
-    await user.click(getByRole("button", { name: /review.*what needs you/i }));
+    await user.click(getByRole("button", { name: "Ask Viva" }));
     await user.click(getByRole("button", { name: /May I ask what annual fee is/i }));
     expect(getAllByText("160.00").length).toBeGreaterThan(0);
 
-    await user.click(getByRole("button", { name: /trust.*how it works/i }));
-    await user.click(getByRole("button", { name: /review.*what needs you/i }));
+    await user.click(getByRole("button", { name: "Close Viva conversation" }));
+    await user.click(getByRole("button", { name: "Ask Viva" }));
     expect(getAllByText("160.00").length).toBeGreaterThan(0);
   });
 

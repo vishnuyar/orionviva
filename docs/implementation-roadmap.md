@@ -156,8 +156,8 @@ Current reachability and remaining gaps live in
 **What remains planned, and why in this order.**
 
 These are cycle families, not historical slices, and none receives an old slice
-label. Cycle families 1–3 are delivered and are described by capability in the
-built half above; the remaining numbers are not renumbered. Families 4–7 are planned
+label. Cycle families 1–4 are delivered and are described by capability in the
+built half above; the remaining numbers are not renumbered. Families 5–7 are planned
 direction rather than built behaviour. Each still needs its own approved brief,
 and each capability travels as one vertical slice: product projection or event,
 reviewed `viva.surface` contract, capability and operation disposition,
@@ -166,14 +166,17 @@ substitute for any missing layer.
 
 ### Cycle family 4 — durable conversation and correction
 
-**Product capability.** A later brief must define durable conversation reads
-while re-fetching every financial figure on every turn, and must record
-corrections and rulings as events applied deterministically. It must resolve,
-in that dedicated cycle, whether correction and preference writes are agent
-verbs or separately gated actions; this roadmap does not settle that question.
+**State: delivered.**
+
+**Product capability.** Durable turns, typed outcomes and correction proposals
+are ledger events and projections. Each turn re-fetches current financial
+evidence; earlier conversation can supply context but cannot become evidence.
+Question answers and bounded corrections are explicit conversation verbs, and
+proposal confirmation re-checks the deterministic question stake before any
+write. A moved stake settles as stale.
 
 **Surface contract.** Conversation history, cited replies, proposed corrections
-and completed, refused, waiting, stale and set-aside outcomes must have typed
+and completed, refused, waiting, stale and set-aside outcomes carry typed
 shapes. Text and later voice consume one answer shape.
 
 **Interface consumer.** The desktop renders the durable history and cited
@@ -189,6 +192,10 @@ refreshed reads.
 evidence for a later figure; a correction survives a new session and changes
 every affected projection; and later voice mirrors the same cited text rather
 than creating a second answer path.
+
+No migration or backfill path is included. The product has not been publicly
+released, so the durable contract begins with new conversation events and does
+not reinterpret older technical read records or support prior vault shapes.
 
 ### Cycle family 5 — goals and plans
 
@@ -271,9 +278,9 @@ outside the declared, gated operation inventory.
 built half consolidates a financial picture on a small set of re-composed
 blocks, makes routine proof quieter without weakening required qualification,
 adds grounded obligations with quiet findings, and projects a bounded
-current-period remainder. The remaining planned order adds durable
-conversation and correction, goals and plans, deterministic scenarios, and
-finally drafted action behind explicit confirmation. Each later feature is the
+current-period remainder, and carries durable conversation and correction. The
+remaining planned order adds goals and plans, deterministic scenarios, and
+finally drafted action behind explicit confirmation. Each remaining feature is the
 same vertical path through product, surface and interface, not a new shell.
 
 ## Open

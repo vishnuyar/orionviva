@@ -30,8 +30,10 @@ For what is actually built, in detail, see
   their grades, dates, coverage, caveats, and evidence into the interface.
 
 ## Phase 3 — Take action
-- [ ] Durable conversation and correction: corrections and preferences persist
-  and update the picture across sessions.
+- [x] Durable conversation and correction: turns, answers, set-asides and exact
+  correction proposals persist and update the picture across sessions. The
+  unreleased product starts this contract clean, with no prior-vault migration
+  or technical-record backfill.
 - [ ] Goals and plans: draft targets, contributions, payoff paths, and progress
   from stated assumptions without changing the person's records.
 - [ ] Deterministic scenarios: compare affordability, runway, compounding, and

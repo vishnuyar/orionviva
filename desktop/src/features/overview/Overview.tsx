@@ -6,7 +6,7 @@ import { PanelStateView } from "../../components/PanelStateView";
 import { ProofLinks } from "../../components/ProofLinks";
 import { ProofCaveats, ProofQualifications } from "../../components/ProofCaveats";
 import { accountEvidenceFigure, currentPeriodEvidenceFigure, netWorthEvidenceFigure, showCompactProof } from "../../surface/evidence";
-import type { AccountView, ActivityData, Destination, EvidenceLink, FeatureResult, OverviewData, ReviewData, ReviewView } from "../../surface/types";
+import type { AccountView, ActivityData, ConversationData, Destination, EvidenceLink, FeatureResult, OverviewData, QuestionView } from "../../surface/types";
 
 // How much of what moved stands beside the picture. The rest is one click
 // away, on the screen that is about it.
@@ -23,12 +23,12 @@ function accountKind(account: AccountView) {
   return account.kind.trim() ? account.kind : "Account kind was not supplied by this overview read.";
 }
 
-function reviewLabel(item: ReviewView) {
-  return item.label.trim() ? item.label : "Question text was not supplied by this review read.";
+function reviewLabel(item: QuestionView) {
+  return item.label.trim() ? item.label : "Question text was not supplied by this conversation.";
 }
 
-export function Overview({ result, reviewResult, activityResult, selectedAccount, showVerificationDetails, onSelectAccount, onOpenReviewQuestion, onNavigate, onOpenEvidence, onOpenFigure, onInspectDocument = () => undefined, onInspectAccount = () => undefined, onAskViva = null, onSetAsideFinding = null, settingAsideFindingId = "", onExploreSample }: { result: FeatureResult<OverviewData>; reviewResult: FeatureResult<ReviewData>; activityResult: FeatureResult<ActivityData>; selectedAccount: string; showVerificationDetails: boolean; onSelectAccount: (id: string) => void; onOpenReviewQuestion: (id: string) => void; onNavigate: (destination: Destination) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onInspectDocument?: (documentId: string) => void; onInspectAccount?: (accountId: string) => void; onAskViva?: (() => void) | null; onSetAsideFinding?: ((findingId: string) => void) | null; settingAsideFindingId?: string; onExploreSample: () => void }) {
-  const reviewData = reviewResult.state === "ready" || reviewResult.state === "partial" || reviewResult.state === "needs_input" ? reviewResult.data : null;
+export function Overview({ result, conversationResult, activityResult, selectedAccount, showVerificationDetails, onSelectAccount, onOpenReviewQuestion, onNavigate, onOpenEvidence, onOpenFigure, onInspectDocument = () => undefined, onInspectAccount = () => undefined, onAskViva = null, onSetAsideFinding = null, settingAsideFindingId = "", onExploreSample }: { result: FeatureResult<OverviewData>; conversationResult: FeatureResult<ConversationData>; activityResult: FeatureResult<ActivityData>; selectedAccount: string; showVerificationDetails: boolean; onSelectAccount: (id: string) => void; onOpenReviewQuestion: (id: string) => void; onNavigate: (destination: Destination) => void; onOpenEvidence: (link: EvidenceLink) => void; onOpenFigure: (figureId: string) => void; onInspectDocument?: (documentId: string) => void; onInspectAccount?: (accountId: string) => void; onAskViva?: (() => void) | null; onSetAsideFinding?: ((findingId: string) => void) | null; settingAsideFindingId?: string; onExploreSample: () => void }) {
+  const reviewData = conversationResult.state === "ready" || conversationResult.state === "partial" || conversationResult.state === "needs_input" ? conversationResult.data.questions : null;
   const activityData = activityResult.state === "ready" || activityResult.state === "partial" || activityResult.state === "needs_input" ? activityResult.data : null;
   // A few, not all. The whole list lives on the screen that is about it, and a
   // second full list here would be a second place a person had to check.
@@ -124,9 +124,9 @@ export function Overview({ result, reviewResult, activityResult, selectedAccount
           return <div className={pressed ? "account-card active" : "account-card"} key={row.key}><button type="button" className="account-card-button" aria-pressed={pressed} onClick={() => onSelectAccount(account.id)}><div className="account-icon">{account.name.trim().slice(0, 1) || "?"}</div><div className="account-copy"><div className="account-name">{accountName(account)}</div><div className="account-kind">{accountKind(account)}</div>{showCompactProof(account.proofPresentation, showVerificationDetails) ? <div className="account-note compact-proof"><span className={`mini-dot ${account.grade}`} />{account.gradeLabel}{account.note ? ` · ${account.note}` : ""}</div> : null}</div></button><Figure figure={accountEvidenceFigure(account)} onOpenEvidence={onOpenFigure} className="account-amount" />{accountObligations.map((obligation) => <p className="account-obligation" key={obligation.id}>{obligation.headline}</p>)}<ProofQualifications proof={account.proofPresentation} alreadyRendered={[account.gradeLabel, account.note ?? "", ...(account.caveats ?? [])]} /><ProofCaveats caveats={account.caveats ?? []} /><ProofLinks label="View source" links={account.evidenceLinks} onOpen={onOpenEvidence} /></div>;
         })}</div>
       </section>
-      <section className="section-block"><div className="section-heading"><div><div className="section-kicker">Current review read</div><h2>Review queue</h2></div><button type="button" className="text-button" onClick={() => onNavigate("review")}>Open review <ArrowUpRight size={14} /></button></div><div className="queue-list">{identifiedRows(reviewData?.queue ?? [], "overview-review").map((row) => {
-        if (row.state === "missing_identity") return <div className="queue-row identity-state" key={row.key}><div><strong>Question identity unavailable</strong><span>One or more review rows have no stable question ID. They cannot be opened from Overview.</span></div></div>;
-        if (row.state === "conflicted_identity") return <div className="queue-row identity-state" key={row.key}><div><strong>Question identity conflicted</strong><span>More than one review row uses this question ID. No question with this identity was opened.</span><small>Question ID: {row.id}</small></div></div>;
+      <section className="section-block"><div className="section-heading"><div><div className="section-kicker">Viva is waiting for you</div><h2>Questions in your conversation</h2></div>{reviewData?.queue[0] ? <button type="button" className="text-button" onClick={() => onOpenReviewQuestion(reviewData.queue[0].id)}>Open Viva <ArrowUpRight size={14} /></button> : null}</div><div className="queue-list">{identifiedRows(reviewData?.queue ?? [], "overview-review").map((row) => {
+        if (row.state === "missing_identity") return <div className="queue-row identity-state" key={row.key}><div><strong>Question identity unavailable</strong><span>One or more questions have no stable identity. They cannot be opened from Overview.</span></div></div>;
+        if (row.state === "conflicted_identity") return <div className="queue-row identity-state" key={row.key}><div><strong>Question identity conflicted</strong><span>More than one question uses the same stable identity. No question with that identity was opened.</span></div></div>;
         return <div className="queue-row" key={row.key}><div className="queue-copy"><div className="queue-title"><strong>{reviewLabel(row.item)}</strong></div></div><button type="button" className="secondary-button" onClick={() => onOpenReviewQuestion(row.item.id)}>View question</button></div>;
       })}</div></section>
       {/* The tail of what moved, read off the activity surface rather than

@@ -20,6 +20,7 @@ from typing import Iterable
 from ..events import Event
 from . import (accounts as _accounts, activity as _activity,
                balances as _balances, categories as _categories,
+               conversation as _conversation,
                coverage as _coverage, current_period as _current_period,
                merchants as _merchants,
                movements as _movements, obligations as _obligations,
@@ -350,6 +351,18 @@ class LedgerProjection:
 
     def declined_questions(self) -> dict[str, dict]:
         return _tiers.declined_questions(self._core)
+
+    # ---------------------------------------------------------- conversation
+
+    def conversation_turns(self) -> list[dict]:
+        return _conversation.conversation_turns(self._core)
+
+    def conversation_proposals(self, *, open_only: bool = False) -> list[dict]:
+        return _conversation.conversation_proposals(
+            self._core, open_only=open_only)
+
+    def conversation_proposal(self, proposal_id: str) -> dict | None:
+        return _conversation.conversation_proposal(self._core, proposal_id)
 
     # ----------------------------------------------------------------- rhythm
 

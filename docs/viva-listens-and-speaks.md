@@ -7,8 +7,8 @@
 
 ### VOICE-50 — a Proposal is the only path to a change, and it is never applied unconfirmed
 **State:** enforced
-**Code:** product/viva/listen.py (`Proposal`, `apply_proposal`), product/viva/engine.py (`confirm_proposal`), product/viva/desktop_bridge/review_actions.py (`outcome_of`)
-**Test:** product/tests/test_listen.py::test_applying_is_a_separate_explicit_act, product/tests/test_review_actions.py::test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written, product/tests/test_review_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
+**Code:** product/viva/listen.py (`Proposal`, `apply_proposal`), product/viva/engine.py (`confirm_proposal`), product/viva/desktop_bridge/conversation_actions.py (`outcome_of`)
+**Test:** product/tests/test_listen.py::test_applying_is_a_separate_explicit_act, product/tests/test_conversation_actions.py::test_a_confirmation_proposal_is_readable_and_proves_nothing_was_written, product/tests/test_conversation_actions.py::test_bridge_can_confirm_a_held_proposal_and_verify_the_durable_account
 
 1. A Proposal is a structured, un-applied intent: what it would change, how much money it moves, the evidence behind it, how confident it is, how to reverse it.
 2. Proposing and applying are separate acts; anything but a yes writes nothing.
@@ -88,12 +88,12 @@ model writes no digits, and every clause carries a hole).
 2. A ruling is append-only, dated, graded, provenance-carrying, superseded by a later event, and deterministically applied.
 
 ### VOICE-131 — the sentence and the parse are captured verbatim
-**State:** unmet
-**Code:** none found
-**Test:** none
+**State:** enforced
+**Code:** product/viva/engine.py:210 (`_record_interpret`), product/viva/listen.py (`one_shot_extractor`)
+**Test:** product/tests/test_durable_conversation.py::test_interpretation_exchanges_are_captured_as_outbound_evidence
 
 1. A person's own sentence and the model's parse of it are captured in the claims layer, under an `interpret` phase, so a better model can re-derive later without asking again. This is what **T3** (capture-first) asks of the listening path.
-2. No `interpret` phase exists. See [from-your-words-to-the-ledger.md](from-your-words-to-the-ledger.md) for what is and is not kept.
+2. Each interpretation exchange records the sentence, question, prompt, raw request, raw response, returned text, model identity, prompt version, usage and parse result as outbound evidence. Product conversation history remains a separate projection over conversation events.
 
 ## Why
 
@@ -153,10 +153,10 @@ being a rule anyone has to remember and becomes a property of a type. It is also
 the test of whether the block was designed right — if actions ever need new
 gating, the Proposal was wrong.
 
-An unconfirmed Proposal is *derived*, not stored, which is the same discipline
-that made movement nature and the question queue free. It becomes an event only
-if proposals ever need to survive across sessions, and that is a later,
-evidenced decision.
+An accepted but unconfirmed Proposal is stored as an event with its exact
+structure and deterministic question stake. That record lets the same proposal
+survive a later session without trusting client-supplied structure; confirmation
+still re-checks the live stake and applies nothing without an explicit yes.
 
 **What the read direction settled on, and why the first answer was wrong.** The
 original options were a planner over deterministic tools, template answers with
@@ -199,13 +199,19 @@ not code — and it grows with verbs, not nouns
 ([agent-toolset.md](agent-toolset.md),
 [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)).
 
+## Durable conversation
+
+The delivered durable conversation records each interpret exchange, turn and
+typed outcome in the vault. Accepted proposal identity and exact proposed data
+are stored separately, so a later interface session can show and decide the
+same proposal without trusting client-supplied structure. This is a clean-start
+contract with no backfill from earlier technical read records.
+
 ## Open
 
-- The `interpret` phase capture is unmet: the person's sentence and the model's parse are not landing in the claims layer, so a better model cannot re-derive from them later.
 - The real-vault proving run of what replaced the planner is still owed. `answer.py` remains the scripted test modality and the oracle.
 - An ADR and a design doc for the shape mechanism are owed once the round trip has run against real money.
 - Proposal unification — one common shape behind transfer suggestions, category suggestions and findings — is a refactor with no user-visible gain, and must wait for evidence or it is premature generalization.
-- The desktop keeps an accepted proposal only in the current review action state. Ordinary navigation clears its opaque identity while the opened-vault bridge still retains the proposal, so returning to Review cannot confirm or decline it.
 - Open-world free text with no question attached.
 - Whether a parse may ever auto-apply, and on what contract. The existing forced/suggested distinction is the candidate; a money threshold is a currency- and jurisdiction-shaped guess and is not.
 - Accounting words versus plain English on the surface.

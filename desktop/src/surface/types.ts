@@ -1,4 +1,4 @@
-export type Destination = "overview" | "accounts" | "activity" | "documents" | "review" | "trust";
+export type Destination = "overview" | "accounts" | "activity" | "documents" | "trust";
 export type FigureGrade = "verified" | "corroborated" | "unverified" | "conflicted" | "unavailable" | "not_applicable";
 export type PanelState = "absent" | "ready" | "partial" | "needs_input" | "unavailable" | "failed";
 export type ActionOutcome = "completed" | "refused" | "proposal" | "waiting" | "stale" | "set_aside";
@@ -97,15 +97,15 @@ export type TransferActionState =
   | { state: "idle" }
   | { state: "working"; verb: TransferVerb }
   | { state: "settled"; verb: TransferVerb; result: ActionResult };
-// The review actions a screen may reach through an opened-vault bridge.
-export type ReviewVerb = "answer" | "confirm" | "decline";
-// What became of the last review verb a person used, held beside the question
+// The question actions a screen may reach through an opened-vault bridge.
+export type QuestionVerb = "answer" | "confirm" | "decline";
+// What became of the last question verb a person used, held beside the question
 // it was used on. An outcome belongs to one question, so a screen that moves to
 // another must not keep showing it.
-export type ReviewActionState =
+export type QuestionActionState =
   | { state: "idle" }
-  | { state: "working"; questionId: string; verb: ReviewVerb }
-  | { state: "settled"; questionId: string; verb: ReviewVerb; result: ActionResult };
+  | { state: "working"; questionId: string; verb: QuestionVerb }
+  | { state: "settled"; questionId: string; verb: QuestionVerb; result: ActionResult };
 export type DeclineReason = "not_now" | "dont_know";
 // What kind of thing a notice is, as a closed word the notice carries. How a
 // notice is dressed follows this word; nothing reads the sentence itself to
@@ -193,9 +193,9 @@ export type AccountView = { id: string; name: string; kind: string; measure: "ba
 // what kind of thing that is, and `choices` is the closed vocabulary an answer
 // must land in — the vocabulary tokens. Both are the backend's.
 export type QuestionSlot = { name: string; type: string; required: boolean; wants: string; choices: readonly string[] };
-export type ReviewView = { id: string; slots?: readonly QuestionSlot[]; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string };
-export type ConversationTurn = { id: string; speaker: "you" | "viva"; text: string; state: "answer" | "refusal" | "citation" | "prompt"; citation?: string };
-export type ConversationPrompt = { id: string; label: string; detail: string; state: "ready" | "refusal" | "citation" };
+export type QuestionView = { id: string; slots?: readonly QuestionSlot[]; label: string; detail: string; status: string; action: string; type: string; evidence: string; state: "needs_input" | "partial"; outcome: ActionOutcome | null; disposition: "answer" | "decline" | "proposal" | "confirm" | null; count?: number; scope?: string; currency?: string; amount?: string };
+export type ConversationProposal = { id: string; summary: string; status: string; outcome: string; message: string; reason: string };
+export type ConversationTurn = { id: string; kind: "ask" | "answer" | "decline" | "confirm"; occurredAt: string; prompt: string; said: string; questionId: string; outcome: ActionOutcome; message: string; reason: string; answer: TurnView | null; proposal: ConversationProposal | null };
 
 // The whole picture as the read composed it: one reviewed sentence about how
 // far it reaches, the day it was read on, one figure per currency, and one
@@ -238,7 +238,7 @@ export type OverviewData = { picture: PictureView; accounts: AccountView[]; util
 // when the panel has nothing to say. It is never composed here and never
 // repeated per row.
 export type DocumentsData = { documents: SurfaceDocument[]; readingSentence: string; captureQueue: DocumentCapture[]; processingJobs: DocumentJob[]; outboundRecords: OutboundRecord[] };
-export type ReviewData = { queue: ReviewView[]; count: number; meta: { total: number; tail: { count: number; amount: string } | null; pending: { count: number } | null; invite: string; answeredByDocument: string } };
+export type QuestionQueueData = { queue: QuestionView[]; count: number; meta: { total: number; tail: { count: number; amount: string } | null; pending: { count: number } | null; invite: string; answeredByDocument: string } };
 // One movement as the live read composed it. `direction` is the read's answer
 // and comes from the kind of account the money moved on; `amount` is unsigned
 // beside it, because a sign and a word saying the same thing are two chances to
@@ -279,7 +279,7 @@ export type OverviewActions = {
 // rests on. `written` is the words the sentence wrote the figure as, so the
 // figure under the sentence is the figure in it — not a second rendering of the
 // same number.
-export type TurnFigure = { id: string; written: string; grade: string; what: string; recordIds: readonly string[] };
+export type TurnFigure = { id: string; evidenceId: string; written: string; grade: string; what: string; recordIds: readonly string[]; evidenceLinks: readonly EvidenceLink[] };
 // What a voice surface may say of one turn, and what it may not. Every sentence
 // here was written on the other side of the bridge; a surface that assembled
 // its own would be speaking a figure under wording nobody reviewed.
@@ -289,13 +289,17 @@ export type SpokenTurn = { maySpeak: boolean; withheld: string; parts: readonly 
 export type TurnView = { question: string; text: string; answered: boolean; refusal: string; grade: string; gradeSentence: string; figures: readonly TurnFigure[]; spoken: SpokenTurn };
 export type ConversationActions = {
   ask: (question: string, mirrored: boolean) => Promise<{ result: ActionResult; turn: TurnView | null }>;
+  answer: (questionId: string, said: string) => Promise<ActionResult>;
+  confirm: (proposalId: string, said: string, asked: string) => Promise<ActionResult>;
+  decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;
+  reread: () => Promise<FeatureResult<ConversationData>>;
   rereadTrust: () => Promise<FeatureResult<TrustData>>;
 };
 export type AskActionState =
   | { state: "idle" }
   | { state: "working"; question: string }
   | { state: "settled"; question: string; result: ActionResult; turn: TurnView | null };
-export type ConversationData = { turns: ConversationTurn[]; prompts: ConversationPrompt[] };
+export type ConversationData = { turns: ConversationTurn[]; questions: QuestionQueueData };
 // What this application says about being updated and about being recovered.
 // There is no update channel; every sentence here is the engine's account of
 // that, and of how this copy got onto the machine.
@@ -326,20 +330,6 @@ export type OutboundRecordView = {
 // described in a screen's own soft words reads as a capability.
 export type TrustAbsence = { id: string; sentence: string };
 export type TrustData = { notes: TrustNote[]; absences?: readonly TrustAbsence[]; outbound?: OutboundRecordView };
-// The review verbs a screen may use, and the read that follows one. A screen
-// holds these rather than a transport, so nothing above this line knows an
-// action is a frame.
-export type ReviewActions = {
-  // One reply to one question, in a person's own words. Nothing but the
-  // question and the sentence crosses: a screen that could send slot values
-  // would be filling the question's slots itself, and the check that stands
-  // between a model's structure and the ledger would have a second door with
-  // nothing behind it.
-  answer: (questionId: string, said: string) => Promise<ActionResult>;
-  confirm?: (proposalId: string, said: string, asked: string) => Promise<ActionResult>;
-  decline: (questionId: string, reason: DeclineReason) => Promise<ActionResult>;
-  reread: () => Promise<FeatureResult<ReviewData>>;
-};
 // The capture verb a screen may use, and the read that follows it. A source
 // that cannot capture carries none, so a screen with nothing behind the
 // control renders no control.
@@ -371,4 +361,4 @@ export type DocumentActions = {
   rescan: () => Promise<{ result: ActionResult; report: RescanReport | null }>;
   reread: () => Promise<FeatureResult<DocumentsData>>;
 };
-export type SurfaceSnapshot = { disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; review: FeatureResult<ReviewData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> };
+export type SurfaceSnapshot = { disclosure: { title: string; subtitle: string; detail: string }; overview: FeatureResult<OverviewData>; documents: FeatureResult<DocumentsData>; activity: FeatureResult<ActivityData>; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> };

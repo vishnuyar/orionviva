@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import moments from "../../../../product/viva/persona/pack-v38/moments.json";
+import moments from "../../../../product/viva/persona/pack-v39/moments.json";
 import { gradePresentation, showCompactProof } from "../evidence";
 import { adaptOverview, adaptOverviewPanel } from "./overview";
 

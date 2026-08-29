@@ -67,7 +67,7 @@ The scale is what made the boundary concrete: a real enrichment run left a large
 - `product/viva/listen.py:168` cites this document's rule by its former id, `D2`. The rule is now MON-91; the comment is stale until someone with the code lane fixes it.
 
 - A first-class `CategoryDefined` event (name, colour, icon) is unbuilt, so there is nothing a picker can enumerate, rename, or style. The implicit half — a label exists by being used — is what is built.
-- A Review answer can assign a category the vault already knows to one peer movement. No surface can mint, enumerate, rename or style a custom category; that needs the first-class category work above.
+- A conversation answer can assign a category the vault already knows to one peer movement. No surface can mint, enumerate, rename or style a custom category; that needs the first-class category work above.
 - Near-duplicate labels a fold cannot close: `Groceries` lands on `groceries`, and `Grocery` still mints a second category beside it ([issue #7](https://github.com/vishnuyar/orionviva/issues/7)). Closing it needs either a fence, which contradicts MON-91, or a stemming rule, which is the keyword-table class of workaround this project has deleted twice. The ruling is Vishnu's.
 - Learned auto-apply for peer descriptors — "this counterpart is usually rent" — is a later projection over the recorded assignments, exactly as merchant learning was; nothing here forecloses it and nothing needs re-ingesting.
 - Merchant-as-Party and counterpart identity resolution are deferred.

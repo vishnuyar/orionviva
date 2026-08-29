@@ -52,10 +52,19 @@ FIGURE = {"id": "f1", "grade": "verified", "what": "the balance on one account",
 SHOWN = {"f1": "USD 1,200.00"}
 
 
+class _Projection:
+    def captured_docs(self):
+        return {"doc-1": "captured", "doc-2": "captured"}
+
+    def captured_filenames(self):
+        return {"doc-1": "checking.pdf", "doc-2": "savings.pdf"}
+
+
 def _answered(**over) -> dict:
     result = _Result(text="You have USD 1,200.00 on that account.",
                      grade="verified", figures=[FIGURE], **over)
-    return conversation(_Turn("what is on that account?", result), SHOWN)
+    return conversation(_Turn("what is on that account?", result), SHOWN,
+                        projection=_Projection(), turn_id="turn-1")
 
 
 # --------------------------------------------------- the mirror, and the grade
@@ -69,6 +78,26 @@ def test_a_figure_carries_the_words_the_sentence_wrote_it_as():
 
     assert said["figures"][0]["written"] == "USD 1,200.00"
     assert said["figures"][0]["record_ids"] == ["doc-1", "doc-2"]
+
+
+def test_a_figure_carries_only_openable_document_receipts():
+    class _OneDocumentProjection:
+        def captured_docs(self):
+            return {"doc-1": "captured"}
+
+        def captured_filenames(self):
+            return {"doc-1": "checking.pdf"}
+
+    said = conversation(
+        _Turn("what is on that account?", _Result(
+            text="You have USD 1,200.00 on that account.", grade="verified",
+            figures=[{**FIGURE, "record_ids": ["doc-1", "movement-1"]}])),
+        SHOWN, projection=_OneDocumentProjection(), turn_id="turn-1")
+
+    assert said["figures"][0]["evidence_id"] == "conversation:turn-1:f1"
+    assert said["figures"][0]["evidence_links"] == [{
+        "document_id": "doc-1", "label": "checking.pdf",
+        "relation": "attests", "page": ""}]
 
 
 def test_the_grade_is_a_whole_reviewed_sentence_rather_than_a_word():
@@ -107,6 +136,17 @@ def test_a_citation_is_announced_and_never_read_out():
 def test_an_answer_resting_on_nothing_announces_no_citation():
     said = conversation(_Turn("q", _Result(text="I could not find that.")), {})
 
+    assert said["spoken"]["citation_sentence"] == ""
+    assert ANNOUNCE_CITATIONS not in said["spoken"]["parts"]
+
+
+def test_a_non_document_record_is_not_announced_as_an_openable_citation():
+    said = conversation(
+        _Turn("q", _Result(text="Something.", grade="verified", figures=[{
+            **FIGURE, "record_ids": ["movement-1"]}])), SHOWN,
+        projection=_Projection(), turn_id="turn-1")
+
+    assert said["figures"][0]["evidence_links"] == []
     assert said["spoken"]["citation_sentence"] == ""
     assert ANNOUNCE_CITATIONS not in said["spoken"]["parts"]
 

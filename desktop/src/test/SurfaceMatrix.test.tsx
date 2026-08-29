@@ -2,12 +2,12 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Accounts } from "../features/accounts/Accounts";
 import { Overview } from "../features/overview/Overview";
-import type { ActivityData, FeatureResult, OverviewData, ReviewData, ReviewView } from "../surface/types";
+import type { ActivityData, ConversationData, FeatureResult, OverviewData, QuestionQueueData, QuestionView } from "../surface/types";
 import { LONG_TRUTH, absent, failed, makeAccount, makeOverview, makePicture, makeSurfaceScenario, needsInput, partial, ready, unavailable } from "./surfaceScenarios";
 
 const actions = { showVerificationDetails: false, onSelectAccount: vi.fn(), onOpenEvidence: vi.fn(), onOpenFigure: vi.fn(), onExploreSample: vi.fn() };
 const overviewActions = { ...actions, onOpenReviewQuestion: vi.fn(), onNavigate: vi.fn() };
-const absentReview = absent<ReviewData>();
+const absentConversation = absent<ConversationData>();
 
 const absentActivity = absent<ActivityData>();
 
@@ -15,11 +15,15 @@ function accountView(result: FeatureResult<OverviewData>) {
   return render(<Accounts {...actions} result={result} selectedAccount="" />);
 }
 
-function overviewView(result: FeatureResult<OverviewData>, reviewResult: FeatureResult<ReviewData> = absentReview) {
-  return render(<Overview {...overviewActions} result={result} reviewResult={reviewResult} activityResult={absentActivity} selectedAccount="" />);
+function overviewView(result: FeatureResult<OverviewData>, conversationResult: FeatureResult<ConversationData> = absentConversation) {
+  return render(<Overview {...overviewActions} result={result} conversationResult={conversationResult} activityResult={absentActivity} selectedAccount="" />);
 }
 
-const reviewRow = (id: string, label: string): ReviewView => ({ id, label, detail: "", status: "", action: "", type: "", evidence: "", state: "needs_input", outcome: null, disposition: null });
+function conversationWith(review: QuestionQueueData): FeatureResult<ConversationData> {
+  return ready({ turns: [], questions: review });
+}
+
+const reviewRow = (id: string, label: string): QuestionView => ({ id, label, detail: "", status: "", action: "", type: "", evidence: "", state: "needs_input", outcome: null, disposition: null });
 
 describe("surface scenario support", () => {
   it("creates shallow scenarios without implicit feature data", () => {
@@ -55,13 +59,13 @@ describe("Overview and Accounts state matrix", () => {
     const data = makeOverview({ accounts: [makeAccount()] });
     const view = overviewView(absent());
     expect(view.container).toBeEmptyDOMElement();
-    view.rerender(<Overview {...overviewActions} result={unavailable()} reviewResult={absentReview} activityResult={absentActivity} selectedAccount="" />);
+    view.rerender(<Overview {...overviewActions} result={unavailable()} conversationResult={absentConversation} activityResult={absentActivity} selectedAccount="" />);
     expect(view.getByText("Financial picture unavailable")).toBeInTheDocument();
-    view.rerender(<Overview {...overviewActions} result={failed()} reviewResult={absentReview} activityResult={absentActivity} selectedAccount="" />);
+    view.rerender(<Overview {...overviewActions} result={failed()} conversationResult={absentConversation} activityResult={absentActivity} selectedAccount="" />);
     expect(view.getByText("The financial picture could not be read. The private vault is still open.")).toBeInTheDocument();
-    view.rerender(<Overview {...overviewActions} result={partial(data)} reviewResult={absentReview} activityResult={absentActivity} selectedAccount="" />);
+    view.rerender(<Overview {...overviewActions} result={partial(data)} conversationResult={absentConversation} activityResult={absentActivity} selectedAccount="" />);
     expect(view.getByText("Some financial-picture details are unavailable. Available details are shown below.")).toBeInTheDocument();
-    view.rerender(<Overview {...overviewActions} result={needsInput(data)} reviewResult={absentReview} activityResult={absentActivity} selectedAccount="" />);
+    view.rerender(<Overview {...overviewActions} result={needsInput(data)} conversationResult={absentConversation} activityResult={absentActivity} selectedAccount="" />);
     expect(view.getByText("Some parts of the financial picture need more information. Available details are shown below.")).toBeInTheDocument();
     expect(view.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -77,7 +81,7 @@ describe("Overview supplied truth and identity boundaries", () => {
     for (const retired of ["Current-through value", "Shown as supplied. The interface does not infer freshness.", "Current-through value was not supplied by this overview read."]) {
       expect(view.queryByText(retired), retired).not.toBeInTheDocument();
     }
-    view.rerender(<Overview {...overviewActions} result={ready(makeOverview())} reviewResult={absentReview} activityResult={absentActivity} selectedAccount="" />);
+    view.rerender(<Overview {...overviewActions} result={ready(makeOverview())} conversationResult={absentConversation} activityResult={absentActivity} selectedAccount="" />);
     expect(view.queryByText("Sample current-through value was not authored.")).not.toBeInTheDocument();
   });
 
@@ -88,7 +92,7 @@ describe("Overview supplied truth and identity boundaries", () => {
     const view = overviewView(ready(supplied));
     expect(view.getByText("SUPPLIED PICTURE SENTENCE")).toBeInTheDocument();
     expect(view.queryByText("DEMO-ONLY CORPUS")).not.toBeInTheDocument();
-    view.rerender(<Overview {...overviewActions} result={ready(makeOverview())} reviewResult={absentReview} activityResult={absentActivity} selectedAccount="" />);
+    view.rerender(<Overview {...overviewActions} result={ready(makeOverview())} conversationResult={absentConversation} activityResult={absentActivity} selectedAccount="" />);
     expect(view.queryByText("Nothing is silently inferred.")).not.toBeInTheDocument();
   });
 
@@ -102,8 +106,8 @@ describe("Overview supplied truth and identity boundaries", () => {
   it("groups invalid account and review identities and exposes only unique actions", () => {
     const accounts = [makeAccount({ id: "", name: "Blank account" }), makeAccount({ id: "dup-account", name: "Duplicate account one" }), makeAccount({ id: "dup-account", name: "Duplicate account two" }), makeAccount({ id: "unique-account", name: "Unique account" })];
     const queue = [reviewRow("", "Blank review"), reviewRow("dup-review", "Duplicate review one"), reviewRow("dup-review", "Duplicate review two"), reviewRow("unique-review", "Unique review")];
-    const reviewResult = ready<ReviewData>({ queue, count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } });
-    const view = overviewView(ready(makeOverview({ accounts })), reviewResult);
+    const reviewResult: QuestionQueueData = { queue, count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } };
+    const view = overviewView(ready(makeOverview({ accounts })), conversationWith(reviewResult));
     expect(view.getByText("Account identity unavailable")).toBeInTheDocument();
     expect(view.getByText("Account identity conflicted")).toBeInTheDocument();
     expect(view.getByText("Question identity unavailable")).toBeInTheDocument();
@@ -115,9 +119,9 @@ describe("Overview supplied truth and identity boundaries", () => {
 
   it("keeps long conflicted identities bounded without actions, Figures, proof controls, or truncation", () => {
     const queue = [reviewRow(LONG_TRUTH, "Conflicted review one"), reviewRow(LONG_TRUTH, "Conflicted review two")];
-    const reviewResult = ready<ReviewData>({ queue, count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } });
+    const reviewResult: QuestionQueueData = { queue, count: 0, meta: { total: 0, tail: null, pending: null, invite: "", answeredByDocument: "" } };
     const accounts = [makeAccount({ id: LONG_TRUTH, name: "Conflicted account one" }), makeAccount({ id: LONG_TRUTH, name: "Conflicted account two" })];
-    const view = overviewView(ready(makeOverview({ accounts })), reviewResult);
+    const view = overviewView(ready(makeOverview({ accounts })), conversationWith(reviewResult));
     expect(view.container).toHaveTextContent(LONG_TRUTH);
     expect(view.queryByRole("button", { name: /Conflicted account|View question/i })).not.toBeInTheDocument();
     expect(view.queryByRole("button", { description: /View evidence for Conflicted/i })).not.toBeInTheDocument();

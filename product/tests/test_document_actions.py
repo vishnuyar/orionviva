@@ -358,7 +358,7 @@ def test_an_outcome_this_route_has_no_word_for_raises_rather_than_guessing(actio
     different event in front of a person, so the mapping refuses to answer at
     all."""
     from viva.desktop_bridge.document_actions import _outcome
-    from viva.desktop_bridge.review_actions import UnreadableOutcome
+    from viva.desktop_bridge.conversation_actions import UnreadableOutcome
 
     with pytest.raises(UnreadableOutcome):
         _outcome({"action": action}, False)
@@ -368,7 +368,7 @@ def test_the_sentence_a_refusal_to_answer_carries_sends_nobody_anywhere():
     """A person who has just added a file is not standing at a queue, so the
     words said when the vault answers unreadably do not send them to one."""
     from viva.desktop_bridge.document_actions import _outcome
-    from viva.desktop_bridge.review_actions import UnreadableOutcome
+    from viva.desktop_bridge.conversation_actions import UnreadableOutcome
 
     with pytest.raises(UnreadableOutcome) as raised:
         _outcome({"action": "something-else"}, False)

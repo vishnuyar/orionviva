@@ -636,9 +636,11 @@ def one_shot_extractor(spec):
     from vivacore.models import adapter_for
 
     adapter = adapter_for(replace(spec, max_continuations=0))
+    exchanges = []
 
     def _extract(prompt: str) -> str:
         result = adapter.extract([], prompt)
+        exchanges.append({"prompt": prompt, "result": result})
         if result.finish_reason == "length":
             # Neither a transport failure nor a bad reading, but a third case,
             # marked so `interpret` reports it as `too_long` rather than as
@@ -649,6 +651,9 @@ def one_shot_extractor(spec):
             return TRUNCATED_MARK + (result.text or "")
         return result.text
 
+    # Retain checked exchanges and model configuration as extractor metadata.
+    _extract.exchanges = exchanges
+    _extract.spec = spec
     return _extract
 
 

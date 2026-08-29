@@ -187,6 +187,10 @@ class ProjectionCore:
         # the stake (amount, count) the question showed when it was set aside.
         # The queue compares against the live stake; this only remembers.
         self._declined: dict[str, dict] = {}
+        # Durable turns in arrival order and proposals with immutable input data.
+        self._conversation_turns: list[dict] = []
+        self._conversation_turn_index: dict[str, int] = {}
+        self._conversation_proposals: dict[str, dict] = {}
         # Findings set aside at the exact evidence stake a person saw. The
         # finding projection compares it to the live stake and uses no clock.
         self._finding_set_asides: dict[str, dict] = {}
@@ -348,6 +352,49 @@ class ProjectionCore:
             # a read about money cites a document.
             self._declined[event.body["question_id"]] = {
                 **event.body, "event_id": event.event_id}
+
+        elif et == "ConversationTurnOpened":
+            turn_id = event.body.get("turn_id", "")
+            if turn_id and turn_id not in self._conversation_turn_index:
+                self._conversation_turn_index[turn_id] = len(
+                    self._conversation_turns)
+                self._conversation_turns.append({
+                    **event.body, "occurred_at": event.occurred_at,
+                    "event_id": event.event_id, "outcome": "stale",
+                    "message": "", "reason": "interrupted",
+                    "answer": {}, "proposal_id": ""})
+
+        elif et == "ConversationTurnSettled":
+            turn_id = event.body.get("turn_id", "")
+            index = self._conversation_turn_index.get(turn_id)
+            if index is not None:
+                self._conversation_turns[index].update({
+                    "outcome": event.body.get("outcome", ""),
+                    "message": event.body.get("message", ""),
+                    "reason": event.body.get("reason", ""),
+                    "answer": dict(event.body.get("answer") or {}),
+                    "proposal_id": event.body.get("proposal_id", ""),
+                    "settled_event_id": event.event_id})
+
+        elif et == "ConversationProposalRecorded":
+            proposal_id = event.body.get("proposal_id", "")
+            if proposal_id and proposal_id not in self._conversation_proposals:
+                self._conversation_proposals[proposal_id] = {
+                    **event.body, "occurred_at": event.occurred_at,
+                    "event_id": event.event_id, "status": "open",
+                    "outcome": "proposal", "message": "", "reason": ""}
+
+        elif et == "ConversationProposalResolved":
+            proposal_id = event.body.get("proposal_id", "")
+            proposal = self._conversation_proposals.get(proposal_id)
+            if proposal is not None and proposal.get("status") == "open":
+                proposal.update({
+                    "status": "resolved",
+                    "resolution_turn_id": event.body.get("turn_id", ""),
+                    "outcome": event.body.get("outcome", ""),
+                    "message": event.body.get("message", ""),
+                    "reason": event.body.get("reason", ""),
+                    "resolved_event_id": event.event_id})
 
         elif et == "FindingSetAside":
             # Last decision wins. If a finding returns on changed evidence and

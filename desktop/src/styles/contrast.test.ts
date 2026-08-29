@@ -4,7 +4,7 @@ import shell from "./shell.css?raw";
 import surfaceBase from "./surface-base.css?raw";
 import documents from "./documents.css?raw";
 import surfacePrimitives from "./surface-primitives.css?raw";
-import review from "./review.css?raw";
+import review from "./questions.css?raw";
 import surfaceDetails from "./surface-details.css?raw";
 import conversation from "./conversation.css?raw";
 import activity from "./activity.css?raw";
@@ -215,7 +215,7 @@ describe("what a person can read on the screens this cycle authored", () => {
     }
   });
 
-  // The review screen already dresses a refusal: the border carries the signal
+  // The conversation already dresses a refusal: the border carries the signal
   // and the words stay in ordinary ink. One signal, not three.
   it("dresses a refusal the way the screen that already ships one dresses it", () => {
     const precedent = declared(surfaces, ".review-outcome", "border");

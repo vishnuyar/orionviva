@@ -107,7 +107,6 @@ export function makeSurfaceScenario(overrides: Partial<Omit<SurfaceSnapshot, "di
     disclosure,
     overview: absent(),
     documents: absent(),
-    review: absent(),
     activity: absent(),
     conversation: absent(),
     trust: absent(),

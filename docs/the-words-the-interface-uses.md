@@ -33,7 +33,7 @@ layers may import, and what a figure must carry to cross between them, stay in
 
 ### VOICE-135 — `disabled` is reserved for nothing; `aria-disabled` says a control is busy
 **State:** contradicted
-**Code:** The attribute appears in no JSX under `desktop/src`, and `desktop/scripts/check-ui-boundaries.mjs` holds it out of the whole tree with a self-check that puts one back and asserts the checker goes red. The busy controls carry `aria-disabled` instead and stay focusable — the set-aside controls in `desktop/src/features/review/Review.tsx` and the vault picker and vault-open submit in `desktop/src/app/App.tsx` — each refusing a second press in its own handler and each describing itself, while busy, with a sentence saying that pressing again does nothing until the vault has answered.
+**Code:** The attribute appears in no JSX under `desktop/src`, and `desktop/scripts/check-ui-boundaries.mjs` holds it out of the whole tree with a self-check that puts one back and asserts the checker goes red. The busy controls carry `aria-disabled` instead and stay focusable — the set-aside controls in `desktop/src/features/conversation/Questions.tsx` and the vault picker and vault-open submit in `desktop/src/app/App.tsx` — each refusing a second press in its own handler and each describing itself, while busy, with a sentence saying that pressing again does nothing until the vault has answered.
 **Test:** none — what holds this is a Node gate and tests written in TypeScript, and the rule index collects test names by parsing Python.
 
 **Why the state has not moved.** Nothing in the code contradicts the rule any longer. What the state still records is that no test this repository's rule index can read holds any of it, so `by-review` is the ceiling this rule can reach — and moving the word, even that far, is a judgement about how a rule is known rather than a change to the code, which is the product owner's to make and not a build cycle's.
@@ -63,7 +63,7 @@ frontend".
 Two of these words are not opinions; they are declared in code and gated.
 
 - A **destination** is a place in the interface a capability lands: overview,
-  accounts, activity, documents, review, viva, trust, settings. The registry
+  accounts, activity, documents, viva, trust, settings. The registry
   declares them and a gate compares the declaration against what ships.
 - A **capability** is a thing the product can do, carrying a disposition —
   *surfaced*, *developer-only*, *internal* or *deferred* — and, when surfaced, a

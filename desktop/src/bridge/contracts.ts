@@ -3,7 +3,7 @@
 // and moves only when the sidecar's does.
 export const BRIDGE_PROTOCOL = "2.0";
 
-export type SurfaceName = "overview" | "documents" | "review" | "jobs" | "trust" | "activity";
+export type SurfaceName = "overview" | "documents" | "conversation" | "jobs" | "trust" | "activity";
 export type SurfaceParameters = Record<string, string | number>;
 export type BridgeResponse<T> = { protocol: string; request_id: string; ok: boolean; result?: T; error?: { code: string; message: string } };
 export type SurfaceReadResult = { surface: SurfaceName; job_id: string; data: unknown };
@@ -85,7 +85,7 @@ export type BridgeClient = {
   pickVaultDirectory?: () => Promise<string | null>;
   readOverview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readDocuments: () => Promise<SurfaceReadResult>;
-  readReview: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
+  readConversation: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   // What the sidecar is doing, or has just done. It is a read like any other
   // and answers absent for a sidecar that has run no job — which is not the
   // same fact as a sidecar that cannot say.

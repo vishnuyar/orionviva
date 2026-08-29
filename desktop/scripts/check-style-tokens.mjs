@@ -11,7 +11,7 @@ const tokenFile = "tokens.css";
 // under the styles directory is held to zero, whatever it is called.
 const ratchetFiles = [
   "shell.css", "surfaces.css", "surface-base.css", "documents.css",
-  "surface-primitives.css", "review.css", "surface-details.css",
+  "surface-primitives.css", "questions.css", "surface-details.css",
   "conversation.css", "activity.css", "trust.css", "evidence.css",
   "surface-responsive.css",
 ];
@@ -124,7 +124,7 @@ const baseline = {
       "type": 17,
       "weight": 4
     },
-    "review.css": {
+    "questions.css": {
       "colour": 35,
       "leading": 8,
       "motion": 0,
@@ -143,7 +143,7 @@ const baseline = {
       "weight": 1
     },
     "conversation.css": {
-      "colour": 39,
+      "colour": 36,
       "leading": 8,
       "motion": 0,
       "radius": 7,

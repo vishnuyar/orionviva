@@ -49,7 +49,7 @@ with inspect, Ask Viva and evidence-staked set-aside gestures,
 per-currency thirty-day known-remainder ranges and refusals with
 backend-supplied assumptions, exclusions, evidence and balance series,
 process-local jobs and cancellation,
-review answer, proposal confirmation and decline, Ask Viva text turns, capability-derived navigation,
+one durable conversation for questions, answers, corrections, proposal confirmation and decline, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
 identity, vault export and restore, maintenance, and privacy-filtered diagnostic
 export. Trust refreshes after each Ask Viva turn, separates configured routes
@@ -75,8 +75,8 @@ operation column is additionally checked by the desktop architecture gate.
 | `activity` | yes | yes | yes | yes |
 | `documents` | yes | yes | yes | yes |
 | `jobs` | yes | no | no | yes |
-| `review` | yes | yes | yes | yes |
-| `viva` | no | yes | yes | no |
+| `conversation` | yes | no | no | no |
+| `viva` | no | yes | yes | yes |
 | `trust` | yes | yes | yes | yes |
 | `settings` | no | yes | yes | no |
 | `none` | no | yes | no | no |
@@ -92,6 +92,9 @@ operation column is additionally checked by the desktop architecture gate.
 | `viva.activity.replace_tags` | yes | opened vault | yes |
 | `viva.activity.unlink_transfer` | yes | opened vault | yes |
 | `viva.conversation.ask` | yes | opened vault | yes |
+| `viva.conversation.answer` | yes | opened vault | yes |
+| `viva.conversation.confirm` | yes | opened vault | yes |
+| `viva.conversation.decline` | yes | opened vault | yes |
 | `viva.documents.cancel` | yes | opened vault | yes |
 | `viva.documents.rescan` | yes | opened vault | yes |
 | `viva.documents.upload` | yes | opened vault | yes |
@@ -99,9 +102,6 @@ operation column is additionally checked by the desktop architecture gate.
 | `viva.maintenance.diagnose` | yes | opened vault | yes |
 | `viva.maintenance.run` | yes | opened vault | yes |
 | `viva.overview.set_aside_finding` | yes | opened vault | yes |
-| `viva.review.answer` | yes | opened vault | yes |
-| `viva.review.confirm` | yes | opened vault | yes |
-| `viva.review.decline` | yes | opened vault | yes |
 | `viva.settings.confirm` | yes | before a vault opens | yes |
 | `viva.settings.propose` | yes | before a vault opens | yes |
 | `viva.settings.read` | yes | before a vault opens | yes |
@@ -116,9 +116,8 @@ operation column is additionally checked by the desktop architecture gate.
 | --- | --- |
 | `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Job state and cancellation are process-local. Restart recovery is absent, so an interrupted document job cannot resume after the sidecar exits. |
 | `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Documents destination. |
-| `has-file desktop/src/features/review/Review.tsx` | A proposal can be confirmed or declined while its answer outcome remains open, but ordinary navigation clears the client's proposal identity while the opened-vault bridge retains the proposal. Returning to Review cannot reach that retained proposal. |
 | `has-file desktop/src/features/activity/Activity.tsx` | Activity now reaches movement-scoped existing-choice category correction, complete-set tag replacement where the backend advertises it, and backend-qualified transfer confirmation, rejection and unlinking. The desktop neither infers transfer candidates nor offers nature editing, merchant-wide changes, new labels, or bulk editing. |
-| `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Ask Viva is connected for text, but no read supplies recorded conversation turns; the drawer can show only the answer returned to its current question. There is no microphone, speech recognition, or audio playback path; the reply shape is only voice-ready. |
+| `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Conversation is durable across process and interface sessions, includes the deterministic question queue, records proposal identity and exact proposed data separately, and restores confirmation controls after reopening. There is no microphone, speech recognition, or audio playback path; the reply shape remains voice-ready. Because the product is unreleased, this contract intentionally starts clean and performs no migration or backfill from earlier technical read records or prior vault shapes. |
 | `no-file product/viva/surface/connections.py` | No account-aggregation surface exists. Documents and the sample vault are the acquisition paths. |
 | `has-name product/viva/surface/outbound.py#outbound` | Trust reports outbound model calls and explicitly reports that no independent anchoring exists; it does not create external anchors or issuer signatures. |
 | `has-file .github/workflows/release-desktop.yml` | The release workflow validates metadata and packaged sidecar identity and builds signed target artifacts, but it does not boot each produced installer and exercise recovery on a clean target. |

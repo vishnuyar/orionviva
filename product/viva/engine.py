@@ -17,6 +17,8 @@ person and a machine reason beside them for a log.
 from __future__ import annotations
 
 import logging
+import json
+import uuid
 
 from . import reply
 from .env import locale_from_env
@@ -60,12 +62,14 @@ def answer_question(vault: Vault, question_id: str, said: str = "") -> dict:
     if not q.slots:
         return {"ok": False, "why": "not_in_words",
                 "message": moment("reply_not_in_words")}
+    extractor = _interpreter()
     parsed = reply.answer(
         spoken, q.slots, asked=q.text, context=_context_for(vault, q),
-        extract_fn=_interpreter(), currency=q.currency,
+        extract_fn=extractor, currency=q.currency,
         locale=locale_from_env(),
         resolve_link=_link_resolver(vault.ledger.projection(),
                                     _links_to(vault, q)))
+    _record_interpret(vault, extractor, q.text, spoken, parsed)
     if not parsed.ok:
         return parsed.to_dict()
     return _write_answer(vault, q, parsed, spoken)
@@ -178,9 +182,10 @@ def confirm_proposal(vault: Vault, proposal: dict, said: str = "",
 
     The second half of the same door. An answer that would bring an account into
     being comes back as a proposal rather than a write, and only a reply that
-    reads as a yes applies it. A proposal is what an answer WOULD record: it is
-    held for the length of this exchange and is never itself written down, so a
-    confirmation that never arrives leaves the ledger exactly as it was.
+    reads as a yes applies it. A proposal is what an answer WOULD record: the
+    conversation layer persists it separately from the ruling it proposes, so
+    a later session can confirm the exact same structure. A confirmation that
+    never arrives leaves the financial ruling ledger unchanged.
 
     A reply that reads as neither a yes nor a no is refused in Viva's voice and
     asked again, on the same path as every other reply that does not fill the
@@ -188,16 +193,64 @@ def confirm_proposal(vault: Vault, proposal: dict, said: str = "",
     spoken = (said or "").strip()
     if not spoken:
         return {"ok": False, "why": "empty", "message": moment("reply_empty")}
+    extractor = _interpreter()
     parsed = reply.answer(spoken, (CONFIRM_SLOT,), asked=asked,
-                          extract_fn=_interpreter(), locale=locale_from_env())
+                          extract_fn=extractor, locale=locale_from_env())
+    _record_interpret(vault, extractor, asked, spoken, parsed)
     if not parsed.ok:
         return parsed.to_dict()
     if parsed.value("confirm") != "yes":
-        # Anything but a yes writes nothing. The proposal goes out of scope with
-        # this reply, so there is nothing to undo and nothing to clean up.
+        # Anything but a yes writes no financial ruling. The conversation layer
+        # settles the persisted proposal as set aside.
         return {"ok": True, "confirmed": False,
                 "message": moment("reply_not_confirmed")}
     return {"confirmed": True, **apply_ruling(vault, proposal)}
+
+
+def _record_interpret(vault: Vault, extractor, asked: str, said: str,
+                      parsed) -> None:
+    """Capture interpretation exchanges as technical outbound evidence."""
+    if extractor is None:
+        return
+    exchanges = list(getattr(extractor, "exchanges", ()))
+    if not exchanges:
+        return
+    from .ledger.events import read_recorded
+
+    spec = getattr(extractor, "spec", None)
+    configured_model = str(getattr(spec, "model", "") or "")
+    for index, exchange in enumerate(exchanges):
+        result = exchange["result"]
+        is_last = index == len(exchanges) - 1
+        body = {
+            "asked": asked,
+            "said": said,
+            "prompt": exchange["prompt"],
+            "request": getattr(result, "request", {}),
+            "response": getattr(result, "response", {}),
+            "text": getattr(result, "text", "") or "",
+        }
+        response = getattr(result, "response", {})
+        usage = isinstance(response, dict) and isinstance(
+            response.get("usage"), dict)
+        vault.ledger.append(read_recorded(
+            doc_id=f"interpret:{uuid.uuid4().hex}",
+            model=configured_model or str(
+                getattr(result, "resolved_model", "") or ""),
+            resolved_model=str(getattr(result, "resolved_model", "") or ""),
+            prompt_version=str(getattr(parsed, "version", "") or ""),
+            input_mode="text",
+            response_text=json.dumps(body, sort_keys=True, separators=(",", ":")),
+            cost_usd=float(getattr(result, "cost_usd", 0.0) or 0.0),
+            input_tokens=int(getattr(result, "input_tokens", 0) or 0),
+            output_tokens=int(getattr(result, "output_tokens", 0) or 0),
+            parse_ok=bool(is_last and getattr(parsed, "ok", False)),
+            parse_error=(None if is_last and getattr(parsed, "ok", False)
+                         else str(getattr(parsed, "why", "")
+                                  or getattr(parsed, "detail", "")
+                                  or "retry")),
+            occurred_at=_today(), phase="interpret",
+            usage_reported=usage))
 
 
 # ----------------------------------------------------- what the door needs

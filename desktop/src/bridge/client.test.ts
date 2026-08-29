@@ -17,17 +17,17 @@ describe("bridge transport framing", () => {
     await client.openVault("/vault", "secret", false);
     await client.readOverview({ page: 1 });
     await client.readDocuments();
-    await client.readReview({ limit: 2 });
+    await client.readConversation({ limit: 2 });
 
     expect(frames.map((frame) => frame.requestId)).toEqual(["desktop-1", "desktop-2", "desktop-3", "desktop-4"]);
     expect(frames.map((frame) => frame.operation)).toEqual(["bridge.open_vault", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
     expect(frames[0].payload).toEqual({ vault_directory: "/vault", passphrase: "secret", create: false });
     expect(frames[1].payload).toEqual({ surface: "overview", parameters: { page: 1 }, job_id: "desktop-overview-2" });
     expect(frames[2].payload).toEqual({ surface: "documents", parameters: {}, job_id: "desktop-documents-3" });
-    expect(frames[3].payload).toEqual({ surface: "review", parameters: { limit: 2 }, job_id: "desktop-review-4" });
+    expect(frames[3].payload).toEqual({ surface: "conversation", parameters: { limit: 2 }, job_id: "desktop-conversation-4" });
   });
 
-  it("frames the review verb as its own operation", async () => {
+  it("frames a correction reply as part of conversation", async () => {
     const frames: BridgeRequest[] = [];
     const client = createHostBridgeClient({ request: async <T>(frame: BridgeRequest) => {
       frames.push(frame);
@@ -36,7 +36,7 @@ describe("bridge transport framing", () => {
 
     await client.declineQuestion("question-2", "dont_know");
 
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.review.decline"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.conversation.decline"]);
     expect(frames[0].payload).toEqual({ question_id: "question-2", reason: "dont_know" });
   });
 
@@ -79,7 +79,7 @@ describe("bridge transport framing", () => {
 
     await client.confirmProposal?.("proposal-1", "yes", "Open Sample Loan?");
 
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.review.confirm"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.conversation.confirm"]);
     expect(frames[0].payload).toEqual({ proposal_id: "proposal-1", said: "yes", asked: "Open Sample Loan?" });
   });
 

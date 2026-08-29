@@ -40,7 +40,7 @@
 }
 
 /* A notice that reports something that did not happen, dressed the way the
-   review screen already dresses one: the border carries the signal, the words
+   conversation already dresses one: the border carries the signal, the words
    stay in ordinary ink, and no glyph is added. The rule is selected by the
    kind the notice declares, never by what its sentence says. */
 .notice.notice-refused {

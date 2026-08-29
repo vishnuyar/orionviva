@@ -8,7 +8,7 @@ const reply = {
   refusal: "",
   grade: "verified",
   grade_sentence: "Two independent records agree on this.",
-  figures: [{ id: "f1", written: "about USD 1,200", grade: "verified", what: "the balance", record_ids: ["doc-1"] }],
+  figures: [{ id: "f1", evidence_id: "conversation:turn-1:f1", written: "about USD 1,200", grade: "verified", what: "the balance", record_ids: ["doc-1"], evidence_links: [{ document_id: "doc-1", label: "Checking statement", relation: "attests", page: "page 1" }] }],
   spoken: { may_speak: true, withheld: "", parts: ["text", "grade", "citations"], text: "You have about USD 1,200 on that account.", grade_sentence: "Two independent records agree on this.", citation_sentence: "What that rests on is on the screen.", local_only: "On this machine or not at all." },
 };
 
@@ -20,7 +20,10 @@ describe("one turn, read", () => {
   });
 
   it("carries the route back to what a figure rests on", () => {
-    expect(adaptTurn(reply)?.figures[0].recordIds).toEqual(["doc-1"]);
+    const figure = adaptTurn(reply)?.figures[0];
+    expect(figure?.recordIds).toEqual(["doc-1"]);
+    expect(figure?.evidenceId).toBe("conversation:turn-1:f1");
+    expect(figure?.evidenceLinks).toEqual([{ targetDocumentId: "doc-1", label: "Checking statement", relation: "attests", page: "page 1" }]);
   });
 
   it("takes whether anything may be spoken from the read rather than from the text", () => {

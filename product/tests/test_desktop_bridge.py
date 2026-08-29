@@ -13,7 +13,7 @@ from viva.desktop_bridge import (
     handlers_with_surface_provider,
     OpenedVaultSurfaceProvider,
 )
-from viva.desktop_bridge.review_actions import UnreadableOutcome, outcome_of
+from viva.desktop_bridge.conversation_actions import UnreadableOutcome, outcome_of
 from viva.desktop_bridge import vault_surface
 from viva.persona import moment
 from viva.vault import Vault
@@ -79,21 +79,19 @@ def test_default_surface_read_returns_live_reviewed_registry():
         "capabilities": json.loads(serialize_registry()),
         "destinations": served_destinations(),
     }
-    assert any(item["id"] == "review.questions" for item in response["result"]["capabilities"])
+    assert any(item["id"] == "conversation.viva" for item in response["result"]["capabilities"])
     # The destination signal is derived here because the rule about what
     # "served" means lives here. Two derivations of one rule are two rules, and
     # the one a person would meet is the one nobody reviewed.
     assert response["result"]["destinations"]["overview"] is True
-    # A destination no surfaced capability reaches is reported false. `viva` is
-    # one: the conversation answers over an action rather than a read, so
-    # nothing serves its contract and the signal says so.
-    assert response["result"]["destinations"]["viva"] is False
+    # Viva is now one durable read surface as well as an action family.
+    assert response["result"]["destinations"]["viva"] is True
 
 
 def test_surface_read_rejects_payload_fields():
     response = json.loads(
         dispatch_frame(
-            frame(operation="viva.surface.capabilities", payload={"destination": "review"}),
+            frame(operation="viva.surface.capabilities", payload={"destination": "viva"}),
             default_handlers().handlers,
         )
     )
@@ -368,7 +366,7 @@ def test_opened_vault_provider_exposes_real_empty_vault_surfaces(tmp_path):
 
     overview = provider.read_surface("overview", {"read_on": "2026-09-30"})
     documents = provider.read_surface("documents", {})
-    review = provider.read_surface("review", {"limit": 5})
+    review = provider.read_surface("conversation", {"limit": 5})
 
     assert overview == {
         "state": "ready",
@@ -419,7 +417,7 @@ def test_opened_vault_provider_rejects_unknown_surface_and_parameters(tmp_path):
     with pytest.raises(ValueError, match="do not accept fields"):
         provider.read_surface("overview", {"account": "secret"})
     with pytest.raises(ValueError, match="positive integer"):
-        provider.read_surface("review", {"limit": 0})
+        provider.read_surface("conversation", {"limit": 0})
     with pytest.raises(ValueError, match="read_on must be a string"):
         provider.read_surface("overview", {"read_on": 20260930})
 
@@ -469,7 +467,7 @@ def test_the_decline_verb_is_reachable_only_once_a_vault_is_open(tmp_path):
     unserved operation gets."""
     cold = json.loads(
         dispatch_frame(
-            _review_frame("viva.review.decline",
+            _review_frame("viva.conversation.decline",
                           {"question_id": "q-1", "reason": "not_now"}),
             default_handlers().handlers,
         )
@@ -481,7 +479,7 @@ def test_the_decline_verb_is_reachable_only_once_a_vault_is_open(tmp_path):
     vault = Vault.open(tmp_path / "vault", "pw")
     handlers = handlers_for_opened_vault(vault).handlers
 
-    assert "viva.review.decline" in handlers
+    assert "viva.conversation.decline" in handlers
     assert "viva.documents.upload" in handlers
 
 
@@ -520,7 +518,7 @@ def test_declining_a_question_that_is_not_open_refuses_with_a_reason(tmp_path):
     vault = Vault.open(tmp_path / "vault", "pw")
     response = json.loads(
         dispatch_frame(
-            _review_frame("viva.review.decline",
+            _review_frame("viva.conversation.decline",
                           {"question_id": "no-such-question", "reason": "not_now"}),
             handlers_for_opened_vault(vault).handlers,
         )
@@ -540,9 +538,9 @@ def test_review_action_payloads_are_fenced(tmp_path):
     handlers = handlers_for_opened_vault(vault).handlers
 
     for operation, payload, message in (
-        ("viva.review.decline", {"question_id": "", "reason": "not_now"}, "question_id"),
-        ("viva.review.decline", {"question_id": "q", "reason": "bored"}, "reason must be one of"),
-        ("viva.review.decline", {"question_id": "q", "said": "no"}, "does not accept"),
+        ("viva.conversation.decline", {"question_id": "", "reason": "not_now"}, "question_id"),
+        ("viva.conversation.decline", {"question_id": "q", "reason": "bored"}, "reason must be one of"),
+        ("viva.conversation.decline", {"question_id": "q", "said": "no"}, "does not accept"),
     ):
         response = json.loads(dispatch_frame(_review_frame(operation, payload), handlers))
         assert response["ok"] is False, (operation, payload)
