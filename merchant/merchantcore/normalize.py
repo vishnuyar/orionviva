@@ -1,17 +1,7 @@
-"""Merchant normalization — a raw transaction descriptor to a canonical key.
+"""Normalize descriptors into versioned local recognition strings.
 
-Deterministic and versioned: the key is what the merchant catalog is keyed by,
-and two users derive the same key from the same descriptor, so the rules are
-fixed and carried by ``NORMALIZER_VERSION``.
-
-Not fuzzy matching — it never merges two different spellings. It strips the
-tail that varies transaction to transaction (store numbers, order ids, phone
-numbers, payment-processor prefixes, posting dates) and leaves the merchant
-words as read.
-
-``is_shareable`` is the fallback privacy lint, used where no induced grammar
-exists to name a slot. A peer-payment or person-name descriptor must not enter
-the unencrypted catalog or the commons.
+The result is a fallback key and possible exact alias candidate, not a
+permanent merchant id. ``is_shareable`` applies the fallback privacy lint.
 """
 
 from __future__ import annotations
@@ -47,7 +37,7 @@ _WS = re.compile(r"\s+")
 
 
 def normalize_merchant(descriptor: str) -> str:
-    """Canonical merchant key for a raw descriptor.
+    """Stable normalized recognition string for a raw descriptor.
 
     Deterministic and versioned. Returns "" if nothing remains after stripping."""
     s = (descriptor or "").lower().strip()
@@ -74,9 +64,7 @@ def is_shareable(descriptor: str) -> bool:
     low = (descriptor or "").lower()
     if any(mark in low for mark in _PEER_MARKERS):
         return False
-    # Constraint: silence from this English, ASCII marker list is not a
-    # clearance. A descriptor carrying non-ASCII letters is withheld until a
-    # grammar exists for that institution and a slot name answers instead.
+    # Non-ASCII names remain private unless a grammar supplies a named slot.
     if any(c.isalpha() and ord(c) > 127 for c in (descriptor or "")):
         return False
     return bool(normalize_merchant(descriptor))

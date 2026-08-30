@@ -208,13 +208,15 @@ That is the interview
 the implication says an instrument exists, the schema pack says what may be asked
 about it, and the answer is a scoped ruling like any other.
 
-**The merchant key is the brand.** Enrichment files what it learns under the
-brand a resolution layer names, so a keyspace that normalized descriptors instead
-would never meet it, and a vault could hold a full catalog while reading as
-though it held none. The key is one property: the normalized brand where a layer
-could name one, the normalized descriptor where none could — resolved for the
-whole vault at once, because the ACH company-name boundary is a property of the
-corpus rather than of any single line.
+**Merchant identity is permanent; recognition is evidence.** A grammar brand,
+a published-parser result, a prefix bounded by a proven occurrence slot and the
+normalized descriptor are ordered candidates, not identities. Only an exact
+reviewed catalog alias maps one onto a permanent merchant id. Reads retain the
+canonical id and every structural/legacy candidate so a stronger local ruling is
+never stranded; no match leaves the normalized local key honestly unknown. The
+whole vault is still the unit where corpus-dependent boundaries such as ACH
+company names are resolved, and people/refused lines never consult business
+aliases.
 
 Invariants this leans on: T2/ADR-010 (a model may perceive and infer;
 deterministic code decides and posts), T4, T9 (the impersonal/personal boundary,

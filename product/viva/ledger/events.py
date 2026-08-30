@@ -656,10 +656,12 @@ def merchant_categorized(merchant: str, category: str, grade: str,
 def merchant_enriched(merchant: str, category: str, subcategory: str = "",
                       canonical_name: str = "", attributes: dict | None = None,
                       grade: str = "corroborated", occurred_at: str = "",
-                      by: str = "model", provenance: Provenance | None = None) -> Event:
+                      by: str = "model", provenance: Provenance | None = None,
+                      aliases: list[str] | None = None) -> Event:
     """The applied record of a merchantcore enrichment: a merchant's primary
-    category, a finer ``subcategory``, a ``canonical_name``, and richer
-    ``attributes`` (logo, mcc, website) synced in from the knowledge package.
+    category, a finer ``subcategory``, a display ``canonical_name``, reviewed
+    identity ``aliases``, and richer ``attributes`` (logo, mcc, website) synced
+    in from the knowledge package.
     Recording it as an event keeps a replay reproducible with merchantcore
     absent. The richer sibling of `MerchantCategorized`; both feed the same
     catalog projection, which keeps the highest-graded record."""
@@ -667,7 +669,8 @@ def merchant_enriched(merchant: str, category: str, subcategory: str = "",
         "MerchantEnriched", occurred_at,
         body={"merchant": merchant, "category": category,
               "subcategory": subcategory, "canonical_name": canonical_name,
-              "attributes": dict(attributes or {}), "grade": grade, "by": by},
+              "attributes": dict(attributes or {}), "aliases": list(aliases or []),
+              "grade": grade, "by": by},
         provenance=provenance or Provenance(),
     )
 
@@ -1095,18 +1098,8 @@ def finding_set_aside(finding_id: str, kind: str, stake: dict,
 
 
 # --------------------------------------------------------------------------
-# The agent acted on its own: the journal of work done unattended.
-#
-# Unlike every other event here, this one is written when no document arrived
-# and nobody spoke. It is not scoped to a `doc_id`, because an induction is
-# about an institution's habits across many documents rather than about one.
-#
-# The agent's cooldown is derived from these events. As with QuestionDeclined,
-# a refused action records the STAKE that justified it rather than a timer, and
-# becomes proposable again when the stake moves; a successful action needs no
-# cooldown, because it changed what `assess` sees.
-#
-# The body carries counts, never content: no descriptor, no amount, no account.
+# The unattended-work journal is unscoped to a document. Refusals record their
+# stake for cooldown comparison; bodies contain counts and artifact ids only.
 
 AGENT_ACTED = "AgentActed"
 

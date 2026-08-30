@@ -1,26 +1,7 @@
-"""Resolving a whole vault's descriptors to the keys merchant knowledge is
-filed under.
+"""Resolve a vault's descriptors to merchant keys and identity evidence.
 
-Enrichment files what it learns under a brand — `costco`, not
-`POS DEBIT 0912 COSTCO WHSE #114 CITYVILLE 06/12`. Naming the brand takes the
-four resolution layers, and the best of them is an induced grammar, which lives
-on disk rather than in the event log. So the projection cannot compute a
-merchant key from an event alone; something has to hand it the grammars.
-
-That is what a *resolver* is: a callable the projection is constructed with,
-which takes every (account, institution, kind, descriptor) row the ledger holds
-and returns the key each line is filed under, plus the lines a grammar slot
-declared a person on — the one fact about a line that no read can recover for
-itself, for the same reason. A projection built without a resolver falls back
-to normalizing the descriptor and knows of no persons, which is what every read
-did before grammars existed and remains correct wherever no grammar has been
-induced.
-
-The corpus, not the line, is the unit: the ACH company-name boundary does not
-exist on any single descriptor, so it is computed once over all of them and
-passed into each resolution — exactly as the stream engine does it. Two callers
-resolving the same vault differently is the failure this module exists to
-prevent, so both go through `resolve_descriptor` with the same corpus.
+Resolution uses one corpus-wide ACH split and optional installed grammars.
+Results include person declarations and exact catalog candidates.
 """
 
 from __future__ import annotations
@@ -30,24 +11,25 @@ from merchantcore.resolve import resolve_descriptor
 
 
 class MerchantKeys(dict):
-    """`{(account, descriptor): merchant key}`, carrying which of those lines a
-    slot declared a person on.
+    """Resolved local keys plus person declarations and identity candidates.
 
     A mapping first: every read wants the key, and a person's line has one like
     any other. `persons` holds the `(account, descriptor)` pairs a grammar slot
     named a party on — the same declaration the stream engine reads, and the
     one thing only a resolver can state, because only a resolver holds the
-    grammars. It is empty wherever no grammar has named a line.
+    grammars. ``candidates`` carries the ordered, structurally justified strings
+    an exact reviewed catalog alias may recognize. Both sets are empty where
+    privacy or resolution supplied no authority.
     """
 
-    def __init__(self, keys=(), persons=()) -> None:
+    def __init__(self, keys=(), persons=(), candidates=()) -> None:
         super().__init__(keys)
         self.persons = frozenset(persons)
+        self.candidates = dict(candidates)
 
 
 def resolve_keys(rows, profile_for=None) -> MerchantKeys:
-    """`{(account, descriptor): merchant key}` for a whole vault, as a
-    `MerchantKeys` — the mapping, plus the lines a slot named a party on.
+    """Resolve a whole vault to local keys, person declarations and candidates.
 
     `rows` is an iterable of `(account, institution, kind, descriptor)`.
     `profile_for(institution, kind)` returns the induced grammar for that pair
@@ -63,6 +45,7 @@ def resolve_keys(rows, profile_for=None) -> MerchantKeys:
     profiles: dict = {}
     out: dict = {}
     persons: set = set()
+    candidates: dict = {}
     seen: set = set()
     for account, institution, kind, descriptor in rows:
         if (account, descriptor) in seen:
@@ -74,10 +57,11 @@ def resolve_keys(rows, profile_for=None) -> MerchantKeys:
         res = resolve_descriptor(descriptor, profiles[pair], ach_split)
         if res.is_person:
             persons.add((account, descriptor))
+        candidates[(account, descriptor)] = res.identity_candidates
         key = res.merchant_key
         if key:
             out[(account, descriptor)] = key
-    return MerchantKeys(out, persons)
+    return MerchantKeys(out, persons, candidates)
 
 
 def installed_resolver():

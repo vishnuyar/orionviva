@@ -306,14 +306,14 @@ def categorize_merchants_batch(ledger: Ledger, categorize_fn,
 
 def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
                      kind_for=None, chunk_size: int | None = None) -> dict:
-    """Enrich the vault's unknown brands through merchantcore.
+    """Enrich the vault's honestly unknown merchant identities through merchantcore.
 
-    Keyed on the brand, not the descriptor. What crosses is a brand and the
-    impersonal context every occurrence of it agreed on: no raw descriptor, no
-    amount, date or account, and no stream a grammar slot marked as a person.
-    merchantcore enriches the pending set in batched calls and the records sync
-    back as `MerchantEnriched` events, so categorization is retrospective and
-    the ledger stays self-contained.
+    A reviewed exact alias resolves for free and never reaches the model. For an
+    unresolved stream, its structural/brand fallback key and the impersonal
+    context every occurrence agreed on cross: no raw descriptor, amount, date,
+    account, or stream a grammar slot marked as a person. merchantcore enriches
+    the pending set in batches and syncs records back as `MerchantEnriched`
+    events, so categorization is retrospective and the ledger stays self-contained.
 
     ``profile_for(movement)`` supplies the induced grammar for the movement's
     (institution × kind) or None, and is optional — without it the resolution
@@ -351,7 +351,9 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
                  "names no party", held_back)
     streams = build_streams(movements, profile_for, kind_for)
     offered = enrichment_hints(streams)
-    submitted = catalog.submit((h.key, h.example()) for h in offered.values())
+    unknown = [hint for hint in offered.values()
+               if catalog.resolve(hint.identity_candidates or (hint.key,)) is None]
+    submitted = catalog.submit((hint.key, hint.example()) for hint in unknown)
     enriched, unanswered, minted = 0, 0, 0
     batch = catalog.pending()
     if batch:
@@ -381,11 +383,7 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
         unanswered = catalog.mark_unanswered(
             k for k in batch if k not in records and k not in transport)
 
-    # Applying records the catalog already holds is deliberately a separate,
-    # zero-call operation too. Enrichment uses it after buying new knowledge;
-    # the maintenance agent also uses it on its own so a new vault containing
-    # only already-known merchants does not need an unknown merchant merely to
-    # trigger the free sync.
+    # Apply installed records independently of whether enrichment made a call.
     synced = sync_merchant_records(ledger, catalog, offered)
     withheld = len([s for s in streams if s.is_person])
     if submitted or enriched or synced:
@@ -400,38 +398,47 @@ def enrich_merchants(ledger: Ledger, catalog, extract_fn, profile_for=None,
 def merchant_records_to_sync(ledger: Ledger, catalog, offered=()) -> dict:
     """Catalog records this vault can apply without a model call.
 
-    ``offered`` names the merchant keys derived from this vault's eligible
-    counterparty streams. Records already held by the ledger are included too,
-    so a stronger catalog record can replace an older prior. A shared or
-    shipped record about a merchant this vault never encountered is excluded.
-
-    Pure: returns ``{key: MerchantRecord}`` and writes nothing.
+    ``offered`` contains this vault's eligible counterparty hints. Existing
+    ledger records are considered too, so a stronger installed prior can
+    replace an older one. Records for merchants the vault never encountered
+    are excluded. Pure: returns records and writes nothing.
     """
     existing = ledger.projection().merchant_categories()
-    held = set(offered) | set(existing)
+    matched: dict = {}
+    items = offered.items() if isinstance(offered, dict) else (
+        (key, None) for key in offered)
+    for key, hint in items:
+        candidates = (getattr(hint, "identity_candidates", None)
+                      or (getattr(hint, "key", None) or key,))
+        record = catalog.resolve(candidates)
+        if record is not None:
+            matched[record.key] = record
+    for key in existing:
+        record = catalog.get(key)
+        if record is not None:
+            matched[record.key] = record
     return {
-        key: record for key, record in catalog.records().items()
-        if key in held and (
-            key not in existing
+        key: record for key, record in matched.items()
+        if (key not in existing
+            or not set(record.aliases).issubset(
+                set(existing[key].get("aliases") or ()))
             or _GRADE_RANK.get(record.grade, 0)
-            > _GRADE_RANK.get(existing[key].get("grade"), 0)
-        )
+            > _GRADE_RANK.get(existing[key].get("grade"), 0))
     }
 
 
 def sync_merchant_records(ledger: Ledger, catalog, offered=()) -> int:
-    """Append already-known catalog records as vault events, for free.
+    """Append matching installed records as idempotent vault events.
 
-    The selection is the same one enrichment has always used and is
-    idempotent. Keeping it callable without an extractor is what separates
-    local catalog reuse from the permission-gated model crossing.
+    Lower-grade records may add reviewed aliases without replacing stronger
+    local facts. No extractor or model call is used.
     """
     records = merchant_records_to_sync(ledger, catalog, offered)
     for record in records.values():
         ledger.append(merchant_enriched(
             record.key, record.category, record.subcategory,
             record.canonical_name, record.attributes, record.grade,
-            date.today().isoformat()))
+            date.today().isoformat(), aliases=record.aliases))
     return len(records)
 
 

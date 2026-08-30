@@ -1,0 +1,2678 @@
+{
+  "format": "merchant-catalog-v2",
+  "identity_version": "merchant-id-v1",
+  "records": {
+    "7 eleven": {
+      "aliases": [
+        "7 eleven"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Convenience store chain",
+        "logo_url": "https://logo.clearbit.com/7-eleven.com",
+        "mcc": "5499",
+        "website": "7-eleven.com"
+      },
+      "canonical_name": "7-Eleven",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "7 eleven",
+      "source": "model",
+      "subcategory": "convenience store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "amazon com": {
+      "aliases": [
+        "amazon com"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Online retail purchase",
+        "logo_url": "https://logo.clearbit.com/amazon.com",
+        "mcc": "5942",
+        "website": "amazon.com"
+      },
+      "canonical_name": "Amazon",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "amazon com",
+      "source": "model",
+      "subcategory": "online marketplace",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "amazon prime": {
+      "aliases": [
+        "amazon prime"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "Amazon membership and delivery service",
+        "logo_url": "https://logo.clearbit.com/amazon.com",
+        "mcc": "5968",
+        "website": "amazon.com"
+      },
+      "canonical_name": "Amazon Prime",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "amazon prime",
+      "source": "model",
+      "subcategory": "software subscription",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "amazon ret": {
+      "aliases": [
+        "amazon ret"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "annual",
+        "counterparty_kind": "business",
+        "description": "Online retailer and marketplace",
+        "logo_url": "https://logo.clearbit.com/amazon.com",
+        "website": "amazon.com"
+      },
+      "canonical_name": "Amazon",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "amazon ret",
+      "source": "model",
+      "subcategory": "online marketplace",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "american heart sw": {
+      "aliases": [
+        "american heart sw"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "Heart health nonprofit organization",
+        "logo_url": "https://logo.clearbit.com/heart.org",
+        "mcc": "8398",
+        "website": "heart.org"
+      },
+      "canonical_name": "American Heart Association",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "american heart sw",
+      "source": "model",
+      "subcategory": "charity donation",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "amzn mktp u": {
+      "aliases": [
+        "amzn mktp u"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Online marketplace purchase",
+        "logo_url": "https://logo.clearbit.com/amazon.com",
+        "mcc": "5964",
+        "website": "amazon.com"
+      },
+      "canonical_name": "Amazon Marketplace",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "amzn mktp u",
+      "source": "model",
+      "subcategory": "online marketplace",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "amzn mktp us": {
+      "aliases": [
+        "amzn mktp us"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Online marketplace purchase",
+        "logo_url": "https://logo.clearbit.com/amazon.com",
+        "mcc": "5964",
+        "website": "amazon.com"
+      },
+      "canonical_name": "Amazon Marketplace",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "amzn mktp us",
+      "source": "model",
+      "subcategory": "online marketplace",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "atmos energy": {
+      "aliases": [
+        "atmos energy"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Natural gas utility provider",
+        "logo_url": "https://logo.clearbit.com/atmosenergy.com",
+        "mcc": "4900",
+        "website": "atmosenergy.com"
+      },
+      "canonical_name": "Atmos Energy",
+      "category": "utilities",
+      "grade": "corroborated",
+      "key": "atmos energy",
+      "source": "model",
+      "subcategory": "natural gas",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "autozone": {
+      "aliases": [
+        "autozone"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Automotive parts and accessories retailer",
+        "logo_url": "https://logo.clearbit.com/autozone.com",
+        "mcc": "5533",
+        "website": "autozone.com"
+      },
+      "canonical_name": "AutoZone",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "autozone",
+      "source": "model",
+      "subcategory": "vehicle maintenance",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "bella italia ristora": {
+      "aliases": [
+        "bella italia ristora"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Italian restaurant",
+        "mcc": "5812"
+      },
+      "canonical_name": "Bella Italia",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "bella italia ristora",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "ben s soft pretzels the": {
+      "aliases": [
+        "ben s soft pretzels the"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Soft pretzel snack vendor",
+        "logo_url": "https://logo.clearbit.com/benspretzels.com",
+        "mcc": "5814",
+        "website": "benspretzels.com"
+      },
+      "canonical_name": "Ben's Soft Pretzels",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "ben s soft pretzels the",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "best buy co": {
+      "aliases": [
+        "best buy co"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Consumer electronics retailer",
+        "logo_url": "https://logo.clearbit.com/bestbuy.com",
+        "mcc": "5732",
+        "website": "bestbuy.com"
+      },
+      "canonical_name": "Best Buy",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "best buy co",
+      "source": "model",
+      "subcategory": "electronics",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "best thai signature": {
+      "aliases": [
+        "best thai signature"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Thai restaurant",
+        "mcc": "5812"
+      },
+      "canonical_name": "Best Thai Signature",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "best thai signature",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "bjs restaurants": {
+      "aliases": [
+        "bjs restaurants"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Restaurant and brewery chain",
+        "logo_url": "https://logo.clearbit.com/bjsrestaurants.com",
+        "mcc": "5812",
+        "website": "bjsrestaurants.com"
+      },
+      "canonical_name": "BJ's Restaurant & Brewhouse",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "bjs restaurants",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "braums store": {
+      "aliases": [
+        "braums store"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Regional grocery and dairy store",
+        "logo_url": "https://logo.clearbit.com/braums.com",
+        "mcc": "5411",
+        "website": "braums.com"
+      },
+      "canonical_name": "Braum's",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "braums store",
+      "source": "model",
+      "subcategory": "supermarket",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "buc ee s": {
+      "aliases": [
+        "buc ee s"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fuel station and travel center",
+        "logo_url": "https://logo.clearbit.com/buc-ees.com",
+        "mcc": "5541",
+        "website": "buc-ees.com"
+      },
+      "canonical_name": "Buc-ee's",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "buc ee s",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "burger king": {
+      "aliases": [
+        "burger king"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Hamburger fast-food chain",
+        "logo_url": "https://logo.clearbit.com/bk.com",
+        "mcc": "5814",
+        "website": "bk.com"
+      },
+      "canonical_name": "Burger King",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "burger king",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "canteen": {
+      "aliases": [
+        "canteen"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Workplace food and vending operator",
+        "logo_url": "https://logo.clearbit.com/canteen.com",
+        "mcc": "5963",
+        "website": "canteen.com"
+      },
+      "canonical_name": "Canteen",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "canteen",
+      "source": "model",
+      "subcategory": "vending",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "certus airvac service": {
+      "aliases": [
+        "certus airvac service"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Residential air duct cleaning service"
+      },
+      "canonical_name": "Certus AirVac Service",
+      "category": "housing",
+      "grade": "corroborated",
+      "key": "certus airvac service",
+      "source": "model",
+      "subcategory": "home maintenance",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "champion energy service": {
+      "aliases": [
+        "champion energy service"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Retail electricity provider",
+        "logo_url": "https://logo.clearbit.com/championenergyservices.com",
+        "website": "championenergyservices.com"
+      },
+      "canonical_name": "Champion Energy Services",
+      "category": "utilities",
+      "grade": "corroborated",
+      "key": "champion energy service",
+      "source": "model",
+      "subcategory": "electricity",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "chevron": {
+      "aliases": [
+        "chevron"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Gas station and fuel retailer",
+        "logo_url": "https://logo.clearbit.com/chevron.com",
+        "mcc": "5541",
+        "website": "chevron.com"
+      },
+      "canonical_name": "Chevron",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "chevron",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "chick fil a": {
+      "aliases": [
+        "chick fil a"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fast-food chicken restaurant",
+        "logo_url": "https://logo.clearbit.com/chick-fil-a.com",
+        "mcc": "5814",
+        "website": "chick-fil-a.com"
+      },
+      "canonical_name": "Chick-fil-A",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "chick fil a",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "chipotle": {
+      "aliases": [
+        "chipotle"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fast casual Mexican restaurant",
+        "logo_url": "https://logo.clearbit.com/chipotle.com",
+        "mcc": "5814",
+        "website": "chipotle.com"
+      },
+      "canonical_name": "Chipotle",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "chipotle",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "choice home warranty": {
+      "aliases": [
+        "choice home warranty"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "Home systems and appliances warranty",
+        "logo_url": "https://logo.clearbit.com/choicehomewarranty.com",
+        "website": "choicehomewarranty.com"
+      },
+      "canonical_name": "Choice Home Warranty",
+      "category": "housing",
+      "grade": "corroborated",
+      "key": "choice home warranty",
+      "source": "model",
+      "subcategory": "home maintenance",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "cinemark theatres": {
+      "aliases": [
+        "cinemark theatres"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Movie theater chain",
+        "logo_url": "https://logo.clearbit.com/cinemark.com",
+        "mcc": "7832",
+        "website": "cinemark.com"
+      },
+      "canonical_name": "Cinemark",
+      "category": "entertainment",
+      "grade": "corroborated",
+      "key": "cinemark theatres",
+      "source": "model",
+      "subcategory": "cinema",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "circle k": {
+      "aliases": [
+        "circle k"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fuel station and convenience store",
+        "logo_url": "https://logo.clearbit.com/circlek.com",
+        "mcc": "5541",
+        "website": "circlek.com"
+      },
+      "canonical_name": "Circle K",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "circle k",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "circle k west": {
+      "aliases": [
+        "circle k west"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fuel station and convenience store",
+        "logo_url": "https://logo.clearbit.com/circlek.com",
+        "mcc": "5541",
+        "website": "circlek.com"
+      },
+      "canonical_name": "Circle K",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "circle k west",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "collin co svc fee": {
+      "aliases": [
+        "collin co svc fee"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "County government service fee",
+        "logo_url": "https://logo.clearbit.com/collincountytx.gov",
+        "website": "collincountytx.gov"
+      },
+      "canonical_name": "Collin County",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "collin co svc fee",
+      "source": "model",
+      "subcategory": "service charge",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "collin vehre": {
+      "aliases": [
+        "collin vehre"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "County vehicle registration service",
+        "logo_url": "https://logo.clearbit.com/collincountytx.gov",
+        "mcc": "9399",
+        "website": "collincountytx.gov"
+      },
+      "canonical_name": "Collin County Vehicle Registration",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "collin vehre",
+      "source": "model",
+      "subcategory": "vehicle registration",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "cop utility srvcs we": {
+      "aliases": [
+        "cop utility srvcs we"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Municipal utility services",
+        "logo_url": "https://logo.clearbit.com/plano.gov",
+        "mcc": "4900",
+        "website": "plano.gov"
+      },
+      "canonical_name": "City of Plano Utility Services",
+      "category": "utilities",
+      "grade": "corroborated",
+      "key": "cop utility srvcs we",
+      "source": "model",
+      "subcategory": "water",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "costco": {
+      "aliases": [
+        "costco",
+        "costco at",
+        "costco whse"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Membership warehouse retailer",
+        "logo_url": "https://logo.clearbit.com/costco.com",
+        "mcc": "5300",
+        "website": "costco.com"
+      },
+      "canonical_name": "Costco",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "costco",
+      "source": "model",
+      "subcategory": "wholesale club",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "costco gas": {
+      "aliases": [
+        "costco gas"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Warehouse club fuel station",
+        "logo_url": "https://logo.clearbit.com/costco.com",
+        "mcc": "5541",
+        "website": "costco.com"
+      },
+      "canonical_name": "Costco Gas",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "costco gas",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "csc servicework": {
+      "aliases": [
+        "csc servicework"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Commercial laundry service operator",
+        "logo_url": "https://logo.clearbit.com/cscsw.com",
+        "website": "cscsw.com"
+      },
+      "canonical_name": "CSC ServiceWorks",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "csc servicework",
+      "source": "model",
+      "subcategory": "laundry",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "d j": {
+      "aliases": [
+        "d j"
+      ],
+      "attributes": {
+        "counterparty_kind": "business",
+        "description": "Unidentified local merchant"
+      },
+      "canonical_name": "D J",
+      "category": "other",
+      "grade": "corroborated",
+      "key": "d j",
+      "source": "model",
+      "subcategory": "uncategorised",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "dfw airport prepaidpr": {
+      "aliases": [
+        "dfw airport prepaidpr"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Prepaid airport parking",
+        "logo_url": "https://logo.clearbit.com/dfwairport.com",
+        "mcc": "7523",
+        "website": "dfwairport.com"
+      },
+      "canonical_name": "Dallas Fort Worth International Airport",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "dfw airport prepaidpr",
+      "source": "model",
+      "subcategory": "parking",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "dicks sporting goods": {
+      "aliases": [
+        "dicks sporting goods"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Sporting goods and apparel retailer",
+        "logo_url": "https://logo.clearbit.com/dicks.com",
+        "mcc": "5941",
+        "website": "dicks.com"
+      },
+      "canonical_name": "Dick's Sporting Goods",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "dicks sporting goods",
+      "source": "model",
+      "subcategory": "sporting goods",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "dicks warehouse sale": {
+      "aliases": [
+        "dicks warehouse sale"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Discount sporting goods retailer",
+        "logo_url": "https://logo.clearbit.com/dickssportinggoods.com",
+        "mcc": "5941",
+        "website": "dickssportinggoods.com"
+      },
+      "canonical_name": "DICK'S Warehouse Sale",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "dicks warehouse sale",
+      "source": "model",
+      "subcategory": "sporting goods",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "dollar tree": {
+      "aliases": [
+        "dollar tree"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Discount variety store",
+        "logo_url": "https://logo.clearbit.com/dollartree.com",
+        "mcc": "5331",
+        "website": "dollartree.com"
+      },
+      "canonical_name": "Dollar Tree",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "dollar tree",
+      "source": "model",
+      "subcategory": "discount store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "dollartree": {
+      "aliases": [
+        "dollartree"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Discount variety store",
+        "logo_url": "https://logo.clearbit.com/dollartree.com",
+        "mcc": "5331",
+        "website": "dollartree.com"
+      },
+      "canonical_name": "Dollar Tree",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "dollartree",
+      "source": "model",
+      "subcategory": "discount store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "edreams us": {
+      "aliases": [
+        "edreams us"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Online travel booking agency",
+        "logo_url": "https://logo.clearbit.com/edreams.com",
+        "mcc": "4722",
+        "website": "edreams.com"
+      },
+      "canonical_name": "eDreams",
+      "category": "travel",
+      "grade": "corroborated",
+      "key": "edreams us",
+      "source": "model",
+      "subcategory": "travel booking",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "eqt": {
+      "aliases": [
+        "eqt"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Natural gas utility provider",
+        "logo_url": "https://logo.clearbit.com/eqt.com",
+        "website": "eqt.com"
+      },
+      "canonical_name": "EQT",
+      "category": "utilities",
+      "grade": "corroborated",
+      "key": "eqt",
+      "source": "model",
+      "subcategory": "natural gas",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "eqt dental": {
+      "aliases": [
+        "eqt dental"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "Dental insurance provider",
+        "implies": [
+          {
+            "account_group": "Insurance",
+            "compound": false,
+            "confidence": "forced",
+            "documents": "insurance policy or premium statement",
+            "major": "expense",
+            "on": "outflow",
+            "relationship": "dental insurance policy"
+          }
+        ],
+        "logo_url": "https://logo.clearbit.com/guardianlife.com",
+        "mcc": "6300",
+        "website": "guardianlife.com"
+      },
+      "canonical_name": "Guardian Dental",
+      "category": "health",
+      "grade": "corroborated",
+      "key": "eqt dental",
+      "source": "model",
+      "subcategory": "health insurance",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "expedia": {
+      "aliases": [
+        "expedia"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Online travel booking marketplace",
+        "logo_url": "https://logo.clearbit.com/expedia.com",
+        "mcc": "4722",
+        "website": "expedia.com"
+      },
+      "canonical_name": "Expedia",
+      "category": "travel",
+      "grade": "corroborated",
+      "key": "expedia",
+      "source": "model",
+      "subcategory": "travel booking",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "exxon 7 eleven": {
+      "aliases": [
+        "exxon 7 eleven"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fuel station",
+        "logo_url": "https://logo.clearbit.com/exxon.com",
+        "mcc": "5541",
+        "website": "exxon.com"
+      },
+      "canonical_name": "Exxon",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "exxon 7 eleven",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "farm": {
+      "aliases": [
+        "farm"
+      ],
+      "attributes": {
+        "counterparty_kind": "business",
+        "description": "Unclear merchant descriptor"
+      },
+      "canonical_name": "Farm",
+      "category": "other",
+      "grade": "corroborated",
+      "key": "farm",
+      "source": "model",
+      "subcategory": "uncategorised",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "five below": {
+      "aliases": [
+        "five below"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Discount variety retailer",
+        "logo_url": "https://logo.clearbit.com/fivebelow.com",
+        "mcc": "5311",
+        "website": "fivebelow.com"
+      },
+      "canonical_name": "Five Below",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "five below",
+      "source": "model",
+      "subcategory": "discount store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "five guys qsr": {
+      "aliases": [
+        "five guys qsr"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Burgers and fries restaurant",
+        "logo_url": "https://logo.clearbit.com/fiveguys.com",
+        "mcc": "5814",
+        "website": "fiveguys.com"
+      },
+      "canonical_name": "Five Guys",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "five guys qsr",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "frisco independe": {
+      "aliases": [
+        "frisco independe"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Public school district",
+        "logo_url": "https://logo.clearbit.com/friscoisd.org",
+        "website": "friscoisd.org"
+      },
+      "canonical_name": "Frisco Independent School District",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "frisco independe",
+      "source": "model",
+      "subcategory": "education",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "fsp kar": {
+      "aliases": [
+        "fsp kar"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Automotive maintenance and oil-change service",
+        "logo_url": "https://logo.clearbit.com/kwikkar.com",
+        "mcc": "7538",
+        "website": "kwikkar.com"
+      },
+      "canonical_name": "Kwik Kar",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "fsp kar",
+      "source": "model",
+      "subcategory": "vehicle maintenance",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "goodyear asc": {
+      "aliases": [
+        "goodyear asc"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Tires and automotive service retailer",
+        "logo_url": "https://logo.clearbit.com/goodyear.com",
+        "mcc": "5532",
+        "website": "goodyear.com"
+      },
+      "canonical_name": "Goodyear",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "goodyear asc",
+      "source": "model",
+      "subcategory": "vehicle maintenance",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "hansel gretel candy kit": {
+      "aliases": [
+        "hansel gretel candy kit"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Candy and confectionery retailer",
+        "logo_url": "https://logo.clearbit.com/hanselgretelcandy.com",
+        "mcc": "5441",
+        "website": "hanselgretelcandy.com"
+      },
+      "canonical_name": "Hansel & Gretel Candy Kitchen",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "hansel gretel candy kit",
+      "source": "model",
+      "subcategory": "specialty food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "home depot": {
+      "aliases": [
+        "home depot"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Home improvement and hardware retailer",
+        "logo_url": "https://logo.clearbit.com/homedepot.com",
+        "mcc": "5200",
+        "website": "homedepot.com"
+      },
+      "canonical_name": "The Home Depot",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "home depot",
+      "source": "model",
+      "subcategory": "home improvement",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "i3v independent sc": {
+      "aliases": [
+        "i3v independent sc"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Public school district",
+        "logo_url": "https://logo.clearbit.com/friscoisd.org",
+        "website": "friscoisd.org"
+      },
+      "canonical_name": "Frisco Independent School District",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "i3v independent sc",
+      "source": "model",
+      "subcategory": "education",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "ihop": {
+      "aliases": [
+        "ihop"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Pancake and breakfast restaurant",
+        "logo_url": "https://logo.clearbit.com/ihop.com",
+        "mcc": "5812",
+        "website": "ihop.com"
+      },
+      "canonical_name": "IHOP",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "ihop",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "in learning center": {
+      "aliases": [
+        "in learning center"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Math and reading learning center",
+        "logo_url": "https://logo.clearbit.com/kumon.com",
+        "mcc": "8299",
+        "website": "kumon.com"
+      },
+      "canonical_name": "Kumon",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "in learning center",
+      "source": "model",
+      "subcategory": "education",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "irs": {
+      "aliases": [
+        "irs"
+      ],
+      "attributes": {
+        "counterparty_kind": "business",
+        "description": "Federal tax authority",
+        "logo_url": "https://logo.clearbit.com/irs.gov",
+        "website": "irs.gov"
+      },
+      "canonical_name": "Internal Revenue Service",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "irs",
+      "source": "model",
+      "subcategory": "income tax",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "jcpenney": {
+      "aliases": [
+        "jcpenney"
+      ],
+      "attributes": {
+        "counterparty_kind": "business",
+        "description": "JCPenney card payment",
+        "implies": [
+          {
+            "account_group": "Credit",
+            "compound": false,
+            "confidence": "suggested",
+            "documents": "retail credit account statement",
+            "major": "liability",
+            "on": "outflow",
+            "relationship": "retail credit account"
+          }
+        ],
+        "logo_url": "https://logo.clearbit.com/jcpenney.com",
+        "mcc": "5311",
+        "website": "jcpenney.com"
+      },
+      "canonical_name": "JCPenney",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "jcpenney",
+      "source": "model",
+      "subcategory": "department store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "jimmy johns": {
+      "aliases": [
+        "jimmy johns"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Submarine sandwich restaurant",
+        "logo_url": "https://logo.clearbit.com/jimmyjohns.com",
+        "mcc": "5814",
+        "website": "jimmyjohns.com"
+      },
+      "canonical_name": "Jimmy John's",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "jimmy johns",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "keurig green mountai": {
+      "aliases": [
+        "keurig green mountai"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Coffee maker and beverage company",
+        "logo_url": "https://logo.clearbit.com/keurig.com",
+        "website": "keurig.com"
+      },
+      "canonical_name": "Keurig",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "keurig green mountai",
+      "source": "model",
+      "subcategory": "household goods",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "kohl s": {
+      "aliases": [
+        "kohl s"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Department store purchase",
+        "logo_url": "https://logo.clearbit.com/kohls.com",
+        "mcc": "5311",
+        "website": "kohls.com"
+      },
+      "canonical_name": "Kohl's",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "kohl s",
+      "source": "model",
+      "subcategory": "department store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "kroger": {
+      "aliases": [
+        "kroger"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Supermarket and grocery retailer",
+        "logo_url": "https://logo.clearbit.com/kroger.com",
+        "mcc": "5411",
+        "website": "kroger.com"
+      },
+      "canonical_name": "Kroger",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "kroger",
+      "source": "model",
+      "subcategory": "supermarket",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "kumon learning": {
+      "aliases": [
+        "kumon learning"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Math and reading tutoring program",
+        "logo_url": "https://logo.clearbit.com/kumon.com",
+        "mcc": "8299",
+        "website": "kumon.com"
+      },
+      "canonical_name": "Kumon",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "kumon learning",
+      "source": "model",
+      "subcategory": "education",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "kumon learning c sale": {
+      "aliases": [
+        "kumon learning c sale"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "After-school math and reading education",
+        "logo_url": "https://logo.clearbit.com/kumon.com",
+        "mcc": "8299",
+        "website": "kumon.com"
+      },
+      "canonical_name": "Kumon",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "kumon learning c sale",
+      "source": "model",
+      "subcategory": "education",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "kumon learning center": {
+      "aliases": [
+        "kumon learning center"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "After-school academic learning center",
+        "logo_url": "https://logo.clearbit.com/kumon.com",
+        "mcc": "8299",
+        "website": "kumon.com"
+      },
+      "canonical_name": "Kumon",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "kumon learning center",
+      "source": "model",
+      "subcategory": "education",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "la madeleine": {
+      "aliases": [
+        "la madeleine"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "French-inspired bakery restaurant",
+        "logo_url": "https://logo.clearbit.com/lamadeleine.com",
+        "mcc": "5812",
+        "website": "lamadeleine.com"
+      },
+      "canonical_name": "La Madeleine",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "la madeleine",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "liberation coffee the the": {
+      "aliases": [
+        "liberation coffee the the"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Independent coffee shop",
+        "mcc": "5814"
+      },
+      "canonical_name": "Liberation Coffee",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "liberation coffee the the",
+      "source": "model",
+      "subcategory": "cafe",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "lowes": {
+      "aliases": [
+        "lowes"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Home improvement retailer",
+        "logo_url": "https://logo.clearbit.com/lowes.com",
+        "mcc": "5211",
+        "website": "lowes.com"
+      },
+      "canonical_name": "Lowe's",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "lowes",
+      "source": "model",
+      "subcategory": "hardware",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "lucky house": {
+      "aliases": [
+        "lucky house"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Chinese restaurant",
+        "mcc": "5812"
+      },
+      "canonical_name": "Lucky House",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "lucky house",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "macys npc sbux": {
+      "aliases": [
+        "macys npc sbux"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Coffee shop inside department store",
+        "logo_url": "https://logo.clearbit.com/starbucks.com",
+        "mcc": "5814",
+        "website": "starbucks.com"
+      },
+      "canonical_name": "Starbucks",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "macys npc sbux",
+      "source": "model",
+      "subcategory": "cafe",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "med resources": {
+      "aliases": [
+        "med resources"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Hospital and healthcare provider",
+        "logo_url": "https://logo.clearbit.com/texashealth.org",
+        "mcc": "8062",
+        "website": "texashealth.org"
+      },
+      "canonical_name": "Texas Health Resources",
+      "category": "health",
+      "grade": "corroborated",
+      "key": "med resources",
+      "source": "model",
+      "subcategory": "hospital",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "mettle solutions": {
+      "aliases": [
+        "mettle solutions"
+      ],
+      "attributes": {
+        "counterparty_kind": "business",
+        "description": "Business services provider"
+      },
+      "canonical_name": "Mettle Solutions",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "mettle solutions",
+      "source": "model",
+      "subcategory": "uncategorised",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "ms gov mdah": {
+      "aliases": [
+        "ms gov mdah"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Mississippi archives and history agency",
+        "logo_url": "https://logo.clearbit.com/mdah.ms.gov",
+        "mcc": "8411",
+        "website": "mdah.ms.gov"
+      },
+      "canonical_name": "Mississippi Department of Archives and History",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "ms gov mdah",
+      "source": "model",
+      "subcategory": "museum",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "mvp foods": {
+      "aliases": [
+        "mvp foods"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Food retailer or food service company"
+      },
+      "canonical_name": "MVP Foods",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "mvp foods",
+      "source": "model",
+      "subcategory": "specialty food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "nebraska furniture mart o the": {
+      "aliases": [
+        "nebraska furniture mart o the"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Furniture and home goods retailer",
+        "logo_url": "https://logo.clearbit.com/nfm.com",
+        "mcc": "5712",
+        "website": "nfm.com"
+      },
+      "canonical_name": "Nebraska Furniture Mart",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "nebraska furniture mart o the",
+      "source": "model",
+      "subcategory": "furniture",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "newton junction": {
+      "aliases": [
+        "newton junction"
+      ],
+      "attributes": {
+        "counterparty_kind": "business",
+        "description": "Unclear merchant descriptor"
+      },
+      "canonical_name": "Newton Junction",
+      "category": "other",
+      "grade": "corroborated",
+      "key": "newton junction",
+      "source": "model",
+      "subcategory": "uncategorised",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "ntta office operations": {
+      "aliases": [
+        "ntta office operations"
+      ],
+      "attributes": {
+        "billing": "either",
+        "counterparty_kind": "business",
+        "description": "North Texas toll road operator",
+        "logo_url": "https://logo.clearbit.com/ntta.org",
+        "mcc": "4784",
+        "website": "ntta.org"
+      },
+      "canonical_name": "North Texas Tollway Authority",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "ntta office operations",
+      "source": "model",
+      "subcategory": "toll",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "olive garden": {
+      "aliases": [
+        "olive garden"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Italian-American casual dining chain",
+        "logo_url": "https://logo.clearbit.com/olivegarden.com",
+        "mcc": "5812",
+        "website": "olivegarden.com"
+      },
+      "canonical_name": "Olive Garden",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "olive garden",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "panera bread": {
+      "aliases": [
+        "panera bread"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Bakery-cafe restaurant chain",
+        "logo_url": "https://logo.clearbit.com/panerabread.com",
+        "mcc": "5812",
+        "website": "panerabread.com"
+      },
+      "canonical_name": "Panera Bread",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "panera bread",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "panera bread k": {
+      "aliases": [
+        "panera bread k"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Bakery cafe and restaurant chain",
+        "logo_url": "https://logo.clearbit.com/panerabread.com",
+        "mcc": "5812",
+        "website": "panerabread.com"
+      },
+      "canonical_name": "Panera Bread",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "panera bread k",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "patel brothers": {
+      "aliases": [
+        "patel brothers"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Indian and South Asian grocery store",
+        "logo_url": "https://logo.clearbit.com/patelbros.com",
+        "mcc": "5411",
+        "website": "patelbros.com"
+      },
+      "canonical_name": "Patel Brothers",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "patel brothers",
+      "source": "model",
+      "subcategory": "specialty food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "pilot": {
+      "aliases": [
+        "pilot"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Travel center and fuel station",
+        "logo_url": "https://logo.clearbit.com/pilotcompany.com",
+        "mcc": "5541",
+        "website": "pilotcompany.com"
+      },
+      "canonical_name": "Pilot",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "pilot",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "qt": {
+      "aliases": [
+        "qt"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Gas station and convenience store",
+        "logo_url": "https://logo.clearbit.com/quiktrip.com",
+        "mcc": "5541",
+        "website": "quiktrip.com"
+      },
+      "canonical_name": "QuikTrip",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "qt",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "quality inn suites": {
+      "aliases": [
+        "quality inn suites"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Hotel and lodging chain",
+        "logo_url": "https://logo.clearbit.com/choicehotels.com",
+        "mcc": "7011",
+        "website": "choicehotels.com"
+      },
+      "canonical_name": "Quality Inn & Suites",
+      "category": "travel",
+      "grade": "corroborated",
+      "key": "quality inn suites",
+      "source": "model",
+      "subcategory": "accommodation",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "racetrac": {
+      "aliases": [
+        "racetrac"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Gas station and convenience store",
+        "logo_url": "https://logo.clearbit.com/racetrac.com",
+        "mcc": "5541",
+        "website": "racetrac.com"
+      },
+      "canonical_name": "RaceTrac",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "racetrac",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "ross stores": {
+      "aliases": [
+        "ross stores"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Off-price clothing and home retailer",
+        "logo_url": "https://logo.clearbit.com/rossstores.com",
+        "mcc": "5311",
+        "website": "rossstores.com"
+      },
+      "canonical_name": "Ross Dress for Less",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "ross stores",
+      "source": "model",
+      "subcategory": "discount store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "salsa tex mex restaurant": {
+      "aliases": [
+        "salsa tex mex restaurant"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Tex-Mex restaurant",
+        "mcc": "5812"
+      },
+      "canonical_name": "Salsa Tex-Mex Restaurant",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "salsa tex mex restaurant",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "samsclub": {
+      "aliases": [
+        "samsclub"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "annual",
+        "counterparty_kind": "business",
+        "description": "Membership warehouse retailer",
+        "logo_url": "https://logo.clearbit.com/samsclub.com",
+        "mcc": "5200",
+        "website": "samsclub.com"
+      },
+      "canonical_name": "Sam's Club",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "samsclub",
+      "source": "model",
+      "subcategory": "wholesale club",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "schoolcafe": {
+      "aliases": [
+        "schoolcafe"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "School meal payment platform",
+        "logo_url": "https://logo.clearbit.com/schoolcafe.com",
+        "website": "schoolcafe.com"
+      },
+      "canonical_name": "SchoolCafe",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "schoolcafe",
+      "source": "model",
+      "subcategory": "canteen",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "schoolcafe schoolcafe": {
+      "aliases": [
+        "schoolcafe schoolcafe"
+      ],
+      "attributes": {
+        "billing": "either",
+        "counterparty_kind": "business",
+        "description": "School meal payment and cafeteria service",
+        "logo_url": "https://logo.clearbit.com/schoolcafe.com",
+        "website": "schoolcafe.com"
+      },
+      "canonical_name": "SchoolCaf\u00e9",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "schoolcafe schoolcafe",
+      "source": "model",
+      "subcategory": "canteen",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "sci tech discovery cente": {
+      "aliases": [
+        "sci tech discovery cente"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "annual",
+        "counterparty_kind": "business",
+        "description": "Interactive science and technology museum",
+        "logo_url": "https://logo.clearbit.com/scitechdiscovery.org",
+        "mcc": "7998",
+        "website": "scitechdiscovery.org"
+      },
+      "canonical_name": "Sci-Tech Discovery Center",
+      "category": "entertainment",
+      "grade": "corroborated",
+      "key": "sci tech discovery cente",
+      "source": "model",
+      "subcategory": "museum",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "scooter s coffee": {
+      "aliases": [
+        "scooter s coffee"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Drive-through coffee shop",
+        "logo_url": "https://logo.clearbit.com/scooterscoffee.com",
+        "mcc": "5814",
+        "website": "scooterscoffee.com"
+      },
+      "canonical_name": "Scooter's Coffee",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "scooter s coffee",
+      "source": "model",
+      "subcategory": "cafe",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "shuffle": {
+      "aliases": [
+        "shuffle"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Dallas entertainment venue"
+      },
+      "canonical_name": "Shuffle",
+      "category": "entertainment",
+      "grade": "corroborated",
+      "key": "shuffle",
+      "source": "model",
+      "subcategory": "live event",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "sonic drive in": {
+      "aliases": [
+        "sonic drive in"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fast-food drive-in restaurant",
+        "logo_url": "https://logo.clearbit.com/sonicdrivein.com",
+        "mcc": "5814",
+        "website": "sonicdrivein.com"
+      },
+      "canonical_name": "Sonic Drive-In",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "sonic drive in",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "southwes": {
+      "aliases": [
+        "southwes"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "U.S. passenger airline",
+        "logo_url": "https://logo.clearbit.com/southwest.com",
+        "mcc": "3000",
+        "website": "southwest.com"
+      },
+      "canonical_name": "Southwest Airlines",
+      "category": "travel",
+      "grade": "corroborated",
+      "key": "southwes",
+      "source": "model",
+      "subcategory": "airfare",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "sp crunchlabs sp": {
+      "aliases": [
+        "sp crunchlabs sp"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "STEM toy and subscription kit company",
+        "logo_url": "https://logo.clearbit.com/crunchlabs.com",
+        "mcc": "5945",
+        "website": "crunchlabs.com"
+      },
+      "canonical_name": "CrunchLabs",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "sp crunchlabs sp",
+      "source": "model",
+      "subcategory": "toys and games",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "spectru": {
+      "aliases": [
+        "spectru"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Internet and telecommunications provider",
+        "logo_url": "https://logo.clearbit.com/spectrum.com",
+        "website": "spectrum.com"
+      },
+      "canonical_name": "Spectrum",
+      "category": "utilities",
+      "grade": "corroborated",
+      "key": "spectru",
+      "source": "model",
+      "subcategory": "internet",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "spectrum": {
+      "aliases": [
+        "spectrum"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Internet, television, and phone provider",
+        "logo_url": "https://logo.clearbit.com/spectrum.com",
+        "mcc": "4899",
+        "website": "spectrum.com"
+      },
+      "canonical_name": "Spectrum",
+      "category": "utilities",
+      "grade": "corroborated",
+      "key": "spectrum",
+      "source": "model",
+      "subcategory": "internet",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "spice rack": {
+      "aliases": [
+        "spice rack"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Restaurant serving spiced cuisine",
+        "mcc": "5812"
+      },
+      "canonical_name": "Spice Rack",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "spice rack",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "spice rack grocery": {
+      "aliases": [
+        "spice rack grocery"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Local grocery store",
+        "mcc": "5411"
+      },
+      "canonical_name": "Spice Rack Grocery",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "spice rack grocery",
+      "source": "model",
+      "subcategory": "grocer",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "spirit halloween": {
+      "aliases": [
+        "spirit halloween"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Seasonal Halloween costumes and decorations",
+        "logo_url": "https://logo.clearbit.com/spirithalloween.com",
+        "mcc": "5699",
+        "website": "spirithalloween.com"
+      },
+      "canonical_name": "Spirit Halloween",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "spirit halloween",
+      "source": "model",
+      "subcategory": "clothing",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "starbucks": {
+      "aliases": [
+        "starbucks"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Coffeehouse and beverage retailer",
+        "logo_url": "https://logo.clearbit.com/starbucks.com",
+        "mcc": "5814",
+        "website": "starbucks.com"
+      },
+      "canonical_name": "Starbucks",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "starbucks",
+      "source": "model",
+      "subcategory": "cafe",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "starbucks store": {
+      "aliases": [
+        "starbucks store"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Coffeehouse chain",
+        "logo_url": "https://logo.clearbit.com/starbucks.com",
+        "mcc": "5814",
+        "website": "starbucks.com"
+      },
+      "canonical_name": "Starbucks",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "starbucks store",
+      "source": "model",
+      "subcategory": "cafe",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "subway": {
+      "aliases": [
+        "subway"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Submarine sandwich restaurant chain",
+        "logo_url": "https://logo.clearbit.com/subway.com",
+        "mcc": "5814",
+        "website": "subway.com"
+      },
+      "canonical_name": "Subway",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "subway",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "taco bell": {
+      "aliases": [
+        "taco bell"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Mexican-style fast-food chain",
+        "logo_url": "https://logo.clearbit.com/tacobell.com",
+        "mcc": "5814",
+        "website": "tacobell.com"
+      },
+      "canonical_name": "Taco Bell",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "taco bell",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tallulah travel plaza": {
+      "aliases": [
+        "tallulah travel plaza"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Highway travel plaza and fuel station",
+        "mcc": "5541"
+      },
+      "canonical_name": "Tallulah Travel Plaza",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "tallulah travel plaza",
+      "source": "model",
+      "subcategory": "fuel",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "target": {
+      "aliases": [
+        "target"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Discount department store",
+        "logo_url": "https://logo.clearbit.com/target.com",
+        "mcc": "5311",
+        "website": "target.com"
+      },
+      "canonical_name": "Target",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "target",
+      "source": "model",
+      "subcategory": "department store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "temu": {
+      "aliases": [
+        "temu"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Online marketplace for discounted goods",
+        "logo_url": "https://logo.clearbit.com/temu.com",
+        "website": "temu.com"
+      },
+      "canonical_name": "Temu",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "temu",
+      "source": "model",
+      "subcategory": "online marketplace",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tesl": {
+      "aliases": [
+        "tesl"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "Tesla-related merchant charge",
+        "logo_url": "https://logo.clearbit.com/tesla.com",
+        "website": "tesla.com"
+      },
+      "canonical_name": "Tesla",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "tesl",
+      "source": "model",
+      "subcategory": "uncategorised",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tesla": {
+      "aliases": [
+        "tesla"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Tesla merchant transaction",
+        "logo_url": "https://logo.clearbit.com/tesla.com",
+        "website": "tesla.com"
+      },
+      "canonical_name": "Tesla",
+      "category": "other",
+      "grade": "corroborated",
+      "key": "tesla",
+      "source": "model",
+      "subcategory": "uncategorised",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tesla motors tesla": {
+      "aliases": [
+        "tesla motors tesla"
+      ],
+      "attributes": {
+        "counterparty_kind": "business",
+        "description": "Electric vehicle manufacturer and service provider",
+        "logo_url": "https://logo.clearbit.com/tesla.com",
+        "website": "tesla.com"
+      },
+      "canonical_name": "Tesla",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "tesla motors tesla",
+      "source": "model",
+      "subcategory": "vehicle maintenance",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tesla supercharger u": {
+      "aliases": [
+        "tesla supercharger u"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Electric vehicle charging network",
+        "logo_url": "https://logo.clearbit.com/tesla.com",
+        "mcc": "5552",
+        "website": "tesla.com"
+      },
+      "canonical_name": "Tesla Supercharger",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "tesla supercharger u",
+      "source": "model",
+      "subcategory": "vehicle charging",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tesla supercharger us": {
+      "aliases": [
+        "tesla supercharger us"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Electric vehicle charging network",
+        "logo_url": "https://logo.clearbit.com/tesla.com",
+        "mcc": "5552",
+        "website": "tesla.com"
+      },
+      "canonical_name": "Tesla Supercharger",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "tesla supercharger us",
+      "source": "model",
+      "subcategory": "vehicle charging",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "texas best smokehous": {
+      "aliases": [
+        "texas best smokehous"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Texas barbecue restaurant",
+        "mcc": "5812"
+      },
+      "canonical_name": "Texas Best Smokehouse",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "texas best smokehous",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "the donut tree": {
+      "aliases": [
+        "the donut tree"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Donut and bakery shop",
+        "mcc": "5462"
+      },
+      "canonical_name": "The Donut Tree",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "the donut tree",
+      "source": "model",
+      "subcategory": "bakery goods",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "the home depot": {
+      "aliases": [
+        "the home depot"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Home improvement and hardware retailer",
+        "logo_url": "https://logo.clearbit.com/homedepot.com",
+        "mcc": "5200",
+        "website": "homedepot.com"
+      },
+      "canonical_name": "The Home Depot",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "the home depot",
+      "source": "model",
+      "subcategory": "hardware",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "the ups store": {
+      "aliases": [
+        "the ups store"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Shipping, mailing, and print services",
+        "logo_url": "https://logo.clearbit.com/theupsstore.com",
+        "mcc": "7399",
+        "website": "theupsstore.com"
+      },
+      "canonical_name": "The UPS Store",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "the ups store",
+      "source": "model",
+      "subcategory": "postage and shipping",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tight ends sports ba": {
+      "aliases": [
+        "tight ends sports ba"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Sports bar and restaurant",
+        "mcc": "5813"
+      },
+      "canonical_name": "Tight Ends Sports Bar",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "tight ends sports ba",
+      "source": "model",
+      "subcategory": "bar",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tj maxx": {
+      "aliases": [
+        "tj maxx"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Discount department store",
+        "logo_url": "https://logo.clearbit.com/tjmaxx.com",
+        "mcc": "5310",
+        "website": "tjmaxx.com"
+      },
+      "canonical_name": "TJ Maxx",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "tj maxx",
+      "source": "model",
+      "subcategory": "discount store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "top kick martial arts": {
+      "aliases": [
+        "top kick martial arts"
+      ],
+      "attributes": {
+        "billing": "either",
+        "billing_period": "monthly",
+        "counterparty_kind": "business",
+        "description": "Martial arts training school",
+        "mcc": "7997"
+      },
+      "canonical_name": "Top Kick Martial Arts",
+      "category": "personal_care",
+      "grade": "corroborated",
+      "key": "top kick martial arts",
+      "source": "model",
+      "subcategory": "fitness class",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "total wine and more": {
+      "aliases": [
+        "total wine and more"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Wine, beer, and spirits retailer",
+        "logo_url": "https://logo.clearbit.com/totalwine.com",
+        "mcc": "5921",
+        "website": "totalwine.com"
+      },
+      "canonical_name": "Total Wine & More",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "total wine and more",
+      "source": "model",
+      "subcategory": "beverage",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tx dps dl office": {
+      "aliases": [
+        "tx dps dl office"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Texas driver's license office",
+        "logo_url": "https://logo.clearbit.com/dps.texas.gov",
+        "mcc": "9399",
+        "website": "dps.texas.gov"
+      },
+      "canonical_name": "Texas Department of Public Safety",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "tx dps dl office",
+      "source": "model",
+      "subcategory": "licence",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "tx gov": {
+      "aliases": [
+        "tx gov"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Texas government online services",
+        "logo_url": "https://logo.clearbit.com/texas.gov",
+        "website": "texas.gov"
+      },
+      "canonical_name": "Texas.gov",
+      "category": "government_nonprofit",
+      "grade": "corroborated",
+      "key": "tx gov",
+      "source": "model",
+      "subcategory": "local government",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "uber help uber co": {
+      "aliases": [
+        "uber help uber co"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Rideshare transportation service",
+        "logo_url": "https://logo.clearbit.com/uber.com",
+        "mcc": "4121",
+        "website": "uber.com"
+      },
+      "canonical_name": "Uber",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "uber help uber co",
+      "source": "model",
+      "subcategory": "taxi",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "uber trip": {
+      "aliases": [
+        "uber trip"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Rideshare trip",
+        "logo_url": "https://logo.clearbit.com/uber.com",
+        "mcc": "4121",
+        "website": "uber.com"
+      },
+      "canonical_name": "Uber",
+      "category": "transport",
+      "grade": "corroborated",
+      "key": "uber trip",
+      "source": "model",
+      "subcategory": "taxi",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "usps po": {
+      "aliases": [
+        "usps po"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Postal and package shipping services",
+        "logo_url": "https://logo.clearbit.com/usps.com",
+        "mcc": "9402",
+        "website": "usps.com"
+      },
+      "canonical_name": "United States Postal Service",
+      "category": "services",
+      "grade": "corroborated",
+      "key": "usps po",
+      "source": "model",
+      "subcategory": "postage and shipping",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "viamanzoni restaurant": {
+      "aliases": [
+        "viamanzoni restaurant"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Italian restaurant",
+        "mcc": "5812"
+      },
+      "canonical_name": "Via Manzoni",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "viamanzoni restaurant",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "wal mart": {
+      "aliases": [
+        "wal mart"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Discount department store",
+        "logo_url": "https://logo.clearbit.com/walmart.com",
+        "mcc": "5311",
+        "website": "walmart.com"
+      },
+      "canonical_name": "Walmart",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "wal mart",
+      "source": "model",
+      "subcategory": "department store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "walgreens": {
+      "aliases": [
+        "walgreens"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Pharmacy and retail store",
+        "logo_url": "https://logo.clearbit.com/walgreens.com",
+        "mcc": "5912",
+        "website": "walgreens.com"
+      },
+      "canonical_name": "Walgreens",
+      "category": "health",
+      "grade": "corroborated",
+      "key": "walgreens",
+      "source": "model",
+      "subcategory": "pharmacy",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "walmart com": {
+      "aliases": [
+        "walmart com"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Mass merchandise retailer",
+        "logo_url": "https://logo.clearbit.com/walmart.com",
+        "mcc": "5311",
+        "website": "walmart.com"
+      },
+      "canonical_name": "Walmart",
+      "category": "shopping",
+      "grade": "corroborated",
+      "key": "walmart com",
+      "source": "model",
+      "subcategory": "department store",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "wave bowl": {
+      "aliases": [
+        "wave bowl"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Bowl-focused restaurant",
+        "mcc": "5812"
+      },
+      "canonical_name": "Wave Bowl",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "wave bowl",
+      "source": "model",
+      "subcategory": "restaurant",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "wendys": {
+      "aliases": [
+        "wendys"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Fast-food hamburger restaurant",
+        "logo_url": "https://logo.clearbit.com/wendys.com",
+        "mcc": "5814",
+        "website": "wendys.com"
+      },
+      "canonical_name": "Wendy's",
+      "category": "dining",
+      "grade": "corroborated",
+      "key": "wendys",
+      "source": "model",
+      "subcategory": "fast food",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "whoop": {
+      "aliases": [
+        "whoop"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "Fitness wearable and membership service",
+        "logo_url": "https://logo.clearbit.com/whoop.com",
+        "website": "whoop.com"
+      },
+      "canonical_name": "WHOOP",
+      "category": "health",
+      "grade": "corroborated",
+      "key": "whoop",
+      "source": "model",
+      "subcategory": "fitness class",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "whoop www": {
+      "aliases": [
+        "whoop www"
+      ],
+      "attributes": {
+        "billing": "standing",
+        "billing_period": "either",
+        "counterparty_kind": "business",
+        "description": "Wearable fitness tracking service",
+        "logo_url": "https://logo.clearbit.com/whoop.com",
+        "website": "whoop.com"
+      },
+      "canonical_name": "WHOOP",
+      "category": "health",
+      "grade": "corroborated",
+      "key": "whoop www",
+      "source": "model",
+      "subcategory": "fitness",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "www costco co": {
+      "aliases": [
+        "www costco co"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Warehouse club purchase",
+        "logo_url": "https://logo.clearbit.com/costco.com",
+        "mcc": "5300",
+        "website": "costco.com"
+      },
+      "canonical_name": "Costco",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "www costco co",
+      "source": "model",
+      "subcategory": "wholesale club",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    },
+    "www costco com": {
+      "aliases": [
+        "www costco com"
+      ],
+      "attributes": {
+        "billing": "per_purchase",
+        "counterparty_kind": "business",
+        "description": "Warehouse club purchase",
+        "logo_url": "https://logo.clearbit.com/costco.com",
+        "mcc": "5300",
+        "website": "costco.com"
+      },
+      "canonical_name": "Costco",
+      "category": "groceries",
+      "grade": "corroborated",
+      "key": "www costco com",
+      "source": "model",
+      "subcategory": "wholesale club",
+      "version": "enrich-v6+cat-v3+merch-v2"
+    }
+  }
+}

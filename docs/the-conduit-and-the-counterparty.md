@@ -95,12 +95,13 @@
 
 ### MER-10 — Identity is brand-level
 **State:** enforced
-**Code:** merchant/merchantcore/resolve.py:86 (`Resolution.merchant_key`), product/viva/ledger/hints.py:85, product/viva/ledger/projection/merchants.py:59
-**Test:** product/tests/test_hints.py::test_two_locations_of_one_brand_are_one_key_and_one_call, product/tests/test_merchant_keys.py::test_two_locations_of_one_brand_are_one_key
+**Code:** merchant/merchantcore/resolve.py (`Resolution.identity_candidates`), merchant/merchantcore/catalog.py (`resolve`), product/viva/ledger/projection/merchants.py (`merchant_keys_of`)
+**Test:** merchant/tests/test_merchantcore.py::test_store_number_boundaries_offer_exact_identity_candidates, product/tests/test_merchant_keys.py::test_reviewed_aliases_group_two_location_forms_under_one_merchant, ::test_reviewed_aliases_do_not_match_a_near_name_or_arbitrary_text
 
-1. A merchant is keyed by the normalized brand a layer named; location is context on the occurrence, never part of identity.
-2. Where no layer names a brand, the key falls back to the whole normalized line, which still carries whoever was on it — never to the institution.
-3. Context travels with a hint only where every occurrence of the brand agreed on it.
+1. A grammar or published parser may name a normalized brand. Where a proven occurrence slot such as a store number supplies a boundary, its exact left-hand prefix is also a candidate; location after the boundary remains occurrence context.
+2. A versioned catalog may map one of those candidates to a permanent merchant id only through an exact reviewed alias. No substring, fuzzy score, city list, or model-authored display name establishes identity.
+3. Where no layer or reviewed alias identifies the merchant, the key falls back to the whole normalized line, which still carries whoever was on it — never to the institution. Unknown remains unknown.
+4. Refused and person-declared lines never consult business aliases. Context travels with a hint only where every occurrence of the merchant agreed on it.
 
 ### MER-11 — A rail is proven by structure, never by a word
 **State:** enforced
@@ -326,8 +327,10 @@ else's grammar against their own statement before trusting it.
 
 Identity is brand-level because the whole field converged there independently —
 Plaid, Spade, MX, Stripe Issuing and Heron all pair a brand-level identifier
-stable across locations with a separate location identifier. Two hundred stores
-produce one commons row.
+stable across locations with a separate location identifier. OrionViva now makes
+that separation only where structure or an exact reviewed alias supports it. Two
+hundred stores can produce one commons row; an unsupported descriptor remains a
+separate honest unknown rather than being fuzzily forced into that row.
 
 Three boundaries, not one. The whole descriptor crosses to the induction model
 call, and it may, because ingest already sent every page of the statement

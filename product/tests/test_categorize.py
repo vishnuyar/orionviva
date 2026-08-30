@@ -206,6 +206,51 @@ def test_upload_defaults_only_the_successfully_posted_statement(tmp_path):
     assert categories["OLDER SHOP"] is None
 
 
+def test_upload_applies_a_reviewed_commons_alias_before_defaults(
+        tmp_path, monkeypatch):
+    import json
+
+    from merchantcore import MerchantRecord, home
+    from viva import engine
+    from viva.vault import Vault
+
+    shipped = tmp_path / "shipped"
+    (shipped / "profiles").mkdir(parents=True)
+    (shipped / "catalog.json").write_text(json.dumps({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", canonical_name="Costco", category="groceries",
+            aliases=["costco", "costco at", "costco whse"],
+            attributes={"counterparty_kind": "business"}).to_dict()},
+    }))
+    monkeypatch.setattr(home, "_SHIPPED", shipped)
+    monkeypatch.setenv("MERCHANTCORE_HOME", str(tmp_path / "learned"))
+    monkeypatch.setenv("VIVA_CATALOG", str(tmp_path / "learned" / "catalog.json"))
+
+    vault = Vault.open(tmp_path / "vault", "pw")
+    statement = _facts(
+        "500.00",
+        [("2026-01-05", "COSTCO AT #0772 PLANO", "-40.00"),
+         ("2026-01-06", "COSTCO #8767 ATLANTA", "-60.00")],
+        "400.00", ref="Checking 1111", doc_type="checking_statement",
+        number="000000001111")
+    calls = []
+    result = engine.upload(
+        vault, "statement.pdf", b"two-locations",
+        lambda _data, doc_id: (calls.append("reader") or _stamp(statement, doc_id)))
+
+    assert result["action"] == POSTED and calls == ["reader"]
+    projection = vault.ledger.projection()
+    assert {projection.merchant_key_of(m) for m in projection.movements()} == {"costco"}
+    assert projection.spending_by_category() == {"groceries": Decimal("100.00")}
+    enriched = [event for event in vault.ledger.events()
+                if event.event_type == "MerchantEnriched"]
+    assert len(enriched) == 1 and enriched[0].body["merchant"] == "costco"
+    assert not [event for event in vault.ledger.events()
+                if event.event_type == "CategoryAssigned"]
+
+
 @pytest.mark.parametrize("doc_type", [
     "combined_bank_statement", "money_market_statement", "card_statement"])
 def test_upload_defaults_every_registered_balance_statement_alias(
@@ -317,8 +362,7 @@ def test_categorization_survives_a_replay(tmp_path):
     raw, ledger = _checking_with_spend(tmp_path)
     kroger = next(m for m in ledger.projection().movements() if "KROGER" in m.description)
     assign_category(ledger, kroger.key, "groceries")
-    # Rebuilding the projection from events (as a reingest does) keeps the category
-    # because it is keyed to the content-derived movement key.
+    # Replaying events preserves the content-keyed category.
     replayed = LedgerProjection(ledger.events())
     assert replayed.spending_by_category().get("groceries") == Decimal("100.00")
 

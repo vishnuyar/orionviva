@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import pytest
 from merchantcore.profile import Profile, ProfileStore, Template
 from viva.agent import Action, cool, stake_of, wake
+from viva.agent.__main__ import private_unknown_keys
 from viva.agent.act import Meter
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          capture_and_ingest)
@@ -61,9 +62,7 @@ def test_the_event_refuses_an_outcome_it_does_not_understand():
 
 
 def test_the_log_keeps_every_attempt_and_the_lifetime_bill(tmp_path):
-    """Not collapsed to the latest. The cooldown only needs the last one; a
-    person asking 'what has this thing been doing' needs all of them, and that
-    second question is why the event exists at all."""
+    """The journal keeps every attempt and the lifetime call total."""
     ledger = _ledger(tmp_path)
     _act(ledger, outcome="refused", calls=3)
     _act(ledger, outcome="done", calls=1, produced="chase-depository-v2")
@@ -95,10 +94,7 @@ def _induce_action(lines=41, movements=900):
 
 
 def test_a_refusal_against_unchanged_evidence_is_not_retried(tmp_path):
-    """The whole reason the event exists. The write-guard refuses a version that
-    covers less than the one it succeeds, raises, and writes nothing — so without
-    a record, `assess` proposes the identical three-call induction on every wake,
-    forever, silently."""
+    """An unchanged refused action is cooled instead of proposed again."""
     ledger = _ledger(tmp_path)
     action = _induce_action()
     _act(ledger, outcome="refused", stake=stake_of(action))
@@ -190,11 +186,7 @@ def _many_lines(n=45):
 
 @pytest.fixture()
 def homed(tmp_path, monkeypatch):
-    """Point every piece of learned merchant knowledge at a scratch directory.
-
-    Not tidiness: the real ones live outside any working tree precisely so they
-    cannot be written by accident, and a test that wrote into them would teach a
-    developer's machine things no statement said."""
+    """Redirect all learned merchant knowledge to a scratch directory."""
     monkeypatch.setenv("MERCHANTCORE_HOME", str(tmp_path / "mc"))
     monkeypatch.setenv("VIVA_PROFILES", str(tmp_path / "mc" / "profiles"))
     monkeypatch.setenv("VIVA_CATALOG", str(tmp_path / "mc" / "catalog.json"))
@@ -213,8 +205,7 @@ def test_a_dry_run_spends_nothing_and_writes_nothing(homed, tmp_path):
 
 
 def test_without_a_model_the_work_is_deferred_and_said_so(homed, tmp_path):
-    """Not a crash and not a silent no-op. An agent that cannot spend should
-    report what it would have done — that is the more useful diagnostic."""
+    """A missing model defers work and reports what could not run."""
     vault = _vault_with(tmp_path / "v", _many_lines())
     run = wake(vault)
     assert run.deferred and "no model configured" in run.could_not_spend
@@ -269,8 +260,7 @@ def test_the_budget_is_a_ceiling_on_what_a_wake_may_spend(homed, tmp_path,
 
 
 def test_an_existing_grammar_is_not_re_induced(homed, tmp_path):
-    """`assess`'s own rule, checked through the runner: the work an agent skips
-    is as much a part of it as the work it does."""
+    """An existing grammar prevents another induction proposal."""
     from viva.induce_profile import profile_store
     vault = _vault_with(tmp_path / "v", _many_lines())
     store = profile_store()
@@ -287,12 +277,7 @@ def test_an_existing_grammar_is_not_re_induced(homed, tmp_path):
 
 def test_a_new_vault_syncs_known_merchants_without_a_model_call(
         homed, tmp_path, monkeypatch):
-    """Catalog reuse is the free half of enrichment, not a side effect of
-    finding at least one unknown brand.
-
-    A new vault whose only merchant is already in this installation's catalog
-    must receive that record with a zero-call budget and no model configured.
-    """
+    """A new vault syncs an installed record with no model or call budget."""
     from merchantcore import Catalog, MerchantRecord
 
     catalog = Catalog(tmp_path / "mc" / "catalog.json")
@@ -317,6 +302,29 @@ def test_a_new_vault_syncs_known_merchants_without_a_model_call(
     record = vault.ledger.projection().merchant_categories()["alpha shop ltd"]
     assert record["category"] == "shopping"
     assert record["subcategory"] == "books and media"
+
+
+def test_the_private_view_does_not_call_a_reviewed_alias_unknown():
+    from merchantcore import Catalog, MerchantRecord
+    from viva.ledger.hints import Hint
+
+    catalog = Catalog()
+    catalog.merge({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", aliases=["costco", "costco at", "costco whse"]
+        ).to_dict()},
+    })
+    observation = SimpleNamespace(
+        catalog=catalog,
+        offered={"costco at plano": Hint(
+            key="costco at plano", brand="costco at plano",
+            identity_candidates=["costco at", "costco at plano"]),
+                 "unknown shop": Hint(
+                     key="unknown shop", brand="unknown shop",
+                     identity_candidates=["unknown shop"])})
+    assert private_unknown_keys(observation) == ["unknown shop"]
 
 
 def test_a_merchant_the_model_could_not_name_is_not_asked_about_again(tmp_path):
@@ -370,10 +378,7 @@ def test_a_ceiling_too_small_for_one_induction_defers_it(homed, tmp_path):
 
 
 def test_the_default_ceiling_finishes_an_ordinary_vault(homed, tmp_path):
-    """A ceiling stops a runaway. The runaway this agent can have is REPETITION,
-    which `cool()` stops directly — so a ceiling low enough to halt the ordinary
-    work of an ordinary vault is not safety, it is a chore. An agent whose
-    default settings need a person to say 'continue' is a script with prose."""
+    """The default call ceiling covers six ordinary institution-kind pairs."""
     from viva.agent.policy import CALLS, RULES
     from viva.agent.run import DEFAULT_BUDGET_CALLS
     one_grammar = CALLS["induce"] * RULES["induce_missing"]["best_of"]
@@ -386,9 +391,7 @@ def test_the_default_ceiling_finishes_an_ordinary_vault(homed, tmp_path):
 
 
 def test_a_deferral_is_not_a_refusal_and_is_never_cooled(homed, tmp_path):
-    """Over-budget work must come back on the next wake. Cooling it would turn
-    a ceiling into a permanent refusal, which is how an agent silently stops
-    doing half its job."""
+    """Over-budget work remains eligible on the next wake."""
     vault = _vault_with(tmp_path / "v", _many_lines())
     tight = wake(vault, remaining_calls=1, dry_run=True)
     assert tight.deferred and not tight.cooled
@@ -400,10 +403,7 @@ def test_a_deferral_is_not_a_refusal_and_is_never_cooled(homed, tmp_path):
 
 
 def test_a_chunk_that_did_not_parse_is_asked_again(tmp_path):
-    """The first live agent run hit `Expecting ',' delimiter: line 298` on one
-    chunk of forty. Nothing about those forty merchants failed — the reply was
-    truncated. Marking them 'asked and unanswered' would have silenced a sixth
-    of the batch permanently, on a transport error."""
+    """Keys from an unparsed chunk remain eligible for another request."""
     from merchantcore.enrich import Enricher
 
     good = '{"shop a": {"canonical_name": "Shop A", "category": "shopping"}}'
@@ -417,9 +417,7 @@ def test_a_chunk_that_did_not_parse_is_asked_again(tmp_path):
 
 
 def test_a_model_that_looked_and_declined_is_not_asked_again(tmp_path):
-    """The other half of the same distinction: this reply parsed perfectly and
-    simply had nothing to say about the merchant. Asking again with the same
-    example buys the same silence."""
+    """A parsed omission retires that merchant until its example changes."""
     from merchantcore.enrich import Enricher
 
     enricher = Enricher(lambda p: '{"shop a": {"canonical_name": "Shop A", '
@@ -429,15 +427,11 @@ def test_a_model_that_looked_and_declined_is_not_asked_again(tmp_path):
     assert enricher.unparsed == []
 
 
-# ------------------------------------- a fix must not be held back by the bug
+# -------------------------------- machinery changes lift earlier cooldowns
 
 
 def test_changing_the_machinery_lifts_a_cooldown(tmp_path):
-    """A refusal means "this evidence, through this machinery, produced
-    nothing". Fix a pack rule or bump a prompt and that sentence is no longer
-    the one that was tested — so the refusal has to expire by itself. Without
-    this, every code fix would be silently held back by the memory of the bug it
-    fixed, and only a person who remembered could release it."""
+    """A machinery-version change expires an earlier refusal cooldown."""
     ledger = _ledger(tmp_path)
     action = _induce_action()
     old = {**stake_of(action), "machinery": "induce-profile-v0+prof-v0+pack-v0"}

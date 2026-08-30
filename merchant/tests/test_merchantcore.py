@@ -1,10 +1,15 @@
 """merchantcore — the merchant knowledge base: normalize, enrich, catalog."""
 
+import json
+
+import pytest
+
 from merchantcore.descriptor import (brand_candidate,
                                      parse_descriptor)
 from merchantcore import (Catalog, Enricher, MerchantRecord, PRIMARY_CATEGORIES,
                           canonical_primary, is_shareable, normalize_merchant,
                           NORMALIZER_VERSION)
+from merchantcore.resolve import resolve_descriptor
 
 
 def test_sixteen_primary_categories():
@@ -100,15 +105,277 @@ def test_catalog_pending_add_and_linted_export(tmp_path):
     cat = Catalog(tmp_path / "catalog.json")
     assert cat.submit([("amzn mktp us", "AMZN"), ("venmo to john", "VENMO TO JOHN")]) == 2
     assert set(cat.pending()) == {"amzn mktp us", "venmo to john"}
-    cat.add(MerchantRecord(key="amzn mktp us", canonical_name="Amazon", category="shopping"))
-    cat.add(MerchantRecord(key="venmo to john", category="other"))
+    cat.add(MerchantRecord(
+        key="amzn mktp us", canonical_name="Amazon", category="shopping",
+        attributes={"counterparty_kind": "business"}))
+    cat.add(MerchantRecord(
+        key="venmo to john", category="other",
+        attributes={"counterparty_kind": "peer"}))
     assert "amzn mktp us" not in cat.pending()          # promoted out of pending
     # Export is linted: the peer merchant is filtered, and no non-record fields.
-    export = cat.export()
+    export = cat.export()["records"]
     assert "amzn mktp us" in export and "venmo to john" not in export
     # Persists as plain JSON (impersonal, unencrypted-safe) and reloads.
     reloaded = Catalog(tmp_path / "catalog.json")
     assert reloaded.get("amzn mktp us").canonical_name == "Amazon"
+
+
+def test_shipped_catalog_is_a_nonempty_business_only_commons():
+    import re
+    from pathlib import Path
+
+    shipped = (Path(__file__).parents[1]
+               / "merchantcore" / "data" / "catalog.json")
+    payload = json.loads(shipped.read_text())
+    records = payload.get("records", {})
+
+    assert payload.get("format") == "merchant-catalog-v2"
+    assert payload.get("identity_version") == "merchant-id-v1"
+    assert set(payload) == {"format", "identity_version", "records"}
+    assert records, "the shipped commons gate must walk a real catalog"
+    exported = Catalog(shipped=shipped).export()
+    assert exported["format"] == payload["format"]
+    assert exported["identity_version"] == payload["identity_version"]
+    assert set(exported["records"]) == set(records)
+    record_fields = {"key", "canonical_name", "category", "subcategory",
+                     "attributes", "aliases", "grade", "source", "version"}
+    attribute_fields = {"billing", "billing_period", "counterparty_kind",
+                        "description", "implies", "logo_url", "mcc", "website"}
+    implication_fields = {"account_group", "compound", "confidence", "documents",
+                          "major", "on", "relationship"}
+    for key, record in records.items():
+        attributes = record.get("attributes", {})
+        assert record.get("key") == key
+        assert key in record.get("aliases", [])
+        assert set(record) <= record_fields
+        assert set(attributes) <= attribute_fields
+        assert attributes.get("counterparty_kind") == "business"
+        assert record.get("category") not in {"income", "loan_payments", "transfers"}
+        assert record.get("subcategory") not in {"cash withdrawal fee", "refund"}
+        assert all(set(implication) <= implication_fields
+                   for implication in attributes.get("implies", []))
+    transaction_markers = ("ach", "atm fee", "autopay", "card online",
+                           "card purchase", "payroll")
+    assert not any(re.search(rf"\b{re.escape(marker)}\b", key)
+                   for key in records for marker in transaction_markers)
+    assert not any(re.search(r"[0-9]{3,}", key) for key in records), \
+        "transaction, store and reference numbers do not belong in commons keys"
+    aliases = [alias for record in records.values()
+               for alias in record.get("aliases", [])]
+    assert len(aliases) == len(set(aliases))
+    assert records["costco"]["aliases"] == ["costco", "costco at", "costco whse"]
+    assert "costco whse" not in records
+    assert {"costco gas", "www costco co", "www costco com"} <= set(records)
+    assert all(record["aliases"] == [key]
+               for key, record in records.items() if key != "costco"), \
+        "Costco is the only reviewed cross-key fold in the first commons"
+    unreviewed_occurrence_keys = {
+        "alamo drugs san", "amazon com amzn com bill wa", "benedicts plano",
+        "best buy co farmers", "carenow allen", "collin co tx mv frisco cn",
+        "dsw center at preston", "eataly dallas", "farm 2 cook mckinney",
+        "genghis grill tx15", "great clips at signa", "india bazaar west plano",
+        "jumping world allen", "la 57 dallas", "legacy hall plano",
+        "melio kumon plan", "nayax amusements hunt", "palios pizza cafe frisco",
+        "pj s coffee of new or farmers", "swadeshi plaza frisco",
+        "texas card house d", "whoop www ma", "ymca dallas russell",
+    }
+    assert not (unreviewed_occurrence_keys & set(records))
+
+
+def test_store_number_boundaries_offer_exact_identity_candidates():
+    cases = {
+        "COSTCO AT #0772 PLANO": ("costco at", "costco at plano"),
+        "COSTCO #8767 ATLANTA": ("costco", "costco atlanta"),
+        "COSTCO WHSE #0772 PLANO": ("costco whse", "costco whse plano"),
+        "COSTCO WHSE #0772 PLANO TX": ("costco whse",),
+    }
+    for descriptor, required in cases.items():
+        candidates = resolve_descriptor(descriptor).identity_candidates
+        assert all(candidate in candidates for candidate in required)
+
+
+def test_reviewed_aliases_resolve_exactly_and_near_names_do_not(tmp_path):
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", canonical_name="Costco", category="groceries",
+            aliases=["costco", "costco at", "costco whse"],
+            attributes={"counterparty_kind": "business"}).to_dict()},
+    }))
+    catalog = Catalog(shipped=path)
+    assert catalog.get("costco whse").key == "costco"
+    assert catalog.resolve(resolve_descriptor(
+        "COSTCO AT #0772 PLANO").identity_candidates).key == "costco"
+    assert catalog.resolve(resolve_descriptor(
+        "COSTA COFFEE #8767 ATLANTA").identity_candidates) is None
+    assert catalog.resolve(resolve_descriptor("MY COSTCO PARTY").identity_candidates) is None
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda payload: payload.update(format="unknown"), "format"),
+    (lambda payload: payload.update(identity_version="unknown"), "identity version"),
+    (lambda payload: payload["records"]["costco"].update(key="other"), "record id"),
+    (lambda payload: payload["records"]["costco"].update(aliases=[]), "self-alias"),
+    (lambda payload: payload["records"]["costco"].update(
+        aliases=["costco", "Costco Whse"]), "normalized"),
+    (lambda payload: payload["records"]["costco"].update(city="Plano"),
+     "unsupported fields"),
+    (lambda payload: payload.update(city="Plano"), "catalog fields"),
+])
+def test_a_broken_v2_identity_pack_is_refused(tmp_path, mutate, message):
+    payload = {
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", aliases=["costco"],
+            attributes={"counterparty_kind": "business"}).to_dict()},
+    }
+    mutate(payload)
+    path = tmp_path / "broken.json"
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError) as error:
+        Catalog(shipped=path)
+    assert message in str(error.value).lower()
+
+
+def test_a_conflicting_alias_is_refused_before_records_load(tmp_path):
+    path = tmp_path / "collision.json"
+    path.write_text(json.dumps({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {
+            "alpha": MerchantRecord(key="alpha", aliases=["alpha", "shared"]).to_dict(),
+            "beta": MerchantRecord(key="beta", aliases=["beta", "shared"]).to_dict(),
+        },
+    }))
+    with pytest.raises(ValueError, match="alias"):
+        Catalog(shipped=path)
+
+
+def test_a_v1_learned_alias_migrates_onto_the_reviewed_id(tmp_path):
+    shipped = tmp_path / "shipped.json"
+    learned = tmp_path / "learned.json"
+    shipped.write_text(json.dumps({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", canonical_name="Costco", category="groceries",
+            grade="corroborated", aliases=["costco", "costco at", "costco whse"]
+        ).to_dict()},
+    }))
+    learned.write_text(json.dumps({"records": {
+        "costco whse": MerchantRecord(
+            key="costco whse", canonical_name="My Costco",
+            category="shopping", grade="verified", source="human",
+            attributes={"counterparty_kind": "business"}).to_dict(),
+    }}))
+
+    catalog = Catalog(learned, shipped=shipped)
+    assert set(catalog.records()) == {"costco"}
+    record = catalog.get("costco whse")
+    assert record.key == "costco"
+    assert record.category == "shopping" and record.grade == "verified"
+    assert set(record.aliases) == {"costco", "costco at", "costco whse"}
+    exported = catalog.export()["records"]
+    assert set(exported) == {"costco"} and "costco whse" not in exported
+
+
+def test_a_v1_canonical_name_never_folds_identity(tmp_path):
+    learned = tmp_path / "learned.json"
+    learned.write_text(json.dumps({"records": {
+        "first shop": MerchantRecord(
+            key="first shop", canonical_name="Same Company").to_dict(),
+        "second shop": MerchantRecord(
+            key="second shop", canonical_name="Same Company").to_dict(),
+        "www costco com": MerchantRecord(
+            key="www costco com", canonical_name="Costco").to_dict(),
+    }}))
+    catalog = Catalog(learned)
+    assert set(catalog.records()) == {"first shop", "second shop", "www costco com"}
+    assert all(record.aliases == [key]
+               for key, record in catalog.records().items())
+
+
+def test_same_layer_v1_migration_uses_grade_then_the_direct_id(tmp_path):
+    shipped = tmp_path / "shipped.json"
+    shipped.write_text(json.dumps({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", aliases=["costco", "costco at", "costco whse"]
+        ).to_dict()},
+    }))
+    learned = tmp_path / "learned.json"
+    learned.write_text(json.dumps({"records": {
+        "costco whse": MerchantRecord(
+            key="costco whse", category="shopping", grade="verified").to_dict(),
+        "costco": MerchantRecord(
+            key="costco", category="groceries", grade="corroborated").to_dict(),
+    }}))
+    assert Catalog(learned, shipped=shipped).get("costco").category == "shopping"
+
+    learned.write_text(json.dumps({"records": {
+        "costco whse": MerchantRecord(
+            key="costco whse", category="shopping", grade="verified").to_dict(),
+        "costco": MerchantRecord(
+            key="costco", category="groceries", grade="verified").to_dict(),
+    }}))
+    assert Catalog(learned, shipped=shipped).get("costco").category == "groceries"
+
+
+def test_an_unresolved_equal_v1_migration_tie_is_refused(tmp_path):
+    shipped = tmp_path / "shipped.json"
+    shipped.write_text(json.dumps({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", aliases=["costco", "costco at", "costco whse"]
+        ).to_dict()},
+    }))
+    learned = tmp_path / "learned.json"
+    learned.write_text(json.dumps({"records": {
+        "costco at": MerchantRecord(
+            key="costco at", category="groceries", grade="verified").to_dict(),
+        "costco whse": MerchantRecord(
+            key="costco whse", category="shopping", grade="verified").to_dict(),
+    }}))
+    with pytest.raises(ValueError, match="equally ranked"):
+        Catalog(learned, shipped=shipped)
+
+
+def test_a_runtime_record_cannot_author_an_identity_alias():
+    catalog = Catalog()
+    catalog.add(MerchantRecord(key="alpha", aliases=["beta"]))
+    assert catalog.get("alpha").aliases == ["alpha"]
+    assert catalog.get("beta") is None
+
+
+def test_an_import_alias_collision_is_atomic():
+    catalog = Catalog()
+    catalog.merge({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"alpha": MerchantRecord(
+            key="alpha", category="shopping", aliases=["alpha", "shared"]
+        ).to_dict()},
+    })
+    before = catalog.export()
+    with pytest.raises(ValueError, match="alias"):
+        catalog.merge({
+            "format": "merchant-catalog-v2",
+            "identity_version": "merchant-id-v1",
+            "records": {"beta": MerchantRecord(
+                key="beta", category="dining", aliases=["beta", "shared"]
+            ).to_dict()},
+        })
+    assert catalog.export() == before
+
+
+def test_a_peer_or_refused_line_offers_no_business_identity_candidates():
+    for descriptor in ("ZELLE PAYMENT TO COSTCO", "WIRE TRANSFER TO COSTCO"):
+        assert resolve_descriptor(descriptor).identity_candidates == ()
 
 
 def test_catalog_merge_prior_loses_to_local_verified():

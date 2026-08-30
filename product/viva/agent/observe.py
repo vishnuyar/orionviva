@@ -28,7 +28,7 @@ class Observation:
     recent: dict = field(default_factory=dict)     # the same, last N days
     unknown_brands: int = 0                        # brands a call would newly buy
     known_records_to_sync: int = 0                 # held catalog records, zero calls
-    offered: dict = field(default_factory=dict)    # brand key -> Hint, what may cross
+    offered: dict = field(default_factory=dict)    # unresolved key -> Hint, what may cross
     store: object = None                           # ProfileStore
     catalog: object = None                         # Catalog
     proj: object = None                            # LedgerProjection
@@ -113,8 +113,11 @@ def observe(vault, recent_days: int = 120) -> Observation:
     # `queued`, not `pending`: a brand already asked about and never answered
     # stays queued and is not sent again, so it is not unknown work.
     queued = catalog.queued()
-    unknown = len([k for k in offered
-                   if catalog.get(k) is None and k not in queued])
+    unknown = len([
+        key for key, hint in offered.items()
+        if catalog.resolve(hint.identity_candidates or (key,)) is None
+        and key not in queued
+    ])
     known_to_sync = len(merchant_records_to_sync(
         vault.ledger, catalog, offered))
 

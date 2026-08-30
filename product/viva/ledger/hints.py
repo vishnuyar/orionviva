@@ -1,39 +1,8 @@
-"""What crosses to enrichment, built from streams rather than from descriptors.
+"""Build impersonal enrichment hints from resolved streams.
 
-A stream already knows who the counterparty is, whether they are a person, and
-whether there is a counterparty at all, so this module asks the stream engine
-rather than walking raw movements.
-
-**The gate is a slot, where a grammar exists.** A stream is withheld because a
-slot said a person is in it: the grammar's `{counterparty}` or
-`{counterparty_handle}`.
-
-**And a brand slot is corroborated, never believed on its own.** A slot name may
-say a hole holds a person; it may not, by itself, say a hole holds a business.
-Where a grammar named the brand, the hint crosses only if a published format —
-read from each line behind it, never from a sibling — says the other side was a
-business. The unit withheld is the whole hint, brand and context together,
-because a party's name can land in any slot a model called impersonal. Nothing
-about local resolution changes: the stream still keys on the brand, the merchant
-key still forms, categorization still works. Only the crossing is gated.
-
-**Where no grammar exists, `is_shareable` is the fallback.** Without a grammar
-there is no slot to say a line holds a person, so the substring list stands in.
-It over-blocks by design: its errors cost enrichment coverage rather than
-somebody's name, and inducing a grammar for that institution retires it there.
-
-**The key is the brand, not the descriptor.** Two locations of one retailer are
-one key and one record.
-
-**The payload is named slots, not a string.** Enrichment receives only slots
-that are impersonal by declaration, and only those values the brand agreed on
-across every occurrence — what varies belongs to the visit, what does not
-belongs to the counterparty. The NACHA entry description (`Payroll`,
-`Assn Dues`) is the originator's own word for what it is, and it travels.
-
-Three kinds of stream never cross: a **person**, a **wire** (refused at every
-layer), and anything **internal or activity** — there is no merchant to learn
-about in a payment to your own card or a line describing a capital gain.
+Person, wire, internal and activity streams are withheld. Grammar brands
+require published-format corroboration; other lines use ``is_shareable``.
+Hints retain unresolved keys and exact identity candidates.
 """
 
 from __future__ import annotations
@@ -56,20 +25,19 @@ CONTEXT_SLOTS = ("entry_description", "sec_code", "purpose", "contact",
 
 @dataclass
 class Hint:
-    """One brand offered for enrichment, with impersonal context and nothing else."""
+    """One unresolved merchant offered with impersonal context and nothing else."""
 
-    key: str                      # normalized brand — the catalog/commons key
-    brand: str                    # as the statement prints it
+    key: str                      # unresolved local/model filing key
+    brand: str                    # structural brand candidate, where one exists
     context: dict = field(default_factory=dict)
     channels: set = field(default_factory=set)
     movements: int = 0
     layer: str = "normalizer"     # which layer named it: grammar > published > normalizer
+    identity_candidates: list[str] = field(default_factory=list)
     _values: dict = field(default_factory=dict, repr=False)   # slot -> values seen
 
     def example(self) -> str:
-        """What a model is shown: the brand, then context in a fixed order, then
-        the rails — so two vaults that saw the same merchant compose the same
-        string."""
+        """Return brand, ordered context and sorted rails as one model input."""
         parts = [self.brand]
         parts += [f"{k}={self.context[k]}" for k in CONTEXT_SLOTS if self.context.get(k)]
         if self.channels:
@@ -79,11 +47,12 @@ class Hint:
     def to_dict(self) -> dict:
         return {"key": self.key, "brand": self.brand, "context": dict(self.context),
                 "channels": sorted(self.channels), "movements": self.movements,
-                "layer": self.layer}
+                "layer": self.layer,
+                "identity_candidates": list(self.identity_candidates)}
 
 
 def enrichment_hints(streams) -> dict:
-    """`{brand key: Hint}` — everything a model may be asked about.
+    """`{unresolved stream key: Hint}` — everything a model may be asked about.
 
     Withholding is by structure, never by inspection:
 
@@ -132,8 +101,12 @@ def enrichment_hints(streams) -> dict:
             continue
         hint = out.get(key)
         if hint is None:
-            hint = Hint(key=key, brand=brand, layer=s.layer)
+            hint = Hint(key=key, brand=brand, layer=s.layer,
+                        identity_candidates=list(s.identity_candidates))
             out[key] = hint
+        else:
+            hint.identity_candidates = list(dict.fromkeys(
+                [*hint.identity_candidates, *s.identity_candidates]))
         # A grammar's reading of a brand beats a published rule's, which beats
         # the normalizer's. The winning layer is recorded on the hint.
         if _rank(s.layer) > _rank(hint.layer):

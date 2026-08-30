@@ -26,15 +26,16 @@
 3. The SEC code is preserved as weak corroboration only.
 4. The Company Name field is hard-truncated by the specification, so the brand string it yields is clipped and is not portable across banks.
 
-### PROJ-43 — two keys: a stable local key and a portable brand key
+### PROJ-43 — permanent merchant identity preserves every legacy key
 **State:** enforced
-**Code:** product/viva/ledger/projection/merchants.py:59
-**Test:** product/tests/test_merchant_keys.py::test_two_locations_of_one_brand_are_one_key
+**Code:** merchant/merchantcore/resolve.py (`Resolution.identity_candidates`), merchant/merchantcore/catalog.py (`resolve`), product/viva/ledger/projection/merchants.py (`merchant_keys_of`)
+**Test:** product/tests/test_merchant_keys.py::test_reviewed_aliases_group_two_location_forms_under_one_merchant, ::test_a_verified_old_alias_record_beats_the_canonical_commons_prior, ::test_reviewed_aliases_do_not_match_a_near_name_or_arbitrary_text
 
 1. The local key is a versioned deterministic normalization of the descriptor: stable per user, not portable.
-2. The brand key is the identified canonical brand: portable, and the key the commons uses.
-3. Every lookup considers both candidates, brand first, so an answer a person recorded under the older name is not stranded.
-4. Enrichment keys on the brand from the first record; two locations of one retailer resolve to one record.
+2. A grammar brand, a published-parser brand, a prefix bounded by a proven occurrence slot, and the normalized descriptor are ordered recognition candidates. None is identity merely because it resembles a name.
+3. Only an exact reviewed alias maps a candidate onto the permanent merchant id the commons uses. No fuzzy, substring or model-authored display-name match has that authority.
+4. Every lookup preserves the canonical id and structural, brand and descriptor candidates, so an older or higher-grade local answer is not stranded. Equal grades prefer the canonical id.
+5. Where no exact alias matches, the existing local key remains an honest unknown; refused and person-declared lines do not consult the business alias index.
 
 ### PROJ-44 — billing is a fact about the merchant, from a closed set
 **State:** enforced
@@ -299,10 +300,11 @@ answer. That is the same rule that produced the parts of this codebase that have
 survived contact with real data.
 
 Two things the build settled that were specified harder than they turned out to
-be. The two-key model was written as a migration — re-key an existing catalog,
-keep local keys as aliases — and the vault was being rebuilt, so there was
-nothing to migrate and the alias layer was never built: **a decision that was
-expensive because of history stopped being expensive when the history went.** And
+be. The original two-key model deferred aliases while the vault was being
+rebuilt. The first shipped commons made cross-bank portability real work, so it
+was superseded by permanent ids, reviewed exact aliases and conservative v1
+migration: **history disappeared once, then returned as soon as knowledge was
+shared across installations.** And
 the agent layer arrived early, turning a vault into proposed actions with
 preconditions evaluated — pure, no calls, no writes, no questions. The division
 it encodes: mechanical decisions are the agent's, judgements about what money
@@ -321,7 +323,7 @@ sits on had never returned a result — the cheapest de-risking step available, 
 it was missing.
 
 The prerequisites are done: the induction call, the raw-descriptor leak in the
-plain-JSON pending queue, the NACHA rule, the two-key model, the stream engine
+plain-JSON pending queue, the NACHA rule, permanent-id plus legacy-candidate lookup, the stream engine
 with its features, and the order-independence assertion. The privacy invariants
 stand as tests rather than conventions: raw descriptors in the encrypted ledger
 only; K3 crossing the vault boundary only in the abstracted-pattern shape;

@@ -1,6 +1,6 @@
 # Merchant Catalog & the Categorization Commons — categorize the merchant, once, for everyone
 
-**State:** partial — the catalog and its derivation are built; the commons registry is not
+**State:** partial — the local catalog, versioned merchant identity aliases, first shipped business seed and import-time application are built; the networked commons registry is not
 **Rules:** MER-40, MER-41, MER-42, MER-43, MER-44, MER-45, MER-46, MER-47, MER-48, MER-49, MER-59
 
 ## Rules
@@ -10,7 +10,7 @@
 **Code:** product/viva/ledger/projection/categories.py (`derived_category`), product/viva/ingest/categorize.py (`assign_merchant_category`)
 **Test:** product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions, product/tests/test_merchants.py::test_merchant_ruling_survives_a_replay
 
-1. The reusable unit of categorization is the normalized merchant. Movement-scoped corrections and import defaults are append-only overlays rather than rewritten postings.
+1. The reusable unit of categorization is the permanent merchant id. A normalized descriptor is recognition evidence, not the identity itself. Movement-scoped corrections and import defaults are append-only overlays rather than rewritten postings.
 2. The derivation is: a human or model per-transaction override, else the strongest catalog record the merchant is filed under, else a replaceable unverified import default, else `Uncategorized`.
 3. Because it is a projection, one ruling categorizes every transaction from that merchant, past and future.
 4. A merchant rule is an append-only event; the catalog is a projection over the encrypted log, so it survives a replay.
@@ -24,13 +24,13 @@
 2. A human per-transaction ruling is `verified` and beats any merchant-level prior. An ordinary model movement override also wins at its recorded grade; only `by="default"` is deliberately replaceable by merchant knowledge.
 3. A model batch and a commons prior both enter as `corroborated`, never as fact.
 
-### MER-42 — Every lookup considers both keys
+### MER-42 — Every lookup preserves canonical and legacy keys
 **State:** enforced
 **Code:** product/viva/ledger/projection/merchants.py:59 (`merchant_keys_of`), :96 (`merchant_graded`); product/viva/ingest/categorize.py (`assign_merchant_category`)
-**Test:** product/tests/test_merchant_keys.py::test_a_descriptor_keyed_answer_still_reads, product/tests/test_merchant_keys.py::test_the_brand_wins_a_tie, product/tests/test_merchant_keys.py::test_a_persons_answer_beats_a_models_whichever_key_it_is_under, product/tests/test_questions.py::test_answering_a_resolved_numbered_merchant_closes_that_exact_question
+**Test:** product/tests/test_merchant_keys.py::test_reviewed_aliases_group_two_location_forms_under_one_merchant, ::test_a_verified_old_alias_record_beats_the_canonical_commons_prior, ::test_a_descriptor_keyed_answer_still_reads, ::test_the_brand_wins_a_tie
 
-1. A movement's candidate keys are the brand a resolver named and the normalized descriptor, in that order.
-2. The highest-graded record among the candidates answers; ties go to the brand.
+1. A movement first tries the canonical id resolved from exact reviewed aliases, then its structural/brand candidates and normalized descriptor.
+2. The highest-graded record among the candidates answers; ties go to the canonical id.
 3. Knowledge recorded before grammars existed sits under the descriptor and is not stranded by a lookup that only knew the brand.
 4. A question's resolved key is recorded exactly when the projection already holds it; only an unresolved raw descriptor is normalized again before filing.
 
@@ -41,6 +41,7 @@
 
 1. Only keys this vault offered, plus keys its ledger already carries a record for, are synced into the ledger.
 2. A catalog record about a merchant this vault never paid appends no event to this vault's append-only log.
+3. A balance-statement import performs the same bounded sync for that document before assigning defaults. A shipped or learned hit therefore categorizes immediately without an enrichment/model call; a miss keeps the replaceable default.
 
 ### MER-44 — The subcategory vocabulary is seeded, and grows without displacing
 **State:** enforced
@@ -69,7 +70,7 @@
 
 1. The raw descriptor never leaves the encrypted ledger.
 2. What is written unencrypted or shared holds merchant knowledge only: no amounts, no dates, no transaction links.
-3. A peer-payment or person-name key is filtered out of the export entirely.
+3. A record is exported only when its permanent id and every reviewed alias pass the privacy lint and its typed counterparty is a business. Peer, person-name and financial-instrument records are filtered out entirely.
 
 ### MER-47 — The taxonomy is a versioned data pack
 **State:** enforced
@@ -80,13 +81,15 @@
 2. The version in force is read from the manifest, never written as a literal.
 3. The vocabulary is authored against the primaries from world knowledge, never from a vault (T9).
 
-### MER-48 — Normalization is deterministic and versioned, never fuzzy string-matching
+### MER-48 — Merchant recognition is deterministic and versioned, never fuzzy
 **State:** enforced
-**Code:** merchant/merchantcore/normalize.py:21 (`NORMALIZER_VERSION`), :49 (`normalize_merchant` — a fixed sequence of strips: processor prefix, date fragment, phone, order id, store number, long number, punctuation)
-**Test:** merchant/tests/test_merchantcore.py::test_normalize_is_deterministic_and_versioned, merchant/tests/test_merchantcore.py::test_a_date_fragment_does_not_become_part_of_the_key, product/tests/test_merchants.py::test_normalizer_is_deterministic_and_versioned
+**Code:** merchant/merchantcore/normalize.py (`normalize_merchant`), merchant/merchantcore/resolve.py (`Resolution.identity_candidates`), merchant/merchantcore/catalog.py (`CATALOG_FORMAT`, `IDENTITY_VERSION`, `resolve`)
+**Test:** merchant/tests/test_merchantcore.py::test_store_number_boundaries_offer_exact_identity_candidates, ::test_reviewed_aliases_resolve_exactly_and_near_names_do_not, ::test_a_broken_v2_identity_pack_is_refused, product/tests/test_merchant_keys.py::test_reviewed_aliases_do_not_match_a_near_name_or_arbitrary_text
 
-1. A raw descriptor becomes a canonical key by deterministic rules that strip the tail varying transaction to transaction; nothing is merged by fuzzy string similarity.
-2. The normalizer carries a version, so a catalog key is portable across users — the precondition for the commons.
+1. Normalization and structural parsing produce ordered recognition candidates: a proven grammar brand, a published-parser brand, the exact prefix before a proven occurrence slot such as a store number, and the normalized full descriptor.
+2. Only an exact, reviewed alias can map a candidate onto a permanent merchant id. Substrings, token similarity, edit distance, embeddings, model judgement, city lists, wildcards and regexes have no identity authority.
+3. Catalog format and identity algorithm versions travel with the alias pack; incompatible or malformed packs, unnormalized aliases and collisions are refused.
+4. A model-authored `canonical_name` remains display metadata. It cannot mint or merge identity, and an unmatched descriptor remains honestly unknown.
 
 ### MER-49 — An unknown merchant stays unknown while its movement gets a replaceable default
 **State:** enforced
@@ -125,12 +128,14 @@ only a privacy-linted merchant→category catalog is ever unencrypted or shared.
 Even then, the *set* of merchants you frequent is mildly identifying, so local
 plaintext is fine and contribution is opt-in and popular-biased.
 
-Normalization is deterministic and versioned, never fuzzy matching, because fuzzy
+Recognition is deterministic and versioned, never fuzzy matching, because fuzzy
 merges the wrong things — "Costco" against "Costa Coffee", "Chase" against
-"Chevron". The normalizer strips the tail that varies transaction to transaction
-and leaves the merchant words as read; a model then groups the deduped list.
-Location does not fragment the category, and versioning the normalizer is what
-makes keys portable across users, which is a precondition for the commons.
+"Chevron". The normalizer leaves merchant words as read. Where parsing proves a
+store-number boundary, its left-hand prefix becomes one exact candidate; a
+reviewed alias may map that candidate to a permanent id. Thus `costco`, `costco
+at`, and `costco whse` converge across locations, while arbitrary text containing
+`costco` does not. With no structural proof or exact alias, the full normalized
+descriptor remains the key and the merchant remains unknown.
 
 Batching is what makes it cheap and honest at once. A known merchant
 auto-categorizes for free on a catalog lookup; an unknown one is shown as
@@ -139,12 +144,11 @@ resolves retrospectively. Honest unknowns are X2 doing its job. The run also
 reports which catalog it loaded and how much is in it, because a shared store
 that silently loads the wrong file is worse than no sharing at all.
 
-The key had to move. Enrichment always filed under the brand while every read
+The key had to move. Enrichment once filed under the brand while every read
 looked under the descriptor, so a vault could hold a full catalog and read as
-though it held none. Considering both candidates and letting the higher-graded
-record answer is what stops knowledge recorded before grammars existed from being
-stranded — and a person's own answer is the most trustworthy record in the vault,
-so losing it to a key change would be the worst possible failure.
+though it held none. Reads now consider canonical identity, structural/brand
+candidates and the legacy descriptor, then let grade decide. A verified local
+answer therefore survives an alias migration and still outranks a commons prior.
 
 The subcategory was an open value a model invented per call, and a run told call
 N+1 nothing about what call N had decided, so one idea came back under three
@@ -176,9 +180,10 @@ it under.
 
 ## Open
 
-- The commons *registry* itself: a git repo of `merchant → category` keyed by
-  normalizer version and locale, corroborated-by-count, self-healing as merchants
-  rebrand. `export` is its input; the registry, the PR flow and the merge
+- The commons *registry* itself: a git repo of `permanent merchant id → category`
+  packs with an explicit identity-algorithm version and locale,
+  corroborated-by-count and reviewed aliases for rebrands. `export` is its input;
+  the registry, the PR flow and the merge
   semantics beyond `Catalog.merge` do not exist. Same lifecycle as
   [format-commons.md](format-commons.md), and this catalog is its seed.
 - Merchant as a Party, and per-location analytics (Costco Plano versus Frisco)

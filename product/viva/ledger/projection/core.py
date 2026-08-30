@@ -495,7 +495,21 @@ class ProjectionCore:
             # MerchantCategorized (category only) and MerchantEnriched (the
             # richer package-synced record) share this catalog.
             if prior is None or _grade_rank(event.body.get("grade")) >= _grade_rank(prior.get("grade")):
-                self._merchant_categories[merchant] = event.body
+                applied = dict(event.body)
+                aliases = set(applied.get("aliases") or ())
+                if prior is not None:
+                    aliases.update(prior.get("aliases") or ())
+                if aliases:
+                    applied["aliases"] = sorted(aliases)
+                self._merchant_categories[merchant] = applied
+                self._mkeys_of = {}
+            elif event.body.get("aliases"):
+                aliases = set(prior.get("aliases") or ())
+                aliases.update(event.body["aliases"])
+                if aliases != set(prior.get("aliases") or ()):
+                    self._merchant_categories[merchant] = {
+                        **prior, "aliases": sorted(aliases)}
+                    self._mkeys_of = {}
 
         elif et == "ClosingBalanceObserved":
             acct = event.body["account_id"]

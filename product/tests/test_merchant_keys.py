@@ -1,15 +1,4 @@
-"""Merchant knowledge is filed and read under one name.
-
-Enrichment files what it learns under the brand a resolution layer named. Every
-read used to ask for the normalized raw descriptor instead, so a catalog full of
-merchants and a ledger full of unknown counterparties could describe the same
-money and never intersect. These tests hold the two sides to one key.
-
-The second half is the other direction, and matters as much: records written
-before a grammar could name a brand sit under the descriptor, and a person's own
-answer is the most trustworthy record in a vault. A lookup that saw only the
-brand key would lose them.
-"""
+"""Hold merchant writes and reads to canonical and compatible legacy keys."""
 
 from decimal import Decimal
 
@@ -62,8 +51,7 @@ def _movement(proj):
 # --- write and read agree ---------------------------------------------------
 
 def test_the_write_side_and_the_read_side_compute_the_same_key():
-    """The bug in one line: the stream engine and the projection must derive
-    the same key from the same movement."""
+    """The stream engine and projection derive one key from one movement."""
     from viva.ledger.streams import build_streams
 
     proj = _proj()
@@ -83,9 +71,101 @@ def test_a_brand_keyed_record_categorizes_a_noisy_descriptor():
     assert proj.spending_by_category()["Dining"] == Decimal("42.10")
 
 
+def test_reviewed_aliases_group_two_location_forms_under_one_merchant():
+    events = [
+        account_opened("chk", "depository", "Checking", "USD", "2026-01-01"),
+        simple_transaction("chk", "-40.00", "COSTCO AT #0772 PLANO",
+                           "2026-01-05"),
+        simple_transaction("chk", "-60.00", "COSTCO #8767 ATLANTA",
+                           "2026-01-06"),
+        merchant_enriched(
+            "costco", "groceries", canonical_name="Costco",
+            aliases=["costco", "costco at", "costco whse"],
+            occurred_at="2026-01-07"),
+    ]
+    projection = LedgerProjection([], resolve_keys=lambda rows: resolve_keys(rows))
+    for event in events:
+        projection.apply(event)
+    assert {projection.merchant_key_of(m) for m in projection.movements()} == {"costco"}
+    assert projection.spending_by_category() == {"groceries": Decimal("100.00")}
+
+
+def test_reviewed_aliases_do_not_match_a_near_name_or_arbitrary_text():
+    events = [
+        account_opened("chk", "depository", "Checking", "USD", "2026-01-01"),
+        simple_transaction("chk", "-10.00", "COSTA COFFEE #8767 ATLANTA",
+                           "2026-01-05"),
+        simple_transaction("chk", "-20.00", "MY COSTCO PARTY", "2026-01-06"),
+        merchant_enriched(
+            "costco", "groceries", aliases=["costco", "costco at", "costco whse"],
+            occurred_at="2026-01-07"),
+    ]
+    projection = LedgerProjection([], resolve_keys=lambda rows: resolve_keys(rows))
+    for event in events:
+        projection.apply(event)
+    assert {projection.merchant_key_of(m) for m in projection.movements()} == {
+        "costa coffee atlanta", "my costco party"}
+
+
+def test_a_verified_old_alias_record_beats_the_canonical_commons_prior():
+    events = [
+        account_opened("chk", "depository", "Checking", "USD", "2026-01-01"),
+        simple_transaction("chk", "-40.00", "COSTCO WHSE #0772 PLANO",
+                           "2026-01-05"),
+        merchant_enriched(
+            "costco", "groceries", grade="corroborated",
+            aliases=["costco", "costco at", "costco whse"],
+            occurred_at="2026-01-06"),
+        merchant_categorized("costco whse", "Shopping", VERIFIED,
+                             "2026-01-07"),
+    ]
+    projection = LedgerProjection([], resolve_keys=lambda rows: resolve_keys(rows))
+    for event in events:
+        projection.apply(event)
+    assert projection.merchant_key_of(projection.movements()[0]) == "costco"
+    assert projection.spending_by_category() == {"Shopping": Decimal("40.00")}
+
+
+def test_a_local_canonical_update_preserves_reviewed_aliases():
+    events = [
+        account_opened("chk", "depository", "Checking", "USD", "2026-01-01"),
+        simple_transaction("chk", "-40.00", "COSTCO AT #0772 PLANO",
+                           "2026-01-05"),
+        simple_transaction("chk", "-60.00", "COSTCO #8767 ATLANTA",
+                           "2026-01-06"),
+        merchant_enriched(
+            "costco", "groceries", aliases=["costco", "costco at", "costco whse"],
+            occurred_at="2026-01-07"),
+        merchant_categorized("costco", "Shopping", VERIFIED, "2026-01-08"),
+    ]
+    projection = LedgerProjection([], resolve_keys=lambda rows: resolve_keys(rows))
+    for event in events:
+        projection.apply(event)
+    assert {projection.merchant_key_of(m) for m in projection.movements()} == {"costco"}
+    assert projection.spending_by_category() == {"Shopping": Decimal("100.00")}
+
+
+def test_a_lower_grade_commons_event_adds_aliases_without_replacing_local_data():
+    events = [
+        account_opened("chk", "depository", "Checking", "USD", "2026-01-01"),
+        simple_transaction("chk", "-40.00", "COSTCO AT #0772 PLANO",
+                           "2026-01-05"),
+        merchant_categorized("costco", "Shopping", VERIFIED, "2026-01-06"),
+        merchant_enriched(
+            "costco", "groceries", grade="corroborated",
+            aliases=["costco", "costco at", "costco whse"],
+            occurred_at="2026-01-07"),
+    ]
+    projection = LedgerProjection([], resolve_keys=lambda rows: resolve_keys(rows))
+    for event in events:
+        projection.apply(event)
+    movement = projection.movements()[0]
+    assert projection.merchant_key_of(movement) == "costco"
+    assert projection.derived_category(movement)["category"] == "Shopping"
+
+
 def test_without_a_resolver_the_descriptor_is_still_the_key():
-    """A projection built with no resolver behaves as it did before grammars
-    existed — the case for every vault with nothing induced yet."""
+    """A projection without a resolver uses the normalized descriptor key."""
     proj = LedgerProjection([], resolve_keys=None)
     for event in _events():
         proj.apply(event)
@@ -133,9 +213,7 @@ def test_the_queue_asks_under_the_brand_key():
 # --- knowledge filed under the older name is not lost -----------------------
 
 def test_a_descriptor_keyed_answer_still_reads():
-    """Every merchant answer given before this existed was written under the
-    normalized descriptor. Losing them would be the same bug pointed the other
-    way."""
+    """A legacy descriptor-keyed answer remains readable through the brand."""
     descriptor_key = "card purchase golden fork bistro plano tx card"
     proj = _proj([merchant_categorized(descriptor_key, "Dining", VERIFIED,
                                        "2026-06-20")])

@@ -1,12 +1,4 @@
-"""MerchantRecord — the merchant as a multi-attribute entity.
-
-Category is attribute #1; ``attributes`` is an open bag (website, description,
-socials, reviews), so the record grows by adding fields rather than by
-restructuring. Every record carries a grade — ``corroborated`` for a model
-enrichment or a commons prior, ``verified`` for a human ruling — and a version
-(normalizer + the enrichment prompt that produced it), so a stale record can be
-re-derived.
-"""
+"""Define a graded, versioned merchant record and its reviewed aliases."""
 
 from __future__ import annotations
 
@@ -24,16 +16,19 @@ class MerchantRecord:
     grade: str = "corroborated"           # verified | corroborated | unverified
     source: str = "model"                 # model | human | commons
     version: str = ""                     # taxonomy + normalizer + prompt version
+    aliases: list[str] = field(default_factory=list)  # reviewed normalized renderings
 
     def to_dict(self) -> dict:
-        return {"key": self.key, "canonical_name": self.canonical_name,
+        return {"key": self.key, "aliases": list(self.aliases),
+                "canonical_name": self.canonical_name,
                 "category": self.category, "subcategory": self.subcategory,
                 "attributes": dict(self.attributes),
                 "grade": self.grade, "source": self.source, "version": self.version}
 
     @classmethod
     def from_dict(cls, d: dict) -> "MerchantRecord":
-        return cls(key=d["key"], canonical_name=d.get("canonical_name", ""),
+        return cls(key=d["key"], aliases=list(d.get("aliases", [])),
+                   canonical_name=d.get("canonical_name", ""),
                    category=d.get("category", ""),
                    subcategory=d.get("subcategory", ""),
                    attributes=dict(d.get("attributes", {})),

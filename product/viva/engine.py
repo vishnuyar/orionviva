@@ -169,11 +169,7 @@ def _write_answer(vault: Vault, q, parsed, spoken: str) -> dict:
             "message": moment("reply_not_in_words")}
 
 
-# What a confirmation wants back: a yes or a no, and nothing else. A proposal is
-# not a question in the queue, so no builder declares this slot for it — but the
-# reply to it is read exactly the way every other reply is, which is why a
-# person who writes "yes, that's right" is understood and no code here looks at
-# the letters they typed.
+# Proposal confirmation accepts the same parsed yes-or-no slot as a question.
 CONFIRM_SLOT = Slot(name="confirm", type=ANSWER_YES_NO, required=True)
 
 
@@ -706,14 +702,16 @@ def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
 
 def _categorize_new_balance_statements(vault: Vault,
                                        posted_before: set[str]) -> None:
-    """Default every balance statement posted during one user operation."""
+    """Apply installed merchant priors, then default each new balance statement."""
     projection = vault.ledger.projection()
     captured_types = projection.captured_docs()
     newly_posted = projection.posted_doc_ids() - posted_before
+    from .enrich import sync_installed_merchants
     from .ingest import assign_default_categories
     for doc_id in sorted(newly_posted):
         profile = profile_for(captured_types.get(doc_id, ""))
         if profile is not None and profile.identity == BALANCE_IDENTITY:
+            sync_installed_merchants(vault, doc_id)
             assign_default_categories(vault.ledger, doc_id)
 
 

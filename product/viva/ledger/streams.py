@@ -1,49 +1,7 @@
-"""Streams — the same money, arriving again.
+"""Derive counterparty-and-rail streams and per-direction flow statistics.
 
-A **stream** is every movement sharing a counterparty and a rail: one rent, one
-payroll, one subscription, one person you settle up with.
-
-**The key is (counterparty, rail), not counterparty alone.** A large retailer is
-both a monthly subscription and a shop you visit; one institution receives both a
-savings sweep and a loan repayment. Keyed on the counterparty alone, the interval
-and amount statistics would be computed over a mixture.
-
-**Streams are derived, never stored.** This module is a projection over the
-ledger and holds no state between calls, so a person who loads a year in one
-afternoon and a person who loads one statement a month arrive at the same
-beliefs about the same money.
-
-**Not every movement has a counterparty** — a payment to your own card, or a
-brokerage activity line such as `You Sold Short-term gain`. So a stream carries a
-**role**:
-
-    counterparty   somebody was on the other side
-    internal       the other side is an account of YOURS — proven by a live
-                   transfer link, not inferred
-    activity       an investment account's own line, which names no party
-    mixed          the occurrences disagree, which is itself a finding
-
-Marked, never dropped: the totals still contain those movements, and marking
-lets a report separate them.
-
-**Role is derived from the stream, not carried in its key**, so a counterparty
-whose movements are only partly linked stays one stream and is reported `mixed`
-rather than splitting in two.
-
-**Role does not consult `nature`.** `nature` answers "does this count as
-spending?" and role answers "is there someone on the other side?" A mortgage
-payment is not spending and still has a party; only a live transfer link proves
-the other side is yours.
-
-**Direction splits the statistics and never the key.** Money moving both ways
-with one counterparty is one relationship — a brokerage taking contributions and
-paying distributions, a friend lent to and repaying, a refund coming back down
-the line that took the payment. So a stream holds a **flow** per direction, and
-cadence, interval steadiness and amount stability are measured inside a flow.
-No statistic spans two directions.
-
-This module contains no hypotheses. It reports what the ledger holds: how often,
-how much, how steady, through which rail.
+Streams retain every movement, its evidence-derived role and identity
+candidates. The module holds no state and writes no hypotheses.
 """
 
 from __future__ import annotations
@@ -282,6 +240,7 @@ class Stream:
     layer: str = "normalizer"
     entry_description: str = ""
     refused: bool = False
+    identity_candidates: list[str] = field(default_factory=list)
     roles: list = field(default_factory=list)     # one per occurrence
     # Every impersonal value each slot has ever held on this stream, not just
     # the first, so `agreed` can tell a brand-level fact from a per-visit one.
@@ -380,6 +339,7 @@ class Stream:
                 "agreed": self.agreed(),
                 "brand": self.brand, "is_person": self.is_person,
                 "layer": self.layer, "entry_description": self.entry_description,
+                "identity_candidates": list(self.identity_candidates),
                 "n": self.n, "direction": self.direction_mix,
                 "first_seen": str(self.first_seen), "last_seen": str(self.last_seen),
                 "flows": [f.to_dict() for f in self.flows],
@@ -481,8 +441,12 @@ def build_streams(movements, profile_for=None, kind_for=None) -> list:
             st = Stream(counterparty=counterparty, channel=rail,
                         is_person=res.is_person, brand=res.brand, layer=res.layer,
                         entry_description=res.fields.get("entry_description", ""),
-                        refused=res.refused)
+                        refused=res.refused,
+                        identity_candidates=list(res.identity_candidates))
             streams[st.key] = st
+        else:
+            st.identity_candidates = sorted(set(
+                [*st.identity_candidates, *res.identity_candidates]))
         st.occurrences.append(Occurrence(date=when, amount=m.amount,
                                          account=m.account, kind=kind,
                                          description=m.description))

@@ -10,7 +10,7 @@
 **Code:** product/viva/ingest/categorize.py:192 (`enrich_merchants`), product/viva/ledger/hints.py:69 (`Hint.example`), merchant/merchantcore/descriptor.py:265 (`linted_example`)
 **Test:** product/tests/test_merchant_enrich.py::test_only_impersonal_hints_cross_the_boundary, product/tests/test_streams.py::test_no_digit_reaches_the_boundary
 
-1. What crosses product → merchantcore is a normalized merchant key and an impersonal example composed of the brand plus context slots.
+1. What crosses product → merchantcore is an ordered set of structurally justified, normalized identity candidates and an impersonal example composed of the brand plus context slots.
 2. No amount, date, account, transaction reference or count crosses.
 3. `linted_example` removes every span a published rule proves, then every token carrying a digit, then anything shorter than two characters, and truncates.
 4. A linted example is not a guarantee of impersonality on its own; only the slot a value came from settles that (MER-3, MER-13 in [the-conduit-and-the-counterparty.md](the-conduit-and-the-counterparty.md)).
@@ -73,15 +73,16 @@
 2. `pending()` is what a caller about to spend a model call reads.
 3. They are deliberately not one function.
 
-### MER-27 — The product imports records as events
+### MER-27 — The product imports matched records as events
 **State:** enforced
-**Code:** product/viva/ingest/categorize.py:270-283 (sync loop), product/viva/ledger/events.py:640 (`merchant_enriched`)
-**Test:** product/tests/test_merchant_enrich.py::test_enrichment_syncs_as_events_and_categorizes_retrospectively, product/tests/test_merchant_enrich.py::test_sync_is_idempotent, product/tests/test_merchant_enrich.py::test_human_override_beats_the_synced_enrichment
+**Code:** product/viva/enrich.py (`sync_installed_merchants`), product/viva/ingest/categorize.py (`sync_merchant_records`), product/viva/ledger/events.py (`merchant_enriched`)
+**Test:** product/tests/test_categorize.py::test_upload_applies_a_reviewed_commons_alias_before_defaults, product/tests/test_merchant_enrich.py::test_enrichment_syncs_as_events_and_categorizes_retrospectively, ::test_sync_is_idempotent, ::test_human_override_beats_the_synced_enrichment
 
 1. The product does not read merchantcore at derivation time; it pulls records and appends `MerchantEnriched` events.
 2. A replay reproduces the categorization with merchantcore absent — the ledger stays the source of truth (T4).
-3. The sync is idempotent: a record is imported only where the ledger does not already reflect it at an equal or higher grade.
-4. A human `verified` override still wins over a synced enrichment.
+3. The sync is idempotent: a record is imported only where its facts are stronger or it carries a reviewed alias the ledger does not yet hold. Repeating the same record appends nothing.
+4. A lower-grade alias update may extend recognition but cannot replace a human `verified` category or attributes.
+5. Balance-statement import performs a zero-model-call sync for merchants in that document before defaults are assigned. It never copies unrelated catalog records into the vault.
 
 ### MER-28 — A version-stale record is restaged, and keeps answering meanwhile
 **State:** enforced
@@ -102,19 +103,22 @@
 
 1. Merchant knowledge belongs to merchantcore, not to a vault or to the product; one store is reused across every vault on the machine.
 2. Two locations: a shipped seed committed inside the package, and learned data outside any working tree at `~/.merchantcore` (`MERCHANTCORE_HOME`).
-3. On lookup the learned record wins outright, per key and whatever grade either carries.
+3. On lookup the learned record wins outright, per permanent id and whatever grade either carries.
 4. A shipped record is marked `source="shipped"` so it stays distinguishable after the first save copies it into the learned file.
 5. A shipped file's records only are read; a pending queue and an unanswered set are never read from it.
 6. Promotion from learned into shipped is a person's decision; nothing moves automatically.
+7. A legacy v1 learned key migrates only through an exact reviewed shipped alias. Its data and grade still win, the old key remains an alias, and equal `canonical_name` values never merge records. Same-layer migration is grade-first, then direct-id-first, and refuses an unresolved equal tie.
 
 ### MER-30 — The commons export is linted, and an import is only a prior
 **State:** enforced
-**Code:** merchant/merchantcore/catalog.py:161 (`export`), :169 (`merge`)
-**Test:** merchant/tests/test_merchantcore.py::test_catalog_pending_add_and_linted_export, merchant/tests/test_merchantcore.py::test_catalog_merge_prior_loses_to_local_verified
+**Code:** merchant/merchantcore/catalog.py (`export`, `merge`)
+**Test:** merchant/tests/test_merchantcore.py::test_catalog_pending_add_and_linted_export, ::test_shipped_catalog_is_a_nonempty_business_only_commons, ::test_a_v1_learned_alias_migrates_onto_the_reviewed_id, ::test_an_import_alias_collision_is_atomic, ::test_catalog_merge_prior_loses_to_local_verified
 
-1. `export` returns records whose key passes `is_shareable`, and nothing else — no pending queue, no unanswered set.
-2. `merge` applies an imported record only where no local record exists or the import's grade is strictly higher.
-3. A local `verified` ruling always beats an import.
+1. Export and merge use `merchant-catalog-v2`: one permanent id per record, a required self-alias, reviewed exact aliases, and an explicit identity algorithm version.
+2. `export` returns a record only when every alias passes `is_shareable` and enrichment typed the counterparty as a business. A peer or financial instrument is refused; no pending, unanswered or restaged queue leaves.
+3. Loading refuses empty, unnormalized or conflicting aliases, mismatched ids and unsupported versions. One alias cannot name two records, and a runtime/model record cannot author a fold.
+4. `merge` is collision-atomic and applies an imported record only where no local record exists or the import's grade is strictly higher.
+5. A local `verified` ruling always beats an import.
 
 ### MER-31 — Billing is a fact about the merchant, validated against closed sets
 **State:** enforced
@@ -164,7 +168,7 @@ of the answer; the ledger holds the answer, so a replay or a reingest reproduces
 every categorization with the package absent.
 
 How the product *applies* this knowledge to its own ledger — the derivation, the
-override, the two-key lookup — is [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md).
+override, canonical-plus-legacy lookup — is [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md).
 
 An enriched attribute is a graded claim, never a fact. The ladder is `verified`
 (you confirmed this transaction, or this merchant) > `corroborated` (a model
@@ -229,8 +233,9 @@ reader, not to the merchant record, because a merchant has many locations.
   Model-world-knowledge fields come from the same batched call; looked-up and
   dynamic fields need a separate enricher layer with a freshness story, opt-in,
   cached in the commons.
-- The commons registry: a git repo of `MerchantRecord`s keyed by normalizer
-  version and locale, corroborated-by-count, self-healing when merchants rebrand.
+- The commons registry: a git repo of `MerchantRecord`s keyed by permanent
+  merchant id and explicit identity-algorithm version, corroborated-by-count,
+  with reviewed aliases for rebrands.
   `Catalog.export` is its input and `merge` its consumer; the registry itself does
   not exist.
 - Merchant as a Party: the canonical merchant is the Party primitive, with

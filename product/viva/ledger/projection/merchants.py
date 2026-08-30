@@ -1,20 +1,7 @@
-"""Who a movement's counterparty is, and what knowing them implies.
+"""Resolve movement counterparties across canonical and legacy merchant keys.
 
-A merchant is filed under its BRAND: two locations of one retailer are one
-key and one record. Naming the brand takes the resolution layers, and the
-best of them is a grammar living outside the event log — so the key map is
-built by an injected resolver rather than derived from events. What comes
-back is the key each line is filed under and the lines a grammar slot
-declared a person on, the one thing about a line no read can recover for
-itself. Without a resolver a descriptor normalizes to itself and no line is
-declared anything, which is what every read did before grammars existed.
-
-Every lookup therefore considers TWO keys. Knowledge recorded before a
-grammar could name the brand sits under the descriptor, and a person's
-answer is the most trustworthy record in the vault; a lookup that found
-only the brand key would lose it. The candidates are ranked by grade, the
-brand winning a tie, so the strongest record answers regardless of which
-name it happens to be filed under.
+Exact reviewed aliases map structural candidates to permanent ids. Lookups
+retain descriptor candidates and rank records by grade, then key order.
 """
 
 from __future__ import annotations
@@ -26,16 +13,11 @@ from .core import ProjectionCore, _grade_rank
 
 
 def merchant_key_map(core: ProjectionCore) -> MerchantKeys:
-    """`{(account, descriptor): brand key}` for every line held, carrying the
-    lines a grammar slot declared a person on.
+    """Pre-catalog keys and identity evidence for every descriptor held.
 
-    Built once and dropped whenever a transaction or an account arrives,
-    because both can change how a descriptor resolves.
-
-    Always a `MerchantKeys`: the empty one a projection with no resolver gets
-    declares no persons, and so does a resolver that named none. Raises
-    `TypeError` where a resolver returns any other mapping, which carries no
-    declaration to tell apart from a declaration of nobody."""
+    Cached until a transaction or account arrives. Always returns
+    ``MerchantKeys`` and raises ``TypeError`` for another mapping type.
+    """
     if core._mkeys is None:
         if core._resolve_keys is None:
             core._mkeys = MerchantKeys()
@@ -58,19 +40,28 @@ def merchant_key_map(core: ProjectionCore) -> MerchantKeys:
 
 def merchant_keys_of(core: ProjectionCore, m) -> tuple:
     """Every key this movement's merchant could be filed under, strongest
-    identity first: the brand, then the descriptor where they differ.
-
-    Memoized per descriptor: this is read several times for every movement
-    in the vault on every aggregate, and normalization is a run of regular
-    expressions."""
+    identity first: canonical id, structural/brand evidence, then descriptor.
+    """
     cached = core._mkeys_of.get((m.account, m.description))
     if cached is not None:
         return cached
     descriptor_key = normalize_merchant(m.description)
-    brand_key = merchant_key_map(core).get((m.account, m.description),
-                                           descriptor_key)
-    keys = ((descriptor_key,) if brand_key in ("", descriptor_key)
-            else (brand_key, descriptor_key))
+    key_map = merchant_key_map(core)
+    brand_key = key_map.get((m.account, m.description), descriptor_key)
+    structural = key_map.candidates.get((m.account, m.description), ())
+    aliases: dict[str, str] = {}
+    conflicted: set[str] = set()
+    for merchant_id, record in core._merchant_categories.items():
+        for alias in record.get("aliases") or ():
+            owner = aliases.get(alias)
+            if owner is not None and owner != merchant_id:
+                conflicted.add(alias)
+            else:
+                aliases[alias] = merchant_id
+    canonical = next((aliases[candidate] for candidate in structural
+                      if candidate in aliases and candidate not in conflicted), "")
+    ordered = [canonical, brand_key, *structural, descriptor_key]
+    keys = tuple(dict.fromkeys(key for key in ordered if key)) or ("",)
     core._mkeys_of[(m.account, m.description)] = keys
     return keys
 

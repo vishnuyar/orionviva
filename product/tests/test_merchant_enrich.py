@@ -11,6 +11,8 @@ from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
                          account_id_for, assign_category, capture_and_ingest,
                          enrich_merchants)
 from viva.ledger import EventStore, Ledger, LedgerProjection
+from viva.ledger.events import VERIFIED, merchant_categorized
+from viva.ledger.merchant_keys import resolve_keys
 
 
 def _card(txns, tmp_path):
@@ -85,6 +87,35 @@ def test_human_override_beats_the_synced_enrichment(tmp_path):
     proj = ledger.projection()
     assert proj.spending_by_category() == {"groceries": Decimal("50.00")}
     assert proj.derived_category(amazon)["grade"] == "verified"
+
+
+def test_sync_adds_reviewed_aliases_without_downgrading_a_local_record(tmp_path):
+    ledger = _card([("2026-01-05", "COSTCO AT #0772 PLANO", "50.00")], tmp_path)
+    ledger = Ledger(ledger.store, resolve_keys=lambda rows: resolve_keys(rows))
+    ledger.append(merchant_categorized(
+        "costco", "shopping", VERIFIED, "2026-01-06", by="human"))
+    cat = Catalog()
+    cat.merge({
+        "format": "merchant-catalog-v2",
+        "identity_version": "merchant-id-v1",
+        "records": {"costco": MerchantRecord(
+            key="costco", category="groceries", grade="corroborated",
+            aliases=["costco", "costco at", "costco whse"],
+            attributes={"counterparty_kind": "business"}).to_dict()},
+    })
+
+    def no_model(_prompt):
+        raise AssertionError("an installed identity alias must not call a model")
+
+    first = enrich_merchants(ledger, cat, no_model, kind_for=lambda m: m.kind)
+    projection = ledger.projection()
+    movement = projection.movements()[0]
+    assert first["synced"] == 1
+    assert projection.merchant_key_of(movement) == "costco"
+    assert projection.derived_category(movement)["category"] == "shopping"
+    assert projection.derived_category(movement)["grade"] == VERIFIED
+    assert enrich_merchants(
+        ledger, cat, no_model, kind_for=lambda m: m.kind)["synced"] == 0
 
 
 def test_subcategory_enables_a_finer_slice(tmp_path):
@@ -247,18 +278,7 @@ def test_sync_is_idempotent(tmp_path):
 
 
 def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monkeypatch):
-    """The catalog lives outside the vault directory, because keeping it inside
-    contradicts the reason it exists.
-
-    It holds IMPERSONAL merchant knowledge — a normalized key, a category, a
-    counterparty kind — and nothing about anyone's money. That is exactly why
-    it can be kept once, reused by every vault, and eventually shared with other
-    people: "Costco is a warehouse club" is true for everybody, and nobody
-    should pay a model to learn it twice.
-
-    Keeping it beside the vault makes every rebuild start from zero and pay
-    again for knowledge already bought — the network effect the catalog exists
-    for, running in reverse."""
+    """The impersonal catalog is shared across vault directories."""
     from viva.enrich import catalog_path
 
     monkeypatch.delenv("VIVA_CATALOG", raising=False)
@@ -267,8 +287,7 @@ def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monke
     vault = tmp_path / "some-vault"
     vault.mkdir()
 
-    # With no legacy file, the shared location wins — and crucially it is NOT
-    # inside the vault, so a rebuild into a new directory keeps the knowledge.
+    # With no legacy file, the shared location is outside the vault.
     shared = catalog_path(vault)
     assert vault not in shared.parents, "a rebuild must not start from zero"
     assert shared == tmp_path / ".merchantcore" / "catalog.json"
@@ -278,8 +297,7 @@ def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monke
     monkeypatch.setenv("VIVA_CATALOG", str(tmp_path / "team.json"))
     assert catalog_path(vault) == tmp_path / "team.json"
 
-    # And nobody loses what they already paid for: an existing in-vault catalog
-    # is still honoured while no shared one exists.
+    # An existing in-vault catalog remains the fallback when no shared file exists.
     monkeypatch.delenv("VIVA_CATALOG", raising=False)
     (tmp_path / ".viva" / "merchant-catalog.json").unlink(missing_ok=True)
     legacy = vault / "merchant-catalog.json"
@@ -291,12 +309,7 @@ def test_the_catalog_is_shared_across_vaults_not_kept_inside_one(tmp_path, monke
 
 
 def test_only_accounts_whose_lines_name_a_party_are_enriched(tmp_path):
-    """An allowlist, not a denylist of one.
-
-    Enrichment used to exclude investment BY NAME, which meant any kind nobody
-    had thought of — crypto, property, a pension — had its lines shipped to a
-    model as merchants by default. A list of what is permitted cannot be wrong
-    about a thing that did not exist when it was written."""
+    """Only account kinds whose lines name a party reach enrichment."""
     ledger = _card([("2026-01-05", "COSTCO WHSE PLANO TX", "84.10"),
                     ("2026-01-06", "SUNDIAL BREW PLANO TX", "6.25")], tmp_path)
     asked: list = []

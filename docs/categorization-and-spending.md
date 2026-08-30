@@ -56,7 +56,7 @@
 **Code:** product/viva/ledger/projection/categories.py (`derived_category`)
 **Test:** product/tests/test_merchants.py::test_per_transaction_override_beats_the_merchant_rule
 
-1. A movement's effective category is its human or model per-transaction override, else the strongest catalog record its merchant is filed under, else its unverified import default, else `Uncategorized`. The import default is movement-scoped but intentionally yields to later merchant knowledge; a person's correction still wins over both.
+1. A movement's effective category is its human or model per-transaction override, else the strongest catalog record among its canonical and legacy merchant keys, else its unverified import default, else `Uncategorized`. Import applies an already-installed exact alias match before writing the default and without a model call. The default is movement-scoped and intentionally yields to later merchant knowledge; a person's correction still wins over both.
 2. Labels are canonicalized at that one funnel, so one alias ruling corrects every aggregate at once.
 
 ### MON-93 — the spending answer says what its total is made of
@@ -78,14 +78,14 @@ The kind-aware fix was a property of one path, and a later path did not inherit 
 
 A category is an *overlay*, not a re-post, for the same reason a transfer link is: per-statement reconciliation must keep holding, and merging or rewriting postings breaks the gate that makes any of it trustworthy. Keeping it an append-only event keyed to content also means a reingest cannot lose it.
 
-The suggest-and-confirm split is the moat. The model already knows a supermarket from a cable company, so spending is populated immediately and honestly at `unverified`; a person's confirmation is the authoritative event, and it is the one thing a model call cannot regenerate. That is also why the descriptor is captured on every assignment: it costs nothing at the time and buys the entire merchant layer later as a projection over events already held — the categorizing done by using the product *is* the training signal. Because a merchant's category is a **prior, not truth**, a person's override always wins locally, and the shared layer stays impersonal: a normalized key and a linted example, never amounts or descriptors (T9).
+The suggest-and-confirm split is the moat. Installed knowledge can populate spending immediately at `corroborated`, while a model may later propose knowledge for an honest miss; a person's confirmation remains the authoritative event and the one thing a model call cannot regenerate. That is also why the descriptor is captured on every assignment: it costs nothing at the time and buys the entire merchant layer later as a projection over events already held — the categorizing done by using the product *is* the training signal. Because a merchant's category is a **prior, not truth**, a person's override always wins locally, and the shared layer stays impersonal: structurally justified normalized identity candidates and a linted example, never amounts or raw descriptors (T9).
 
 Exclusion belongs to nature rather than to the category. "Spending excludes transfers" once held only for *linked* transfers, so a movement categorized `transfers` or `loan_payments` was still counted, and one label covered two opposite natures. The rule generalized to derived movement nature, with the category demoted to a suggestion rung — see MON-1 and MON-3 in [honest-aggregates-and-the-learning-loop.md](honest-aggregates-and-the-learning-loop.md).
 
 ## Open
 
 - The live model categorizer is injected but not wired to a real model call on this path.
-- Merchant normalization, the merchant→category catalog and learned auto-apply are built locally. Unknown statement movements receive replaceable defaults instead of routine import questions; genuinely ambiguous identity and correction decisions remain explicit. A networked commons registry remains unbuilt.
+- Merchant normalization, permanent ids, reviewed exact aliases and merchant→category auto-apply are built locally. Known shipped or learned merchants categorize during statement import without a model call; unknown movements receive replaceable defaults instead of routine import questions. No fuzzy identity inference or alias-approval UI exists, and the networked commons registry remains unbuilt.
 - Amount-splits — one movement divided across categories, still balancing — are a separate overlay, unbuilt, and compose with the single-category work.
 - The external **Party** — a merchant, an employer, a landlord — is unbuilt. External counterparty attribution (a payment to a real person or biller is a real outflow, not a transfer) is the categorization-side of transfer-linking, and the same descriptor-capturing events seed it.
 - Per-transaction custom categories for peer descriptors: [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md).

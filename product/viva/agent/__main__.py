@@ -32,6 +32,16 @@ def _line(ch: str = "-", n: int = 72) -> None:
     print(ch * n)
 
 
+def private_unknown_keys(observation) -> list[str]:
+    """Merchant keys a model-backed enrichment would actually be asked about."""
+    queued = observation.catalog.queued()
+    return sorted(
+        key for key, hint in observation.offered.items()
+        if observation.catalog.resolve(
+            hint.identity_candidates or (key,)) is None
+        and key not in queued)
+
+
 def report(run) -> None:
     o = run.observation
     print(f"\nvault        {o['movements']} movement(s)")
@@ -173,8 +183,7 @@ def main() -> int:
     if args.private:
         from .observe import observe
         obs = observe(vault, recent_days=args.recent_days)
-        unknown = sorted(k for k in obs.offered
-                         if obs.catalog.get(k) is None)
+        unknown = private_unknown_keys(obs)
         print()
         _line()
         print("PRIVATE — the brands an enrichment would ask about")

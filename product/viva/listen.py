@@ -454,9 +454,7 @@ class Proposal:
         if self.new_accounts:
             parts.append("This creates " + self._named(self.new_accounts)
                          + " — new, and only you say it exists.")
-        # An account picked because it LOOKED like one you have is a guess, and
-        # a guess the person confirms without being told about is a guess they
-        # did not make.
+        # Guessed existing accounts are named explicitly for confirmation.
         if self.confirm_accounts:
             parts.append("I've taken this to be your existing "
                          + self._reads_as()
@@ -548,11 +546,9 @@ def propose(proj, interp: Interpretation, descriptor: str, amount: str = "",
 
     ``merchant_key`` is the identity the question was asked under, carried in
     rather than re-derived. A descriptor is one line of one statement, and
-    normalizing it names the line; the key names the counterparty. Without one
-    the descriptor names it, which is what every read did before a grammar
-    could tell the brand from the store number around it. The descriptor is
-    still what decides whether an answer may generalize at all, because that is
-    a judgement about the raw line.
+    normalizing it names the line; the key names the counterparty. Without a
+    key, the normalized descriptor is used. The raw descriptor determines
+    whether an answer may generalize.
 
     ``movements`` are the movement keys the question grouped — the very set its
     count and its amount were computed over, carried in rather than rebuilt

@@ -58,6 +58,44 @@ def catalog_path(vault_dir=None) -> pathlib.Path:
 CHUNK_FLAG = "--chunk-size"
 
 
+def sync_installed_merchants(vault, doc_id: str) -> int:
+    """Apply installed records matched by one posted statement, without a model."""
+    from merchantcore import Catalog, home
+    from merchantcore.profile import is_inducible
+
+    from .induce_profile import profile_store
+    from .ingest import sync_merchant_records
+    from .ledger.hints import enrichment_hints
+    from .ledger.streams import build_streams
+
+    projection = vault.ledger.projection()
+    movements = [movement for movement in projection.movements()
+                 if movement.provenance.doc_id == doc_id]
+    store = profile_store()
+    profiles: dict = {}
+    kinds: dict = {}
+
+    def kind_for(movement):
+        if movement.account not in kinds:
+            kinds[movement.account] = projection.account_info(movement.account).kind or ""
+        return kinds[movement.account]
+
+    eligible = [movement for movement in movements
+                if is_inducible(kind_for(movement))]
+
+    def grammar_for(movement):
+        info = projection.account_info(movement.account)
+        pair = (info.institution or "?", info.kind or "?")
+        if pair not in profiles:
+            profiles[pair] = store.latest_for(*pair)
+        return profiles[pair]
+
+    offered = enrichment_hints(build_streams(eligible, grammar_for, kind_for))
+    catalog = Catalog(catalog_path(getattr(vault, "directory", None)),
+                      shipped=home.shipped_catalog_file())
+    return sync_merchant_records(vault.ledger, catalog, offered)
+
+
 def read_chunk_size(args, environ=None) -> tuple[int, list[str]]:
     """How many merchants ride in one model call, and the arguments left over.
 

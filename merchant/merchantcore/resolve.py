@@ -1,30 +1,7 @@
-"""One descriptor in, one decomposition out — the only door to the four layers.
+"""Decompose descriptors through grammar, published and fallback layers.
 
-Everything downstream of a bank line — the merchant catalog, the stream engine,
-the question queue — needs the same three things from it: who the counterparty
-was, whether that counterparty is a person, and what may leave the machine.
-`resolve_descriptor` is the single answer, and it applies the layers in a fixed
-order, each answering only what it can prove:
-
-    refused        a wire dump — no layer may claim it; it stays local and whole
-    Layer 1        an induced grammar for this bank, if one exists
-    Layer 1'       a grammar induced for another bank that explains this line
-    Layer 0        published card and NACHA rules, which need no grammar
-    the normalizer the deterministic fallback
-
-A borrowed grammar is recorded as layer `grammar`, not as a weaker layer name:
-it is structurally the same claim — the same closed vocabulary, the same
-compiled expression, the same rule that a person is whatever landed in a slot
-named for one — and downstream privacy checks key on that word. Where it came
-from rides in `borrowed_from`.
-
-The result carries which layer produced each field: "a brand from a grammar
-slot" and "a brand from stripping punctuation" are different claims.
-
-Identity is not decided here. A brand candidate is a string a bank printed;
-only the knowledge base can say it and a brand are the same thing.
-
-Design rationale: docs/the-conduit-and-the-counterparty.md
+The result carries provenance, person declarations and exact identity
+candidates. Permanent merchant identity is resolved by the catalog.
 """
 
 from __future__ import annotations
@@ -33,7 +10,7 @@ from dataclasses import dataclass, field
 
 from .descriptor import (brand_candidate, is_never_templatable, linted_example,
                          parse_descriptor)
-from .normalize import normalize_merchant
+from .normalize import is_shareable, normalize_merchant
 from .profile import PERSONAL_SLOTS
 
 RESOLVER_VERSION = "resolve-v1"
@@ -57,6 +34,7 @@ class Resolution:
     template: str = ""
     borrowed_from: str = ""              # profile id, when another bank's grammar explained it
     refused: bool = False
+    identity_candidates: tuple[str, ...] = ()
 
     @property
     def is_person(self) -> bool:
@@ -75,7 +53,7 @@ class Resolution:
 
     @property
     def key(self) -> str:
-        """The stream and catalog key, until a brand key resolves.
+        """The local stream key before a reviewed alias resolves an identity.
 
         The local key, else the normalized raw line, else the raw line
         lowercased — never empty for a non-empty descriptor, because a line
@@ -84,17 +62,10 @@ class Resolution:
 
     @property
     def merchant_key(self) -> str:
-        """The key everything known about this counterparty is filed under: the
-        normalized brand a layer named, else `key`.
+        """Return the normalized brand or the stable local fallback key.
 
-        Identity is brand-level, so two locations of one retailer are one key.
-        Where no layer could name a brand the fallback is the whole descriptor
-        normalized, which is what `key` already is — so a line nothing could
-        decompose is still filed under something stable.
-
-        One property rather than an expression each caller writes: a merchant
-        filed under one key and looked up under another is knowledge that
-        cannot be read."""
+        ``identity_candidates`` may later resolve to a permanent catalog id.
+        """
         return normalize_merchant(self.brand) or self.key
 
     def shareable(self) -> dict:
@@ -135,7 +106,7 @@ class Resolution:
 #
 # Everything else is `unknown` and stays `unknown`.
 #
-# Constraint: a channel is decided by structure, never by a word in the text.
+# Channel classification uses proved structure rather than descriptor words.
 _DE43_RULES = frozenset({"de43_region_tail", "asterisk_at_3", "asterisk_at_7",
                          "asterisk_at_12", "phone_in_city_slot", "url_in_city_slot"})
 
@@ -231,6 +202,30 @@ def _slot_from(res: Resolution, match, parse, ach_split, raw: str) -> Resolution
     return res
 
 
+def _with_identity_candidates(res: Resolution, parse) -> Resolution:
+    """Attach the exact normalized strings eligible for reviewed alias lookup."""
+    if res.refused or res.is_person or not is_shareable(res.raw):
+        res.identity_candidates = ()
+        return res
+    candidates: list[str] = []
+
+    def add(value: str) -> None:
+        key = normalize_merchant(value)
+        if key and key not in candidates:
+            candidates.append(key)
+
+    add(res.brand)
+    if parse.clean:
+        add(brand_candidate(parse))
+    store = next((slot for slot in parse.slots
+                  if slot.name == "store_number"), None)
+    if store is not None:
+        add(res.raw[:store.start])
+    add(res.local_key)
+    res.identity_candidates = tuple(candidates)
+    return res
+
+
 def resolve_descriptor(descriptor: str, profile=None, ach_split=None,
                        borrowed=None) -> Resolution:
     """Decompose one bank line, using the best layer that can prove its claim.
@@ -261,13 +256,14 @@ def resolve_descriptor(descriptor: str, profile=None, ach_split=None,
     # published rule can claim a field the sender typed freely.
     if is_never_templatable(raw):
         res.layer, res.refused = "refused", True
-        return res
+        return _with_identity_candidates(res, parse)
 
     # Layer 1 — an induced grammar. It claims the whole line or nothing, so a
     # match is a decomposition with no residue to explain away.
     match = profile.apply(raw) if profile is not None else None
     if match is not None:
-        return _slot_from(res, match, parse, ach_split, raw)
+        return _with_identity_candidates(
+            _slot_from(res, match, parse, ach_split, raw), parse)
 
     # Layer 1' — somebody else's grammar, in a fixed order so the answer does
     # not depend on how a collection happened to iterate.
@@ -277,7 +273,8 @@ def resolve_descriptor(descriptor: str, profile=None, ach_split=None,
         match = other.apply(raw)
         if match is not None:
             res.borrowed_from = other.id
-            return _slot_from(res, match, parse, ach_split, raw)
+            return _with_identity_candidates(
+                _slot_from(res, match, parse, ach_split, raw), parse)
 
     # Layer 0 — published rules. They cannot claim the merchant name (no
     # specification says where it ends), so the brand is a candidate from what
@@ -304,4 +301,4 @@ def resolve_descriptor(descriptor: str, profile=None, ach_split=None,
         # `normalizer` rather than as a `published` parse with an empty brand.
         res.layer = "normalizer"
         res.brand = res.local_key
-    return res
+    return _with_identity_candidates(res, parse)

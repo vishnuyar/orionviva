@@ -1,23 +1,8 @@
-"""Where merchant knowledge lives: two directories, split by provenance.
+"""Locate shipped and installation-learned merchant knowledge.
 
-Neither a grammar nor a merchant record belongs to a vault. A bank's line
-grammar is the bank's, identical for every customer of that bank, and a
-merchant's category is true for everybody, so both are merchantcore's rather
-than the product's.
-
-``shipped()`` — inside this package, committed, read-only in practice. The seed
-every install starts with. Empty today; it fills as grammars and merchant
-records are ratified for publication.
-
-``learned()`` — outside any working tree, writable, shared across every vault on
-the machine. What this installation worked out for itself. A locally-induced
-grammar carries literal text a model wrote, and outside the tree it cannot be
-committed by accident. Overridable via ``MERCHANTCORE_HOME``.
-
-Lookup is layered and learned wins: learned first, shipped second.
-
-Nothing moves from learned to shipped automatically; promotion is a person's
-decision.
+Shipped data is package-owned and read-only. Learned data is shared across
+vaults under ``MERCHANTCORE_HOME`` and overrides shipped records after reviewed
+alias resolution. No learned record is promoted automatically.
 """
 
 from __future__ import annotations

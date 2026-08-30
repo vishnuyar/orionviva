@@ -82,10 +82,7 @@ class Vault:
                 raise VaultNotFound(directory)
         directory.mkdir(parents=True, exist_ok=True)
         log.info("opening vault at %s", directory)
-        # Wired here rather than at each entry point: a vault opened without a
-        # merchant-key resolver reads its catalog under descriptors while
-        # enrichment files it under brands, and the knowledge becomes
-        # unreadable.
+        # Every opened vault uses installed merchant identity resolution.
         return cls(
             ledger=Ledger.open(directory / "events.jsonl", passphrase,
                                resolve_keys=installed_resolver()),

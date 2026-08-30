@@ -1,47 +1,7 @@
-"""What kind of arrangement a person holds with a counterparty.
+"""Derive arrangement hypotheses and rulings from catalog records and flows.
 
-Two inputs meet here, and each does one half of the work.
-
-**The catalog record licenses the question, on two of its facts.** How a
-merchant bills is a fact about the merchant, true for everybody who deals with
-them, and what kind of counterparty they are is another. Both must be
-affirmative: the record says the counterparty is a business, and says an
-arrangement with them is possible. A merchant the world only ever sells to per
-purchase implies no arrangement, so nothing is asked about them; neither does a
-record naming a rail or a person, whatever it says about billing. A record that
-names no kind at all licenses nothing. Either fact may withhold the question;
-neither creates one.
-
-**The measured flow proposes the answer.** Above the cadence floor the prior is
-not consulted: movements that hold their spacing have a cadence, and movements
-that do not are `irregular`, which is a finding about the relationship rather
-than an absence of one. Below the floor there is no cadence claim at all — only
-the count and what the world says about the merchant, which is the one place
-the prior speaks. A rhythm measured at an interval the confirmable vocabulary
-has no word for proposes nothing, rather than falling back on the prior.
-
-**A counterparty may be two things at once, and then nothing is measured over
-the mixture.** The amounts are what separate a standing arrangement from an
-ordinary shop on the same records: an arrangement repeats a figure, a decision
-does not. So the movements are decomposed by amount first — the part whose
-amounts repeat, and everything else — and every cadence, interval and
-steadiness belongs to one part. One part is described as one thing; two are
-named as two, with no cadence claimed over the whole.
-
-**A person is not a counterparty here.** What two people arrange between them
-is a relationship rather than a billing model, so where a slot declared the
-other side a person nothing is measured, nothing is proposed and no subject
-exists to record an answer under. The declaration is the enrichment gate's, and
-this read makes the same one.
-
-**A confirmation is recorded at the counterparty and a direction, never at a
-rail.** Money out to a counterparty and money back from it are two
-arrangements, so direction is part of the subject; a merchant billing one
-person monthly and annually at once is one subject whose value holds both.
-
-Every read here is derived on each call and writes nothing. Every lookup
-considers both merchant keys, so a rhythm confirmed under a descriptor key
-still answers after a grammar names the brand.
+Reads are pure, exclude person-declared counterparties and retain canonical,
+structural and legacy keys when resolving prior rulings.
 """
 
 from __future__ import annotations
@@ -150,33 +110,27 @@ class RhythmHypothesis:
 def merchant_key_aliases(core: ProjectionCore) -> dict:
     """`{key: every key that merchant could be filed under}`.
 
-    One brand covers as many descriptors as there are ways its name is written
-    on a statement, so a key's entry accumulates the keys of every movement it
-    shares a merchant with, and a lookup holding any one of them finds
-    knowledge recorded under any other.
+    One resolved identity may retain a canonical id, structural/brand candidates
+    and several descriptor keys, so an entry accumulates the candidates of every
+    movement sharing its leading identity. A lookup holding any one can find
+    knowledge recorded under another.
 
-    The keys are ordered brand-first and alphabetically within that, so what a
-    lookup considers, and which of two equally graded records wins, depend on
-    which movements the ledger holds and not on the order they arrived in."""
+    Keys are ordered leading-identity-first and alphabetically within that, so
+    lookup and equal-grade choice depend on which movements the ledger holds,
+    not on arrival order."""
     covered: dict[str, set] = {}
-    brands: set[str] = set()
+    leading: set[str] = set()
     for m in movements_view.movements(core):
         keys = merchants_view.merchant_keys_of(core, m)
-        brands.add(keys[0])
+        leading.add(keys[0])
         for key in keys:
             covered.setdefault(key, set()).update(keys)
-    return {key: tuple(sorted(known, key=lambda k: (k not in brands, k)))
+    return {key: tuple(sorted(known, key=lambda k: (k not in leading, k)))
             for key, known in covered.items()}
 
 
 def _standing(ruling: dict) -> tuple:
-    """How two rulings about one relationship are ranked against each other:
-    grade first, then what was said most recently.
-
-    One brand can be written several ways, so one relationship can carry a
-    ruling under each of its descriptors. Grade decides which speaks wherever
-    the two differ; where they do not, the later one stands, so correcting an
-    arrangement is an ordinary re-answer."""
+    """Rank a relationship ruling by grade, then occurrence time."""
     return (_grade_rank(ruling.get("grade")), str(ruling.get("occurred_at") or ""))
 
 
@@ -184,11 +138,10 @@ def rhythm_of(core: ProjectionCore, merchant: str, direction: str,
               aliases: dict | None = None) -> tuple:
     """The periodicities confirmed for one counterparty, one way round.
 
-    Empty when nobody has said anything. Resolves through both merchant keys,
-    so a ruling recorded before a grammar named the brand still answers after
-    it does, and where more than one of them was ruled on the strongest and
-    then the latest is what answers. ``aliases`` is `merchant_key_aliases`,
-    recomputed if omitted."""
+    Empty when nobody has said anything. Resolves through canonical and legacy
+    candidates; the strongest and then latest ruling answers. ``aliases`` is
+    `merchant_key_aliases`, recomputed if omitted.
+    """
     if not merchant or not direction:
         return ()
     if aliases is None:
