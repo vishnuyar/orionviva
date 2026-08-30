@@ -1,4 +1,4 @@
-import type { ActivityActionOutcome, ActivityCategoryVocabulary, ActivityData, ActivityRowAction, ActivityTagVocabulary, ActivityTransferReference, ActivityTransferState, ActivityVocabularyItem, MovementView } from "../types";
+import type { ActivityActionOutcome, ActivityCategoryVocabulary, ActivityData, ActivityRowAction, ActivityTagVocabulary, ActivityTransferReference, ActivityTransferState, ActivityTreatment, ActivityVocabularyItem, MovementView } from "../types";
 import { booleanValue, isRecord, optionalNonNegativeInteger, textValue } from "./primitives";
 
 // The two words a direction can be, closed on both sides. A word outside the
@@ -6,7 +6,8 @@ import { booleanValue, isRecord, optionalNonNegativeInteger, textValue } from ".
 // is dropped rather than shown under the nearest one — a purchase reported as
 // money arriving is exactly the defect that kept this read off a screen.
 const DIRECTIONS = ["in", "out"] as const;
-const ROW_ACTIONS = ["assign_category", "replace_tags", "confirm_transfer", "reject_transfer", "unlink_transfer"] as const;
+const TREATMENTS = ["spending", "loan", "loan_repayment", "settlement", "mixed", "not_spending"] as const;
+const ROW_ACTIONS = ["assign_category", "assign_meaning", "replace_tags", "confirm_transfer", "reject_transfer", "unlink_transfer"] as const;
 const TRANSFER_ACTIONS = ["confirm_transfer", "reject_transfer", "unlink_transfer"] as const;
 
 // Activity writes have three terminal answers. A proposal, a wait, or a review
@@ -108,9 +109,17 @@ function transferState(raw: unknown, sourceId: string): ActivityTransferState | 
   return null;
 }
 
+function treatment(raw: unknown): ActivityTreatment | null {
+  if (!isRecord(raw) || !exactKeys(raw, ["kind", "name"])) return null;
+  const kind = TREATMENTS.find((candidate) => candidate === raw.kind);
+  if (!kind || typeof raw.name !== "string") return null;
+  if ((kind === "loan" || kind === "loan_repayment") !== Boolean(raw.name.trim())) return null;
+  return { kind, name: raw.name };
+}
+
 function rowActions(raw: unknown, currentClassificationValid: boolean, categoriesComplete: boolean, tagsComplete: boolean, transfer: ActivityTransferState | null): readonly ActivityRowAction[] {
   if (!Array.isArray(raw) || !currentClassificationValid) return [];
-  const ordinary = ROW_ACTIONS.filter((candidate) => raw.includes(candidate)).filter((action) => action === "assign_category" ? categoriesComplete : action === "replace_tags" ? tagsComplete : false);
+  const ordinary = ROW_ACTIONS.filter((candidate) => raw.includes(candidate)).filter((action) => action === "assign_category" ? categoriesComplete : action === "assign_meaning" ? true : action === "replace_tags" ? tagsComplete : false);
   const declaredTransfer = raw.filter((action): action is typeof TRANSFER_ACTIONS[number] => typeof action === "string" && TRANSFER_ACTIONS.includes(action as typeof TRANSFER_ACTIONS[number]));
   const expectedTransfer: readonly typeof TRANSFER_ACTIONS[number][] = transfer?.state === "suggested" && transfer.complete
     ? ["confirm_transfer", "reject_transfer"]
@@ -131,6 +140,8 @@ function movement(raw: unknown, categories: ActivityCategoryVocabulary, tagVocab
   const tags = vocabularyItems(raw.tags);
   const tagsWithinBounds = tags.items.length <= tagVocabulary.maxSelected && tags.items.every((tag) => tag.id.length <= tagVocabulary.maxLabelLength && tagVocabulary.items.some((choice) => choice.id === tag.id));
   const transfer = transferState(raw.transfer, id);
+  const parsedTreatment = treatment(raw.treatment);
+  if (!parsedTreatment) return null;
   return {
     id,
     date: textValue(raw.date),
@@ -141,6 +152,7 @@ function movement(raw: unknown, categories: ActivityCategoryVocabulary, tagVocab
     currency: textValue(raw.currency),
     display: textValue(raw.display),
     nature: textValue(raw.nature),
+    treatment: parsedTreatment,
     sentence: textValue(raw.sentence),
     decidedBy: textValue(raw.decided_by),
     provisional: booleanValue(raw.provisional) === true,

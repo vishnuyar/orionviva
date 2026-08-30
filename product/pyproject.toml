@@ -39,7 +39,7 @@ testpaths = ["tests"]
 # dependency is real and should stay visible. Declaring the repository root on
 # the import path makes the module collect however the runner is invoked, so a
 # developer typing `pytest` here gets the same answer as the build.
-pythonpath = [".."]
+pythonpath = [".", ".."]
 # Vaults are minted at a cheap scrypt cost suite-wide (see tests/conftest.py).
 # This marker opts a file back out and pays the real, interactive-login-grade
 # cost, for the tests whose subject is the vault itself.

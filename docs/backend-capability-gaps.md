@@ -48,11 +48,13 @@ missing input.
 - **Activity correction breadth.** `activity.movements` now advertises
   movement-scoped assignment from a complete bounded existing-category
   vocabulary, complete-set tag replacement from a complete bounded existing-tag
-  vocabulary, and backend-qualified transfer confirmation, rejection and
-  unlinking. It does not expose nature editing, merchant-wide changes, new
-  category or tag creation, or bulk correction. Inherited merchant tags also
-  keep complete-set movement replacement unavailable when that action could not
-  remove the effective overlay honestly.
+  vocabulary, explicit spending/loan/loan-repayment treatment correction, and
+  backend-qualified transfer confirmation, rejection and unlinking. Treatment
+  correction is direction-checked, and repayments require known outstanding
+  principal. It does not expose merchant-wide changes, new category or tag
+  creation, or bulk correction. Inherited merchant tags also keep complete-set
+  movement replacement unavailable when that action could not remove the
+  effective overlay honestly.
 - **Deterministic scenarios.** No registered `project` read or scenario library
   supplies amortisation, compounding, payoff, runway, or affordability results
   with enumerated assumptions and inherited evidentiary basis.
@@ -96,7 +98,7 @@ rescan, job state and cancellation, durable conversation, question answering, pr
 settings proposal and confirmation, outbound history, update lifecycle, vault
 export and restore, maintenance, diagnostics, sample-vault opening, capability
 discovery, build identity, backend-declared quiet proof, and the bounded Activity
-category, tag and transfer actions described above, plus the bounded
+category, treatment, tag and transfer actions described above, plus the bounded
 current-period control and save-up Plans. Plans include pure deterministic
 drafts, explicit goal and reservation events, exact persisted proposals,
 stale-basis checks, conversational entry, and a reviewed desktop consumer.

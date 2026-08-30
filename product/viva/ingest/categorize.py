@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
 
-from ..ledger.events import (CORROBORATED, UNVERIFIED, VERIFIED,
+from ..ledger.events import (CORROBORATED, MAJOR_ASSET, MAJOR_EXPENSE,
+                             SCOPE_MOVEMENT, UNVERIFIED, VERIFIED,
                              category_assigned, merchant_categorized,
-                             merchant_enriched)
+                             merchant_enriched, ruling_recorded)
 from ..ledger.ledger import Ledger
 from ..ledger.merchants import is_shareable, normalize_merchant
 
@@ -31,6 +33,12 @@ from merchantcore import FALLBACK_CATEGORY, PRIMARY_CATEGORIES  # noqa: E402
 SEED_CATEGORIES = PRIMARY_CATEGORIES + (FALLBACK_CATEGORY,)
 
 UNCATEGORIZED = "Uncategorized"
+
+MEANING_SPENDING = "spending"
+MEANING_LOAN = "loan"
+MEANING_LOAN_REPAYMENT = "loan_repayment"
+MOVEMENT_MEANINGS = (MEANING_SPENDING, MEANING_LOAN,
+                     MEANING_LOAN_REPAYMENT)
 
 
 def normalize_category(category: str) -> str:
@@ -144,6 +152,105 @@ def assign_merchant_category(ledger: Ledger, merchant: str, category: str,
     ledger.append(merchant_categorized(merchant_key,
                                        normalize_category(category), grade,
                                        date.today().isoformat(), by=by))
+
+
+def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
+    """Assign replaceable first categories to one posted statement.
+
+    Person grammar slots receive ``transfers`` and transfer treatment; other
+    unidentified movements receive ``other``. Existing categories and
+    movements from other documents are unchanged.
+    """
+    if not (doc_id or "").strip():
+        return 0
+    projection = ledger.projection()
+    assigned = 0
+    for movement in projection.movements():
+        if movement.provenance.doc_id != doc_id:
+            continue
+        if projection.derived_category(movement) is not None:
+            continue
+        person = projection.is_person(movement)
+        category = "transfers" if person else "other"
+        ledger.append(category_assigned(
+            movement.key, movement.description, category, UNVERIFIED,
+            movement.date, by="default",
+            nature="transfer" if person else ""))
+        assigned += 1
+    if assigned:
+        log.info("category: default-classified %d movement(s) from %s",
+                 assigned, doc_id[:12])
+    return assigned
+
+
+def assign_movement_meaning(ledger: Ledger, movement_key: str, meaning: str,
+                            counterparty: str = "") -> bool:
+    """Record one movement's economic treatment without opening an account.
+
+    Loan treatments bind the movement to a named asserted receivable and must
+    agree with the movement's direction and known principal.
+    """
+    from ..ledger.postings import account_path
+    from ..ledger.projection.movements import is_expense, money_effect
+
+    meaning = (meaning or "").strip().lower()
+    if meaning not in MOVEMENT_MEANINGS:
+        raise ValueError(f"unknown movement meaning {meaning!r}")
+    proj = ledger.projection()
+    movement = next((item for item in proj.movements()
+                     if item.key == movement_key), None)
+    if movement is None:
+        return False
+    effect = money_effect(movement)
+
+    if meaning == MEANING_SPENDING:
+        if not is_expense(movement):
+            raise ValueError("only an expense-shaped movement can be spending")
+        legs = [{"major": MAJOR_EXPENSE,
+                 "account": account_path(MAJOR_EXPENSE, "Other")}]
+        said = "count this movement as spending"
+        current = proj.derived_category(movement)
+        if current is None or normalize_category(
+                current.get("category", "")) == "transfers":
+            # Keep the category aligned with the spending treatment.
+            ledger.append(category_assigned(
+                movement.key, movement.description, FALLBACK_CATEGORY,
+                VERIFIED, movement.date, by="human"))
+    else:
+        label = " ".join((counterparty or "").strip().split())
+        if not label or not any(char.isalnum() for char in label):
+            raise ValueError("a loan correction needs the person or arrangement name")
+        if len(label) > 80:
+            raise ValueError("a loan correction name is too long")
+        account = account_path(MAJOR_ASSET, "Loans", label)
+        if meaning == MEANING_LOAN and effect >= 0:
+            raise ValueError("a loan lent must move money out")
+        if meaning == MEANING_LOAN_REPAYMENT:
+            if effect <= 0:
+                raise ValueError("a loan repayment must move money in")
+            outstanding = Decimal("0")
+            for other in proj.movements():
+                if (other.key == movement.key or other.date > movement.date
+                        or other.currency != movement.currency
+                        or other.ruling_account != account):
+                    continue
+                outstanding += -money_effect(other)
+            if outstanding <= 0:
+                raise ValueError("no matching loan principal is outstanding")
+            if effect > outstanding:
+                raise ValueError("the repayment exceeds the outstanding principal")
+        legs = [{"major": MAJOR_ASSET, "account": account}]
+        said = ("this movement lent money to " if meaning == MEANING_LOAN
+                else "this movement repaid the loan with ") + label
+        # Loan treatments use the transfer category.
+        ledger.append(category_assigned(
+            movement.key, movement.description, "transfers", VERIFIED,
+            movement.date, by="human"))
+
+    ledger.append(ruling_recorded(
+        SCOPE_MOVEMENT, movement.key, movement.date, legs=legs,
+        by="human", grade=VERIFIED, said=said))
+    return True
 
 
 def rule_merchant_nature(ledger: Ledger, merchant: str, nature: str,

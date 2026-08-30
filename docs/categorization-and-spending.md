@@ -18,7 +18,7 @@
 
 ### MON-14 — a category is a graded overlay, appended and never a re-post
 **State:** enforced
-**Code:** product/viva/ledger/events.py:341 (`category_assigned`); product/viva/ingest/categorize.py:96 (`assign_category`)
+**Code:** product/viva/ledger/events.py (`category_assigned`); product/viva/ingest/categorize.py (`assign_category`)
 **Test:** product/tests/test_categorize.py::test_categorization_survives_a_replay
 
 1. `CategoryAssigned(movement_key, descriptor, category, grade, by)` is append-only, reversible, and keyed to the stable movement key, so it survives a reingest.
@@ -27,7 +27,7 @@
 
 ### MON-15 — Core suggests and confirms; it never auto-applies
 **State:** enforced
-**Code:** product/viva/ingest/categorize.py:309 (`suggest_categories`)
+**Code:** product/viva/ingest/categorize.py (`suggest_categories`)
 **Test:** product/tests/test_categorize.py::test_model_suggestion_is_unverified_human_confirmation_verified
 
 1. A model's category is recorded as a claim graded `unverified`, shown as a suggestion against the source, never asserted as fact.
@@ -36,7 +36,7 @@
 
 ### MON-16 — the taxonomy is data, two-level and jurisdiction-neutral
 **State:** enforced
-**Code:** merchant/merchantcore/taxonomy.py (`PRIMARY_CATEGORIES`, 16 labels); product/viva/ingest/categorize.py:31 (`SEED_CATEGORIES`)
+**Code:** merchant/merchantcore/taxonomy.py (`PRIMARY_CATEGORIES`, 16 labels); product/viva/ingest/categorize.py (`SEED_CATEGORIES`)
 **Test:** product/tests/test_category_identity.py::test_the_known_vocabulary_is_what_every_minting_path_is_offered
 
 1. The primary set is a controlled list held in one file and is the single source of truth for it.
@@ -53,10 +53,10 @@
 
 ### MON-18 — the derived category is read through one funnel
 **State:** enforced
-**Code:** product/viva/ledger/projection/categories.py:36 (`derived_category`)
+**Code:** product/viva/ledger/projection/categories.py (`derived_category`)
 **Test:** product/tests/test_merchants.py::test_per_transaction_override_beats_the_merchant_rule
 
-1. A movement's effective category is its per-transaction override, else the strongest catalog record its merchant is filed under, else `Uncategorized`.
+1. A movement's effective category is its human or model per-transaction override, else the strongest catalog record its merchant is filed under, else its unverified import default, else `Uncategorized`. The import default is movement-scoped but intentionally yields to later merchant knowledge; a person's correction still wins over both.
 2. Labels are canonicalized at that one funnel, so one alias ruling corrects every aggregate at once.
 
 ### MON-93 — the spending answer says what its total is made of
@@ -85,7 +85,7 @@ Exclusion belongs to nature rather than to the category. "Spending excludes tran
 ## Open
 
 - The live model categorizer is injected but not wired to a real model call on this path.
-- Merchant normalization, the merchant→category commons and learned auto-apply (once a merchant's category is confirmed, future matches auto-categorize at `corroborated`, while new or ambiguous merchants still ask) are designed and unbuilt. The commons is lazy, locale-sharded, opt-in and privacy-linted, and it changes only *future* suggestions — past confirmed categories stand.
+- Merchant normalization, the merchant→category catalog and learned auto-apply are built locally. Unknown statement movements receive replaceable defaults instead of routine import questions; genuinely ambiguous identity and correction decisions remain explicit. A networked commons registry remains unbuilt.
 - Amount-splits — one movement divided across categories, still balancing — are a separate overlay, unbuilt, and compose with the single-category work.
 - The external **Party** — a merchant, an employer, a landlord — is unbuilt. External counterparty attribution (a payment to a real person or biller is a real outflow, not a transfer) is the categorization-side of transfer-linking, and the same descriptor-capturing events seed it.
 - Per-transaction custom categories for peer descriptors: [local-categorization-and-custom-categories.md](local-categorization-and-custom-categories.md).

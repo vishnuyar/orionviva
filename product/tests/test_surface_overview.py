@@ -10,7 +10,8 @@ from viva import quantity, render
 from viva.ledger import (LedgerProjection, Provenance, account_opened,
                          closing_balance_observed, networth,
                          opening_balance_observed, simple_transaction)
-from viva.ledger.events import position_observed, statement_held
+from viva.ledger.events import (ASSERTED, position_observed, ruling_recorded,
+                                statement_held)
 from viva import persona
 from viva.persona import load, moment
 from viva.surface import overview as overview_module
@@ -128,6 +129,26 @@ def test_a_ledger_bucket_is_not_an_account_on_the_picture():
 
     assert shown == {"acct:one"}
     assert len(shown) < len(list(projection.account_infos()))
+
+
+def test_an_asserted_arrangement_does_not_render_as_an_unobserved_bank_account():
+    projection = LedgerProjection(_events(
+        account_opened(
+            "Assets:Loans:Sam", "depository", "Loan to Sam", "USD",
+            "2026-06-10", origin=ASSERTED),
+        ruling_recorded(
+            scope="movement",
+            subject="doc-one|acct:one|2026-06-10|-40.00|groceries|0",
+            legs=[{"major": "asset", "account": "Assets:Loans:Sam"}],
+            occurred_at="2026-06-10", by="human", grade="verified")))
+
+    asserted = projection.account_info("Assets:Loans:Sam")
+    assert asserted is not None and asserted.origin == ASSERTED
+
+    picture = overview(projection, "en-US", "2026-09-30")
+
+    assert {row["account"] for row in picture["accounts"]} == {"acct:one"}
+    assert all(row["balance"] is not None for row in picture["accounts"])
 
 
 def test_an_empty_vault_shows_no_rows_and_withholds_nothing():

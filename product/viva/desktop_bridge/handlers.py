@@ -206,6 +206,7 @@ def handlers_for_opened_vault(
         MAINTENANCE_OPERATIONS["run"]: trust.run,
         MAINTENANCE_OPERATIONS["diagnose"]: trust.diagnose,
         ACTIVITY_OPERATIONS["assign_category"]: activity_actions.assign_category,
+        ACTIVITY_OPERATIONS["assign_meaning"]: activity_actions.assign_meaning,
         ACTIVITY_OPERATIONS["replace_tags"]: activity_actions.replace_tags,
         ACTIVITY_OPERATIONS["confirm_transfer"]: activity_actions.confirm_transfer,
         ACTIVITY_OPERATIONS["reject_transfer"]: activity_actions.reject_transfer,

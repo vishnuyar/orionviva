@@ -212,6 +212,7 @@ export function privateTransferActions(client: BridgeClient): VaultTransferActio
 export function privateActivityActions(client: BridgeClient): ActivityActions {
   return {
     assignCategory: (movementId, categoryId) => activityActed(client.assignActivityCategory(movementId, categoryId)),
+    assignMeaning: (movementId, meaning, counterparty) => activityActed(client.assignActivityMeaning(movementId, meaning, counterparty)),
     replaceTags: (movementId, tagIds) => activityActed(client.replaceActivityTags(movementId, tagIds)),
     confirmTransfer: (movementId, counterpartId) => activityActed(client.confirmActivityTransfer(movementId, counterpartId)),
     rejectTransfer: (movementId) => activityActed(client.rejectActivityTransfer(movementId)),

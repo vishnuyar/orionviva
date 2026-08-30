@@ -177,7 +177,7 @@ def test_activity_keeps_category_and_tag_writes_scoped_among_transfer_actions():
 
     actions = capability_for("activity.movements").actions
     assert actions == (
-        "assign_category", "replace_tags", "confirm_transfer",
+        "assign_category", "assign_meaning", "replace_tags", "confirm_transfer",
         "reject_transfer", "unlink_transfer")
     assert not ({"create_category", "create_tag", "assign_nature",
                  "categorize_merchant", "tag_merchant"} & set(actions))

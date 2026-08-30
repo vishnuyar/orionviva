@@ -104,6 +104,7 @@ PAYLOAD_FIELDS: dict[str, set[str]] = {
     # nowhere to widen it from.
     MAINTENANCE_OPERATIONS["diagnose"]: {"file"},
     ACTIVITY_OPERATIONS["assign_category"]: {"movement_key", "category_id"},
+    ACTIVITY_OPERATIONS["assign_meaning"]: {"movement_key", "meaning", "counterparty"},
     ACTIVITY_OPERATIONS["replace_tags"]: {"movement_key", "tag_ids"},
     ACTIVITY_OPERATIONS["confirm_transfer"]: {"movement_key", "counterpart_key"},
     ACTIVITY_OPERATIONS["reject_transfer"]: {"movement_key"},
@@ -149,6 +150,8 @@ PAYLOAD_VALIDATORS: dict[str, tuple[Path, str]] = {
                                          "_diagnose_request"),
     ACTIVITY_OPERATIONS["assign_category"]: (
         BRIDGE_PACKAGE / "activity_actions.py", "_category_request"),
+    ACTIVITY_OPERATIONS["assign_meaning"]: (
+        BRIDGE_PACKAGE / "activity_actions.py", "_meaning_request"),
     ACTIVITY_OPERATIONS["replace_tags"]: (
         BRIDGE_PACKAGE / "activity_actions.py", "_tag_request"),
     ACTIVITY_OPERATIONS["confirm_transfer"]: (

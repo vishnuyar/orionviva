@@ -83,10 +83,10 @@
 
 ### MON-52 — a nature question is raised only where the evidence is weak
 **State:** enforced
-**Code:** product/viva/questions.py:305 (`if m.nature_reason not in (BY_CATEGORY, BY_DEFAULT): continue`); product/viva/ledger/projection/tiers.py:26 (`tier_of`)
-**Test:** product/tests/test_questions.py::test_an_ordinary_known_merchant_is_never_asked_about
+**Code:** product/viva/questions.py (`_nature_questions`, the import-default and nature-reason guards); product/viva/ledger/projection/tiers.py (`tier_of`)
+**Test:** product/tests/test_questions.py::test_an_ordinary_known_merchant_is_never_asked_about, product/tests/test_categorize.py::test_import_defaults_peer_payments_before_asking_questions
 
-1. A movement is asked about only where its nature rests on a category hint or the plain default; anything a link, an own account or a ruling settled is not asked about again, at any tier.
+1. A movement is asked about only where its nature rests on a category hint or the plain default and no statement-import default already supplies a usable first answer. Anything a link, an own account or a ruling settled is not asked about again, at any tier.
 2. A settled counterparty raises nothing; a counterparty implying a relationship raises one grouped proposal; an instrument or a peer raises one question per movement; an unidentified merchant raises the merchant question instead, so the two never collide.
 3. There is no list of capital-looking categories anywhere — leverage ranking is the filter (I5).
 
@@ -145,7 +145,7 @@ excludes is an uninspected or client-authored write, not an explicit decision
 between the proposal and its application. Ask, read, record — or propose,
 inspect, decide, record.
 
-What raises a nature question was the build's sharpest surprise. The spec advertised a vehicle purchase and a property closing as the two highest-leverage questions, and neither is provisional: both are confidently categorized and counted as spending. So "ask about provisional items" would have missed exactly what was promised. A nature question is therefore raised wherever nature rests on **weak evidence** — a category hint, or the plain default — and leverage ranking is the filter. Big-ticket ambiguity floats up and a grocery run sinks, with no jurisdiction-shaped list of capital-looking categories anywhere.
+What raises a nature question was the build's sharpest surprise. The spec advertised a vehicle purchase and a property closing as the two highest-leverage questions, and neither is provisional: both are confidently categorized and counted as spending. So "ask about provisional items" would have missed exactly what was promised. A nature question is therefore raised where nature rests on **weak evidence** and no posted-statement import default has already supplied the replaceable first answer. Leverage ranking remains the filter for questions that survive that gate, with no jurisdiction-shaped list of capital-looking categories anywhere.
 
 Idempotence was falsified once, and the repair says where such a fix belongs. A nature question scoped to a single movement was built from the movement's tier alone, and a tier never consults rulings, so the question returned however many times it was answered and the queue could not be driven to empty. The fix went one layer up: the builder drops any movement whose nature something stronger already decided, before the tier is consulted at all. A reader checking the tier alone will conclude the falsification stands. The surviving limit is worth watching — the filter reads the *derivation*, not "this was answered", so a ruling recorded at a scope the nature derivation does not consult would suppress nothing and reintroduce the failure.
 

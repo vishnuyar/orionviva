@@ -29,9 +29,11 @@ def ruled_accounts(core: ProjectionCore) -> dict[str, dict]:
     * ``reliable_balance`` is False whenever any contributing movement was
       ``MIXED``: cash reaching a mortgage account is a fact, but part of it
       was interest, so it is not a debt reduction of that size.
-    * ``paid`` is **cost — what was paid** — never a present-day value. A
-      car account holds its purchase price, and ``valuation`` says
-      ``measured`` or ``estimated``."""
+    * ``paid`` is **cost — what was paid** for ordinary asserted assets, never
+      a present-day value. A car account holds its purchase price. For
+      ``Assets:Loans:*`` it is instead signed outstanding principal: lending
+      raises it and repayment lowers it. ``valuation`` says ``measured`` or
+      ``estimated``."""
     out: dict[str, dict] = {}
     for m in movements_view.movements(core):
         if not m.ruling_account:
@@ -40,7 +42,10 @@ def ruled_accounts(core: ProjectionCore) -> dict[str, dict]:
             "account": m.ruling_account, "paid": Decimal("0"), "count": 0,
             "currency": m.currency, "origin": ASSERTED,
             "reliable_balance": True, "valuation": "measured"})
-        row["paid"] += abs(m.amount)
+        # Loan receivables sum signed principal; other asserted assets sum cost.
+        row["paid"] += (-movements_view.money_effect(m)
+                        if m.ruling_account.startswith("Assets:Loans:")
+                        else abs(m.amount))
         row["count"] += 1
         if m.nature == movements_view.MIXED:
             row["reliable_balance"] = False

@@ -378,6 +378,10 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       if (!categoryId.trim()) return;
       await runActivityCorrection("category", movementId, (actions) => actions.assignCategory(movementId, categoryId));
     },
+    async assignActivityMeaning(movementId: string, meaning: string, counterparty: string) {
+      if (!meaning.trim()) return;
+      await runActivityCorrection("meaning", movementId, (actions) => actions.assignMeaning(movementId, meaning, counterparty));
+    },
     async replaceActivityTags(movementId: string, tagIds: readonly string[]) {
       await runActivityCorrection("tags", movementId, (actions) => actions.replaceTags(movementId, tagIds));
     },

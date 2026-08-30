@@ -42,8 +42,8 @@ declares. A private vault and persistent sample vault both use the live bridge;
 fixtures remain for deterministic presentation-state coverage.
 
 The live path provides financial picture and account evidence, movement
-activity with movement-scoped existing-choice category, complete-set tag and
-backend-qualified transfer correction, document capture and rescan,
+activity with movement-scoped existing-choice category, economic-treatment,
+complete-set tag and backend-qualified transfer correction, document capture and rescan,
 calendar-aware upcoming obligations and the backend's top three quiet findings
 with inspect, Ask Viva and evidence-staked set-aside gestures,
 per-currency thirty-day known-remainder ranges and refusals with
@@ -90,6 +90,7 @@ operation column is additionally checked by the desktop architecture gate.
 | `bridge.open_demo_vault` | no | explicit sidecar open branch | yes |
 | `bridge.open_vault` | no | explicit sidecar open branch | yes |
 | `viva.activity.assign_category` | yes | opened vault | yes |
+| `viva.activity.assign_meaning` | yes | opened vault | yes |
 | `viva.activity.confirm_transfer` | yes | opened vault | yes |
 | `viva.activity.reject_transfer` | yes | opened vault | yes |
 | `viva.activity.replace_tags` | yes | opened vault | yes |
@@ -123,7 +124,7 @@ operation column is additionally checked by the desktop architecture gate.
 | --- | --- |
 | `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Job state and cancellation are process-local. Restart recovery is absent, so an interrupted document job cannot resume after the sidecar exits. |
 | `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Documents destination. |
-| `has-file desktop/src/features/activity/Activity.tsx` | Activity now reaches movement-scoped existing-choice category correction, complete-set tag replacement where the backend advertises it, and backend-qualified transfer confirmation, rejection and unlinking. The desktop neither infers transfer candidates nor offers nature editing, merchant-wide changes, new labels, or bulk editing. |
+| `has-file desktop/src/features/activity/Activity.tsx` | Activity reaches movement-scoped existing-choice category correction; treatment correction for spending, a named loan lent, or a named loan repayment; complete-set tag replacement where the backend advertises it; and backend-qualified transfer confirmation, rejection and unlinking. The desktop neither infers transfer candidates nor offers merchant-wide changes, new category labels, or bulk editing. |
 | `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Conversation is durable across process and interface sessions, includes the deterministic question queue, records proposal identity and exact proposed data separately, and restores confirmation controls after reopening. There is no microphone, speech recognition, or audio playback path; the reply shape remains voice-ready. Because the product is unreleased, this contract intentionally starts clean and performs no migration or backfill from earlier technical read records or prior vault shapes. |
 | `no-file product/viva/surface/connections.py` | No account-aggregation surface exists. Documents and the sample vault are the acquisition paths. |
 | `has-name product/viva/surface/outbound.py#outbound` | Trust reports outbound model calls and explicitly reports that no independent anchoring exists; it does not create external anchors or issuer signatures. |

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from viva.ingest.categorize import (assign_category as write_category,
-                                    tag_movement)
+                                    assign_movement_meaning, tag_movement)
 from viva.ingest.transfers import (confirm_transfer as write_transfer_link,
                                    reject_transfer as write_transfer_unlink)
 from viva.persona import moment
@@ -45,6 +45,30 @@ class ActivityActions:
         return ActionOutcome(
             "completed", moment("activity_category_recorded",
                                 category=label)
+        ).as_dict()
+
+    def assign_meaning(self, payload: dict[str, Any]) -> dict[str, Any]:
+        movement_key, meaning, counterparty = _meaning_request(payload)
+        _projection, movement, row, _vocabularies = self._live(movement_key)
+        if movement is None:
+            return _stale()
+        if "assign_meaning" not in row["actions"]:
+            return _refused("movement_meaning_unavailable")
+        try:
+            recorded = assign_movement_meaning(
+                self._vault.ledger, movement_key, meaning, counterparty)
+        except ValueError:
+            return _refused("movement_meaning_invalid")
+        if not recorded:
+            return _stale()
+        treatment = {
+            "spending": "spending",
+            "loan": "a loan receivable",
+            "loan_repayment": "a loan repayment",
+        }.get(meaning, "the corrected treatment")
+        return ActionOutcome(
+            "completed", moment("activity_category_recorded",
+                                category=treatment)
         ).as_dict()
 
     def replace_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -141,12 +165,27 @@ def _category_request(payload: dict[str, Any]) -> tuple[str, str]:
     allowed = {"movement_key", "category_id"}
     _closed(payload, allowed)
     movement_key = payload.get("movement_key")
-    category_id = payload.get("category_id")
     if not isinstance(movement_key, str) or not movement_key.strip():
         raise BridgeRequestError("movement_key must be a non-empty string")
+    category_id = payload.get("category_id")
     if not isinstance(category_id, str) or not category_id.strip():
         raise BridgeRequestError("category_id must be a non-empty string")
     return movement_key, category_id
+
+
+def _meaning_request(payload: dict[str, Any]) -> tuple[str, str, str]:
+    allowed = {"movement_key", "meaning", "counterparty"}
+    _closed(payload, allowed)
+    movement_key = payload.get("movement_key")
+    meaning = payload.get("meaning")
+    counterparty = payload.get("counterparty")
+    if not isinstance(movement_key, str) or not movement_key.strip():
+        raise BridgeRequestError("movement_key must be a non-empty string")
+    if not isinstance(meaning, str) or not meaning.strip():
+        raise BridgeRequestError("meaning must be a non-empty string")
+    if not isinstance(counterparty, str):
+        raise BridgeRequestError("counterparty must be a string")
+    return movement_key, meaning, counterparty
 
 
 def _tag_request(payload: dict[str, Any]) -> tuple[str, list[str]]:

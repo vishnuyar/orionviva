@@ -9,19 +9,19 @@
 
 ### MON-85 — net worth is a curve, defined at every date in range
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:351 (`net_worth`), :323 (`change_dates`), :408 (`series`)
+**Code:** product/viva/ledger/networth.py (`net_worth`, `change_dates`, `series`)
 **Test:** product/tests/test_networth.py::test_one_statement_gives_one_point
 
 1. `net_worth(D)` is defined for any `D` between the earliest and latest dated observation, and is evaluated at every date where something changed — a statement closed, a holding was measured, a ruling was made.
 2. A depository or liability account contributes the observed closing balance the issuer attested, not a sum of the ledger's own postings.
 3. An investment account contributes **one line per currency**: its cash plus the holdings carried on its latest statement at or before `D` — one snapshot, not each instrument's own latest measurement (product/viva/ledger/projection/positions.py:174, product/tests/test_networth.py::test_a_holding_the_newest_statement_no_longer_lists_is_no_longer_held).
-4. An account a ruling brought into being contributes **cost at the ruling's date**, never a present-day value.
+4. An account a ruling brought into being contributes **cost at the ruling's date** for a purchased asset, or signed outstanding principal for a loan receivable—never an invented present-day market value.
 5. An account with no measurement at or before `D` contributes nothing — no zero (product/tests/test_networth.py::test_an_account_contributes_nothing_before_its_first_measurement).
 6. An earlier point never moves when a later document arrives (product/tests/test_networth.py::test_a_later_document_does_not_move_an_earlier_point).
 
 ### MON-24 — the side is decided by the account's kind, never by the sign of a balance
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:118 (`_side`)
+**Code:** product/viva/ledger/networth.py (`_side`)
 **Test:** product/tests/test_networth.py::test_a_card_lands_on_the_liability_side
 
 1. A liability's balance is money owed, stored as a positive magnitude, and its contribution is `-balance`.
@@ -40,7 +40,7 @@
 
 ### MON-86 — trust the person; provable-versus-not is an audience question
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:53 (`provable`), :82 (`by_currency`, which carries a `provable` subtotal)
+**Code:** product/viva/ledger/networth.py (`NetWorthLine.provable`, `NetWorthPoint.by_currency`)
 **Test:** product/tests/test_networth.py::test_both_figures_are_reported_the_whole_total_and_the_provable_part
 
 1. The personal view includes everything the person stated, at their word, badged with its grade.
@@ -48,10 +48,10 @@
 
 ### MON-87 — two different unknowns, and only one is a trust problem
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:129 (`_asserted_lines`), :180 (`_asserted_asset_lines`), :275 (`_gap_for`); product/viva/ledger/projection/rulings.py:21 (`reliable_balance`)
+**Code:** product/viva/ledger/networth.py (`_asserted_lines`, `_asserted_asset_lines`, `_gap_for`); product/viva/ledger/projection/rulings.py (`ruled_accounts.reliable_balance`)
 **Test:** product/tests/test_networth.py::test_a_liability_from_cash_flow_alone_is_refused_and_named
 
-1. An asserted asset whose cost the person stated is a line at cost, graded `verified`, origin `asserted`.
+1. An asserted purchased asset whose cost the person stated is a line at cost; an asserted loan receivable is a line at signed outstanding principal. Both are graded `verified`, origin `asserted`.
 2. An asserted asset nobody has priced is neither counted nor hidden: it appears in `missing` with the question that closes it, and the point reads incomplete.
 3. Where the schema pack cannot yet ask about the kind at all, that is said plainly rather than the asset being omitted.
 4. A liability is never valued from cash flow alone — money reaching a lender says nothing about the balance owed — so it goes to `missing` with the ask and the document that would answer it.
@@ -60,7 +60,7 @@
 
 ### MON-88 — reuse the grade ladder; do not invent an issued/asserted badge
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:53 (`provable` reads `grade == corroborated`)
+**Code:** product/viva/ledger/networth.py (`NetWorthLine.provable` reads `grade == corroborated`)
 **Test:** product/tests/test_networth.py::test_provable_is_the_existing_grade_not_a_new_badge
 
 1. "Provable" is the existing grade `corroborated`: the attesting document is held and the arithmetic checks.
@@ -68,7 +68,7 @@
 
 ### MON-89 — subtotal per currency; never convert
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:82 (`by_currency`)
+**Code:** product/viva/ledger/networth.py (`NetWorthPoint.by_currency`)
 **Test:** product/tests/test_networth.py::test_two_currencies_give_two_subtotals_and_no_grand_total
 
 1. Net worth reports per-currency subtotals and no grand total.
@@ -76,7 +76,7 @@
 
 ### MON-26 — every point names its stalest input, and a composed line says when its parts differ
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:78 (`oldest_input`); product/viva/ledger/projection/positions.py:142 (`as_of`), :146 (`mixed_vintage`)
+**Code:** product/viva/ledger/networth.py (`NetWorthPoint.oldest_input`); product/viva/ledger/projection/positions.py (`as_of`, `mixed_vintage`)
 **Test:** product/tests/test_networth.py::test_every_point_names_its_stalest_input
 
 1. A point carries the as-of of the stalest measurement in it.
@@ -84,7 +84,7 @@
 
 ### MON-27 — incompleteness is stated, never absorbed
 **State:** enforced
-**Code:** product/viva/ledger/networth.py:72 (`complete`), :351 (`missing`, `skipped`, `held`)
+**Code:** product/viva/ledger/networth.py (`NetWorthPoint.complete`, `net_worth` missing/skipped/held)
 **Test:** product/tests/test_networth.py::test_a_point_is_not_complete_while_a_document_sits_held
 
 1. A point is incomplete while anything known to be owed has no usable figure, or while a read document sits unposted.
@@ -93,10 +93,10 @@
 
 ### MON-28 — cost is never presented as value, and no model is involved
 **State:** by-review
-**Code:** product/viva/ledger/networth.py:249 (`_stated_cost`), :275 (`_gap_for`); product/viva/ledger/projection/rulings.py:21 (`paid` is cost)
+**Code:** product/viva/ledger/networth.py (`_asserted_lines`, `_stated_cost`, `_gap_for`); product/viva/ledger/projection/rulings.py (`ruled_accounts`)
 **Test:** none
 
-1. An asserted asset holds what was paid; any present-day worth would be an `estimated` layer on top and is not built.
+1. An asserted purchased asset holds what was paid; a loan receivable holds signed outstanding principal. Any present-day market worth would be an `estimated` layer on top and is not built.
 2. The gap a point discloses is about what a thing cost, never about what it is worth today.
 3. Net worth is arithmetic over recorded measurements end to end.
 

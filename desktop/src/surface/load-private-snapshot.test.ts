@@ -37,6 +37,7 @@ function client(conversation: unknown = { state: "ready", turns: [], questions: 
     confirmProposal: async () => ({ kind: "completed", message: "Recorded.", state: null, reason: null }),
     declineQuestion: async () => ({ kind: "set_aside", message: "Set aside.", state: null, reason: null }),
     assignActivityCategory: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
+    assignActivityMeaning: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     replaceActivityTags: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     confirmActivityTransfer: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),
     rejectActivityTransfer: async () => ({ kind: "completed", message: "Done.", state: null, reason: null }),

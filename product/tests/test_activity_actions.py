@@ -94,7 +94,7 @@ def test_activity_v3_carries_current_category_tag_choices_and_actions(tmp_path):
         {"id": "shared", "label": "shared"}]
     assert row["category"] == {"id": None, "label": "Uncategorized"}
     assert row["tags"] == read["vocabularies"]["tags"]["items"]
-    assert row["actions"] == ["assign_category", "replace_tags"]
+    assert row["actions"] == ["assign_category", "assign_meaning", "replace_tags"]
     category = next(item for item in read["items"] if item["id"] == first.key)
     advertised = {item["id"]: item
                   for item in read["vocabularies"]["categories"]["items"]}
@@ -262,6 +262,106 @@ def test_category_action_appends_one_verified_movement_overlay_and_replays(tmp_p
     assert not written.get("nature"), "category correction cannot smuggle nature"
     replayed = LedgerProjection(vault.events())
     assert replayed.category_of(target.key)["category"] == "groceries"
+
+
+def test_meaning_action_turns_one_outflow_into_a_named_loan_receivable(tmp_path):
+    vault = _vault(tmp_path)
+    target = vault.ledger.projection().movements()[0]
+
+    outcome = ActivityActions(vault).assign_meaning({
+        "movement_key": target.key,
+        "meaning": "loan",
+        "counterparty": "Sam",
+    })
+
+    assert outcome["kind"] == "completed"
+    projection = vault.ledger.projection()
+    corrected = next(item for item in projection.movements()
+                     if item.key == target.key)
+    assert corrected.nature == "transfer"
+    assert corrected.ruling_account == "Assets:Loans:Sam"
+    assert projection.derived_category(corrected)["category"] == "transfers"
+    corrected_row = next(item for item in activity(projection)["items"]
+                         if item["id"] == target.key)
+    assert corrected_row["treatment"] == {"kind": "loan", "name": "Sam"}
+    assert not any(event.event_type == "AccountOpened"
+                   and event.body.get("account_id") == "Assets:Loans:Sam"
+                   for event in vault.events())
+
+
+def test_recorrecting_a_loan_as_spending_replaces_its_transfer_filing(tmp_path):
+    vault = _vault(tmp_path)
+    target = vault.ledger.projection().movements()[0]
+    actions = ActivityActions(vault)
+    assert actions.assign_meaning({
+        "movement_key": target.key, "meaning": "loan",
+        "counterparty": "Sam"})["kind"] == "completed"
+
+    outcome = actions.assign_meaning({
+        "movement_key": target.key, "meaning": "spending",
+        "counterparty": ""})
+
+    assert outcome["kind"] == "completed"
+    projection = vault.ledger.projection()
+    corrected = next(item for item in projection.movements()
+                     if item.key == target.key)
+    assert corrected.nature == "spending"
+    assert corrected.ruling_account == ""
+    assert projection.derived_category(corrected)["category"] == "other"
+    assert "transfers" not in projection.spending_by_category()
+
+
+def test_meaning_action_requires_a_name_for_a_loan(tmp_path):
+    vault = _vault(tmp_path)
+    target = vault.ledger.projection().movements()[0]
+
+    outcome = ActivityActions(vault).assign_meaning({
+        "movement_key": target.key,
+        "meaning": "loan",
+        "counterparty": "",
+    })
+
+    assert outcome["kind"] == "refused"
+    assert outcome["reason"] == "movement_meaning_invalid"
+
+
+def test_meaning_action_refuses_impossible_direction_and_unbacked_repayment(
+        tmp_path):
+    vault, outgoing, incoming, _ordinary = _transfer_vault(tmp_path)
+    incoming = incoming[0]
+    actions = ActivityActions(vault)
+    before = len(list(vault.events()))
+
+    requests = [
+        {"movement_key": incoming, "meaning": "spending", "counterparty": ""},
+        {"movement_key": incoming, "meaning": "loan", "counterparty": "Sam"},
+        {"movement_key": outgoing, "meaning": "loan_repayment",
+         "counterparty": "Sam"},
+        {"movement_key": incoming, "meaning": "loan_repayment",
+         "counterparty": "Sam"},
+    ]
+
+    assert [actions.assign_meaning(request)["kind"] for request in requests] == [
+        "refused", "refused", "refused", "refused"]
+    assert len(list(vault.events())) == before
+
+
+def test_meaning_action_accepts_repayment_only_after_matching_principal(tmp_path):
+    vault, outgoing, incoming, _ordinary = _transfer_vault(tmp_path)
+    actions = ActivityActions(vault)
+
+    lent = actions.assign_meaning({
+        "movement_key": outgoing, "meaning": "loan", "counterparty": "Sam"})
+    repaid = actions.assign_meaning({
+        "movement_key": incoming[0], "meaning": "loan_repayment",
+        "counterparty": "Sam"})
+
+    assert lent["kind"] == "completed"
+    assert repaid["kind"] == "completed"
+    rows = {row["id"]: row for row in activity(vault.ledger.projection())["items"]}
+    assert rows[outgoing]["treatment"] == {"kind": "loan", "name": "Sam"}
+    assert rows[incoming[0]]["treatment"] == {
+        "kind": "loan_repayment", "name": "Sam"}
 
 
 def test_tag_replacement_removes_by_one_append_survives_replay_and_keeps_partition(tmp_path):
@@ -480,7 +580,7 @@ def test_truncated_vocabularies_keep_current_data_visible_and_withhold_actions(
     assert read["vocabularies"]["tags"]["complete"] is False
     assert row["category"]["id"] == "groceries"
     assert {tag["id"] for tag in row["tags"]} == {"one", "two"}
-    assert row["actions"] == []
+    assert row["actions"] == ["assign_meaning"]
     before = len(list(vault.events()))
     assert ActivityActions(vault).assign_category(
         {"movement_key": first.key, "category_id": "dining"})["kind"] == "refused"
@@ -493,12 +593,13 @@ def test_activity_actions_are_declared_allowlisted_and_write_scoped(tmp_path):
     capability = capability_for("activity.movements")
     assert capability.contract == "ActivityMovements.v3"
     assert capability.actions == (
-        "assign_category", "replace_tags", "confirm_transfer",
+        "assign_category", "assign_meaning", "replace_tags", "confirm_transfer",
         "reject_transfer", "unlink_transfer")
     assert capability.trust_effect == (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT)
     handlers = handlers_for_opened_vault(_vault(tmp_path)).handlers
     assert ACTIVITY_OPERATIONS == {
         "assign_category": "viva.activity.assign_category",
+        "assign_meaning": "viva.activity.assign_meaning",
         "replace_tags": "viva.activity.replace_tags",
         "confirm_transfer": "viva.activity.confirm_transfer",
         "reject_transfer": "viva.activity.reject_transfer",

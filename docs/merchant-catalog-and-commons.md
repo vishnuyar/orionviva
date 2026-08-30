@@ -7,21 +7,21 @@
 
 ### MER-40 — Categorize the merchant, not the transaction
 **State:** enforced
-**Code:** product/viva/ledger/projection/categories.py:36 (`derived_category`), product/viva/ingest/categorize.py:190
+**Code:** product/viva/ledger/projection/categories.py (`derived_category`), product/viva/ingest/categorize.py (`assign_merchant_category`)
 **Test:** product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions, product/tests/test_merchants.py::test_merchant_ruling_survives_a_replay
 
-1. The unit of categorization is the normalized merchant; a transaction's category is derived, never stored on the transaction.
-2. The derivation is: a per-transaction override, else the strongest catalog record the merchant is filed under, else `Uncategorized`.
+1. The reusable unit of categorization is the normalized merchant. Movement-scoped corrections and import defaults are append-only overlays rather than rewritten postings.
+2. The derivation is: a human or model per-transaction override, else the strongest catalog record the merchant is filed under, else a replaceable unverified import default, else `Uncategorized`.
 3. Because it is a projection, one ruling categorizes every transaction from that merchant, past and future.
 4. A merchant rule is an append-only event; the catalog is a projection over the encrypted log, so it survives a replay.
 
 ### MER-41 — The catalog is a prior; the override wins
 **State:** enforced
-**Code:** product/viva/ledger/projection/categories.py:28 (`_record_for`), product/viva/ledger/projection/merchants.py:96 (`merchant_graded`), merchant/merchantcore/catalog.py:26 (`_GRADE_RANK`)
+**Code:** product/viva/ledger/projection/categories.py (`_record_for`), product/viva/ledger/projection/merchants.py (`merchant_graded`), merchant/merchantcore/catalog.py (`_GRADE_RANK`)
 **Test:** product/tests/test_merchants.py::test_per_transaction_override_beats_the_merchant_rule, product/tests/test_merchant_enrich.py::test_human_override_beats_the_synced_enrichment
 
 1. The grade ladder is `verified` > `corroborated` > `unverified` > `Uncategorized`.
-2. A per-transaction ruling is `verified` and beats any merchant-level prior.
+2. A human per-transaction ruling is `verified` and beats any merchant-level prior. An ordinary model movement override also wins at its recorded grade; only `by="default"` is deliberately replaceable by merchant knowledge.
 3. A model batch and a commons prior both enter as `corroborated`, never as fact.
 
 ### MER-42 — Every lookup considers both keys
@@ -36,7 +36,7 @@
 
 ### MER-43 — The sync reaches only merchants this vault holds
 **State:** enforced
-**Code:** product/viva/ingest/categorize.py:270-283
+**Code:** product/viva/ingest/categorize.py (`sync_merchant_records`)
 **Test:** product/tests/test_merchant_enrich.py::test_a_record_about_a_merchant_this_vault_never_paid_is_not_synced
 
 1. Only keys this vault offered, plus keys its ledger already carries a record for, are synced into the ledger.
@@ -55,7 +55,7 @@
 
 ### MER-45 — The primary category set is controlled and is the single source
 **State:** enforced
-**Code:** merchant/merchantcore/taxonomy.py:34 (`PRIMARY_CATEGORIES`), :53 (`FALLBACK_CATEGORY`), :60 (`canonical_primary`); product/viva/ingest/categorize.py:29 (assertion 3 — the product imports that same list and builds `SEED_CATEGORIES` from it)
+**Code:** merchant/merchantcore/taxonomy.py (`PRIMARY_CATEGORIES`, `FALLBACK_CATEGORY`, `canonical_primary`); product/viva/ingest/categorize.py (`SEED_CATEGORIES`, assertion 3 imports that same list)
 **Test:** merchant/tests/test_merchantcore.py::test_sixteen_primary_categories
 
 1. There are sixteen controlled primary buckets plus one fallback.
@@ -64,7 +64,7 @@
 
 ### MER-46 — The unencrypted catalog carries no money
 **State:** enforced
-**Code:** merchant/merchantcore/catalog.py:161 (`export`), :187 (`_save`), product/viva/ingest/categorize.py:298 (`export_catalog`)
+**Code:** merchant/merchantcore/catalog.py (`export`, `_save`), product/viva/ingest/categorize.py (`export_catalog`)
 **Test:** product/tests/test_merchants.py::test_export_catalog_is_linted_and_carries_no_amounts
 
 1. The raw descriptor never leaves the encrypted ledger.
@@ -88,13 +88,14 @@
 1. A raw descriptor becomes a canonical key by deterministic rules that strip the tail varying transaction to transaction; nothing is merged by fuzzy string similarity.
 2. The normalizer carries a version, so a catalog key is portable across users — the precondition for the commons.
 
-### MER-49 — An unknown merchant is shown as unknown, not guessed
+### MER-49 — An unknown merchant stays unknown while its movement gets a replaceable default
 **State:** enforced
-**Code:** product/viva/ledger/projection/categories.py:36 (`derived_category` returns `None` where no override and no catalog record answer), :232 (the `Uncategorized` bucket), :296 (`uncategorized_merchants`, the batched enricher's pending set), product/viva/ingest/categorize.py:33 (`UNCATEGORIZED`)
-**Test:** product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions
+**Code:** product/viva/ledger/projection/categories.py (`derived_category` and `_record_for`), product/viva/ingest/categorize.py (`assign_default_categories`), product/viva/engine.py (`upload`)
+**Test:** product/tests/test_categorize.py::test_import_defaults_peer_payments_before_asking_questions, product/tests/test_merchants.py::test_merchant_ruling_fills_all_its_transactions
 
-1. A merchant no record covers derives no category and is shown as `Uncategorized`; nothing fills one in on its behalf (X2).
-2. Unknown merchants join the pending set that a later batched pass resolves retrospectively, so waiting costs a visible unknown rather than a guess.
+1. A successfully posted bank or card statement gives each otherwise unknown movement an unverified, movement-scoped first category, so import does not become an interview. A grammar slot that declared a person permits the `transfers` default and its transfer treatment, keeping it outside spending unless the person corrects it; every other unidentified movement starts at `other` and ordinary spending treatment.
+2. The default does not identify the merchant and does not generalize to older or future movements. Unknown merchants remain in the pending enrichment set, and later catalog knowledge replaces the default on the read side.
+3. A person's movement correction outranks both the import default and catalog knowledge.
 
 ### MER-59 — The enrichment run names the catalog it loaded
 **State:** by-review

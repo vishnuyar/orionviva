@@ -48,15 +48,17 @@ describe("bridge transport framing", () => {
     } });
 
     await client.assignActivityCategory("movement:key", "groceries");
+    await client.assignActivityMeaning("movement:key", "loan", "Sam");
     await client.replaceActivityTags("movement:key", ["japan", "tax"]);
     await client.replaceActivityTags("movement:key", []);
     await client.confirmActivityTransfer("movement:key", "movement:counterpart");
     await client.rejectActivityTransfer("movement:key");
     await client.unlinkActivityTransfer("movement:key", "movement:counterpart");
 
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.activity.replace_tags", "viva.activity.replace_tags", "viva.activity.confirm_transfer", "viva.activity.reject_transfer", "viva.activity.unlink_transfer"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.activity.assign_meaning", "viva.activity.replace_tags", "viva.activity.replace_tags", "viva.activity.confirm_transfer", "viva.activity.reject_transfer", "viva.activity.unlink_transfer"]);
     expect(frames.map((frame) => frame.payload)).toEqual([
       { movement_key: "movement:key", category_id: "groceries" },
+      { movement_key: "movement:key", meaning: "loan", counterparty: "Sam" },
       { movement_key: "movement:key", tag_ids: ["japan", "tax"] },
       { movement_key: "movement:key", tag_ids: [] },
       { movement_key: "movement:key", counterpart_key: "movement:counterpart" },
@@ -64,7 +66,7 @@ describe("bridge transport framing", () => {
       { movement_key: "movement:key", counterpart_key: "movement:counterpart" },
     ]);
     expect(frames.map((frame) => Object.keys(frame.payload).sort())).toEqual([
-      ["category_id", "movement_key"], ["movement_key", "tag_ids"], ["movement_key", "tag_ids"],
+      ["category_id", "movement_key"], ["counterparty", "meaning", "movement_key"], ["movement_key", "tag_ids"], ["movement_key", "tag_ids"],
       ["counterpart_key", "movement_key"], ["movement_key"], ["counterpart_key", "movement_key"],
     ]);
   });

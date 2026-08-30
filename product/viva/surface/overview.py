@@ -20,6 +20,7 @@ from ..tools import default_registry
 from ..tools.boundary import (SELECTED_TERMS, UNPOSTED, account_written,
                               named_slice, said, statements)
 from ..ledger.projection.movements import leading_account
+from ..ledger.events import ASSERTED
 from ..tools.envelope import BY_ACCOUNT, BY_CURRENCY, GAP_REASONS
 from .models import Citation, CitationRelation, FigureGrade, FigureView, PanelState
 from .proof import freshness_confirmed_on, proof_presentation_from_evidence
@@ -148,6 +149,9 @@ def overview(projection, locale: str, today: str) -> dict[str, Any]:
     shown = {row["account"] for row in accounts}
     for info in projection.account_infos():
         if info.kind not in ("depository", "liability", "investment"):
+            continue
+        # Asserted arrangements contribute through net worth, not account cards.
+        if info.origin == ASSERTED:
             continue
         if info.account in shown:
             continue

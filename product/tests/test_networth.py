@@ -19,9 +19,10 @@ from decimal import Decimal
 import pytest
 
 from viva.ingest import (RawStore, ReadResult, StatementFacts, TxnFact,
-                         capture_and_ingest)
+                         assign_movement_meaning, capture_and_ingest)
 from viva.ledger import EventStore, Ledger
-from viva.ledger.events import CORROBORATED, VERIFIED, position_observed
+from viva.ledger.events import (CORROBORATED, SCOPE_MOVEMENT, VERIFIED,
+                                position_observed, ruling_recorded)
 from viva.ledger.networth import change_dates, net_worth, series
 
 
@@ -133,6 +134,74 @@ def test_a_card_lands_on_the_liability_side(vault):
     assert row["assets"] == Decimal("1500.00")
     assert row["liabilities"] == Decimal("400.00")
     assert row["net"] == Decimal("1100.00")
+
+
+def test_a_lent_payment_and_repayment_track_only_outstanding_principal(vault):
+    ledger = _checking(
+        vault, opening="2000.00", closing="1300.00",
+        opening_date="2026-03-01", closing_date="2026-03-31",
+        txns=[("2026-03-05", "ZELLE PAYMENT TO SAM", "-1000.00"),
+              ("2026-03-20", "ZELLE PAYMENT FROM SAM", "300.00")])
+    movements = {movement.amount: movement
+                 for movement in ledger.projection().movements()}
+    assert assign_movement_meaning(
+        ledger, movements[Decimal("-1000.00")].key, "loan", "Sam")
+    assert assign_movement_meaning(
+        ledger, movements[Decimal("300.00")].key, "loan_repayment", "Sam")
+
+    projection = ledger.projection()
+    point = net_worth(projection, "2026-03-31")
+    loan = next(line for line in point.lines
+                if line.account == "Assets:Loans:Sam")
+    assert loan.amount == Decimal("700.00")
+    assert point.by_currency()["USD"]["net"] == Decimal("2000.00")
+    assert projection.ruled_accounts()["Assets:Loans:Sam"]["paid"] == Decimal("700.00")
+    assert sum(projection.spending_by_category().values()) == Decimal("0")
+
+
+def test_a_repayment_cannot_exceed_the_matching_outstanding_principal(vault):
+    ledger = _checking(
+        vault, opening="1000.00", closing="1050.00",
+        opening_date="2026-03-01", closing_date="2026-03-31",
+        txns=[("2026-03-05", "ZELLE PAYMENT TO SAM", "-100.00"),
+              ("2026-03-20", "ZELLE PAYMENT FROM SAM", "150.00")])
+    movements = {movement.amount: movement
+                 for movement in ledger.projection().movements()}
+    assert assign_movement_meaning(
+        ledger, movements[Decimal("-100.00")].key, "loan", "Sam")
+
+    with pytest.raises(ValueError, match="exceeds the outstanding principal"):
+        assign_movement_meaning(
+            ledger, movements[Decimal("150.00")].key,
+            "loan_repayment", "Sam")
+
+    projection = ledger.projection()
+    repayment = next(item for item in projection.movements()
+                     if item.amount == Decimal("150.00"))
+    assert repayment.ruling_account == ""
+    loan = next(line for line in net_worth(projection, "2026-03-31").lines
+                if line.account == "Assets:Loans:Sam")
+    assert loan.amount == Decimal("100.00")
+
+
+def test_an_inconsistent_repayment_never_becomes_a_negative_loan_asset(vault):
+    ledger = _checking(
+        vault, opening="1000.00", closing="1100.00",
+        opening_date="2026-03-01", closing_date="2026-03-31",
+        txns=[("2026-03-20", "ZELLE PAYMENT FROM SAM", "100.00")])
+    movement = ledger.projection().movements()[0]
+    # Append an impossible negative receivable through the event layer.
+    ledger.append(ruling_recorded(
+        SCOPE_MOVEMENT, movement.key, movement.date,
+        legs=[{"major": "asset", "account": "Assets:Loans:Sam"}],
+        by="human", grade=VERIFIED))
+
+    point = net_worth(ledger.projection(), "2026-03-31")
+
+    assert all(line.account != "Assets:Loans:Sam" for line in point.lines)
+    assert any(item["account"] == "Assets:Loans:Sam" for item in point.missing)
+    assert not point.complete
+    assert point.by_currency()["USD"]["net"] == Decimal("1100.00")
 
 
 def test_an_overpaid_card_is_an_asset_not_a_debt(vault):
@@ -328,9 +397,7 @@ def test_an_account_it_cannot_value_is_named_not_dropped(vault):
 # --- the grade is a measurement, not a constant -----------------------------
 
 def test_a_closing_grades_corroborated_and_a_confirmed_one_grades_verified(tmp_path):
-    """The grade a net-worth line carries has to come from somewhere. It used to
-    come from a body key nothing wrote, so every line read `corroborated`
-    whatever the evidence was, and the provable subtotal equalled the total."""
+    """Confirmed closings grade verified; unconfirmed ones grade corroborated."""
     from viva.ledger.events import closing_balance_observed, account_opened
 
     store = EventStore.open(tmp_path / "e.jsonl", "pw")

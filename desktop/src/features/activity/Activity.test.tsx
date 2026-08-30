@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ActivityActionResult, ActivityCorrectionState, ActivityData, FeatureResult, MovementView } from "../../surface/types";
@@ -7,13 +7,13 @@ import type { ActivityCorrectionControls } from "./Activity";
 import moments from "../../../../product/viva/persona/pack-v31/moments.json";
 
 const vocabularies: ActivityData["vocabularies"] = { categories: { items: [{ id: "food", label: "Food" }, { id: "housing", label: "Housing" }], complete: true, limit: 20 }, tags: { items: [{ id: "trip", label: "Trip" }, { id: "tax", label: "Tax" }], complete: true, limit: 20, maxSelected: 8, maxLabelLength: 40 } };
-const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", sentence: "", decidedBy: "default", provisional: false, linked: false, category: { id: "food", label: "Food", valid: true }, tags: [{ id: "trip", label: "Trip" }], tagsValid: true, transfer: { state: "none" }, actions: [], ...over });
+const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", treatment: { kind: "spending", name: "" }, sentence: "", decidedBy: "default", provisional: false, linked: false, category: { id: "food", label: "Food", valid: true }, tags: [{ id: "trip", label: "Trip" }], tagsValid: true, transfer: { state: "none" }, actions: [], ...over });
 const counterpart = { id: "counterpart-one", date: "2026-07-02", description: "other account movement", account: "acct:two", direction: "in" as const, exactValue: "10.00", currency: "USD", display: "USD 10.00" };
 const read = (movements: MovementView[]): ActivityData => ({ sentence: movements.length ? moments.activity_scope : moments.activity_empty, movements, beyond: { count: 0 }, vocabularies });
 const ready = (value: ActivityData): FeatureResult<ActivityData> => ({ state: "ready", data: value });
 const noAction = () => {};
 const completed: ActivityActionResult = { state: "settled", outcome: { kind: "completed", message: "The correction was recorded.", reason: "" } };
-function controls(state: ActivityCorrectionState, onAssignCategory = vi.fn(), onReplaceTags = vi.fn(), onConfirmTransfer = vi.fn(), onRejectTransfer = vi.fn(), onUnlinkTransfer = vi.fn()): ActivityCorrectionControls { return { state, onAssignCategory, onReplaceTags, onConfirmTransfer, onRejectTransfer, onUnlinkTransfer }; }
+function controls(state: ActivityCorrectionState, onAssignCategory = vi.fn(), onReplaceTags = vi.fn(), onConfirmTransfer = vi.fn(), onRejectTransfer = vi.fn(), onUnlinkTransfer = vi.fn(), onAssignMeaning = vi.fn()): ActivityCorrectionControls { return { state, onAssignCategory, onAssignMeaning, onReplaceTags, onConfirmTransfer, onRejectTransfer, onUnlinkTransfer }; }
 
 describe("Activity surface", () => {
   it("renders every FeatureResult state, and an empty read in the read's own words", () => {
@@ -35,10 +35,7 @@ describe("Activity surface", () => {
   });
 
   it("has one way to draw a movement, and no second path for a sample vault", () => {
-    // This screen used to carry a search box, seven facet filters and a
-    // relationship graph over rows composed in the shell for the sample
-    // vault. The sample is a vault now and arrives through this read, so
-    // there is one implementation and this is what says so.
+    // The sample vault uses the same Activity read and component.
     const { getByText, queryByRole } = render(<Activity result={ready(read([movement()]))} onOpenEvidence={noAction} />);
     expect(getByText("What moved")).toBeInTheDocument();
     expect(getByText("a shop")).toBeInTheDocument();
@@ -57,6 +54,12 @@ describe("Activity surface", () => {
     expect(getByText(moments.activity_transfer)).toBeInTheDocument();
   });
 
+  it("does not describe incoming income as spending", () => {
+    render(<Activity result={ready(read([movement({ direction: "in", nature: "spending", treatment: { kind: "not_spending", name: "" } })]))} onOpenEvidence={noAction} />);
+    expect(screen.getByText("Not counted as spending")).toBeInTheDocument();
+    expect(screen.queryByText("Counted as spending")).not.toBeInTheDocument();
+  });
+
   it("says how many movements are in the vault and not in this list", () => {
     const { getByText } = render(<Activity result={ready({ sentence: moments.activity_scope, movements: [movement()], beyond: { count: 6 }, vocabularies })} onOpenEvidence={noAction} />);
     expect(getByText("6 more are in this vault and not in this list.")).toBeInTheDocument();
@@ -70,16 +73,16 @@ describe("Activity surface", () => {
   it("shows current backend category and complete tags, with controls only from each row's declared availability", async () => {
     const user = userEvent.setup();
     render(<Activity result={ready(read([
-      movement({ id: "one", description: "Corner shop", actions: ["assign_category"] }),
+      movement({ id: "one", description: "Corner shop", actions: ["assign_category", "assign_meaning"] }),
       movement({ id: "two", description: "Train fare", category: { id: "housing", label: "Housing", valid: true }, tags: [], actions: ["replace_tags"] }),
       movement({ id: "three", description: "Inherited", actions: [] }),
     ]))} correction={controls({ state: "idle" })} onOpenEvidence={noAction} />);
 
     expect(screen.getAllByText("Food").length).toBeGreaterThan(0);
     expect(screen.getByText("No tags recorded")).toBeInTheDocument();
-    const categorySummary = screen.getByText("Correct category");
+    const categorySummary = screen.getByText("Correct category or treatment");
     const tagSummary = screen.getByText("Correct tags");
-    expect(categorySummary).toHaveAccessibleName("Correct category for 2026-07-01, Corner shop, acct:one, USD 10.00, one");
+    expect(categorySummary).toHaveAccessibleName("Correct category or treatment for 2026-07-01, Corner shop, acct:one, USD 10.00, one");
     expect(tagSummary).toHaveAccessibleName("Correct tags for 2026-07-01, Train fare, acct:one, USD 10.00, two");
     await user.click(categorySummary);
     expect(within(categorySummary.parentElement!).getByRole("combobox", { name: "Category for 2026-07-01, Corner shop, acct:one, USD 10.00, one" })).toBeInTheDocument();
@@ -97,8 +100,8 @@ describe("Activity surface", () => {
     const user = userEvent.setup();
     const assign = vi.fn();
     const replace = vi.fn();
-    render(<Activity result={ready(read([movement({ actions: ["assign_category", "replace_tags"] })]))} correction={controls({ state: "idle" }, assign, replace)} onOpenEvidence={noAction} />);
-    await user.click(screen.getByText(/Correct category or tags/));
+    render(<Activity result={ready(read([movement({ actions: ["assign_category", "assign_meaning", "replace_tags"] })]))} correction={controls({ state: "idle" }, assign, replace)} onOpenEvidence={noAction} />);
+    await user.click(screen.getByText(/Correct category, treatment, or tags/));
     await user.selectOptions(screen.getByRole("combobox", { name: /Category for/ }), "housing");
     await user.click(screen.getByRole("button", { name: /Save category for/ }));
     expect(assign).toHaveBeenCalledWith("m1", "housing");
@@ -111,16 +114,61 @@ describe("Activity surface", () => {
     expect(replace).toHaveBeenLastCalledWith("m1", []);
   });
 
+  it("lets a person mark one peer payment as a loan without changing every peer payment", async () => {
+    const user = userEvent.setup();
+    const assignMeaning = vi.fn();
+    render(<Activity result={ready(read([movement({ description: "Zelle payment to Sam", actions: ["assign_category", "assign_meaning"] })]))} correction={controls({ state: "idle" }, vi.fn(), vi.fn(), vi.fn(), vi.fn(), vi.fn(), assignMeaning)} onOpenEvidence={noAction} />);
+
+    await user.click(screen.getByText("Correct category or treatment"));
+    await user.selectOptions(screen.getByRole("combobox", { name: /Treatment for/ }), "loan");
+    await user.type(screen.getByRole("textbox", { name: /Person or loan name for/ }), "Sam");
+    await user.click(screen.getByRole("button", { name: /Save treatment for/ }));
+
+    expect(assignMeaning).toHaveBeenCalledWith("m1", "loan", "Sam");
+  });
+
+  it("keeps a recorded loan name visible and selected on the refreshed row", async () => {
+    const user = userEvent.setup();
+    render(<Activity result={ready(read([movement({ description: "Zelle payment to Sam", nature: "transfer", treatment: { kind: "loan", name: "Sam" }, actions: ["assign_category", "assign_meaning"] })]))} correction={controls({ state: "idle" })} onOpenEvidence={noAction} />);
+
+    expect(screen.getByText("Loan lent · Sam")).toBeInTheDocument();
+    await user.click(screen.getByText("Correct category or treatment"));
+    expect(screen.getByRole("combobox", { name: /Treatment for/ })).toHaveValue("loan");
+    expect(screen.getByRole("textbox", { name: /Person or loan name for/ })).toHaveValue("Sam");
+  });
+
+  it("synchronizes the open treatment form to the authoritative refreshed row", async () => {
+    const user = userEvent.setup();
+    const initial = movement({ description: "Zelle payment to Sam", actions: ["assign_meaning"] });
+    const { rerender } = render(<Activity result={ready(read([initial]))} correction={controls({ state: "idle" })} onOpenEvidence={noAction} />);
+    await user.click(screen.getByText("Correct treatment"));
+    await user.selectOptions(screen.getByRole("combobox", { name: /Treatment for/ }), "loan");
+    await user.type(screen.getByRole("textbox", { name: /Person or loan name for/ }), "  Sam   Loan  ");
+
+    const refreshed = movement({ id: initial.id, description: initial.description, nature: "transfer", treatment: { kind: "loan", name: "Sam Loan" }, actions: ["assign_meaning"] });
+    rerender(<Activity result={ready(read([refreshed]))} correction={controls({ state: "settled", movementId: initial.id, verb: "meaning", result: completed, refresh: "refreshed" })} onOpenEvidence={noAction} />);
+
+    expect(screen.getByText("Loan lent · Sam Loan")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Treatment for/ })).toHaveValue("loan");
+    await waitFor(() => expect(
+      screen.getByRole("textbox", { name: /Person or loan name for/ })
+    ).toHaveValue("Sam Loan"));
+  });
+
   it("keeps busy controls focusable with aria-disabled and guards pointer and keyboard submissions", async () => {
     const user = userEvent.setup();
     const assign = vi.fn();
     const replace = vi.fn();
-    render(<Activity result={ready(read([movement({ actions: ["assign_category", "replace_tags"] })]))} correction={controls({ state: "working", movementId: "m1", verb: "category" }, assign, replace)} onOpenEvidence={noAction} />);
-    await user.click(screen.getByText(/Correct category or tags/));
+    render(<Activity result={ready(read([movement({ id: "movement identity with spaces", actions: ["assign_category", "assign_meaning", "replace_tags"] })]))} correction={controls({ state: "working", movementId: "movement identity with spaces", verb: "category" }, assign, replace)} onOpenEvidence={noAction} />);
+    await user.click(screen.getByText(/Correct category, treatment, or tags/));
     const category = screen.getByRole("combobox", { name: /Category for/ });
     const save = screen.getByRole("button", { name: /Save category for/ });
     expect(category).toHaveAttribute("aria-disabled", "true");
     expect(save).toHaveAttribute("aria-disabled", "true");
+    const waitId = category.getAttribute("aria-describedby");
+    expect(waitId).toBeTruthy();
+    expect(waitId).not.toContain(" ");
+    expect(document.getElementById(waitId!)).toHaveTextContent(/Pressing again does nothing/);
     expect(category).not.toBeDisabled();
     expect(save).not.toBeDisabled();
     save.focus();
@@ -233,13 +281,13 @@ describe("Activity surface", () => {
   it("uniquely names every repeated correction control when backend descriptions and figures match", async () => {
     const user = userEvent.setup();
     render(<Activity result={ready(read([
-      movement({ id: "movement-one", description: "Same shop", actions: ["assign_category", "replace_tags"] }),
-      movement({ id: "movement-two", description: "Same shop", actions: ["assign_category", "replace_tags"] }),
+      movement({ id: "movement-one", description: "Same shop", actions: ["assign_category", "assign_meaning", "replace_tags"] }),
+      movement({ id: "movement-two", description: "Same shop", actions: ["assign_category", "assign_meaning", "replace_tags"] }),
     ]))} correction={controls({ state: "idle" })} onOpenEvidence={noAction} />);
-    const summaries = screen.getAllByText("Correct category or tags");
+    const summaries = screen.getAllByText("Correct category, treatment, or tags");
     expect(summaries).toHaveLength(2);
-    expect(summaries[0]).toHaveAccessibleName("Correct category or tags for 2026-07-01, Same shop, acct:one, USD 10.00, movement-one");
-    expect(summaries[1]).toHaveAccessibleName("Correct category or tags for 2026-07-01, Same shop, acct:one, USD 10.00, movement-two");
+    expect(summaries[0]).toHaveAccessibleName("Correct category, treatment, or tags for 2026-07-01, Same shop, acct:one, USD 10.00, movement-one");
+    expect(summaries[1]).toHaveAccessibleName("Correct category, treatment, or tags for 2026-07-01, Same shop, acct:one, USD 10.00, movement-two");
     await user.click(summaries[0]);
     await user.click(summaries[1]);
     for (const role of ["combobox", "group", "checkbox", "button"] as const) {
@@ -273,6 +321,6 @@ describe("Activity surface", () => {
     render(<Activity result={ready(read([movement({ category: { id: null, label: "", valid: false }, tags: [], tagsValid: false, actions: [] })]))} correction={controls({ state: "idle" })} onOpenEvidence={noAction} />);
     expect(screen.getByText("Category unavailable from this read")).toBeInTheDocument();
     expect(screen.getByText("Tags unavailable from this read")).toBeInTheDocument();
-    expect(screen.queryByText(/Correct category or tags/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Correct category, treatment, or tags/)).not.toBeInTheDocument();
   });
 });

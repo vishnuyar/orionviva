@@ -1221,6 +1221,7 @@
     {
       "actions": [
         "assign_category",
+        "assign_meaning",
         "replace_tags",
         "confirm_transfer",
         "reject_transfer",

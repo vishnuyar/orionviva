@@ -42,10 +42,7 @@ describe("shell", () => {
     cards.forEach((card) => {
       const amount = card.querySelector(".account-amount");
       const selection = card.querySelector(".account-card-button");
-      // The amount a card shows and the control that selects it are separate
-      // elements, so pressing the row never reads as pressing the figure. The
-      // proof link that used to sit beside them was a field only the fixture
-      // filled; the vault read supplies none, and this no longer looks for one.
+      // The displayed amount is outside the account-selection control.
       expect(amount).not.toBeNull();
       expect(selection).not.toBeNull();
       expect(selection?.contains(amount)).toBe(false);
@@ -93,11 +90,11 @@ describe("shell", () => {
     const activity = {
       state: "ready", sentence: moments.activity_scope, beyond: { count: 0 },
       vocabularies: { categories: { items: [{ id: "food", label: "Food" }, { id: "housing", label: "Housing" }], complete: true, limit: 40 }, tags: { items: [{ id: "trip", label: "Trip" }], complete: true, limit: 40, max_selected: 40, max_label_length: 80 } },
-      items: [{ id: "movement:key", date: "2026-06-01", description: "Corner shop", account: "acct:one", direction: "out", exact_value: "12.00", currency: "USD", display: "USD 12.00", nature: "spending", sentence: "", decided_by: "default", provisional: false, linked: false, category: { id: "food", label: "Food" }, tags: [{ id: "trip", label: "Trip" }], transfer: { state: "none" }, actions: ["assign_category", "replace_tags"] }],
+      items: [{ id: "movement:key", date: "2026-06-01", description: "Corner shop", account: "acct:one", direction: "out", exact_value: "12.00", currency: "USD", display: "USD 12.00", nature: "spending", treatment: { kind: "spending", name: "" }, sentence: "", decided_by: "default", provisional: false, linked: false, category: { id: "food", label: "Food" }, tags: [{ id: "trip", label: "Trip" }], transfer: { state: "none" }, actions: ["assign_category", "assign_meaning", "replace_tags"] }],
     };
     const view = await openSample({ activity });
     await user.click(view.getByRole("button", { name: "ActivityWhat moved" }));
-    await user.click(view.getByText(/Correct category or tags/));
+    await user.click(view.getByText(/Correct category, treatment, or tags/));
     await user.selectOptions(view.getByRole("combobox", { name: /Category for/ }), "housing");
     await user.click(view.getByRole("button", { name: /Save category for/ }));
 
@@ -117,7 +114,7 @@ describe("shell", () => {
     if (!suggested?.explanation || !suggested.candidates?.[0] || !linked?.explanation || !linked.relationship) throw new Error("live v3 parity fixture is missing transfer authority");
     const view = await openSample();
     await user.click(view.getByRole("button", { name: "ActivityWhat moved" }));
-    const suggestionSummary = view.getAllByText("Correct category or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("possible transfer to savings"));
+    const suggestionSummary = view.getAllByText("Correct category, treatment, or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("possible transfer to savings"));
     if (!suggestionSummary) throw new Error("installed suggested row correction is missing");
     await user.click(suggestionSummary);
     expect(view.getByText(suggested.explanation)).toBeInTheDocument();

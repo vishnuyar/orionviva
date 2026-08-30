@@ -26,7 +26,7 @@ class _Movement:
     def __init__(self, *, key="m1", kind="asset", amount="10.00",
                  date="2026-07-01", description="a shop", account="acct:one",
                  currency="USD", nature=SPENDING, reason="default",
-                 provisional=False, linked=False):
+                 provisional=False, linked=False, ruling_account=""):
         self.key = key
         self.kind = kind
         self.amount = Decimal(amount)
@@ -38,6 +38,7 @@ class _Movement:
         self.nature_reason = reason
         self.provisional = provisional
         self.linked = linked
+        self.ruling_account = ruling_account
 
 
 class _Projection:
@@ -72,7 +73,22 @@ def test_money_arriving_is_money_arriving_on_either_kind():
     on_card = _read([_Movement(kind="liability", amount="-500.00")])
 
     assert on_asset["items"][0]["direction"] == "in"
+    assert on_asset["items"][0]["treatment"] == {
+        "kind": "not_spending", "name": ""}
     assert on_card["items"][0]["direction"] == "in"
+
+
+def test_a_named_loan_keeps_its_direction_and_name_in_the_read():
+    lent = _read([_Movement(
+        amount="-100.00", nature=TRANSFER,
+        ruling_account="Assets:Loans:Sam")])
+    repaid = _read([_Movement(
+        amount="30.00", nature=TRANSFER,
+        ruling_account="Assets:Loans:Sam")])
+
+    assert lent["items"][0]["treatment"] == {"kind": "loan", "name": "Sam"}
+    assert repaid["items"][0]["treatment"] == {
+        "kind": "loan_repayment", "name": "Sam"}
 
 
 def test_a_movement_with_no_account_kind_stops_the_read_rather_than_guessing():

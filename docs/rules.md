@@ -193,7 +193,7 @@ What counts as spending, what a category is, how two accounts are recognized as 
 | **MON-49** | every question declares what structure an answer has | enforced | [the-question-queue.md](the-question-queue.md) | `test_the_model_never_supplies_a_figure` |
 | **MON-50** | a substantive answer has no button payload | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_reply_she_could_not_read_leaves_the_question_where_it_was` |
 | **MON-51** | confirmation is an explicit typed decision (X3) | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_answer_that_would_open_an_account_is_proposed_before_it_is_written` |
-| **MON-52** | a nature question is raised only where the evidence is weak | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_ordinary_known_merchant_is_never_asked_about` |
+| **MON-52** | a nature question is raised only where the evidence is weak | enforced | [the-question-queue.md](the-question-queue.md) | `test_an_ordinary_known_merchant_is_never_asked_about`, `test_import_defaults_peer_payments_before_asking_questions` |
 | **MON-53** | a rhythm question is one proposal per counterparty and direction, licensed by the catalog | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_standing_prior_raises_one_grouped_proposal_per_pair` |
 | **MON-54** | a stake is money already measured | enforced | [the-question-queue.md](the-question-queue.md) | `test_a_question_is_ranked_on_money_already_measured` |
 | **MON-55** | a cash withdrawal is a spend until an unexplained asset says otherwise | **unmet** | [the-question-queue.md](the-question-queue.md) | — |
@@ -428,7 +428,7 @@ How a bank descriptor becomes a counterparty, what may be shared, and what the a
 | **MER-46** | The unencrypted catalog carries no money | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_export_catalog_is_linted_and_carries_no_amounts` |
 | **MER-47** | The taxonomy is a versioned data pack | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_the_manifest_and_the_files_agree` +1 |
 | **MER-48** | Normalization is deterministic and versioned, never fuzzy string-matching | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_normalize_is_deterministic_and_versioned` +2 |
-| **MER-49** | An unknown merchant is shown as unknown, not guessed | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_merchant_ruling_fills_all_its_transactions` |
+| **MER-49** | An unknown merchant stays unknown while its movement gets a replaceable default | enforced | [merchant-catalog-and-commons.md](merchant-catalog-and-commons.md) | `test_import_defaults_peer_payments_before_asking_questions` +1 |
 | **MER-50** | Deciding is pure; only performing spends | enforced | [the-maintenance-agent.md](the-maintenance-agent.md) | `test_assess_is_pure_and_repeatable` +2 |
 | **MER-51** | The agent records what it did, never what it saw | enforced | [the-maintenance-agent.md](the-maintenance-agent.md) | `test_the_journal_carries_no_descriptor_and_no_amount` +2 |
 | **MER-52** | A refusal cools until the stake moves, and a code change moves it | enforced | [the-maintenance-agent.md](the-maintenance-agent.md) | `test_a_refusal_against_unchanged_evidence_is_not_retried` +4 |

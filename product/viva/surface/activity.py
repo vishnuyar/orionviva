@@ -33,7 +33,7 @@ from ..ingest.categorize import UNCATEGORIZED, normalize_category
 from ..ingest.transfers import is_transfer_candidate
 from ..listen import category_vocabulary
 from ..ledger.projection.movements import (BY_CATEGORY, MIXED, SETTLEMENT,
-                                           SPENDING, TRANSFER)
+                                           SPENDING, TRANSFER, is_expense)
 from ..ledger.streams import money_effect
 from ..persona import moment
 from .models import PanelState
@@ -110,6 +110,9 @@ def _row(projection, movement, locale: str,
     if (vocabularies["categories"]["complete"]
             and vocabularies["categories"]["items"]):
         actions.append("assign_category")
+    # Linked own-account transfers do not offer an economic-treatment action.
+    if not movement.linked:
+        actions.append("assign_meaning")
     if (vocabularies["tags"]["complete"]
             and vocabularies["tags"]["items"] and not inherited):
         actions.append("replace_tags")
@@ -129,6 +132,8 @@ def _row(projection, movement, locale: str,
         "display": str(render.money(abs(effect), movement.currency,
                                     locale=locale)),
         "nature": movement.nature,
+        # Surface the recorded treatment and loan name directly.
+        "treatment": _treatment(movement, effect),
         # What this is, where it is not plain spending. Empty on an ordinary
         # row, because a line saying "this is spending" on every spending row
         # is a line that stops being read.
@@ -147,6 +152,22 @@ def _row(projection, movement, locale: str,
         "transfer": transfer,
         "actions": actions,
     }
+
+
+def _treatment(movement, effect) -> dict[str, str]:
+    account = movement.ruling_account or ""
+    if account.startswith("Assets:Loans:"):
+        return {
+            "kind": "loan_repayment" if effect > 0 else "loan",
+            "name": str(render.account({"path": account})),
+        }
+    if movement.nature == SPENDING and is_expense(movement):
+        return {"kind": "spending", "name": ""}
+    if movement.nature == SETTLEMENT:
+        return {"kind": "settlement", "name": ""}
+    if movement.nature == MIXED:
+        return {"kind": "mixed", "name": ""}
+    return {"kind": "not_spending", "name": ""}
 
 
 def _transfer_state(projection, movement, locale: str

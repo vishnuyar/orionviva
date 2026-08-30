@@ -4,11 +4,11 @@ import { adaptActivity, adaptActivityActionOutcome } from "./activity";
 
 const baseRow = {
   id: "movement:key", date: "2026-08-01", description: "corner shop", account: "acct:one", direction: "out",
-  exact_value: "12.00", currency: "USD", display: "USD 12.00", nature: "spending", sentence: "",
+  exact_value: "12.00", currency: "USD", display: "USD 12.00", nature: "spending", treatment: { kind: "spending", name: "" }, sentence: "",
   decided_by: "default", provisional: false, linked: false,
   category: { id: "groceries", label: "Groceries" }, tags: [{ id: "trip", label: "Trip" }],
   transfer: { state: "none" },
-  actions: ["assign_category", "replace_tags"],
+  actions: ["assign_category", "assign_meaning", "replace_tags"],
 };
 const candidate = {
   id: "movement:counterpart", date: "2026-08-02", description: "other account movement", account: "acct:two", direction: "in",

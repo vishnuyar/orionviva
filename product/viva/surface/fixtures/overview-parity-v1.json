@@ -16,7 +16,8 @@
             {
               "account": "acct:rainy-day-savings",
               "actions": [
-                "assign_category"
+                "assign_category",
+                "assign_meaning"
               ],
               "category": {
                 "id": null,
@@ -37,12 +38,17 @@
               "tags": [],
               "transfer": {
                 "state": "none"
+              },
+              "treatment": {
+                "kind": "not_spending",
+                "name": ""
               }
             },
             {
               "account": "acct:rainy-day-savings",
               "actions": [
-                "assign_category"
+                "assign_category",
+                "assign_meaning"
               ],
               "category": {
                 "id": null,
@@ -63,12 +69,17 @@
               "tags": [],
               "transfer": {
                 "state": "none"
+              },
+              "treatment": {
+                "kind": "not_spending",
+                "name": ""
               }
             },
             {
               "account": "acct:everyday-checking",
               "actions": [
                 "assign_category",
+                "assign_meaning",
                 "confirm_transfer",
                 "reject_transfer"
               ],
@@ -107,12 +118,17 @@
                 "explanation": "1 possible counterpart movement(s) remain from the vault's transfer evidence. Nothing is linked until you confirm one, or reject the whole suggestion.",
                 "limit": 20,
                 "state": "suggested"
+              },
+              "treatment": {
+                "kind": "not_spending",
+                "name": ""
               }
             },
             {
               "account": "acct:rainy-day-savings",
               "actions": [
-                "assign_category"
+                "assign_category",
+                "assign_meaning"
               ],
               "category": {
                 "id": null,
@@ -133,6 +149,10 @@
               "tags": [],
               "transfer": {
                 "state": "none"
+              },
+              "treatment": {
+                "kind": "settlement",
+                "name": ""
               }
             },
             {
@@ -172,6 +192,10 @@
                 "explanation": "The vault linked these movements from corroborating transfer evidence.",
                 "relationship": "This would treat 2026-06-18's transfer from checking on Rainy Day Savings (USD 600.00) and 2026-06-18's transfer to savings on Everyday Checking (USD 600.00) as one transfer between your own accounts, so neither is spending.",
                 "state": "linked"
+              },
+              "treatment": {
+                "kind": "not_spending",
+                "name": ""
               }
             },
             {
@@ -211,12 +235,17 @@
                 "explanation": "The vault linked these movements from corroborating transfer evidence.",
                 "relationship": "This would treat 2026-06-18's transfer to savings on Everyday Checking (USD 600.00) and 2026-06-18's transfer from checking on Rainy Day Savings (USD 600.00) as one transfer between your own accounts, so neither is spending.",
                 "state": "linked"
+              },
+              "treatment": {
+                "kind": "not_spending",
+                "name": ""
               }
             },
             {
               "account": "acct:joint-checking",
               "actions": [
-                "assign_category"
+                "assign_category",
+                "assign_meaning"
               ],
               "category": {
                 "id": null,
@@ -237,12 +266,17 @@
               "tags": [],
               "transfer": {
                 "state": "none"
+              },
+              "treatment": {
+                "kind": "spending",
+                "name": ""
               }
             },
             {
               "account": "acct:household-card",
               "actions": [
-                "assign_category"
+                "assign_category",
+                "assign_meaning"
               ],
               "category": {
                 "id": null,
@@ -263,12 +297,17 @@
               "tags": [],
               "transfer": {
                 "state": "none"
+              },
+              "treatment": {
+                "kind": "spending",
+                "name": ""
               }
             },
             {
               "account": "acct:everyday-checking",
               "actions": [
-                "assign_category"
+                "assign_category",
+                "assign_meaning"
               ],
               "category": {
                 "id": null,
@@ -289,12 +328,17 @@
               "tags": [],
               "transfer": {
                 "state": "none"
+              },
+              "treatment": {
+                "kind": "spending",
+                "name": ""
               }
             },
             {
               "account": "acct:everyday-checking",
               "actions": [
-                "assign_category"
+                "assign_category",
+                "assign_meaning"
               ],
               "category": {
                 "id": null,
@@ -315,6 +359,10 @@
               "tags": [],
               "transfer": {
                 "state": "none"
+              },
+              "treatment": {
+                "kind": "not_spending",
+                "name": ""
               }
             }
           ],

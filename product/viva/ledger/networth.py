@@ -21,6 +21,7 @@ from decimal import Decimal
 
 from .events import ASSERTED, CORROBORATED, ISSUED, VERIFIED
 from .projection import MIXED
+from .projection.movements import money_effect
 
 ASSET_ROOT = "Assets:"
 LIABILITY_ROOT = "Liabilities:"
@@ -147,7 +148,10 @@ def _asserted_lines(proj, as_of: str):
             continue
         g = groups.setdefault((m.ruling_account, m.currency), {
             "paid": Decimal("0"), "as_of": "", "reliable": True})
-        g["paid"] += abs(m.amount)
+        # Loan receivables sum signed principal; other asserted assets sum cost.
+        g["paid"] += (-money_effect(m)
+                      if m.ruling_account.startswith("Assets:Loans:")
+                      else abs(m.amount))
         g["as_of"] = max(g["as_of"], m.date)
         if m.nature == MIXED:
             g["reliable"] = False
@@ -166,6 +170,16 @@ def _asserted_lines(proj, as_of: str):
                 "why": "part of this payment was interest, not equity",
                 "ask": "Roughly what is this worth to you now?",
                 "would_fix": "the mortgage statement or 1098"})
+            continue
+        if account.startswith("Assets:Loans:") and g["paid"] < 0:
+            missing.append({
+                "account": account,
+                "why": "recorded repayments exceed the known principal",
+                "ask": "Check the loan amount and the movements marked as repayments.",
+                "would_fix": "a corrected loan or repayment treatment"})
+            continue
+        # Settled receivables do not appear as current account lines.
+        if g["paid"] == 0:
             continue
         lines.append(NetWorthLine(
             account=account, amount=g["paid"], currency=currency,

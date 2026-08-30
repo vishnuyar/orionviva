@@ -65,7 +65,7 @@ A liability speaks `owed` and never `balance`. That rule lives once, as
 1. A depository speaks balance, with its as-of date prominent when stale, and this period's in and out.
 2. A liability speaks **owed**, as the number on the bill, and calls out a credit balance when the card owes the person.
 3. An investment shows cash plus holdings equalling the total as the statement's own identity, each holding with its measurement date, activity that was *not* posted and why, and unrealized change as a labelled derived view rather than a ledger fact.
-4. An asserted asset speaks **cost**, and the word "cost"; where nobody has said what it cost there is no cost line at all, but the question that closes the gap; a stated cost replaces the cash-derived line rather than sitting beside it; and it names the document that would corroborate it.
+4. An asserted purchased asset speaks **cost**, and the word "cost"; where nobody has said what it cost there is no cost line at all, but the question that closes the gap. A stated cost replaces the cash-derived line rather than sitting beside it. An asserted loan receivable instead speaks **outstanding principal**, reduced by recorded repayments. Each names the document that would corroborate it.
 
 ## Why
 
@@ -89,8 +89,9 @@ opposite of what the word "balance" implies. An investment shows the
 cash-plus-holdings identity because it is the densest model-free cross-check in
 the product, and showing it *is* the trust; it shows activity withheld and why
 because a real statement had 24 cash movements held for want of an opening cash
-figure, and silence there is the worst option. An asserted asset speaks cost
-because cost is what you paid, never what it is worth now.
+figure, and silence there is the worst option. An asserted purchased asset
+speaks cost because cost is what you paid, never what it is worth now; a loan
+receivable speaks outstanding principal because repayment changes what is owed.
 
 **Where the liability rule actually lives.** It is not a per-kind branch in a
 renderer, which is a plausible-sounding home and the reason nobody checked it

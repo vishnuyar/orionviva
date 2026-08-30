@@ -307,7 +307,8 @@ any of the rules above mean anything.
   kind-specific headline, grade, date, omissions, activity, statements and
   questions. Depositories speak balance; liabilities speak owed and distinguish
   a credit balance; investments expose the statement's own composition and
-  measurement dates; asserted assets speak cost and say when they rest on the
+  measurement dates; asserted purchased assets speak cost, while asserted loan
+  receivables speak outstanding principal, and both say when they rest on the
   person's word.
 - **Activity:** a searchable movement view with account, merchant, category,
   tag, date, direction and nature filters; transaction provenance; category and

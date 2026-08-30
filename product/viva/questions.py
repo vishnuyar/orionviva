@@ -302,6 +302,10 @@ def _nature_questions(proj, locale: str = "") -> list[Question]:
     for m in proj.movements():
         if not proj._is_expense(m):
             continue
+        # Imported defaults suppress interview questions while remaining correctable.
+        defaulted = proj.derived_category(m) or {}
+        if defaulted.get("by") == "default":
+            continue
         tier = proj.tier_of(m)
         if tier == TIER_SETTLED:
             continue                      # already known; nothing to ask

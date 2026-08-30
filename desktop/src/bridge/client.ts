@@ -53,6 +53,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     declinePlan: (proposalId) => request("viva.plans.decline", { proposal_id: proposalId }),
     setAsideFinding: (findingId: string) => request("viva.overview.set_aside_finding", { finding_id: findingId }),
     assignActivityCategory: (movementKey: string, categoryId: string) => request("viva.activity.assign_category", { movement_key: movementKey, category_id: categoryId }),
+    assignActivityMeaning: (movementKey: string, meaning: string, counterparty: string) => request("viva.activity.assign_meaning", { movement_key: movementKey, meaning, counterparty }),
     replaceActivityTags: (movementKey: string, tagIds: readonly string[]) => request("viva.activity.replace_tags", { movement_key: movementKey, tag_ids: [...tagIds] }),
     confirmActivityTransfer: (movementKey: string, counterpartKey: string) => request("viva.activity.confirm_transfer", { movement_key: movementKey, counterpart_key: counterpartKey }),
     rejectActivityTransfer: (movementKey: string) => request("viva.activity.reject_transfer", { movement_key: movementKey }),

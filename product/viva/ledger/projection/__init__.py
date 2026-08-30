@@ -247,6 +247,9 @@ class LedgerProjection:
     def merchant_key_of(self, m: MovementInfo) -> str:
         return _merchants.merchant_key_of(self._core, m)
 
+    def is_person(self, m: MovementInfo) -> bool:
+        return _merchants.is_person(self._core, m)
+
     def merchant_categories(self) -> dict[str, dict]:
         return _merchants.merchant_categories(self._core)
 

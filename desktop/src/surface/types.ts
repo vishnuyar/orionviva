@@ -258,15 +258,16 @@ export type QuestionQueueData = { queue: QuestionView[]; count: number; meta: { 
 export type ActivityVocabularyItem = { id: string; label: string };
 export type ActivityCategoryVocabulary = { items: readonly ActivityVocabularyItem[]; complete: boolean; limit: number };
 export type ActivityTagVocabulary = ActivityCategoryVocabulary & { maxSelected: number; maxLabelLength: number };
-export type ActivityRowAction = "assign_category" | "replace_tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
+export type ActivityRowAction = "assign_category" | "assign_meaning" | "replace_tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
 export type ActivityTransferReference = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string };
 export type ActivityTransferState =
   | { state: "none" }
   | { state: "suggested"; explanation: string; candidates: readonly (ActivityTransferReference & { relationship: string })[]; complete: boolean; limit: number }
   | { state: "linked"; explanation: string; counterpart: ActivityTransferReference; relationship: string };
-export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; sentence: string; decidedBy: string; provisional: boolean; linked: boolean; category: { id: string | null; label: string; valid: boolean }; tags: readonly ActivityVocabularyItem[]; tagsValid: boolean; transfer: ActivityTransferState | null; actions: readonly ActivityRowAction[] };
+export type ActivityTreatment = { kind: "spending" | "loan" | "loan_repayment" | "settlement" | "mixed" | "not_spending"; name: string };
+export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; treatment: ActivityTreatment; sentence: string; decidedBy: string; provisional: boolean; linked: boolean; category: { id: string | null; label: string; valid: boolean }; tags: readonly ActivityVocabularyItem[]; tagsValid: boolean; transfer: ActivityTransferState | null; actions: readonly ActivityRowAction[] };
 export type ActivityData = { sentence: string; movements: readonly MovementView[]; beyond: { count: number }; vocabularies: { categories: ActivityCategoryVocabulary; tags: ActivityTagVocabulary } };
-export type ActivityCorrectionVerb = "category" | "tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
+export type ActivityCorrectionVerb = "category" | "meaning" | "tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
 export type ActivityActionOutcome = { kind: "completed" | "refused" | "stale"; message: string; reason: string };
 export type ActivityActionResult =
   | { state: "settled"; outcome: ActivityActionOutcome }
@@ -278,6 +279,7 @@ export type ActivityCorrectionState =
   | { state: "settled"; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; refresh: "refreshed" | "failed" };
 export type ActivityActions = {
   assignCategory: (movementId: string, categoryId: string) => Promise<ActivityActionResult>;
+  assignMeaning: (movementId: string, meaning: string, counterparty: string) => Promise<ActivityActionResult>;
   replaceTags: (movementId: string, tagIds: readonly string[]) => Promise<ActivityActionResult>;
   confirmTransfer: (movementId: string, counterpartId: string) => Promise<ActivityActionResult>;
   rejectTransfer: (movementId: string) => Promise<ActivityActionResult>;

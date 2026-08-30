@@ -225,10 +225,9 @@ CAPABILITIES: tuple[CapabilitySpec, ...] = (
         CapabilityDestination.ACTIVITY,
         "when a vault is open",
         "ActivityMovements.v3",
-        ("assign_category", "replace_tags", "confirm_transfer",
+        ("assign_category", "assign_meaning", "replace_tags", "confirm_transfer",
          "reject_transfer", "unlink_transfer"),
-        # The read is local; its explicit movement actions append human
-        # category, tag or transfer events and never call a model or egress.
+        # The local read and movement actions use no model or egress.
         (TrustEffect.READS_DATA, TrustEffect.WRITES_EVENT),
     ),
     _surface(

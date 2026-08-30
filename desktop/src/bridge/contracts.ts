@@ -103,6 +103,7 @@ export type BridgeClient = {
   declinePlan: (proposalId: string) => Promise<unknown>;
   setAsideFinding?: (findingId: string) => Promise<unknown>;
   assignActivityCategory: (movementKey: string, categoryId: string) => Promise<unknown>;
+  assignActivityMeaning: (movementKey: string, meaning: string, counterparty: string) => Promise<unknown>;
   replaceActivityTags: (movementKey: string, tagIds: readonly string[]) => Promise<unknown>;
   confirmActivityTransfer: (movementKey: string, counterpartKey: string) => Promise<unknown>;
   rejectActivityTransfer: (movementKey: string) => Promise<unknown>;

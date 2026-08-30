@@ -26,18 +26,25 @@ from .core import ProjectionCore
 
 
 def _record_for(core: ProjectionCore, m) -> dict | None:
-    """The record a movement's category is read off: a per-transaction override
-    wins, else the strongest catalog record its merchant is filed under."""
+    """Return the highest-precedence category record for a movement.
+
+    A human or model movement override wins. An import default is the last
+    fallback: positive merchant knowledge replaces it when available.
+    """
     override = core._categories.get(m.key)
-    return (override if override is not None
-            else merchants_view.merchant_record(core, m))
+    merchant = merchants_view.merchant_record(core, m)
+    if override is not None and override.get("by") != "default":
+        return override
+    return merchant or override
 
 
 def derived_category(core: ProjectionCore, m) -> dict | None:
-    """A movement's effective category: a per-transaction override wins,
-    else the strongest catalog record its merchant is filed under, else
-    None. Returns the ruling dict ({category, grade, ...}) with its labels
-    canonicalized."""
+    """Return a movement's canonical effective category record.
+
+    The order is a human or model movement override, merchant catalog record,
+    import default, then None. Returns the ruling dict ({category, grade, ...})
+    with its labels canonicalized.
+    """
     found = _record_for(core, m)
     if found is None:
         return None
@@ -213,12 +220,13 @@ def spending_by_category(core: ProjectionCore,
                          currency: str | None = None) -> dict[str, Decimal]:
     """Real spending grouped by category: every expense movement, card
     purchases included, bucketed by its *derived* category (override →
-    merchant catalog → ``Uncategorized``). Positive magnitudes;
+    merchant catalog → import default → ``Uncategorized``). Positive magnitudes;
     ``currency`` filters if given.
 
     Exclusion is by **nature**, not merely by link, so an internal movement
     that never linked — a card payment, a brokerage contribution — is not
-    counted, and `transfers` never appears as a line item inside spending."""
+    counted. Category is only the filing label: a peer-payment default may
+    still read `transfers` until the person corrects its economic treatment."""
     out: dict[str, Decimal] = {}
     for m in movements_view.movements(core):
         if not movements_view.counts_as_spending(m):
@@ -307,7 +315,8 @@ def uncategorized_merchants(core: ProjectionCore,
     out: dict[str, dict] = {}
     source = (uncategorized_expenses(core) if expenses_only
               else [m for m in movements_view.movements(core)
-                    if derived_category(core, m) is None])
+                    if ((derived_category(core, m) or {}).get("by") == "default"
+                        or derived_category(core, m) is None)])
     for m in source:
         key = merchants_view.merchant_key_of(core, m)
         if not key:

@@ -28,7 +28,7 @@
 
 ### MON-92 — a per-transaction assignment can say what a movement *is*
 **State:** enforced
-**Code:** product/viva/ingest/categorize.py:96 (`assign_category(..., nature=)`); product/viva/ledger/projection/movements.py:270 (the overlay's `nature` read at the ruling rung)
+**Code:** product/viva/ingest/categorize.py (`assign_category(..., nature=)`); product/viva/ledger/projection/movements.py (`decide_nature`, the overlay's `nature` read at the ruling rung)
 **Test:** product/tests/test_nature.py::test_a_human_ruling_beats_the_implication
 
 1. A category assignment may carry a nature — `spending`, `transfer` or `settlement`.
@@ -36,7 +36,7 @@
 
 ### MON-22 — a personal category never reaches a shared surface
 **State:** enforced
-**Code:** product/viva/ingest/categorize.py:298 (`export_catalog`)
+**Code:** product/viva/ingest/categorize.py (`export_catalog`)
 **Test:** product/tests/test_merchants.py::test_export_catalog_is_linted_and_carries_no_amounts
 
 1. Nothing personal — a custom label, an amount, a raw descriptor — enters the exported catalog, `merchantcore`, or the commons (T9).
@@ -54,11 +54,11 @@
 
 ## Why
 
-Merchant-level categorization is right when the merchant *is* the category: a warehouse club is always groceries, a streaming service always entertainment. It is wrong when the "merchant" is a person. A peer-transfer descriptor normalizes to a peer, and peers have no stable category — the same counterpart is a gift one month, a loan repayment the next, a split dinner the third. `is_shareable` already keeps these out of enrichment for privacy (T9), which is exactly why they sit uncategorized after a run: they cannot be solved by the shareable, commons path *by construction*. They need a local, per-transaction path that never leaves the vault.
+Merchant-level categorization is right when the merchant *is* the category: a warehouse club is always groceries, a streaming service always entertainment. It is wrong when the "merchant" is a person. A peer-transfer descriptor normalizes to a peer, and peers have no stable category — the same counterpart is a gift one month, a loan repayment the next, a split dinner the third. `is_shareable` already keeps these out of enrichment for privacy (T9), so they cannot be solved by the shareable, commons path *by construction*. After a posted statement, a descriptor whose typed grammar declares a person gets a replaceable movement-scoped `transfers` default and transfer treatment, so it does not enter spending before the person says it was ordinary spending or a loan. It remains private and available for that local correction. Other unidentified movements start at the equally replaceable `other` default.
 
 Two of those transaction types are not even spending. A loan repaid, or money a friend paid back, is a transfer or a settlement, so the local path must be able to say *what a movement is*, not only which spending bucket it falls in — otherwise the honesty guarantee (spending excludes non-spending) breaks the moment a person categorizes their first peer payment. Letting the assignment carry a nature keeps the person's action one gesture; routing it to a one-sided transfer mechanism is reserved for when a real counterpart appears and can corroborate.
 
-Almost none of this needed new mechanism. The category overlay already derives as *per-movement override, else merchant prior, else Uncategorized*; the assignment is already keyed to the individual movement, graded `verified`, and already beats the merchant-level default. Two peer payments already carry different categories through two events on different movement keys. Categories are already open strings. What was left was exposure, plus the two genuine modeling decisions above.
+Almost none of this needed new mechanism. The category overlay already derives as *human per-movement override, else merchant prior, else import default, else Uncategorized*; the assignment is already keyed to the individual movement, and a person's correction is graded `verified`. The unverified import default deliberately yields to later catalog knowledge, while a human movement correction beats both. Two peer payments already carry different categories through two events on different movement keys. Categories are already open strings. What was left was exposure, plus the two genuine modeling decisions above.
 
 The scale is what made the boundary concrete: a real enrichment run left a large share of the vault sitting as peer and settlement money the commons path cannot and should not touch.
 

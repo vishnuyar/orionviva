@@ -22,9 +22,10 @@ import uuid
 
 from . import reply
 from .env import locale_from_env
-from .ingest import (apply_human_correction, apply_identity_ruling,
-                     assign_category, assign_merchant_category,
-                     capture_and_ingest, confirm_transfer, reject_transfer)
+from .ingest import (BALANCE_IDENTITY, POSTED, apply_human_correction,
+                     apply_identity_ruling, assign_category,
+                     assign_merchant_category, capture_and_ingest,
+                     confirm_transfer, profile_for, reject_transfer)
 from .ledger.merchants import normalize_merchant as normalize
 from .persona import moment
 from .reply import MAX_REPLY_TOKENS, Slot, read_reply
@@ -685,7 +686,9 @@ def assign_merchant(vault: Vault, merchant: str, category: str) -> dict:
 def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
                        target_index: int | None = None) -> dict:
     """Apply a person's ruling on a held statement and re-post it."""
+    posted_before = vault.ledger.projection().posted_doc_ids()
     res = apply_human_correction(vault.ledger, doc_id, field, value, target_index)
+    _categorize_new_balance_statements(vault, posted_before)
     return {
         "action": res.action, "grade": res.grade, "account": res.account,
         "message": res.message,
@@ -694,9 +697,24 @@ def confirm_correction(vault: Vault, doc_id: str, field: str, value: str,
 
 def confirm_identity(vault: Vault, doc_id: str, decision: str) -> dict:
     """Apply a person's ruling on an ambiguous account identity ('same' / 'new')."""
+    posted_before = vault.ledger.projection().posted_doc_ids()
     res = apply_identity_ruling(vault.ledger, doc_id, decision)
+    _categorize_new_balance_statements(vault, posted_before)
     return {"ok": True, "action": res.action, "grade": res.grade,
             "account": res.account, "message": res.message}
+
+
+def _categorize_new_balance_statements(vault: Vault,
+                                       posted_before: set[str]) -> None:
+    """Default every balance statement posted during one user operation."""
+    projection = vault.ledger.projection()
+    captured_types = projection.captured_docs()
+    newly_posted = projection.posted_doc_ids() - posted_before
+    from .ingest import assign_default_categories
+    for doc_id in sorted(newly_posted):
+        profile = profile_for(captured_types.get(doc_id, ""))
+        if profile is not None and profile.identity == BALANCE_IDENTITY:
+            assign_default_categories(vault.ledger, doc_id)
 
 
 def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:
@@ -704,8 +722,11 @@ def upload(vault: Vault, filename: str, data: bytes, read_fn) -> dict:
 
     Returns the outcome — `action`, `grade`, `doc_type`, `account`,
     `auto_corrected`, `message`, and the `finding` when one was raised."""
+    posted_before = vault.ledger.projection().posted_doc_ids()
     res = capture_and_ingest(vault.raw, vault.ledger, data, read_fn,
                              filename=filename, captured_at=_today())
+    # Assign defaults only to balance statements posted by this operation.
+    _categorize_new_balance_statements(vault, posted_before)
     projection = vault.ledger.projection()
     attempted = res.doc_id in projection.read_attempted_docs()
     parsed = res.doc_id in projection.read_parsed_docs()
