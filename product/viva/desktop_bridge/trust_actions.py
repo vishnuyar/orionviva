@@ -1,25 +1,15 @@
-"""Injected vault-backed Trust actions: the maintenance run, and a file to send.
+"""Serve vault-backed maintenance and privacy-filtered diagnostic actions.
 
-This module knows neither the vault implementation nor the desktop transport. A
-sidecar entry point injects one already-open vault and gets back the handlers.
-
-**Unattended work is asked for, and its dry run is the default.** The agent
-spends money, so a request that does not say to spend plans and stops at the
-line where money starts. Saying to spend is a person's own word, the same shape
-as saying yes to a model at all, and the reply reports what was actually spent
-rather than what was budgeted.
-
-**Nothing about a person's money leaves in the diagnostic.** The file is built
-from a list of what may be said rather than by taking a vault and removing what
-must not travel — a scrubber is a list of what to take out, and that list is
-wrong the first time somebody adds a field. What this handler contributes is
-four counts it takes itself; nothing it hands over came off a document.
+Maintenance plans without spending by default. Paid maintenance runs as a
+durable background job. Diagnostics contain only allowlisted operational
+counts computed by this module and no document-derived values.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
+from threading import Thread
 from typing import Any
 
 from viva.surface import ActionOutcome
@@ -31,9 +21,7 @@ UNCONFIGURED = "no_model_named"
 UNWRITABLE = "file_unwritable"
 CANCELLED = "job_cancelled"
 
-# The steps a wake declares. Observing and assessing happen before anything is
-# spent, and the spending is its own step for the same reason the reading half
-# of a capture is: it is the part a person is paying for.
+# The named planning and paid-execution steps of one maintenance job.
 PLANNED = "planned"
 SPENT = "spent"
 MAINTENANCE_STEPS = (PLANNED, SPENT)
@@ -47,17 +35,28 @@ class TrustActions:
         self._jobs = jobs if jobs is not None else JobRegistry()
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Wake the agent once, planning by default and spending only if asked.
+        """Plan once by default, or enqueue one paid run when requested.
 
-        The reply carries the whole run — what was seen, what was held back,
-        what was deferred over budget and what was done — because a report of
-        unattended work that summarised itself would be the one place in this
-        product where somebody has to take a summary on trust."""
+        A dry run returns its report. A paid run returns its durable job id;
+        progress and completion remain available through the job registry.
+        """
         from viva.agent.run import wake
         from viva.persona import moment
 
         spend, budget = _run_request(payload)
+        if spend:
+            active = self._jobs.active("viva.maintenance.run")
+            if active is not None:
+                return ActionOutcome(
+                    "completed", moment("maintenance_started"),
+                    state={"job_id": active.job_id, "queued": True}).as_dict()
         job = self._jobs.open("viva.maintenance.run", MAINTENANCE_STEPS)
+        if spend:
+            Thread(target=self._spend_in_background,
+                   args=(job, budget), daemon=True).start()
+            return ActionOutcome(
+                "completed", moment("maintenance_started"),
+                state={"job_id": job.job_id, "queued": True}).as_dict()
         try:
             with job:
                 job.checkpoint()
@@ -80,12 +79,33 @@ class TrustActions:
                                  reason=CANCELLED,
                                  state={"job_id": job.job_id}).as_dict()
 
-    def diagnose(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Write a file somebody can send, holding nothing about their money.
+    def _spend_in_background(self, job, budget: int | None) -> None:
+        """Run paid maintenance on isolated caches without pumping transport."""
+        from viva.agent.run import wake
 
-        The counts are taken here because this is where a vault is; what they
-        are counts *of* is decided where the file is built, and nothing but
-        counts crosses between the two."""
+        try:
+            with job:
+                # Background cancellation is read from the registry.
+                job.checkpoint(pump=False)
+                worker_vault = (self._vault.fork_for_background()
+                                if hasattr(self._vault, "fork_for_background")
+                                else self._vault)
+                # Planning completes before the cancellable paid step begins.
+                wake(worker_vault, remaining_calls=budget, dry_run=True)
+                job.reached(PLANNED, "Maintenance plan completed.")
+                job.checkpoint(pump=False)
+                run = wake(worker_vault, remaining_calls=budget, dry_run=False)
+                if run.could_not_spend:
+                    job.fail("Maintenance could not spend because no model is configured.")
+                    return
+                job.reached(
+                    SPENT,
+                    f"Maintenance completed using {run.calls_spent} model call(s).")
+        except JobCancelled:
+            return
+
+    def diagnose(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Write a diagnostic containing allowlisted operational counts."""
         from viva.persona import moment
         from viva.surface.diagnostics import written
 
@@ -100,18 +120,18 @@ class TrustActions:
                              state={"file": str(path)}).as_dict()
 
     def _counts(self) -> dict[str, int]:
-        """The four numbers the file carries, and no fifth.
-
-        Counted here rather than passed in, so what a caller sends cannot
-        decide what a diagnostic says about their vault."""
+        """Return the diagnostic's five allowlisted operational counts."""
         projection = self._vault.ledger.projection()
         events = list(self._vault.events())
+        from viva.questions import open_questions
+        question_count = open_questions(projection, limit=1)["total"]
         return {
             "documents": len(projection.captured_docs()),
             "events": len(events),
             "model_calls": sum(1 for event in events
                                if event.event_type == "ReadRecorded"),
-            "open_questions": len(projection.open_holds()),
+            "open_document_holds": len(projection.open_holds()),
+            "open_conversation_questions": question_count,
         }
 
 

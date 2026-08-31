@@ -67,6 +67,14 @@ def test_what_is_still_open_is_carried_apart_from_what_this_pass_did():
     assert view["standing"][0]["sentence"] == moment("rescan_open", count=render.count(5))
 
 
+def test_open_transfer_reviews_carry_stable_activity_destinations():
+    view = rescan({**NOTHING, "suggested": 2,
+                   "review_movements": ["movement:b", "", "movement:a",
+                                        "movement:a"]})
+
+    assert view["standing"][0]["movement_ids"] == ["movement:a", "movement:b"]
+
+
 def test_a_pass_that_changed_something_says_what_it_did_not_do():
     """The obvious next thought after "it went back over everything" is that it
     read the documents. It did not."""

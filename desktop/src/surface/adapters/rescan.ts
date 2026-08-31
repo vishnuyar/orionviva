@@ -10,7 +10,10 @@ function change(raw: unknown): RescanChange | null {
   const count = optionalNonNegativeInteger(raw.count);
   const sentence = textValue(raw.sentence);
   if (!id || count === undefined || !sentence.trim()) return null;
-  return { id, count, sentence };
+  const movementIds = Array.isArray(raw.movement_ids)
+    ? [...new Set(raw.movement_ids.map(textValue).filter(Boolean))].sort()
+    : [];
+  return { id, count, sentence, ...(movementIds.length ? { movementIds } : {}) };
 }
 
 function rows(raw: unknown): readonly RescanChange[] {

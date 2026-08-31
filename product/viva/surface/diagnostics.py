@@ -34,9 +34,11 @@ from typing import Any
 # written, so adding one is an edit to this line and shows up in a diff as
 # exactly the decision it is.
 FIELDS = (
+    "diagnostic_schema", "count_definitions",
     "build", "python", "platform",
     "model_named", "model_adapter", "locale", "currency",
     "documents", "events", "model_calls", "open_questions",
+    "open_document_holds", "open_conversation_questions",
 )
 
 
@@ -53,6 +55,12 @@ def diagnostics(counts: dict[str, int] | None = None) -> dict[str, Any]:
     settings = current()
     counted = counts or {}
     return {
+        "diagnostic_schema": 2,
+        "count_definitions": {
+            "open_document_holds": "documents captured but not posted",
+            "open_conversation_questions": "live questions awaiting a person or document",
+            "open_questions": "legacy alias of open_conversation_questions",
+        },
         "build": source_revision(),
         "python": sys.version.split()[0],
         # The platform family and nothing finer. A machine's hostname is a name.
@@ -66,7 +74,10 @@ def diagnostics(counts: dict[str, int] | None = None) -> dict[str, Any]:
         "documents": _count(counted, "documents"),
         "events": _count(counted, "events"),
         "model_calls": _count(counted, "model_calls"),
-        "open_questions": _count(counted, "open_questions"),
+        "open_questions": _count(counted, "open_conversation_questions"),
+        "open_document_holds": _count(counted, "open_document_holds"),
+        "open_conversation_questions": _count(
+            counted, "open_conversation_questions"),
     }
 
 

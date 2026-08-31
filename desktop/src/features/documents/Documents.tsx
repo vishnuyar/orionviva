@@ -17,7 +17,7 @@ import { documentRowLabel, resolveDocumentSelection } from "./documentPresentati
 export type CaptureControls = { state: CaptureActionState; onChoose: (() => void) | null; job: JobView | null; cancel: CancelActionState; onStop: ((jobId: string) => void) | null };
 // What a screen needs to send this vault back over what it already holds, and
 // to say what came of it. A source that cannot do it carries none of this.
-export type RescanControls = { state: RescanActionState; onRescan: () => void };
+export type RescanControls = { state: RescanActionState; onRescan: () => void; onReviewMovement?: (movementId: string) => void };
 type DocumentsProps = { rescan: RescanControls | null; result: FeatureResult<DocumentsData>; selectedDocument: string; capture: CaptureControls | null; onSelectDocument: (id: string) => void; onOpenEvidence: (link: EvidenceLink) => void; onExploreSample: () => void };
 
 // The one sentence this panel says, and the only place it is said. What the
@@ -91,7 +91,7 @@ function RescanPanel({ rescan }: { rescan: RescanControls }) {
     {report ? <div className="document-rescan-answer">
       <p>{report.sentence}</p>
       {report.changes.length ? <ul>{report.changes.map((change) => <li key={change.id}>{change.sentence}</li>)}</ul> : null}
-      {report.standing.length ? <ul className="document-rescan-standing">{report.standing.map((item) => <li key={item.id}>{item.sentence}</li>)}</ul> : null}
+      {report.standing.length ? <ul className="document-rescan-standing">{report.standing.map((item) => <li key={item.id}><span>{item.sentence}</span>{rescan.onReviewMovement ? (item.movementIds ?? []).map((movementId) => <button key={movementId} className="secondary-button" type="button" onClick={() => rescan.onReviewMovement?.(movementId)}>Review transfer</button>) : null}</li>)}</ul> : null}
     </div> : null}
     {unread ? <p className="document-rescan-answer">Your vault answered in a way this screen does not recognise, so it will not say what that pass did.</p> : null}
   </section>;
@@ -126,7 +126,7 @@ function RelatedEvidence() {
 }
 
 function Limitations() {
-  return <section className="document-limitations"><h4>Unavailable in this preview</h4><ul><li id="document-page-review-unavailable">Page and source-region review are not connected.</li><li>Focused correction is not connected.</li><li>Restart recovery is not connected: a job does not survive the sidecar it ran in.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></section>;
+  return <section className="document-limitations"><h4>Unavailable in this preview</h4><ul><li id="document-page-review-unavailable">Page and source-region review are not connected.</li><li>Focused correction is not connected.</li><li>Ledger posting is not available from this screen.</li><li>Outbound actions and outbound history are not connected.</li><li>No control here changes a document or vault.</li></ul></section>;
 }
 
 function DocumentDetail({ document }: { document: SurfaceDocument }) {
@@ -135,6 +135,8 @@ function DocumentDetail({ document }: { document: SurfaceDocument }) {
     <DetailField label="Document name" value={document.name.trim() || "Document name was not supplied by this read."} />
     <DetailField label="Type" value={document.docType?.trim() || "Document type was not supplied by this read."} />
     <DetailField label="Resolution" value={document.resolved === true ? "Resolved" : document.resolved === false ? "Unresolved" : "Resolution status was not supplied by this read."} help="Resolution status does not say whether the document was verified or posted." />
+    <DetailField label="Snapshot" value={document.snapshotSentence?.trim() || "Snapshot status was not supplied by this read."} />
+    <DetailField label="Brokerage activity" value={document.activitySentence?.trim() || "Activity status was not supplied by this read."} />
     <DetailField label="Unresolved reason" value="An unresolved reason is not supplied by this read." />
     <DetailField label="Original" value={document.rawAvailable === true ? "Available" : document.rawAvailable === false ? "Unavailable" : "Original availability was not supplied by this read."} help="This status says only whether an original is available; it does not say that the original can be opened or reviewed from this screen." />
     <DetailField label="Lifecycle" value="Lifecycle is not supplied by this vault read." />

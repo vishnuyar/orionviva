@@ -237,9 +237,10 @@ BY_UNTIL = "until"            # one edge: the day it runs to
 BY_SUBCATEGORY = "subcategory"
 BY_TAG = "tag"
 BY_CURRENCY = "currency"
+BY_KIND = "kind"
 
 SELECTED_KINDS = (BY_ACCOUNT, BY_CATEGORY, BY_MERCHANT, BY_PERIOD, BY_SINCE,
-                  BY_UNTIL, BY_SUBCATEGORY, BY_TAG, BY_CURRENCY)
+                  BY_UNTIL, BY_SUBCATEGORY, BY_TAG, BY_CURRENCY, BY_KIND)
 
 # The one member that takes two days rather than one.
 _TWO_ENDED = (BY_PERIOD,)
@@ -294,53 +295,13 @@ class Boundary(dict):
 
 def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
             cut=(), unmeasured=(), unposted: int = 0) -> Boundary:
-    """What one figure was taken over, and whether that set is everything the
-    quantity it declares would range over.
+    """Build and validate one figure's population and evidence boundary.
 
-    ``whole`` is the load-bearing word: True says the set and the quantity are
-    the same thing, and there is nothing further to say. False says they are
-    not, and whatever else is passed says how they differ — which may be
-    nothing, since a figure can be a member of the set it was taken from
-    without any filter having narrowed that set. A total of one category is a
-    real figure and it is not every movement its quantity names, so it is not
-    whole however exactly it was arrived at.
-
-    ``counted`` of ``held`` accounts is one of N: a per-account balance stated
-    where a total was asked for is a true figure over the wrong set.
-    ``selected`` names how the set was narrowed, each entry a member of
-    ``SELECTED_KINDS`` with the thing it was narrowed to — ``value``, plus
-    ``to`` for the members that take two days. ``cut`` names every slice THIS
-    figure is the intersection of, in the same vocabulary and under the same
-    checks: a read narrowed to one counterparty and grouped into ten totals
-    cuts ten ways, and each of those figures is that counterparty AND its own
-    group. A figure is the set its cuts name together, so what a sentence about
-    it may claim is decided by the whole set rather than by any one of them,
-    and a counterparty's groceries and a counterparty's total are told apart by
-    what they declare rather than by what their numbers look like.
-
-    One axis is named once. Two entries of one axis would be two narrowings of
-    the same thing offered as a set, and no single set is what they describe.
-
-    A cut is the only entry a whole figure may still carry, because it is the
-    only one that is not a way of falling short. It says WHICH slices the
-    figure is; ``whole`` says whether those slices together are everything the
-    quantity ranges over. The one group of a grouping that partitions is both —
-    it is the groceries group and it is all of the spending — and a block of
-    rows needs its name whichever it is. Nothing is said about it either way: a
-    whole figure states no boundary at all.
-
-    ``unmeasured`` names what the figure claims to measure and does not
-    include, each with why it is out and the document that would settle it —
-    which a gap of a reason that has one must carry, and a gap of a reason that
-    has none may not be asked for.
-    ``unposted`` counts documents read and not posted: they are a gap of the
-    same standing that no account can name, because such a document may be
-    about an account that does not exist yet, so it is counted rather than
-    listed and is said as a number of documents.
-
-    A whole set excludes nothing, so a figure declaring one and also naming
-    what it leaves out is a contradiction, and it is refused where the emitter
-    is written rather than read as a disclosure by whoever places it."""
+    ``whole`` states population completeness. ``selected`` records read-level
+    narrowing and ``cut`` records this figure's slices. ``unmeasured`` and
+    ``unposted`` record evidence gaps independently of population completeness.
+    Each axis may appear once in ``cut``.
+    """
     counts = {"counted": int(counted), "held": int(held)}
     if counts["counted"] < 0 or counts["counted"] > counts["held"]:
         raise ValueError(f"a figure covering {counts['counted']} of "
@@ -400,10 +361,6 @@ def bounded(*, whole: bool, counted: int = 0, held: int = 0, selected=(),
     if int(unposted) < 0:
         raise ValueError("a figure cannot be short of a negative number of "
                          "documents")
-    if whole and (chosen or left_out or int(unposted)
-                  or counts["counted"] != counts["held"]):
-        raise ValueError("a figure whose set is everything it claims to "
-                         "measure cannot also name what it leaves out")
     out = Boundary(whole=bool(whole))
     if counts["held"]:
         out["accounts"] = counts

@@ -8,10 +8,10 @@ import { useSurfaceSession } from "./useSurfaceSession";
 import { destinations } from "./navigation";
 import { retainSelection } from "./selection";
 
-const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", sample: false, frame: null, load: async () => liveReadingSnapshot(), activityActions: { assignCategory: async () => ({ state: "unanswered" }), assignMeaning: async () => ({ state: "unanswered" }), replaceTags: async () => ({ state: "unanswered" }), confirmTransfer: async () => ({ state: "unanswered" }), rejectTransfer: async () => ({ state: "unanswered" }), unlinkTransfer: async () => ({ state: "unanswered" }) }, documentActions: null, jobStream: null, transferActions: null, settingsActions: null, conversationActions: null, trustActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "not asked" }, registry: { state: "unavailable", reason: "not asked" }, lifecycle: { state: "unavailable", reason: "not asked" } }) };
+const liveSource: SurfaceSource = { id: "bridge-client", label: "Private vault", description: "Private", sample: false, frame: null, load: async () => liveReadingSnapshot(), activityActions: { read: async () => ({ state: "absent", reason: "not asked" }), assignCategory: async () => ({ state: "unanswered" }), assignMeaning: async () => ({ state: "unanswered" }), replaceTags: async () => ({ state: "unanswered" }), confirmTransfer: async () => ({ state: "unanswered" }), rejectTransfer: async () => ({ state: "unanswered" }), unlinkTransfer: async () => ({ state: "unanswered" }) }, documentActions: null, jobStream: null, transferActions: null, settingsActions: null, conversationActions: null, trustActions: null, describe: async () => ({ identity: { state: "unavailable", reason: "not asked" }, registry: { state: "unavailable", reason: "not asked" }, lifecycle: { state: "unavailable", reason: "not asked" } }) };
 function deferred<T>() { let resolve!: (value: T) => void; let reject!: (reason?: unknown) => void; const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; }); return { promise, resolve, reject }; }
 function ok<T>(requestId: string, result: T): BridgeResponse<T> { return { protocol: "1.0", request_id: requestId, ok: true, result }; }
-function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] } : { questions: [], total: 0 }; }
+function emptyPayload(surface: SurfaceName) { return surface === "overview" ? { accounts: [] } : surface === "documents" ? { documents: [] } : surface === "conversation" ? { turns: [], questions: [], total: 0 } : surface === "jobs" ? { state: "absent", jobs: [], running: [] } : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] } : surface === "trust" ? { state: "ready", notes: [], outbound: { state: "ready", sentence: "Nothing has left.", call_count: 0, phases: [], models: [], model_sentence: "", span: null, cost: null, absences: [] } } : surface === "activity" ? activityPayload() : { questions: [], total: 0 }; }
 function activityPayload(categoryId = "groceries", categoryLabel = "Groceries") {
   return {
     state: "ready", sentence: "Everything below came off a document you added.", beyond: { count: 0 },
@@ -97,8 +97,9 @@ describe("surface session", () => {
     const before = { ...initialSession(), requestId: 7, source: liveSource, snapshot: readyLive() };
     const trust = { state: "ready" as const, data: { notes: [], outbound: { sentence: "One call left.", callCount: 1, phases: [], models: [], reportedModels: [{ name: "provider-model", count: 1 }], modelSentence: "", span: null, cost: null, absences: [] } } };
 
-    const after = sessionReducer(before, {
-      type: "asked", requestId: 7, question: "What changed?", trust, conversation: before.snapshot.conversation,
+    const refreshed = sessionReducer(before, { type: "mutation-loaded", requestId: 7, snapshot: { ...before.snapshot, trust } });
+    const after = sessionReducer(refreshed, {
+      type: "asked", requestId: 7, question: "What changed?",
       result: { state: "settled", outcome: { kind: "completed", message: "Answered.", reason: "" } },
       turn: null,
     });
@@ -195,6 +196,25 @@ describe("surface session", () => {
     if (result.current.session.snapshot.overview.state === "ready") expect(result.current.session.snapshot.overview.data.accounts[0].id).toBe("newest-account");
   });
 
+  it("restores persisted maintenance receipts when a vault opens", async () => {
+    const restored = { job_id: "viva.maintenance.run-4", operation: "viva.maintenance.run", state: "failed", completed: 1, total: 2, message: "Interrupted when the app closed; start maintenance again to continue.", step: "planned", attempt: 1, steps: ["planned", "spent"], cancellable: false };
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.surface.read") {
+        const surface = frame.payload.surface as SurfaceName;
+        const data = surface === "jobs" ? { state: "ready", jobs: [restored], running: [] } : completeSurfacePayload(surface);
+        return ok(frame.requestId, { surface, job_id: "job", data } as T);
+      }
+      return ok(frame.requestId, {} as T);
+    } };
+
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+
+    expect(result.current.session.jobs).toHaveLength(1);
+    expect(result.current.session.jobs[0]).toMatchObject({ jobId: restored.job_id, operation: "viva.maintenance.run", state: "failed" });
+  });
+
   it("a newer private request beats reads from an older request", async () => {
     const oldReads = Array.from({ length: 5 }, () => deferred<BridgeResponse<unknown>>());
     let openCount = 0; let oldReadIndex = 0;
@@ -275,8 +295,8 @@ describe("surface session", () => {
     // The question is set aside, not destroyed: the read that followed says so.
     if (result.current.session.snapshot.conversation.state === "ready") expect(result.current.session.snapshot.conversation.data.questions.meta.pending).toEqual({ count: 1 });
     expect(result.current.session.selectedQueue).toBe("");
-    // Only review was asked for again. Nothing else claims to have been re-read.
-    expect(frames.filter((frame) => frame.payload.surface === "overview")).toHaveLength(1);
+    // A mutation refreshes every financial surface.
+    expect(frames.filter((frame) => frame.payload.surface === "overview")).toHaveLength(2);
 
     act(() => result.current.selectQueue("another-question"));
     expect(result.current.session.questionAction).toEqual({ state: "idle" });
@@ -401,15 +421,16 @@ describe("surface session", () => {
     if (result.current.session.snapshot.activity.state === "ready") expect(result.current.session.snapshot.activity.data.movements[0].category.id).toBe("groceries");
     act(() => { void result.current.replaceActivityTags("movement:key", []); });
     expect(frames.filter((frame) => frame.operation.startsWith("viva.activity."))).toHaveLength(1);
-    expect(frames.filter((frame) => frame.operation === "viva.surface.read")).toHaveLength(6);
+    expect(frames.filter((frame) => frame.operation === "viva.surface.read")).toHaveLength(7);
 
     await act(async () => { refreshGate.resolve(); await pending; });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind: "completed" } } });
     if (result.current.session.snapshot.activity.state === "ready") expect(result.current.session.snapshot.activity.data.movements[0].category.id).toBe("housing");
     const relevant = frames.filter((frame) => frame.operation.startsWith("viva.activity.") || frame.operation === "viva.surface.read");
-    expect(relevant.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(relevant.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
     expect(relevant[0].payload).toEqual({ movement_key: "movement:key", category_id: "housing" });
-    expect(relevant.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity", "plans"]);
+    expect(relevant.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity", "plans", "jobs"]);
+    expect(relevant.find((frame) => frame.payload.surface === "activity")?.payload.parameters).toEqual({ limit: 50, focus: "movement:key" });
   });
 
   it.each(["refused", "stale"] as const)("fully rereads after a typed %s Activity outcome", async (kind) => {
@@ -426,7 +447,7 @@ describe("surface session", () => {
     frames.length = 0;
     await act(async () => { await result.current.replaceActivityTags("movement:key", []); });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind } } });
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.replace_tags", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.replace_tags", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
   });
 
   it.each([
@@ -451,9 +472,9 @@ describe("surface session", () => {
       else await result.current.unlinkActivityTransfer("movement:key", "movement:counterpart");
     });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "settled", outcome: { kind: "completed" } } });
-    expect(frames.map((frame) => frame.operation)).toEqual([operation, "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(frames.map((frame) => frame.operation)).toEqual([operation, "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
     expect(frames[0].payload).toEqual(expectedPayload);
-    expect(frames.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity", "plans"]);
+    expect(frames.slice(1).map((frame) => frame.payload.surface)).toEqual(["overview", "documents", "conversation", "trust", "activity", "plans", "jobs"]);
   });
 
   it("retains the suggested transfer through confirm and refresh, then replaces it only from the full reread", async () => {
@@ -488,6 +509,37 @@ describe("surface session", () => {
     if (result.current.session.snapshot.activity.state === "ready") expect(result.current.session.snapshot.activity.data.movements[0].transfer?.state).toBe("none");
   });
 
+  it("does not let an older Load More response replace Activity after a mutation refresh", async () => {
+    const page = deferred<BridgeResponse<unknown>>();
+    let afterWrite = false;
+    window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
+      if (frame.operation === "bridge.open_vault") return ok(frame.requestId, { state: "opened" } as T);
+      if (frame.operation === "viva.activity.assign_category") {
+        afterWrite = true;
+        return ok(frame.requestId, { kind: "completed", message: "Category recorded.", state: null, reason: null } as T);
+      }
+      if (frame.operation === "viva.surface.read") {
+        const surface = frame.payload.surface as SurfaceName;
+        if (surface === "activity" && (frame.payload.parameters as { limit?: number }).limit === 100) return page.promise as Promise<BridgeResponse<T>>;
+        const raw = surface === "activity" ? activityPayload(afterWrite ? "housing" : "groceries", afterWrite ? "Housing" : "Groceries") : completeSurfacePayload(surface);
+        if (surface === "activity" && !afterWrite) (raw as ReturnType<typeof activityPayload>).beyond.count = 1;
+        return ok(frame.requestId, { surface, job_id: "job", data: raw } as T);
+      }
+      return ok(frame.requestId, {} as T);
+    } };
+    const { result } = renderHook(() => useSurfaceSession());
+    await act(async () => { await result.current.openVault("/vault", "secret", false); });
+
+    let paging!: Promise<void>;
+    act(() => { paging = result.current.loadMoreActivity(); });
+    await act(async () => { await result.current.assignActivityCategory("movement:key", "housing"); });
+    page.resolve(ok("page", { surface: "activity", job_id: "page", data: activityPayload("groceries", "Groceries") }));
+    await act(async () => { await paging; });
+
+    if (result.current.session.snapshot.activity.state !== "ready") throw new Error("fixture");
+    expect(result.current.session.snapshot.activity.data.movements[0].category.id).toBe("housing");
+  });
+
   it("still fully rereads after an impossible Activity receipt is bounded as unreadable", async () => {
     const frames: BridgeRequest[] = [];
     window.orionVivaBridge = { request: async <T>(frame: BridgeRequest) => {
@@ -502,7 +554,7 @@ describe("surface session", () => {
     frames.length = 0;
     await act(async () => { await result.current.assignActivityCategory("movement:key", "housing"); });
     expect(result.current.session.activityAction).toMatchObject({ state: "settled", refresh: "refreshed", result: { state: "unreadable" } });
-    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
+    expect(frames.map((frame) => frame.operation)).toEqual(["viva.activity.assign_category", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read", "viva.surface.read"]);
   });
 
   it("retains the old full picture and outcome when any post-write surface read is invalid", async () => {

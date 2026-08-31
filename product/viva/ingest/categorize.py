@@ -183,6 +183,29 @@ def assign_default_categories(ledger: Ledger, doc_id: str) -> int:
     return assigned
 
 
+def open_loan_receivables_at(projection, movement) -> list[tuple[str, Decimal]]:
+    """Named receivables with principal outstanding on ``movement``'s date."""
+    from ..ledger.projection.movements import money_effect
+
+    open_loans: list[tuple[str, Decimal]] = []
+    accounts = {
+        other.ruling_account
+        for other in projection.movements()
+        if (other.ruling_account or "").startswith("Assets:Loans:")
+    }
+    for account in accounts:
+        outstanding = Decimal("0")
+        for other in projection.movements():
+            if (other.key == movement.key or other.date > movement.date
+                    or other.currency != movement.currency
+                    or other.ruling_account != account):
+                continue
+            outstanding += -money_effect(other)
+        if outstanding > 0:
+            open_loans.append((account, outstanding))
+    return sorted(open_loans)
+
+
 def assign_movement_meaning(ledger: Ledger, movement_key: str, meaning: str,
                             counterparty: str = "") -> bool:
     """Record one movement's economic treatment without opening an account.
@@ -228,13 +251,8 @@ def assign_movement_meaning(ledger: Ledger, movement_key: str, meaning: str,
         if meaning == MEANING_LOAN_REPAYMENT:
             if effect <= 0:
                 raise ValueError("a loan repayment must move money in")
-            outstanding = Decimal("0")
-            for other in proj.movements():
-                if (other.key == movement.key or other.date > movement.date
-                        or other.currency != movement.currency
-                        or other.ruling_account != account):
-                    continue
-                outstanding += -money_effect(other)
+            outstanding = dict(open_loan_receivables_at(proj, movement)).get(
+                account, Decimal("0"))
             if outstanding <= 0:
                 raise ValueError("no matching loan principal is outstanding")
             if effect > outstanding:

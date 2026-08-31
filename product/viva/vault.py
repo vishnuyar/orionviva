@@ -63,6 +63,11 @@ class Vault:
     raw: RawStore
     directory: Path
 
+    def fork_for_background(self) -> "Vault":
+        """Isolate background caches while retaining this unlocked vault."""
+        return Vault(ledger=self.ledger.fork(), raw=self.raw.fork(),
+                     directory=self.directory)
+
     @classmethod
     def open(cls, directory: Path, passphrase: str,
              create: bool = True) -> "Vault":

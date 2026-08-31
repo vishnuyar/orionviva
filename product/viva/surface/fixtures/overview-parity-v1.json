@@ -14,72 +14,11 @@
           },
           "items": [
             {
-              "account": "acct:rainy-day-savings",
-              "actions": [
-                "assign_category",
-                "assign_meaning"
-              ],
-              "category": {
-                "id": null,
-                "label": "Uncategorized"
-              },
-              "currency": "USD",
-              "date": "2026-06-30",
-              "decided_by": "default",
-              "description": "interest",
-              "direction": "in",
-              "display": "USD 12.50",
-              "exact_value": "12.50",
-              "id": "|acct:rainy-day-savings|2026-06-30|12.50|interest|0",
-              "linked": false,
-              "nature": "spending",
-              "provisional": false,
-              "sentence": "",
-              "tags": [],
-              "transfer": {
-                "state": "none"
-              },
-              "treatment": {
-                "kind": "not_spending",
-                "name": ""
-              }
-            },
-            {
-              "account": "acct:rainy-day-savings",
-              "actions": [
-                "assign_category",
-                "assign_meaning"
-              ],
-              "category": {
-                "id": null,
-                "label": "Uncategorized"
-              },
-              "currency": "USD",
-              "date": "2026-06-23",
-              "decided_by": "own_account",
-              "description": "possible transfer from checking",
-              "direction": "in",
-              "display": "USD 275.00",
-              "exact_value": "275.00",
-              "id": "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0",
-              "linked": false,
-              "nature": "transfer",
-              "provisional": false,
-              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
-              "tags": [],
-              "transfer": {
-                "state": "none"
-              },
-              "treatment": {
-                "kind": "not_spending",
-                "name": ""
-              }
-            },
-            {
               "account": "acct:everyday-checking",
               "actions": [
                 "assign_category",
                 "assign_meaning",
+                "replace_tags",
                 "confirm_transfer",
                 "reject_transfer"
               ],
@@ -89,16 +28,17 @@
               },
               "currency": "USD",
               "date": "2026-06-22",
-              "decided_by": "own_account",
+              "decided_by": "default",
               "description": "possible transfer to savings",
               "direction": "out",
               "display": "USD 275.00",
               "exact_value": "275.00",
               "id": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
               "linked": false,
-              "nature": "transfer",
+              "loan_repayment_choices": [],
+              "nature": "spending",
               "provisional": false,
-              "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
+              "sentence": "",
               "tags": [],
               "transfer": {
                 "candidates": [
@@ -120,6 +60,38 @@
                 "state": "suggested"
               },
               "treatment": {
+                "kind": "spending",
+                "name": ""
+              }
+            },
+            {
+              "account": "acct:rainy-day-savings",
+              "actions": [
+                "assign_category",
+                "replace_tags"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
+              "currency": "USD",
+              "date": "2026-06-30",
+              "decided_by": "default",
+              "description": "interest",
+              "direction": "in",
+              "display": "USD 12.50",
+              "exact_value": "12.50",
+              "id": "|acct:rainy-day-savings|2026-06-30|12.50|interest|0",
+              "linked": false,
+              "loan_repayment_choices": [],
+              "nature": "spending",
+              "provisional": false,
+              "sentence": "",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              },
+              "treatment": {
                 "kind": "not_spending",
                 "name": ""
               }
@@ -128,7 +100,40 @@
               "account": "acct:rainy-day-savings",
               "actions": [
                 "assign_category",
-                "assign_meaning"
+                "replace_tags"
+              ],
+              "category": {
+                "id": null,
+                "label": "Uncategorized"
+              },
+              "currency": "USD",
+              "date": "2026-06-23",
+              "decided_by": "default",
+              "description": "possible transfer from checking",
+              "direction": "in",
+              "display": "USD 275.00",
+              "exact_value": "275.00",
+              "id": "|acct:rainy-day-savings|2026-06-23|275.00|possible transfer from checking|0",
+              "linked": false,
+              "loan_repayment_choices": [],
+              "nature": "spending",
+              "provisional": false,
+              "sentence": "",
+              "tags": [],
+              "transfer": {
+                "state": "none"
+              },
+              "treatment": {
+                "kind": "not_spending",
+                "name": ""
+              }
+            },
+            {
+              "account": "acct:rainy-day-savings",
+              "actions": [
+                "assign_category",
+                "assign_meaning",
+                "replace_tags"
               ],
               "category": {
                 "id": null,
@@ -143,6 +148,7 @@
               "exact_value": "450.00",
               "id": "|acct:rainy-day-savings|2026-06-20|-450.00|sample lender|0",
               "linked": false,
+              "loan_repayment_choices": [],
               "nature": "settlement",
               "provisional": false,
               "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
@@ -159,6 +165,7 @@
               "account": "acct:rainy-day-savings",
               "actions": [
                 "assign_category",
+                "replace_tags",
                 "unlink_transfer"
               ],
               "category": {
@@ -174,6 +181,7 @@
               "exact_value": "600.00",
               "id": "|acct:rainy-day-savings|2026-06-18|600.00|transfer from checking|0",
               "linked": true,
+              "loan_repayment_choices": [],
               "nature": "transfer",
               "provisional": false,
               "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
@@ -202,6 +210,7 @@
               "account": "acct:everyday-checking",
               "actions": [
                 "assign_category",
+                "replace_tags",
                 "unlink_transfer"
               ],
               "category": {
@@ -217,6 +226,7 @@
               "exact_value": "600.00",
               "id": "|acct:everyday-checking|2026-06-18|-600.00|transfer to savings|0",
               "linked": true,
+              "loan_repayment_choices": [],
               "nature": "transfer",
               "provisional": false,
               "sentence": "Between your own accounts. Money that moves from one of your pockets to another is not spending, and is not counted as any.",
@@ -245,7 +255,8 @@
               "account": "acct:joint-checking",
               "actions": [
                 "assign_category",
-                "assign_meaning"
+                "assign_meaning",
+                "replace_tags"
               ],
               "category": {
                 "id": null,
@@ -260,6 +271,7 @@
               "exact_value": "120.00",
               "id": "|acct:joint-checking|2026-06-14|-120.00|utilities|0",
               "linked": false,
+              "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": false,
               "sentence": "",
@@ -276,7 +288,8 @@
               "account": "acct:household-card",
               "actions": [
                 "assign_category",
-                "assign_meaning"
+                "assign_meaning",
+                "replace_tags"
               ],
               "category": {
                 "id": null,
@@ -291,6 +304,7 @@
               "exact_value": "160.00",
               "id": "|acct:household-card|2026-06-11|160.00|annual fee|0",
               "linked": false,
+              "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": false,
               "sentence": "",
@@ -307,7 +321,8 @@
               "account": "acct:everyday-checking",
               "actions": [
                 "assign_category",
-                "assign_meaning"
+                "assign_meaning",
+                "replace_tags"
               ],
               "category": {
                 "id": null,
@@ -322,6 +337,7 @@
               "exact_value": "318.55",
               "id": "|acct:everyday-checking|2026-06-08|-318.55|rent|0",
               "linked": false,
+              "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": false,
               "sentence": "",
@@ -338,7 +354,7 @@
               "account": "acct:everyday-checking",
               "actions": [
                 "assign_category",
-                "assign_meaning"
+                "replace_tags"
               ],
               "category": {
                 "id": null,
@@ -353,6 +369,7 @@
               "exact_value": "2400.00",
               "id": "|acct:everyday-checking|2026-06-05|2400.00|salary|0",
               "linked": false,
+              "loan_repayment_choices": [],
               "nature": "spending",
               "provisional": false,
               "sentence": "",
@@ -542,6 +559,153 @@
               ],
               "text": "May I ask what rent is? You have 1 transaction(s) with it, USD 318.55 in total.",
               "why": "I don't yet have a category for this merchant."
+            },
+            {
+              "amount": "275.00",
+              "count": 1,
+              "currency": "USD",
+              "id": "merchant:possible transfer to savings",
+              "kind": "merchant",
+              "refs": {
+                "categories": [
+                  "income",
+                  "transfers",
+                  "loan_payments",
+                  "fees",
+                  "groceries",
+                  "dining",
+                  "shopping",
+                  "transport",
+                  "travel",
+                  "utilities",
+                  "housing",
+                  "health",
+                  "personal_care",
+                  "entertainment",
+                  "services",
+                  "government_nonprofit",
+                  "other"
+                ],
+                "example": "possible transfer to savings",
+                "merchant": "possible transfer to savings",
+                "movements": [
+                  "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+                ]
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "choices": [
+                    "income",
+                    "transfers",
+                    "loan_payments",
+                    "fees",
+                    "groceries",
+                    "dining",
+                    "shopping",
+                    "transport",
+                    "travel",
+                    "utilities",
+                    "housing",
+                    "health",
+                    "personal_care",
+                    "entertainment",
+                    "services",
+                    "government_nonprofit",
+                    "other"
+                  ],
+                  "name": "category",
+                  "required": true,
+                  "type": "choice",
+                  "wants": "One of these, whichever of them fits: income, transfers, loan_payments, fees, groceries, dining, shopping, transport, travel, utilities, housing, health, personal_care, entertainment, services, government_nonprofit, other."
+                }
+              ],
+              "text": "May I ask what possible transfer to savings is? You have 1 transaction(s) with it, USD 275.00 in total. (This looks like a payment to a person, so I'll only apply your answer here \u2014 not as a rule.)",
+              "why": "I don't yet have a category for this merchant."
+            },
+            {
+              "amount": "275.00",
+              "count": 1,
+              "currency": "USD",
+              "id": "nature:|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+              "kind": "nature",
+              "refs": {
+                "category": "",
+                "descriptor": "possible transfer to savings",
+                "movement": "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0",
+                "movements": [
+                  "|acct:everyday-checking|2026-06-22|-275.00|possible transfer to savings|0"
+                ],
+                "subcategory": ""
+              },
+              "scope": "one",
+              "slots": [
+                {
+                  "name": "legs",
+                  "parts": [
+                    {
+                      "choices": [
+                        "expense",
+                        "asset",
+                        "liability",
+                        "income"
+                      ],
+                      "name": "major",
+                      "required": true,
+                      "type": "choice",
+                      "wants": "One of these, whichever of them fits: expense, asset, liability, income."
+                    },
+                    {
+                      "name": "account_hint",
+                      "required": false,
+                      "type": "label",
+                      "wants": "Your own word for it is what I need \u2014 a few words is plenty."
+                    },
+                    {
+                      "name": "share",
+                      "required": false,
+                      "type": "rate",
+                      "wants": "A rate is what I need \u2014 the percentage on its own is plenty."
+                    }
+                  ],
+                  "required": true,
+                  "type": "",
+                  "wants": "Your own words are what I need \u2014 and if it was several things at once, do say so; I can record it that way."
+                },
+                {
+                  "name": "kind",
+                  "required": false,
+                  "type": "label",
+                  "wants": "Your own word for it is what I need \u2014 a few words is plenty."
+                },
+                {
+                  "choices": [
+                    "income",
+                    "transfers",
+                    "loan_payments",
+                    "fees",
+                    "groceries",
+                    "dining",
+                    "shopping",
+                    "transport",
+                    "travel",
+                    "utilities",
+                    "housing",
+                    "health",
+                    "personal_care",
+                    "entertainment",
+                    "services",
+                    "government_nonprofit",
+                    "other"
+                  ],
+                  "name": "category",
+                  "required": false,
+                  "type": "label",
+                  "wants": "Your own word for it is what I need \u2014 a few words is plenty."
+                }
+              ],
+              "text": "2026-06-22: possible transfer to savings \u2014 USD 275.00. Could you tell me what this one was for?",
+              "why": "The description names how the money moved, not who received it \u2014 so I have to ask about each one separately."
             },
             {
               "amount": "275.00",
@@ -757,60 +921,14 @@
               ],
               "text": "My picture of Dormant Savings ends at 2025-11-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
               "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "USD",
-              "id": "expectation:statement-currency:acct:everyday-checking",
-              "kind": "expectation",
-              "refs": {
-                "document": "a newer statement",
-                "registry_entry": "statement-currency",
-                "subject": "acct:everyday-checking"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "My picture of Everyday Checking ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
-              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
-            },
-            {
-              "amount": "0",
-              "count": 1,
-              "currency": "USD",
-              "id": "expectation:statement-currency:acct:household-card",
-              "kind": "expectation",
-              "refs": {
-                "document": "a newer statement",
-                "registry_entry": "statement-currency",
-                "subject": "acct:household-card"
-              },
-              "scope": "one",
-              "slots": [
-                {
-                  "name": "have_it",
-                  "required": true,
-                  "type": "yes_no",
-                  "wants": "A yes or a no is all I need."
-                }
-              ],
-              "text": "My picture of Household Card ends at 2026-06-30. A newer statement likely exists \u2014 whenever you have it, I'll bring things current.",
-              "why": "Nothing is wrong \u2014 the account is simply not current, and I would rather say so than pretend."
             }
           ],
           "state": "ready",
           "tail": {
             "amount": "0",
-            "count": 4
+            "count": 6
           },
-          "total": 14,
+          "total": 16,
           "turns": []
         },
         "job_id": "parity-conversation",
@@ -825,94 +943,134 @@
         "data": {
           "documents": [
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "It attested -USD 75.00 on acct:travel-card, good as of 2026-06-30.",
               "doc_type": "credit_card_statement",
               "filename": "travel-card-2026-06.pdf",
               "id": "0ea3d7d4441eef067e35c39ec91898390d8e9b973585de8c741d737a96d00660",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             },
             {
+              "activity_sentence": "The brokerage activity read from this document is reconciled and recorded.",
+              "activity_status": "complete",
               "contribution": "It attested USD 500.00 on acct:growth-portfolio, good as of 2026-06-30.",
               "doc_type": "brokerage_statement",
               "filename": "growth-portfolio-2026-06.pdf",
               "id": "3782cf884917f3d2794075b6c084cf994e0cd59f7c4a94b46657599682a5d7bd",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "It attested EUR 642.10 on acct:abroad-current, good as of 2026-06-30.",
               "doc_type": "bank_statement",
               "filename": "abroad-current-2026-06.pdf",
               "id": "3ccd51ae5b3d150f42f32bdf363bc21bf5714425ea04189ea4d4f184bc8eb4b1",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "It attested USD 980.00 on acct:joint-checking, good as of 2026-06-30.",
               "doc_type": "bank_statement",
               "filename": "joint-checking-2026-06.pdf",
               "id": "895b60bc4471d0578f7263cf74ba57ed553c5bcfa3381716c3cf7dd683c69c73",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "Nothing on your books rests on this one yet.",
               "doc_type": "bank_statement",
               "filename": "everyday-checking-2026-08.pdf",
               "id": "954c491baddd113b6e4a8a74de8ec41913eba9ca823eaa6d9b9f0ef1145dc071",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's snapshot is held for review and is not on your books.",
+              "snapshot_status": "held"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "It attested USD 400.00 on acct:household-card, good as of 2026-06-30.",
               "doc_type": "credit_card_statement",
               "filename": "household-card-2026-06.pdf",
               "id": "a4f4a08820d946b4a77974e840ac16fc66a7462f6102eb539026a80eb6ccc7ef",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "It attested USD 3,081.45 on acct:everyday-checking, good as of 2026-06-30.",
               "doc_type": "bank_statement",
               "filename": "everyday-checking-2026-06.pdf",
               "id": "b2f284c31bda0c5d966ee946ae46a6c50621d52117f99885d09b1b0c0754b5e6",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "Nothing on your books rests on this one yet.",
               "doc_type": "bank_statement",
               "filename": "rainy-day-savings-2026-06.pdf",
               "id": "c39eb7ec3e941d67129afbe45073510fc6b223e21e44f78ad0129f8d420bb599",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "Nothing on your books rests on this one yet.",
               "doc_type": "unknown",
               "filename": "unread-note.txt",
               "id": "c4b30db9c250ee34f809d73f593104dd43f9b55f70ece5f822a6c1a786d2363d",
               "raw_available": true,
               "reading": "never_read",
-              "resolved": false
+              "resolved": false,
+              "snapshot_sentence": "Nothing here establishes whether this document's snapshot reached your books.",
+              "snapshot_status": "unavailable"
             },
             {
+              "activity_sentence": "This document does not carry a separate brokerage-activity status.",
+              "activity_status": "not_applicable",
               "contribution": "It attested USD 1,250.00 on acct:dormant-savings, good as of 2025-11-30.",
               "doc_type": "bank_statement",
               "filename": "dormant-savings-2025-11.pdf",
               "id": "d260bce3405f23ceac4a368fd4552fb5e59399bef3c2e9e22c1bd2e3438108c2",
               "raw_available": true,
               "reading": "read",
-              "resolved": true
+              "resolved": true,
+              "snapshot_sentence": "This document's reconciled snapshot is recorded on your books.",
+              "snapshot_status": "posted"
             }
           ],
           "holds": [
@@ -1904,7 +2062,7 @@
             "withheld": []
           },
           "spending_by_currency": {
-            "USD": "598.55"
+            "USD": "873.55"
           },
           "state": "ready",
           "utility": {

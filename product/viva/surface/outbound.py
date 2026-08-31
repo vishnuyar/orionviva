@@ -46,6 +46,7 @@ READ_RECORDED = "ReadRecorded"
 PHASES: dict[str, str] = {
     "classify": "outbound_phase_classify",
     "extract": "outbound_phase_extract",
+    "interpret": "outbound_phase_interpret",
     "speak": "outbound_phase_speak",
 }
 UNNAMED = "outbound_phase_unnamed"

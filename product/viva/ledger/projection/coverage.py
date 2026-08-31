@@ -64,6 +64,11 @@ def open_holds(core: ProjectionCore) -> list[dict]:
     return [b for did, b in core._held.items() if did not in core._posted]
 
 
+def open_activity_holds(core: ProjectionCore) -> list[dict]:
+    """Brokerage activity streams still quarantined after snapshot posting."""
+    return list(core._activity_held.values())
+
+
 def gap_holds(core: ProjectionCore) -> list[dict]:
     return [b for b in open_holds(core) if b.get("reason") == "gap"]
 

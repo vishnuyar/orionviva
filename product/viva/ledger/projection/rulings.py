@@ -53,7 +53,8 @@ def ruled_accounts(core: ProjectionCore) -> dict[str, dict]:
     return out
 
 
-def undecomposed(core: ProjectionCore, currency: str | None = None) -> dict:
+def undecomposed(core: ProjectionCore, currency: str | None = None,
+                 predicate=None) -> dict:
     """Money whose components are known but whose proportions are not — the
     ``MIXED`` bucket, filtered by `currency` if given.
 
@@ -69,6 +70,8 @@ def undecomposed(core: ProjectionCore, currency: str | None = None) -> dict:
         if m.nature != movements_view.MIXED or not movements_view.is_expense(m):
             continue
         if currency is not None and m.currency != currency:
+            continue
+        if predicate is not None and not predicate(m):
             continue
         total += abs(m.amount)
         count += 1

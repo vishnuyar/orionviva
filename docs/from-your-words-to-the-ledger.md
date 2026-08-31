@@ -16,11 +16,12 @@
 
 ### A2 — an account born from a sentence lives in the same registry
 **State:** enforced
-**Code:** product/viva/listen.py:318
-**Test:** product/tests/test_listen.py::test_an_account_a_document_opened_is_one_the_vault_already_holds
+**Code:** product/viva/listen.py (`resolve_account`, `repair_asserted_account_aliases`)
+**Test:** product/tests/test_listen.py::test_an_account_a_document_opened_is_one_the_vault_already_holds; ::test_an_issued_brokerage_resolves_by_institution_and_kind; ::test_existing_asserted_brokerage_duplicate_is_repaired_without_new_value
 
 1. There is one account registry; an account a person named and an account a document opened are candidates in the same match.
 2. The account matcher, sprawl control and merge-later work unchanged over both.
+3. A uniquely compatible issued brokerage account absorbs the alias of an asserted duplicate. The ruling remains in the record, while the represented value contributes only once.
 
 ### A3 — every account records who says it exists
 **State:** enforced

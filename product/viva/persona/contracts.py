@@ -269,6 +269,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "boundary_selected_subcategory": frozenset({"subcategory"}),
     "boundary_selected_tag":         frozenset({"tag"}),
     "boundary_selected_currency":    frozenset({"currency"}),
+    "boundary_selected_kind":        frozenset({"kind"}),
     "boundary_unmeasured":         frozenset({"account"}),
     # A gap no account can name: a document read and not posted may be about an
     # account that does not exist yet, so it is said as a number of documents.
@@ -515,6 +516,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "outbound_scope":                  frozenset(),
     "outbound_phase_classify":         frozenset({"count"}),
     "outbound_phase_extract":          frozenset({"count"}),
+    "outbound_phase_interpret":        frozenset({"count"}),
     "outbound_phase_speak":            frozenset({"count"}),
     "outbound_phase_unnamed":          frozenset({"count"}),
     "outbound_cost":                   frozenset({"amount"}),
@@ -557,6 +559,13 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     "documents_awaiting":              frozenset(),
     "documents_contributed":           frozenset({"amount", "account", "day"}),
     "documents_contributed_nothing":   frozenset(),
+    "documents_snapshot_posted":       frozenset(),
+    "documents_snapshot_held":         frozenset(),
+    "documents_snapshot_unavailable":  frozenset(),
+    "documents_activity_complete":     frozenset(),
+    "documents_activity_incomplete":   frozenset(),
+    "documents_activity_unavailable":  frozenset(),
+    "documents_activity_not_applicable": frozenset(),
     # What a conversation says about itself. Speech cannot carry a receipt: a
     # figure on a screen opens a drawer that opens a document, and a figure
     # spoken aloud opens nothing. So one line says where the evidence is rather
@@ -618,6 +627,7 @@ MOMENT_FIELDS: dict[str, frozenset] = {
     # report of what did are the same shape on a screen. The diagnostic line
     # says what the file holds rather than promising what it leaves out.
     "maintenance_planned":             frozenset(),
+    "maintenance_started":             frozenset(),
     "maintenance_ran":                 frozenset(),
     "maintenance_unconfigured":        frozenset(),
     "trust_no_anchoring":              frozenset(),

@@ -169,6 +169,7 @@ def handlers_for_opened_vault(
     happened, which is what makes this testable without a bridge.
     """
 
+    from viva.listen import repair_asserted_account_aliases
     from .activity_actions import ActivityActions
     from .conversation_actions import ConversationActions
     from .document_actions import DocumentActions
@@ -180,7 +181,13 @@ def handlers_for_opened_vault(
     from .vault_actions import VaultTransferActions
     from .vault_surface import OpenedVaultSurfaceProvider
 
-    jobs = JobRegistry(progress_sink, pump)
+    ledger = getattr(vault, "ledger", None)
+    if ledger is not None:
+        repair_asserted_account_aliases(ledger)
+    directory = getattr(vault, "directory", None)
+    jobs = JobRegistry(
+        progress_sink, pump,
+        state_file=(directory / ".jobs.json" if directory is not None else None))
     reads = handlers_with_surface_provider(
         OpenedVaultSurfaceProvider(vault, jobs), progress_sink
     )

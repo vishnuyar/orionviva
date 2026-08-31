@@ -7,7 +7,7 @@ import type { ActivityCorrectionControls } from "./Activity";
 import moments from "../../../../product/viva/persona/pack-v31/moments.json";
 
 const vocabularies: ActivityData["vocabularies"] = { categories: { items: [{ id: "food", label: "Food" }, { id: "housing", label: "Housing" }], complete: true, limit: 20 }, tags: { items: [{ id: "trip", label: "Trip" }, { id: "tax", label: "Tax" }], complete: true, limit: 20, maxSelected: 8, maxLabelLength: 40 } };
-const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", treatment: { kind: "spending", name: "" }, sentence: "", decidedBy: "default", provisional: false, linked: false, category: { id: "food", label: "Food", valid: true }, tags: [{ id: "trip", label: "Trip" }], tagsValid: true, transfer: { state: "none" }, actions: [], ...over });
+const movement = (over: Partial<MovementView> = {}): MovementView => ({ id: "m1", date: "2026-07-01", description: "a shop", account: "acct:one", direction: "out", exactValue: "10.00", currency: "USD", display: "USD 10.00", nature: "spending", treatment: { kind: "spending", name: "" }, loanRepaymentChoices: [], sentence: "", decidedBy: "default", provisional: false, linked: false, category: { id: "food", label: "Food", valid: true }, tags: [{ id: "trip", label: "Trip" }], tagsValid: true, transfer: { state: "none" }, actions: [], ...over });
 const counterpart = { id: "counterpart-one", date: "2026-07-02", description: "other account movement", account: "acct:two", direction: "in" as const, exactValue: "10.00", currency: "USD", display: "USD 10.00" };
 const read = (movements: MovementView[]): ActivityData => ({ sentence: movements.length ? moments.activity_scope : moments.activity_empty, movements, beyond: { count: 0 }, vocabularies });
 const ready = (value: ActivityData): FeatureResult<ActivityData> => ({ state: "ready", data: value });
@@ -92,7 +92,7 @@ describe("Activity surface", () => {
     expect(within(tagSummary.parentElement!).getByRole("group", { name: "Tags for 2026-07-01, Train fare, acct:one, USD 10.00, two" })).toBeInTheDocument();
     expect(within(tagSummary.parentElement!).getByRole("checkbox", { name: "Trip tag for 2026-07-01, Train fare, acct:one, USD 10.00, two" })).toBeInTheDocument();
     expect(within(tagSummary.parentElement!).getByRole("button", { name: "Save complete tag set for 2026-07-01, Train fare, acct:one, USD 10.00, two" })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(within(tagSummary.parentElement!).getByRole("textbox", { name: "New tag for 2026-07-01, Train fare, acct:one, USD 10.00, two" })).toBeInTheDocument();
     expect(screen.queryByText(/nature|merchant-wide|new label/i)).not.toBeInTheDocument();
   });
 

@@ -1,24 +1,19 @@
 # Jobs and the Progress Channel
 
-**State:** design-only
+**State:** built
 **Rules:** none
 
 ## Rules
 
-This document defines no rules and states no behaviour the code can be held to,
-because the thing it describes has no producer yet. It fixes the shape of a
-channel before the first piece of work that could feed one exists, so that the
-shape is decided calmly rather than in the middle of building something else.
-
-Rule blocks arrive with the machinery, in the document that specifies whatever
-first produces job progress. That is deliberate and not an omission: a rule
-block in this folder carries a state, the code that implements it and the test
-that pins it, and a rule whose state would have to read "nothing implements
-this" is a promise wearing the clothes of a fact.
+This document still owns no independent rule ids. It records the constraints of
+the job registry, sidecar channel, host subscriber and desktop session; their
+executable contracts and tests live with those modules. A future rule block
+belongs here only if jobs acquire a new standing product rule rather than
+another producer using the existing mechanism.
 
 ## Why
 
-### The channel, and why it is empty
+### The channel and its producers
 
 The desktop window does not hold a person's financial data. A bundled
 background process — the sidecar — holds the vault, and the window asks it
@@ -29,53 +24,35 @@ whether anything is happening, and can finish some parts while others are still
 running. Work of that kind is a **job**, and a job needs a way to say what it is
 doing while it is doing it. That way is the progress channel.
 
-Today the channel is built along most of its length and connected at neither end
-that matters: the sidecar writes progress frames, the native host reads them and
-throws them away, and nothing in the window has ever received one. The only work
-that emits anything is a surface read that reports "none of one" and then "one
-of one" — a job with no reportable state, which can only be rendered as a
-spinner or as a lie.
-
-The channel is therefore not finished as it stands. It is designed with its
-first real producer, document ingest, and the five constraints below bind
-whoever does that. They are stated as constraints rather than as a design,
-because the design belongs with the producer and these are the parts that should
-not be re-argued when it arrives.
+Document work and paid maintenance now produce jobs. The sidecar mints an
+identity, the registry records named steps, and progress frames travel through
+the host's event subscriber into the desktop session. Terminal progress causes
+the session to reread the financial surfaces and the job registry rather than
+patching either from an event. Bounded receipts are also available through the
+reviewed jobs read.
 
 ### A job's identity is minted by the sidecar, and the caller's request id travels beside it
 
-The window currently invents a name for the job and the sidecar echoes it back.
-That is the shell telling the backend what a backend thing is called, and it
-fails in two ordinary ways: two callers that both leave the name out get the same
-name, and a caller cannot know whether the request it just made started one unit
-of work or five. Ingest is exactly the case where one call starts several.
-
-So identity is minted by the party that knows what a unit of work is, which is
-the sidecar. The caller never asserts it, and the request stops accepting one.
+The registry mints a monotonically numbered identity scoped to the operation.
+The caller never asserts it; action payloads contain the work's inputs, and the
+result or progress frame carries the resulting job id.
 
 Correlation then needs two fields rather than one, and they answer different
 questions. The **request id** answers *which of my calls is this about*, and the
 caller mints it, as it already does. The **job id** answers *which unit of work
-is this about*, and the sidecar mints it. Every event carries both. They coincide
-today only because one call means one job; they come apart the first time one
-call starts several jobs, or a job outlives the call that started it, which is
-the whole shape of ingest.
+is this about*, and the sidecar mints it. Every event carries both. They are not
+interchangeable: the transport request belongs to a vault session, while a job
+can continue after the action reply and is read later from the registry.
 
-Changing that field from caller-asserted to sidecar-minted changes what the field
-means, and the protocol rule this project already holds says that *"additive
-optional fields advance the minor version; removing a field or changing its
-meaning advances the major."* So it is a major version step. It is taken once, at
-the moment the field actually changes, and not twice if another contract change
-lands in the same cycle.
+The caller-asserted field was removed when this meaning changed, and the wire
+advanced to protocol `2.0`. That major step is already taken; a future producer
+reuses the sidecar-minted identity rather than advancing the protocol again.
 
 ### An event goes to a subscriber, never through a filter inside a blocking read
 
-The current arrangement hands every frame to whichever request happens to be
-blocked reading the pipe, and that request discards anything that is not the
-answer it is waiting for. With one request in flight this is merely wasteful.
-With two it is a correctness bug that cannot be fixed where it lives: the second
-request's loop consumes and discards the first request's events, and the first
-never sees them, because only one loop is reading.
+The host now owns one sidecar-output reader. It routes an answer to the request
+waiting for it and publishes a progress frame to the window event subscriber,
+so a blocked request does not consume another request's event.
 
 The shape that works is one reader owned by the host, which sorts frames as they
 arrive: an answer goes to the request that is waiting for it, and an event goes
@@ -83,8 +60,8 @@ to whoever subscribed to events. The lock then guards only the writing side, and
 requests stop queueing behind each other by accident.
 
 This is a structural point rather than a preference: **a filter inside a caller
-can only ever be correct when there is exactly one caller.** Whatever produces
-the first real progress, this is the change it needs.
+can only ever be correct when there is exactly one caller.** New producers reuse
+the host subscriber rather than adding another pipe reader.
 
 ### A state joins the closed vocabulary in the module that owns it, and only when something can produce it
 
@@ -95,13 +72,10 @@ two spellings of the same idea end up meaning different things in two branches o
 the same window.
 
 The set grows only when something can produce the new word, and it grows in the
-module that owns it rather than in a caller that wants to render it. The
-temptation is always to add words in advance so the vocabulary looks ready — a
-word for work a person stopped, a word for work the machine will attempt again.
-Neither is here, and neither is named as a candidate, because **a state nothing
-can produce is the same defect as a channel nothing consumes**: a word that looks
-like a capability. Each arrives with the machinery that can emit it, in the brief
-that builds it.
+module that owns it rather than in a caller that wants to render it. Job records
+use `queued`, `running`, `completed`, `failed` and `cancelled`. Progress frames
+use `started`, `progress`, `completed`, `failed` and `cancelled`; adapters reject
+anything outside those closed sets.
 
 ### A fraction ships only from a producer that knows its denominator
 
@@ -148,7 +122,7 @@ about one vault on one machine on one day. It is **which phase is the time in,
 and can that phase say anything true about itself** — and where a phase cannot,
 no proportion makes a bar over the other phase honest.
 
-### Nothing on this channel is ever appended to the event log
+### Nothing on this channel is ever appended to the financial event log
 
 The event log is the spine of this product: every state change is a record in an
 append-only chain, each record embedding the previous record's hash, and current
@@ -162,33 +136,23 @@ Writing it into the log would put unchecked chatter into the one structure whose
 worth is that it contains nothing unchecked, and it would grow without bound in
 the file a person most needs to stay small and verifiable.
 
-Nothing on this channel is ever appended. What a completed job *did* — a document
-captured, a movement posted — is an event, written by the code that did the
-thing, in the ordinary way. That the job reached its end is not.
+Nothing on this channel is appended to the financial log. What a completed job
+*did* — a document captured, a movement posted — is an event, written by the
+code that did the thing, in the ordinary way. The bridge may persist a bounded
+`.jobs.json` receipt beside the vault containing operation, state, step, counts
+and message. It contains no financial or document values and is not an authority
+for projection state.
 
 ## Open
 
-- **The channel has no producer, and the first document action landed without
-  becoming one.** `viva.documents.upload` is served: it takes one path, opens
-  the file, seals it and answers. It emits no progress frame and mints no job
-  id, because the work is finished by the time the call returns — an identity
-  nothing consumes and a state nothing can produce are the two defects this
-  document names, and a synchronous capture would have produced both. The
-  identity constraint is nevertheless kept, and kept structurally: the request
-  accepts exactly one field, so a caller has nowhere to assert a name for work
-  it did not do. The wire is unchanged and the major version step is still
-  owed, by whichever cycle first mints an identity that outlives its call. Until
-  then the sidecar writes frames, the native host reads and discards them, and
-  nothing in the window subscribes. None of the constraints above is
-  implemented anywhere.
-- **Whether a job that outlives the call that started it needs a registry** —
-  somewhere to look up a job by its id after the request has returned — is
-  undecided. It is the obvious next question once identity is minted by the
-  sidecar, and it is not answered here because nothing yet produces a job that
-  outlives its call.
-- **How the window renders a job it did not start** is undecided for the same
-  reason. Nothing here says what a panel does when an event arrives for work the
-  person did not initiate from that panel.
+- **Interrupted work is not resumed.** A nonterminal durable receipt is restored
+  as failed with an instruction to start the operation again. Resumable step
+  checkpoints and idempotent continuation remain unbuilt.
+- **Cancellation is cooperative between named steps.** It cannot interrupt the
+  inside of a blocking reader or model call; the next checkpoint observes it.
+- **The jobs read remains operational rather than a registry destination.** It
+  is shipped and reviewed, but no navigation capability claims it as a separate
+  destination.
 - **How long an open takes has been measured on two vaults and on one machine,
   and on nothing else.** Across the author's own baseline vault and the largest
   vault he holds, an open took roughly four tenths of a second to eight tenths
@@ -202,6 +166,3 @@ thing, in the ordinary way. That the job reached its end is not.
   would be a projection dressed as a finding; the honest position is that the
   question is re-asked against real vaults when one is much larger, not
   inherited.
-- **This document has no slot in the reading guide.** It needs one, and the
-  Steward places it. Nothing checks that a new document is slotted anywhere, so
-  an unreferenced document is a real outcome rather than a hypothetical one.

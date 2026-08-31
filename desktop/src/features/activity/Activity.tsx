@@ -12,7 +12,7 @@ export type ActivityCorrectionControls = {
   onRejectTransfer: (movementId: string) => void;
   onUnlinkTransfer: (movementId: string, counterpartId: string) => void;
 };
-type ActivityProps = { result: FeatureResult<ActivityData>; correction?: ActivityCorrectionControls | null; onOpenEvidence: (link: EvidenceLink) => void };
+type ActivityProps = { result: FeatureResult<ActivityData>; correction?: ActivityCorrectionControls | null; onOpenEvidence: (link: EvidenceLink) => void; onLoadMore?: (() => void) | null; selectedMovement?: string };
 
 function transferVerbTitle(verb: ActivityCorrectionVerb, state: "completed" | "refused" | "stale"): string | null {
   const titles = {
@@ -54,6 +54,7 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
   const [meaning, setMeaning] = useState(movement.treatment.kind === "spending" || movement.treatment.kind === "loan" || movement.treatment.kind === "loan_repayment" ? movement.treatment.kind : "");
   const [counterparty, setCounterparty] = useState(movement.treatment.name);
   const [tagIds, setTagIds] = useState<readonly string[]>(movement.tags.map((tag) => tag.id));
+  const [newTag, setNewTag] = useState("");
   const busy = controls.state.state === "working" || controls.state.state === "refreshing";
   const waitId = `activity-correction-wait-${useId()}`;
   useEffect(() => {
@@ -61,6 +62,7 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
     setMeaning(movement.treatment.kind === "spending" || movement.treatment.kind === "loan" || movement.treatment.kind === "loan_repayment" ? movement.treatment.kind : "");
     setCounterparty(movement.treatment.name);
     setTagIds(movement.tags.map((tag) => tag.id));
+    setNewTag("");
   }, [movement.category.id, movement.tags, movement.treatment.kind, movement.treatment.name]);
   function submitCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -73,7 +75,9 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
   }
   function submitTags(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!busy) controls.onReplaceTags(movement.id, tagIds);
+    const coined = newTag.trim().toLowerCase();
+    const complete = coined && !tagIds.includes(coined) ? [...tagIds, coined] : tagIds;
+    if (!busy && complete.length <= data.vocabularies.tags.maxSelected) controls.onReplaceTags(movement.id, complete);
   }
   const canAssign = movement.actions.includes("assign_category");
   const canAssignMeaning = movement.actions.includes("assign_meaning");
@@ -103,7 +107,8 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
           <option value="">Choose a treatment</option>
           {movement.direction === "out" ? <><option value="spending">Counted as spending</option><option value="loan">Loan lent to someone</option></> : <option value="loan_repayment">Loan repayment received</option>}
         </select></label>
-        {meaning === "loan" || meaning === "loan_repayment" ? <label>Person or loan name<input type="text" aria-label={`Person or loan name for ${context}`} value={counterparty} maxLength={80} aria-disabled={busy} aria-describedby={busy ? waitId : undefined} onChange={(event) => { if (!busy) setCounterparty(event.target.value); }} /></label> : null}
+        {meaning === "loan" ? <label>Person or loan name<input type="text" aria-label={`Person or loan name for ${context}`} value={counterparty} maxLength={80} aria-disabled={busy} aria-describedby={busy ? waitId : undefined} onChange={(event) => { if (!busy) setCounterparty(event.target.value); }} /></label> : null}
+        {meaning === "loan_repayment" ? <label>Open loan<select aria-label={`Open loan for ${context}`} value={counterparty} aria-disabled={busy} aria-describedby={busy ? waitId : undefined} onChange={(event) => { if (!busy) setCounterparty(event.target.value); }}><option value="">Choose an open loan</option>{movement.loanRepaymentChoices.map((choice) => <option key={choice} value={choice}>{choice}</option>)}</select></label> : null}
         <button className="secondary-button" type="submit" aria-label={`Save treatment for ${context}`} aria-disabled={busy || !meaning || ((meaning === "loan" || meaning === "loan_repayment") && !counterparty.trim())} aria-describedby={busy ? waitId : undefined}>Save treatment</button>
       </form> : null}
       {canAssign ? <form onSubmit={submitCategory}>
@@ -122,6 +127,7 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
             setTagIds(event.target.checked ? [...tagIds, choice.id] : tagIds.filter((id) => id !== choice.id));
           }} />{choice.label}</label>;
         })}</div></fieldset>
+        <label>New tag<input type="text" aria-label={`New tag for ${context}`} value={newTag} maxLength={data.vocabularies.tags.maxLabelLength} aria-disabled={busy || tagIds.length >= data.vocabularies.tags.maxSelected} onChange={(event) => { if (!busy) setNewTag(event.target.value); }} /></label>
         <button className="secondary-button" type="submit" aria-label={`Save complete tag set for ${context}`} aria-disabled={busy} aria-describedby={busy ? waitId : undefined}>Save complete tag set</button>
       </form> : null}
       {movement.transfer?.state === "suggested" ? <section className="activity-transfer-correction" aria-label={`Transfer suggestion for ${context}`}>
@@ -154,7 +160,7 @@ function MovementCorrection({ movement, data, controls }: { movement: MovementVi
 // Every financial word here is the backend's. Corrections appear only where
 // the same row advertises one, and their choices come only from the complete
 // read-level vocabularies.
-function Movements({ data, correction }: { data: ActivityData; correction: ActivityCorrectionControls | null }) {
+function Movements({ data, correction, onLoadMore, selectedMovement }: { data: ActivityData; correction: ActivityCorrectionControls | null; onLoadMore: (() => void) | null; selectedMovement: string }) {
   const movements = data.movements ?? [];
   const rows = useRef(new Map<string, HTMLLIElement>());
   const outcomeRef = useRef<HTMLDivElement>(null);
@@ -167,6 +173,10 @@ function Movements({ data, correction }: { data: ActivityData; correction: Activ
     }
     outcomeRef.current?.focus();
   }, [correction?.state]);
+  useEffect(() => {
+    if (!selectedMovement) return;
+    rows.current.get(selectedMovement)?.focus();
+  }, [selectedMovement, data]);
   return <section className="feature-panel activity-panel">
     <header className="activity-header"><div className="detail-panel-label">Current vault read</div><h2>What moved</h2><p>{data.sentence}</p></header>
     {correction ? <CorrectionStatus state={correction.state} outcomeRef={outcomeRef} /> : null}
@@ -179,11 +189,11 @@ function Movements({ data, correction }: { data: ActivityData; correction: Activ
         <dl className="activity-movement-classification"><div><dt>Category</dt><dd>{movement.category.valid ? movement.category.label : "Category unavailable from this read"}</dd></div><div><dt>Treatment</dt><dd>{movement.treatment.kind === "spending" ? "Counted as spending" : movement.treatment.kind === "loan" ? `Loan lent · ${movement.treatment.name}` : movement.treatment.kind === "loan_repayment" ? `Loan repayment received · ${movement.treatment.name}` : movement.treatment.kind === "settlement" ? "Debt settlement" : movement.treatment.kind === "mixed" ? "Split is unresolved" : "Not counted as spending"}</dd></div><div><dt>Tags</dt><dd>{movement.tagsValid ? (movement.tags.length ? movement.tags.map((tag) => tag.label).join(", ") : "No tags recorded") : "Tags unavailable from this read"}</dd></div></dl>
         {correction ? <MovementCorrection movement={movement} data={data} controls={correction} /> : null}
       </li>)}</ul>
-      {data.beyond && data.beyond.count > 0 ? <p className="activity-beyond">{data.beyond.count} more are in this vault and not in this list.</p> : null}
+      {data.beyond && data.beyond.count > 0 ? <div className="activity-beyond"><p>{data.beyond.count} more are in this vault and not in this list.</p>{onLoadMore ? <button className="secondary-button" type="button" onClick={onLoadMore}>Load 50 more</button> : null}</div> : null}
     </>}
   </section>;
 }
 
-export function Activity({ result, correction }: ActivityProps) {
-  return <PanelStateView result={result} copy={{ partial: "Some activity details are unavailable. Available movements are shown below.", needsInput: "Some activity details need more information. Available movements are shown below.", unavailable: { title: "Activity unavailable", detail: "Activity is not connected to this vault read." }, failed: { title: "Activity could not be read", detail: "Activity could not be read. The vault is still open." } }}>{(data) => <Movements data={data} correction={correction ?? null} />}</PanelStateView>;
+export function Activity({ result, correction, onLoadMore = null, selectedMovement = "" }: ActivityProps) {
+  return <PanelStateView result={result} copy={{ partial: "Some activity details are unavailable. Available movements are shown below.", needsInput: "Some activity details need more information. Available movements are shown below.", unavailable: { title: "Activity unavailable", detail: "Activity is not connected to this vault read." }, failed: { title: "Activity could not be read", detail: "Activity could not be read. The vault is still open." } }}>{(data) => <Movements data={data} correction={correction ?? null} onLoadMore={onLoadMore} selectedMovement={selectedMovement} />}</PanelStateView>;
 }

@@ -157,7 +157,16 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
     record_ids = extras["record_ids"]
     if not extras["count"]:
         currency, record_ids = _of_an_empty_read(proj, filters)
-    covers, span_caveats = _attested_coverage(proj, filters)
+    scoped_accounts = None
+    if filters.get("account"):
+        scoped_accounts = {filters["account"]}
+    elif filters:
+        # Coverage ranges over accounts with eligible movements in this read.
+        scoped_accounts = {m.account for m in proj.movements()
+                           if proj._counts_as_spending(m)
+                           and _movement_passes(proj, m, filters)}
+    covers, span_caveats = _attested_coverage(
+        proj, filters, accounts=scoped_accounts)
     data = {"metric": "spending", "group_by": group_by,
             "by_group": {k: str(v) for k, v in sorted(named.items())},
             "groups": {"named": len(named), "total": len(grouped)},
@@ -213,11 +222,13 @@ def _aggregate_spending(proj, filters: dict, group_by: str,
     uncategorized = grouped.get("Uncategorized")
     if group_by == "category" and uncategorized:
         caveats.append(f"{amount(uncategorized)} is still uncategorized.")
-    provisional = proj.provisional_spending(filters.get("currency"))
+    in_scope = lambda movement: _movement_passes(proj, movement, filters)
+    provisional = proj.provisional_spending(
+        filters.get("currency"), predicate=in_scope)
     if provisional:
         caveats.append(f"{amount(provisional)} of this rests on provisional "
                        "evidence (a suggested implication, not a ruling).")
-    undecided = proj.undecomposed(filters.get("currency"))
+    undecided = proj.undecomposed(filters.get("currency"), predicate=in_scope)
     if undecided["count"]:
         caveats.append(f"{amount(undecided['total'])} across "
                        f"{undecided['count']} compound payment(s) has known "
@@ -892,9 +903,7 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
                                   dated=as_of, currency=currency,
                                   record_ids=record_ids,
                                   boundary=bounded(
-                                      whole=(not missing and not unposted
-                                             and placed
-                                             and len(by_currency) == 1),
+                                      whole=(placed and len(by_currency) == 1),
                                       unmeasured=missing,
                                       unposted=unposted,
                                       cut=[{"kind": BY_CURRENCY,

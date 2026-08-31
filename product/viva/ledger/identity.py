@@ -1,15 +1,4 @@
-"""Account identity — stable keys and name matching for entity resolution.
-
-Identity is anchored to the account *number*, not a free-text label the model
-renders inconsistently. Because statements show the number in different forms —
-full ("000000000001234") on one, masked ("...1234") on another — the key uses
-the **last four digits** (the lowest common denominator that survives masking),
-scoped by institution.
-
-This lives in the ledger layer because the projection resolves identity while
-replaying events. The *learning* layer (matching an ambiguous statement to a
-known account and remembering the person's ruling) is built on these helpers.
-"""
+"""Stable account keys, number signals, and entity-resolution tokens."""
 
 from __future__ import annotations
 
@@ -22,10 +11,34 @@ def normalize_number(account_number: str) -> str:
 
 
 def number_key(account_number: str) -> str:
-    """The stable identity fragment: the last four digits (or all, if fewer).
-    Survives the full-vs-masked difference between two statements of one account."""
+    """Return the last four digits, or empty for a shorter number signal."""
     digits = normalize_number(account_number)
-    return digits[-4:] if len(digits) >= 4 else digits
+    return digits[-4:] if len(digits) >= 4 else ""
+
+
+_REFERENCE_LAST4 = re.compile(
+    r"(?:ending(?:\s+in)?|ends?(?:\s+in)?|last\s*4|x{2,}|\*{2,}|•{2,})"
+    r"\D{0,12}(\d{4})\b",
+    re.IGNORECASE,
+)
+
+
+def reference_number_key(account_ref: str) -> str:
+    """A last-four explicitly printed in an account/product reference."""
+    match = _REFERENCE_LAST4.search(account_ref or "")
+    return match.group(1) if match else ""
+
+
+def identity_number_key(account_number: str, account_ref: str = "") -> str:
+    """Best usable number signal, preferring a valid number field then ref."""
+    return number_key(account_number) or reference_number_key(account_ref)
+
+
+def conflicting_number_signals(account_number: str, account_ref: str) -> bool:
+    """Whether two independently usable number signals disagree."""
+    direct = number_key(account_number)
+    printed = reference_number_key(account_ref)
+    return bool(direct and printed and direct != printed)
 
 
 def masked(account_number: str) -> str:
@@ -38,12 +51,40 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (text or "").strip().lower()).strip("-")
 
 
+def canonical_institution(institution: str) -> str:
+    """Stable issuer key without institution-specific knowledge."""
+    return slug(institution)
+
+
+_INSTITUTION_LEGAL_WORDS = frozenset({
+    "the", "bank", "national", "association", "na", "n", "a", "inc",
+    "incorporated", "corp", "corporation", "company", "co", "llc"})
+
+
+def institution_names_overlap(a: str, b: str) -> bool:
+    """Whether two issuer names share the same distinctive legal-name core."""
+    def tokens(value: str) -> set[str]:
+        return {token for token in re.split(r"[^a-z0-9]+", value.lower())
+                if token and token not in _INSTITUTION_LEGAL_WORDS}
+    left, right = tokens(a or ""), tokens(b or "")
+    return bool(left and right and (left <= right or right <= left))
+
+
+def account_labels_overlap(a: str, b: str) -> bool:
+    """Whether two account labels share a non-generic product token."""
+    generic = {"account", "statement", "of", "the"}
+    def tokens(value: str) -> set[str]:
+        return {token for token in re.split(r"[^a-z0-9]+", value.lower())
+                if token and token not in generic}
+    left, right = tokens(a or ""), tokens(b or "")
+    return bool(left and right and left & right)
+
+
 def account_key(institution: str, account_number: str, account_ref: str) -> str:
-    """A stable account id. Prefer institution + last-4 of the number; fall back
-    to a slug of the free-text label only when no number was extracted."""
-    key = number_key(account_number)
+    """Return an issuer-and-number key, or a label key without a number."""
+    key = identity_number_key(account_number, account_ref)
     if key:
-        inst = slug(institution)
+        inst = canonical_institution(institution)
         return f"acct:{inst + ':' if inst else ''}{key}"
     return f"acct:{slug(account_ref) or 'unknown'}"
 
@@ -57,21 +98,13 @@ MIN_TOKEN = 4
 
 
 def account_tokens(institution: str, number: str, ref: str) -> set[str]:
-    """Distinctive tokens that identify one account inside a transaction
-    description: its institution, its last-4, and product words from its label —
-    minus generic stopwords. These are what a line like 'PAYMENT TO <product>
-    ENDING IN 1234' carries to name the account it paid.
-
-    Lives here (the ledger's identity layer) because BOTH the transfer matcher and
-    the projection's nature derivation need it — one implementation,
-    no import cycle. The account HOLDER's name is deliberately excluded: it is
-    shared across all of a person's own accounts, so it distinguishes nothing."""
+    """Return issuer, number, and product tokens that may identify an account."""
     toks: set[str] = set()
     if institution and len(institution) >= 3:
         toks.add(institution.lower())
-    digits = normalize_number(number)
-    if len(digits) >= 4:
-        toks.add(digits[-4:])
+    key = identity_number_key(number, ref)
+    if key:
+        toks.add(key)
     for w in re.split(r"[^a-z0-9]+", (ref or "").lower()):
         if len(w) >= MIN_TOKEN:
             toks.add(w)
@@ -79,16 +112,7 @@ def account_tokens(institution: str, number: str, ref: str) -> set[str]:
 
 
 def distinctive_tokens(per_account: dict, institution_of: dict | None = None) -> dict:
-    """Map each account to the tokens that name it, from `per_account`.
-
-    A token is kept when it is unique across the given accounts AND either
-    contains a digit or equals that account's institution in `institution_of`.
-    The digit rule excludes label words such as "card" that are unique by
-    accident; the institution is exempt because uniqueness is the whole test
-    for a name.
-
-    A token describing a kind rather than an account ("savings") therefore names
-    nothing, and a transfer relying on it is left as a question."""
+    """Map accounts to unique number or issuer tokens from ``per_account``."""
     inst = {a: (i or "").strip().lower() for a, i in (institution_of or {}).items()}
     seen: dict = {}
     for toks in per_account.values():
@@ -102,6 +126,12 @@ def distinctive_tokens(per_account: dict, institution_of: dict | None = None) ->
 
     return {acct: {t for t in toks if keeps(acct, t)}
             for acct, toks in per_account.items()}
+
+
+def text_has_token(text: str, token: str) -> bool:
+    """Match an identity token at alphanumeric boundaries, not as a fragment."""
+    return bool(re.search(rf"(?<![a-z0-9]){re.escape(token.lower())}(?![a-z0-9])",
+                          (text or "").lower()))
 
 
 def normalize_name(name: str) -> str:

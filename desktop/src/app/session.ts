@@ -1,5 +1,5 @@
 import type { SourceDescription, SurfaceSource } from "../surface/sources";
-import type { ActionResult, ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, CancelActionState, CaptureActionState, ConversationData, Destination, DocumentsData, FeatureResult, JobView, Notice, RescanActionState, RescanReport, QuestionActionState, QuestionQueueData, QuestionVerb, AskActionState, SettingsActionState, TrustActionState, TrustData, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
+import type { ActionResult, ActivityActionResult, ActivityCorrectionState, ActivityCorrectionVerb, ActivityData, CancelActionState, CaptureActionState, Destination, FeatureResult, JobView, Notice, RescanActionState, RescanReport, QuestionActionState, QuestionQueueData, QuestionVerb, AskActionState, SettingsActionState, TrustActionState, SettingsProposal, SettingsView, TurnView, SurfaceSnapshot, TransferActionState, TransferVerb } from "../surface/types";
 import { retainSelection } from "./selection";
 
 export type SessionPhase = "opening" | "reading" | "settled";
@@ -24,10 +24,8 @@ export type SurfaceSession = {
   // written by the sidecar — a progress frame it produced, or the registry it
   // holds — and nothing on this side counts a step or names one.
   //
-  // It lives in the session rather than in the snapshot because it is not a
-  // read of the vault: it survives no restart, describes this process only,
-  // and a snapshot claiming to hold it would be claiming the vault said
-  // something it never said.
+  // Operational job rows live beside the financial snapshot. Registry reads
+  // restore bounded receipts; progress frames replace them during this process.
   jobs: readonly JobView[];
   // What the engine behind this source says about itself: which build answered,
   // and which destinations its own registry says a read reaches. It is asked
@@ -62,7 +60,9 @@ export type SurfaceSession = {
 export type SessionAction =
   | { type: "opening"; requestId: number }
   | { type: "reading"; requestId: number; source: SurfaceSource; snapshot: SurfaceSnapshot }
-  | { type: "loaded"; requestId: number; snapshot: SurfaceSnapshot }
+  | { type: "loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
+  | { type: "mutation-loaded"; requestId: number; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
+  | { type: "mutation-refresh-failed"; requestId: number }
   | { type: "open-failed"; requestId: number; said: string }
   | { type: "load-failed"; requestId: number }
   | { type: "reset"; requestId: number }
@@ -72,25 +72,26 @@ export type SessionAction =
   | { type: "select-account"; id: string }
   | { type: "select-prompt"; id: string }
   | { type: "question-acting"; requestId: number; questionId: string; verb: QuestionVerb }
-  | { type: "question-acted"; requestId: number; questionId: string; verb: QuestionVerb; result: ActionResult; conversation: FeatureResult<ConversationData> }
+  | { type: "question-acted"; requestId: number; questionId: string; verb: QuestionVerb; result: ActionResult }
   | { type: "activity-correcting"; requestId: number; movementId: string; verb: ActivityCorrectionVerb }
   | { type: "activity-outcome"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
-  | { type: "activity-refreshed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot }
+  | { type: "activity-refreshed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; snapshot: SurfaceSnapshot; jobs?: readonly JobView[] }
   | { type: "activity-refresh-failed"; requestId: number; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
+  | { type: "activity-page-loaded"; requestId: number; activity: FeatureResult<ActivityData> }
   | { type: "capturing"; requestId: number }
-  | { type: "captured"; requestId: number; result: ActionResult; documents: FeatureResult<DocumentsData> }
+  | { type: "captured"; requestId: number; result: ActionResult }
   | { type: "job-progress"; requestId: number; job: JobView }
   | { type: "described"; requestId: number; description: SourceDescription }
   | { type: "trust-working"; requestId: number }
   | { type: "trust-settled"; requestId: number; result: ActionResult }
   | { type: "asking"; requestId: number; question: string }
-  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null; conversation: FeatureResult<ConversationData>; trust: FeatureResult<TrustData> }
+  | { type: "asked"; requestId: number; question: string; result: ActionResult; turn: TurnView | null }
   | { type: "settings-read"; settings: FeatureResult<SettingsView> }
   | { type: "settings-working" }
   | { type: "settings-proposed"; proposal: SettingsProposal }
   | { type: "settings-settled"; result: ActionResult; settings: FeatureResult<SettingsView> }
   | { type: "rescanning"; requestId: number }
-  | { type: "rescanned"; requestId: number; result: ActionResult; report: RescanReport | null; documents: FeatureResult<DocumentsData> }
+  | { type: "rescanned"; requestId: number; result: ActionResult; report: RescanReport | null }
   | { type: "transferring"; requestId: number; verb: TransferVerb }
   | { type: "transferred"; requestId: number; verb: TransferVerb; result: ActionResult }
   | { type: "cancelling"; requestId: number; jobId: string }
@@ -114,7 +115,7 @@ function selectedIds(snapshot: SurfaceSnapshot) {
 }
 
 function hasReadFailure(snapshot: SurfaceSnapshot) {
-  return [snapshot.overview, snapshot.documents, snapshot.conversation, snapshot.plans].some((result) => result?.state === "failed");
+  return [snapshot.overview, snapshot.documents, snapshot.activity, snapshot.conversation, snapshot.plans, snapshot.trust].some((result) => result?.state === "failed");
 }
 
 // The session before either a sample or private vault is explicitly opened.
@@ -235,6 +236,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         ...state,
         phase: "settled",
         snapshot: action.snapshot,
+        jobs: action.jobs ?? state.jobs,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
@@ -242,6 +244,28 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
         notice: hasReadFailure(action.snapshot) ? { kind: "refused", text: "The private vault opened, but some surfaces could not be read. Your vault was not changed." } : null,
       };
     }
+    case "mutation-loaded": {
+      if (action.requestId !== state.requestId) return state;
+      const failed = hasReadFailure(action.snapshot);
+      const snapshot = failed ? state.snapshot : action.snapshot;
+      const ids = selectedIds(snapshot);
+      return {
+        ...state,
+        phase: "settled",
+        snapshot,
+        jobs: action.jobs ?? state.jobs,
+        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
+        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
+        selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
+        selectedPrompt: retainSelection(state.selectedPrompt, ids.prompts),
+        notice: failed
+          ? { kind: "refused", text: "The action finished, but some surfaces could not be read again. Anything still shown there may be stale." }
+          : null,
+      };
+    }
+    case "mutation-refresh-failed":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, notice: { kind: "refused", text: "The action finished, but the full vault picture could not be read again. What is shown may be stale." } };
     case "open-failed":
       if (action.requestId !== state.requestId) return state;
       // The sidecar's own sentence stands where it gave one. It tells apart a
@@ -283,14 +307,8 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return { ...state, questionAction: { state: "working", questionId: action.questionId, verb: action.verb } };
     case "question-acted": {
       if (action.requestId !== state.requestId) return state;
-      // The read that follows a write replaces the one conversation. Nothing
-      // else is claimed to have been re-read.
-      const snapshot = { ...state.snapshot, conversation: action.conversation };
-      const ids = selectedIds(snapshot);
       return {
         ...state,
-        snapshot,
-        selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         questionAction: { state: "settled", questionId: action.questionId, verb: action.verb, result: action.result },
       };
     }
@@ -306,6 +324,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return {
         ...state,
         snapshot: action.snapshot,
+        jobs: action.jobs ?? state.jobs,
         selectedDocument: retainSelection(state.selectedDocument, ids.documents),
         selectedQueue: retainSelection(state.selectedQueue, ids.queue),
         selectedAccount: retainSelection(state.selectedAccount, ids.accounts),
@@ -316,19 +335,16 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
     case "activity-refresh-failed":
       if (action.requestId !== state.requestId) return state;
       return { ...state, activityAction: { state: "settled", movementId: action.movementId, verb: action.verb, result: action.result, refresh: "failed" } };
+    case "activity-page-loaded":
+      if (action.requestId !== state.requestId) return state;
+      return { ...state, snapshot: { ...state.snapshot, activity: action.activity } };
     case "capturing":
       if (action.requestId !== state.requestId) return state;
       return { ...state, captureAction: { state: "working", result: state.captureAction.state === "idle" ? null : state.captureAction.result } };
     case "captured": {
       if (action.requestId !== state.requestId) return state;
-      // The read that follows a capture replaces only documents. Nothing else
-      // was asked for, so nothing else is claimed to have been read again.
-      const snapshot = { ...state.snapshot, documents: action.documents };
-      const ids = selectedIds(snapshot);
       return {
         ...state,
-        snapshot,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
         captureAction: { state: "settled", result: action.result },
       };
     }
@@ -350,7 +366,7 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return { ...state, askAction: { state: "working", question: action.question } };
     case "asked":
       if (action.requestId !== state.requestId) return state;
-      return { ...state, snapshot: { ...state.snapshot, conversation: action.conversation, trust: action.trust }, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
+      return { ...state, askAction: { state: "settled", question: action.question, result: action.result, turn: action.turn } };
     // Settings survive a vault opening and closing: they are this machine's,
     // not this vault's, and clearing them on a source change would make a
     // person say yes to the same thing twice.
@@ -363,15 +379,8 @@ export function sessionReducer(state: SurfaceSession, action: SessionAction): Su
       return { ...state, rescanAction: { state: "working" } };
     case "rescanned": {
       if (action.requestId !== state.requestId) return state;
-      // A pass writes links and heals, so the documents read that follows it
-      // replaces only documents. Nothing else was asked for, so nothing else
-      // is claimed to have been read again.
-      const snapshot = { ...state.snapshot, documents: action.documents };
-      const ids = selectedIds(snapshot);
       return {
         ...state,
-        snapshot,
-        selectedDocument: retainSelection(state.selectedDocument, ids.documents),
         rescanAction: { state: "settled", result: action.result, report: action.report },
       };
     }

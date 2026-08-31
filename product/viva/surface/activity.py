@@ -29,7 +29,8 @@ from __future__ import annotations
 from typing import Any
 
 from .. import render
-from ..ingest.categorize import UNCATEGORIZED, normalize_category
+from ..ingest.categorize import (UNCATEGORIZED, normalize_category,
+                                 open_loan_receivables_at)
 from ..ingest.transfers import is_transfer_candidate
 from ..listen import category_vocabulary
 from ..ledger.projection.movements import (BY_CATEGORY, MIXED, SETTLEMENT,
@@ -63,7 +64,8 @@ NATURES: dict[str, str] = {
 }
 
 
-def activity(projection, locale: str = "", limit: int = DEFAULT_LIMIT) -> dict[str, Any]:
+def activity(projection, locale: str = "", limit: int = DEFAULT_LIMIT,
+             focus: str = "") -> dict[str, Any]:
     """Everything that moved, newest first, ready to render.
 
     ``limit`` bounds what is handed over. What was left out is reported with
@@ -80,8 +82,20 @@ def activity(projection, locale: str = "", limit: int = DEFAULT_LIMIT) -> dict[s
             "beyond": {"count": 0},
             "vocabularies": vocabularies,
         }
-    ordered = sorted(movements, key=lambda m: (str(m.date), m.key), reverse=True)
-    shown, rest = ordered[:limit], ordered[limit:]
+    pending = {item.get("a") for item in
+               getattr(projection, "transfer_suggestions", lambda: [])()}
+    # Order unresolved reviews first, then ordinary history newest-first.
+    ordered = sorted(movements,
+                     key=lambda m: (m.key in pending, str(m.date), m.key),
+                     reverse=True)
+    shown = ordered[:limit]
+    if focus and all(movement.key != focus for movement in shown):
+        focused = next((movement for movement in ordered
+                        if movement.key == focus), None)
+        if focused is not None:
+            shown = ([*shown[:-1], focused] if shown else [focused])
+    shown_keys = {movement.key for movement in shown}
+    rest = [movement for movement in ordered if movement.key not in shown_keys]
     return {
         "state": PanelState.READY.value,
         "sentence": moment("activity_scope"),
@@ -110,11 +124,12 @@ def _row(projection, movement, locale: str,
     if (vocabularies["categories"]["complete"]
             and vocabularies["categories"]["items"]):
         actions.append("assign_category")
+    repayment_choices = _loan_repayment_choices(projection, movement, effect)
     # Linked own-account transfers do not offer an economic-treatment action.
-    if not movement.linked:
+    # Offer inbound repayment only for receivables that can accept the amount.
+    if not movement.linked and (effect < 0 or repayment_choices):
         actions.append("assign_meaning")
-    if (vocabularies["tags"]["complete"]
-            and vocabularies["tags"]["items"] and not inherited):
+    if vocabularies["tags"]["complete"] and not inherited:
         actions.append("replace_tags")
     transfer, transfer_actions = _transfer_state(projection, movement, locale)
     actions.extend(transfer_actions)
@@ -134,6 +149,7 @@ def _row(projection, movement, locale: str,
         "nature": movement.nature,
         # Surface the recorded treatment and loan name directly.
         "treatment": _treatment(movement, effect),
+        "loan_repayment_choices": repayment_choices,
         # What this is, where it is not plain spending. Empty on an ordinary
         # row, because a line saying "this is spending" on every spending row
         # is a line that stops being read.
@@ -152,6 +168,18 @@ def _row(projection, movement, locale: str,
         "transfer": transfer,
         "actions": actions,
     }
+
+
+def _loan_repayment_choices(projection, movement, effect) -> list[str]:
+    """Loan receivables this inbound amount could repay on its own date."""
+    if effect <= 0:
+        return []
+    choices = [
+        str(render.account({"path": account}))
+        for account, outstanding in open_loan_receivables_at(projection, movement)
+        if outstanding >= effect
+    ]
+    return sorted(set(choices))
 
 
 def _treatment(movement, effect) -> dict[str, str]:

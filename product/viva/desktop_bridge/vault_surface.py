@@ -98,7 +98,10 @@ class OpenedVaultSurfaceProvider:
         from ..surface.activity import activity
 
         projection = self._vault.ledger.projection_as_of(parameters.get("as_of"))
-        return activity(projection, locale_from_env(), parameters["limit"])
+        from ..surface.activity import DEFAULT_LIMIT
+        return activity(projection, locale_from_env(),
+                        parameters.get("limit", DEFAULT_LIMIT),
+                        parameters.get("focus", ""))
 
     def _trust(self) -> dict[str, Any]:
         """What this vault has sent, and what nothing here can establish.
@@ -136,13 +139,7 @@ class OpenedVaultSurfaceProvider:
         }
 
     def _job_registry(self) -> dict[str, Any]:
-        """What the sidecar is doing, or has just done, for this vault.
-
-        The one read here that opens no projection: a job is work this process
-        is doing and is not a thing the ledger records, so nothing about it
-        survives the sidecar. A build with no registry answers absent rather
-        than with an empty list — there is a difference between a sidecar that
-        has run no job and one that cannot say."""
+        """Read bounded operational job receipts without opening a projection."""
         if self._jobs is None:
             return {"state": "absent", "jobs": [], "running": []}
         return self._jobs.read()
@@ -170,7 +167,7 @@ def _parameters(parameters: Mapping[str, Any]) -> dict[str, Any]:
     # `as_of` is the horizon a projection is cut at; `read_on` is the day a
     # picture is read on. Two names one letter apart meaning two things is how
     # a later change gets one of them wrong, so they are not spelled alike.
-    allowed = {"as_of", "limit", "jurisdiction", "locale", "read_on"}
+    allowed = {"as_of", "limit", "focus", "jurisdiction", "locale", "read_on"}
     unexpected = set(parameters) - allowed
     if unexpected:
         raise BridgeRequestError(
@@ -182,8 +179,11 @@ def _parameters(parameters: Mapping[str, Any]) -> dict[str, Any]:
         value = result.get(name, "")
         if not isinstance(value, str):
             raise BridgeRequestError(f"{name} must be a string")
-    limit = result.get("limit", 10)
-    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
-        raise BridgeRequestError("limit must be a positive integer")
-    result["limit"] = limit
+    if "limit" in result:
+        limit = result["limit"]
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise BridgeRequestError("limit must be a positive integer")
+    if "focus" in result and (not isinstance(result["focus"], str)
+                              or not result["focus"].strip()):
+        raise BridgeRequestError("focus must be a non-empty movement identity")
     return result

@@ -364,6 +364,39 @@ def test_meaning_action_accepts_repayment_only_after_matching_principal(tmp_path
         "kind": "loan_repayment", "name": "Sam"}
 
 
+def test_repayment_is_not_advertised_before_the_principal_was_lent(tmp_path):
+    vault = Vault.open(tmp_path / "dated-loan-vault", "pw")
+    vault.ledger.append(account_opened(
+        "acct:checking", "depository", "Checking", "USD", "2026-01-01",
+        account_number="1122"))
+    vault.ledger.append(simple_transaction(
+        "acct:checking", "100.00", "early incoming", "2026-01-01"))
+    vault.ledger.append(simple_transaction(
+        "acct:checking", "-100.00", "later loan", "2026-01-10"))
+    movements = {movement.description: movement.key
+                 for movement in vault.ledger.projection().movements()}
+    actions = ActivityActions(vault)
+    assert actions.assign_meaning({
+        "movement_key": movements["later loan"],
+        "meaning": "loan",
+        "counterparty": "Sam",
+    })["kind"] == "completed"
+
+    row = next(item for item in activity(vault.ledger.projection())["items"]
+               if item["id"] == movements["early incoming"])
+    refused = actions.assign_meaning({
+        "movement_key": movements["early incoming"],
+        "meaning": "loan_repayment",
+        "counterparty": "Sam",
+    })
+
+    assert row["loan_repayment_choices"] == []
+    assert "assign_meaning" not in row["actions"]
+    assert refused["kind"] == "refused"
+    assert refused["reason"] == "no_matching_open_loan"
+    assert refused["state"] is None
+
+
 def test_tag_replacement_removes_by_one_append_survives_replay_and_keeps_partition(tmp_path):
     vault = _vault(tmp_path)
     target = vault.ledger.projection().movements()[0]
@@ -501,7 +534,7 @@ def test_transfer_requests_are_closed_nonself_and_cannot_smuggle_a_grade(tmp_pat
     assert len(list(vault.events())) == before
 
 
-def test_stale_or_unadvertised_intent_writes_nothing(tmp_path):
+def test_stale_intent_writes_nothing_and_a_new_tag_can_bootstrap(tmp_path):
     vault = _vault(tmp_path)
     target = vault.ledger.projection().movements()[0]
     tag_movement(vault.ledger, target.key, ["known"])
@@ -510,9 +543,10 @@ def test_stale_or_unadvertised_intent_writes_nothing(tmp_path):
 
     assert actions.assign_category(
         {"movement_key": "moved-away", "category_id": "known"})["kind"] == "stale"
-    assert actions.replace_tags(
-        {"movement_key": target.key, "tag_ids": ["minted"]})["kind"] == "refused"
     assert len(list(vault.events())) == before
+    assert actions.replace_tags(
+        {"movement_key": target.key, "tag_ids": ["minted"]})["kind"] == "completed"
+    assert vault.ledger.projection().movement_tags_of(target) == ["minted"]
 
 
 def test_identical_category_and_tag_intents_are_completed_without_duplicate_append(tmp_path):

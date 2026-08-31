@@ -95,7 +95,7 @@ export type BridgeClient = {
   readTrust: () => Promise<SurfaceReadResult>;
   // What moved, and which way. Direction is the read's: on a card a purchase
   // posts positive, and a shell reading the sign would have it backwards.
-  readActivity: () => Promise<SurfaceReadResult>;
+  readActivity: (parameters?: SurfaceParameters) => Promise<SurfaceReadResult>;
   readPlans: () => Promise<SurfaceReadResult>;
   draftPlan: (payload: Record<string, unknown>) => Promise<unknown>;
   proposePlan: (payload: Record<string, unknown>) => Promise<unknown>;

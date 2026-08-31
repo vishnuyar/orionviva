@@ -30,12 +30,12 @@
 
 ### MON-31 — the cash flow reconciles when the statement reports it
 **State:** enforced
-**Code:** product/viva/ingest/paystub_projector.py:144 (`check_balance_identity` over the activity)
-**Test:** product/tests/test_brokerage.py::test_cash_flow_reconciles_and_recognizes_income_fees_gains
+**Code:** product/viva/ingest/brokerage_projector.py (`post_brokerage`, `apply_brokerage_activity_correction`); product/viva/ledger/events.py (`brokerage_activity_held`, `brokerage_activity_resolved`)
+**Test:** product/tests/test_brokerage.py::test_cash_flow_reconciles_and_recognizes_income_fees_gains; ::test_cash_flow_mismatch_holds_activity_but_keeps_valid_snapshot
 
-1. The flow path runs when a statement carries both an opening cash figure and an activity list: the opening is booked once, each activity item posts, and the closing is observed.
+1. Snapshot and activity are independent gates. A valid holdings snapshot posts even when the reported activity fails its cash-flow identity; the activity is held and emits no movements.
 2. Where the statement omits the opening, the previous statement's closing cash carries forward rather than the activity being discarded (product/tests/test_brokerage.py::test_opening_cash_carries_forward_when_the_statement_omits_it).
-3. A cash flow that does not reconcile holds the statement and says the activity is held back (product/tests/test_brokerage.py::test_cash_flow_mismatch_is_held).
+3. Corrected activity reconciles before its movements and resolution record are appended atomically. The snapshot is not reposted and the activity cannot replay twice.
 4. A holdings-only statement falls back to the snapshot path, with cash observed as a lone attested balance.
 
 ### MON-32 — activity counter-legs, and a contribution counted once
@@ -91,7 +91,7 @@ Every other document reconciles a **flow** — money moved and a posting recorde
 
 So a holding is recorded the way a closing balance is recorded — measured, not posted — and only real cash flows post. This is a thesis decision rather than a modeling convenience. The claim is that personal financial records are clean *because they are measurements, not generations*. Posting each price change against an unrealized-gain account would manufacture money-movement events for changes that were never movements, and would force a fabricated price onto every date. Keeping the money ledger pure cash flow keeps it aligned with reality and with tax (M1).
 
-The brokerage account is a reconciliation hub checked two independent ways, and together they separate *contributed* growth from *market* growth — the honest heart of "how are my investments doing?". The internal tally is a **snapshot cross-check** over many numbers the statement itself asserts, which makes it the densest verification surface in the system and entirely model-free; a single misread position fails it loudly. The cross-account cash flow ties each realized component to how it is already recorded: a contribution links to its funding account so it is counted once and never spending, a dividend visible in checking corroborates across issuers, a fee is an expense, a sell books proceeds and a realized gain.
+The brokerage account is a reconciliation hub checked by two separate gates, and together they separate *contributed* growth from *market* growth — the honest heart of "how are my investments doing?". The internal tally is a **snapshot cross-check** over many numbers the statement itself asserts, which makes it the densest verification surface in the system and entirely model-free; a single misread position fails it loudly. The activity identity is allowed to fail without erasing a snapshot that already proved itself. Once corrected, the cross-account cash flow ties each realized component to how it is already recorded: a contribution links to its funding account so it is counted once and never spending, a dividend visible in checking corroborates across issuers, a fee is an expense, a sell books proceeds and a realized gain.
 
 Unrealized gain is deliberately absent from both. It is not cash and not a tax event, so it is never posted, never a gate, never an event; it lives as a derived as-of-date figure labelled with its date under the valuation-class rule. That is what dissolves any "should we gate the market change?" question — there is nothing to gate, because the paper change is not a ledger fact.
 

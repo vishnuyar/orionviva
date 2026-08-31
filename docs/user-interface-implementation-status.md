@@ -50,7 +50,7 @@ per-currency thirty-day known-remainder ranges and refusals with
 backend-supplied assumptions, exclusions, evidence and balance series,
 save-up Plans with pure drafts, explicit local reservations, exact persisted
 proposal confirmation, account evidence and durable conversational entry,
-process-local jobs and cancellation,
+bounded durable job receipts with live progress and cancellation,
 one durable conversation for questions, answers, corrections, proposal confirmation and decline, capability-derived navigation,
 settings proposal and confirmation, outbound history, build and lifecycle
 identity, vault export and restore, maintenance, and privacy-filtered diagnostic
@@ -122,9 +122,9 @@ operation column is additionally checked by the desktop architecture gate.
 
 | Anchor | Gap |
 | --- | --- |
-| `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Job state and cancellation are process-local. Restart recovery is absent, so an interrupted document job cannot resume after the sidecar exits. |
+| `has-name product/viva/desktop_bridge/jobs.py#JobRegistry` | Bounded operational receipts survive restart. Work interrupted by exit is restored as failed and is not resumed, so the person must start it again. |
 | `has-file desktop/src/features/documents/Documents.tsx` | Page and source-region review, focused correction, and document-level outbound history are not connected in the Documents destination. |
-| `has-file desktop/src/features/activity/Activity.tsx` | Activity reaches movement-scoped existing-choice category correction; treatment correction for spending, a named loan lent, or a named loan repayment; complete-set tag replacement where the backend advertises it; and backend-qualified transfer confirmation, rejection and unlinking. The desktop neither infers transfer candidates nor offers merchant-wide changes, new category labels, or bulk editing. |
+| `has-file desktop/src/features/activity/Activity.tsx` | Activity reaches movement-scoped existing-choice category correction; treatment correction for spending, a named loan lent, or a named loan repayment chosen from receivables open on the movement date with enough remaining principal; complete-set tag replacement that may introduce a bounded local tag where the backend advertises it; and backend-qualified transfer confirmation, rejection and unlinking. The desktop neither infers transfer candidates nor offers merchant-wide changes, new category labels, or bulk editing. |
 | `has-file desktop/src/features/conversation/ConversationDrawer.tsx` | Conversation is durable across process and interface sessions, includes the deterministic question queue, records proposal identity and exact proposed data separately, and restores confirmation controls after reopening. There is no microphone, speech recognition, or audio playback path; the reply shape remains voice-ready. Because the product is unreleased, this contract intentionally starts clean and performs no migration or backfill from earlier technical read records or prior vault shapes. |
 | `no-file product/viva/surface/connections.py` | No account-aggregation surface exists. Documents and the sample vault are the acquisition paths. |
 | `has-name product/viva/surface/outbound.py#outbound` | Trust reports outbound model calls and explicitly reports that no independent anchoring exists; it does not create external anchors or issuer signatures. |

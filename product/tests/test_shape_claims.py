@@ -623,7 +623,7 @@ def test_a_gap_no_account_can_name_is_still_said():
                  registry)
     assert result.answered, result.detail
     stated = next(f for f in result.figures if f["what"].startswith("net in"))
-    assert stated["boundary"] == {"whole": False, "unposted": 1,
+    assert stated["boundary"] == {"whole": True, "unposted": 1,
                                   "cut": [{"kind": "currency",
                                           "value": "USD"}]}
     assert moment("boundary_unposted", count=render.count(1)) in result.text

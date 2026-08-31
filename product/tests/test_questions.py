@@ -36,6 +36,83 @@ def _checking(tmp_path, txns, opening="100000.00", tag=b"chk"):
     return ledger
 
 
+def test_identity_held_bridge_suppresses_the_false_gap_question(tmp_path):
+    from viva.ledger import account_opened, opening_balance_observed
+    from viva.ledger.events import Provenance, statement_held
+    from viva.questions import IDENTITY, RECONCILIATION
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    account = "acct:northbank:1234"
+    ledger.append(account_opened(account, "depository", "Checking", "USD",
+                                 "2026-01-01", institution="Northbank",
+                                 account_number="••••1234"))
+    ledger.append(opening_balance_observed(account, "100", "2026-01-01"))
+    bridge = StatementFacts(
+        doc_id="bridge", doc_type="checking_statement", doc_type_confidence=1,
+        account_ref="Checking", currency="USD", opening_amount=Decimal("100"),
+        opening_date="2026-02-01", closing_amount=Decimal("200"),
+        closing_date="2026-02-28",
+        transactions=[TxnFact("2026-02-10", "Deposit", Decimal("100"))],
+        account_number="••••1234", institution="Northbank")
+    gap = StatementFacts(
+        doc_id="gap", doc_type="checking_statement", doc_type_confidence=1,
+        account_ref="Checking", currency="USD", opening_amount=Decimal("200"),
+        opening_date="2026-03-01", closing_amount=Decimal("250"),
+        closing_date="2026-03-31",
+        transactions=[TxnFact("2026-03-10", "Deposit", Decimal("50"))],
+        account_number="••••1234", institution="Northbank")
+    ledger.append(statement_held(
+        "bridge", bridge.to_dict(), {"candidate": account,
+                                     "message": "Identity needs review."},
+        "identity", bridge.closing_date, Provenance(doc_id="bridge")))
+    ledger.append(statement_held(
+        "gap", gap.to_dict(), {"message": "A period appears missing."},
+        "gap", gap.closing_date, Provenance(doc_id="gap")))
+
+    review = [question for question in open_questions(ledger, as_of="2026-04-01")[
+        "questions"] if question["kind"] in (IDENTITY, RECONCILIATION)]
+
+    assert [question["kind"] for question in review] == [IDENTITY]
+    assert review[0]["refs"]["doc_id"] == "bridge"
+
+
+def test_an_old_identity_hold_does_not_hide_a_real_later_gap(tmp_path):
+    from viva.ledger import account_opened, opening_balance_observed
+    from viva.ledger.events import Provenance, statement_held
+    from viva.questions import IDENTITY, RECONCILIATION
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    account = "acct:northbank:1234"
+    ledger.append(account_opened(account, "depository", "Checking", "USD",
+                                 "2026-01-01", institution="Northbank",
+                                 account_number="•••1234"))
+    ledger.append(opening_balance_observed(account, "100", "2026-01-01"))
+    bridge = StatementFacts(
+        doc_id="old", doc_type="checking_statement", doc_type_confidence=1,
+        account_ref="Checking", currency="USD", opening_amount=Decimal("100"),
+        opening_date="2026-01-01", closing_amount=Decimal("200"),
+        closing_date="2026-01-31", transactions=[],
+        account_number="•••1234", institution="Northbank")
+    gap = StatementFacts(
+        doc_id="gap", doc_type="checking_statement", doc_type_confidence=1,
+        account_ref="Checking", currency="USD", opening_amount=Decimal("200"),
+        opening_date="2026-03-01", closing_amount=Decimal("250"),
+        closing_date="2026-03-31", transactions=[],
+        account_number="•••1234", institution="Northbank")
+    ledger.append(statement_held("old", bridge.to_dict(),
+        {"candidate": account, "message": "Identity needs review."},
+        "identity", bridge.closing_date, Provenance(doc_id="old")))
+    ledger.append(statement_held("gap", gap.to_dict(),
+        {"message": "A period appears missing."}, "gap", gap.closing_date,
+        Provenance(doc_id="gap")))
+
+    kinds = [question["kind"] for question in open_questions(
+        ledger, as_of="2026-04-01")["questions"]
+        if question["kind"] in (IDENTITY, RECONCILIATION)]
+
+    assert sorted(kinds) == sorted([IDENTITY, RECONCILIATION])
+
+
 def test_questions_are_ranked_by_what_answering_moves(tmp_path):
     ledger = _checking(tmp_path, [
         ("2026-03-05", "TINY SHOP", "-12.00"),

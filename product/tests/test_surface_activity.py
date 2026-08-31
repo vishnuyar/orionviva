@@ -104,6 +104,19 @@ def test_the_amount_travels_unsigned_beside_the_word():
     assert "-" not in read["items"][0]["display"]
 
 
+def test_a_focused_row_stays_on_the_bounded_page_after_review():
+    movements = [
+        _Movement(key=f"movement:{index:02d}", date=f"2026-07-{index + 1:02d}")
+        for index in range(31)
+    ]
+
+    read = _read(movements, limit=10, focus="movement:00")
+
+    assert len(read["items"]) == 10
+    assert "movement:00" in {item["id"] for item in read["items"]}
+    assert read["beyond"] == {"count": 21}
+
+
 # ------------------------------------------------ what a row is, beyond spending
 
 

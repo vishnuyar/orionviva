@@ -28,7 +28,9 @@ describe("conversation questions and corrections", () => {
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: questions(), total: setAside ? 1 : 2, invite: "Write an answer", answered_by_document: "A document answers this" }
-              : surface === "trust" ? trustPayload : activityPayload;
+              : surface === "trust" ? trustPayload
+                : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
+                  : activityPayload;
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
     };
@@ -70,7 +72,9 @@ describe("conversation questions and corrections", () => {
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
-              : surface === "trust" ? trustPayload : activityPayload;
+              : surface === "trust" ? trustPayload
+                : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
+                  : activityPayload;
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
     };
@@ -125,7 +129,9 @@ describe("conversation questions and corrections", () => {
         const data = surface === "overview" ? { as_of: "2026-08-18", accounts: [] }
           : surface === "documents" ? { documents: [] }
             : surface === "conversation" ? { turns: [], questions: [{ id: "first-question", kind: "identity", text: "Is this your account?", why: "Account identity is unresolved." }], total: 1, invite: "Write an answer", answered_by_document: "A document answers this" }
-              : surface === "trust" ? trustPayload : activityPayload;
+              : surface === "trust" ? trustPayload
+                : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
+                  : activityPayload;
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
     };
@@ -140,12 +146,9 @@ describe("conversation questions and corrections", () => {
 
       await user.click(getByRole("button", { name: "Set aside for now" }));
 
-      // The write took and the read that followed did not, so the panel and the
-      // control are both gone. What happened is still said, it says the queue
-      // was not read again, and focus lands on it rather than on the body.
-      await waitFor(() => expect(getByText("Conversation could not be read")).toBeInTheDocument());
+      // A failed post-write refresh retains the prior queue and marks it stale.
+      await waitFor(() => expect(getByText("The action finished, but some surfaces could not be read again. Anything still shown there may be stale.")).toBeInTheDocument());
       expect(getAllByRole("status").some((status) => status.textContent?.includes("Set aside until something changes."))).toBe(true);
-      await waitFor(() => expect(document.getElementById("conversation-action-outcome")).toHaveFocus());
       expect(document.activeElement).not.toBe(document.body);
     } finally {
       window.orionVivaBridge = previousBridge;

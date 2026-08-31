@@ -226,6 +226,28 @@ def statement_held(doc_id: str, facts_dict: dict, finding_dict: dict | None,
     )
 
 
+def brokerage_activity_held(doc_id: str, facts_dict: dict,
+                            finding_dict: dict | None, occurred_at: str,
+                            provenance: Provenance | None = None) -> Event:
+    """Record a posted brokerage snapshot's quarantined activity stream."""
+    return Event(
+        "BrokerageActivityHeld", occurred_at,
+        body={"doc_id": doc_id, "reason": "activity", "facts": facts_dict,
+              "finding": finding_dict},
+        provenance=provenance or Provenance(doc_id=doc_id),
+    )
+
+
+def brokerage_activity_resolved(doc_id: str, occurred_at: str,
+                                provenance: Provenance | None = None) -> Event:
+    """Close one durable brokerage-activity hold after corrected replay."""
+    return Event(
+        "BrokerageActivityResolved", occurred_at,
+        body={"doc_id": doc_id},
+        provenance=provenance or Provenance(doc_id=doc_id),
+    )
+
+
 def correction_applied(doc_id: str, target: str, from_value: str,
                        to_value: str, occurred_at: str, by: str = "human",
                        provenance: Provenance | None = None) -> Event:

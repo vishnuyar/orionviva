@@ -45,7 +45,7 @@ export function createHostBridgeClient(transport: BridgeTransport): BridgeClient
     readConversation: (parameters) => read("conversation", parameters),
     readJobs: () => read("jobs"),
     readTrust: () => read("trust"),
-    readActivity: () => read("activity"),
+    readActivity: (parameters) => read("activity", parameters),
     readPlans: () => read("plans"),
     draftPlan: (payload) => request("viva.plans.draft", payload),
     proposePlan: (payload) => request("viva.plans.propose", payload),

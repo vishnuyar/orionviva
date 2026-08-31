@@ -6,8 +6,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..events import ISSUED
-from ..identity import (account_key, account_tokens, names_overlap,
-                        number_key, slug)
+from ..identity import (account_key, account_labels_overlap, account_tokens,
+                        conflicting_number_signals, distinctive_tokens, identity_number_key,
+                        institution_names_overlap, names_overlap,
+                        normalize_number, slug)
 from .core import ProjectionCore, UnknownAccountError
 
 
@@ -63,6 +65,10 @@ def account_infos(core: ProjectionCore) -> list[AccountInfo]:
     return [account_info(core, a) for a in accounts(core)]
 
 
+def account_aliases(core: ProjectionCore) -> dict[str, str]:
+    return dict(core._aliases)
+
+
 def document_types_of(core: ProjectionCore, account: str) -> set:
     """The canonical doc types of every document that has spoken about this
     account. The strongest evidence there is for what KIND of thing it is:
@@ -84,39 +90,36 @@ def document_types_of(core: ProjectionCore, account: str) -> set:
 def resolve(core: ProjectionCore, institution: str, account_number: str,
             account_ref: str, names: list[str],
             kind: str = "depository") -> Resolution:
-    """Resolve a statement's identity signals against known accounts.
-
-    The verdict is 'same' (a learned alias, or an account with this key),
-    'new', or 'ambiguous' (nothing stronger than a holder name connects this
-    statement to a held account, so it is worth one question).
-
-    A holder's name is the weakest identity signal: it is on every account
-    that person owns. It raises an ambiguity only when the stronger signals
-    cannot settle the question, and three rules settle it first:
-
-    * **Two readable, different account numbers are two accounts.** The
-      number is the anchor, and a checking and a savings account at one bank
-      share a holder by definition.
-    * **When neither statement shows a number**, two different product
-      labels are two accounts, compared as slugs rather than fuzzily.
-    * The comparison is scoped to one account ``kind``, so a card and a
-      checking account sharing a holder are two accounts.
-
-    A wrong split is visible and a merge ruling repairs it; a wrong merge
-    corrupts a balance silently."""
+    """Return the same, new, or ambiguous account for these identity signals."""
     key = account_key(institution, account_number, account_ref)
+    if conflicting_number_signals(account_number, account_ref):
+        return Resolution(
+            key, key, "ambiguous",
+            reason=("the extracted account number and the printed last four "
+                    "disagree, so neither can safely identify the account"))
     if key in core._aliases:                       # learned
         return Resolution(core._aliases[key], key, "same")
     st = core._acct.get(key)
     if st is not None and st.seen:                 # already this account
         return Resolution(key, key, "same")
-    mine_number = number_key(account_number)
+    mine_number = identity_number_key(account_number, account_ref)
+    mine_full = normalize_number(account_number)
     for aid, s in core._acct.items():              # name overlaps another account?
         if not s.seen or s.kind != kind or aid == key:
             continue
+        their_full = normalize_number(s.number)
+        # Full matching numbers resolve independently of issuer display names.
+        if (len(mine_full) > 4 and len(their_full) > 4
+                and mine_full == their_full):
+            return Resolution(aid, key, "same")
+        their_number = identity_number_key(s.number, s.name)
+        if (mine_number and mine_number == their_number
+                and institution_names_overlap(institution, s.institution)
+                and names_overlap(names, s.names)
+                and account_labels_overlap(account_ref, s.name)):
+            return Resolution(aid, key, "same")
         if not (s.names and names_overlap(names, s.names)):
             continue
-        their_number = number_key(s.number)
         if mine_number and their_number and mine_number != their_number:
             continue                               # two numbers, two accounts
         if not mine_number and not their_number:
@@ -132,17 +135,14 @@ def resolve(core: ProjectionCore, institution: str, account_number: str,
 
 
 def own_account_tokens(core: ProjectionCore) -> dict[str, set[str]]:
-    """`{account: tokens}` for every account held, so a movement naming one
-    of them is recognized as internal even when no link was formed.
-
-    ISSUED accounts only. An `asserted` account is named after the
-    counterparty whose payments created it — `Liabilities:Mortgage:Acme`
-    from "ACME MORTGAGE SERVICING" — so including it would read every one of
-    those payments as an internal transfer to itself."""
+    """Return identity tokens for issued accounts eligible as own accounts."""
     if core._own_tokens_cache is None:
-        core._own_tokens_cache = {
+        per_account = {
             a: account_tokens(s.institution, s.number, s.name)
             for a, s in core._acct.items()
             if s.seen and s.kind in ("depository", "liability", "investment")
             and s.origin == ISSUED}
+        institutions = {
+            a: s.institution for a, s in core._acct.items() if a in per_account}
+        core._own_tokens_cache = distinctive_tokens(per_account, institutions)
     return core._own_tokens_cache

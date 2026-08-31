@@ -115,6 +115,26 @@ def test_spending_narrowed_to_a_window_says_which_days(proj):
         "cut": [{"kind": "until", "value": "2026-01-31"}]}
 
 
+def test_window_only_spending_does_not_inherit_an_unrelated_investment_gap():
+    events = _spending_events(
+        ("2026-01-05", "GREENFIELD MARKET", "-40.00", "groceries", ()))
+    events.extend([
+        account_opened("brk", "investment", "Brokerage", "USD", "2025-12-01"),
+        opening_balance_observed("brk", "100", "2025-12-01", _p("brk-dec")),
+        closing_balance_observed("brk", "100", "2025-12-31", _p("brk-dec")),
+    ])
+
+    result = ledger_tools.query_ledger(
+        LedgerProjection(events), {"entity": "aggregate", "metric": "spending",
+                                   "filters": {"window": {
+                                       "from": "2026-01-01",
+                                       "to": "2026-01-31"}}})
+
+    assert not any("brk" in caveat for caveat in result.caveats)
+    assert result.data["count"] == 1
+    assert result.data["total"] == "40.00"
+
+
 def test_an_ungrouped_unfiltered_spending_total_is_the_whole_of_it(proj):
     """The statement fires only where there is a set worth stating. A total
     nothing narrowed covers everything its quantity ranges over, and says so
@@ -504,7 +524,7 @@ def test_an_incomplete_net_worth_names_what_it_leaves_out():
         proj, {"entity": "aggregate", "metric": "net_worth"},
         today="2026-03-01")
     net = next(f for f in result.figures if f["what"].startswith("net in"))
-    assert net["boundary"]["whole"] is False
+    assert net["boundary"]["whole"] is True
     assert net["boundary"]["unmeasured"] == [
         {"account": "Liabilities:HomeLoan:Meridian", "reason": "refused",
          "settled_by": "the loan or mortgage statement"}]
@@ -540,7 +560,7 @@ def test_an_account_whose_balance_was_never_observed_is_a_gap_too():
         today="2026-03-01")
     for f in result.figures:
         if f["what"].startswith(("net in", "liabilities in")):
-            assert f["boundary"]["whole"] is False, f["what"]
+            assert f["boundary"]["whole"] is True, f["what"]
             assert f["boundary"]["unmeasured"] == [
                 {"account": "loan", "reason": "unobserved",
                  "settled_by": ""}]
@@ -580,7 +600,7 @@ def test_an_account_measured_only_later_is_a_gap_in_an_earlier_point():
                 if f["what"].startswith("liabilities in"))
     assert owed["value"] == "0"
     assert owed["boundary"] == {
-        "whole": False,
+        "whole": True,
         "cut": [{"kind": "currency", "value": "USD"}],
         "unmeasured": [{"account": "loan", "reason": "unobserved",
                         "settled_by": ""}]}
@@ -620,24 +640,17 @@ def test_a_figure_nobody_declared_a_boundary_for_claims_none():
     assert said["boundary"] == {}
 
 
-def test_a_whole_set_cannot_also_name_what_it_leaves_out():
-    """The contradiction is refused where the emitter is written, not read as a
-    disclosure by whoever places it."""
+def test_a_whole_scope_can_also_disclose_evidence_limitations():
+    """Scope completeness and evidence completeness are independent."""
     from viva.tools.envelope import bounded
     assert bounded(whole=True) == {"whole": True}
-    contradiction = "cannot also name what it leaves out"
-    with pytest.raises(ValueError, match=contradiction):
-        bounded(whole=True, counted=1, held=6)
-    with pytest.raises(ValueError, match=contradiction):
-        bounded(whole=True, selected=[{"kind": "category", "value": "x"}])
-    with pytest.raises(ValueError, match=contradiction):
-        bounded(whole=True,
-                unmeasured=[{"account": "a", "reason": "refused",
-                             "settled_by": "a statement"}])
-    # Including the gap that names no account: a document read and not posted
-    # is money the figure does not carry like any other.
-    with pytest.raises(ValueError, match=contradiction):
-        bounded(whole=True, unposted=1)
+    declared = bounded(
+        whole=True, counted=1, held=6,
+        selected=[{"kind": "category", "value": "x"}],
+        unmeasured=[{"account": "a", "reason": "refused",
+                     "settled_by": "a statement"}], unposted=1)
+    assert declared["whole"] is True
+    assert declared["unposted"] == 1
     with pytest.raises(ValueError, match="negative number of documents"):
         bounded(whole=False, unposted=-1)
 
@@ -659,8 +672,8 @@ def test_a_set_is_narrowed_only_in_a_way_the_vocabulary_names():
     # which slice a figure is is not a way of falling short of anything.
     assert bounded(whole=True, cut=[{"kind": "tag", "value": "pantry"}]) == {
         "whole": True, "cut": [{"kind": "tag", "value": "pantry"}]}
-    with pytest.raises(ValueError, match="cannot also name what it leaves out"):
-        bounded(whole=True, selected=[{"kind": "tag", "value": "pantry"}])
+    assert bounded(whole=True, selected=[{"kind": "tag", "value": "pantry"}]) == {
+        "whole": True, "selected": [{"kind": "tag", "value": "pantry"}]}
     with pytest.raises(ValueError,
                        match="says nothing about what it was narrowed to"):
         bounded(whole=False, selected=[{"kind": "category", "value": ""}])
@@ -831,7 +844,7 @@ def test_a_document_read_and_not_posted_stops_a_total_being_whole():
     for f in result.figures:
         if f["what"].startswith(("net in", "assets in", "liabilities in")):
             assert f["boundary"] == {
-                "whole": False, "unposted": 1,
+                "whole": True, "unposted": 1,
                 "cut": [{"kind": "currency", "value": "USD"}]}, f["what"]
 
 
@@ -977,5 +990,24 @@ def test_a_boundary_says_how_many_documents_are_read_and_not_posted():
         today="2026-03-01")
     net = next(f for f in result.figures if f["what"].startswith("net in"))
     # Counted in the record, so the sentence has something to say.
-    assert net["boundary"] == {"whole": False, "unposted": 2,
+    assert net["boundary"] == {"whole": True, "unposted": 2,
                                "cut": [{"kind": "currency", "value": "USD"}]}
+
+
+def test_liability_balances_include_one_whole_total_and_account_rows():
+    evs = [
+        account_opened("card-a", "liability", "Card A", "USD", "2026-01-01"),
+        closing_balance_observed("card-a", "120.00", "2026-01-31", _p("a")),
+        account_opened("card-b", "liability", "Card B", "USD", "2026-01-01"),
+        closing_balance_observed("card-b", "80.00", "2026-01-31", _p("b")),
+    ]
+    result = ledger_tools.query_ledger(
+        LedgerProjection(evs),
+        {"entity": "balances", "filters": {"kind": "liability"}})
+    owed = [f for f in result.figures if f["quantity"] == "owed"]
+    total = next(f for f in owed if f["what"].startswith("total owed"))
+    assert total["value"] == "200.00"
+    assert total["boundary"]["whole"] is True
+    assert total["boundary"]["selected"] == [
+        {"kind": "kind", "value": "liability"}]
+    assert len([f for f in owed if not f["what"].startswith("total owed")]) == 2

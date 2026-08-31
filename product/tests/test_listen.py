@@ -204,6 +204,78 @@ def test_a_name_two_accounts_answer_to_settles_nothing(tmp_path):
     assert held.name in got.reason
 
 
+def test_an_issued_brokerage_resolves_by_institution_and_kind(tmp_path):
+    from viva.ledger import account_opened
+
+    _raw, ledger = _vault(tmp_path)
+    ledger.append(account_opened(
+        "acct:alder:1234", "investment", "Individual Account", "USD",
+        "2026-01-01", institution="Alder", account_number="••••1234"))
+    got = resolve_account(ledger.projection(), MAJOR_ASSET,
+                          "Alder brokerage account")
+    assert got.verdict == "same"
+    assert got.account == "acct:alder:1234"
+
+
+def test_existing_asserted_brokerage_duplicate_is_repaired_without_new_value(
+        tmp_path):
+    from viva.ledger import (account_opened, closing_balance_observed,
+                             simple_transaction)
+    from viva.ledger.events import Provenance, ruling_recorded
+    from viva.ledger.networth import net_worth
+    from viva.listen import repair_asserted_account_aliases
+
+    _raw, ledger = _vault(tmp_path)
+    ledger.append(account_opened("checking", "depository", "Checking", "USD",
+                                 "2026-01-01"))
+    ledger.append(closing_balance_observed("checking", "0", "2026-03-31"))
+    ledger.append(simple_transaction("checking", "-100", "TRANSFER TO ALDER",
+                                     "2026-03-15"))
+    movement = ledger.projection().movements()[0]
+    duplicate = "Assets:Other:Alder brokerage account"
+    ledger.append(account_opened(duplicate, "asset", "Alder brokerage account",
+                                 "USD", "2026-03-15", origin=ASSERTED))
+    ledger.append(ruling_recorded(
+        SCOPE_MOVEMENT, movement.key, "2026-03-15",
+        legs=[{"major": MAJOR_ASSET, "account": duplicate}], by="human"))
+    issued = "acct:alder:4729"
+    ledger.append(account_opened(issued, "investment", "Individual Account", "USD",
+                                 "2026-01-01", institution="Alder",
+                                 account_number="••••4729"))
+    ledger.append(closing_balance_observed(
+        issued, "100", "2026-03-31", Provenance(doc_id="brokerage-doc")))
+
+    assert sum(line.amount for line in net_worth(ledger.projection()).lines) == Decimal("200")
+    assert repair_asserted_account_aliases(ledger) == 1
+    projected = ledger.projection()
+    assert projected.account_aliases()[duplicate] == issued
+    assert sum(line.amount for line in net_worth(projected).lines) == Decimal("100")
+    assert len(projected.movements()) == 1
+    assert repair_asserted_account_aliases(ledger) == 0
+
+
+def test_brokerage_duplicate_migration_never_targets_a_depository_account(tmp_path):
+    from viva.ledger import account_opened, simple_transaction
+    from viva.ledger.events import ruling_recorded
+    from viva.listen import repair_asserted_account_aliases
+
+    _raw, ledger = _vault(tmp_path)
+    ledger.append(account_opened("checking", "depository", "Alder Checking",
+                                 "USD", "2026-01-01", institution="Alder"))
+    ledger.append(simple_transaction("checking", "-100", "TRANSFER TO ALDER",
+                                     "2026-03-15"))
+    movement = ledger.projection().movements()[0]
+    duplicate = "Assets:Other:Alder brokerage account"
+    ledger.append(account_opened(duplicate, "asset", "Alder brokerage account",
+                                 "USD", "2026-03-15", origin=ASSERTED))
+    ledger.append(ruling_recorded(
+        SCOPE_MOVEMENT, movement.key, "2026-03-15",
+        legs=[{"major": MAJOR_ASSET, "account": duplicate}], by="human"))
+
+    assert repair_asserted_account_aliases(ledger) == 0
+    assert duplicate not in ledger.projection().account_aliases()
+
+
 def test_a_commercial_merchant_generalizes_and_a_person_does_not(tmp_path):
     """One answer settles every payment to a lender. It must NOT do that for a
     friend: one Zelle can be a gift and the next a loan."""

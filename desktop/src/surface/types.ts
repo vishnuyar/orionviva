@@ -184,7 +184,7 @@ export type DocumentPhase = "captured" | "queued" | "reading" | "held" | "parked
 // books — a figure and the account it was attested on, or the line for a
 // document nothing rests on. It is per row rather than per panel because it is
 // about that document and no other, and it is never composed here.
-export type SurfaceDocument = { id: string; name: string; contribution?: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading };
+export type SurfaceDocument = { id: string; name: string; contribution?: string; state: string; phase?: DocumentPhase; phaseLabel: string; detail: string; source: string; pages: string; provenance: string; evidenceLinks: EvidenceLink[]; docType?: string; resolved?: boolean; rawAvailable?: boolean; reading?: DocumentReading; snapshotStatus?: "posted" | "held" | "unavailable"; snapshotSentence?: string; activityStatus?: "complete" | "incomplete" | "unavailable" | "not_applicable"; activitySentence?: string };
 export type DocumentCapture = { id: string; label: string; state: "captured" | "processing" | "held" | "ready" | "sent"; detail: string; source: string; note: string };
 export type DocumentJob = { id: string; label: string; state: "running" | "paused" | "done"; detail: string; progress: string };
 export type OutboundRecord = { id: string; label: string; state: "queued" | "sent" | "blocked"; detail: string; destination: string };
@@ -265,7 +265,7 @@ export type ActivityTransferState =
   | { state: "suggested"; explanation: string; candidates: readonly (ActivityTransferReference & { relationship: string })[]; complete: boolean; limit: number }
   | { state: "linked"; explanation: string; counterpart: ActivityTransferReference; relationship: string };
 export type ActivityTreatment = { kind: "spending" | "loan" | "loan_repayment" | "settlement" | "mixed" | "not_spending"; name: string };
-export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; treatment: ActivityTreatment; sentence: string; decidedBy: string; provisional: boolean; linked: boolean; category: { id: string | null; label: string; valid: boolean }; tags: readonly ActivityVocabularyItem[]; tagsValid: boolean; transfer: ActivityTransferState | null; actions: readonly ActivityRowAction[] };
+export type MovementView = { id: string; date: string; description: string; account: string; direction: "in" | "out"; exactValue: string; currency: string; display: string; nature: string; treatment: ActivityTreatment; loanRepaymentChoices: readonly string[]; sentence: string; decidedBy: string; provisional: boolean; linked: boolean; category: { id: string | null; label: string; valid: boolean }; tags: readonly ActivityVocabularyItem[]; tagsValid: boolean; transfer: ActivityTransferState | null; actions: readonly ActivityRowAction[] };
 export type ActivityData = { sentence: string; movements: readonly MovementView[]; beyond: { count: number }; vocabularies: { categories: ActivityCategoryVocabulary; tags: ActivityTagVocabulary } };
 export type ActivityCorrectionVerb = "category" | "meaning" | "tags" | "confirm_transfer" | "reject_transfer" | "unlink_transfer";
 export type ActivityActionOutcome = { kind: "completed" | "refused" | "stale"; message: string; reason: string };
@@ -278,6 +278,7 @@ export type ActivityCorrectionState =
   | { state: "refreshing"; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult }
   | { state: "settled"; movementId: string; verb: ActivityCorrectionVerb; result: ActivityActionResult; refresh: "refreshed" | "failed" };
 export type ActivityActions = {
+  read: (limit: number) => Promise<FeatureResult<ActivityData>>;
   assignCategory: (movementId: string, categoryId: string) => Promise<ActivityActionResult>;
   assignMeaning: (movementId: string, meaning: string, counterparty: string) => Promise<ActivityActionResult>;
   replaceTags: (movementId: string, tagIds: readonly string[]) => Promise<ActivityActionResult>;
@@ -349,7 +350,7 @@ export type TrustData = { notes: TrustNote[]; absences?: readonly TrustAbsence[]
 // One change a pass back over the vault made, or one standing fact it
 // reported. The sentence is the backend's: this side has no words for what a
 // gap is, and inventing some is exactly what a reviewed read model prevents.
-export type RescanChange = { id: string; count: number; sentence: string };
+export type RescanChange = { id: string; count: number; sentence: string; movementIds?: readonly string[] };
 // What a pass did, as the read model composed it. `changes` is empty for a
 // pass that changed nothing, which is why the panel's own sentence is carried
 // separately — an empty list and a sweep that found nothing read alike.

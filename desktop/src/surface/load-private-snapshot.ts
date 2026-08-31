@@ -14,7 +14,7 @@ import { adaptOverview, adaptOverviewPanel } from "./adapters/overview";
 import { adaptPlanDraftReply, adaptPlans } from "./adapters/plans";
 import { adaptActionOutcome } from "./adapters/questions";
 import { buildLiveSnapshot } from "./adapters/snapshot";
-import type { ActionResult, ActivityActionResult, ActivityActions, ConversationData, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ConversationActions, PlanActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
+import type { ActionResult, ActivityActionResult, ActivityActions, ActivityData, ConversationData, DocumentActions, DocumentsData, EngineIdentity, FeatureResult, JobStream, JobsData, OverviewActions, OverviewData, ConversationActions, PlanActions, SettingsActions, SurfaceRegistry, TrustActions, TrustData, SurfaceSnapshot, UpdateLifecycleView, VaultTransferActions } from "./types";
 
 function settled<TRaw, TData>(result: PromiseSettledResult<TRaw>, adapt: (raw: TRaw) => TData | null): FeatureResult<TData> {
   if (result.status === "rejected") return { state: "failed", reason: "read_failed" };
@@ -75,7 +75,7 @@ async function readDocumentsFeature(client: BridgeClient): Promise<FeatureResult
   return settled(read, (value) => adaptDocuments(value.data));
 }
 
-async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<JobsData>> {
+export async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<JobsData>> {
   const [read] = await Promise.allSettled([client.readJobs()]);
   return settled(read, (value) => adaptJobs(value.data));
 }
@@ -83,6 +83,11 @@ async function readJobsFeature(client: BridgeClient): Promise<FeatureResult<Jobs
 async function readTrustFeature(client: BridgeClient): Promise<FeatureResult<TrustData>> {
   const [read] = await Promise.allSettled([client.readTrust()]);
   return settled(read, (value) => adaptTrust(value.data));
+}
+
+async function readActivityFeature(client: BridgeClient, limit: number): Promise<FeatureResult<ActivityData>> {
+  const [read] = await Promise.allSettled([client.readActivity({ limit })]);
+  return settled(read, (value) => adaptActivity(value.data));
 }
 
 // What the sidecar declares about itself and about its own registry, read here
@@ -168,8 +173,8 @@ export function privateConversationActions(client: BridgeClient): ConversationAc
   };
 }
 
-// Unattended work, and a file somebody can send. Neither is followed by a read:
-// what a run did is in its own reply, and a diagnostic changes nothing here.
+// Trust actions return an immediate run or enqueue receipt; the session then
+// rereads the financial surfaces and durable job registry.
 export function privateTrustActions(client: BridgeClient): TrustActions {
   return {
     run: (spend) => acted(client.runMaintenance(spend)),
@@ -211,6 +216,7 @@ export function privateTransferActions(client: BridgeClient): VaultTransferActio
 // read: every surface is read again by the session after it arrives.
 export function privateActivityActions(client: BridgeClient): ActivityActions {
   return {
+    read: (limit) => readActivityFeature(client, limit),
     assignCategory: (movementId, categoryId) => activityActed(client.assignActivityCategory(movementId, categoryId)),
     assignMeaning: (movementId, meaning, counterparty) => activityActed(client.assignActivityMeaning(movementId, meaning, counterparty)),
     replaceTags: (movementId, tagIds) => activityActed(client.replaceActivityTags(movementId, tagIds)),
@@ -237,8 +243,9 @@ export function privatePlanActions(client: BridgeClient): PlanActions {
   };
 }
 
-export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"]): Promise<SurfaceSnapshot> {
-  const [overviewRead, documentsRead, conversationRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readTrust(), client.readActivity(), client.readPlans()]);
+export async function loadPrivateSnapshot(client: BridgeClient, disclosure?: SurfaceSnapshot["disclosure"], activityLimit?: number, activityFocus?: string): Promise<SurfaceSnapshot> {
+  const activityParameters = { ...(activityLimit ? { limit: activityLimit } : {}), ...(activityFocus ? { focus: activityFocus } : {}) };
+  const [overviewRead, documentsRead, conversationRead, trustRead, activityRead, plansRead] = await Promise.allSettled([client.readOverview(), client.readDocuments(), client.readConversation(), client.readTrust(), client.readActivity(Object.keys(activityParameters).length ? activityParameters : undefined), client.readPlans()]);
   return buildLiveSnapshot(
     settledOverview(overviewRead),
     settled(documentsRead, (read) => adaptDocuments(read.data)),

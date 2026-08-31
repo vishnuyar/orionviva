@@ -40,7 +40,7 @@ from ..ledger.projection import UnknownAccountError
 from ..ledger.projection.categories import subcategory_group_key
 from ..ledger.projection import movements as movements_view
 from .envelope import (ACTIVITY, BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY,
-                       BY_MERCHANT, BY_PERIOD, BY_SINCE, BY_SUBCATEGORY,
+                       BY_KIND, BY_MERCHANT, BY_PERIOD, BY_SINCE, BY_SUBCATEGORY,
                        BY_TAG, BY_UNTIL, ENTITY_ACCOUNT, ENTITY_CATEGORY,
                        ENTITY_MERCHANT, GAP_REFUSED, GAP_UNOBSERVED,
                        ToolResult, bounded, cut_set, entity, figure, refusal,
@@ -113,7 +113,7 @@ def _mixed_vintage(dates) -> bool:
 # The filters each read honors. Both the model-facing schema and dispatcher
 # derive their accepted combinations from this table.
 _SUPPORTED_FILTERS = {
-    "balances": {"account", "currency"},
+    "balances": {"account", "currency", "kind"},
     "transactions": {"account", "category", "tag", "merchant", "currency",
                      "window"},
     "list_movements": {"account", "category", "tag", "merchant", "currency",
@@ -136,6 +136,7 @@ _FILTER_PROPERTIES = {
     "tag": {"type": "string"},
     "merchant": {"type": "string"},
     "currency": {"type": "string"},
+    "kind": {"type": "string", "enum": list(REAL_KINDS)},
     "window": {"type": "object",
                "properties": {"from": {"type": "string"},
                               "to": {"type": "string"},
@@ -424,6 +425,11 @@ def _check_filters(proj, filters: dict) -> ToolResult | None:
                 "unknown_currency",
                 f"No account holds '{filters['currency']}'.",
                 {"known_currencies": _known(held)}))
+    if "kind" in filters and filters["kind"] not in REAL_KINDS:
+        faults.append((
+            "unknown_account_kind",
+            f"No balance account kind '{filters['kind']}' exists.",
+            {"known_account_kinds": list(REAL_KINDS)}))
     window = filters.get("window", {})
     for edge in ("from", "to"):
         if edge in window and not _is_iso_date(window[edge]):
@@ -537,7 +543,8 @@ def _movement_passes(proj, m, filters: dict) -> bool:
     return True
 
 
-def _attested_coverage(proj, filters: dict) -> tuple[list, list]:
+def _attested_coverage(proj, filters: dict,
+                       accounts: set[str] | None = None) -> tuple[list, list]:
     """What this read is attested for, per account, and what to say about the
     accounts that fall short of the window asked for.
 
@@ -558,8 +565,8 @@ def _attested_coverage(proj, filters: dict) -> tuple[list, list]:
     want = filters.get("window") or {}
     asked_from, asked_to = (want.get("from") or "")[:10], (want.get("to") or "")[:10]
     named = filters.get("account")
-    scope = [named] if named else sorted(
-        i.account for i in proj.account_infos() if i.kind)
+    scope = ([named] if named else sorted(accounts if accounts is not None else
+             (i.account for i in proj.account_infos() if i.kind)))
 
     covers, caveats = [], []
     for account in scope:
@@ -663,7 +670,7 @@ def _movement_row(proj, m, grades: dict) -> dict:
 
 _FILTER_NAMES = {"account": BY_ACCOUNT, "category": BY_CATEGORY,
                  "merchant": BY_MERCHANT, "tag": BY_TAG,
-                 "currency": BY_CURRENCY}
+                 "currency": BY_CURRENCY, "kind": BY_KIND}
 
 # And how each grouping cuts a set. Every grouping the schema offers names the
 # slice each of its figures covers, including the three the vault holds no
@@ -752,4 +759,4 @@ def _month_slice(month: str, narrowed) -> dict | None:
 
 
 
-__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']
+__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_KIND', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']

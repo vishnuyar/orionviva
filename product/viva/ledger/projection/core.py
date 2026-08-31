@@ -150,6 +150,9 @@ class ProjectionCore:
         # recognised by the decomposition it would write.
         self._decomposed: set[tuple[str, str, str]] = set()
         self._held: dict[str, dict] = {}         # doc_id -> latest StatementHeld body
+        # Brokerage holdings and activity have independent reconciliation
+        # gates. A valid snapshot can post while these movements stay held.
+        self._activity_held: dict[str, dict] = {}
         self._aliases: dict[str, str] = {}       # learned: signal-key -> account_id
         # Transfer overlay: links between two movement keys, and unresolved
         # suggestions awaiting a ruling. Links are ledger-wide rather than
@@ -282,7 +285,17 @@ class ProjectionCore:
                     self._replies[doc] = event.body.get("response_text", "")
 
         elif et == "StatementHeld":
-            self._held[event.body["doc_id"]] = event.body
+            # Legacy activity-reason holds map to the independent activity gate.
+            if event.body.get("reason") == "activity":
+                self._activity_held[event.body["doc_id"]] = event.body
+            else:
+                self._held[event.body["doc_id"]] = event.body
+
+        elif et == "BrokerageActivityHeld":
+            self._activity_held[event.body["doc_id"]] = event.body
+
+        elif et == "BrokerageActivityResolved":
+            self._activity_held.pop(event.body["doc_id"], None)
 
         elif et == "AccountAliasConfirmed":
             self._aliases[event.body["alias_key"]] = event.body["account_id"]

@@ -1020,7 +1020,7 @@ def _read_call(kind: str, filters: dict) -> tuple:
 # construction.
 _RECORDED_AS = {"account": "account", "category": "category", "tag": "tag",
                 "merchant": "merchant", "currency": "currency",
-                "window": "period"}
+                "kind": "kind", "window": "period"}
 
 
 def test_every_filter_a_read_honours_can_be_said_in_the_answer():
@@ -1041,6 +1041,7 @@ def test_every_filter_a_read_honours_can_be_said_in_the_answer():
         registry = _narrowable(*accounts)
         values = {"account": accounts[0], "category": "supplies",
                   "tag": "pantry", "merchant": "northwind supply",
+                  "kind": "investment",
                   "currency": "USD",
                   "window": {"from": "2026-01-01", "to": "2026-01-31"}}
         for kind, honoured in sorted(ledger_tools._SUPPORTED_FILTERS.items()):
@@ -1115,7 +1116,7 @@ def test_native_query_schema_discriminates_filters_by_read_family():
     assert "filters" not in branch("vocabulary")["properties"]
     assert "filters" not in branch("aggregate", "net_worth")["properties"]
     assert set(branch("balances")["properties"]["filters"]["properties"]) == {
-        "account", "currency"}
+        "account", "currency", "kind"}
     assert "window" in branch("transactions")["properties"]["filters"][
         "properties"]
 

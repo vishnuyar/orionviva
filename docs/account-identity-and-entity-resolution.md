@@ -18,13 +18,14 @@
 
 ### MON-69 — the account key is the anchor, and a readable number decides
 **State:** enforced
-**Code:** product/viva/ledger/identity.py:41 (`account_key`), :24 (`number_key`)
-**Test:** product/tests/test_pipeline.py::test_two_readable_numbers_are_two_accounts_and_nobody_is_asked
+**Code:** product/viva/ledger/identity.py (`account_key`, `identity_number_key`); product/viva/ledger/projection/accounts.py (`resolve`)
+**Test:** product/tests/test_pipeline.py::test_two_readable_numbers_are_two_accounts_and_nobody_is_asked; product/tests/test_projection.py::test_issuer_legal_aliases_and_full_numbers_do_not_split_an_account; ::test_last_four_and_a_shared_issuer_word_do_not_merge_distinct_people_or_products; ::test_a_damaged_short_number_yields_to_an_explicit_printed_last_four
 
-1. The key is the institution plus the last four digits of the number, so *same number, different name* is already the same key and resolves automatically.
+1. A usable full number, or an explicitly printed last four where that is all the statement supplies, anchors identity. One to three trailing digits are not promoted into an account number.
 2. Two readable, different account numbers are two accounts, with no question asked.
-3. Where neither statement shows a number, two different product labels are two accounts, compared as slugs.
-4. The comparison is scoped to one account kind, so a card and a checking account sharing a holder are two accounts (product/tests/test_pipeline.py::test_card_and_checking_same_holder_are_two_accounts).
+3. A full number survives issuer display-name variation. A shared last four is weaker: it resolves only when account kind, holder, issuer legal core and product are compatible, and conflicting number signals never merge.
+4. Where neither statement shows a usable number, different product labels are separate accounts, compared as slugs.
+5. The comparison is scoped to one account kind, so a card and a checking account sharing a holder are two accounts (product/tests/test_pipeline.py::test_card_and_checking_same_holder_are_two_accounts).
 
 ### MON-70 — one case is ambiguous, and only that one is asked about
 **State:** enforced
@@ -32,7 +33,7 @@
 **Test:** product/tests/test_pipeline.py::test_ambiguous_identity_is_held_then_learned_as_new
 
 1. A verdict is `same`, `new`, or `ambiguous`; never guessed.
-2. `ambiguous` is raised only where a **holder name** overlaps a held account of the same kind and nothing stronger tells them apart.
+2. `ambiguous` covers conflicting number signals and weak overlaps that do not justify a merge. A last four and shared issuer alone are insufficient.
 3. A wrong split is visible and a merge ruling repairs it; a wrong merge corrupts a balance silently, so ambiguity is narrowed rather than widened.
 
 ### MON-71 — an ambiguous statement is held, and the ruling teaches the map
@@ -43,6 +44,7 @@
 1. The statement is held under an `identity` reason carrying the candidate account, its name and the reason — never posted on a guess.
 2. The person's ruling is an append-only correction event that updates the identity map.
 3. The next matching statement resolves automatically, with no re-ask.
+4. An identity-held statement exactly adjacent to the observed coverage edge suppresses the duplicate gap question; a nonadjacent hold does not hide a real gap.
 
 ### MON-72 — an account carries an identity set
 **State:** enforced
@@ -72,7 +74,7 @@ The finding was real and dull: the same checking account arrived sometimes label
 
 Account identity is open-ended — same name with a different number, same number with a different name, two names on a joint account, reissued numbers, and endless per-country and per-institution formats. You cannot hardcode the cases; you will never finish. So identity uses the system's universal shape: **extract signals → produce a graded match → act automatically when confident, ask only when ambiguous → learn from the answer.** That one shape absorbs every case including unseen ones, and the intelligence being added is the *learning*: a person confirms each new kind of ambiguity once, and the system resolves that pattern automatically ever after, for all account types, with no bank-specific code.
 
-Which cases are ambiguous narrowed deliberately, against the intuition that more questions are safer. The number is the anchor, and a checking and a savings account at one institution share a holder by definition, so two readable different numbers are simply two accounts — that arrangement is the most ordinary in personal finance, and asking about it meant asking on almost every real vault. The mirror case never reaches the matcher at all, because the key already folds it. What survives is the weakest signal there is: a holder's name, which sits on every account that person owns. The rule underneath is the asymmetry — a wrong split is visible and a merge ruling repairs it; a wrong merge corrupts a balance silently.
+Which cases are ambiguous narrowed deliberately, against the intuition that more questions are safer. A usable full number is the strongest anchor, while a printed last four is only one signal among kind, holder, issuer and product. That distinction lets an account survive harmless issuer-name variation without letting two cards that share four trailing digits collapse into one. Conflicting number evidence is held, not smoothed over. The rule underneath is the asymmetry — a wrong split is visible and a merge ruling repairs it; a wrong merge corrupts a balance silently.
 
 The same block is reused everywhere else identity is needed. Merchants, employers and transfer counterparties are all entity resolution — the identical signals-to-graded-match-to-ask-to-learn shape. Accounts are just its first use, and the learning-from-corrections is the moat, turned on from the first ambiguous statement.
 

@@ -12,6 +12,8 @@ from vivacore.verify.arithmetic import (CheckResult, check_balance_identity,
                                         check_paystub_identity)
 
 from ..ledger.events import (CORROBORATED, VERIFIED, Provenance, account_opened,
+                             brokerage_activity_held,
+                             brokerage_activity_resolved,
                              closing_balance_observed, document_captured,
                              opening_balance_observed, position_observed,
                              read_recorded, statement_held)
@@ -106,25 +108,29 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             log.info("post_brokerage: no opening cash printed; carrying %s forward "
                      "from %s", opening_cash, held_dated)
     flow = opening_cash is not None and bool(facts.activity)
+    activity_issue = ""
+    activity_finding = None
     if flow:
         effects = [brokerage_cash_effect(a.kind, a.amount) for a in facts.activity]
         cashflow = check_balance_identity(opening_cash, effects, facts.cash)
         if not cashflow.passed:
             log.info("post_brokerage: cash-flow FAILED (%s); holding %s",
                      cashflow.explain(), facts.doc_id[:12])
-            finding = ReconciliationFinding(
+            activity_finding = ReconciliationFinding(
                 reconciles=False, kind="brokerage_cashflow", status=UNLOCALIZED,
                 delta=cashflow.delta, confidence=0.1,
                 message=(f"The period's activity doesn't reconcile the cash "
                          f"balance (off by {cashflow.delta}) — an activity line "
                          "may be missing. Held for your review."))
-            ledger.append(statement_held(facts.doc_id, facts.to_dict(),
-                                         finding.to_dict(), "conflict", when,
-                                         Provenance(doc_id=facts.doc_id)))
-            return IngestResult(
-                doc_id=facts.doc_id, action=CONFLICT, doc_type=facts.doc_type,
-                grade="conflicted", reconciliation=cashflow, finding=finding,
-                message=f"Not posted; held for your review. {finding.message}")
+            activity_issue = activity_finding.message
+            flow = False
+    elif facts.activity:
+        activity_finding = ReconciliationFinding(
+            reconciles=False, kind="brokerage_cashflow", status=UNLOCALIZED,
+            delta="0", confidence=0.1,
+            message=("The period's activity has no opening cash balance to "
+                     "reconcile against. Held for your review."))
+        activity_issue = activity_finding.message
 
     proj = ledger.projection()
     account = account_id_for(facts)
@@ -163,6 +169,11 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
             account, p.instrument, p.units, p.market_value, facts.currency, when,
             cost_basis=p.cost_basis, grade=CORROBORATED,
             provenance=facts.provenance(f"position {p.instrument}")))
+    if activity_finding is not None:
+        # Snapshot posting and activity quarantine remain independently visible.
+        ledger.append(brokerage_activity_held(
+            facts.doc_id, facts.to_dict(), activity_finding.to_dict(), when,
+            Provenance(doc_id=facts.doc_id)))
     log.info("post_brokerage: %s recorded cash %s + %d position(s)%s, total %s "
              "as of %s", account, facts.cash, len(facts.positions),
              f" + {len(facts.activity)} activity" if flow else "", facts.total, when)
@@ -173,9 +184,11 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
                     f"counted as cash — {sweep_note}.")
     if flow:
         message += f" {len(facts.activity)} activity item(s) posted."
+    elif activity_issue:
+        message += (f" I also read {len(facts.activity)} activity item(s), but "
+                    f"they are not posted: {activity_issue} The holdings snapshot "
+                    "above remains recorded because it reconciles independently.")
     elif facts.activity:
-        # Activity that was read but cannot be reconciled is reported as held
-        # back rather than dropped silently.
         log.info("post_brokerage: %d activity item(s) read but NOT posted — no "
                  "opening cash to reconcile the flow against", len(facts.activity))
         message += (f" I also read {len(facts.activity)} activity item(s), but "
@@ -185,9 +198,71 @@ def post_brokerage(ledger: Ledger, facts: BrokerageFacts) -> IngestResult:
     return IngestResult(
         doc_id=facts.doc_id, action=POSTED, doc_type=facts.doc_type,
         account=account, grade="corroborated", reconciliation=recon,
-        message=message)
+        finding=activity_finding, message=message)
+
+
+def apply_brokerage_activity_correction(
+        ledger: Ledger, doc_id: str, activity: list,
+        opening_cash: Decimal | str | None = None) -> IngestResult:
+    """Reconcile and atomically replay a held brokerage activity stream.
+
+    The holdings snapshot is unchanged. A successful replay appends the
+    corrected movements and closes the durable activity hold.
+    """
+    outcome: list[IngestResult] = []
+
+    def decide(projection):
+        body = next((item for item in projection.open_activity_holds()
+                     if item.get("doc_id") == doc_id), None)
+        if body is None:
+            raise ValueError(f"no brokerage activity held for {doc_id}")
+        facts = BrokerageFacts.from_dict(body["facts"])
+        corrected = replace(
+            facts, activity=list(activity),
+            opening_cash=(Decimal(opening_cash) if opening_cash is not None
+                          else facts.opening_cash))
+        if corrected.opening_cash is None:
+            raise ValueError("brokerage activity correction needs opening_cash")
+        effects = [brokerage_cash_effect(item.kind, item.amount)
+                   for item in corrected.activity]
+        recon = check_balance_identity(corrected.opening_cash, effects,
+                                       corrected.cash)
+        if not recon.passed:
+            finding = ReconciliationFinding(
+                reconciles=False, kind="brokerage_cashflow", status=UNLOCALIZED,
+                delta=str(recon.delta), confidence=0.1,
+                message=(f"The corrected activity still does not reconcile the "
+                         f"cash balance (off by {recon.delta}). Held for review."))
+            outcome.append(IngestResult(
+                doc_id=doc_id, action=CONFLICT, doc_type=corrected.doc_type,
+                grade="conflicted", reconciliation=recon, finding=finding,
+                message=finding.message))
+            return (brokerage_activity_held(
+                doc_id, corrected.to_dict(), finding.to_dict(), corrected.as_of,
+                Provenance(doc_id=doc_id)),)
+
+        account = account_id_for(corrected)
+        events = [brokerage_activity_transaction(
+            account, item.kind, item.amount, item.description,
+            item.date or corrected.as_of, instrument=item.instrument,
+            realized_gain=item.realized_gain,
+            provenance=corrected.provenance(
+                f"{item.kind} {item.instrument}".strip()))
+            for item in corrected.activity]
+        events.append(brokerage_activity_resolved(
+            doc_id, corrected.as_of, Provenance(doc_id=doc_id)))
+        outcome.append(IngestResult(
+            doc_id=doc_id, action=POSTED, doc_type=corrected.doc_type,
+            account=account, grade="verified", reconciliation=recon,
+            message=(f"{len(corrected.activity)} corrected activity item(s) "
+                     "posted.")))
+        return tuple(events)
+
+    # Movements and their resolution event append under one writer lock.
+    ledger.append_atomically(decide)
+    return outcome[0]
 
 
 
 
-__all__ = ['log', 'post_brokerage']
+__all__ = ['log', 'post_brokerage', 'apply_brokerage_activity_correction']

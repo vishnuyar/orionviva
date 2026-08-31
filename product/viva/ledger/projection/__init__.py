@@ -123,6 +123,9 @@ class LedgerProjection:
     def account_infos(self) -> list[AccountInfo]:
         return _accounts.account_infos(self._core)
 
+    def account_aliases(self) -> dict[str, str]:
+        return _accounts.account_aliases(self._core)
+
     def document_types_of(self, account: str) -> set:
         return _accounts.document_types_of(self._core, account)
 
@@ -185,6 +188,9 @@ class LedgerProjection:
     def open_holds(self) -> list[dict]:
         return _coverage.open_holds(self._core)
 
+    def open_activity_holds(self) -> list[dict]:
+        return _coverage.open_activity_holds(self._core)
+
     def statements(self, account: str):
         """What this account's statements declare, and where they join. None
         when no statement is held for it."""
@@ -223,8 +229,9 @@ class LedgerProjection:
     def spending_by_currency(self) -> dict[str, Decimal]:
         return _movements.spending_by_currency(self._core)
 
-    def provisional_spending(self, currency: str | None = None) -> Decimal:
-        return _movements.provisional_spending(self._core, currency)
+    def provisional_spending(self, currency: str | None = None,
+                             predicate=None) -> Decimal:
+        return _movements.provisional_spending(self._core, currency, predicate)
 
     def excluded_from_spending(self) -> list[MovementInfo]:
         return _movements.excluded_from_spending(self._core)
@@ -346,8 +353,8 @@ class LedgerProjection:
     def ruled_accounts(self) -> dict[str, dict]:
         return _rulings.ruled_accounts(self._core)
 
-    def undecomposed(self, currency: str | None = None) -> dict:
-        return _rulings.undecomposed(self._core, currency)
+    def undecomposed(self, currency: str | None = None, predicate=None) -> dict:
+        return _rulings.undecomposed(self._core, currency, predicate)
 
     # ------------------------------------------------------------------ tiers
 

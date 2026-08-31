@@ -319,7 +319,7 @@ describe("what this cannot establish, and what it could do on its own", () => {
   const withAbsences = (absences: Array<{ id: string; sentence: string }>) =>
     render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={null} result={ready({ notes: [], absences, outbound: undefined })} />);
   const maintenance = (over: Partial<MaintenanceControls> = {}): MaintenanceControls =>
-    ({ state: { state: "idle" }, onRun: () => {}, onDiagnose: () => {}, ...over });
+    ({ state: { state: "idle" }, job: null, cancel: { state: "idle" }, onRun: () => {}, onDiagnose: () => {}, onStop: () => {}, ...over });
   const withMaintenance = (controls: MaintenanceControls | null) =>
     render(<Trust identity={unasked} lifecycle={unasked} transfer={null} settings={null} maintenance={controls} result={ready({ notes: [note("only")] })} />);
 
@@ -361,6 +361,16 @@ describe("what this cannot establish, and what it could do on its own", () => {
     const settled = { state: "settled" as const, result: { state: "settled" as const, outcome: { kind: "completed" as const, message: moments.maintenance_planned, reason: "" } } };
     const { getAllByText } = withMaintenance(maintenance({ state: settled }));
     expect(getAllByText(moments.maintenance_planned).length).toBeGreaterThan(0);
+  });
+
+  it("shows maintenance progress, prevents a duplicate run, and offers stop", () => {
+    const asked: string[] = [];
+    const job = { jobId: "viva.maintenance.run-1", operation: "viva.maintenance.run", state: "running" as const, completed: 1, total: 2, message: "Maintenance plan completed.", step: "planned", attempt: 1, steps: ["planned", "spent"], cancellable: true };
+    const { getByRole, getByText } = withMaintenance(maintenance({ job, onRun: () => { asked.push("run"); }, onStop: (id) => { asked.push(id); } }));
+    fireEvent.click(getByRole("button", { name: "Run it, and spend" }));
+    fireEvent.click(getByRole("button", { name: "Stop" }));
+    expect(asked).toEqual([job.jobId]);
+    expect(getByText("Step 1 of 2 — planned")).toBeInTheDocument();
   });
 });
 

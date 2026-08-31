@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from viva.desktop_bridge.handlers import BridgeRequestError, handlers_for_opened_vault
 from viva.desktop_bridge.trust_actions import TrustActions, _run_request
+from viva.desktop_bridge.jobs import JobRegistry
 from viva.desktop_bridge.vault_surface import OpenedVaultSurfaceProvider
 from viva.ledger.events import document_captured, read_recorded
 from viva.persona import moment
@@ -54,11 +56,82 @@ def test_a_run_with_work_to_do_and_no_model_named_says_so_and_sends_nothing(
 
     answered = TrustActions(_vault(tmp_path)).run({"spend": True})
 
-    assert answered["state"]["calls_spent"] == 0
-    # A vault with nothing to do reports a plain run; one with work waiting
-    # reports that it could not spend. Either way nothing was sent.
-    assert answered["message"] in {moment("maintenance_ran"),
-                                   moment("maintenance_unconfigured")}
+    assert answered["state"]["queued"] is True
+    assert answered["state"]["job_id"]
+    assert answered["message"] == moment("maintenance_started")
+
+
+def test_an_unconfigured_paid_job_fails_before_the_spent_step(
+        tmp_path: Path, monkeypatch):
+    import viva.agent.run as agent
+
+    monkeypatch.setattr(agent, "wake", lambda *_args, **_kwargs:
+                        SimpleNamespace(could_not_spend=True, calls_spent=0))
+    jobs = JobRegistry()
+    actions = TrustActions(_vault(tmp_path), jobs)
+    job = jobs.open("viva.maintenance.run", ("planned", "spent"))
+
+    actions._spend_in_background(job, None)
+
+    record = jobs.record(job.job_id)
+    assert record.state.value == "failed"
+    assert record.completed == 1
+    assert record.step == "planned"
+    assert "no model is configured" in record.message
+
+
+def test_paid_maintenance_uses_an_isolated_vault_and_reuses_an_active_job(
+        tmp_path: Path, monkeypatch):
+    import threading
+    import viva.agent.run as agent
+
+    vault = _vault(tmp_path)
+    seen = []
+    gate = threading.Event()
+    release = threading.Event()
+
+    def wake(worker, **_kwargs):
+        seen.append(worker)
+        gate.set()
+        release.wait(2)
+        return SimpleNamespace(could_not_spend=True, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    jobs = JobRegistry()
+    actions = TrustActions(vault, jobs)
+
+    first = actions.run({"spend": True})
+    assert gate.wait(2)
+    second = actions.run({"spend": True})
+    release.set()
+
+    assert seen[0] is not vault
+    assert first["state"]["job_id"] == second["state"]["job_id"]
+    assert len(jobs.records()) == 1
+
+
+def test_paid_maintenance_reports_the_free_plan_and_can_stop_before_spend(
+        tmp_path: Path, monkeypatch):
+    import viva.agent.run as agent
+
+    calls = []
+    jobs = JobRegistry()
+    actions = TrustActions(_vault(tmp_path), jobs)
+    job = jobs.open("viva.maintenance.run", ("planned", "spent"))
+
+    def wake(_vault, **kwargs):
+        calls.append(kwargs["dry_run"])
+        if kwargs["dry_run"]:
+            jobs.cancel(job.job_id)
+        return SimpleNamespace(could_not_spend=False, calls_spent=0)
+
+    monkeypatch.setattr(agent, "wake", wake)
+    actions._spend_in_background(job, 1)
+
+    record = jobs.record(job.job_id)
+    assert calls == [True]
+    assert record.state.value == "cancelled"
+    assert record.completed == 1 and record.step == "planned"
 
 
 def test_the_reply_carries_the_whole_run_rather_than_a_summary(tmp_path: Path):
@@ -135,6 +208,8 @@ def test_the_diagnostic_counts_what_a_vault_holds_without_naming_any_of_it(
     assert held["documents"] == 1
     assert held["model_calls"] == 1
     assert held["events"] >= 2
+    assert held["open_document_holds"] == 0
+    assert held["open_conversation_questions"] == held["open_questions"]
 
 
 def test_the_model_is_reported_as_named_or_not_and_never_by_name(monkeypatch):

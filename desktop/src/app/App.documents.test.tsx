@@ -28,7 +28,10 @@ describe("documents", () => {
           : surface === "documents" ? (captured
             ? { documents: [{ id: "captured-identity", doc_type: "statement", filename: "quarter-close.pdf", resolved: false, raw_available: true, reading: "never_read" }], reading_sentence: SAVED_NO_READER }
             : { documents: [], reading_sentence: "" })
-            : { questions: [], total: 0, invite: "", answered_by_document: "" };
+            : surface === "conversation" ? { turns: [], questions: [], total: 0, invite: "", answered_by_document: "" }
+              : surface === "trust" ? trustPayload
+                : surface === "plans" ? { state: "ready", invitation: { title: "Make a plan", body: "Start when you are ready." }, goals: [], proposals: [] }
+                  : activityPayload;
         return { protocol: "1.0", request_id: "read", ok: true, result: { surface, job_id: "job", data } as T };
       },
       pickDocumentPaths: async () => ["/chosen/first.pdf"],
@@ -47,12 +50,11 @@ describe("documents", () => {
       operations.length = 0;
       await user.click(getByRole("button", { name: "Choose a file" }));
 
-      // One frame carrying the path and nothing else. The read that follows
-      // asks for documents alone.
+      // Capture sends one path, then rereads every destination and the job registry.
       await waitFor(() => expect(container.querySelector(".document-library")).toHaveTextContent("quarter-close.pdf"));
-      expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", "viva.surface.read"]);
+      expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(7).fill("viva.surface.read")]);
       expect(operations[0].payload).toEqual({ path: "/chosen/first.pdf" });
-      expect(operations[1].payload.surface).toBe("documents");
+      expect(operations.slice(1).map((frame) => frame.payload.surface).sort()).toEqual(["activity", "conversation", "documents", "jobs", "overview", "plans", "trust"]);
       expect(getAllByText(SAVED_NO_READER).length).toBeGreaterThan(0);
 
       // A dropped path is the same request from the same screen: a path
@@ -60,7 +62,7 @@ describe("documents", () => {
       operations.length = 0;
       expect(listen).not.toBeNull();
       await act(async () => { listen?.(["/dropped/second.pdf"]); });
-      await waitFor(() => expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", "viva.surface.read"]));
+      await waitFor(() => expect(operations.map((frame) => frame.operation)).toEqual(["viva.documents.upload", ...Array(7).fill("viva.surface.read")]));
       expect(operations[0].payload).toEqual({ path: "/dropped/second.pdf" });
 
       // More than one document in one gesture is refused in this window,

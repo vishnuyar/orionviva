@@ -68,6 +68,7 @@ export function App() {
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [pendingDocumentFocus, setPendingDocumentFocus] = useState<PendingDocumentFocus | null>(null);
   const [pendingReviewFocus, setPendingReviewFocus] = useState<PendingReviewFocus | null>(null);
+  const [selectedMovement, setSelectedMovement] = useState("");
   const pendingFocusNonce = useRef(0);
   const activePendingFocusNonce = useRef<number | null>(null);
   const reviewFocusNonce = useRef(0);
@@ -89,6 +90,7 @@ export function App() {
   // that showed all of them would be showing work a person did not start from
   // here; the stop belongs beside the thing they did start.
   const capturedJob = [...session.jobs].reverse().find((job) => job.operation === "viva.documents.upload") ?? null;
+  const maintenanceJob = [...session.jobs].reverse().find((job) => job.operation === "viva.maintenance.run") ?? null;
   const evidenceSelection = overlay?.kind === "evidence" && overlay.selection.requestId === session.requestId ? overlay.selection : null;
   const conversationSelection = overlay?.kind === "conversation" && overlay.requestId === session.requestId ? overlay : null;
   const conversationOpen = Boolean(conversationSelection);
@@ -98,6 +100,7 @@ export function App() {
   useEffect(() => { if (overlay?.kind === "evidence" && !evidenceSelection) setOverlay(null); }, [evidenceSelection, overlay]);
   useEffect(() => { if (overlay?.kind === "conversation" && !conversationSelection) setOverlay(null); }, [conversationSelection, overlay]);
   useEffect(() => { setConversationPlanDraft(null); setPlanActionReceipt(null); }, [session.requestId]);
+  useEffect(() => { setSelectedMovement(""); }, [session.requestId]);
 
   useEffect(() => {
     if (!pendingDocumentFocus) return undefined;
@@ -223,6 +226,10 @@ export function App() {
     control.selectQueue(questionId);
     setOverlay({ kind: "conversation", requestId: session.requestId });
     setPendingReviewFocus({ requestId: session.requestId, questionId, nonce: ++reviewFocusNonce.current });
+  }
+  function reviewMovement(movementId: string) {
+    setSelectedMovement(movementId);
+    control.navigate("activity");
   }
   function inspectOverviewDocument(documentId: string) {
     control.selectDocument(documentId);
@@ -355,10 +362,10 @@ export function App() {
         {session.phase === "reading" ? <section className="feature-panel" aria-live="polite"><div className="empty-state"><strong>Reading private vault</strong><span>Reading available surfaces from this device…</span></div></section> : <FeatureBoundary key={`destination-${session.requestId}-${session.destination}`} resetKey={`${session.requestId}-${session.destination}`}>
           {session.destination === "overview" && <Overview result={surface.overview} conversationResult={surface.conversation} activityResult={surface.activity} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenReviewQuestion={openReviewQuestion} onNavigate={navigate} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onInspectDocument={inspectOverviewDocument} onInspectAccount={inspectOverviewAccount} onAskViva={control.askAvailable ? () => setOverlay({ kind: "conversation", requestId: session.requestId }) : null} onSetAsideFinding={control.findingActionsAvailable ? (findingId) => void control.setAsideFinding(findingId) : null} settingAsideFindingId={control.settingAsideFindingId} onExploreSample={openSampleVault} />}
           {session.destination === "accounts" && <Accounts result={surface.overview} selectedAccount={session.selectedAccount} showVerificationDetails={proofPreference.showVerificationDetails} onSelectAccount={control.selectAccount} onOpenEvidence={openEvidenceDocument} onOpenFigure={openFigure} onExploreSample={openSampleVault} />}
-          {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments() } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
-          {session.destination === "activity" && <Activity result={surface.activity} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignCategory: (movementId, categoryId) => void control.assignActivityCategory(movementId, categoryId), onAssignMeaning: (movementId, meaning, counterparty) => void control.assignActivityMeaning(movementId, meaning, counterparty), onReplaceTags: (movementId, tagIds) => void control.replaceActivityTags(movementId, tagIds), onConfirmTransfer: (movementId, counterpartId) => void control.confirmActivityTransfer(movementId, counterpartId), onRejectTransfer: (movementId) => void control.rejectActivityTransfer(movementId), onUnlinkTransfer: (movementId, counterpartId) => void control.unlinkActivityTransfer(movementId, counterpartId) } : null} onOpenEvidence={openEvidenceDocument} />}
+          {session.destination === "documents" && <Documents result={surface.documents} selectedDocument={session.selectedDocument} capture={control.captureAvailable ? { state: session.captureAction, onChoose: control.filePickerAvailable ? () => void chooseDocuments() : null, job: capturedJob, cancel: session.cancelAction, onStop: (jobId: string) => void control.cancelJob(jobId) } : null} rescan={control.captureAvailable ? { state: session.rescanAction, onRescan: () => void control.rescanDocuments(), onReviewMovement: reviewMovement } : null} onSelectDocument={control.selectDocument} onOpenEvidence={openEvidenceDocument} onExploreSample={openSampleVault} />}
+          {session.destination === "activity" && <Activity result={surface.activity} selectedMovement={selectedMovement} correction={control.activityCorrectionAvailable ? { state: session.activityAction, onAssignCategory: (movementId, categoryId) => void control.assignActivityCategory(movementId, categoryId), onAssignMeaning: (movementId, meaning, counterparty) => void control.assignActivityMeaning(movementId, meaning, counterparty), onReplaceTags: (movementId, tagIds) => void control.replaceActivityTags(movementId, tagIds), onConfirmTransfer: (movementId, counterpartId) => void control.confirmActivityTransfer(movementId, counterpartId), onRejectTransfer: (movementId) => void control.rejectActivityTransfer(movementId), onUnlinkTransfer: (movementId, counterpartId) => void control.unlinkActivityTransfer(movementId, counterpartId) } : null} onOpenEvidence={openEvidenceDocument} onLoadMore={() => void control.loadMoreActivity()} />}
           {session.destination === "plans" && <Plans result={plansResult} controls={planControls} initialDraft={conversationPlanDraft} receipt={planActionReceipt} onOpenEvidence={openEvidenceDocument} />}
-          {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} displayPreference={{ showVerificationDetails: proofPreference.showVerificationDetails, onChange: proofPreference.setShowVerificationDetails }} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file) } : null} />}
+          {session.destination === "trust" && <Trust result={surface.trust} identity={session.description.identity} lifecycle={session.description.lifecycle} displayPreference={{ showVerificationDetails: proofPreference.showVerificationDetails, onChange: proofPreference.setShowVerificationDetails }} transfer={control.transferAvailable ? { state: session.transferAction, onExport: (archive: string) => void control.exportVault(archive), onRestore: (archive: string, directory: string, passphrase: string) => void control.restoreVault(archive, directory, passphrase) } : null} settings={control.settingsAvailable ? { settings: session.settings, state: session.settingsAction, onPropose: (kind, fields) => void control.proposeSettings(kind, fields), onConfirm: (kind, fields, digest, key) => void control.confirmSettings(kind, fields, digest, key) } : null} maintenance={control.trustAvailable ? { state: session.trustAction, job: maintenanceJob, cancel: session.cancelAction, onRun: (spend: boolean) => void control.runMaintenance(spend), onDiagnose: (file: string) => void control.writeDiagnostic(file), onStop: (jobId: string) => void control.cancelJob(jobId) } : null} />}
         </FeatureBoundary>}
       </div>
     </main>

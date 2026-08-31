@@ -114,14 +114,14 @@ describe("shell", () => {
     if (!suggested?.explanation || !suggested.candidates?.[0] || !linked?.explanation || !linked.relationship) throw new Error("live v3 parity fixture is missing transfer authority");
     const view = await openSample();
     await user.click(view.getByRole("button", { name: "ActivityWhat moved" }));
-    const suggestionSummary = view.getAllByText("Correct category, treatment, or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("possible transfer to savings"));
+    const suggestionSummary = view.getAllByText("Correct category, treatment, tags, or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("possible transfer to savings"));
     if (!suggestionSummary) throw new Error("installed suggested row correction is missing");
     await user.click(suggestionSummary);
     expect(view.getByText(suggested.explanation)).toBeInTheDocument();
     expect(view.getByText(suggested.candidates[0].relationship)).toBeInTheDocument();
     expect(view.getByRole("button", { name: /Confirm transfer for/ })).toBeInTheDocument();
     expect(view.getByRole("button", { name: /Reject transfer suggestion for/ })).toBeInTheDocument();
-    const linkSummary = view.getAllByText("Correct category or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("transfer from checking"));
+    const linkSummary = view.getAllByText("Correct category, tags, or transfer", { exact: true }).find((summary) => summary.getAttribute("aria-label")?.includes("transfer from checking"));
     if (!linkSummary) throw new Error("installed linked row correction is missing");
     await user.click(linkSummary);
     expect(view.getAllByText(linked.explanation).length).toBeGreaterThan(0);

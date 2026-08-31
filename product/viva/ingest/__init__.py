@@ -10,6 +10,7 @@ from .diagnose import (DIAGNOSIS_VERSION, FORCED, SUGGESTED, UNLOCALIZED,
                        ReconciliationFinding, diagnose)
 from .brokerage import (BrokerageActivity, BrokerageFacts, PositionFact,
                         from_brokerage_json)
+from .brokerage_projector import apply_brokerage_activity_correction
 from .pipeline import (AWAITING, CONFLICT, DUPLICATE, GAP, IDENTITY, PARKED,
                        POSTED, IngestResult, ReadResult, account_id_for,
                        capture_and_ingest, heal_corroboration, heal_gaps,
@@ -45,7 +46,7 @@ __all__ = [
     "heal_paystubs", "sweep", "AWAITING",
     "PayStubFacts", "Deduction", "from_paystub_json",
     "BrokerageFacts", "BrokerageActivity", "PositionFact", "from_brokerage_json",
-    "post_brokerage",
+    "post_brokerage", "apply_brokerage_activity_correction",
     "assign_category", "assign_default_categories", "assign_movement_meaning",
     "MOVEMENT_MEANINGS", "suggest_categories", "normalize_category",
     "SEED_CATEGORIES", "assign_merchant_category", "categorize_merchants_batch",

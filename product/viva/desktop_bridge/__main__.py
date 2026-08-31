@@ -1,28 +1,16 @@
 """Run the OrionViva desktop bridge as a JSON-lines sidecar.
 
-The loop answers one request before it reads the next, which is what keeps one
-writer on the vault at a time. A job that runs for a while would therefore be
-unstoppable: the frame asking it to stop would sit unread on the transport
-until the work it names had finished.
-
-So a running job pumps. Between its steps — never inside one — it asks this
-module to read whatever has already arrived on standard input. A frame asking
-to stop a job is answered there and then, because that is the only moment at
-which answering it can change anything. Every other frame is held in arrival
-order and served by the ordinary loop once the current one is answered, which
-is exactly what would have happened had nothing pumped. Ordering is preserved
-and no second writer is created; the only thing that changes is that a stop
-can be heard.
-
-Nothing is interrupted mid-write. The pump reads; the checkpoint that called
-it decides; and a job that stops does so between two steps, leaving the vault
-at a step that finished.
+Foreground requests run sequentially. Foreground jobs pump stop frames between
+completed steps while retaining all other frames in arrival order. Paid
+maintenance runs on an independently cached vault handle and receives stop
+requests through the shared job registry without reading transport input.
 """
 
 from __future__ import annotations
 
 import logging
 import select
+from threading import RLock
 import sys
 from pathlib import Path
 from typing import Any
@@ -144,6 +132,7 @@ class Sidecar:
         # so a frame that was pumped is served at the point in the sequence it
         # would have been served at anyway.
         self._held: list[str] = []
+        self._output_lock = RLock()
 
     @property
     def handlers(self) -> BridgeDispatcher:
@@ -211,8 +200,9 @@ class Sidecar:
         return held
 
     def _write(self, response: str) -> None:
-        self._output.write(response)
-        self._output.flush()
+        with self._output_lock:
+            self._output.write(response)
+            self._output.flush()
 
     def _open(self, request_id: str, payload: dict[str, Any],
               open_it=_open_vault, sample: bool = False) -> str:
@@ -259,13 +249,12 @@ class Sidecar:
         })
 
     def _write_event(self, request_id: str, event: dict[str, Any]) -> None:
-        self._output.write(encode_frame({
+        self._write(encode_frame({
             "protocol": CURRENT_PROTOCOL.wire(),
             "request_id": request_id,
             "event": "job.progress",
             "result": event,
         }))
-        self._output.flush()
 
 
 # Every way naming a folder can fail, against the code a caller reads and the

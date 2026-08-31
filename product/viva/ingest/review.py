@@ -105,6 +105,16 @@ def other_holds(source) -> list[dict]:
                                  or fdict.get("employer", "")),
             "message": finding.get("message", ""),
         })
+    for body in proj.open_activity_holds():
+        fdict = body.get("facts", {})
+        finding = body.get("finding") or {}
+        out.append({
+            "doc_id": body["doc_id"],
+            "doc_type": fdict.get("doc_type", "brokerage_statement"),
+            "reason": "activity",
+            "account_ref": _mask(fdict.get("account_ref", "")),
+            "message": finding.get("message", ""),
+        })
     return out
 
 

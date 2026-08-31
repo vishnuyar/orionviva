@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import datetime
+import json
 import secrets
 from typing import Any
 
@@ -217,13 +218,16 @@ class ConversationActions:
         if proposal is None or proposal.get("status") != "open":
             return ActionOutcome("refused", moment("reply_question_closed"),
                                  reason="proposal_not_open").as_dict()
+            # The proposal basis excludes the audit turn appended by this action.
+        question = find_question(
+            self._vault.ledger, str(proposal.get("question_id") or ""))
+        basis_is_live = (question is not None
+                         and _question_stake(question) == proposal.get("stake"))
         turn_id = secrets.token_urlsafe(18)
         summary = str(proposal.get("summary") or asked or "Confirm correction")
         self._vault.ledger.append(conversation_turn_opened(
             turn_id, "confirm", summary, _today(), said=said))
-        question = find_question(
-            self._vault.ledger, str(proposal.get("question_id") or ""))
-        if question is None or _question_stake(question) != proposal.get("stake"):
+        if not basis_is_live:
             outcome = ActionOutcome(
                 "stale", moment("reply_question_closed"),
                 reason="proposal_basis_changed")
@@ -296,13 +300,15 @@ def _prior_context(projection) -> list[tuple[str, str]]:
 
 def _question_stake(question) -> dict[str, Any]:
     """The deterministic question state a persisted proposal depends on."""
-    return {
+    stake = {
         "id": question.id, "kind": question.kind,
         "amount": str(question.amount), "currency": question.currency,
         "count": question.count, "scope": question.scope,
         "slots": [slot.to_dict() for slot in question.slots],
         "refs": dict(question.refs),
     }
+        # Compare the JSON-normalized form preserved by the event log.
+    return json.loads(json.dumps(stake, sort_keys=True))
 
 
 def _outcome_of(result: Mapping[str, Any]) -> ActionOutcome:

@@ -137,6 +137,17 @@ def test_a_checkpoint_runs_the_pump_before_it_answers():
     assert pumped == [True]
 
 
+def test_a_background_checkpoint_never_competes_for_the_transport():
+    pumped = []
+    registry = JobRegistry(None, lambda: pumped.append(True))
+    job = registry.open("viva.maintenance.run", ("planned", "spent"))
+
+    with job:
+        job.checkpoint(pump=False)
+
+    assert pumped == []
+
+
 def test_a_queued_job_stops_without_anyone_running_a_checkpoint():
     """Nothing will run a checkpoint for work that has not begun, so the
     registry closes it itself."""
@@ -261,6 +272,22 @@ def test_the_pump_answers_a_stop_and_holds_everything_else(tmp_path):
 
     assert [frame["request_id"] for frame in output.frames] == ["c1"]
     assert [json.loads(held)["request_id"] for held in sidecar.held()] == ["r2"]
+
+
+def test_persisted_jobs_recover_terminal_and_close_interrupted_work(tmp_path):
+    state = tmp_path / "jobs.json"
+    first = JobRegistry(state_file=state)
+    completed = first.open("viva.maintenance.run", ("planned", "spent"))
+    with completed:
+        completed.reached("planned")
+        completed.reached("spent")
+    interrupted = first.open("viva.maintenance.run", ("planned", "spent"))
+    interrupted.begin()
+
+    recovered = JobRegistry(state_file=state)
+    assert recovered.record(completed.job_id).state == JobState.COMPLETED
+    assert recovered.record(interrupted.job_id).state == JobState.FAILED
+    assert "Interrupted" in recovered.record(interrupted.job_id).message
 
 
 def test_a_capture_can_be_stopped_by_a_frame_that_arrives_while_it_runs(

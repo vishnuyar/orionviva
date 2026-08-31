@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { CircleSlash, FileQuestion, Info } from "lucide-react";
 import { PanelStateView } from "../../components/PanelStateView";
 import { UNSPOKEN_REPLY, channelPresentation } from "../../components/actionChannel";
-import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionState, SettingsView, TrustActionState, TransferActionState, TrustData, TrustNote, UpdateLifecycleView } from "../../surface/types";
+import type { CancelActionState, EngineIdentity, FeatureResult, JobView, OutboundRecordView, SettingsActionState, SettingsView, TrustActionState, TransferActionState, TrustData, TrustNote, UpdateLifecycleView } from "../../surface/types";
 
 // What a screen needs to take a whole vault out and bring one back. A source
 // that can do neither carries none of this, so the controls are absent rather
@@ -13,7 +13,7 @@ import type { EngineIdentity, FeatureResult, OutboundRecordView, SettingsActionS
 // than no form.
 // Unattended work, and a file somebody can send. A source that carries neither
 // renders no controls: a control that would have to refuse is worse than none.
-export type MaintenanceControls = { state: TrustActionState; onRun: (spend: boolean) => void; onDiagnose: (file: string) => void };
+export type MaintenanceControls = { state: TrustActionState; job: JobView | null; cancel: CancelActionState; onRun: (spend: boolean) => void; onDiagnose: (file: string) => void; onStop: ((jobId: string) => void) | null };
 export type SettingsControls = {
   settings: FeatureResult<SettingsView>;
   state: SettingsActionState;
@@ -247,7 +247,8 @@ function Absences({ absences }: { absences: readonly { id: string; sentence: str
 // difference between the two is money leaving.
 function Maintenance({ controls }: { controls: MaintenanceControls }) {
   const [file, setFile] = useState("");
-  const working = controls.state.state === "working";
+  const jobRunning = controls.job?.state === "queued" || controls.job?.state === "running";
+  const working = controls.state.state === "working" || jobRunning;
   const settled = controls.state.state === "settled" ? controls.state.result : null;
   const said = settled ? (settled.state === "settled" ? settled.outcome.message.trim() || UNSPOKEN_REPLY : `${channelPresentation(settled).title}. ${channelPresentation(settled).detail}`) : "";
   return <section className="trust-maintenance" aria-labelledby="trust-maintenance-title">
@@ -265,6 +266,21 @@ function Maintenance({ controls }: { controls: MaintenanceControls }) {
     {working ? <span className="action-explanation" id="trust-maintenance-waiting">Your vault is answering the last request. Pressing again does nothing until it has.</span> : null}
     <div className="visually-hidden" role="status" aria-live="polite">{said}</div>
     {said ? <p className="trust-maintenance-answer">{said}</p> : null}
+    {controls.job ? <MaintenanceProgress job={controls.job} cancel={controls.cancel} onStop={controls.onStop} /> : null}
+  </section>;
+}
+
+function MaintenanceProgress({ job, cancel, onStop }: { job: JobView; cancel: CancelActionState; onStop: ((jobId: string) => void) | null }) {
+  const stopping = cancel.state === "working" && cancel.jobId === job.jobId;
+  const running = job.state === "queued" || job.state === "running";
+  return <section className="document-job" aria-labelledby="maintenance-job-title">
+    <div className="detail-panel-label">Maintenance progress</div>
+    <h4 id="maintenance-job-title">Unattended maintenance</h4>
+    <p className="document-job-step" role="status" aria-live="polite">{running ? `Step ${job.completed} of ${job.total}${job.step ? ` — ${job.step}` : ""}` : `Finished at step ${job.completed} of ${job.total}`}</p>
+    {job.message ? <p className="document-job-message">{job.message}</p> : null}
+    <progress className="document-job-bar" value={job.completed} max={job.total || 1} aria-labelledby="maintenance-job-title" />
+    {onStop && running && job.cancellable ? <button className="secondary-button" type="button" aria-disabled={stopping} onClick={() => { if (!stopping) onStop(job.jobId); }}>Stop</button> : null}
+    {stopping ? <span className="action-explanation">Asking your vault to stop. What has already finished is kept.</span> : null}
   </section>;
 }
 

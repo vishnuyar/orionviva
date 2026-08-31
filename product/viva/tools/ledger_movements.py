@@ -22,6 +22,8 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                                i.account for i in _real_accounts(proj)))
     if "currency" in filters:
         infos = [i for i in infos if i.currency == filters["currency"]]
+    if "kind" in filters:
+        infos = [i for i in infos if i.kind == filters["kind"]]
     selected_infos = list(infos)
     # An asserted loan account exists, but until a balance or dated holding has
     # been observed its replay value of zero is only the additive identity. It
@@ -101,6 +103,41 @@ def _query_balances(proj, filters: dict) -> ToolResult:
                                                    {"kind": BY_ACCOUNT,
                                                     "value": r["record_id"]})))
                for r, value in values]
+    # Kind-filtered balances include one total per currency beside account rows.
+    if "kind" in filters:
+        totals: dict[str, Decimal] = {}
+        total_records: dict[str, set[str]] = {}
+        total_grades: dict[str, list[str]] = {}
+        total_dates: dict[str, list[str]] = {}
+        for row, value in values:
+            totals[value.currency] = totals.get(value.currency, Decimal("0")) + value.amount
+            total_records.setdefault(value.currency, set()).add(row["record_id"])
+            if value.proves:
+                total_records[value.currency].add(value.proves)
+            total_grades.setdefault(value.currency, []).append(value.grade)
+            if value.as_of:
+                total_dates.setdefault(value.currency, []).append(value.as_of)
+        missing = [i.account for i in selected_infos if i not in infos]
+        for currency, total in sorted(totals.items()):
+            figures.append(figure(
+                total, f"total {_measure_of(filters['kind'])} across all "
+                       f"{filters['kind']} accounts",
+                quantity=_measure_of(filters["kind"]),
+                grade=weakest(total_grades[currency]),
+                dated=min(total_dates.get(currency, []), default=""),
+                currency=currency,
+                record_ids=sorted(total_records[currency]),
+                boundary=bounded(
+                    whole=len(totals) == 1,
+                    counted=len({r["record_id"] for r, v in values
+                                 if v.currency == currency}),
+                    held=len(selected_infos),
+                    unmeasured=[{"account": account,
+                                 "reason": GAP_UNOBSERVED}
+                                for account in missing],
+                    selected=narrowed,
+                    cut=([{"kind": BY_CURRENCY, "value": currency}]
+                         if len(totals) > 1 else ()))))
     figures.append(figure(len(rows), "accounts holding a balance",
                           quantity=quantity.COUNT,
                           grade=weakest(value.grade for _r, value in values),

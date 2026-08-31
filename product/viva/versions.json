@@ -26,7 +26,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v15"
+      "active": "tools-v16"
     },
     "goal_binding": {
       "in": "prompts",
@@ -46,7 +46,7 @@
     },
     "persona_pack": {
       "in": "persona",
-      "active": "pack-v40"
+      "active": "pack-v41"
     },
     "schema_pack": {
       "in": "schemas",
@@ -58,7 +58,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v11"
+      "active": "speak-shape-v12"
     },
     "shape_committed": {
       "in": "prompts",
@@ -74,6 +74,7 @@
     "extract-base-v1": "93c67860a6626894",
     "extract-brokerage-base-v1": "46aca322f5492e02",
     "extract-brokerage-base-v2": "cbd6154274a87c2d",
+    "extract-brokerage-base-v3": "49323639a9b48542",
     "extract-brokerage-v1": "1caaceb25472e4ab",
     "extract-brokerage-v2": "a37ace649e2d773d",
     "extract-card-v1": "1fb3e7b3dfb1c9c9",
@@ -146,6 +147,7 @@
     "speak-shape-v1": "6dc9f1a9279a5a76",
     "speak-shape-v10": "1e12c41a720d2507",
     "speak-shape-v11": "881ce46193a436cd",
+    "speak-shape-v12": "48f71d3ecf3a5420",
     "speak-shape-v2": "c1eb515f0f44f510",
     "speak-shape-v3": "86cdfecaf82680e9",
     "speak-shape-v4": "b1414ddd20442800",
@@ -173,6 +175,7 @@
     "tools-v13": "23e6eb58d0e4f750",
     "tools-v14": "05d0cf5cc6042c03",
     "tools-v15": "4727c138392cce8e",
+    "tools-v16": "5bfbb1f51cd27281",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",
@@ -199,6 +202,7 @@
     "pack-v37": "456a509d7a7331ed",
     "pack-v38": "87f3fb3e002edc35",
     "pack-v39": "643801b4964312fe",
-    "pack-v40": "23635571e7912ba5"
+    "pack-v40": "23635571e7912ba5",
+    "pack-v41": "0d16d1df2252a9a2"
   }
 }

@@ -82,6 +82,10 @@ def documents(projection, raw_doc_ids: frozenset[str],
     filenames = projection.captured_filenames()
     attempted = projection.read_attempted_docs()
     parsed = projection.read_parsed_docs()
+    posted = projection.posted_doc_ids()
+    ordinary_holds = {item.get("doc_id") for item in projection.open_holds()}
+    activity_holds = {item.get("doc_id")
+                      for item in projection.open_activity_holds()}
     holds = [item.to_dict() for item in held_items(projection)]
     holds.extend(other_holds(projection))
     rows = [
@@ -95,6 +99,23 @@ def documents(projection, raw_doc_ids: frozenset[str],
             "resolved": projection.is_resolved(doc_id),
             "raw_available": doc_id in raw_doc_ids,
             "reading": _reading(doc_id, attempted, parsed),
+            "snapshot_status": ("posted" if doc_id in posted else
+                                "held" if doc_id in ordinary_holds else
+                                "unavailable"),
+            "snapshot_sentence": moment(
+                "documents_snapshot_posted" if doc_id in posted else
+                "documents_snapshot_held" if doc_id in ordinary_holds else
+                "documents_snapshot_unavailable"),
+            "activity_status": (
+                "incomplete" if doc_id in activity_holds else
+                "complete" if doc_type == "brokerage_statement" and doc_id in posted else
+                "unavailable" if doc_type == "brokerage_statement" else
+                "not_applicable"),
+            "activity_sentence": moment(
+                "documents_activity_incomplete" if doc_id in activity_holds else
+                "documents_activity_complete" if doc_type == "brokerage_statement" and doc_id in posted else
+                "documents_activity_unavailable" if doc_type == "brokerage_statement" else
+                "documents_activity_not_applicable"),
             # What this document put on the books, said about this document.
             # A row that stays silent about it reads as a document that has not
             # been looked at, which is a different fact and is already said by

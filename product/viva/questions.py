@@ -49,6 +49,7 @@ and the question they answered, and nothing else to send.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import datetime
 from decimal import Decimal
 
 from merchantcore.enrich import BILLING_PERIODS, BILLING_STANDING
@@ -133,10 +134,28 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
     """Documents held for review — a gap, an identity doubt, or a flagged
     reconciliation. The stake is the statement's closing amount."""
     out: list[Question] = []
-    for h in held_items(proj):
+    held = held_items(proj)
+    identity_bridges = []
+    for item in held:
+        if item.reason != "identity":
+            continue
+        candidate = (item.finding or {}).get("candidate", "")
+        held_balance = proj.running_balance(candidate) if candidate else None
+        if (candidate and held_balance is not None
+                and item.facts.opening_amount == held_balance):
+            identity_bridges.append((candidate, item.facts))
+    from .ingest.statement_projector import account_id_for
+    for h in held:
         f = h.facts
         amount = abs(f.closing_amount)
         if h.reason == "gap":
+            # Suppress a gap already spanned by an adjacent identity-held statement.
+            gap_account = account_id_for(f)
+            if any(candidate == gap_account
+                   and bridge.closing_amount == f.opening_amount
+                   and _adjacent(bridge.closing_date, f.opening_date)
+                   for candidate, bridge in identity_bridges):
+                continue
             text = say("reconciliation_gap",
                        account_ref=render_account({"name": f.account_ref}),
                        opening_date=render_date(f.opening_date),
@@ -181,6 +200,16 @@ def _held_questions(proj, locale: str = "") -> list[Question]:
             # does, and looking at it answers nothing.
             refs={"doc_id": b["doc_id"]}))
     return out
+
+
+def _adjacent(earlier: str, later: str) -> bool:
+    """Whether statement boundaries meet on the same or following day."""
+    try:
+        gap = (datetime.date.fromisoformat(later)
+               - datetime.date.fromisoformat(earlier)).days
+    except (TypeError, ValueError):
+        return False
+    return 0 <= gap <= 1
 
 
 def _held_text(held: dict) -> str:

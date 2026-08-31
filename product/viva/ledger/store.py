@@ -125,6 +125,10 @@ class EventStore:
         self._size = self.path.stat().st_size if self.path.exists() else 0
         log.debug("EventStore opened %s with %d events", self.path, self._count)
 
+    def fork(self) -> "EventStore":
+        """Return a handle sharing the derived key but not the tail cache."""
+        return EventStore(self.path, self._key, self._kdf)
+
     # --------------------------------------------------------------- lifecycle
 
     @classmethod
@@ -329,6 +333,15 @@ class EventStore:
             payload = json.loads(open_sealed(self._key, sealed, aad))
             yield Event.from_dict(payload["event"])
             prev = rec_hash
+
+    def snapshot_events(self) -> tuple[Event, ...]:
+        """Replay one complete writer-excluded snapshot of the event log."""
+        with self.path.open("r") as source:
+            fcntl.flock(source.fileno(), fcntl.LOCK_SH)
+            try:
+                return tuple(self.events())
+            finally:
+                fcntl.flock(source.fileno(), fcntl.LOCK_UN)
 
     def verify_chain(self) -> tuple[bool, int]:
         """Recompute the hash chain without decrypting. Returns (intact, count).

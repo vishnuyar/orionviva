@@ -257,7 +257,8 @@ def decide_nature(core: ProjectionCore, m: MovementInfo) -> None:
               or merchants_view.merchant_ruling(core, m))
     if ruling and ruling.get("legs"):
         m.nature, m.nature_reason = nature_of_legs(ruling["legs"]), BY_RULING
-        m.ruling_account = leading_account(ruling["legs"])
+        path = leading_account(ruling["legs"])
+        m.ruling_account = core._aliases.get(path, path)
         # Components known, proportions not — reported as provisional.
         m.provisional = (m.nature == MIXED)
         return
@@ -269,11 +270,12 @@ def decide_nature(core: ProjectionCore, m: MovementInfo) -> None:
         m.nature, m.nature_reason = nature, BY_RULING
         return
     # Rung 3: does this movement name one of YOUR OTHER accounts?
+    from ..identity import text_has_token
     low = (m.description or "").lower()
     for account, tokens in accounts_view.own_account_tokens(core).items():
         if account == m.account:
             continue                      # naming itself proves nothing
-        if tokens and any(tok in low for tok in tokens):
+        if tokens and any(text_has_token(low, tok) for tok in tokens):
             m.nature, m.nature_reason = TRANSFER, BY_OWN_ACCOUNT
             return
     # Rung 4: what this COUNTERPARTY implies, given which way the money
@@ -321,7 +323,8 @@ def counts_as_spending(m: MovementInfo) -> bool:
 
 
 def provisional_spending(core: ProjectionCore,
-                         currency: str | None = None) -> Decimal:
+                         currency: str | None = None,
+                         predicate=None) -> Decimal:
     """The total magnitude of expense-shaped movements whose nature rests on
     weak evidence (`provisional`), filtered by `currency` if given. Reported
     alongside the spending total, so the figure states its uncertainty."""
@@ -330,6 +333,8 @@ def provisional_spending(core: ProjectionCore,
         if not is_expense(m) or not m.provisional:
             continue
         if currency is not None and m.currency != currency:
+            continue
+        if predicate is not None and not predicate(m):
             continue
         total += abs(m.amount)
     return total

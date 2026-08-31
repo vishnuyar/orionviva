@@ -96,7 +96,7 @@ _SEED: tuple[DocProfile, ...] = (
     # holds both cash and positions, distinct from a plain depository.
     DocProfile(
         "brokerage_statement", INVESTMENT, identity=BROKERAGE_IDENTITY,
-        profile_version="brk-v2", extract_base="brokerage-base-v2",
+        profile_version="brk-v3", extract_base="brokerage-base-v3",
         type_fragment="brokerage-v2",
         aliases=frozenset({
             "brokerage", "brokerage_account_statement", "investment_statement",

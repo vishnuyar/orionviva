@@ -11,14 +11,15 @@ the *upkeep* direction: what Viva does to its own knowledge between questions.
 
 ### MER-50 — Deciding is pure; only performing spends
 **State:** enforced
-**Code:** product/viva/agent/policy.py:90 (`assess`), product/viva/agent/act.py:177 (`perform`), product/viva/agent/run.py:120 (`_plan`), :133 (`wake`)
-**Test:** product/tests/test_policy.py::test_assess_is_pure_and_repeatable, product/tests/test_policy.py::test_assess_asks_nobody_anything, product/tests/test_agent_run.py::test_a_dry_run_spends_nothing_and_writes_nothing
+**Code:** product/viva/agent/policy.py:90 (`assess`), product/viva/agent/act.py:177 (`perform`), product/viva/agent/run.py:120 (`_plan`), :133 (`wake`); product/viva/desktop_bridge/trust_actions.py (`run_maintenance`)
+**Test:** product/tests/test_policy.py::test_assess_is_pure_and_repeatable, product/tests/test_policy.py::test_assess_asks_nobody_anything, product/tests/test_agent_run.py::test_a_dry_run_spends_nothing_and_writes_nothing; product/tests/test_trust_actions.py::test_paid_maintenance_uses_an_isolated_vault_and_reuses_an_active_job; ::test_paid_maintenance_reports_the_free_plan_and_can_stop_before_spend
 
 1. `observe` reads the vault; `policy.assess` is pure — no ledger, no model, no clock — and returns `Action`s with estimated costs; `act.perform` does one action; `run.wake` holds the budget and the cooldown.
 2. `--dry-run` runs the same planning function and stops before the first model call, writing nothing.
 3. `assess` is deterministic: the same inputs yield the same list in the same order — grammars, already-known catalog records to sync for free, unknown brands to enrich, then waits.
 4. Nothing raises out of `act`; every failure comes back as an `Outcome` with a reason.
 5. The plan is remade after every action, so the ceiling means what it says.
+6. The installed paid path first reports the free plan, then performs spending in a background job on an isolated vault handle, with cancellation checked before spend.
 
 ### MER-51 — The agent records what it did, never what it saw
 **State:** enforced

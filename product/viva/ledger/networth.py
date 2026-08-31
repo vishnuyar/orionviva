@@ -143,8 +143,12 @@ def _asserted_lines(proj, as_of: str):
       with the ask and the document that would answer it.
     """
     groups: dict[tuple, dict] = {}
+    issued = {info.account for info in proj.account_infos()
+              if info.origin == ISSUED}
     for m in proj.movements():
         if not m.ruling_account or m.date > as_of:
+            continue
+        if m.ruling_account in issued:
             continue
         g = groups.setdefault((m.ruling_account, m.currency), {
             "paid": Decimal("0"), "as_of": "", "reliable": True})
@@ -217,6 +221,8 @@ def _asserted_asset_lines(proj, as_of: str, valued: set):
         # its statements, and announcing a gap on one would be a second, louder
         # answer to a question its documents already settle.
         if not account.startswith(ASSET_ROOT) or info.origin != _ASSERTED:
+            continue
+        if proj.account_aliases().get(account, account) != account:
             continue
         answered = answers.get(account, {})
         stated = _stated_cost(proj, info, answered, here)

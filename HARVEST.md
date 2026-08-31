@@ -39,3 +39,15 @@ pattern grep is what caught it, on the second attempt — the first ran against
 an empty file list and reported clean, which is the more useful finding of the
 two. A paranoia grep that cannot fail loudly is worse than none, so the file
 list is now built to disk and its length printed before anything is judged.
+## LEAK — 2026-08-30
+
+New identity, account-repair, and co-brand regressions initially reused real
+issuer and merchant brands from the run report. They carried synthetic facts,
+not copied private values, but real brands do not belong in executable fixtures.
+Replaced them with Alder, Northwind, Clubhouse, Blue Harbor, and explicitly
+fictional Example issuers while retaining the same token-overlap, legal-name,
+product-kind, and damaged-number shapes.
+
+The local `.denylist` was absent, so this was found by the Steward's explicit
+added-line brand scan. The replacement was followed by the focused regressions
+and the same scan rather than treated as a prose-only cleanup.

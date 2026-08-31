@@ -47,12 +47,14 @@ missing input.
   Manual, encrypted capture remains the only acquisition path.
 - **Activity correction breadth.** `activity.movements` now advertises
   movement-scoped assignment from a complete bounded existing-category
-  vocabulary, complete-set tag replacement from a complete bounded existing-tag
+  vocabulary, complete-set tag replacement from a complete bounded tag
   vocabulary, explicit spending/loan/loan-repayment treatment correction, and
   backend-qualified transfer confirmation, rejection and unlinking. Treatment
-  correction is direction-checked, and repayments require known outstanding
-  principal. It does not expose merchant-wide changes, new category or tag
-  creation, or bulk correction. Inherited merchant tags also keep complete-set
+  correction is direction-checked. A repayment is offered only for a receivable
+  that was already open on that movement's date and whose remaining principal
+  can accept the amount. A bounded replacement may introduce a new local tag.
+  It does not expose merchant-wide changes, new category creation, or bulk
+  correction. Inherited merchant tags also keep complete-set
   movement replacement unavailable when that action could not remove the
   effective overlay honestly.
 - **Deterministic scenarios.** No registered `project` read or scenario library
@@ -78,8 +80,9 @@ missing input.
   absences explicitly.
 - **Automatic updates.** The application reports its build and explains that no
   update channel exists. Releases are downloaded and installed manually.
-- **Durable background-job recovery.** Jobs and cancellation are live while the
-  sidecar runs; an interrupted job does not survive process restart.
+- **Background-job resumption.** Bounded job receipts survive sidecar restart,
+  and work interrupted by exit is restored honestly as failed. The operation is
+  not resumed; a person must start it again.
 
 ## Intentionally deferred
 

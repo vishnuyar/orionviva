@@ -36,10 +36,11 @@ import logging
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 
-from .ledger.events import (ASSERTED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
+from .ledger.events import (ASSERTED, ISSUED, MAJORS, MAJOR_ASSET, MAJOR_EXPENSE,
                             MAJOR_INCOME, MAJOR_LIABILITY, SCOPE_ATTRIBUTE,
                             SCOPE_MERCHANT, SCOPE_MOVEMENT, UNVERIFIED,
-                            VERIFIED, account_opened, ruling_recorded)
+                            VERIFIED, account_alias_confirmed, account_opened,
+                            ruling_recorded)
 from .ledger.merchants import is_shareable, normalize_merchant
 from .ledger.postings import MAJOR_ROOTS, MAJOR_UNCATEGORIZED, account_path
 from .ledger.projection import BY_CATEGORY, BY_DEFAULT, BY_RULING
@@ -50,6 +51,71 @@ from .reply import TRUNCATED_MARK, Slot, answer as read_answer
 from .schemas import ANSWER_CHOICE, ANSWER_LABEL, ANSWER_RATE
 
 log = logging.getLogger("viva.listen")
+
+
+_GENERIC_ACCOUNT_WORDS = frozenset({
+    "account", "brokerage", "investment", "investments", "bank", "checking",
+    "savings", "card", "credit", "debit", "the"})
+
+
+def _identity_words(value: str) -> frozenset[str]:
+    import re
+    return frozenset(word for word in re.split(r"[^a-z0-9]+", value.lower())
+                     if word and word not in _GENERIC_ACCOUNT_WORDS)
+
+
+def _asserted_product_kind(value: str) -> str:
+    """Return the issued account kind explicitly named by an asserted path."""
+    words = set(value.lower().replace(":", " ").split())
+    if words & {"brokerage", "investment", "investments", "portfolio"}:
+        return "investment"
+    if words & {"checking", "savings", "debit"}:
+        return "depository"
+    if words & {"credit"}:
+        return "liability"
+    return ""
+
+
+def repair_asserted_account_aliases(ledger) -> int:
+    """Alias each asserted account with one compatible issued identity match.
+
+    Matching requires a unique issued account with the same identity words and
+    a compatible product kind. The function appends alias events and is
+    idempotent.
+    """
+    proj = ledger.projection()
+    aliases = proj.account_aliases()
+    issued = [info for info in proj.account_infos() if info.origin == ISSUED]
+    repaired = 0
+    for source in proj.ruled_accounts():
+        if source in aliases:
+            continue
+        source_words = _identity_words(source.rsplit(":", 1)[-1])
+        if not source_words:
+            continue
+        liability = source.startswith("Liabilities:")
+        product_kind = _asserted_product_kind(source.rsplit(":", 1)[-1])
+        candidates = []
+        for info in issued:
+            if liability != (info.kind == "liability"):
+                continue
+            if product_kind and info.kind != product_kind:
+                continue
+            identities = (_identity_words(info.name),
+                          _identity_words(info.institution))
+            if any(source_words == words for words in identities if words):
+                candidates.append(info.account)
+        unique = sorted(set(candidates))
+        if len(unique) != 1:
+            continue
+        dates = [movement.date for movement in proj.movements()
+                 if movement.ruling_account == source and movement.date]
+        ledger.append(account_alias_confirmed(
+            source, unique[0], "", max(dates, default=""), by="migration"))
+        repaired += 1
+        proj = ledger.projection()
+        aliases = proj.account_aliases()
+    return repaired
 
 # The plain-language label for each major. The majors are what is stored; these
 # are what a person is shown, so the surface never says "asset".
@@ -328,8 +394,17 @@ def _candidates(proj, major: str) -> list:
              for account in set(proj.ruled_accounts())
              | {a for a in proj.accounts()
                 if a.split(":")[0] == MAJOR_ROOTS.get(major)}}
-    pairs |= {(info.name, info.account) for info in proj.account_infos()
-              if info.name and info.kind in _ISSUED_KINDS.get(major, ())}
+    for info in proj.account_infos():
+        if info.kind not in _ISSUED_KINDS.get(major, ()):
+            continue
+        aliases = {info.name, info.institution}
+        if info.institution:
+            product = "brokerage" if info.kind == "investment" else info.kind
+            aliases |= {
+                f"{info.institution} {product}",
+                f"{info.institution} {product} account",
+            }
+        pairs |= {(name, info.account) for name in aliases if name}
     return sorted(pairs)
 
 

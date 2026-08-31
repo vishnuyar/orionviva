@@ -82,8 +82,8 @@ def _account_tokens(proj: LedgerProjection, account: str) -> set[str]:
 
 def _names_account(text: str, tokens: set[str]) -> bool:
     """True when any of `tokens` appears in `text`, case-insensitively."""
-    low = text.lower()
-    return any(tok in low for tok in tokens)
+    from ..ledger.identity import text_has_token
+    return any(text_has_token(text, tok) for tok in tokens)
 
 
 def _distinctive(proj: LedgerProjection) -> dict:

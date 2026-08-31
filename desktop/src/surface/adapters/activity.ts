@@ -142,6 +142,9 @@ function movement(raw: unknown, categories: ActivityCategoryVocabulary, tagVocab
   const transfer = transferState(raw.transfer, id);
   const parsedTreatment = treatment(raw.treatment);
   if (!parsedTreatment) return null;
+  const loanRepaymentChoices = Array.isArray(raw.loan_repayment_choices)
+    && raw.loan_repayment_choices.every((choice) => typeof choice === "string" && Boolean(choice.trim()))
+    ? [...new Set(raw.loan_repayment_choices as string[])] : [];
   return {
     id,
     date: textValue(raw.date),
@@ -153,6 +156,7 @@ function movement(raw: unknown, categories: ActivityCategoryVocabulary, tagVocab
     display: textValue(raw.display),
     nature: textValue(raw.nature),
     treatment: parsedTreatment,
+    loanRepaymentChoices,
     sentence: textValue(raw.sentence),
     decidedBy: textValue(raw.decided_by),
     provisional: booleanValue(raw.provisional) === true,
@@ -161,7 +165,7 @@ function movement(raw: unknown, categories: ActivityCategoryVocabulary, tagVocab
     tags: tags.items,
     tagsValid: tags.valid,
     transfer,
-    actions: rowActions(raw.actions, categoryValid && tags.valid, categoryValid && tags.valid && categories.complete && categories.items.length > 0, categoryValid && tags.valid && tagVocabulary.complete && tagVocabulary.items.length > 0 && tagsWithinBounds, transfer),
+    actions: rowActions(raw.actions, categoryValid && tags.valid, categoryValid && tags.valid && categories.complete && categories.items.length > 0, categoryValid && tags.valid && tagVocabulary.complete && tagsWithinBounds, transfer),
   };
 }
 

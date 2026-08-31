@@ -29,6 +29,10 @@ class RawStore:
         self.dir = Path(directory)
         self._key = key
 
+    def fork(self) -> "RawStore":
+        """A process-local handle sharing only the already-derived key."""
+        return RawStore(self.dir, self._key)
+
     @classmethod
     def open(cls, directory: Path, passphrase: str) -> "RawStore":
         directory = Path(directory)

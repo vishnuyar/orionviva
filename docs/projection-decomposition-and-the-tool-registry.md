@@ -30,7 +30,7 @@
 **Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates, product/tests/test_tool_vocabulary.py::test_native_query_schema_discriminates_filters_by_read_family
 
 1. A read takes a typed filter object, never a query string and never SQL.
-2. Every filter value is validated against the vault's own learned values — its accounts, categories, tags, counterparties and currencies — and a value the vault does not hold refuses, naming the values it does hold.
+2. Every filter value is validated against the vault's own learned values — its accounts, account kinds, categories, tags, counterparties and currencies — and a value the vault does not hold refuses, naming the values it does hold.
 3. A filter a read would ignore refuses and names what that read supports, rather than being accepted and dropped.
 4. The enumerations of `entity` and `group_by` are schema this project owns; the legal *values* are read from the vault, never listed in code.
 5. A date window is either explicit inclusive edges or the named latest complete calendar month. The named period resolves to explicit edges before the read, using the newest ended month shared by posted statement coverage.
@@ -147,6 +147,7 @@
 3. A figure declares every axis it is the intersection of: what narrowed the read, plus the slice of what came back that it is. An axis is named once.
 4. A figure that is a member of a set rather than a slice of it names no slice, and is not the whole of what its quantity measures.
 5. A boundary is built only by its own constructor and is never shown to the model.
+6. `whole` states whether the read covered its population, independently of evidence gaps. A whole figure may still disclose unmeasured accounts or unposted documents; those are separate boundary fields, never reasons to rewrite the population claim.
 
 ### PROJ-10 — discovery is generous, narrowing is exact
 **State:** enforced

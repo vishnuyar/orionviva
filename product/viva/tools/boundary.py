@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from .. import render
 from ..persona import moment
-from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_MERCHANT,
+from .envelope import (BY_ACCOUNT, BY_CATEGORY, BY_CURRENCY, BY_KIND, BY_MERCHANT,
                        BY_PERIOD, BY_SINCE, BY_SUBCATEGORY, BY_TAG, BY_UNTIL)
 
 # How each way of narrowing a set is said: the pack's line for it, the name
@@ -48,6 +48,8 @@ SELECTED_TERMS = {
              lambda item, accounts: render.label(item["value"])),
     BY_CURRENCY: ("boundary_selected_currency", "currency",
                   lambda item, accounts: render.label(item["value"])),
+    BY_KIND: ("boundary_selected_kind", "kind",
+              lambda item, accounts: render.label(item["value"])),
 }
 
 # The statement a figure makes about documents read and not posted, which no
@@ -93,36 +95,13 @@ def named_slice(item: dict, accounts):
 
 
 def statements(fig: dict, *, cut: bool = True) -> tuple[list, list]:
-    """Where one figure's claim ends, as ``(statements, accounts left out)``.
+    """Return ``(boundary statements, unmeasured account ids)`` for a figure.
 
-    The two halves merge differently. A statement about how a set was narrowed
-    is compared whole; accounts left out are returned as a list for the caller
-    to gather across every figure the answer stated.
-
-    Both empty where the set is everything the figure claims to measure, and
-    where a figure declares it is not whole without naming anything it was
-    narrowed to. A figure carrying no boundary has nothing to say here either,
-    and says nothing for the other reason: no read has stated what set it was
-    taken over, which is not the same as a read stating that the set was
-    everything.
-
-    ``cut`` is whether the slices THIS figure alone was taken over are among
-    the statements. They are said wherever the figure is stated as a number in
-    a sentence, and not where the figure is a line of a block, because there
-    the slice is already written beside the number as the line's own name.
-
-    What the read as a whole was narrowed to is said either way, because that
-    is a fact about the call rather than about one line of it.
-
-    How many of the accounts a person holds are covered is not here. It is one
-    claim about the whole answer, computed over every figure the answer stated,
-    because a count said once for one figure reads as being about the answer —
-    and where the answer states two such figures, it is.
-
-    What would settle a gap stays on the figure and is not said."""
+    Whole figures omit selection and cut statements but retain evidence-gap
+    disclosures. Set ``cut=False`` when a row already displays its own slice.
+    """
     bound = fig.get("boundary") or {}
-    if bound.get("whole", False):
-        return [], []
+    whole = bound.get("whole", False)
     said = []
 
     def say(statement):
@@ -131,11 +110,12 @@ def statements(fig: dict, *, cut: bool = True) -> tuple[list, list]:
         if statement not in said:
             said.append(statement)
 
-    for item in bound.get("selected") or []:
-        say((SELECTED_TERMS[item["kind"]][0], dict(item)))
-    if cut:
-        for item in bound.get("cut") or []:
+    if not whole:
+        for item in bound.get("selected") or []:
             say((SELECTED_TERMS[item["kind"]][0], dict(item)))
+        if cut:
+            for item in bound.get("cut") or []:
+                say((SELECTED_TERMS[item["kind"]][0], dict(item)))
     if bound.get("unposted"):
         # A gap no account names is still said. It is a number of documents,
         # because a document read and not posted may be about an account that

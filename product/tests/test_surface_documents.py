@@ -279,3 +279,26 @@ def test_a_row_that_nothing_rests_on_says_so_rather_than_staying_silent(tmp_path
 
     assert read["documents"][0]["contribution"] == moment(
         "documents_contributed_nothing")
+
+
+def test_brokerage_snapshot_and_activity_have_independent_statuses():
+    from viva.ledger.events import (brokerage_activity_held,
+                                    closing_balance_observed)
+
+    facts = {"doc_id": DOC, "doc_type": "brokerage_statement",
+             "account_ref": "Investment account"}
+    events = [
+        _captured(DOC, doc_type="brokerage_statement"),
+        closing_balance_observed("acct:investment", "500.00", "2026-03-31",
+                                 Provenance(doc_id=DOC)),
+        brokerage_activity_held(
+            DOC, facts, {"message": "Activity is incomplete."}, "2026-03-31",
+            Provenance(doc_id=DOC)),
+    ]
+
+    row = _read_model(events)["documents"][0]
+
+    assert row["snapshot_status"] == "posted"
+    assert row["snapshot_sentence"] == moment("documents_snapshot_posted")
+    assert row["activity_status"] == "incomplete"
+    assert row["activity_sentence"] == moment("documents_activity_incomplete")

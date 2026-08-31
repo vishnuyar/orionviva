@@ -31,6 +31,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const correctingActivity = useRef(false);
   const settingAsideFinding = useRef(false);
   const planning = useRef(false);
+  const activityLimit = useRef(50);
+  // Full reads advance the revision that bounds asynchronous Activity pages.
+  const surfaceRevision = useRef(0);
   // Every verb this session has comes from the source, and before a vault is
   // open there is no source and therefore no verb. A screen asks whether it
   // has one; nothing here invents a verb that would have to refuse.
@@ -44,6 +47,22 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   const overviewActions = session.source?.overviewActions ?? null;
   const planActions = session.source?.planActions ?? null;
   const source = session.source;
+
+  async function refreshAfterAction(activeSource: NonNullable<typeof source>, activeRequest: number) {
+    ++surfaceRevision.current;
+    try {
+      const [snapshot, jobsRead] = await Promise.all([
+        activeSource.load(activityLimit.current),
+        activeSource.loadJobs?.() ?? Promise.resolve(null),
+      ]);
+      const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
+      if (requestId.current === activeRequest) dispatch({ type: "mutation-loaded", requestId: activeRequest, snapshot, jobs });
+      return snapshot;
+    } catch {
+      if (requestId.current === activeRequest) dispatch({ type: "mutation-refresh-failed", requestId: activeRequest });
+      return null;
+    }
+  }
 
   // What is in force, asked once per source. It is this machine's rather than
   // this vault's, so it is read whenever a source appears and never cleared by
@@ -80,24 +99,31 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     if (!jobStream) return undefined;
     let stop: (() => void) | null = null;
     let gone = false;
-    void jobStream((job) => dispatch({ type: "job-progress", requestId: requestId.current, job }))
+    void jobStream((job) => {
+      const activeRequest = requestId.current;
+      dispatch({ type: "job-progress", requestId: activeRequest, job });
+      if (source && ["completed", "failed", "cancelled"].includes(job.state)) {
+        void refreshAfterAction(source, activeRequest);
+      }
+    })
       .then((unlisten) => { if (gone) unlisten(); else stop = unlisten; })
       .catch(() => undefined);
     return () => { gone = true; stop?.(); };
-  }, [jobStream]);
+  }, [jobStream, source]);
 
   // One question verb at a time. The sidecar answers one request before reading
   // the next, so a second press while the first is in flight would queue behind
   // it and report against a queue that has already moved.
   async function runQuestionVerb(verb: QuestionVerb, questionId: string, run: (actions: ConversationActions) => Promise<ActionResult>) {
     const actions = conversationActions;
-    if (!actions || !questionId.trim() || session.questionAction.state === "working") return;
+    const activeSource = source;
+    if (!actions || !activeSource || !questionId.trim() || session.questionAction.state === "working") return;
     const nextRequestId = requestId.current;
     dispatch({ type: "question-acting", requestId: nextRequestId, questionId, verb });
     const result = await run(actions);
-    const conversation = await actions.reread();
+    await refreshAfterAction(activeSource, nextRequestId);
     if (requestId.current !== nextRequestId) return;
-    dispatch({ type: "question-acted", requestId: nextRequestId, questionId, verb, result, conversation });
+    dispatch({ type: "question-acted", requestId: nextRequestId, questionId, verb, result });
   }
 
   // One movement correction at a time. The old snapshot remains on screen
@@ -115,14 +141,25 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       const result = await run(actions);
       if (requestId.current === nextRequestId) dispatch({ type: "activity-outcome", requestId: nextRequestId, movementId, verb, result });
       try {
-        const snapshot = await activeSource.load();
+        ++surfaceRevision.current;
+        const [snapshot, jobsRead] = await Promise.all([
+          activeSource.load(activityLimit.current, movementId),
+          activeSource.loadJobs?.() ?? Promise.resolve(null),
+        ]);
+        const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
         if (requestId.current === nextRequestId) {
-          dispatch(fullSurfaceRereadFailed(snapshot)
-            ? { type: "activity-refresh-failed", requestId: nextRequestId, movementId, verb, result }
-            : { type: "activity-refreshed", requestId: nextRequestId, movementId, verb, result, snapshot });
+          if (fullSurfaceRereadFailed(snapshot)) {
+            dispatch({ type: "mutation-loaded", requestId: nextRequestId, snapshot });
+            dispatch({ type: "activity-refresh-failed", requestId: nextRequestId, movementId, verb, result });
+          } else {
+            dispatch({ type: "activity-refreshed", requestId: nextRequestId, movementId, verb, result, snapshot, jobs });
+          }
         }
       } catch {
-        if (requestId.current === nextRequestId) dispatch({ type: "activity-refresh-failed", requestId: nextRequestId, movementId, verb, result });
+        if (requestId.current === nextRequestId) {
+          dispatch({ type: "mutation-refresh-failed", requestId: nextRequestId });
+          dispatch({ type: "activity-refresh-failed", requestId: nextRequestId, movementId, verb, result });
+        }
       }
     } finally {
       correctingActivity.current = false;
@@ -138,8 +175,12 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     dispatch({ type: "capturing", requestId: nextRequestId });
     try {
       const result = await actions.upload(path);
-      const documents = await actions.reread();
-      if (requestId.current === nextRequestId) dispatch({ type: "captured", requestId: nextRequestId, result, documents });
+      const activeSource = source;
+      if (!activeSource) return;
+      await refreshAfterAction(activeSource, nextRequestId);
+      if (requestId.current === nextRequestId) {
+        dispatch({ type: "captured", requestId: nextRequestId, result });
+      }
     } finally {
       capturing.current = false;
     }
@@ -196,13 +237,17 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
   }
 
   async function runTrust(run: (actions: TrustActions) => Promise<ActionResult>) {
-    if (!trustActions || maintaining.current) return;
+    const activeSource = source;
+    if (!trustActions || !activeSource || maintaining.current) return;
     maintaining.current = true;
     const nextRequestId = requestId.current;
     dispatch({ type: "trust-working", requestId: nextRequestId });
     try {
       const result = await run(trustActions);
-      if (requestId.current === nextRequestId) dispatch({ type: "trust-settled", requestId: nextRequestId, result });
+      await refreshAfterAction(activeSource, nextRequestId);
+      if (requestId.current === nextRequestId) {
+        dispatch({ type: "trust-settled", requestId: nextRequestId, result });
+      }
     } finally {
       maintaining.current = false;
     }
@@ -216,8 +261,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     const nextRequestId = requestId.current;
     try {
       const result = await run(actions);
-      const snapshot = await activeSource.load();
-      if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot });
+      await refreshAfterAction(activeSource, nextRequestId);
       return result;
     } catch {
       return { state: "unanswered" };
@@ -235,6 +279,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     async openVault(vaultDirectory: string, passphrase: string, create: boolean) {
       if (!hostBridge) return false;
       const nextRequestId = ++requestId.current;
+      activityLimit.current = 50;
+      ++surfaceRevision.current;
       dispatch({ type: "opening", requestId: nextRequestId });
       try {
         await hostBridge.openVault(vaultDirectory, passphrase, create);
@@ -251,8 +297,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       const source = privateSource(hostBridge);
       dispatch({ type: "reading", requestId: nextRequestId, source, snapshot: liveReadingSnapshot() });
       try {
-        const snapshot = await source.load();
-        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot });
+        const [snapshot, jobsRead] = await Promise.all([source.load(activityLimit.current), source.loadJobs?.() ?? Promise.resolve(null)]);
+        const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
+        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot, jobs });
       } catch {
         if (requestId.current === nextRequestId) dispatch({ type: "load-failed", requestId: nextRequestId });
         return false;
@@ -266,6 +313,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     async openSampleVault() {
       if (!hostBridge) return false;
       const nextRequestId = ++requestId.current;
+      activityLimit.current = 50;
+      ++surfaceRevision.current;
       dispatch({ type: "opening", requestId: nextRequestId });
       let frame;
       try {
@@ -284,8 +333,9 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       const source = sampleSource(hostBridge, frame);
       dispatch({ type: "reading", requestId: nextRequestId, source, snapshot: liveReadingSnapshot() });
       try {
-        const snapshot = await source.load();
-        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot });
+        const [snapshot, jobsRead] = await Promise.all([source.load(activityLimit.current), source.loadJobs?.() ?? Promise.resolve(null)]);
+        const jobs = jobsRead?.state === "ready" ? jobsRead.data.jobs : undefined;
+        if (requestId.current === nextRequestId) dispatch({ type: "loaded", requestId: nextRequestId, snapshot, jobs });
       } catch {
         if (requestId.current === nextRequestId) dispatch({ type: "load-failed", requestId: nextRequestId });
         return false;
@@ -333,6 +383,22 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     askAvailable: Boolean(conversationActions),
     trustAvailable: Boolean(trustActions),
     activityCorrectionAvailable: Boolean(activityActions),
+    async loadMoreActivity() {
+      const current = session.snapshot.activity;
+      if (!activityActions || current.state !== "ready" || current.data.beyond.count < 1) return;
+      const nextRequestId = requestId.current;
+      const startedAtRevision = surfaceRevision.current;
+      const nextLimit = current.data.movements.length + 50;
+      try {
+        const activity = await activityActions.read(nextLimit);
+        if (requestId.current === nextRequestId && surfaceRevision.current === startedAtRevision) {
+          if (activity.state === "ready" || activity.state === "partial" || activity.state === "needs_input") activityLimit.current = nextLimit;
+          dispatch({ type: "activity-page-loaded", requestId: nextRequestId, activity });
+        }
+      } catch {
+        if (requestId.current === nextRequestId && surfaceRevision.current === startedAtRevision) dispatch({ type: "notice", notice: { kind: "refused", text: "More activity could not be read. The movements already shown are unchanged." } });
+      }
+    },
     findingActionsAvailable: Boolean(overviewActions),
     planActionsAvailable: Boolean(planActions),
     async draftPlan(payload: PlanPayload): Promise<PlanDraftResult> {
@@ -360,14 +426,15 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
       const nextRequestId = requestId.current;
       try {
         const result = await actions.setAsideFinding(findingId);
-        const snapshot = await activeSource.load();
+        const snapshot = await refreshAfterAction(activeSource, nextRequestId);
         if (requestId.current !== nextRequestId) return;
-        dispatch({ type: "loaded", requestId: nextRequestId, snapshot });
-        dispatch({ type: "notice", notice: result.state === "settled"
-          ? { kind: result.outcome.kind === "set_aside" ? "acknowledged" : "refused", text: result.outcome.message }
-          : { kind: "refused", text: "The finding could not be set aside because the vault did not return a readable answer." } });
+        if (snapshot && !fullSurfaceRereadFailed(snapshot)) {
+          dispatch({ type: "notice", notice: result.state === "settled"
+            ? { kind: result.outcome.kind === "set_aside" ? "acknowledged" : "refused", text: result.outcome.message }
+            : { kind: "refused", text: "The finding could not be set aside because the vault did not return a readable answer." } });
+        }
       } catch {
-        if (requestId.current === nextRequestId) dispatch({ type: "notice", notice: { kind: "refused", text: "The finding could not be set aside because the vault could not be read again." } });
+        if (requestId.current === nextRequestId) dispatch({ type: "mutation-refresh-failed", requestId: nextRequestId });
       } finally {
         settingAsideFinding.current = false;
         setSettingAsideFindingId("");
@@ -400,6 +467,7 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // the agent reaches a model, so a run nobody said to spend on plans and
     // stops at the line where money starts.
     async runMaintenance(spend: boolean) {
+      if (spend && session.jobs.some((job) => job.operation === "viva.maintenance.run" && (job.state === "queued" || job.state === "running"))) return;
       await runTrust((actions) => actions.run(spend));
     },
     async writeDiagnostic(file: string) {
@@ -410,14 +478,17 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // open, which is a fact about this screen rather than a preference: it is
     // what decides whether anything may be spoken.
     async askViva(question: string, mirrored: boolean, planRequest = false) {
-      if (!conversationActions || !question.trim() || asking.current) return;
+      const activeSource = source;
+      if (!conversationActions || !activeSource || !question.trim() || asking.current) return;
       asking.current = true;
       const nextRequestId = requestId.current;
       dispatch({ type: "asking", requestId: nextRequestId, question: question.trim() });
       try {
         const { result, turn } = await conversationActions.ask(question.trim(), mirrored, planRequest);
-        const [conversation, trust] = await Promise.all([conversationActions.reread(), conversationActions.rereadTrust()]);
-        if (requestId.current === nextRequestId) dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn, conversation, trust });
+        await refreshAfterAction(activeSource, nextRequestId);
+        if (requestId.current === nextRequestId) {
+          dispatch({ type: "asked", requestId: nextRequestId, question: question.trim(), result, turn });
+        }
       } finally {
         asking.current = false;
       }
@@ -453,14 +524,17 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     // is in: the pass writes, so what the screen shows can move under it.
     async rescanDocuments() {
       const actions = documentActions;
-      if (!actions || sweeping.current) return;
+      const activeSource = source;
+      if (!actions || !activeSource || sweeping.current) return;
       sweeping.current = true;
       const nextRequestId = requestId.current;
       dispatch({ type: "rescanning", requestId: nextRequestId });
       try {
         const { result, report } = await actions.rescan();
-        const documents = await actions.reread();
-        if (requestId.current === nextRequestId) dispatch({ type: "rescanned", requestId: nextRequestId, result, report, documents });
+        await refreshAfterAction(activeSource, nextRequestId);
+        if (requestId.current === nextRequestId) {
+          dispatch({ type: "rescanned", requestId: nextRequestId, result, report });
+        }
       } finally {
         sweeping.current = false;
       }
@@ -475,6 +549,8 @@ export function useSurfaceSession(onDropped?: (gesture: CaptureGesture) => void)
     },
     resetDemo() {
       const nextRequestId = ++requestId.current;
+      activityLimit.current = 50;
+      ++surfaceRevision.current;
       dispatch({ type: "reset", requestId: nextRequestId });
     },
     navigate(destination: Destination) { dispatch({ type: "navigate", destination }); },

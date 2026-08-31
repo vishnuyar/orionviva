@@ -128,10 +128,10 @@ cover sidecar identity before release.
 3. The allowlist snapshot cannot be mutated after the dispatcher is created, and handler failures return safe error frames rather than raising.
 4. Every action a capability declares reaches the sidecar as an operation of its own — `viva.conversation.decline`, not a generic `act` carrying an action name — derived from the registry rather than written by hand, so the operation table read on its own is the complete list of everything that can touch a vault. An action no handler serves is a declared operation the allowlist refuses; this build serves all of them, and declaring a new action without one fails a test rather than reaching a person as a button that says no.
 
-**Exception:** document work now has a live job registry, progress records,
-polling, and cancellation. The native request loop still does not subscribe to
-the sidecar's event-frame stream; the desktop obtains job state through the
-reviewed read instead. Separately, `bridge.open_vault` and
+**Exception:** document work and paid maintenance now have a live job registry,
+event-delivered progress, bounded durable receipts, and cancellation. Terminal
+events trigger reviewed rereads rather than becoming financial state themselves.
+Separately, `bridge.open_vault` and
 `bridge.open_demo_vault` are explicit sidecar branches before dispatcher
 construction, so they are fenced operations but not members of a dispatcher
 allowlist.
@@ -444,7 +444,7 @@ Steward has answered the question above.
   does not hold a parallel question snapshot. Activity remains its own
   list-shaped projection because it is a primary financial surface rather than
   conversational state.
-- **Where a coverage claim belongs, settled for a figure that stands for the whole picture.** A figure over one account carries its own coverage line, naming the account it is over and the day it is good for. A figure standing for the whole picture is over none of the accounts it composed, so it may inherit none of their boundaries: it carries what the read itself declared — the currency it was cut to, how many accounts could not be valued, how many documents are not counted in it, the day the read was made and the oldest measurement beneath it — while **how far the picture reaches is one claim about the whole answer and is said once, at the panel, over the figures the panel actually shows.** That sentence answers *how many accounts* and a person reads it as *is this everything*, so where every account is counted it still says whether anything else is missing — chosen by the boolean the read declares about itself, and carrying its own resolution rather than handing off to the line after it — what else is short of whole is said on a figure, which is a different card and may be one of several, so a sentence that depends on what follows it depends on a layout it cannot see. What it is counted against is the union of the accounts the read ranged over and the accounts the vault holds, because a read is authoritative about what it valued and not about what a person has: an account a ruling brought into being that nothing has been posted to reaches no read at all. That panel sentence **counts and never names**: a list of account names is the one thing on that screen a person cannot un-share, and the names are already on the cards below it. MON-27 looks like it conflicts with that and does not — it requires that an account the point cannot value is named with the reason and never dropped, and it is: the unvalued accounts ride the figure's own declared boundary and reach the evidence drawer. **The point names and the sentence counts**, and that is the whole of the reconciliation, written here so a later cycle does not derive it again. The rule has one bound, and it is the ground the rule stands on rather than an exception to it: the panel counts rather than names **where the names are already on the screen**. An account no currency can be found for is beneath no figure, and so appears on no card, in no line and in no drawer — the redundancy the rule rests on does not reach it, and the panel names it, because a name nowhere is not privacy but concealment.
+- **Where a coverage claim belongs, settled for a figure that stands for the whole picture.** A figure over one account carries its own coverage line, naming the account it is over and the day it is good for. A figure standing for the whole picture is over none of the accounts it composed, so it may inherit none of their boundaries: it carries what the read itself declared — the currency it was cut to, how many accounts could not be valued, how many documents are not counted in it, the day the read was made and the oldest measurement beneath it — while **population completeness is one claim about the whole answer and is said once, at the panel, over the figures the panel actually shows.** `whole` answers whether every member of that population was included; unmeasured accounts and unposted documents are separate evidence gaps and remain visible even when `whole` is true. What it is counted against is the union of the accounts the read ranged over and the accounts the vault holds, because a read is authoritative about what it valued and not about what a person has: an account a ruling brought into being that nothing has been posted to reaches no read at all. That panel sentence **counts and never names**: a list of account names is the one thing on that screen a person cannot un-share, and the names are already on the cards below it. MON-27 looks like it conflicts with that and does not — it requires that an account the point cannot value is named with the reason and never dropped, and it is: the unvalued accounts ride the figure's own declared boundary and reach the evidence drawer. **The point names and the sentence counts**, and that is the whole of the reconciliation, written here so a later cycle does not derive it again. The rule has one bound, and it is the ground the rule stands on rather than an exception to it: the panel counts rather than names **where the names are already on the screen**. An account no currency can be found for is beneath no figure, and so appears on no card, in no line and in no drawer — the redundancy the rule rests on does not reach it, and the panel names it, because a name nowhere is not privacy but concealment.
 - What a breakdown looks like on a screen. A turn can enumerate in text — a name and an amount per line, the set's grade above, the read's tail sentence below — and that decides nothing about the visual form.
 - The pull-request template, CODEOWNERS, and branch protection over the surface, schema, bridge, desktop and impact maps.
 - Phone capture's design is separate and unheld.
@@ -452,7 +452,6 @@ Steward has answered the question above.
   - The installed application is offline.
   - Restart is safe.
   - Capture occurs before reading, in the document journey a person sees.
-  - A restart during document work recovers an honest job state.
   - No network call is silent.
   - The empty, partial, full, conflicted, stale, mixed-currency and overpaid-liability fixtures all render honestly.
   - Every figure exposes grade, date, evidence and omissions.
@@ -466,7 +465,6 @@ Steward has answered the question above.
   - Corrections survive restart and re-projection.
   - Totals agree with the surface read models.
   - Every existing outbound edge has a representation.
-  - Maintenance history survives restart.
   - Install and update run on clean machines.
   - Updates have a recovery story.
   - A diagnostic export previews exactly what will leave.

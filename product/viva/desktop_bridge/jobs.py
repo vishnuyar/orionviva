@@ -32,9 +32,12 @@ testable without a bridge.
 from __future__ import annotations
 
 import itertools
+import json
 from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field, replace
 from enum import StrEnum
+from pathlib import Path
+from threading import RLock
 from typing import Any, Literal
 
 # The words a progress event may carry. `started` and `completed` bracket a job
@@ -186,14 +189,14 @@ class JobHandle:
         it moves against would stop being a count of anything."""
         self._registry._reached(self._job_id, step, message)
 
-    def checkpoint(self) -> None:
+    def checkpoint(self, *, pump: bool = True) -> None:
         """Stop here if a person has asked this job to stop.
 
         Called between steps and never inside one. It runs the pump first, so
         a cancel that is sitting unread on the transport is read before the
         question is answered — otherwise the answer is always no and the
         checkpoint is decoration."""
-        self._registry._checkpoint(self._job_id)
+        self._registry._checkpoint(self._job_id, pump=pump)
 
     def retry(self, message: str = "") -> None:
         """This job is starting again from its first step."""
@@ -225,28 +228,68 @@ class JobHandle:
 
 
 class JobRegistry:
-    """Every job this sidecar has minted, in the order it minted them.
-
-    One registry per opened vault. It is not a queue and schedules nothing: the
-    sidecar answers one frame at a time, so at most one job is between its
-    first and last step, and the registry's job is to say which one and what it
-    is doing.
-    """
+    """Hold one vault's jobs in minting order, with optional durable receipts."""
 
     def __init__(
         self,
         sink: Callable[[JobProgressEvent], None] | None = None,
         pump: Callable[[], None] | None = None,
         limit: int = 50,
+        state_file: Path | None = None,
     ) -> None:
         if limit < 1:
             raise ValueError("a registry that holds no job reports nothing")
         self._sink = sink
         self._pump = pump
         self._limit = limit
+        self._persist_lock = RLock()
+        self._state_file = Path(state_file) if state_file is not None else None
         self._jobs: dict[str, _Job] = {}
         self._order: list[str] = []
-        self._numbers: Iterator[int] = itertools.count(1)
+        self._restore()
+        last = max((int(job_id.rsplit("-", 1)[-1])
+                    for job_id in self._order
+                    if job_id.rsplit("-", 1)[-1].isdigit()), default=0)
+        self._numbers: Iterator[int] = itertools.count(last + 1)
+        if self._order:
+            self._persist()
+
+    def _restore(self) -> None:
+        """Recover durable job receipts; interrupted work becomes failed."""
+        if self._state_file is None or not self._state_file.is_file():
+            return
+        try:
+            raw = json.loads(self._state_file.read_text(encoding="utf-8"))
+            for item in raw[-self._limit:]:
+                state = JobState(item["state"])
+                if state not in TERMINAL:
+                    state = JobState.FAILED
+                    item["message"] = ("Interrupted when the app closed; start "
+                                       "maintenance again to continue.")
+                record = JobRecord(
+                    job_id=str(item["job_id"]), operation=str(item["operation"]),
+                    state=state, completed=int(item["completed"]),
+                    total=int(item["total"]), message=str(item.get("message", "")),
+                    step=str(item.get("step", "")), attempt=int(item.get("attempt", 1)),
+                    steps=tuple(item.get("steps", ())))
+                self._jobs[record.job_id] = _Job(record)
+                self._order.append(record.job_id)
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            self._jobs.clear()
+            self._order.clear()
+
+    def _persist(self) -> None:
+        if self._state_file is None:
+            return
+        with self._persist_lock:
+            self._state_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self._state_file.with_suffix(
+                self._state_file.suffix + ".tmp")
+            temporary.write_text(
+                json.dumps([self._jobs[job_id].record.as_dict()
+                            for job_id in self._order], indent=2) + "\n",
+                encoding="utf-8")
+            temporary.replace(self._state_file)
 
     # ------------------------------------------------------------ minting
 
@@ -260,14 +303,24 @@ class JobRegistry:
             raise ValueError("a job belongs to a named operation")
         if not steps or any(not step.strip() for step in steps):
             raise ValueError("a job declares its steps, each of them named")
-        job_id = f"{operation}-{next(self._numbers)}"
-        self._jobs[job_id] = _Job(JobRecord(
-            job_id=job_id, operation=operation, state=JobState.QUEUED,
-            completed=0, total=len(steps), message="", step="", attempt=1,
-            steps=tuple(steps)))
-        self._order.append(job_id)
-        self._forget_the_oldest_settled()
-        return JobHandle(self, job_id)
+        with self._persist_lock:
+            job_id = f"{operation}-{next(self._numbers)}"
+            self._jobs[job_id] = _Job(JobRecord(
+                job_id=job_id, operation=operation, state=JobState.QUEUED,
+                completed=0, total=len(steps), message="", step="", attempt=1,
+                steps=tuple(steps)))
+            self._order.append(job_id)
+            self._forget_the_oldest_settled()
+            self._persist()
+            return JobHandle(self, job_id)
+
+    def active(self, operation: str) -> JobRecord | None:
+        """The newest unfinished job for an operation, if one exists."""
+        with self._persist_lock:
+            return next((self._jobs[job_id].record
+                         for job_id in reversed(self._order)
+                         if self._jobs[job_id].record.operation == operation
+                         and self._jobs[job_id].record.state not in TERMINAL), None)
 
     def _forget_the_oldest_settled(self) -> None:
         """Keep the registry bounded, and drop only jobs that are over.
@@ -300,91 +353,100 @@ class JobRegistry:
             operation=record.operation, step=record.step, attempt=record.attempt)
         if self._sink is not None:
             self._sink(event)
+        self._persist()
 
     def _move(self, job_id: str, status: ProgressStatus, **fields: Any) -> None:
-        job = self._job(job_id)
-        job.record = replace(job.record, **fields)
-        self._write(job, status)
+        with self._persist_lock:
+            job = self._job(job_id)
+            job.record = replace(job.record, **fields)
+            self._write(job, status)
 
     def _begin(self, job_id: str, message: str) -> None:
-        job = self._job(job_id)
-        if job.record.state in TERMINAL:
-            raise ValueError(f"{job_id} is over and cannot begin again")
-        self._move(job_id, "started", state=JobState.RUNNING, message=message)
+        with self._persist_lock:
+            job = self._job(job_id)
+            if job.record.state in TERMINAL:
+                raise ValueError(f"{job_id} is over and cannot begin again")
+            self._move(job_id, "started", state=JobState.RUNNING, message=message)
 
     def _reached(self, job_id: str, step: str, message: str) -> None:
-        job = self._job(job_id)
-        if step not in job.record.steps:
-            raise ValueError(
-                f"{step!r} is not a step {job_id} declared: "
-                + ", ".join(job.record.steps))
-        completed = job.record.steps.index(step) + 1
-        if completed <= job.record.completed:
-            raise ValueError(f"{job_id} has already reached {step!r}")
-        self._move(job_id, "progress", state=JobState.RUNNING,
-                   completed=completed, step=step, message=message)
+        with self._persist_lock:
+            job = self._job(job_id)
+            if step not in job.record.steps:
+                raise ValueError(
+                    f"{step!r} is not a step {job_id} declared: "
+                    + ", ".join(job.record.steps))
+            completed = job.record.steps.index(step) + 1
+            if completed <= job.record.completed:
+                raise ValueError(f"{job_id} has already reached {step!r}")
+            self._move(job_id, "progress", state=JobState.RUNNING,
+                       completed=completed, step=step, message=message)
 
     def _retry(self, job_id: str, message: str) -> None:
-        job = self._job(job_id)
-        if job.record.state in TERMINAL:
-            raise ValueError(f"{job_id} is over and is not tried again")
-        self._move(job_id, "started", state=JobState.RUNNING, completed=0,
-                   step="", message=message, attempt=job.record.attempt + 1)
+        with self._persist_lock:
+            job = self._job(job_id)
+            if job.record.state in TERMINAL:
+                raise ValueError(f"{job_id} is over and is not tried again")
+            self._move(job_id, "started", state=JobState.RUNNING, completed=0,
+                       step="", message=message, attempt=job.record.attempt + 1)
 
     def _finish(self, job_id: str, message: str) -> None:
-        job = self._job(job_id)
-        self._move(job_id, "completed", state=JobState.COMPLETED,
-                   completed=job.record.total, message=message)
+        with self._persist_lock:
+            job = self._job(job_id)
+            self._move(job_id, "completed", state=JobState.COMPLETED,
+                       completed=job.record.total, message=message)
 
     def _fail(self, job_id: str, message: str) -> None:
-        self._move(job_id, "failed", state=JobState.FAILED, message=message)
+        with self._persist_lock:
+            self._move(job_id, "failed", state=JobState.FAILED, message=message)
 
     def _finish_if_open(self, job_id: str) -> None:
-        if self._job(job_id).record.state not in TERMINAL:
-            self._finish(job_id, "")
+        with self._persist_lock:
+            record = self._job(job_id).record
+            if record.state not in TERMINAL:
+                self._finish(job_id, record.message)
 
     def _fail_if_open(self, job_id: str, message: str) -> None:
-        if self._job(job_id).record.state not in TERMINAL:
-            self._fail(job_id, message)
+        with self._persist_lock:
+            if self._job(job_id).record.state not in TERMINAL:
+                self._fail(job_id, message)
 
     # -------------------------------------------------------- cancellation
 
     def cancel(self, job_id: str) -> JobRecord:
-        """Ask one job to stop, and say what asking reached.
-
-        A job that is over is not moved, and the record that comes back says
-        so. A caller therefore learns whether the work stopped or had already
-        stopped, rather than being told a cancel succeeded when it landed on
-        something finished a second earlier."""
-        job = self._job(job_id)
-        if job.record.state in TERMINAL:
-            return job.record
-        job.cancel_requested = True
-        if job.record.state == JobState.QUEUED:
-            # A job that has not begun stops here: nothing will run a
-            # checkpoint for it, so the registry closes it itself.
-            self._move(job_id, "cancelled", state=JobState.CANCELLED)
-        return self._job(job_id).record
+        """Request cancellation and return the job's resulting record."""
+        with self._persist_lock:
+            job = self._job(job_id)
+            if job.record.state in TERMINAL:
+                return job.record
+            job.cancel_requested = True
+            if job.record.state == JobState.QUEUED:
+                # Queued jobs cancel immediately; running jobs use checkpoints.
+                self._move(job_id, "cancelled", state=JobState.CANCELLED)
+            return self._job(job_id).record
 
     def cancel_requested(self, job_id: str) -> bool:
-        return self._job(job_id).cancel_requested
+        with self._persist_lock:
+            return self._job(job_id).cancel_requested
 
-    def _checkpoint(self, job_id: str) -> None:
-        if self._pump is not None:
+    def _checkpoint(self, job_id: str, *, pump: bool = True) -> None:
+        if pump and self._pump is not None:
             self._pump()
-        job = self._job(job_id)
-        if not job.cancel_requested:
-            return
-        self._move(job_id, "cancelled", state=JobState.CANCELLED)
-        raise JobCancelled(job_id)
+        with self._persist_lock:
+            job = self._job(job_id)
+            if not job.cancel_requested:
+                return
+            self._move(job_id, "cancelled", state=JobState.CANCELLED)
+            raise JobCancelled(job_id)
 
     # ------------------------------------------------------------ reading
 
     def records(self) -> tuple[JobRecord, ...]:
-        return tuple(self._jobs[job_id].record for job_id in self._order)
+        with self._persist_lock:
+            return tuple(self._jobs[job_id].record for job_id in self._order)
 
     def record(self, job_id: str) -> JobRecord:
-        return self._job(job_id).record
+        with self._persist_lock:
+            return self._job(job_id).record
 
     def read(self) -> dict[str, Any]:
         """The jobs surface, as a read model.

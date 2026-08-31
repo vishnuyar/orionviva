@@ -69,10 +69,12 @@ def sweep(ledger: Ledger) -> dict:
     demand. Returns counts of `gaps`, `corroborated`, `auto`, `suggested`,
     `resolved`, `open_before` and `links`."""
     from .transfers import link_transfers
+    from ..listen import repair_asserted_account_aliases
     # Corroboration re-posts run their own transfer scan, so the trailing
     # link_transfers alone undercounts; diff the projection instead.
     p0 = ledger.projection()
     links0, sugg0 = len(p0.transfer_links()), len(p0.transfer_suggestions())
+    accounts_merged = repair_asserted_account_aliases(ledger)
     gaps = heal_gaps(ledger)
     corroborated = heal_corroboration(ledger)
     gaps += heal_paystubs(ledger)         # awaiting pay stubs whose deposit is here
@@ -83,13 +85,18 @@ def sweep(ledger: Ledger) -> dict:
     # resolves the suggestions on both its legs, so a difference nets two
     # unrelated movements and means nothing on its own.
     open_now = len(p1.transfer_suggestions())
+    review_movements = sorted({item.get("a", "")
+                               for item in p1.transfer_suggestions()
+                               if item.get("a", "")})
     if gaps or corroborated or auto or open_now != sugg0:
         log.info("sweep: %d gaps healed, %d corroborated, %d transfers auto-linked, "
                  "%d question(s) open (was %d)",
                  gaps, corroborated, auto, open_now, sugg0)
     return {"gaps": gaps, "corroborated": corroborated, "auto": auto,
             "suggested": open_now, "resolved": max(0, sugg0 - open_now),
-            "open_before": sugg0, "links": len(p1.transfer_links())}
+            "open_before": sugg0, "links": len(p1.transfer_links()),
+            "accounts_merged": accounts_merged,
+            "review_movements": review_movements}
 
 
 

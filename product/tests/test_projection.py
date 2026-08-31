@@ -151,6 +151,42 @@ def test_a_card_and_a_checking_account_are_still_two_accounts(tmp_path):
                         ["ROWAN E VANCE"], kind="liability").verdict == "new"
 
 
+def test_issuer_legal_aliases_and_full_numbers_do_not_split_an_account(tmp_path):
+    proj = _known(tmp_path, account="acct:northwind:2468",
+                  name="Checking", institution="Northwind",
+                  number="000000002468")
+    assert proj.resolve("Northwind National Bank, N.A.", "••••2468", "Checking",
+                        ["ROWAN E VANCE"]).verdict == "same"
+    assert proj.resolve("Issuer Display Name Changed", "000000002468", "Checking",
+                        []).account_id == "acct:northwind:2468"
+
+
+def test_last_four_and_a_shared_issuer_word_do_not_merge_distinct_people_or_products(tmp_path):
+    proj = _known(tmp_path, account="acct:example-bank:1234",
+                  name="Everyday Checking", institution="Example Bank",
+                  number="•••1234", holder="HOLDER ONE")
+
+    resolved = proj.resolve("Example Financial Bank", "•••1234",
+                            "High-Yield Savings", ["DIFFERENT HOLDER"])
+
+    assert resolved.verdict != "same"
+    assert resolved.account_id != "acct:example-bank:1234"
+
+
+def test_a_damaged_short_number_yields_to_an_explicit_printed_last_four(tmp_path):
+    proj = _known(tmp_path, account="acct:blue-harbor:2468",
+                  institution="Blue Harbor", name="Blue Harbor Card",
+                  number="••••2468", kind="liability")
+    resolved = proj.resolve("Blue Harbor", "8",
+                            "Blue Harbor Card ending in 2468",
+                            ["ROWAN E VANCE"], kind="liability")
+    assert resolved.verdict == "same"
+    conflict = proj.resolve("Blue Harbor", "••••9999",
+                            "Blue Harbor Card ending in 2468", ["ROWAN E VANCE"],
+                            kind="liability")
+    assert conflict.verdict == "ambiguous" and "disagree" in conflict.reason
+
+
 # --- what a closing figure is, and what an opening one seeds ----------------
 
 def test_a_closing_balance_is_observed_not_posted():
@@ -197,8 +233,7 @@ def test_the_enrichment_example_is_linted_never_the_raw_descriptor():
 
 
 def test_the_cached_projection_matches_a_full_replay(tmp_path):
-    """`Ledger` folds each append into one live projection instead of replaying.
-    The cached answer is the same one a cold replay of the log gives."""
+    """The synchronized cache gives the same answer as a cold replay."""
     from viva.ledger import EventStore, Ledger
 
     ledger = Ledger(EventStore.open(tmp_path / "e.jsonl", "pw"))
@@ -208,3 +243,18 @@ def test_the_cached_projection_matches_a_full_replay(tmp_path):
     replayed = LedgerProjection(ledger.store.events()).balance("chk")
     assert (cached.amount, cached.grade) == (replayed.amount, replayed.grade)
     assert cached.amount == Decimal("1457.58") and cached.grade == CORROBORATED
+
+
+def test_an_isolated_background_ledger_cannot_reorder_the_interactive_cache(tmp_path):
+    from viva.ledger import EventStore, Ledger
+
+    ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
+    ledger.append(account_opened("chk", "depository", "Checking", "USD",
+                                 "2026-01-01"))
+    worker = ledger.fork()
+    worker.append(simple_transaction("chk", "10", "worker", "2026-01-02"))
+    ledger.append(simple_transaction("chk", "20", "interactive", "2026-01-03"))
+
+    assert [movement.description for movement in ledger.projection().movements()] == [
+        "worker", "interactive"]
+    assert ledger.projection().balance("chk").amount == Decimal("30")

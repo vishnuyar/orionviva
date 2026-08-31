@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from viva.ingest.categorize import (assign_category as write_category,
-                                    assign_movement_meaning, tag_movement)
+                                    assign_movement_meaning,
+                                    open_loan_receivables_at, tag_movement)
 from viva.ingest.transfers import (confirm_transfer as write_transfer_link,
                                    reject_transfer as write_transfer_unlink)
 from viva.persona import moment
+from viva.ledger.streams import money_effect
 from viva.surface.activity import (MAX_SELECTED_TAGS, MAX_TAG_LABEL_LENGTH,
                                    activity)
 from viva.surface.models import ActionOutcome
@@ -49,16 +51,31 @@ class ActivityActions:
 
     def assign_meaning(self, payload: dict[str, Any]) -> dict[str, Any]:
         movement_key, meaning, counterparty = _meaning_request(payload)
-        _projection, movement, row, _vocabularies = self._live(movement_key)
+        projection, movement, row, _vocabularies = self._live(movement_key)
         if movement is None:
             return _stale()
         if "assign_meaning" not in row["actions"]:
+            if meaning == "loan_repayment":
+                effect = money_effect(movement.kind, movement.amount)
+                open_loans = open_loan_receivables_at(projection, movement)
+                if not open_loans:
+                    return _refused("no_matching_open_loan")
+                if effect > 0 and all(outstanding < effect
+                                      for _account, outstanding in open_loans):
+                    return _refused("repayment_exceeds_open_principal")
             return _refused("movement_meaning_unavailable")
         try:
             recorded = assign_movement_meaning(
                 self._vault.ledger, movement_key, meaning, counterparty)
-        except ValueError:
-            return _refused("movement_meaning_invalid")
+        except ValueError as exc:
+            detail = str(exc).lower()
+            reason = ("no_matching_open_loan" if "no matching loan" in detail
+                      else "repayment_exceeds_open_principal"
+                      if "exceed" in detail
+                      else "wrong_movement_direction"
+                      if "direction" in detail or "outgoing" in detail
+                      else "movement_meaning_invalid")
+            return _refused(reason)
         if not recorded:
             return _stale()
         treatment = {
@@ -76,6 +93,7 @@ class ActivityActions:
         projection, movement, row, vocabularies = self._live(movement_key)
         if movement is None:
             return _stale()
+        tag_ids = [tag.strip().lower() for tag in tag_ids]
         if len(tag_ids) > MAX_SELECTED_TAGS:
             return _refused("too_many_tags")
         if any(not tag or len(tag) > MAX_TAG_LABEL_LENGTH for tag in tag_ids):
@@ -87,9 +105,8 @@ class ActivityActions:
                       if projection.inherited_tags_of(movement)
                       else "tag_vocabulary_unavailable")
             return _refused(reason)
-        advertised = {item["id"] for item in vocabularies["tags"]["items"]}
-        if any(tag not in advertised for tag in tag_ids):
-            return _refused("tag_not_advertised")
+        # The complete vocabulary lists every known tag; a bounded replacement
+        # may also introduce a tag.
         if projection.movement_tags_of(movement) == sorted(tag_ids):
             return ActionOutcome(
                 "completed", moment("activity_tags_unchanged")

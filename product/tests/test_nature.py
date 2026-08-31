@@ -71,6 +71,24 @@ def test_payment_to_my_own_card_is_not_spending_even_unlinked(tmp_path):
     assert proj.spending_by_currency() == {"USD": Decimal("560.00")}
 
 
+def test_a_cobrand_word_does_not_turn_the_merchant_into_my_account(tmp_path):
+    raw, ledger = _vault(tmp_path)
+    card = StatementFacts(
+        doc_id="", doc_type="credit_card_statement", doc_type_confidence=0.98,
+        account_ref="Clubhouse Anywhere Card", currency="USD",
+        opening_amount=Decimal("0"), opening_date="2026-01-01",
+        closing_amount=Decimal("25"), closing_date="2026-01-31",
+        transactions=[TxnFact(
+            "2026-01-05", "CLUBHOUSE WHOLESALE", Decimal("25"))],
+        account_number="••••7799", institution="Northwind Card")
+    capture_and_ingest(raw, ledger, b"clubhouse-card",
+                       lambda data, did: _stamp(card, did), captured_at="2026-02-01")
+    purchase = next(m for m in ledger.projection().movements()
+                    if m.description == "CLUBHOUSE WHOLESALE")
+    assert purchase.nature == SPENDING
+    assert purchase.nature_reason != BY_OWN_ACCOUNT
+
+
 def test_currency_and_category_partition_the_same_spending_population(tmp_path):
     """The two views may group differently, but neither may silently select a
     different meaning of spending."""

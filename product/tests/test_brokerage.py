@@ -11,6 +11,7 @@ import pytest
 
 from viva.ingest import (BrokerageActivity, BrokerageFacts, PositionFact,
                         ReadResult, RawStore, StatementFacts, TxnFact,
+                        apply_brokerage_activity_correction,
                         capture_and_ingest)
 from viva.ledger import EventStore, Ledger, LedgerProjection
 
@@ -452,7 +453,7 @@ def test_a_held_brokerage_statement_does_not_break_the_sweep(tmp_path):
     assert others[0]["reason"] == "conflict"
 
 
-def test_cash_flow_mismatch_is_held(tmp_path):
+def test_cash_flow_mismatch_holds_activity_but_keeps_valid_snapshot(tmp_path):
     raw = RawStore.open(tmp_path / "raw", "pw")
     ledger = Ledger(EventStore.open(tmp_path / "events.jsonl", "pw"))
     # Snapshot is consistent (18400 + 5000 = 23400), but the activity only explains
@@ -473,10 +474,32 @@ def test_cash_flow_mismatch_is_held(tmp_path):
         account_number="000000003311", institution="Fidelity")
     res = capture_and_ingest(raw, ledger, b"brk-bad",
                              lambda data, did: _stamp(facts, did), captured_at="2026-04-02")
-    assert res.action == "conflict"
+    assert res.action == "posted"
     proj = ledger.projection()
-    assert proj.positions() == []                  # nothing recorded on a bad flow
-    assert len(proj.open_holds()) == 1
+    assert proj.positions()                        # valid valuation survives
+    assert not [m for m in proj.movements()
+                if m.provenance.doc_id == res.doc_id]
+    assert len(proj.open_holds()) == 0              # document itself is posted
+    assert [item["doc_id"] for item in proj.open_activity_holds()] == [res.doc_id]
+
+    corrected = [
+        BrokerageActivity("2026-03-02", "contribution", Decimal("5000.00")),
+        BrokerageActivity("2026-03-10", "dividend", Decimal("100.00")),
+        BrokerageActivity("2026-03-11", "fee", Decimal("100.00")),
+        BrokerageActivity("2026-03-15", "buy", Decimal("3000.00")),
+        BrokerageActivity("2026-03-20", "sell", Decimal("2000.00")),
+    ]
+    replay = apply_brokerage_activity_correction(ledger, res.doc_id, corrected)
+    assert replay.action == "posted"
+    assert ledger.projection().open_activity_holds() == []
+    assert len([event for event in ledger.store.events()
+                if event.event_type == "PositionObserved"]) == 1
+    assert len([movement for movement in ledger.projection().movements()
+                if movement.provenance.doc_id == res.doc_id]) == len(corrected)
+    movement_count = len(ledger.projection().movements())
+    with pytest.raises(ValueError, match="no brokerage activity held"):
+        apply_brokerage_activity_correction(ledger, res.doc_id, corrected)
+    assert len(ledger.projection().movements()) == movement_count
 
 
 def test_a_redownloaded_brokerage_statement_does_not_post_its_activity_twice(tmp_path):

@@ -67,7 +67,8 @@ def rescan(result: dict[str, Any]) -> dict[str, Any]:
     ]
     standing = [
         {"id": key, "count": _count(result, key),
-         "sentence": moment(sentence, count=render.count(_count(result, key)))}
+         "sentence": moment(sentence, count=render.count(_count(result, key))),
+         "movement_ids": (_movement_ids(result) if key == "suggested" else [])}
         for key, sentence in STANDING
         if _count(result, key) > 0
     ]
@@ -101,3 +102,11 @@ def _count(result: dict[str, Any], key: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return 0
     return value
+
+
+def _movement_ids(result: dict[str, Any]) -> list[str]:
+    value = result.get("review_movements", [])
+    if not isinstance(value, list):
+        return []
+    return sorted({item.strip() for item in value
+                   if isinstance(item, str) and item.strip()})
