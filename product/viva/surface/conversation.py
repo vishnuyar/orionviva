@@ -150,6 +150,10 @@ def conversation(turn: Any, shown: dict[str, str],
         "question": getattr(turn, "question", ""),
         "text": getattr(result, "text", ""),
         "answered": bool(getattr(result, "answered", False)),
+        "status": (getattr(result, "status", "")
+                   or ("answered" if getattr(result, "answered", False)
+                       else "failed")),
+        "outcome_tag": getattr(result, "outcome_tag", "") or "",
         # A refusal is the pack's own sentence and travels as it was written.
         "refusal": getattr(result, "refusal", "") or "",
         "grade": grade,
@@ -158,6 +162,8 @@ def conversation(turn: Any, shown: dict[str, str],
         "grade_sentence": moment(STOOD_BEHIND_MOMENT + grade) if grade else "",
         "figures": figures,
         "gaps": [dict(gap) for gap in getattr(result, "gaps", [])],
+        "options": [dict(option) for option in getattr(result, "options", [])],
+        "missing": [dict(item) for item in getattr(result, "missing", [])],
         "spoken": _spoken(getattr(result, "text", ""), grade, figures, mirrored),
     }
 

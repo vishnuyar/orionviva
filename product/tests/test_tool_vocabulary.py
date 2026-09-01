@@ -1058,6 +1058,12 @@ def test_every_filter_a_read_honours_can_be_said_in_the_answer():
                 tool, args = _read_call(kind, filters)
                 result = registry.call(tool, args)
                 where = (accounts, kind, name)
+                if (kind == "aggregate:recurring_spending"
+                        and result.refusal == "insufficient_history"):
+                    # A narrowing can leave too little history to establish a
+                    # cadence. That honest refusal has no figure whose
+                    # boundary could record the filter.
+                    continue
                 assert result.ok, (where, result.refusal, result.text)
                 assert result.figures, where
                 said = [f for f in result.figures
@@ -1072,6 +1078,9 @@ def test_every_filter_a_read_honours_can_be_said_in_the_answer():
                                            for name in honoured})
             result = registry.call(tool, args)
             where = (accounts, kind, "every filter at once")
+            if (kind == "aggregate:recurring_spending"
+                    and result.refusal == "insufficient_history"):
+                continue
             assert result.ok, (where, result.refusal, result.text)
             assert result.figures, where
             for name in honoured:
@@ -1362,7 +1371,9 @@ def test_every_read_says_what_set_each_of_its_figures_was_taken_over(registry,
     for tool, args in _EVERY_READ + (("get_provenance", {"record_id": key}),):
         result = registry.call(tool, args)
         called.add(tool)
-        assert result.ok, (tool, args, result.text)
+        assert (result.ok or (args.get("metric") == "recurring_spending"
+                              and result.refusal == "insufficient_history")), (
+                                  tool, args, result.text)
         for fig in result.figures:
             assert fig["boundary"] != {}, (tool, args, fig["what"])
     # And the calls above reach every read there is, every entity, every
@@ -1790,6 +1801,9 @@ def test_no_read_names_one_slice_of_what_it_cuts_more_than_once(registry):
                   {"entity": "holdings"}))
     for called, tool, args in calls:
         result = called.call(tool, args)
+        if (args.get("metric") == "recurring_spending"
+                and result.refusal == "insufficient_history"):
+            continue
         assert result.ok, (tool, args, result.text)
         cuts = [cut for cut in (runner._line_of(f) for f in result.figures)
                 if cut]

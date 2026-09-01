@@ -1,0 +1,2097 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "assumptions": {
+      "items": {
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "bindings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "hole": {
+            "type": "string"
+          },
+          "reference_kind": {
+            "enum": [
+              "figure",
+              "entity",
+              "period",
+              "date",
+              "date_of",
+              "read",
+              "read_figures",
+              "supposed"
+            ],
+            "type": "string"
+          },
+          "selector": {
+            "additionalProperties": false,
+            "properties": {
+              "cardinality": {
+                "enum": [
+                  "one",
+                  "all"
+                ],
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "entity_kind": {
+                "type": "string"
+              },
+              "entity_ref": {
+                "type": "object"
+              },
+              "limit": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "order": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "string"
+              },
+              "scope": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "cardinality"
+            ],
+            "type": "object"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hole",
+          "source",
+          "reference_kind",
+          "selector"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "capability_manifest_digest": {
+      "type": "string"
+    },
+    "capability_manifest_version": {
+      "enum": [
+        "capability-manifest-v1"
+      ],
+      "type": "string"
+    },
+    "clarification": {
+      "oneOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "mode": {
+      "enum": [
+        "answer",
+        "clarify",
+        "needs_assumption",
+        "outside_domain"
+      ],
+      "type": "string"
+    },
+    "nodes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "type": "object"
+          },
+          "depends_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entity_kind": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "importance": {
+            "enum": [
+              "required",
+              "supporting",
+              "optional"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "tool_read",
+              "resolve_entity",
+              "compute",
+              "financial_query",
+              "conditional"
+            ],
+            "type": "string"
+          },
+          "phrase": {
+            "type": "string"
+          },
+          "predicate": {
+            "type": "object"
+          },
+          "query": {
+            "additionalProperties": false,
+            "properties": {
+              "emit": {
+                "additionalProperties": false,
+                "properties": {
+                  "currency_field": {
+                    "type": "string"
+                  },
+                  "dated_field": {
+                    "type": "string"
+                  },
+                  "quantity": {
+                    "type": "string"
+                  },
+                  "value_field": {
+                    "type": "string"
+                  },
+                  "what": {
+                    "type": "string"
+                  },
+                  "what_field": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value_field",
+                  "quantity"
+                ],
+                "type": "object"
+              },
+              "output": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "query_version": {
+                "enum": [
+                  "financial-query-v1"
+                ],
+                "type": "string"
+              },
+              "steps": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "source": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "source"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "scan"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "predicate": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "field": {
+                                  "type": "string"
+                                },
+                                "op": {
+                                  "enum": [
+                                    "eq",
+                                    "neq",
+                                    "in",
+                                    "lt",
+                                    "lte",
+                                    "gt",
+                                    "gte"
+                                  ],
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "boolean"
+                                    },
+                                    {
+                                      "items": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "boolean"
+                                          }
+                                        ]
+                                      },
+                                      "type": "array"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "op",
+                                "value"
+                              ],
+                              "type": "object"
+                            }
+                          },
+                          "required": [
+                            "predicate"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "filter"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "fields": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "fields"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "select"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "phrase": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "phrase"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "resolve"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "keys"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "group"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "currency_field": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "function": {
+                              "enum": [
+                                "sum",
+                                "count",
+                                "min",
+                                "max",
+                                "average"
+                              ],
+                              "type": "string"
+                            },
+                            "group_by": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "output": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "function",
+                            "output"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "aggregate"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "direction": {
+                              "enum": [
+                                "asc",
+                                "desc"
+                              ],
+                              "type": "string"
+                            },
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "keys"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "sort"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "count": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "count"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "limit"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "direction": {
+                              "enum": [
+                                "asc",
+                                "desc"
+                              ],
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "keys"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "rank"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "count": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "count",
+                            "keys"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "top"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "count": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "count",
+                            "keys"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "bottom"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "field": {
+                              "type": "string"
+                            },
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "from",
+                            "to"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "calendar_window"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "anchor": {
+                              "type": "string"
+                            },
+                            "edge_policy": {
+                              "enum": [
+                                "partial",
+                                "require_full_coverage"
+                              ],
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "unit": {
+                              "enum": [
+                                "day",
+                                "week",
+                                "month"
+                              ],
+                              "type": "string"
+                            },
+                            "width": {
+                              "minimum": 1,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "edge_policy",
+                            "field",
+                            "unit",
+                            "width"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "rolling_window"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "join_kind": {
+                              "enum": [
+                                "inner",
+                                "left"
+                              ],
+                              "type": "string"
+                            },
+                            "left_key": {
+                              "type": "string"
+                            },
+                            "right_key": {
+                              "type": "string"
+                            },
+                            "right_prefix": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "join_kind",
+                            "left_key",
+                            "right_key"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "join"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "union_compatible"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "difference"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "keys": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "intersection"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "left": {
+                              "type": "string"
+                            },
+                            "output": {
+                              "type": "string"
+                            },
+                            "right": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "left",
+                            "output",
+                            "right"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "delta"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "left": {
+                              "type": "string"
+                            },
+                            "output": {
+                              "type": "string"
+                            },
+                            "right": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "left",
+                            "output",
+                            "right"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "percentage_change"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "left": {
+                              "type": "string"
+                            },
+                            "output": {
+                              "type": "string"
+                            },
+                            "right": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "left",
+                            "output",
+                            "right"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "ratio"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "left": {
+                              "type": "string"
+                            },
+                            "operation": {
+                              "enum": [
+                                "add",
+                                "subtract",
+                                "multiply",
+                                "divide",
+                                "absolute"
+                              ],
+                              "type": "string"
+                            },
+                            "output": {
+                              "type": "string"
+                            },
+                            "right": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "left",
+                            "operation",
+                            "output"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "compute"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "from": {
+                              "type": "string"
+                            },
+                            "to": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "from",
+                            "to"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "require_coverage"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "minimum": {
+                              "enum": [
+                                "verified",
+                                "corroborated",
+                                "unverified",
+                                "conflicted"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "minimum"
+                          ],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "require_grade"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "spending"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "attributed_income"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "unexplained_inflows"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "surplus"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "net_worth"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "held_balance"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "amount_owed"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "recurring_spending"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "statement_completeness"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "evidence_staleness"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "filters": {
+                              "type": "object"
+                            }
+                          },
+                          "required": [],
+                          "type": "object"
+                        },
+                        "id": {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "inputs": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "op": {
+                          "enum": [
+                            "transfer_excluded_flow"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "op",
+                        "inputs",
+                        "args"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "maxItems": 32,
+                "minItems": 1,
+                "type": "array"
+              }
+            },
+            "required": [
+              "query_version",
+              "steps",
+              "output",
+              "emit"
+            ],
+            "type": "object"
+          },
+          "tool": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "depends_on",
+          "importance"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "program_version": {
+      "enum": [
+        "answer-program-schema-v1"
+      ],
+      "type": "string"
+    },
+    "question_kind": {
+      "type": "string"
+    },
+    "result_policy": {
+      "type": "object"
+    },
+    "shape": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "clauses": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "slots": {
+                    "items": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "quantity": {
+                              "enum": [
+                                "balance",
+                                "gross_flow",
+                                "income",
+                                "movement",
+                                "net_movement",
+                                "net_worth",
+                                "owed",
+                                "spending"
+                              ],
+                              "type": "string"
+                            },
+                            "scope": {
+                              "items": {
+                                "enum": [
+                                  "account",
+                                  "category",
+                                  "merchant",
+                                  "period",
+                                  "since",
+                                  "until",
+                                  "subcategory",
+                                  "tag",
+                                  "currency",
+                                  "kind",
+                                  "whole"
+                                ],
+                                "type": "string"
+                              },
+                              "minItems": 1,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "type": {
+                              "enum": [
+                                "money"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "type",
+                            "quantity",
+                            "scope"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "quantity": {
+                              "enum": [
+                                "count"
+                              ],
+                              "type": "string"
+                            },
+                            "scope": {
+                              "items": {
+                                "enum": [
+                                  "account",
+                                  "category",
+                                  "merchant",
+                                  "period",
+                                  "since",
+                                  "until",
+                                  "subcategory",
+                                  "tag",
+                                  "currency",
+                                  "kind",
+                                  "whole"
+                                ],
+                                "type": "string"
+                              },
+                              "minItems": 1,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "type": {
+                              "enum": [
+                                "count"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "type",
+                            "quantity",
+                            "scope"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "quantity": {
+                              "enum": [
+                                "ratio",
+                                "ratio_of_balance",
+                                "ratio_of_count",
+                                "ratio_of_gross_flow",
+                                "ratio_of_income",
+                                "ratio_of_movement",
+                                "ratio_of_net_movement",
+                                "ratio_of_net_worth",
+                                "ratio_of_owed",
+                                "ratio_of_spending"
+                              ],
+                              "type": "string"
+                            },
+                            "scope": {
+                              "items": {
+                                "enum": [
+                                  "account",
+                                  "category",
+                                  "merchant",
+                                  "period",
+                                  "since",
+                                  "until",
+                                  "subcategory",
+                                  "tag",
+                                  "currency",
+                                  "kind",
+                                  "whole"
+                                ],
+                                "type": "string"
+                              },
+                              "minItems": 1,
+                              "type": "array",
+                              "uniqueItems": true
+                            },
+                            "type": {
+                              "enum": [
+                                "rate"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "type",
+                            "quantity",
+                            "scope"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "quantity": {
+                              "enum": [
+                                "balance",
+                                "count",
+                                "gross_flow",
+                                "income",
+                                "movement",
+                                "net_movement",
+                                "net_worth",
+                                "owed",
+                                "ratio",
+                                "ratio_of_balance",
+                                "ratio_of_count",
+                                "ratio_of_gross_flow",
+                                "ratio_of_income",
+                                "ratio_of_movement",
+                                "ratio_of_net_movement",
+                                "ratio_of_net_worth",
+                                "ratio_of_owed",
+                                "ratio_of_spending",
+                                "spending",
+                                "time"
+                              ],
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "supposed"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "type",
+                            "quantity"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "type": {
+                              "enum": [
+                                "date",
+                                "period",
+                                "account",
+                                "merchant",
+                                "category",
+                                "document",
+                                "rows"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "type"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "text",
+                  "slots"
+                ],
+                "type": "object"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "clauses"
+          ],
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "program_version",
+    "capability_manifest_version",
+    "capability_manifest_digest",
+    "mode",
+    "question_kind",
+    "shape",
+    "nodes",
+    "bindings",
+    "assumptions",
+    "clarification",
+    "result_policy"
+  ],
+  "type": "object"
+}

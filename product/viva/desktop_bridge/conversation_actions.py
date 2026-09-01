@@ -262,14 +262,14 @@ class ConversationActions:
         if spec is None:
             return None
         self._session = _session_for(self._vault, spec,
-                                     speak.planner_factory(spec),
-                                     speak.max_calls_from_env(),
+                                     speak.compiler_factory(spec),
+                                     speak.resource_policy_from_env(),
                                      _prior_context(
                                          self._vault.ledger.projection()))
         return self._session
 
 
-def _session_for(vault, spec, factory, max_calls, prior_turns=()):
+def _session_for(vault, spec, factory, resource_policy, prior_turns=()):
     """Build a session over the opened vault's current projection registry."""
     from viva.env import locale_from_env
     from viva.speak import Session
@@ -278,7 +278,7 @@ def _session_for(vault, spec, factory, max_calls, prior_turns=()):
     locale = locale_from_env()
     return Session(default_registry(vault.ledger.projection(), locale), factory,
                    ledger=vault.ledger, model=getattr(spec, "model", ""),
-                   max_calls=max_calls, locale=locale,
+                   resource_policy=resource_policy, locale=locale,
                    prior_turns=prior_turns)
 
 

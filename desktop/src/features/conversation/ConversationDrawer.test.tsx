@@ -23,6 +23,7 @@ describe("durable Viva conversation", () => {
       question: "What changed?",
       text: "Your balance changed.",
       answered: true,
+      status: "answered", outcomeTag: "", options: [], missing: [],
       refusal: "",
       grade: "verified",
       gradeSentence: "The source records verify this figure.",
@@ -99,7 +100,7 @@ describe("durable Viva conversation", () => {
     } as const;
     const answer: TurnView = {
       question: "Make a savings goal", text: goalDraft.message,
-      answered: true, refusal: "", grade: "", gradeSentence: "",
+      answered: true, status: "answered", outcomeTag: "", options: [], missing: [], refusal: "", grade: "", gradeSentence: "",
       figures: [], spoken: { maySpeak: true, withheld: "", parts: [], text: goalDraft.message, gradeSentence: "", citationSentence: "", localOnly: "" },
       goalDraft,
     };

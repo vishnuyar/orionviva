@@ -14,7 +14,7 @@
 2. A wrong-but-flagged answer passes the honesty check; a wrong-but-confident answer fails it.
 3. A reading the model declines to make is safe, never confidently wrong.
 
-**Exception:** only the sentence-interpretation path is measured. `eval_listen` grades a model reading a sentence into a structured ruling (product/viva/eval_listen.py:1). Document reading has no live measurement, and the answer path is graded by no harness at all.
+**Exception:** document reading still has no live measurement. The answer path now has a separate ten-case keyed admission suite and frozen adversarial suite (`product/viva/answer_program/eval.py` and `product/viva/answer_program/admission.py`); it is a release admission instrument rather than the continuously running `eval_listen` dashboard described by this rule.
 
 ### PROG-25 — The confidently-wrong rate is the headline, and its target is zero
 **State:** enforced
@@ -91,7 +91,7 @@ The one genuinely new thing against the benchmark is what is graded. The benchma
 
 ## Open
 
-- Document reading has no live measurement. This is the project's largest standing gap: the harness grades sentence interpretation and nothing else.
+- Document reading has no live measurement. The continuously running harness grades sentence interpretation; the answer path is covered separately by exact-profile keyed and adversarial admission.
 - Q31: case-set curation — how many hand-written adversarial cases, and who reviews additions. A wrong expected answer erodes the bar silently, so the eval set needs the two-drafter-plus-audit rigour the benchmark keys were designed for.
 - Q32: alarm thresholds — what movement in the confidently-wrong rate blocks a commit rather than warning. Setting it honestly needs the frozen-key baseline first.
 - Q33: regression triage — when the harness reddens, how a failing case points at the cause (model, prompt, verification rule, or tool), so a red light is actionable rather than merely alarming.

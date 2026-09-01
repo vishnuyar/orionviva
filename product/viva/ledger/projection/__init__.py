@@ -217,6 +217,9 @@ class LedgerProjection:
     def movements(self) -> list[MovementInfo]:
         return _movements.movements(self._core)
 
+    def movement_grades(self) -> dict[str, str]:
+        return _movements.movement_grades(self._core)
+
     def transactions(self, account: str) -> list[TxnLine]:
         return _movements.transactions(self._core, account)
 

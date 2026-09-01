@@ -93,7 +93,7 @@ def _written_out(parts) -> str:
 
 
 def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
-          locale: str, *, tools) -> RunResult:
+          locale: str, *, tools, result_policy=None) -> RunResult:
     """The checks on a delivery, over the structure and never the sentence.
 
     `tools` names the registered tools, which is what decides whether an entry
@@ -191,6 +191,27 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
                         len(transcript), shape)
     spoken = stood
 
+    # AnswerProgram commits which claims must survive and whether independent
+    # optional claims may be omitted.  The legacy delivery path has no such
+    # policy and keeps its established clause-level degradation behavior.
+    policy = dict(result_policy or {})
+    if result_policy is not None:
+        spoken_ids = {clause.id for clause in spoken}
+        missing_ids = [clause.id for clause in shape.clauses
+                       if clause.id not in spoken_ids]
+        required_missing = [clause_id for clause_id in
+                            policy.get("required_clauses", [])
+                            if clause_id not in spoken_ids]
+        if required_missing or (missing_ids
+                                and not policy.get("allow_partial", False)):
+            reason = ("required clauses were not grounded: "
+                      + ", ".join(required_missing)) if required_missing else (
+                          "partial delivery is disabled; omitted clauses: "
+                          + ", ".join(missing_ids))
+            return _refused("nothing_established", reason, dicts,
+                            len(transcript), shape,
+                            diagnosis=_diagnosed(transcript, tools))
+
     # Only what survived asserts anything, so only what survived is answerable
     # for its records and its caveats. The holes are walked in the order the
     # sentence places them, which is the order a person reads it in.
@@ -207,15 +228,19 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         here: dict = {}
         for slot in clause.slots:
             reference = references[slot.name]
-            as_rows = "read" in reference
+            as_rows = "read" in reference or "read_figures" in reference
             # A block of rows states every figure it wrote a line for, and
             # those are answerable exactly as a figure named in a sentence is:
             # for their records, for their caveats and for the answer's grade.
             # The figures of that read it wrote no line for — the read's own
             # total and its count — are not stated and are not cited.
             if as_rows:
-                stated = [fid for fid in ground.readings[str(reference["read"])]
-                          if _line_of(ground.book[fid])]
+                reading = str(reference.get("read")
+                              or reference.get("read_figures"))
+                stated = list(ground.readings[reading])
+                if "read" in reference:
+                    stated = [fid for fid in stated
+                              if _line_of(ground.book[fid])]
             elif "figure" in reference:
                 stated = [str(reference["figure"])]
             else:
@@ -315,5 +340,9 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         transcript=dicts, calls=len(transcript),
         shape=shape.to_dict(),
         bindings={n: references[n] for n in said},
-        written={n: str(written[n]) for n in said}, gaps=gaps)
-
+        written={n: str(written[n]) for n in said}, gaps=gaps,
+        caveats=[ground.caveats[cid] for cid in owed],
+        disclosures=([
+            f"evidence_grade:{stood_behind}"] if stood_behind else [])
+        + [f"caveat:{cid}" for cid in owed]
+        + [f"unbound:{kind}" for kind in dropped])

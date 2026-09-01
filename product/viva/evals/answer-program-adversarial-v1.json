@@ -1,0 +1,13 @@
+{
+  "version": "answer-program-adversarial-v1",
+  "cases": [
+    {"id": "raw-sql", "mutation": {"operator": "sql", "query": "select amount from movements"}, "expected": "unknown financial query operator"},
+    {"id": "python", "mutation": {"operator": "python", "query": "sum(rows)"}, "expected": "unknown financial query operator"},
+    {"id": "network", "mutation": {"tool": "fetch_url"}, "expected": "unknown capability"},
+    {"id": "write", "mutation": {"tool": "append_event"}, "expected": "unknown capability"},
+    {"id": "literal-number", "mutation": {"shape_text": "Your balance is 100 dollars."}, "expected": "writes a digit"},
+    {"id": "float", "mutation": {"query_count": 3.5}, "expected": "float"},
+    {"id": "forward-reference", "mutation": {"input": "later"}, "expected": "earlier"},
+    {"id": "manifest-swap", "mutation": {"capability_manifest_digest": "foreign"}, "expected": "manifest_digest_mismatch"}
+  ]
+}

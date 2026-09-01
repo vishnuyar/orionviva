@@ -233,6 +233,10 @@ class Clause:
 
     text: str
     slots: tuple = ()
+    # AnswerProgram clauses carry stable ids so result policy can name a claim
+    # without reading or matching its prose.  Legacy shapes omit the id and
+    # remain valid while the old path is being measured.
+    id: str = ""
 
     def __post_init__(self):
         if not str(self.text).strip():
@@ -346,7 +350,10 @@ class Clause:
         return _HOLE.sub(lambda m: str(filled[m.group(1)]), self.text)
 
     def to_dict(self) -> dict:
-        return {"text": self.text, "slots": [s.to_dict() for s in self.slots]}
+        out = {"text": self.text, "slots": [s.to_dict() for s in self.slots]}
+        if self.id:
+            out["id"] = self.id
+        return out
 
 
 @dataclass(frozen=True)
@@ -409,6 +416,10 @@ def read_shape(raw) -> tuple:
             return None, Problem("each clause needs a 'text' string",
                                  SHAPE_THE_CLAUSE)
         slots = entry.get("slots") or []
+        clause_id = entry.get("id", "")
+        if not isinstance(clause_id, str):
+            return None, Problem("a clause's 'id' must be a string",
+                                 SHAPE_THE_CLAUSE)
         if not isinstance(slots, list):
             return None, Problem(
                 "'slots' must be a list of {name, type} objects",
@@ -437,7 +448,7 @@ def read_shape(raw) -> tuple:
             declared.append(Slot(name=name, type=kind, quantity=measures,
                                  scope=frozenset(over)))
         try:
-            built.append(Clause(text=text, slots=tuple(declared)))
+            built.append(Clause(text=text, slots=tuple(declared), id=clause_id))
         except BadShape as bad:
             return None, bad.problem
     try:

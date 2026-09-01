@@ -1,0 +1,13 @@
+The proposed AnswerProgram was rejected before any financial read occurred.
+Return one complete corrected AnswerProgram and make only the change needed for
+this defect.
+
+Defect tag: {tag}
+Invalid path: {path}
+Problem: {message}
+Accepted schema or capability fragment:
+{accepted}
+
+No current-turn financial result exists and none may be requested during this
+repair. For native structured output, call compile_answer_program exactly once.
+For text output, return only the complete JSON object.

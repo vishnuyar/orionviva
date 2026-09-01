@@ -20,7 +20,7 @@ from .shape import WHOLE
 # caveat is not among them: this module places what a stated figure owes, so
 # there is no hole for one to fill and nothing to refer to it by.
 BINDING_KEYS = ("figure", "entity", "period", "date", "date_of", "supposed",
-                "read")
+                "read", "read_figures")
 
 # The one kind of reference a hole of each type can hold. Where a type admits
 # exactly one, the type has already said what a bare value refers to, and a
@@ -149,7 +149,7 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
                 "span.")
         return render.period(span["from"], span["to"]), "", ""
 
-    if key == "read":
+    if key in ("read", "read_figures"):
         rows = ground.readings.get(str(value))
         if rows is None:
             return None, "unknown_reading", (
@@ -159,7 +159,8 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
             return None, "wrong_kind", (
                 f"The hole {slot.name!r} wants {slot.type}, and a read is every "
                 "figure of one reading at once.")
-        return _rows_bound(slot, rows, ground, locale)
+        return (_rows_bound(slot, rows, ground, locale) if key == "read"
+                else _figures_bound(slot, rows, ground, locale))
 
     if key == "date":
         if slot.type != render.DATE:
@@ -477,6 +478,29 @@ def _rows_bound(slot, rows, ground: _Ground, locale: str):
         f["grade"] for f in cited if f["kind"] in MONEY_KINDS)), "", ""
 
 
+def _figures_bound(slot, rows, ground: _Ground, locale: str):
+    """Render a preselected finite figure list by tool-authored figure label."""
+    lines, cited = [], []
+    for fid in rows:
+        fig = ground.book.get(fid)
+        if fig is None:
+            return None, "unknown_figure", (
+                f"The answer refers to figure {fid!r} this turn never established.")
+        kind = render.TYPE_OF_QUANTITY.get(fig.get("quantity"), "")
+        value = _decimal(fig.get("value"))
+        if not kind or value is None:
+            return None, "wrong_kind", (
+                f"The row {fig.get('what')!r} holds no magnitude anything can write.")
+        written = _MAGNITUDE_WRITERS[kind](value, fig, locale)
+        lines.append((str(fig.get("what") or "Supported figure"),
+                      _hedged(written, fig, kind)))
+        cited.append(fig)
+    if not lines:
+        return None, "wrong_kind", "The selected read contains no figures."
+    return render.rows(lines, grade=weakest(
+        f["grade"] for f in cited if f["kind"] in MONEY_KINDS)), "", ""
+
+
 # How a magnitude is written where no hole above it said which shape to take.
 # One entry per kind that holds one, keyed the same way `APPROX_TERMS` is, so a
 # new shape of magnitude arriving with nowhere to be written is a build failure
@@ -565,4 +589,3 @@ def _covered(cited) -> tuple[int, int] | None:
         held = max(held, counts.get("held", 0))
         named |= names
     return len(named), held
-

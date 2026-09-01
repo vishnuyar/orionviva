@@ -189,7 +189,8 @@ def test_a_shape_offered_after_a_read_is_refused():
     """The rule itself, not the table it is enforced through. A first shape
     written with figures already in hand is refused however it got there, so
     the ordering does not rest on a planner being offered the right menu."""
-    from viva.tools.runner import _Ground, _committable
+    from _legacy_answer_harness import _committable
+    from viva.tools.runner import _Ground
 
     fine = _shape(("Fine, as of {when}.", [("when", "date")]))
     empty = _Ground()
@@ -261,7 +262,7 @@ def test_what_a_taken_shape_is_answered_with_is_a_file(registry):
     from vivacore import promptstore, versions
 
     from viva.tools.registry import PACKAGE, PROMPTS
-    from viva.tools.runner import COMMITTED_VERSION
+    from _legacy_answer_harness import COMMITTED_VERSION
 
     result = run(_ASKED,
                  _script(_shape(*_ASKED_SHAPE),

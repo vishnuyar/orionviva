@@ -103,17 +103,12 @@ def test_a_thing_is_written_by_its_attributes_and_read_back_as_a_reference():
 
 
 def test_the_shape_prompt_teaches_every_kind_a_hole_can_declare():
-    """A vocabulary the code knows and the instructions do not is a hole a
-    model will never use; one the instructions know and the code does not is a
-    shape that will always be refused."""
-    from vivacore import promptstore
+    """The one-shot transport schema offers every hole kind."""
+    from viva.answer_program.schema import program_json_schema
 
-    from viva.speak import SHAPE_VERSION
-    from viva.tools.registry import PROMPTS
-
-    taught = promptstore.load(PROMPTS, SHAPE_VERSION)
+    taught = str(program_json_schema()["properties"]["shape"])
     for kind in SLOT_TYPES:
-        assert f"`{kind}`" in taught, f"the shape grammar never mentions {kind}"
+        assert f"'{kind}'" in taught, f"the shape grammar never mentions {kind}"
 
 
 def test_the_shape_and_its_bindings_are_kept(registry):

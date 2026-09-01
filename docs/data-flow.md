@@ -103,19 +103,21 @@ the read side.
 
 ## A person asks, and the answer arrives with receipts
 
-The answering path (`product/viva/tools/`) is built so that a model routes
-numbers and never produces one:
+The answering path (`product/viva/answer_program/`, `product/viva/query/`, and
+the delivery laws in `product/viva/tools/`) is built so that a model compiles
+meaning and never sees or produces a current-turn financial value:
 
-1. **The shape.** Before any tool is on the table, the planner commits a
-   shape: clauses of literal words with typed holes and no digits anywhere, so
-   a claim cannot be tailored to the number that turns up
-   ([projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md)).
-2. **The tools.** A registry of read tools sits on the projection, each
-   returning a graded, cited envelope with refusal first-class — a figure with
-   no record id behind it does not exist to the renderer.
-3. **The binding.** Code binds the holes to references into the run's own
-   ledger, and one renderer writes the sentence. Nothing inspects the finished
-   sentence, because a model writes no digits into one.
+1. **The program.** One model call commits the typed shape, finite local read
+   graph, selectors, and required/optional policy before any read. One targeted
+   structural repair is the only second attempt.
+2. **Validation and execution.** Code validates the whole graph against the
+   capability manifest and resource policy, then executes admitted tool reads
+   and typed Financial Query IR operators under a running deadline.
+3. **Evidence and binding.** Results enter one evidence graph with trusted
+   quantity, currency, boundary, grade, and record provenance. Code binds holes
+   to compatible references in that graph, and one renderer writes the sentence.
+   Nothing inspects the finished sentence, because a model writes no digits into
+   one.
 4. **The record.** Every exchange is kept verbatim with the prompt version and
    model that produced it, which is what makes the honesty measurement
    ([eval-harness-design.md](eval-harness-design.md)) possible at all. Each
@@ -124,9 +126,10 @@ numbers and never produces one:
 
 ```mermaid
 flowchart LR
-    q["A person's question"] --> planner["Planner — commits a shape: typed holes, no digits"]
-    planner --> tools["Tool registry — graded, cited envelopes over the projection"]
-    tools --> bind["Code binds holes to ledger references"]
+    q["A person's question"] --> compiler["Semantic compiler — complete data-blind AnswerProgram"]
+    compiler --> validate["Static schema, capability, type, and resource validation"]
+    validate --> tools["Bounded local reads and typed financial queries"]
+    tools --> bind["One evidence graph and deterministic binding"]
     bind --> render["One renderer writes the sentence"]
     render --> answer["Cited answer — grade inherited from the weakest figure"]
     tools -. "nothing on record" .-> refuse["Refusal — first-class, with what would close the gap"]

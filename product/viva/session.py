@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import uuid
 from dataclasses import dataclass, field
 
 from vivacore import promptstore
+from vivacore import versions
 
-from .planners import SPEAK_VERSION
+from .answer_program import (AnswerProgramRuntime, AnswerResourcePolicy,
+                             BreadthFeedback, CapabilityManifest, DeterministicBinder,
+                             ProgramExecutor, ProgramValidator, QuestionContext)
+from .answer_program.compiler import COMPILER_VERSION, REPAIR_VERSION
+from .answer_program.schema import ANSWER_PROGRAM_VERSION
 from .tools.registry import PROMPTS
-from .tools.runner import DEFAULT_MAX_CALLS, RunResult, run
+from .tools.runner import RunResult
 
 @dataclass
 class Turn:
@@ -20,6 +26,11 @@ class Turn:
     question: str
     result: RunResult
     exchanges: list = field(default_factory=list)
+    outcome: object | None = None
+    program: dict = field(default_factory=dict)
+    validation: dict = field(default_factory=dict)
+    execution: dict = field(default_factory=dict)
+    prior_context_digest: str = ""
 
     @property
     def said(self) -> str:
@@ -39,25 +50,28 @@ class Turn:
 class Session:
     """A conversation: turns share context, figures never carry over.
 
-    Each turn is a fresh gated run whose planner receives the prior questions
-    and answers as context. When a ledger is supplied, every model exchange is
+    Each turn compiles a fresh complete program from the prior questions and
+    answers as context. When a ledger is supplied, every model exchange is
     appended as a ``ReadRecorded`` event, ``phase="speak"``, so the vault holds
     what left the machine and what came back, verbatim."""
 
-    def __init__(self, registry, planner_factory, ledger=None, model: str = "",
-                 max_calls: int = DEFAULT_MAX_CALLS,
+    def __init__(self, registry, compiler_factory, ledger=None, model: str = "",
+                 resource_policy: AnswerResourcePolicy | None = None,
                  session_id: str = "", today=None, locale: str = "",
-                 prior_turns=()):
+                 prior_turns=(), breadth_feedback=None):
         self._registry = registry
-        self._planner_factory = planner_factory
+        self._compiler_factory = compiler_factory
         self._ledger = ledger
         self._model = model
-        self._max_calls = max_calls
+        self._policy = resource_policy or AnswerResourcePolicy()
+        self._manifest = CapabilityManifest.from_registry(registry)
+        self._validator = ProgramValidator(self._manifest, self._policy)
         # How a figure is written is a property of this person's paperwork, and
         # it reaches the renderer the same way it reaches the question queue.
         self._locale = locale
         self._session_id = session_id or uuid.uuid4().hex[:12]
         self._today = today or (lambda: datetime.date.today().isoformat())
+        self.feedback = breadth_feedback or BreadthFeedback()
         # Restored turns supply text context; new turns bind current tool evidence.
         self._prior_turns = [(str(question), str(answer))
                              for question, answer in prior_turns]
@@ -65,48 +79,78 @@ class Session:
 
     def ask(self, question: str) -> Turn:
         prior = self._prior_turns + [(t.question, t.said) for t in self.turns]
-        planner = self._planner_factory(prior)
-        result = run(question, planner, self._registry,
-                     max_calls=self._max_calls, locale=self._locale)
-        turn = Turn(question=question, result=result,
-                    exchanges=list(getattr(planner, "exchanges", [])))
+        context = QuestionContext(
+            question=question, prior_turns=tuple(prior), today=self._today(),
+            locale=self._locale, currency_convention=self._locale,
+            capability_manifest_version=self._manifest.manifest_version,
+            capability_manifest_digest=self._manifest.digest,
+            shape_version=ANSWER_PROGRAM_VERSION,
+            resource_policy_version=self._policy.policy_version)
+        compiler = self._compiler_factory(self._validator, self._manifest,
+                                          self._policy)
+        runtime = AnswerProgramRuntime(
+            compiler, ProgramExecutor(
+                self._registry, self._policy,
+                query_executor=getattr(self._registry, "query_executor", None)),
+            DeterministicBinder(self._registry, self._locale))
+        answered = runtime.answer(context)
+        validation = answered.compilation.validation
+        turn = Turn(
+            question=question, result=answered.result,
+            exchanges=list(answered.compilation.exchanges),
+            outcome=answered.outcome,
+            program=(answered.compilation.program.to_dict()
+                     if answered.compilation.program is not None else {}),
+            validation={"defects": [item.to_dict() for item in validation.defects],
+                        "static_cost": validation.static_cost}
+                       if validation is not None else {},
+            execution=(answered.execution.to_dict()
+                       if answered.execution is not None else {}),
+            prior_context_digest=hashlib.sha256(json.dumps(
+                prior, sort_keys=True, separators=(",", ":")).encode()
+                                                ).hexdigest()[:16])
         self.turns.append(turn)
+        self.feedback.observe(answered)
         if self._ledger is not None:
-            self._record(turn, planner)
+            self._record(turn)
         return turn
 
-    def _record(self, turn: Turn, planner) -> None:
+    def _record(self, turn: Turn) -> None:
         from .ledger.events import read_recorded
-        stamps = {"speak": f"{SPEAK_VERSION}@"
-                           f"{promptstore.digest(PROMPTS, SPEAK_VERSION)}",
+        from .query.schema import FINANCIAL_QUERY_SCHEMA_VERSION
+        from .tools.registry import PACKAGE
+        persona_version = versions.active(PACKAGE, "persona_pack")
+        stamps = {"answer_program": f"{COMPILER_VERSION}@"
+                           f"{promptstore.digest(PROMPTS, COMPILER_VERSION)}",
+                  "answer_program_retry": f"{REPAIR_VERSION}@"
+                           f"{promptstore.digest(PROMPTS, REPAIR_VERSION)}",
                   "tools": f"{self._registry.descriptions_version}@"
-                           f"{promptstore.digest(PROMPTS, self._registry.descriptions_version)}"}
+                           f"{promptstore.digest(PROMPTS, self._registry.descriptions_version)}",
+                  "answer_program_schema": f"{ANSWER_PROGRAM_VERSION}@"
+                           f"{versions.fingerprint(versions.path_of(PACKAGE, ANSWER_PROGRAM_VERSION))}",
+                  "financial_query_schema": f"{FINANCIAL_QUERY_SCHEMA_VERSION}@"
+                           f"{versions.fingerprint(versions.path_of(PACKAGE, FINANCIAL_QUERY_SCHEMA_VERSION))}",
+                  "capability_manifest": f"{self._manifest.manifest_version}@{self._manifest.digest}",
+                  "persona": f"{persona_version}@"
+                           f"{versions.fingerprint(versions.path_of(PACKAGE, persona_version))}"}
         n = len(self.turns)
         for i, ex in enumerate(turn.exchanges, 1):
             payload = {"prompt_versions": stamps,
                        "modality": ex.modality,
                        "resolved_model": ex.resolved_model,
                        "question": turn.question,
-                       # Which exchange authored a sentence, and what a reply
-                       # that could not be used was asked to change.
-                       "authored_shape": ex.authored_shape,
-                       "defect": ex.defect,
+                       "prior_context_digest": turn.prior_context_digest,
+                       "defect": dict(ex.defect),
                        "request": ex.request, "response": ex.response,
-                       # What was said, as the structure it was. A sentence can
-                       # then be shown standing on what it stood on, and the
-                       # shapes a real conversation actually needs accumulate.
+                       "program": dict(turn.program),
+                       "validation": dict(turn.validation),
+                       "execution": dict(turn.execution),
                        "shape": turn.result.shape,
                        "bindings": turn.result.bindings,
-                       "verdict": {"answered": turn.result.answered,
-                                   "refusal": turn.result.refusal,
-                                   # The read whose account of stopping was
-                                   # spoken; empty means no cause was spoken,
-                                   # not that no read refused.
-                                   "diagnosis": turn.result.diagnosis,
-                                   "calls": turn.result.calls}}
+                       "verdict": turn.result.to_dict()}
             self._ledger.append(read_recorded(
                 doc_id=f"speak:{self._session_id}:{n}:{i}",
-                model=self._model, prompt_version=SPEAK_VERSION,
+                model=self._model, prompt_version=COMPILER_VERSION,
                 input_mode=ex.modality,
                 response_text=json.dumps(payload),
                 cost_usd=ex.cost_usd, input_tokens=ex.input_tokens,

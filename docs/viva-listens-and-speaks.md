@@ -168,15 +168,13 @@ true sentences: a whitelist over prose a model wrote had to decide afterwards
 which of its numeric tokens were claims, and after five cycles of new rules it
 was still refusing correct answers over bare years and account names.
 
-What replaced it is a fourth option none of the three named. The model composes
-neither prose nor values but a **shape** — clauses of literal words with typed
-holes, committed before any tool has run — and deterministic code binds each
-hole to something the run established and renders it. It is not the template
-option: the sentence is authored per question, so there is no template library
-that has to grow with question types. It is not the planner option: the model
-never writes a figure or a finished sentence, so there is nothing to scan
-afterwards. And the same mechanism runs inbound, which is what makes this one
-machine rather than two.
+The first replacement was the committed shape mechanism described here. The
+current read path supersedes it with the versioned AnswerProgram architecture:
+one data-blind compilation commits the shape, complete bounded read/query graph,
+selectors and result policy before any local read. Deterministic validation,
+execution, evidence binding and rendering then produce the answer. The model
+still writes neither current-turn values nor a finished financial answer. The
+complete current design is [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md).
 
 **Risks, named.** A mis-parsed ruling scoped to a merchant is worse than a
 mis-categorized transaction: it is silent and it generalizes. The mitigations
@@ -209,8 +207,8 @@ contract with no backfill from earlier technical read records.
 
 ## Open
 
-- The real-vault proving run of what replaced the planner is still owed. `answer.py` remains the scripted test modality and the oracle.
-- An ADR and a design doc for the shape mechanism are owed once the round trip has run against real money.
+- The real-vault Witness for the AnswerProgram path is still owed and remains a
+  release gate. The product owner explicitly deferred it to a later live run.
 - Proposal unification — one common shape behind transfer suggestions, category suggestions and findings — is a refactor with no user-visible gain, and must wait for evidence or it is premature generalization.
 - Open-world free text with no question attached.
 - Whether a parse may ever auto-apply, and on what contract. The existing forced/suggested distinction is the candidate; a money threshold is a currency- and jurisdiction-shaped guess and is not.

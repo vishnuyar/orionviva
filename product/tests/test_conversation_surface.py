@@ -254,6 +254,7 @@ def test_one_session_lives_as_long_as_the_vault_is_open(tmp_path: Path, monkeypa
         return built[-1]
 
     monkeypatch.setattr(speak, "speak_spec", lambda: _SPEC)
+    monkeypatch.setattr(speak, "compiler_factory", lambda spec: object())
     monkeypatch.setattr(actions, "_session_for", one)
     vault = Vault.open(tmp_path / "vault", "pw")
     talking = ConversationActions(vault)
@@ -277,6 +278,7 @@ def test_a_turn_that_refused_answers_as_a_refusal_with_vivas_own_sentence(
                 refusal="I will not state that without something behind it."))
 
     monkeypatch.setattr(speak, "speak_spec", lambda: _SPEC)
+    monkeypatch.setattr(speak, "compiler_factory", lambda spec: object())
     monkeypatch.setattr(actions, "_session_for", lambda *a, **k: _Session())
     vault = Vault.open(tmp_path / "vault", "pw")
 
@@ -300,6 +302,7 @@ def test_asking_with_no_mirror_hands_back_nothing_to_speak(
                                            grade="verified", figures=[FIGURE]))
 
     monkeypatch.setattr(speak, "speak_spec", lambda: _SPEC)
+    monkeypatch.setattr(speak, "compiler_factory", lambda spec: object())
     monkeypatch.setattr(actions, "_session_for", lambda *a, **k: _Session())
     vault = Vault.open(tmp_path / "vault", "pw")
 
@@ -326,6 +329,7 @@ def test_the_words_a_figure_was_written_as_come_from_the_engines_own_mapping(
                 written={"amount": "about USD 1,200"}))
 
     monkeypatch.setattr(speak, "speak_spec", lambda: _SPEC)
+    monkeypatch.setattr(speak, "compiler_factory", lambda spec: object())
     monkeypatch.setattr(actions, "_session_for", lambda *a, **k: _Session())
     vault = Vault.open(tmp_path / "vault", "pw")
 

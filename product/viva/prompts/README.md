@@ -11,7 +11,7 @@ To change a prompt:
    which is what `vivacore.versions.active` reads.
 4. **Pin** the new digest under `released` in `viva/versions.json`. Most frozen
    tables in `tests/` derive from that map; `FROZEN_SPEAK_PROMPTS` in
-   `tests/test_speak.py` is a hand-kept copy and needs the digest as well.
+   The manifest is the single digest authority for released speak prompts.
 
 Step 1 is the whole discipline. A reading recorded under `card-v1` must resolve
 to card-v1's text forever (T8) — that is what makes a stored answer explainable

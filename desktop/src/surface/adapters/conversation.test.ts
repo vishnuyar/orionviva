@@ -5,10 +5,14 @@ const reply = {
   question: "what is on that account?",
   text: "You have about USD 1,200 on that account.",
   answered: true,
+  status: "answered",
+  outcome_tag: "",
   refusal: "",
   grade: "verified",
   grade_sentence: "Two independent records agree on this.",
   figures: [{ id: "f1", evidence_id: "conversation:turn-1:f1", written: "about USD 1,200", grade: "verified", what: "the balance", record_ids: ["doc-1"], evidence_links: [{ document_id: "doc-1", label: "Checking statement", relation: "attests", page: "page 1" }] }],
+  options: [],
+  missing: [],
   spoken: { may_speak: true, withheld: "", parts: ["text", "grade", "citations"], text: "You have about USD 1,200 on that account.", grade_sentence: "Two independent records agree on this.", citation_sentence: "What that rests on is on the screen.", local_only: "On this machine or not at all." },
 };
 
@@ -71,5 +75,15 @@ describe("one turn, read", () => {
       reason: "", verb: "create", reviewInPlans: true,
       draft: raw.goal_draft.draft,
     });
+  });
+
+  it("keeps structured clarification choices distinct from a failure", () => {
+    const read = adaptTurn({ ...reply, answered: false,
+      status: "needs_clarification", outcome_tag: "ambiguous_account",
+      text: "Which account?", refusal: "ambiguous_account",
+      options: [{ id: "daily", label: "Daily account" }] })!;
+    expect(read.status).toBe("needs_clarification");
+    expect(read.outcomeTag).toBe("ambiguous_account");
+    expect(read.options).toEqual([{ id: "daily", label: "Daily account" }]);
   });
 });

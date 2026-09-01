@@ -1,0 +1,126 @@
+{
+  "version": "answer-program-cases-v1",
+  "fixture_id": "answer-program-synthetic-v1",
+  "cases": [
+    {
+      "id": "net-worth-current",
+      "question": "What is my current net worth? Separate directly supported figures from estimates, stale balances, and accounts that are not counted.",
+      "prior_turns": [], "answerability_status": "answered",
+      "accepted_intents": ["net_worth"],
+      "required_semantic_claims": ["net_worth", "not_counted", "staleness"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "net_worth"}}, {"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "stalest_balance"}}],
+      "permitted_supporting_nodes": ["check_completeness"],
+      "expected_figures": [{"value": "2100.00", "currency": "USD", "quantity": "net_worth", "grade": "corroborated", "what": "net in USD"}, {"value": "1500.00", "currency": "USD", "quantity": "balance", "grade": "unverified", "what": "Brokerage — balance"}, {"value": "29", "currency": "", "quantity": "count", "grade": "unverified", "what": "days since Brokerage was evidenced"}],
+      "expected": {"scope": ["whole"], "subject": "vault", "period": "current", "records_required": true, "caveats_required": true, "disclosures": ["caveat"], "figure_boundaries": [{"whole": true, "cut": {"currency": "USD"}}, {"whole": false, "cut": {"account": "brk"}}, {"whole": false}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["converted_currency_total"], "max_model_attempts": 2
+    },
+    {
+      "id": "account-balances",
+      "question": "List each account in this vault with its latest supported balance, statement date, and evidence quality. Say clearly where the records are incomplete.",
+      "prior_turns": [], "answerability_status": "answered",
+      "accepted_intents": ["account_balances"],
+      "required_semantic_claims": ["balance", "owed", "evidence_date", "grade", "completeness"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "balances"}}, {"tool": "check_completeness", "args": {}}],
+      "permitted_supporting_nodes": [],
+      "expected_figures": [{"value": "1500.00", "currency": "USD", "quantity": "balance", "grade": "unverified", "what": "Brokerage — balance"}, {"value": "600.00", "currency": "USD", "quantity": "balance", "grade": "corroborated", "what": "Everyday Checking — balance"}, {"value": "-300.00", "currency": "USD", "quantity": "owed", "grade": "unverified", "what": "Signature Card — owed"}, {"value": "3", "currency": "", "quantity": "count", "grade": "", "what": "documents held"}, {"value": "1", "currency": "", "quantity": "count", "grade": "", "what": "documents posted to the ledger"}, {"value": "2", "currency": "", "quantity": "count", "grade": "", "what": "documents awaiting review"}],
+      "expected": {"scope": ["account"], "subject": "each_account", "period": "latest", "records_required": true, "caveats_required": true, "disclosures": ["caveat"], "figure_boundaries": [{"whole": false, "cut": {"account": "brk"}}, {"whole": false, "cut": {"account": "chk"}}, {"whole": false, "cut": {"account": "card"}}, {"whole": true}, {"whole": true}, {"whole": true}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["missing_balance_as_zero"], "max_model_attempts": 2
+    },
+    {
+      "id": "monthly-spending-categories",
+      "question": "For the most recent complete calendar month represented in this vault, how much did I spend, and what were the three largest spending categories? State the exact date range and what was excluded.",
+      "prior_turns": [], "answerability_status": "answered",
+      "accepted_intents": ["monthly_spending_by_category"],
+      "required_semantic_claims": ["spending", "ranked_categories", "period", "exclusions"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "spending", "group_by": "category", "filters": {"window": {"preset": "latest_complete_calendar_month"}}}}],
+      "permitted_supporting_nodes": ["check_completeness"],
+      "expected_figures": [{"value": "100.00", "currency": "USD", "quantity": "spending", "grade": "verified", "what": "total spending by category", "period": "2026-01-01/2026-01-31"}, {"value": "100.00", "currency": "USD", "quantity": "spending", "grade": "verified", "what": "spending — category 'groceries'", "period": "2026-01-01/2026-01-31"}],
+      "expected": {"scope": ["category", "period"], "subject": "spending", "period": "2026-01-01/2026-01-31", "records_required": true, "caveats_required": true, "disclosures": ["caveat"], "figure_boundaries": [{"whole": false}, {"whole": false, "cut": {"category": "groceries"}}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["transfer_as_spending"], "max_model_attempts": 2
+    },
+    {
+      "id": "same-month-largest-movements",
+      "question": "For that same month, what were the three largest individual spending movements? Give the date, counterparty, amount, account, and any uncertainty for each.",
+      "prior_turns": [{"question": "What month did that cover?", "answer": "The supported period ran from 2026-01-01 to 2026-01-31."}],
+      "answerability_status": "answered", "accepted_intents": ["largest_spending_movements"],
+      "required_semantic_claims": ["movement", "date", "merchant", "account", "grade"],
+      "required_nodes": [{"tool": "list_movements", "args": {"filters": {"window": {"from": "2026-01-01", "to": "2026-01-31"}}}}, {"tool": "financial_query", "args": {}}],
+      "permitted_supporting_nodes": [],
+      "expected_figures": [{"value": "-60.00", "currency": "USD", "quantity": "movement", "grade": "verified", "what": "GREENFIELD MARKET", "period": "2026-01-01/2026-01-31"}, {"value": "-40.00", "currency": "USD", "quantity": "movement", "grade": "verified", "what": "GREENFIELD MARKET", "period": "2026-01-01/2026-01-31"}],
+      "expected": {"scope": ["merchant", "account", "period"], "subject": "spending_movements", "period": "2026-01-01/2026-01-31", "records_required": true, "caveats_required": false, "figure_boundaries": [{"whole": false, "cut": {"account": "chk", "merchant": "greenfield market"}}, {"whole": false, "cut": {"account": "chk", "merchant": "greenfield market"}}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["transfer_as_spending", "prior_answer_as_evidence"], "max_model_attempts": 2
+    },
+    {
+      "id": "monthly-income",
+      "question": "How much income is supported by the records in the most recent complete calendar month, and which sources contributed to it? Separate attributed income from unexplained inflows.",
+      "prior_turns": [], "answerability_status": "partial",
+      "accepted_intents": ["monthly_income"],
+      "required_semantic_claims": ["income", "unexplained_inflows", "sources", "period"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "income", "filters": {"window": {"preset": "latest_complete_calendar_month"}}}}],
+      "permitted_supporting_nodes": ["check_completeness"],
+      "expected_figures": [{"value": "0", "currency": "USD", "quantity": "income", "grade": "", "what": "attributed income in USD, from 2026-01-01 to 2026-01-31", "period": "2026-01-01/2026-01-31"}],
+      "expected": {"scope": ["period"], "subject": "income", "period": "2026-01-01/2026-01-31", "records_required": true, "caveats_required": true, "disclosures": ["caveat"], "figure_boundaries": [{"whole": false, "cut": {"currency": "USD"}}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["unexplained_inflow_as_income", "missing_data_as_zero"], "max_model_attempts": 2
+    },
+    {
+      "id": "monthly-surplus",
+      "question": "Compare supported income with supported spending for the most recent complete calendar month. What was the resulting surplus or shortfall, and what prevents that comparison from being complete?",
+      "prior_turns": [], "answerability_status": "answered",
+      "accepted_intents": ["monthly_surplus"],
+      "required_semantic_claims": ["income", "spending", "surplus", "completeness"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "surplus", "filters": {"window": {"preset": "latest_complete_calendar_month"}}}}, {"tool": "check_completeness", "args": {}}],
+      "permitted_supporting_nodes": ["check_completeness"],
+      "expected_figures": [{"value": "0", "currency": "USD", "quantity": "income", "grade": "", "what": "attributed income used in the period comparison", "period": "2026-01-01/2026-01-31"}, {"value": "100.00", "currency": "USD", "quantity": "spending", "grade": "verified", "what": "counted spending used in the period comparison", "period": "2026-01-01/2026-01-31"}, {"value": "-100.00", "currency": "USD", "quantity": "net_movement", "grade": "verified", "what": "supported surplus (negative means shortfall)", "period": "2026-01-01/2026-01-31"}, {"value": "3", "currency": "", "quantity": "count", "grade": "", "what": "documents held"}, {"value": "1", "currency": "", "quantity": "count", "grade": "", "what": "documents posted to the ledger"}, {"value": "2", "currency": "", "quantity": "count", "grade": "", "what": "documents awaiting review"}],
+      "expected": {"scope": ["period"], "subject": "surplus", "period": "2026-01-01/2026-01-31", "records_required": true, "caveats_required": true, "disclosures": ["caveat"], "figure_boundaries": [{"whole": false}, {"whole": false}, {"whole": false}, {"whole": true}, {"whole": true}, {"whole": true}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["incomplete_comparison_as_complete"], "max_model_attempts": 2
+    },
+    {
+      "id": "stalest-balance",
+      "question": "Which account balance is stalest, how old is it, and how much could that staleness affect the financial picture?",
+      "prior_turns": [], "answerability_status": "answered",
+      "accepted_intents": ["stalest_balance"],
+      "required_semantic_claims": ["balance", "evidence_date", "age", "account"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "stalest_balance"}}],
+      "permitted_supporting_nodes": [],
+      "expected_figures": [{"value": "1500.00", "currency": "USD", "quantity": "balance", "grade": "unverified", "what": "Brokerage — balance"}, {"value": "29", "currency": "", "quantity": "count", "grade": "unverified", "what": "days since Brokerage was evidenced"}],
+      "expected": {"scope": ["account"], "subject": "stalest_account", "period": "current", "records_required": true, "caveats_required": false, "figure_boundaries": [{"whole": false, "cut": {"account": "brk"}}, {"whole": false}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["stale_balance_as_current"], "max_model_attempts": 2
+    },
+    {
+      "id": "weakest-evidence",
+      "question": "Which transactions or balances currently have the weakest evidence quality? List the most financially significant ones first and explain the limitation.",
+      "prior_turns": [], "answerability_status": "answered",
+      "accepted_intents": ["weakest_evidence"],
+      "required_semantic_claims": ["ranked_financial_facts", "grade", "limitation"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "weakest_evidence"}}],
+      "permitted_supporting_nodes": [],
+      "expected_figures": [{"value": "1500.00", "currency": "USD", "quantity": "balance", "grade": "unverified", "what": "weak-evidence account — Brokerage"}, {"value": "600.00", "currency": "USD", "quantity": "balance", "grade": "corroborated", "what": "weak-evidence account — Everyday Checking"}, {"value": "-300.00", "currency": "USD", "quantity": "owed", "grade": "unverified", "what": "weak-evidence account — Signature Card"}, {"value": "300.00", "currency": "USD", "quantity": "movement", "grade": "verified", "what": "weak-evidence movement — payment received"}, {"value": "-300.00", "currency": "USD", "quantity": "movement", "grade": "verified", "what": "weak-evidence movement — card payment xx2291"}, {"value": "-60.00", "currency": "USD", "quantity": "movement", "grade": "verified", "what": "weak-evidence movement — greenfield market"}],
+      "expected": {"scope": ["account"], "subject": "weakest_evidence", "period": "current", "records_required": true, "caveats_required": true, "disclosures": ["evidence_grade"], "figure_boundaries": [{"whole": false, "cut": {"account": "brk"}}, {"whole": false, "cut": {"account": "chk"}}, {"whole": false, "cut": {"account": "card"}}, {"whole": true}, {"whole": true}, {"whole": true}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["grade_as_certainty"], "max_model_attempts": 2
+    },
+    {
+      "id": "recurring-spending",
+      "question": "What recurring spending patterns are supported by this vault, and which three recurring counterparties account for the most spending? State the period covered.",
+      "prior_turns": [], "answerability_status": "missing_data",
+      "accepted_intents": ["recurring_spending"],
+      "required_semantic_claims": ["recurring_spending", "ranked_merchants", "period"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "recurring_spending"}}],
+      "permitted_supporting_nodes": ["check_completeness"],
+      "expected_figures": [],
+      "expected": {"scope": ["merchant", "period"], "subject": "recurring_spending", "period": "supported", "records_required": true, "caveats_required": true, "figure_boundaries": []},
+      "expected_outcome_tag": "insufficient_history", "forbidden_claims": ["absence_as_zero_patterns"], "max_model_attempts": 2
+    },
+    {
+      "id": "financial-health-summary",
+      "question": "Give me a concise financial health summary based only on this vault: liquidity, debt, recent cash flow, and the three most important gaps I should resolve before trusting the picture.",
+      "prior_turns": [], "answerability_status": "answered",
+      "accepted_intents": ["financial_health_summary"],
+      "required_semantic_claims": ["liquidity", "debt", "cash_flow", "gaps"],
+      "required_nodes": [{"tool": "query_ledger", "args": {"entity": "balances"}}, {"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "surplus", "filters": {"window": {"preset": "latest_complete_calendar_month"}}}}, {"tool": "query_ledger", "args": {"entity": "aggregate", "metric": "weakest_evidence"}}, {"tool": "check_completeness", "args": {}}],
+      "permitted_supporting_nodes": [],
+      "expected_figures": [{"value": "1500.00", "currency": "USD", "quantity": "balance", "grade": "unverified", "what": "Brokerage — balance"}, {"value": "600.00", "currency": "USD", "quantity": "balance", "grade": "corroborated", "what": "Everyday Checking — balance"}, {"value": "-300.00", "currency": "USD", "quantity": "owed", "grade": "unverified", "what": "Signature Card — owed"}, {"value": "-100.00", "currency": "USD", "quantity": "net_movement", "grade": "verified", "what": "supported surplus (negative means shortfall)", "period": "2026-01-01/2026-01-31"}, {"value": "1500.00", "currency": "USD", "quantity": "balance", "grade": "unverified", "what": "weak-evidence account — Brokerage"}, {"value": "600.00", "currency": "USD", "quantity": "balance", "grade": "corroborated", "what": "weak-evidence account — Everyday Checking"}, {"value": "-300.00", "currency": "USD", "quantity": "owed", "grade": "unverified", "what": "weak-evidence account — Signature Card"}, {"value": "3", "currency": "", "quantity": "count", "grade": "", "what": "documents held"}, {"value": "2", "currency": "", "quantity": "count", "grade": "", "what": "counterparties with no category yet"}, {"value": "2", "currency": "", "quantity": "count", "grade": "", "what": "documents awaiting review"}],
+      "expected": {"scope": ["whole", "period"], "subject": "financial_health", "period": "latest_complete_calendar_month", "records_required": true, "caveats_required": true, "disclosures": ["caveat"], "figure_boundaries": [{"whole": false, "cut": {"account": "brk"}}, {"whole": false, "cut": {"account": "chk"}}, {"whole": false, "cut": {"account": "card"}}, {"whole": false}, {"whole": false, "cut": {"account": "brk"}}, {"whole": false, "cut": {"account": "chk"}}, {"whole": false, "cut": {"account": "card"}}, {"whole": true}, {"whole": true}, {"whole": true}]},
+      "expected_outcome_tag": "", "forbidden_claims": ["recommendation", "uncited_summary_figure"], "max_model_attempts": 2
+    }
+  ]
+}

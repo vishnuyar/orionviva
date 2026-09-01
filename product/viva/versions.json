@@ -1,28 +1,20 @@
 {
   "in_force": {
-    "speak": {
-      "in": "prompts",
-      "active": "speak-v12"
+    "answer_program_schema": {
+      "in": "schemas",
+      "active": "answer-program-schema-v1"
     },
-    "speak_final": {
-      "in": "prompts",
-      "active": "speak-final-v14"
+    "financial_query_schema": {
+      "in": "schemas",
+      "active": "financial-query-schema-v1"
     },
-    "speak_protocol": {
+    "answer_program": {
       "in": "prompts",
-      "active": "speak-protocol-v7"
+      "active": "answer-program-v3"
     },
-    "speak_retry": {
+    "answer_program_retry": {
       "in": "prompts",
-      "active": "speak-retry-v3"
-    },
-    "speak_repairs": {
-      "in": "prompts",
-      "active": "speak-repairs-v3"
-    },
-    "speak_closing": {
-      "in": "prompts",
-      "active": "speak-closing-v2"
+      "active": "answer-program-retry-v1"
     },
     "tools": {
       "in": "prompts",
@@ -56,16 +48,18 @@
       "in": "knowledge",
       "active": "expectations-v1"
     },
-    "speak_shape": {
-      "in": "prompts",
-      "active": "speak-shape-v13"
-    },
     "shape_committed": {
       "in": "prompts",
       "active": "shape-committed-v1"
     }
   },
   "released": {
+    "answer-program-schema-v1": "ce0d4099a18f6dd1",
+    "financial-query-schema-v1": "0e4da54baab1147a",
+    "answer-program-v1": "90c6407442f0203f",
+    "answer-program-v2": "a36c73a5894f9243",
+    "answer-program-v3": "27baad6a15777629",
+    "answer-program-retry-v1": "a4571e2df3d40de7",
     "classify-v1": "78d4a6f76dda419c",
     "goal-binding-v1": "e28bad959309eebb",
     "classify-v2": "b0068911c228303a",

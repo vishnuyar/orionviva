@@ -11,7 +11,7 @@ made, the shape it implies, and the questions a later cycle must answer.
 ### VOICE-80 — a refusal certifies nothing and carries no figure
 **State:** enforced
 **Code:** product/viva/tools/runner.py:350 (`_refused`)
-**Test:** product/tests/test_speak.py::test_a_number_echoed_by_a_refusal_cannot_ground_an_answer
+**Test:** product/tests/test_answer_program_contracts.py::test_refused_nodes_contribute_no_evidence_and_block_dependents
 
 1. A refusal asserts nothing and binds nothing.
 2. A number echoed by a refusal cannot ground an answer, and a refusal's record ids do not join the grounding pool.

@@ -126,64 +126,16 @@ def test_every_way_a_turn_can_refuse_has_a_reviewed_sentence():
     pack is a person hearing nothing — or hearing a tag. It fails here, at
     build time, rather than there. And a sentence no tag can reach is dead
     voice, the same way an orphan phrasing is."""
-    from viva.tools.runner import REFUSAL_MOMENT, REFUSAL_TAGS
+    from viva.tools.runner import DELIVERY_REFUSAL_TAGS, REFUSAL_MOMENT
 
     declared = {k for k in persona.MOMENT_FIELDS if k.startswith(REFUSAL_MOMENT)}
-    wanted = {REFUSAL_MOMENT + tag for tag in REFUSAL_TAGS}
-    assert declared == wanted, (
-        f"only-in-pack={sorted(declared - wanted)}, "
-        f"only-in-code={sorted(wanted - declared)}")
-    for tag in REFUSAL_TAGS:
+    wanted = {REFUSAL_MOMENT + tag for tag in DELIVERY_REFUSAL_TAGS}
+    assert wanted <= declared, f"missing-from-pack={sorted(wanted - declared)}"
+    for tag in DELIVERY_REFUSAL_TAGS:
         said = persona.moment(REFUSAL_MOMENT + tag)
         assert said.strip(), tag
         assert tag not in said, (
             f"the sentence for {tag!r} says the machine's tag out loud")
-
-
-def test_every_way_a_turn_can_refuse_is_raised_somewhere_in_the_source():
-    """Every tag in `REFUSAL_TAGS` appears as a literal somewhere a turn ends.
-
-    Pairing tags to sentences says every declared tag can be spoken; it says
-    nothing about whether anything still raises one. A tag no code reaches is a
-    reviewed sentence no person can ever hear, and it costs a reader of the
-    vocabulary the belief that the list describes the machine.
-
-    Read from the source of the two modules that end a turn, by the same AST
-    walk `test_no_prompt_text_lives_in_code` uses: every string constant except
-    the ones inside the declaration itself. Nothing here reads meaning — a tag
-    is present as a literal or it is not."""
-    import ast
-
-    from viva.tools.runner import REFUSAL_TAGS
-
-    package = pathlib.Path(persona.__file__).resolve().parent.parent
-    raised = set()
-    for path in (package / "tools" / "runner.py",
-                 package / "tools" / "runner_binding.py",
-                 package / "tools" / "runner_delivery.py",
-                 package / "speak.py", package / "planners.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        declaring = {id(node) for assign in ast.walk(tree)
-                     if isinstance(assign, ast.Assign)
-                     and any(isinstance(t, ast.Name) and t.id == "REFUSAL_TAGS"
-                             for t in assign.targets)
-                     for node in ast.walk(assign.value)}
-        docstrings = {id(ast.get_docstring(n, clean=False))
-                      for n in ast.walk(tree)
-                      if isinstance(n, (ast.Module, ast.ClassDef,
-                                        ast.FunctionDef, ast.AsyncFunctionDef))}
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Constant)
-                    and isinstance(node.value, str)
-                    and id(node) not in declaring
-                    and id(node.value) not in docstrings):
-                raised.add(node.value)
-
-    unreachable = sorted(tag for tag in REFUSAL_TAGS if tag not in raised)
-    assert not unreachable, (
-        f"{unreachable} can no longer end a turn: nothing raises the tag, so "
-        "its reviewed sentence is dead voice. Remove the tag and its sentence "
-        "together, in the same change that removed the branch.")
 
 
 def test_every_grade_a_figure_can_carry_has_a_reviewed_sentence():

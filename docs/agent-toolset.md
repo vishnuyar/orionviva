@@ -25,7 +25,7 @@
 ### PROJ-15 — every figure in an answer is a tool result, cited by id
 **State:** enforced
 **Code:** product/viva/tools/runner_binding.py:104 · product/viva/tools/runner_delivery.py:219
-**Test:** product/tests/test_tool_runner.py::test_a_number_no_tool_returned_is_refused
+**Test:** product/tests/test_answer_program_contracts.py::test_executor_stamps_evidence_then_binder_reuses_the_single_claim_gate
 
 1. A number no tool emitted has no id, so it cannot be cited and cannot be said.
 2. A money-kind figure citing no record is refused before the answer is delivered.
@@ -64,10 +64,10 @@
 
 ### PROJ-25 — the model is told what day it is
 **State:** enforced
-**Code:** product/viva/planners.py:161
-**Test:** product/tests/test_speak.py::test_the_day_a_turn_is_asked_on_reaches_the_model
+**Code:** product/viva/session.py (`QuestionContext` construction)
+**Test:** product/tests/test_answer_program_contracts.py::test_question_context_round_trips_without_financial_results
 
-1. The system message carries today's date as a template field of the pinned persona file.
+1. The versioned `QuestionContext` carries today's date to the compiler.
 2. Being told the date does not license stating it: a date reaches a person only through a hole bound to a figure the same clause states.
 
 Registry membership, the structured filter contract, the modality-neutral

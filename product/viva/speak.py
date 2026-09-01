@@ -1,54 +1,21 @@
-"""Viva speaks: a live model plans read-tool calls and composes the answer.
+"""Viva speaks by compiling one bounded AnswerProgram per turn.
 
-The runner and its citation gate already hold the law — every figure in an
-answer must be grounded in this run's tool results. This module supplies the
-planners that put a real model behind that contract, a session that carries a
-conversation across turns, and the capture that records every exchange in the
-vault.
-
-Two planners, one contract:
-
-- ``NativePlanner`` speaks the chat-completions tool-calling protocol through
-  an adapter's ``converse`` — the primary path for every OpenAI-compatible
-  endpoint, hosted or local.
-- ``TextPlanner`` teaches the same steps as a fenced JSON block over a plain
-  completion — the degradation path for any model the ``extract`` contract can
-  reach.
-
-Both present two schemas beside the registry's verbs, and which of them is on
-the table is decided by the runner rather than by either planner:
-``commit_shape``, through which a turn's sentence is authored before anything
-is read, and ``deliver_answer``, through which each of that sentence's holes is
-bound to something the reads established. Neither is registered — neither
-executes anything; one opens a turn and one ends it. A malformed reply gets
-exactly one correction, naming the defect and the one change that answers it,
-then the turn refuses with a machine tag. A transport failure refuses as
-``model_unreachable``. Nothing raises to the person.
-
-One shape of last word exists besides an ordinary answer. When the call budget
-runs out, the runner asks once more with only the terminator on the table, so a
-turn already holding grounded figures can still deliver what its shape asked
-for. A refusal is not the model's to write: it is a reviewed sentence in the
-persona pack chosen by the machine tag, so no planner is asked to compose one
-and a refused turn spends nothing.
-
-A session keeps prior turns as context so follow-ups resolve ("it", "that
-account"), but the gate's grounding is per-turn: any figure the model wants to
-repeat must be re-fetched by a tool in the current turn.
-
-Every model exchange is appended to the ledger as a ``ReadRecorded`` event,
-``phase="speak"``, carrying the verbatim request and response, the prompt
-versions in force, the pinned and endpoint-reported model, tokens and cost.
+The model sees question context and a capability manifest, never live vault
+values.  It emits the complete answer shape, local read/query DAG, and binding
+selectors in one response.  Code validates the whole program before any read,
+executes it deterministically, and binds only evidence produced by the named
+source nodes.  A single targeted repair is allowed before reads begin.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
+import json
+import pathlib
 
-from .planners import *
-from .planners import __all__ as _PLANNER_EXPORTS
+from .answer_program import AnswerProgramCompiler, AnswerResourcePolicy
 from .session import Session, Turn
-from .tools.runner import DEFAULT_MAX_CALLS, RunResult
+from .tools.runner import RunResult
 
 def speak_spec():
     """The pinned model the conversation speaks through, or None when no model
@@ -78,33 +45,120 @@ def speak_spec():
         api_key_env=None if (key_env or "").lower() in ("", "none") else key_env)
 
 
-def planner_factory(spec):
-    """Planner constructor for one spec: native tool-calling where the adapter
-    speaks it, the text protocol otherwise or when ``VIVA_SPEAK_PROTOCOL=text``
-    forces it — the per-model reversibility the modality contract promised."""
+def compiler_factory(spec, *, purpose="runtime", profile=None, report=None,
+                     locale=""):
+    """Build the one-shot compiler for an admitted runtime or measured run.
+
+    Admission and an explicitly marked local Witness are allowed to measure an
+    unpublished model. Ordinary runtime use must load the exact profile that
+    was admitted for this build.
+    """
     import os
 
     from vivacore.models import adapter_for
 
-    forced_text = os.environ.get("VIVA_SPEAK_PROTOCOL", "").strip() == "text"
-    # A truncated reply is a malformed step to correct, never a fragment to
-    # stitch, so continuation stays off for both modalities.
     adapter = adapter_for(replace(spec, max_continuations=0))
-    native = hasattr(adapter, "converse") and not forced_text
+    forced_text = os.environ.get("VIVA_SPEAK_PROTOCOL", "").strip() == "text"
+    modality = ("native-structured"
+                if hasattr(adapter, "converse") and not forced_text
+                else "text-json")
+    endpoint = str(getattr(spec, "base_url", "") or "provider-default")
+    configured = {
+        "provider": str(getattr(spec, "adapter", "") or ""),
+        "requested_model": str(getattr(spec, "model", "") or ""),
+        "endpoint": endpoint,
+        "modality": modality,
+    }
+    if purpose not in ("runtime", "admission", "witness"):
+        raise ValueError("unknown compiler purpose")
+    witness_marker = os.environ.get("VIVA_WITNESS", "").strip() == "1"
+    if purpose == "witness" and not witness_marker:
+        raise ValueError("Witness compilation needs VIVA_WITNESS=1")
+    if purpose == "runtime" and profile is None:
+        bundle_path = os.environ.get("VIVA_ADMISSION_PROFILE", "").strip()
+        if not bundle_path:
+            raise ValueError(
+                "runtime answering needs VIVA_ADMISSION_PROFILE; admission and "
+                "Witness runs must opt into their explicit purpose")
+        from .answer_program import (AdmissionProfile, AdmissionThresholds,
+                                     admission_report_digest)
+        payload = json.loads(pathlib.Path(bundle_path).read_text(encoding="utf-8"))
+        raw_profile = dict(payload.get("profile") or payload)
+        raw_report = payload.get("admission_report")
+        if (not isinstance(raw_report, dict)
+                or raw_profile.get("admission_report_digest")
+                != admission_report_digest(raw_report)):
+            raise ValueError("runtime admission bundle is not tied to its report")
+        report = raw_report
+        raw_profile["thresholds"] = AdmissionThresholds(
+            **dict(raw_profile["thresholds"]))
+        profile = AdmissionProfile(**raw_profile)
+    if purpose == "runtime":
+        from .answer_program import (admission_report_digest,
+                                     validate_admission_report)
+        if (report is None
+                or profile.admission_report_digest
+                != admission_report_digest(report)):
+            raise ValueError("runtime admission profile needs its measured report")
+        report_failures = validate_admission_report(report, profile)
+        if report_failures:
+            raise ValueError("runtime admission report failed: "
+                             + ", ".join(report_failures))
+        for field, value in configured.items():
+            if getattr(profile, field) != value:
+                raise ValueError(f"runtime model differs from admitted {field}")
+        if not locale:
+            from .env import locale_from_env
+            locale = locale_from_env()
+        locale_family = locale.replace("_", "-").split("-", 1)[0].casefold()
+        if profile.locale_family != locale_family:
+            raise ValueError("runtime locale differs from admitted locale_family")
 
-    def make(prior_turns):
-        if native:
-            return NativePlanner(adapter, prior_turns)
-        return TextPlanner(adapter, prior_turns)
+    def make(validator, manifest, policy):
+        if purpose == "runtime":
+            from .answer_program import check_profile, resource_policy_digest
+            checked = check_profile(profile, manifest, report, policy)
+            if not checked.passed:
+                raise ValueError("admission profile differs from this build: "
+                                 + ", ".join(checked.failures))
+            if profile.resource_policy_digest != resource_policy_digest(policy):
+                raise ValueError("runtime resource policy differs from admission")
+        return AnswerProgramCompiler(adapter, validator, manifest, policy,
+                                     modality=modality,
+                                     expected_resolved_model=(
+                                         profile.resolved_model
+                                         if purpose == "runtime"
+                                         else ""))
 
+    make.admission_identity = configured
     return make
 
 
-def max_calls_from_env() -> int:
+def resource_policy_from_env() -> AnswerResourcePolicy:
+    """Named local-execution limits; model attempts remain fixed at two."""
     import os
 
-    raw = os.environ.get("VIVA_SPEAK_MAX_CALLS", "").strip()
-    return int(raw) if raw.isdigit() and int(raw) > 0 else DEFAULT_MAX_CALLS
+    defaults = AnswerResourcePolicy()
+
+    def positive(name, default):
+        raw = os.environ.get(name, "").strip()
+        return int(raw) if raw.isdigit() and int(raw) > 0 else default
+
+    return AnswerResourcePolicy(
+        max_model_attempts=2,
+        max_required_nodes=positive("VIVA_ANSWER_MAX_REQUIRED_NODES",
+                                    defaults.max_required_nodes),
+        max_supporting_nodes=positive("VIVA_ANSWER_MAX_SUPPORTING_NODES",
+                                      defaults.max_supporting_nodes),
+        max_optional_nodes=positive("VIVA_ANSWER_MAX_OPTIONAL_NODES",
+                                    defaults.max_optional_nodes),
+        max_dependency_depth=positive("VIVA_ANSWER_MAX_DEPENDENCY_DEPTH",
+                                      defaults.max_dependency_depth),
+        max_evidence_bytes=positive("VIVA_ANSWER_MAX_EVIDENCE_BYTES",
+                                    defaults.max_evidence_bytes),
+        max_execution_ms=positive("VIVA_ANSWER_MAX_EXECUTION_MS",
+                                  defaults.max_execution_ms),
+        max_figures=positive("VIVA_ANSWER_MAX_FIGURES", defaults.max_figures))
 
 
 def _shown(result: RunResult) -> dict:
@@ -194,8 +248,8 @@ def main() -> None:
     locale = locale_from_env()
     vault = Vault.open(vault_dir, passphrase)
     registry = default_registry(vault.ledger.projection(), locale)
-    session = Session(registry, planner_factory(spec), ledger=vault.ledger,
-                      model=spec.model, max_calls=max_calls_from_env(),
+    session = Session(registry, compiler_factory(spec), ledger=vault.ledger,
+                      model=spec.model, resource_policy=resource_policy_from_env(),
                       locale=locale)
 
     questions = list(sys.argv[1:])

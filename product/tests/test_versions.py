@@ -85,9 +85,9 @@ def test_the_builtin_listen_corpus_is_declared_as_wheel_data():
 
 def test_a_stamp_carries_the_version_and_its_digest():
     """`stamp` returns the active id joined to the fingerprint of its file."""
-    stamp = versions.stamp(PACKAGE, "speak")
+    stamp = versions.stamp(PACKAGE, "answer_program")
     version, _, digest = stamp.partition("@")
-    assert version == versions.active(PACKAGE, "speak")
+    assert version == versions.active(PACKAGE, "answer_program")
     assert digest == versions.fingerprint(versions.path_of(PACKAGE, version))
     assert len(digest) == 16
 
@@ -95,7 +95,7 @@ def test_a_stamp_carries_the_version_and_its_digest():
 def test_an_undeclared_family_raises_and_says_what_is_declared():
     with pytest.raises(versions.ManifestError) as e:
         versions.active(PACKAGE, "no_such_family")
-    assert "speak" in str(e.value)
+    assert "answer_program" in str(e.value)
 
 
 def test_no_version_id_is_declared_as_a_literal_in_the_modules_that_use_one():

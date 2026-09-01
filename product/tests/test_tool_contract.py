@@ -40,7 +40,7 @@ def test_every_declared_array_says_what_it_holds(registry):
     conversation dies on a schema, not on anything the model did. An object
     with no properties is deliberate (an open map of caller-named keys); an
     array with no items never is."""
-    from viva.speak import _final_schema
+    from viva.answer_program.schema import program_json_schema
 
     offenders: list[str] = []
 
@@ -53,8 +53,9 @@ def test_every_declared_array_says_what_it_holds(registry):
             walk(tool, child, f"{path}.{name}" if path else name)
         walk(tool, node.get("items"), f"{path}[]")
 
-    for schema in registry.schemas() + [_final_schema()]:
+    for schema in registry.schemas():
         walk(schema["name"], schema["parameters"], "")
+    walk("compile_answer_program", program_json_schema(), "")
 
     assert not offenders, (
         f"{offenders} declare an array without items; a strict provider "

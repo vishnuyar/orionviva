@@ -98,7 +98,7 @@
 ### ING-49 — Completeness is data
 **State:** enforced-with-exception
 **Code:** product/viva/tools/ledger_audit.py (`check_completeness`), product/viva/tools/ledger_common.py (`_attested_coverage` and `_resolve_window_preset`)
-**Test:** product/tests/test_tool_contract.py::test_completeness_counts_the_held_document, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates, product/tests/test_tool_runner.py::test_a_window_reaching_past_what_is_attested_is_clipped_and_says_so, product/tests/test_tool_runner.py::test_a_window_outside_what_is_attested_covers_nothing_and_says_which
+**Test:** product/tests/test_tool_contract.py::test_completeness_counts_the_held_document, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates, product/tests/test_shape_rows.py::test_a_month_of_a_windowed_read_declares_only_the_days_it_covers, product/tests/test_shape_rows.py::test_a_month_row_of_a_one_ended_window_is_named_by_the_days_it_covers
 
 1. What is missing is one query rather than an inference: `check_completeness` reports every document held, posted and awaiting review, and the date each account's evidence is good as of.
 2. Every aggregate states its coverage honestly — the periods its statements attest, and a caveat naming each account in scope that falls short.

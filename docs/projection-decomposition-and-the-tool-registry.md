@@ -39,10 +39,10 @@
 ### PROJ-63 — the registry contract is modality-neutral
 **State:** enforced
 **Code:** product/viva/tools/registry.py:136 (`Registry`)
-**Test:** product/tests/test_speak.py::test_planner_factory_is_native_first_with_text_as_the_fallback
+**Test:** product/tests/test_answer_program_contracts.py::test_text_compiler_uses_the_same_contract_and_one_call_on_success
 
 1. The registry defines typed schemas, the result envelope and refusal semantics, and chooses no wire format.
-2. Native provider tool-calling is the primary path and a text protocol the degradation path; both drive the same runner and the same checks.
+2. Native structured output is the primary compiler modality and strict text JSON is the degradation modality; both produce the same versioned program.
 3. Every check that decides what may be said runs in code, outside the modality.
 
 ### PROJ-64 — one result envelope, refusal first-class
@@ -57,12 +57,12 @@
 
 ### PROJ-1 — the shape is committed before anything is read
 **State:** enforced
-**Code:** product/viva/tools/runner.py:489, product/viva/tools/shape.py:353 (`Shape`), product/viva/tools/runner.py:346 (`SHAPE_TOOL`)
-**Test:** product/tests/test_shape_grammar.py::test_the_shape_is_committed_before_anything_is_read
+**Code:** product/viva/answer_program/compiler.py, product/viva/answer_program/validate.py, product/viva/answer_program/execute.py
+**Test:** product/tests/test_answer_program_contracts.py::test_static_defects_execute_nothing
 
-1. An answer's clauses — literal words with typed holes — are committed before any tool is on the table.
-2. A read attempted before a shape refuses the turn; a delivery with no shape refuses the turn; a shape offered after a read is refused.
-3. A later shape may only take claims away, never add one.
+1. An answer's clauses, complete read graph and binding selectors arrive in one program before any tool executes.
+2. The compiler receives no current-turn financial results, and its only repair also precedes every read.
+3. Static defects reject the whole program; execution cannot partially admit a malformed batch.
 
 ### PROJ-2 — a model writes no digits, and every clause carries a hole
 **State:** enforced
@@ -78,7 +78,7 @@
 ### PROJ-3 — a hole declares what its number is of and what set it is over
 **State:** enforced
 **Code:** product/viva/tools/shape.py:179
-**Test:** product/tests/test_shape_binding.py::test_a_hole_holding_a_magnitude_must_say_what_set_it_is_over, product/tests/test_speak.py::test_the_shape_prompt_calls_a_named_month_a_period_not_the_whole
+**Test:** product/tests/test_shape_binding.py::test_a_hole_holding_a_magnitude_must_say_what_set_it_is_over, product/tests/test_shape_binding.py::test_the_shape_prompt_teaches_every_set_a_hole_can_declare
 
 1. A hole holding a magnitude declares the quantity it asks for, from the closed vocabulary the tools declare into.
 2. A hole holding a measurement also declares the set it is a number over: the axes its sentence narrows on, or the whole of what the quantity ranges over.
@@ -87,14 +87,14 @@
 
 ### PROJ-4 — a refusal is a reviewed sentence chosen by machine tag
 **State:** enforced
-**Code:** product/viva/tools/runner.py:350
-**Test:** product/tests/test_speak.py::test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag, product/tests/test_tool_vocabulary.py::test_an_identical_refused_call_stops_on_the_first_repeat
+**Code:** product/viva/answer_program/runtime.py, product/viva/answer_program/outcomes.py, product/viva/tools/runner.py (`_refused`)
+**Test:** product/tests/test_persona_pack.py::test_every_way_a_turn_can_refuse_has_a_reviewed_sentence, product/tests/test_tool_vocabulary.py::test_an_identical_refused_call_stops_on_the_first_repeat
 
 1. A refused turn speaks a reviewed persona-pack sentence selected by tag; nothing is composed, nothing is bound, and no model call is spent.
 2. Every tag the runner can refuse with has exactly one reviewed sentence, and the bijection is enforced at build time.
-3. A turn that reached delivery with nothing, or spent its whole budget of calls, may also speak the cause of the read that stopped it, from the closed set of speakable refusals held beside the envelope.
+3. Structured non-answer outcomes distinguish validation failure, missing data, missing capability, clarification, assumptions and outside-domain requests.
 4. A tag the machine does not know is not spoken as one.
-5. Repeating a byte-equivalent deterministically refused call ends the turn on its first repeat, preserves the read's diagnosis, and spends no further planner calls on the same request.
+5. The compiler has at most two model attempts; deterministic execution never asks the model what to do next.
 
 ### PROJ-5 — a property of a figure the machine holds is placed by the machine
 **State:** enforced
@@ -175,7 +175,7 @@
 **Test:** product/tests/test_tool_limits.py::test_no_uncapped_read_exceeds_what_a_result_may_cost
 
 1. Every uncapped read is bounded by a named constant, and none of those bounds grows with the size of the ledger.
-2. A figure's records do not travel to the model; an answer cites the figure by id and the runner resolves the rest, so only their count is sent.
+2. Current-turn figures and records do not travel to the compiler at all; deterministic selectors bind them after execution.
 3. A capped read states how many of how many it showed, to a person and not only to its caller.
 
 ### PROJ-65 — a block of rows is one read's figures, each beside the slice it covers
@@ -257,9 +257,9 @@ Validating against the vault's own vocabulary is what keeps I5 intact: the
 schema's legal values are data read from the vault, never a list in code.
 
 **Why the modality is an adapter concern.** The registry contract is
-modality-neutral, so the wire format is reversible per model rather than a
-global bet. If a local model emits unusable native tool calls, the text protocol
-becomes primary and nothing upstream changes.
+modality-neutral, so an admitted profile may compile with native structured
+output or strict text JSON. Both emit the same versioned program and nothing
+upstream changes.
 
 **Why a shape rather than a gate over language.** The first design licensed
 tokens: every figure declared, every date declared, names blanked before numbers
@@ -388,13 +388,12 @@ longer say is [the-suggestions-channel.md](the-suggestions-channel.md).
 - `figure()` still accepts a money-kind figure with no grade. No emitter produces
   one; now that the answer's sentence claims something of every figure in it, the
   fix belongs at the emitter rather than at the speaking end.
-- Two things are dead weight rather than mechanism: `check_completeness`'s
-  per-account date figures, which can fill no hole, and the run-wide pool of days
-  the runner records at two sites and reads nowhere.
+- `check_completeness`'s per-account date figures remain a candidate for removal
+  if no AnswerProgram selector reaches them in recorded evaluation.
 - The standing real-vault run. The ten acceptance questions now have a
   deterministic provider-double test that checks their read plans, including a
   follow-up period carried through conversation history. That proves the
   registry routes and reads; it does not prove that a live model authors a
-  usable shape and tool plan first time, or that the resulting answer is true of
+  usable complete program first time, or that the resulting answer is true of
   the real vault. Whether this design works remains a per-model, real-data
   question for the Witness.

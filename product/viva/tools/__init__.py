@@ -7,8 +7,8 @@ answers in totals), ``list_movements`` (the individual rows, for a narrow ask),
 all.
 
 ``default_registry(proj)`` builds the registry over one live projection;
-``runner.run`` drives any planner over it, native or text, and gates every
-answer on citation.
+The answer-program runtime executes admitted calls and gates every delivered
+answer on current-turn evidence.
 """
 
 from __future__ import annotations
@@ -17,10 +17,11 @@ from . import ledger_tools
 from .compute import COMPUTE_PARAMS, compute
 from .envelope import ToolResult, refusal, weakest
 from .registry import Registry, ToolSpec
-from .runner import RunResult, run
+from .runner import RunResult
+from ..quantity import MEASURES
 
 __all__ = ["Registry", "ToolSpec", "ToolResult", "RunResult",
-           "default_registry", "refusal", "run", "weakest"]
+           "default_registry", "refusal", "weakest"]
 
 _NO_PARAMS = {"type": "object", "properties": {}}
 
@@ -39,24 +40,59 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     registry = Registry()
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
-        fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today)))
+        fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today),
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+               "figure_types": ["money", "count", "rate"],
+               "quantities": list(MEASURES),
+               "entity_kinds": ["account", "merchant", "category", "document"]},
+        bounds={"max_figures": 80, "max_payload_bytes": 5000,
+                "max_execution_ms": 1000}))
     registry.register(ToolSpec(
         name="list_movements", params=ledger_tools.LIST_MOVEMENTS_PARAMS,
-        fn=lambda args: ledger_tools.list_movements(proj, args, today)))
+        fn=lambda args: ledger_tools.list_movements(proj, args, today),
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+               "figure_types": ["money", "count"],
+               "quantities": ["movement", "count"],
+               "entity_kinds": ["account", "merchant", "category"]},
+        bounds={"max_figures": 80, "max_payload_bytes": 5000,
+                "max_execution_ms": 1000}))
     registry.register(ToolSpec(
         name="check_completeness", params=_NO_PARAMS,
-        fn=lambda args: ledger_tools.check_completeness(proj, args)))
+        fn=lambda args: ledger_tools.check_completeness(proj, args),
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+               "figure_types": ["count"], "quantities": ["count"],
+               "entity_kinds": ["account", "document"]},
+        bounds={"max_figures": 80, "max_payload_bytes": 5000,
+                "max_execution_ms": 1000}))
     registry.register(ToolSpec(
         name="get_provenance", params=ledger_tools.PROVENANCE_PARAMS,
-        fn=lambda args: ledger_tools.get_provenance(proj, args)))
+        fn=lambda args: ledger_tools.get_provenance(proj, args),
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+               "figure_types": ["count"], "quantities": ["count"],
+               "entity_kinds": ["account", "document"]},
+        bounds={"max_figures": 80, "max_payload_bytes": 5000,
+                "max_execution_ms": 1000}))
     registry.register(ToolSpec(
         name="get_transparency", params=ledger_tools.TRANSPARENCY_PARAMS,
-        fn=lambda args: ledger_tools.get_transparency(proj, args)))
+        fn=lambda args: ledger_tools.get_transparency(proj, args),
+        emits={"reference_kinds": ["figure", "entity", "read", "read_figures", "date", "period"],
+               "figure_types": ["count", "money"],
+               "quantities": ["count", "gross_flow"],
+               "entity_kinds": ["account", "document"]},
+        bounds={"max_figures": 80, "max_payload_bytes": 5000,
+                "max_execution_ms": 1000}))
     registry.register(ToolSpec(
         name="compute", params=COMPUTE_PARAMS,
         fn=compute,
         # Arithmetic reasons over the run rather than the vault: its operands
         # are figures this turn emitted and values the person supposed, so it
         # is handed both.
-        needs_figures=True))
+        needs_figures=True,
+        emits={"reference_kinds": ["figure", "read", "read_figures"],
+               "figure_types": ["money", "count", "rate"],
+               "quantities": list(MEASURES), "entity_kinds": []},
+        bounds={"max_figures": 1, "max_payload_bytes": 5000,
+                "max_execution_ms": 250}))
+    from ..query import FinancialQueryExecutor, default_sources
+    registry.query_executor = FinancialQueryExecutor(default_sources(proj, today))
     return registry

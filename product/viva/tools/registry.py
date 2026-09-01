@@ -63,10 +63,21 @@ class ToolSpec:
     # Whether the tool reads only local state. Every registered tool must; the
     # flag exists so the guard is a checked property rather than a comment.
     local_only: bool = True
+    # Answer programs admit only reads.  The registry carries the declaration
+    # even though every current registration is a read, so a future command
+    # cannot become callable merely by appearing beside them.
+    read_only: bool = True
     # Whether this tool reasons over what the run has already established
     # rather than over the vault. Such a tool is handed the run's figure book
     # and the turn's question instead of reading the projection.
     needs_figures: bool = False
+    # Machine-readable output vocabulary used to generate the answer-program
+    # capability manifest.  Descriptions remain model-facing prompt files;
+    # these declarations are the validator's account of what can be bound.
+    emits: dict = field(default_factory=dict)
+    # Per-call result limits.  Program-level limits live in the answer resource
+    # policy; these name the tighter bounds owned by an individual capability.
+    bounds: dict = field(default_factory=dict)
 
 
 _TYPES = {"string": str, "boolean": bool, "integer": int, "object": dict,
@@ -141,11 +152,15 @@ class Registry:
         self._specs: dict[str, ToolSpec] = {}
         self._descriptions, self.descriptions_version = descriptions(
             descriptions_version)
+        self.query_executor = None
 
     def register(self, spec: ToolSpec) -> None:
         if not spec.local_only:
             raise ValueError(f"tool {spec.name!r} is not local-only; "
                              "no registered tool may touch the network")
+        if not spec.read_only:
+            raise ValueError(f"tool {spec.name!r} is not read-only; "
+                             "no registered answer capability may write")
         if spec.name not in self._descriptions:
             raise ValueError(
                 f"tool {spec.name!r} has no description in "
@@ -156,6 +171,25 @@ class Registry:
 
     def names(self) -> list[str]:
         return sorted(self._specs)
+
+    def specs(self) -> list[ToolSpec]:
+        """Executable registrations in stable order.
+
+        A copy of the collection is returned, never the registry's mapping, so
+        manifest generation can inspect declarations without gaining a way to
+        alter dispatch.
+        """
+        return [self._specs[name] for name in sorted(self._specs)]
+
+    def validate(self, name: str, args: dict | None = None) -> list[str]:
+        """Static call defects without executing the registered function."""
+        spec = self._specs.get(name)
+        if spec is None:
+            return [f"unknown tool {name!r}"]
+        args = args or {}
+        if not isinstance(args, dict):
+            return ["arguments must be an object of named fields"]
+        return _validate(spec.params, _without_empties(spec.params, args))
 
     def schemas(self) -> list[dict]:
         """Every tool as data — name, description (from the versioned file),

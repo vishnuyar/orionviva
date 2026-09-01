@@ -422,9 +422,9 @@ def _states_every_screen_can_be_in(vault) -> None:
     # The prompt version is read rather than written: a turn recorded under a
     # version this build does not ship would be a recording of something that
     # never ran.
-    from .speak import SPEAK_VERSION
+    from .answer_program.compiler import COMPILER_VERSION
 
     vault.ledger.append(read_recorded(
-        "speak:sample-session:1:1", READER_MODEL, SPEAK_VERSION, "text",
+        "speak:sample-session:1:1", READER_MODEL, COMPILER_VERSION, "text",
         json.dumps(spoken, sort_keys=True), 0.0, 0, 0, True, None,
         "2026-07-09", Provenance(), phase="speak"))

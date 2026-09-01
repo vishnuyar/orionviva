@@ -77,6 +77,8 @@ function AnswerDetail({ answer, onOpenFigure, onReviewPlan }: { answer: TurnView
       <dt>{figure.evidenceId && figure.evidenceLinks.length ? <Figure figure={conversationEvidenceFigure(figure)} onOpenEvidence={onOpenFigure} className="conversation-figure-trigger" /> : figure.written || figure.what}</dt>
       <dd>{figure.what}{figure.recordIds.length ? ` · ${figure.recordIds.length === 1 ? "1 cited record" : `${figure.recordIds.length} cited records`}` : ""}</dd>
     </div>)}</dl> : null}
+    {answer.options.length ? <ul className="conversation-answer-options">{answer.options.map((option) => <li key={option.id}>{option.label}</li>)}</ul> : null}
+    {answer.missing.length ? <ul className="conversation-answer-missing">{answer.missing.map((item, index) => <li key={`${item.tag}:${item.label}:${index}`}>{item.question || item.label || item.tag}</li>)}</ul> : null}
     {answer.spoken.withheld ? <p className="conversation-answer-withheld">{answer.spoken.withheld}</p> : null}
     {answer.spoken.citationSentence ? <p className="conversation-answer-citation">{answer.spoken.citationSentence}</p> : null}
     {answer.goalDraft?.reviewInPlans && onReviewPlan ? <button className="secondary-button" type="button" onClick={() => onReviewPlan(answer.goalDraft!)}>Review in Plans</button> : null}

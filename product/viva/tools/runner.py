@@ -1,16 +1,12 @@
-"""The modality-neutral tool loop, and the mechanism that makes an answer a
-structure the machine built rather than a sentence a model wrote.
+"""The evidence ledger and delivery gate for machine-built answer structures.
 
-The runner takes a *planner* — any callable that, shown the question, the tool
-schemas and the results so far, returns the next step. A provider adapter doing
-native tool-calling is a planner; so is a text-protocol adapter parsing a
-model's JSON block; so is a scripted function in a test. The runner neither
-knows nor cares which — the contract is data in, data out, and the mechanism
-runs identically for all of them.
+The one-shot AnswerProgram runtime owns planning and execution.  This module is
+the data-blind delivery boundary it reuses: current-turn evidence gains stable
+identities here, and an answer shape can bind only to those identities.
 
-A turn has three stages, and the order is enforced rather than requested:
+A turn reaches this boundary only after three enforced stages:
 
-1. **The shape.** Before any tool is on the table, the planner commits a shape:
+1. **The shape.** Before any read, the compiler commits a shape:
    clauses of literal words with typed holes in them and no digits anywhere.
    Nothing has been read, so no claim can be tailored to a figure that turned
    up, and what the shape declares is what the turn then goes looking for.
@@ -18,8 +14,9 @@ A turn has three stages, and the order is enforced rather than requested:
    identity in this run's own ledger — figures, the accounts and counterparties
    it spoke about, the days its results carry, the spans its documents attest,
    and the caveats it wrote about its own numbers.
-3. **The bindings.** The planner says which thing in that ledger fills which
-   hole. Every binding is a reference; not one of them is text.
+3. **The bindings.** The pre-data program declares selectors, and deterministic
+   code resolves them against that ledger. Every binding is a reference; not
+   one of them is text.
 
 What is then checked is the structure, never the sentence. Every hole has one
 binding and every binding names a hole; the thing referred to exists in this
@@ -126,11 +123,8 @@ turn begins, and no value a read was called with is ever in them.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
-
-from vivacore import promptstore, versions
 
 from .. import quantity, render
 from ..persona import STOOD_BEHIND_MOMENT, moment
@@ -141,22 +135,9 @@ from .compute import numbers_said
 from .envelope import (BY_ACCOUNT, BY_PERIOD, ENTITY_ACCOUNT, ENTITY_MARKS,
                        EXACT, HYPOTHETICAL, MONEY_KINDS, SPEAKABLE_REFUSALS,
                        ToolResult, _named, weakest)
-from .registry import PACKAGE, PROMPTS, Registry
-from .shape import WHOLE, Shape
-
-# One tool call per planner step. Past this the run refuses rather than
-# looping.
-DEFAULT_MAX_CALLS = 8
-
-# What the planner is told the moment its shape is taken. It is text a model
-# reads, so it is a file with a version like every other thing a model reads.
-COMMITTED_VERSION = versions.active(PACKAGE, "shape_committed")
+from .shape import WHOLE
 
 _ISO_DATE_LENGTH = 10
-
-
-def _shape_taken() -> str:
-    return promptstore.load(PROMPTS, COMMITTED_VERSION)
 
 
 def _is_iso_date(value) -> bool:
@@ -206,6 +187,18 @@ class RunResult:
     written: dict = field(default_factory=dict)
     # The clauses that could not be filled, by hole name and declared type.
     gaps: list = field(default_factory=list)
+    # Verbatim limitations actually placed for stated figures. Keeping this
+    # structural observable lets admission prove that caveats were delivered
+    # without trying to infer them from prose or from a grade word.
+    caveats: list = field(default_factory=list)
+    disclosures: list = field(default_factory=list)
+    # The answer-program path distinguishes why a turn did not answer.  The
+    # legacy runner leaves this empty; surfaces may then retain their existing
+    # answered/refused interpretation during the replacement.
+    status: str = ""
+    outcome_tag: str = ""
+    options: list = field(default_factory=list)
+    missing: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {"answered": self.answered, "text": self.text,
@@ -214,7 +207,11 @@ class RunResult:
                 "detail": self.detail,
                 "transcript": list(self.transcript), "calls": self.calls,
                 "shape": dict(self.shape), "bindings": dict(self.bindings),
-                "written": dict(self.written), "gaps": list(self.gaps)}
+                "written": dict(self.written), "gaps": list(self.gaps),
+                "caveats": list(self.caveats),
+                "disclosures": list(self.disclosures),
+                "status": self.status, "outcome_tag": self.outcome_tag,
+                "options": list(self.options), "missing": list(self.missing)}
 
 
 def _same_thing(known: dict, item: dict) -> bool:
@@ -329,19 +326,11 @@ class _Ground:
 # is declared here because a refusal is spoken from a reviewed sentence chosen
 # by its tag: a tag with no sentence is a build failure rather than a silence
 # discovered by the person it happens to.
-REFUSAL_TAGS = (
-    # the planner never became a usable turn
-    "model_unreachable", "unparseable", "bad_plan",
-    # the order was broken
-    "unshaped_answer", "unshaped_read", "call_budget_exhausted",
-    # the delivery was not a delivery
+DELIVERY_REFUSAL_TAGS = (
     "bad_delivery", "unshaped_binding", "bad_binding",
-    # a hole was filled from outside this run's ledger
     "unknown_figure", "unknown_entity", "unknown_period", "unknown_reading",
     "unfounded_date", "unfounded_stipulation", "wrong_kind",
-    # a real figure was offered for a hole asking about something else
     "wrong_quantity", "wrong_scope", "wrong_subject",
-    # the answer as a whole could not be stood behind
     "nothing_established", "uncited_figure",
 )
 
@@ -350,12 +339,6 @@ REFUSAL_TAGS = (
 # sentences can be reached by the other's tag.
 REFUSAL_MOMENT = "refusal_"
 DIAGNOSIS_MOMENT = "diagnosis_"
-
-# The pseudo-tools a turn proceeds by. Neither is registered; neither executes
-# anything. One opens the turn and one ends it.
-SHAPE_TOOL = "commit_shape"
-FINAL_TOOL = "deliver_answer"
-
 
 def _refused(reason: str, detail: str, transcript: list, calls: int,
              shape=None, diagnosis: str = "") -> RunResult:
@@ -383,8 +366,8 @@ def _diagnosed(transcript: list, tools) -> str:
     """The tag of the read that accounts for this turn having nothing, or "".
 
     The candidate is the last entry in the transcript a registered tool
-    produced: the runner's own notes to the planner are not tool results and
-    are passed over, and a turn whose last read succeeded has no read refusal
+    produced: non-read execution records are passed over, and a turn whose last
+    read succeeded has no read refusal
     that is still the reason. It is spoken only where that candidate is itself a
     refusal and its tag is one whose cause may be spoken. Nothing here reads a
     result's words, its payload or what constructed it."""
@@ -394,160 +377,6 @@ def _diagnosed(transcript: list, tools) -> str:
         if result.ok or result.refusal not in SPEAKABLE_REFUSALS:
             return ""
         return result.refusal
-    return ""
-
-
-def _noted(tool: str, ok: bool, text: str) -> ToolResult:
-    """What the planner is told about a step the runner handled itself."""
-    return ToolResult(tool=tool, ok=ok, text=text,
-                      refusal="" if ok else "bad_shape")
-
-
-def run(question: str, planner, registry: Registry,
-        max_calls: int = DEFAULT_MAX_CALLS, locale: str = "") -> RunResult:
-    """Drive the planner until it delivers or runs out of budget. Deterministic
-    given a deterministic planner.
-
-    The reads are not on the table until a shape is committed, so the ordering
-    that makes the whole mechanism safe is a property of what the planner is
-    offered rather than an instruction it is asked to follow."""
-    ground = _Ground(question=question)
-    transcript: list[ToolResult] = []
-    refused_calls: set[str] = set()
-    shape: Shape | None = None
-    result = None
-    while result is None:
-        final_call = len(transcript) >= max_calls
-        step = planner({"question": question,
-                        # A read is offered only once the shape is committed.
-                        "tools": registry.schemas() if shape is not None else [],
-                        "descriptions_version": registry.descriptions_version,
-                        "results": [t.to_dict() for t in transcript],
-                        "calls_remaining": max(0, max_calls - len(transcript)),
-                        "shaped": shape is not None,
-                        "shape": shape.to_dict() if shape is not None else {},
-                        "final_call": final_call})
-        if not isinstance(step, dict):
-            result = _refused("bad_plan", "The planner returned something other "
-                              "than a step.",
-                              [t.to_dict() for t in transcript], len(transcript),
-                              shape)
-        elif "refusal" in step:
-            # A planner may refuse the whole run with its own machine tag — a
-            # model that never produced a usable step, or one that could not be
-            # reached at all. A tag outside the closed vocabulary is not a tag:
-            # there are no reviewed words for it, so the turn ends as a planner
-            # that could not be followed and the planner's own account of it
-            # stays in the record.
-            tag = str(step["refusal"])
-            result = _refused(tag if tag in REFUSAL_TAGS else "bad_plan",
-                              str(step.get("text", "")),
-                              [t.to_dict() for t in transcript], len(transcript),
-                              shape)
-        elif "shape" in step:
-            proposed = step["shape"]
-            if not isinstance(proposed, Shape):
-                result = _refused("bad_plan", "A committed shape must be a "
-                                  "shape.", [t.to_dict() for t in transcript],
-                                  len(transcript), shape)
-                continue
-            if final_call:
-                # The planner was shown only the terminator and re-shaped
-                # instead. A shape costs a call exactly as a read does, and an
-                # identical re-shape does not weaken, so it is accepted and the
-                # turn comes back here — nothing in this branch ever ends it.
-                # Without this the run spends without bound, and each pass costs
-                # more than the last as the planner's messages accumulate.
-                result = _refused(
-                    "call_budget_exhausted",
-                    f"No answer after {max_calls} tool calls; refusing rather "
-                    "than answering without grounds.",
-                    [t.to_dict() for t in transcript], len(transcript), shape,
-                    diagnosis=_diagnosed(transcript, registry.names()))
-                continue
-            problem = _committable(shape, proposed, ground)
-            transcript.append(_noted(SHAPE_TOOL, not problem,
-                                     problem or _shape_taken()))
-            if not problem:
-                shape = proposed
-        elif "bindings" in step:
-            if shape is None:
-                result = _refused(
-                    "unshaped_answer",
-                    "The turn delivered with no shape committed; a sentence is "
-                    "authored before its data, never after it.",
-                    [t.to_dict() for t in transcript], len(transcript))
-                continue
-            result = _gate(step, transcript, ground, shape, locale,
-                           tools=registry.names())
-        elif "tool" in step:
-            if shape is None:
-                result = _refused(
-                    "unshaped_read",
-                    f"The planner called {step['tool']!r} before committing a "
-                    "shape; nothing is read until the answer's shape is fixed.",
-                    [t.to_dict() for t in transcript], len(transcript))
-                continue
-            if final_call:
-                # The planner was shown only the terminator and asked for a
-                # read anyway; there is nothing left to spend on it.
-                result = _refused(
-                    "call_budget_exhausted",
-                    f"No answer after {max_calls} tool calls; refusing rather "
-                    "than answering without grounds.",
-                    [t.to_dict() for t in transcript], len(transcript), shape,
-                    diagnosis=_diagnosed(transcript, registry.names()))
-                continue
-            called = registry.call(step["tool"], step.get("args"),
-                                   figures=ground.book, question=question)
-            transcript.append(called)
-            if called.ok:
-                ground.stamp(called)
-            else:
-                # Stop on the first byte-equivalent repeat of a deterministically
-                # refused call. The result retains the ordinary refusal word,
-                # names the repeated-call failure, and carries the last read's
-                # diagnosis.
-                fingerprint = json.dumps(
-                    {"tool": step["tool"], "args": step.get("args") or {}},
-                    sort_keys=True, separators=(",", ":"), default=str)
-                if fingerprint in refused_calls:
-                    result = _refused(
-                        "call_budget_exhausted",
-                        "Planner repeated an identical deterministically "
-                        f"refused call to {step['tool']!r}; recovery stopped "
-                        "before further calls or transcript growth.",
-                        [t.to_dict() for t in transcript], len(transcript),
-                        shape, diagnosis=_diagnosed(transcript,
-                                                     registry.names()))
-                refused_calls.add(fingerprint)
-        else:
-            result = _refused("bad_plan", "The planner's step names neither a "
-                              "shape, a tool nor a delivery.",
-                              [t.to_dict() for t in transcript], len(transcript),
-                              shape)
-    return result
-
-
-def _committable(current, proposed: Shape, ground: _Ground) -> str:
-    """Whether this shape may be committed now, and why not when it may not.
-
-    The first shape is committed only while the run holds nothing: that is what
-    makes "authored before the data" a property of the machine rather than an
-    instruction. A later one may only take claims away from the one in force —
-    a re-shape drops a clause results contradicted, and never writes a new one
-    around a figure it has now seen."""
-    if current is None:
-        if ground.book or ground.entities or ground.periods:
-            return ("A shape is committed before anything is read, and this "
-                    "run has already read. There is nothing to do with a "
-                    "sentence authored around figures already in hand.")
-        return ""
-    from .shape import weakens
-    if not weakens(current, proposed):
-        return ("A second shape may only drop clauses from the one already "
-                "committed, never add or reword one. A claim written after "
-                "its data is the thing the order exists to prevent.")
     return ""
 
 

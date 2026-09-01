@@ -20,7 +20,8 @@ from viva.ledger.events import (CONFLICTED, CORROBORATED, UNVERIFIED, VERIFIED,
                                 statement_held)
 from viva.ledger.projection import movement_key
 from viva.persona import STOOD_BEHIND_MOMENT, moment
-from viva.tools import default_registry, ledger_tools, run, weakest
+from viva.tools import default_registry, ledger_tools, weakest
+from _legacy_answer_harness import run
 from viva.tools.envelope import ToolResult, bounded, figure
 from viva.tools.registry import (PACKAGE as _PACKAGE, PROMPTS, Registry,
                                  ToolSpec, descriptions)

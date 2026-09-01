@@ -63,6 +63,21 @@ The nine trust invariants. Every other rule in this file answers to them.
 | **T8** | Models are pinned, provider-swappable, and never trusted | enforced *(exception)* | [design-invariants.md](design-invariants.md) | `test_active_versions_are_frozen` |
 | **T9** | The personal/impersonal boundary is drawn at package edges | enforced *(exception)* | [design-invariants.md](design-invariants.md) | `test_a_brand_a_grammar_named_crosses_only_where_a_published_format_agrees` |
 
+## Answer programs
+
+The current read-answer architecture and its release gates.
+
+| Rule | Name | State | Doc | Test |
+| --- | --- | --- | --- | --- |
+| **AP-1** | The complete answer contract precedes current-turn data | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_compiler_gets_one_targeted_repair_before_any_read` |
+| **AP-2** | Compilation uses one attempt and at most one pre-read repair | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_compiler_gets_one_targeted_repair_before_any_read` |
+| **AP-3** | The executable wire contract is frozen and digested | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_packaged_program_schema_is_the_complete_executable_contract` |
+| **AP-4** | Financial queries preserve trusted quantity, currency, boundary, and provenance | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_joined_money_arithmetic_refuses_cross_currency_rows` |
+| **AP-5** | Admitted work is finite and bounded before and during execution | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_execution_deadline_bounds_a_running_local_read` |
+| **AP-6** | Required clauses and partial-answer policy are executable gates | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_result_policy_is_enforced_after_clause_binding` |
+| **AP-7** | Admission measures and enforces one exact runtime profile | enforced *(exception)* | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_release_gate_proves_one_path_and_publishes_exact_profile` |
+| **AP-8** | Production has one AnswerProgram path | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_release_gate_proves_one_path_and_publishes_exact_profile` |
+
 ## Internationalization
 
 No figure, schema or surface may assume one country.
@@ -304,7 +319,7 @@ How a read is bounded, what a figure declares, and how a sentence is built from 
 | **PROJ-60** | a small core with view modules behind a facade | by-review | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | — |
 | **PROJ-61** | the registry holds only verbs the code can honestly serve | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_the_registered_tool_count_is_whatever_the_registry_holds` |
 | **PROJ-62** | a structured filter object, validated against the vault's own vocabulary | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_unknown_category_refusal_names_the_vocabulary` +4 |
-| **PROJ-63** | the registry contract is modality-neutral | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_planner_factory_is_native_first_with_text_as_the_fallback` |
+| **PROJ-63** | the registry contract is modality-neutral | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_text_compiler_uses_the_same_contract_and_one_call_on_success` |
 | **PROJ-64** | one result envelope, refusal first-class | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_unknown_tool_is_a_refusal_not_an_exception` |
 | **PROJ-65** | a block of rows is one read's figures, each beside the slice it covers | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_a_shape_that_names_no_row_count_answers_whatever_the_count_turns_out_to_be` +2 |
 | **PROJ-66** | a hole nothing can fill costs its clause and not the turn | enforced | [projection-decomposition-and-the-tool-registry.md](projection-decomposition-and-the-tool-registry.md) | `test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn` +3 |

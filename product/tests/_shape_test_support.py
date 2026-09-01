@@ -22,7 +22,8 @@ from viva.ledger import (LedgerProjection, Provenance, account_opened,
 from viva.ledger.events import document_captured
 from viva.persona import (INTENT_FIELDS, ROWS_STOOD_BEHIND_MOMENT,
                           STOOD_BEHIND_MOMENT, moment)
-from viva.tools import default_registry, run
+from viva.tools import default_registry
+from _legacy_answer_harness import run
 from viva.tools import shape as shape_module
 from viva.tools.shape import (CHOOSE_THE_QUANTITY, DROP_THE_QUANTITY,
                               FEWER_CLAUSES, HOLE_THE_CLAUSE, HOLE_THE_NUMBER,

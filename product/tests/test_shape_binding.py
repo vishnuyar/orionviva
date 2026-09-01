@@ -595,17 +595,13 @@ def test_the_form_says_a_magnitude_hole_must_declare_the_set_it_is_over():
 
 
 def test_the_shape_prompt_teaches_every_set_a_hole_can_declare():
-    """A set the code takes and the instructions never mention is one no model
-    will declare; one the instructions offer and the code refuses is a shape
-    that will always be sent back."""
-    from vivacore import promptstore
+    """The one-shot schema offers every set the shape reader accepts."""
+    from viva.answer_program.schema import program_json_schema
 
-    from viva.speak import SHAPE_VERSION
-    from viva.tools.registry import PROMPTS
-
-    taught = promptstore.load(PROMPTS, SHAPE_VERSION)
+    offered = program_json_schema()["properties"]["shape"]["oneOf"][0]
+    taught = str(offered)
     for over in shape_module.SCOPES:
-        assert f"`{over}`" in taught, over
+        assert f"'{over}'" in taught, over
 
 
 def test_a_total_of_everything_cannot_be_spoken_as_one_counterpartys(registry):
@@ -751,9 +747,10 @@ def _hole(kind, measures="", over=""):
 
 def _offered_holes():
     """Each alternative the form offers for one hole, by the kind it is for."""
-    from viva.speak import SHAPE_PARAMS
+    from viva.answer_program.schema import program_json_schema
 
-    holes = (SHAPE_PARAMS["properties"]["clauses"]["items"]
+    shape = program_json_schema()["properties"]["shape"]["oneOf"][0]
+    holes = (shape["properties"]["clauses"]["items"]
              ["properties"]["slots"]["items"])
     offered = {}
     for alternative in holes["oneOf"]:
@@ -828,9 +825,10 @@ def test_the_form_admits_no_clause_without_a_hole():
     """The form a model is shown asks each clause for at least one hole, and
     the reader refuses one that arrives without any. The form is not the guard:
     nothing at a provider holds a model to it, so both are here."""
-    from viva.speak import SHAPE_PARAMS
+    from viva.answer_program.schema import program_json_schema
 
-    clause = SHAPE_PARAMS["properties"]["clauses"]["items"]
+    shape = program_json_schema()["properties"]["shape"]["oneOf"][0]
+    clause = shape["properties"]["clauses"]["items"]
     assert clause["properties"]["slots"]["minItems"] == 1
     assert "slots" in clause["required"]
     assert read_shape({"clauses": [{"text": "All settled.",
@@ -844,9 +842,10 @@ def test_the_form_asks_for_the_kinds_of_value_the_reader_insists_on():
 
     Each pair below is the form's claim and the reader's answer to a value that
     contradicts it, so neither side can drift alone."""
-    from viva.speak import SHAPE_PARAMS
+    from viva.answer_program.schema import program_json_schema
 
-    clause = SHAPE_PARAMS["properties"]["clauses"]["items"]
+    shape = program_json_schema()["properties"]["shape"]["oneOf"][0]
+    clause = shape["properties"]["clauses"]["items"]
     assert clause["properties"]["text"]["type"] == "string"
     assert "text" in clause["required"]
     assert read_shape({"clauses": [{"text": 7, "slots": []}]})[0] is None
@@ -956,17 +955,12 @@ def test_a_stretch_of_time_the_person_named_is_not_written_as_an_amount(registry
 
 
 def test_the_shape_prompt_teaches_every_quantity_a_hole_can_ask_for():
-    """A quantity the code knows and the instructions do not is a hole that
-    will never be asked for; one the instructions know and the code does not is
-    a shape that will always be refused."""
-    from vivacore import promptstore
+    """The one-shot schema offers every quantity the shape reader accepts."""
+    from viva.answer_program.schema import program_json_schema
 
-    from viva.speak import SHAPE_VERSION
-    from viva.tools.registry import PROMPTS
-
-    taught = promptstore.load(PROMPTS, SHAPE_VERSION)
+    taught = str(program_json_schema()["properties"]["shape"])
     for kind in quantity.KINDS:
-        assert f"`{kind}`" in taught, f"the shape grammar never mentions {kind}"
+        assert f"'{kind}'" in taught, f"the shape grammar never mentions {kind}"
     assert quantity.UNMEASURED not in taught, (
         "the instructions offer a way to say a number means whatever it means")
 

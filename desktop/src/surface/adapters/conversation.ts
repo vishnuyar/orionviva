@@ -66,14 +66,33 @@ export function adaptTurn(raw: unknown): TurnView | null {
   const text = textValue(raw.text);
   const refusal = textValue(raw.refusal);
   if (!text.trim() && !refusal.trim()) return null;
+  const statuses = ["answered", "partial", "needs_clarification", "needs_assumption", "missing_data", "capability_gap", "outside_domain", "failed"] as const;
+  const status = statuses.find((candidate) => candidate === raw.status)
+    ?? (booleanValue(raw.answered) === true ? "answered" : "failed");
+  const options = (Array.isArray(raw.options) ? raw.options : []).flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const id = textValue(item.id), label = textValue(item.label);
+    return id && label ? [{ id, label }] : [];
+  });
+  const missing = (Array.isArray(raw.missing) ? raw.missing : []).flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const tag = textValue(item.tag) || textValue(item.reason);
+    const label = textValue(item.label) || textValue(item.source);
+    const question = textValue(item.question);
+    return tag || label || question ? [{ tag, label, question }] : [];
+  });
   return {
     question: textValue(raw.question),
     text,
     answered: booleanValue(raw.answered) === true,
+    status,
+    outcomeTag: textValue(raw.outcome_tag),
     refusal,
     grade: textValue(raw.grade),
     gradeSentence: textValue(raw.grade_sentence),
     figures: (Array.isArray(raw.figures) ? raw.figures : []).map(figure).filter((row): row is TurnFigure => row !== null),
+    options,
+    missing,
     spoken: spoken(raw.spoken),
     goalDraft: goalDraft(raw.goal_draft),
   };

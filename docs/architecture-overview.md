@@ -67,10 +67,10 @@ whose import direction is enforced by tests (the boundary rule is in
   which a person's reply becomes a recorded ruling.
 - `viva/listen.py`, `viva/reply.py`, `viva/speak.py`, `viva/render.py`,
   `viva/persona` — Viva's two directions: a sentence becoming double-entry,
-  and intents becoming sentences through versioned phrasing packs.
-- `viva/tools` — the read-tool registry over the projections, the shape
-  mechanism, and the modality-neutral runner that answers a person's question
-  with citations.
+  and data-blind answer programs becoming sentences through reviewed phrasing.
+- `viva/answer_program`, `viva/query`, and `viva/tools` — the one-shot semantic
+  compiler contract, static validator, bounded graph executor, typed financial
+  query engine, local read registry, evidence graph, binding laws, and renderer.
 - `viva/agent` — the maintenance agent's observe → plan → perform → record
   loop and its budget.
 - `viva/surface` — the contract with the interface: read models, closed

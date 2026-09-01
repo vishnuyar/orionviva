@@ -408,7 +408,7 @@ def _aggregate_income(proj, filters: dict) -> ToolResult:
                       record_ids=(sorted({line.provenance.doc_id for line in
                                           currency_lines.get(k, [])
                                           if line.provenance.doc_id})
-                                  or list(source_lines)),
+                                  or record_ids),
                       boundary=bounded(whole=whole, selected=narrowed,
                                        cut=cut_set(
                                            narrowed,
@@ -496,6 +496,10 @@ def _aggregate_recurring_spending(proj, filters: dict) -> ToolResult:
             "record_ids": record_ids,
         })
     patterns.sort(key=lambda row: (-row["observed"], row["merchant"]))
+    if not patterns:
+        return refusal(
+            TOOL, "insufficient_history",
+            "The records do not establish a recurring spending pattern yet.")
     currencies = {row["currency"] for row in patterns if row["currency"]}
     if len(currencies) > 1:
         return _mixed_currencies(TOOL, currencies)

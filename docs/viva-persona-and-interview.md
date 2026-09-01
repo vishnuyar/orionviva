@@ -16,7 +16,7 @@
 ### VOICE-26 — the model is a copywriter at design time, not at run time
 **State:** enforced
 **Code:** product/viva/tools/runner.py:350 (`_refused`), product/viva/persona/
-**Test:** product/tests/test_speak.py::test_a_refusal_is_the_packs_reviewed_sentence_for_its_tag
+**Test:** product/tests/test_persona_pack.py::test_every_way_a_turn_can_refuse_has_a_reviewed_sentence
 
 1. Every sentence Viva can say is reviewable before she says it, because runtime fills slots in reviewed templates deterministically.
 2. Nothing composes words at the moment of refusing; the sentence is chosen by machine tag.

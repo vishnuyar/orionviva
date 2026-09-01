@@ -43,7 +43,7 @@
 4. A family need not be a prompt: `merchantcore`'s `taxonomy` family pins `data/cat-v3.json`, and `TAXONOMY_VERSION` is read from the manifest.
 5. Promotion is an explicit, reviewable act, never a consequence of a file appearing on disk.
 
-**Exception:** `FROZEN_SPEAK_PROMPTS` in product/tests/test_speak.py:29 is a literal dict kept by hand, so releasing a speak prompt writes its digest in two places; four of the five frozen maps derive from `released`. And `core/vivacore` has no manifest at all — `PROMPT_VERSION = "p2"` in core/vivacore/prompts.py:20 and the `p2`/`t1`/`ti1` map are literals, and those five prompt files are pinned nowhere.
+**Exception:** `core/vivacore` has no manifest — `PROMPT_VERSION = "p2"` in core/vivacore/prompts.py and the `p2`/`t1`/`ti1` map are literals, and those prompt files are pinned nowhere.
 
 ### VOICE-4 — a missing version raises rather than defaulting
 **State:** enforced
@@ -55,12 +55,12 @@
 
 ### VOICE-5 — a version file may hold a keyed table, and its tags are an interface
 **State:** enforced
-**Code:** product/viva/prompts/speak-repairs-v3.txt
-**Test:** product/tests/test_speak.py::test_every_repair_a_check_can_name_has_reviewed_words
+**Code:** product/viva/prompts/answer-program-retry-v1.txt
+**Test:** product/tests/test_answer_program_contracts.py::test_compiler_gets_one_targeted_repair_before_any_read
 
-1. A table file holds one `tag: words` line per entry, split on the first colon, and its own text is never formatted.
-2. The tags the code can name and the tags the file answers are the same set, with no phrase empty.
-3. Adding, removing or renaming a tag is a new version file even when no phrase changes.
+1. The repair prompt receives one structured validator defect and asks for one complete replacement program.
+2. Repair happens before any financial read and the model never sees partial results.
+3. Changing the repair contract creates a new prompt version.
 
 ## Why
 

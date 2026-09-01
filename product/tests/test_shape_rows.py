@@ -729,18 +729,14 @@ def test_what_a_number_means_decides_what_shape_it_takes():
 
 
 def test_the_delivery_instructions_teach_every_kind_of_reference():
-    """A way of referring to something that the code takes and the instructions
-    never mention is one a model will never use; one the instructions offer and
-    the code refuses is a delivery that always fails."""
-    from vivacore import promptstore
-
-    from viva.speak import FINAL_VERSION
-    from viva.tools.registry import PROMPTS
+    """The one-shot transport schema offers every gate reference kind."""
+    from viva.answer_program.schema import program_json_schema
     from viva.tools.runner import BINDING_KEYS
 
-    taught = promptstore.load(PROMPTS, FINAL_VERSION)
+    binding = program_json_schema()["properties"]["bindings"]["items"]
+    taught = str(binding)
     for key in BINDING_KEYS:
-        assert f'"{key}"' in taught, (
+        assert f"'{key}'" in taught, (
             f"the delivery instructions never mention {key}")
 
 
