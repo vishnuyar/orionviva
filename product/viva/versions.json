@@ -6,7 +6,7 @@
     },
     "speak_final": {
       "in": "prompts",
-      "active": "speak-final-v13"
+      "active": "speak-final-v14"
     },
     "speak_protocol": {
       "in": "prompts",
@@ -26,7 +26,7 @@
     },
     "tools": {
       "in": "prompts",
-      "active": "tools-v16"
+      "active": "tools-v17"
     },
     "goal_binding": {
       "in": "prompts",
@@ -58,7 +58,7 @@
     },
     "speak_shape": {
       "in": "prompts",
-      "active": "speak-shape-v12"
+      "active": "speak-shape-v13"
     },
     "shape_committed": {
       "in": "prompts",
@@ -119,6 +119,7 @@
     "speak-final-v11": "4f3b44d44b932585",
     "speak-final-v12": "a7915d70695b4b4f",
     "speak-final-v13": "95e287a51e143dec",
+    "speak-final-v14": "f26bed06ad371f7c",
     "speak-final-v2": "d746425703084d91",
     "speak-final-v3": "19506ea8954a63c5",
     "speak-final-v4": "2cac1de408a24750",
@@ -148,6 +149,7 @@
     "speak-shape-v10": "1e12c41a720d2507",
     "speak-shape-v11": "881ce46193a436cd",
     "speak-shape-v12": "48f71d3ecf3a5420",
+    "speak-shape-v13": "a28d0f9b1aefdab3",
     "speak-shape-v2": "c1eb515f0f44f510",
     "speak-shape-v3": "86cdfecaf82680e9",
     "speak-shape-v4": "b1414ddd20442800",
@@ -176,6 +178,7 @@
     "tools-v14": "05d0cf5cc6042c03",
     "tools-v15": "4727c138392cce8e",
     "tools-v16": "5bfbb1f51cd27281",
+    "tools-v17": "80b5ec44a10f824e",
     "tools-v2": "1cc22b5f642bf5df",
     "tools-v5": "faa8b0ec1ff4b2cc",
     "tools-v6": "40796f1bbf55c1d0",

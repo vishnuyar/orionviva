@@ -132,6 +132,36 @@ def test_unknown_account_refusal_names_the_known_ones(registry):
     assert "chk" in result.data["known_accounts"]
 
 
+def test_an_exact_visible_account_name_narrows_without_a_lookup(registry):
+    for tool, args in (
+        ("query_ledger", {"entity": "transactions",
+                          "filters": {"account": "everyday checking"}}),
+        ("list_movements", {"filters": {
+            "account": "  Everyday   Checking  "}}),
+    ):
+        result = registry.call(tool, args)
+        assert result.ok, (tool, result.text)
+        selected = [item for figure in result.figures
+                    for item in (figure.get("boundary") or {}).get(
+                        "selected", [])]
+        assert {item["value"] for item in selected
+                if item["kind"] == "account"} == {"chk"}
+
+
+def test_an_ambiguous_visible_account_name_is_not_guessed():
+    projection = LedgerProjection([
+        account_opened("first", "depository", "Shared", "USD",
+                       "2026-01-01"),
+        account_opened("second", "depository", "Shared", "USD",
+                       "2026-01-01"),
+    ])
+    result = ledger_tools.query_ledger(
+        projection, {"entity": "balances", "filters": {"account": "Shared"}})
+
+    assert not result.ok
+    assert result.refusal == "unknown_account"
+
+
 def test_unknown_category_refusal_names_the_vocabulary(registry):
     result = registry.call("query_ledger",
                            {"entity": "transactions",
@@ -459,6 +489,17 @@ def test_net_worth_point_comes_back_dated(registry):
                                             "metric": "net_worth"})
     assert result.ok and result.data["metric"] == "net_worth"
     assert result.dated == result.data["point"]["as_of"]
+
+
+def test_net_worth_currency_view_keeps_only_the_direct_net_figures(registry):
+    result = registry.call(
+        "query_ledger", {"entity": "aggregate", "metric": "net_worth",
+                         "view": "net_by_currency"})
+
+    assert result.ok, result.text
+    assert result.figures
+    assert {item["quantity"] for item in result.figures} == {
+        quantity.NET_WORTH}
 
 
 def test_as_of_outside_net_worth_is_refused(registry):

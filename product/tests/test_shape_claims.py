@@ -145,7 +145,8 @@ def test_an_incomplete_total_cannot_be_stated_without_its_gap(several):
     assert result.answered, result.detail
     # Both accounts are named in one sentence, not one sentence each.
     said = moment("boundary_unmeasured", account=render.accounts(
-        [{"account": "Liabilities:HomeLoan:Meridian"}, {"account": "card"}]))
+        [{"account": "Liabilities:HomeLoan:Meridian"},
+         {"account": "card", "name": "Signature Card"}]))
     assert said in result.text
     # The frame around the accounts is said once, not once per account. Read
     # from the pack rather than spelled here, so the count follows the wording.
@@ -583,7 +584,8 @@ def test_a_boundary_is_not_said_three_times_for_one_set_of_gaps():
     _, _, frame = moment("boundary_unmeasured", account="\x00").partition("\x00")
     assert result.text.count(frame) == 1
     assert moment("boundary_unmeasured", account=render.accounts(
-        [{"account": "brk"}, {"account": "loan"}])) in result.text
+        [{"account": "brk", "name": "Brokerage"},
+         {"account": "loan", "name": "Home Loan"}])) in result.text
     # The three figures really do disagree about their own gaps, or this test
     # would pass on a vault that could never have produced the failure.
     gaps = {tuple(item["account"]

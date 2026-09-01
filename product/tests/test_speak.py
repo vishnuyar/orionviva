@@ -75,9 +75,11 @@ FROZEN_SPEAK_PROMPTS = {
     "speak-shape-v10": "1e12c41a720d2507",
     "speak-final-v12": "a7915d70695b4b4f",
     "speak-final-v13": "95e287a51e143dec",
+    "speak-final-v14": "f26bed06ad371f7c",
     "speak-v12": "baf7f8ac398dd1a9",
     "speak-shape-v11": "881ce46193a436cd",
     "speak-shape-v12": "48f71d3ecf3a5420",
+    "speak-shape-v13": "a28d0f9b1aefdab3",
 }
 
 
@@ -250,6 +252,14 @@ def test_every_version_the_module_speaks_under_is_pinned():
     assert not unpinned, (
         f"{unpinned} are in force and unpinned — add each digest to "
         "FROZEN_SPEAK_PROMPTS in the same commit that releases the text")
+
+
+def test_the_shape_prompt_calls_a_named_month_a_period_not_the_whole():
+    import viva.speak as speak_module
+
+    taught = promptstore.load(PROMPTS, speak_module.SHAPE_VERSION)
+    assert 'therefore says `scope: ["period"]`' in taught
+    assert 'last month"\n  with no narrowing behind it' not in taught
 
 
 def test_every_repair_a_check_can_name_has_reviewed_words():

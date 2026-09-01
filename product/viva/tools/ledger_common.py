@@ -151,6 +151,7 @@ _METRIC_VALUES = ["spending", "income", "recurring_spending", "surplus",
                   "stalest_balance", "weakest_evidence", "net_worth"]
 _GROUP_VALUES = ["category", "subcategory", "tag", "merchant", "account",
                  "currency"]
+_NET_WORTH_VIEWS = ["net_by_currency"]
 
 
 def _filters_schema(kind: str) -> dict:
@@ -178,6 +179,7 @@ def _query_branch(entity: str, *, metric: str = "") -> dict:
         properties["group_by"] = {"type": "string", "enum": _GROUP_VALUES}
     if metric == "net_worth":
         properties["as_of"] = {"type": "string"}
+        properties["view"] = {"type": "string", "enum": _NET_WORTH_VIEWS}
     supported = _SUPPORTED_FILTERS[kind]
     if supported:
         properties["filters"] = _filters_schema(kind)
@@ -196,6 +198,7 @@ QUERY_LEDGER_PARAMS = {
         "group_by": {"type": "string",
                      "enum": _GROUP_VALUES},
         "as_of": {"type": "string"},
+        "view": {"type": "string", "enum": _NET_WORTH_VIEWS},
         "matching": {"type": "string"},
         "filters": {
             "type": "object",
@@ -367,6 +370,24 @@ def _known(values, cap: int = 40) -> list:
         f"... and {len(out) - cap} more; query_ledger with entity 'vocabulary', "
         "the group_by for this kind and a 'matching' argument returns the ones "
         "a name reaches"]
+
+
+def _resolve_account_filter(proj, filters: dict) -> dict:
+    """Resolve one exact visible account name to its ledger account id.
+
+    Existing ids pass through. A name resolves only when its normalized form
+    names exactly one real account; ambiguous or unknown names remain unchanged
+    and are refused by the ordinary account filter validation.
+    """
+    account = str(filters.get("account") or "")
+    if not account or account in set(proj.accounts()):
+        return filters
+    wanted = " ".join(account.casefold().split())
+    matches = [info.account for info in _real_accounts(proj)
+               if " ".join(str(info.name or "").casefold().split()) == wanted]
+    if len(matches) != 1:
+        return filters
+    return {**filters, "account": matches[0]}
 
 
 # The machine tag a refusal carries when more than one filter is wrong. Each
@@ -759,4 +780,4 @@ def _month_slice(month: str, narrowed) -> dict | None:
 
 
 
-__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_KIND', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']
+__all__ = ['calendar', 'Decimal', 'lru_cache', 'quantity', 'render', 'networth', 'masked', 'normalize_merchant', 'UnknownAccountError', 'subcategory_group_key', 'movements_view', 'ACTIVITY', 'BY_ACCOUNT', 'BY_CATEGORY', 'BY_CURRENCY', 'BY_KIND', 'BY_MERCHANT', 'BY_PERIOD', 'BY_SINCE', 'BY_SUBCATEGORY', 'BY_TAG', 'BY_UNTIL', 'ENTITY_ACCOUNT', 'ENTITY_CATEGORY', 'ENTITY_MERCHANT', 'GAP_REFUSED', 'GAP_UNOBSERVED', 'ToolResult', 'bounded', 'cut_set', 'entity', 'figure', 'refusal', 'weakest', 'LIABILITY', 'REAL_KINDS', 'MAX_JOURNAL', 'MAX_ROWS', 'MAX_GROUPS', 'MAX_FOLDS', 'MAX_LABELS', 'UNNAMED_MERCHANT', 'COUNTS_WHAT_LEFT', 'MIXED_VINTAGE', '_mixed_vintage', 'QUERY_LEDGER_PARAMS', 'TOOL', '_real_accounts', '_measure_of', '_currencies', '_identifiers', '_merchant_key', '_merchant_filter_key', '_match_tier', '_merchants', '_categories', '_today', '_is_iso_date', '_known', '_resolve_account_filter', 'MANY_BAD_FILTERS', '_check_filters', '_resolve_window_preset', '_in_window', '_movement_passes', '_attested_coverage', '_shared_currency', '_scope', '_of_an_empty_read', '_mixed_currencies', '_movement_row', '_FILTER_NAMES', '_GROUP_NAMES', '_PARTITIONING', '_narrowed_to', '_month_slice', '_SUPPORTED_FILTERS']

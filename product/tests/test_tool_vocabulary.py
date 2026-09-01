@@ -1115,6 +1115,8 @@ def test_native_query_schema_discriminates_filters_by_read_family():
 
     assert "filters" not in branch("vocabulary")["properties"]
     assert "filters" not in branch("aggregate", "net_worth")["properties"]
+    assert branch("aggregate", "net_worth")["properties"]["view"] == {
+        "type": "string", "enum": ["net_by_currency"]}
     assert set(branch("balances")["properties"]["filters"]["properties"]) == {
         "account", "currency", "kind"}
     assert "window" in branch("transactions")["properties"]["filters"][
@@ -1936,6 +1938,30 @@ def test_a_clause_states_the_figure_of_the_account_it_names(registry):
     assert wrong.refusal == "wrong_subject", wrong.detail
     # And what the person hears is the reviewed sentence for that tag, whole.
     assert wrong.text == moment("refusal_wrong_subject")
+
+
+def test_a_wrong_subject_costs_its_clause_and_not_an_independent_claim(registry):
+    """Subject isolation follows the same clause boundary as binding errors."""
+    shape = _shape(
+        ("Your net worth is {total}.",
+         [("total", "money", "net_worth", "whole")]),
+        ("Your {which} holds {amount}.",
+         [("which", "account"),
+          ("amount", "money", "balance", "account")]))
+    result = run(
+        "net worth and that account?",
+        _script(shape, _BALANCES, _POINT,
+                bind=lambda results: {
+                    "total": {"figure": _fig(results, "net in USD")},
+                    "which": {"entity": _entity(results, "brk")},
+                    "amount": {"figure": _fig(results, "chk — its part")},
+                }),
+        registry)
+
+    assert result.answered, result.detail
+    assert result.text.startswith("Your net worth is ")
+    assert "holds" not in result.text
+    assert result.gaps == [{"name": "amount", "type": "money"}]
 
 
 def test_a_clause_states_the_figure_of_the_counterparty_it_names(registry):

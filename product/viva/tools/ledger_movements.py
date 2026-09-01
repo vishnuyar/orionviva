@@ -341,6 +341,7 @@ def list_movements(proj, args: dict, today: str = "") -> ToolResult:
         proj, args.get("filters") or {}, today)
     if window_problem is not None:
         return _as_tool(window_problem, LIST_TOOL)
+    filters = _resolve_account_filter(proj, filters)
     if not any(f in filters for f in NARROWING):
         return refusal(
             LIST_TOOL, "too_broad",

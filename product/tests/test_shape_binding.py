@@ -55,6 +55,54 @@ def test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn(registry):
     assert result.gaps == [{"name": "when", "type": "date"}]
 
 
+def test_a_bad_reference_costs_its_clause_and_not_a_grounded_clause(registry):
+    """An invalid binding drops only the clause that contains it."""
+    shape = _shape(("Your balance is {total}.",
+                    [("total", "money", "balance", "account")]),
+                   ("There were {count} movements.",
+                    [("count", "count", "count", "whole")]))
+    result = run(
+        "balance and movement count?",
+        _script(shape, BALANCES,
+                bind=lambda r: {"total": {"figure": "f1"},
+                                "count": {"figure": "f1"}}),
+        registry)
+
+    assert result.answered, result.detail
+    assert result.text.startswith("Your balance is USD 600.00.")
+    assert "There were" not in result.text
+    assert result.gaps == [{"name": "count", "type": "count"}]
+
+
+def test_a_date_can_travel_with_the_figure_stated_beside_it(registry):
+    """The answer refers to a dated figure instead of copying its ISO day."""
+    shape = _shape(("As of {when}, your balance was {total}.",
+                    [("when", "date"),
+                     ("total", "money", "balance", "account")]))
+    result = run(
+        "balance and date?",
+        _script(shape, BALANCES,
+                bind=lambda r: {"when": {"date_of": "f1"},
+                                "total": {"figure": "f1"}}),
+        registry)
+
+    assert result.answered, result.detail
+    assert result.text.startswith("As of 2026-01-31, your balance was ")
+    assert result.bindings["when"] == {"date_of": "f1"}
+
+
+def test_a_figure_date_cannot_float_free_of_its_figure(registry):
+    shape = _shape(("That evidence is dated {when}.", [("when", "date")]))
+    result = run(
+        "date?",
+        _script(shape, BALANCES,
+                bind=lambda r: {"when": {"date_of": "f1"}}),
+        registry)
+
+    assert not result.answered
+    assert result.refusal == "unfounded_date"
+
+
 def test_an_answer_whose_every_clause_falls_away_says_so(registry):
     result = run("balance?",
                  _script(_shape(("Your balance is {total}.",

@@ -202,9 +202,21 @@
 .sample-frame-copy strong { font-size: var(--text-body); font-weight: var(--weight-strong); line-height: var(--leading-tight); }
 .sample-frame-copy span { color: var(--muted); font-size: var(--text-fine); line-height: var(--leading-body); }
 .sample-frame-leave { flex: none; }
-/* The frame is part of the page rather than a thing laid over it, so the shell
-   below it becomes a column with the frame as its first row. */
-.app-shell-sample { display: grid; grid-template-rows: auto 1fr; }
+/* The frame spans the shell. The navigation and page then share its second
+   row, preserving the same side-by-side geometry as a private vault. */
+.app-shell-sample {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+}
+.app-shell-sample > .sample-frame { grid-column: 1 / -1; grid-row: 1; }
+.app-shell-sample > .sidebar { grid-column: 1; grid-row: 2; }
+.app-shell-sample > .main-content { grid-column: 2; grid-row: 2; }
+@media (max-width: 760px) {
+  .app-shell-sample { grid-template-columns: minmax(0, 1fr); }
+  .app-shell-sample > .sample-frame { grid-column: 1; }
+  .app-shell-sample > .main-content { grid-column: 1; }
+}
 
 /* What happens to this application when a new version exists, beside where the
    build names itself: "which copy is this" and "what happens when there is a

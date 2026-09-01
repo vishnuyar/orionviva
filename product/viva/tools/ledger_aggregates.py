@@ -859,7 +859,8 @@ def _line_word(line: dict) -> str:
     return f"{line['account']} — its part of net worth"
 
 
-def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult:
+def _aggregate_net_worth(proj, as_of: str | None, today: str = "", *,
+                         view: str = "") -> ToolResult:
     # With no day asked for, the day it is asked on. A balance carries forward,
     # so the total is good now; `net_worth` on its own would date the point by
     # its newest input, which is when the evidence was taken rather than when
@@ -880,6 +881,10 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
     # is missing from that side; the net figure leaves out all of it, and a
     # side that might be short of something nothing could place says so too.
     left_out, placed = _not_counted(data)
+    named_accounts = sorted(
+        set(record_ids)
+        | {item["account"] for missing in left_out.values()
+           for item in missing if item.get("account")})
     # A document read and not posted is a gap no account can name: it may be
     # about an account that does not exist yet, which is why the point keeps it
     # apart from what it lists per account. It is counted, and said as a count.
@@ -926,9 +931,12 @@ def _aggregate_net_worth(proj, as_of: str | None, today: str = "") -> ToolResult
                                         cut=[{"kind": BY_ACCOUNT,
                                               "value": line["account"]}]))
                 for line in lines]
+    if view == "net_by_currency":
+        figures = [item for item in figures
+                   if item["quantity"] == quantity.NET_WORTH]
     return ToolResult(
         tool=TOOL, ok=True, figures=figures,
-        identifiers=_identifiers(proj, record_ids),
+        identifiers=_identifiers(proj, named_accounts),
         data={"metric": "net_worth", "point": data},
         grade=weakest(_grades_in(data)),
         dated=as_of,

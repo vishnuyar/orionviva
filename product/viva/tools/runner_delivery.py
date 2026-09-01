@@ -123,30 +123,42 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     written: dict = {}
     references: dict = {}
     gaps: list = []
-    for name, slot in slots.items():
-        if name not in bindings:
-            gaps.append({"name": name, "type": slot.type})
-            continue
-        value, tag, detail = _bound(slot, bindings[name], ground, locale,
-                                    alongside=beside.get(name, ()))
-        if value is None:
-            return _refused(tag, detail, dicts, len(transcript), shape)
-        written[name] = value
-        # What the answer cites and what it places are read from the binding
-        # in the form the value was written from, so a reference the hole's
-        # type completed answers for its records and its caveats like any
-        # other.
-        references[name] = _named_reference(slot, bindings[name])
-
-    missing = {g["name"]: g["type"] for g in gaps}
+    binding_issues: list = []
     spoken, dropped = [], []
     for clause in shape.clauses:
-        unfilled = [s.type for s in clause.slots if s.name in missing]
+        unfilled = [slot for slot in clause.slots
+                    if slot.name not in bindings]
         if unfilled:
-            dropped.append(unfilled[0])
+            gaps.extend({"name": slot.name, "type": slot.type}
+                        for slot in unfilled)
+            dropped.append(unfilled[0].type)
             continue
+        clause_written: dict = {}
+        clause_references: dict = {}
+        issue = None
+        for slot in clause.slots:
+            value, tag, detail = _bound(
+                slot, bindings[slot.name], ground, locale,
+                alongside=beside.get(slot.name, ()))
+            if value is None:
+                issue = (slot, tag, detail)
+                break
+            clause_written[slot.name] = value
+            clause_references[slot.name] = _named_reference(
+                slot, bindings[slot.name])
+        if issue is not None:
+            slot, tag, detail = issue
+            binding_issues.append((tag, detail))
+            gaps.append({"name": slot.name, "type": slot.type})
+            dropped.append(slot.type)
+            continue
+        written.update(clause_written)
+        references.update(clause_references)
         spoken.append(clause)
     if not spoken:
+        if binding_issues:
+            tag, detail = binding_issues[0]
+            return _refused(tag, detail, dicts, len(transcript), shape)
         return _refused("nothing_established",
                         "Every clause of the answer rests on something this "
                         "run could not establish.", dicts, len(transcript),
@@ -159,18 +171,25 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
     # boundary names what the clause names. It runs over what survived the
     # drops, because a clause about to be dropped asserts nothing to be wrong
     # about.
+    stood, subject_issues = [], []
     for clause in spoken:
         misnamed = _misnamed(clause, references, ground)
         if misnamed is None:
+            stood.append(clause)
             continue
         slot, fig, item, named = misnamed
-        return _refused(
-            "wrong_subject",
+        subject_issues.append((
             f"The clause holding {slot.name!r} names the {item['kind']} "
             + ", ".join(repr(one) for one in named)
             + f", and {fig['what']!r} was taken over the {item['kind']} "
             f"{str(item['value'])!r} — the number is real and it is a number "
-            "about something else.", dicts, len(transcript), shape)
+            "about something else."))
+        gaps.append({"name": slot.name, "type": slot.type})
+        dropped.append(slot.type)
+    if not stood:
+        return _refused("wrong_subject", subject_issues[0], dicts,
+                        len(transcript), shape)
+    spoken = stood
 
     # Only what survived asserts anything, so only what survived is answerable
     # for its records and its caveats. The holes are walked in the order the
@@ -297,5 +316,4 @@ def _gate(step: dict, transcript: list, ground: _Ground, shape: Shape,
         shape=shape.to_dict(),
         bindings={n: references[n] for n in said},
         written={n: str(written[n]) for n in said}, gaps=gaps)
-
 

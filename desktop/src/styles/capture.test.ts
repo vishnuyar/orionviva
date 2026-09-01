@@ -45,6 +45,17 @@ function declarations(element: Element, properties: readonly string[]): Record<s
 }
 
 describe("the stylesheet this cycle authored", () => {
+  it("places the narrow sample-shell override after its desktop grid", () => {
+    const desktop = capture.indexOf(
+      "grid-template-columns: auto minmax(0, 1fr)");
+    const narrow = capture.indexOf(
+      "grid-template-columns: minmax(0, 1fr)");
+
+    expect(desktop).toBeGreaterThan(-1);
+    expect(narrow).toBeGreaterThan(desktop);
+    expect(surfaceResponsive).not.toContain(".app-shell-sample");
+  });
+
   it("reaches the capture answer rather than losing it to the panel's own paragraph rule", () => {
     const host = mount(`<div class="content-wrap"><section class="feature-panel documents-surface"><div class="document-capture-answer"><strong>Title</strong><p>Sentence</p></div></section></div>`);
     expect(declarations(host.querySelector(".document-capture-answer p")!, ["font-size", "color", "line-height", "margin-bottom"]))

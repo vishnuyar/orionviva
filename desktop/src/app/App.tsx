@@ -221,7 +221,16 @@ export function App() {
   // overlays go, the session is rebuilt from nothing, and no row from the
   // vault that was open survives into the one that is not.
   function leaveVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setPlanRequested(false); setConversationPlanDraft(null); setPlanActionReceipt(null); control.resetDemo(); setOverlay(null); }
-  function openSampleVault() { evidenceDialog.cancelPendingRestore(); conversationDialog.cancelPendingRestore(); setPlanRequested(false); setConversationPlanDraft(null); setPlanActionReceipt(null); setOverlay(null); void control.openSampleVault(); }
+  async function openSampleVault() {
+    evidenceDialog.cancelPendingRestore();
+    conversationDialog.cancelPendingRestore();
+    setPlanRequested(false);
+    setConversationPlanDraft(null);
+    setPlanActionReceipt(null);
+    setOverlay(null);
+    const opened = await control.openSampleVault();
+    if (opened) requestAnimationFrame(() => pageTitleRef.current?.focus());
+  }
   function openReviewQuestion(questionId: string) {
     control.selectQueue(questionId);
     setOverlay({ kind: "conversation", requestId: session.requestId });

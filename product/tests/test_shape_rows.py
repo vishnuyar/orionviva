@@ -742,3 +742,44 @@ def test_the_delivery_instructions_teach_every_kind_of_reference():
     for key in BINDING_KEYS:
         assert f'"{key}"' in taught, (
             f"the delivery instructions never mention {key}")
+
+
+def test_net_worth_by_currency_is_one_homogeneous_block():
+    """The currency-row view emits only net worth and preserves its gaps."""
+    events = []
+    for number, currency in enumerate(("USD", "EUR"), 1):
+        account = f"account-{number}"
+        document = f"document-{number}"
+        provenance = Provenance(document, 1, "r")
+        events.extend([
+            account_opened(account, "depository", f"Account {number}",
+                           currency, "2026-01-01"),
+            document_captured(document, f"statement-{number}.pdf", 10,
+                              "bank_statement", 0.9, "2026-02-01"),
+            opening_balance_observed(account, "500.00", "2026-01-01",
+                                     provenance),
+            closing_balance_observed(account, "500.00", "2026-01-31",
+                                     provenance),
+        ])
+    events.append(account_opened("unmeasured-card", "liability",
+                                 "Unmeasured Card", "USD", "2026-01-01"))
+    registry = default_registry(LedgerProjection(events))
+    read = ("query_ledger", {"entity": "aggregate", "metric": "net_worth",
+                              "view": "net_by_currency"})
+    shape = _shape(("Your net worth by currency:{breakdown}",
+                    [("breakdown", render.ROWS)]))
+
+    result = run(
+        "net worth by currency?",
+        _script(shape, read,
+                bind=lambda rows: {"breakdown": {"read": rows[-1]["id"]}}),
+        registry)
+
+    assert result.answered, result.detail
+    lines = result.text.splitlines()
+    assert any(line.startswith("USD — USD 500.00") for line in lines)
+    assert any(line.startswith("EUR — EUR 500.00") for line in lines)
+    assert {figure["quantity"] for figure in result.figures} == {
+        quantity.NET_WORTH}
+    assert "Unmeasured Card" in result.text
+    assert "unmeasured-card" not in result.text

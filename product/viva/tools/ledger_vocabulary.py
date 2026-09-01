@@ -121,6 +121,7 @@ def query_ledger(proj, args: dict, locale: str = "",
         proj, args.get("filters", {}), today)
     if window_problem is not None:
         return window_problem
+    filters = _resolve_account_filter(proj, filters)
     bad = _check_filters(proj, filters)
     if bad is not None:
         return bad
@@ -191,7 +192,8 @@ def query_ledger(proj, args: dict, locale: str = "",
         return _aggregate_stalest_balance(proj, today or _today())
     if metric == "weakest_evidence":
         return _aggregate_weakest_evidence(proj, filters)
-    return _aggregate_net_worth(proj, args.get("as_of"), today or _today())
+    return _aggregate_net_worth(proj, args.get("as_of"), today or _today(),
+                                view=str(args.get("view") or ""))
 
 
 

@@ -69,10 +69,11 @@
 ### MON-89 — subtotal per currency; never convert
 **State:** enforced
 **Code:** product/viva/ledger/networth.py (`NetWorthPoint.by_currency`)
-**Test:** product/tests/test_networth.py::test_two_currencies_give_two_subtotals_and_no_grand_total
+**Test:** product/tests/test_networth.py::test_two_currencies_give_two_subtotals_and_no_grand_total, product/tests/test_tool_contract.py::test_net_worth_currency_view_keeps_only_the_direct_net_figures, product/tests/test_shape_rows.py::test_net_worth_by_currency_is_one_homogeneous_block
 
 1. Net worth reports per-currency subtotals and no grand total.
 2. No conversion happens anywhere until a rate has a source, a date and a grade of its own.
+3. The currency-row read emits only those net-worth subtotals, not the asset, liability or per-account audit figures the ordinary read retains, and it still names every account it could not measure by its visible name.
 
 ### MON-26 — every point names its stalest input, and a composed line says when its parts differ
 **State:** enforced

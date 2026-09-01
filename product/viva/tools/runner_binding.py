@@ -19,7 +19,8 @@ from .shape import WHOLE
 # these and nothing else, so there is no field a value could arrive in. A
 # caveat is not among them: this module places what a stated figure owes, so
 # there is no hole for one to fill and nothing to refer to it by.
-BINDING_KEYS = ("figure", "entity", "period", "date", "supposed", "read")
+BINDING_KEYS = ("figure", "entity", "period", "date", "date_of", "supposed",
+                "read")
 
 # The one kind of reference a hole of each type can hold. Where a type admits
 # exactly one, the type has already said what a bare value refers to, and a
@@ -176,6 +177,23 @@ def _bound(slot, reference, ground: _Ground, locale: str, *, alongside=()):
                 f"The answer says {str(value)!r}, and no figure the clause "
                 f"holding {slot.name!r} states carries that day.")
         return render.date(str(value)), "", ""
+
+    if key == "date_of":
+        if slot.type != render.DATE:
+            return None, "wrong_kind", (
+                f"The hole {slot.name!r} wants {slot.type}, and date_of names "
+                "the day carried by a figure.")
+        fig = ground.book.get(str(value))
+        if fig is None:
+            return None, "unknown_figure", (
+                f"The answer refers to a figure {str(value)!r} that no tool "
+                "emitted in this run.")
+        if fig not in alongside or not _is_iso_date(fig.get("dated")):
+            return None, "unfounded_date", (
+                f"The answer asks for the date of {str(value)!r}, and that "
+                f"dated figure is not stated by the clause holding "
+                f"{slot.name!r}.")
+        return render.date(str(fig["dated"])), "", ""
 
     # supposed
     if slot.type != render.SUPPOSED:
@@ -547,5 +565,4 @@ def _covered(cited) -> tuple[int, int] | None:
         held = max(held, counts.get("held", 0))
         named |= names
     return len(named), held
-
 

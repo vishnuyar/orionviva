@@ -27,10 +27,10 @@
 ### PROJ-62 — a structured filter object, validated against the vault's own vocabulary
 **State:** enforced
 **Code:** product/viva/tools/ledger_common.py:112
-**Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates, product/tests/test_tool_vocabulary.py::test_native_query_schema_discriminates_filters_by_read_family
+**Test:** product/tests/test_tool_contract.py::test_unknown_category_refusal_names_the_vocabulary, product/tests/test_tool_contract.py::test_latest_complete_calendar_month_resolves_to_explicit_dates, product/tests/test_tool_contract.py::test_an_exact_visible_account_name_narrows_without_a_lookup, product/tests/test_tool_contract.py::test_an_ambiguous_visible_account_name_is_not_guessed, product/tests/test_tool_vocabulary.py::test_native_query_schema_discriminates_filters_by_read_family
 
 1. A read takes a typed filter object, never a query string and never SQL.
-2. Every filter value is validated against the vault's own learned values — its accounts, account kinds, categories, tags, counterparties and currencies — and a value the vault does not hold refuses, naming the values it does hold.
+2. Every filter value is validated against the vault's own learned values — its accounts, account kinds, categories, tags, counterparties and currencies — and a value the vault does not hold refuses, naming the values it does hold. An account id passes directly; an exact, uniquely matching visible account name resolves to its id after capitalization and repeated whitespace are normalized, while an unknown or ambiguous name refuses.
 3. A filter a read would ignore refuses and names what that read supports, rather than being accepted and dropped.
 4. The enumerations of `entity` and `group_by` are schema this project owns; the legal *values* are read from the vault, never listed in code.
 5. A date window is either explicit inclusive edges or the named latest complete calendar month. The named period resolves to explicit edges before the read, using the newest ended month shared by posted statement coverage.
@@ -78,7 +78,7 @@
 ### PROJ-3 — a hole declares what its number is of and what set it is over
 **State:** enforced
 **Code:** product/viva/tools/shape.py:179
-**Test:** product/tests/test_shape_binding.py::test_a_hole_holding_a_magnitude_must_say_what_set_it_is_over
+**Test:** product/tests/test_shape_binding.py::test_a_hole_holding_a_magnitude_must_say_what_set_it_is_over, product/tests/test_speak.py::test_the_shape_prompt_calls_a_named_month_a_period_not_the_whole
 
 1. A hole holding a magnitude declares the quantity it asks for, from the closed vocabulary the tools declare into.
 2. A hole holding a measurement also declares the set it is a number over: the axes its sentence narrows on, or the whole of what the quantity ranges over.
@@ -99,13 +99,14 @@
 ### PROJ-5 — a property of a figure the machine holds is placed by the machine
 **State:** enforced
 **Code:** product/viva/tools/runner_delivery.py:272
-**Test:** product/tests/test_shape_claims.py::test_a_boundary_is_said_once_inside_the_clause_that_made_it
+**Test:** product/tests/test_shape_claims.py::test_a_boundary_is_said_once_inside_the_clause_that_made_it, product/tests/test_shape_binding.py::test_a_date_can_travel_with_the_figure_stated_beside_it, product/tests/test_shape_binding.py::test_a_figure_date_cannot_float_free_of_its_figure
 
 1. A figure's scope, its caveats and its grade are placed by the runner and are never asked for through a hole.
 2. A statement drawn from one figure's boundary is placed under the clause that bound that figure, and again under the next clause that makes it.
 3. The order is scope, then strength, then what the claim does not cover.
 4. The answer's grade is the weakest among every money figure it stated, block lines included (PROJ-65), and is said only where at least one of them was stated as a number in a sentence.
 5. An answer states how many of the accounts a person holds it covers only where every stated figure declares, as data, exactly which accounts it covers.
+6. A day carried by a figure may be stated only in the same clause as that figure. The binding names the figure and the machine renders its date; a copied or free-floating day does not fill the hole.
 
 ### PROJ-6 — `compute` takes figure ids and stipulations, never a typed number
 **State:** enforced
@@ -193,11 +194,12 @@
 ### PROJ-66 — a hole nothing can fill costs its clause and not the turn
 **State:** enforced
 **Code:** product/viva/tools/runner_delivery.py:145 · product/viva/tools/runner_delivery.py:287 · product/viva/tools/shape.py:121 (`HOLE_THE_CLAUSE`)
-**Test:** product/tests/test_shape_binding.py::test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn · product/tests/test_shape_binding.py::test_an_answer_whose_every_clause_falls_away_says_so
+**Test:** product/tests/test_shape_binding.py::test_a_hole_nothing_can_fill_costs_its_clause_and_not_the_turn · product/tests/test_shape_binding.py::test_a_bad_reference_costs_its_clause_and_not_a_grounded_clause · product/tests/test_tool_vocabulary.py::test_a_wrong_subject_costs_its_clause_and_not_an_independent_claim · product/tests/test_shape_binding.py::test_an_answer_whose_every_clause_falls_away_says_so
 
 1. A hole nothing can fill costs its clause and not the turn: the clause is dropped and what could be established still stands. This is the implementation of [ADR-013](decisions/ADR-013-the-shape-before-the-data.md) assertion 15.
-2. A dropped clause is disclosed — a reviewed pack phrase names what was missing by its kind, never a zero and never a silence.
-3. A turn whose every clause is dropped rests on nothing this run established, and refuses.
+2. A reference that is invalid or names the wrong subject is a hole nothing can fill. It drops only its own clause when another clause stands; when every clause fails, the tagged refusal is preserved.
+3. A dropped clause is disclosed — a reviewed pack phrase names what was missing by its kind, never a zero and never a silence.
+4. A turn whose every clause is dropped rests on nothing this run established, and refuses.
 
 ### PROJ-67 — a read that groups cuts as many ways as it groups
 **State:** enforced

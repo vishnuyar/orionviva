@@ -11,7 +11,9 @@ afterEach(() => { window.orionVivaBridge = undefined; });
 describe("shell", () => {
   it("opens on the financial picture", async () => {
     const { getByRole, getByText, getAllByText } = await openSample();
-    expect(getByRole("heading", { name: "Your financial picture" })).toBeInTheDocument();
+    const heading = getByRole("heading", { name: "Your financial picture" });
+    expect(heading).toBeInTheDocument();
+    await waitFor(() => expect(heading).toHaveFocus());
     expect(getByText("USD 17,486.45")).toBeInTheDocument();
     expect(getAllByText("Sample vault")[0]).toBeInTheDocument();
     expect(getByText(moments.sample_frame)).toBeInTheDocument();
