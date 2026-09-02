@@ -75,13 +75,13 @@ The current read-answer architecture and its release gates.
 | **AP-4** | Financial queries preserve trusted quantity, currency, boundary, and provenance | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_joined_money_arithmetic_refuses_cross_currency_rows` |
 | **AP-5** | Admitted work is finite and bounded before and during execution | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_execution_deadline_bounds_a_running_local_read` |
 | **AP-6** | Required clauses and partial-answer policy are executable gates | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_result_policy_is_enforced_after_clause_binding` |
-| **AP-7** | Admission measures and enforces one exact runtime profile | enforced *(exception)* | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result` +2 |
+| **AP-7** | Admission measures and enforces one exact runtime profile | enforced *(exception)* | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result` +2 |
 | **AP-8** | Production has one AnswerProgram path | enforced | [answer-program-and-financial-query-engine.md](answer-program-and-financial-query-engine.md) | `test_single_path_gate_scans_non_python_runtime_sources` |
 | **AP-9** | The runtime model names meaning and cannot author execution | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_model_contract_cannot_author_executable_program_fields` |
 | **AP-10** | One registry owns admitted meaning and deterministic lowering | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_every_reviewed_family_lowers_and_validates_before_a_read` |
 | **AP-11** | Required claims are the requested financial meaning | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_net_worth_has_no_unrequested_staleness_clause` +2 |
 | **AP-12** | Unsupported meaning is a precise boundary | enforced | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_unsupported_meaning_is_a_structured_capability_gap` |
-| **AP-13** | Publication proves the compact boundary and its lowering | enforced *(exception)* | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result` +2 |
+| **AP-13** | Publication proves the compact boundary and its lowering | enforced *(exception)* | [semantic-request-and-deterministic-lowering.md](semantic-request-and-deterministic-lowering.md) | `test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result` +2 |
 
 ## Internationalization
 

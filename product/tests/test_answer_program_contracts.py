@@ -320,6 +320,8 @@ def test_text_compiler_uses_the_same_compact_contract_and_one_call_on_success():
                 text=json.dumps({
                     "request_version": SEMANTIC_REQUEST_VERSION,
                     "catalog_digest": SemanticFamilyRegistry().catalog_digest,
+                    "entity_catalog_digest": SemanticFamilyRegistry()
+                    .entity_catalog_digest,
                     "outcome": "request", "family": "named_account_balance",
                     "parameters": {"account_phrase": "Everyday Checking"},
                     "parameter_sources": {"account_phrase": {
@@ -593,7 +595,7 @@ def test_the_frozen_admission_corpus_has_35_exact_turns_and_paraphrases():
     assert all(case.max_model_attempts == 1 for case in cases)
 
 
-def test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result():
+def test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result():
     cases = load_cases()
     oracle_set, manifests = preflight_live_suite(
         cases=cases, registry_factory=admission_registry,
@@ -608,7 +610,7 @@ def test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result():
     measured = [score(replace(case, oracle=oracle_set.oracle_for(case.id)), bad)
                 for case in cases]
 
-    assert len(measured) == len(manifests) == 45
+    assert len(measured) == len(manifests) == 73
     assert oracle_set.digest
     assert all(item.measured for item in measured)
     assert all(not item.passed for item in measured)
@@ -831,6 +833,77 @@ def test_semantic_scoring_rejects_an_unsupported_financial_figure():
     assert measured.unsupported_figures == 1
 
 
+def _score_fixture_interpretation(exact_group, parameters, claims):
+    case = next(item for item in load_cases()
+                if item.exact_group == exact_group and item.exact)
+    registry = admission_registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+    oracle = derive_semantic_oracle(case, registry, manifest, policy,
+                                    locale="en-US")
+    families = SemanticFamilyRegistry()
+    semantic = SemanticOutcome("request", SemanticRequest(
+        case.expected_family, parameters, tuple(claims),
+        families.catalog_digest))
+    program = families.lower(semantic, manifest)
+    execution = ProgramExecutor(registry, policy).execute(program, case.question)
+    result = DeterministicBinder(registry, "en-US").bind(
+        program, execution).result
+    result.status = "answered" if result.answered else "missing_data"
+    result.outcome_tag = "" if result.answered else result.refusal
+    runtime = SimpleNamespace(
+        result=result, compilation=SimpleNamespace(
+            exchanges=[SimpleNamespace(defect={})],
+            semantic_outcome=semantic, program=program))
+    return score(replace(case, oracle=oracle), runtime)
+
+
+@pytest.mark.parametrize(("group", "parameters", "claims"), [
+    ("checking-balance", {"account_phrase": "Assets:Admission:Checking"},
+     ("balance", "measurement_date")),
+    ("classification-explanation", {"movement_phrase": "costco"},
+     ("treatment", "reason", "evidence")),
+])
+def test_catalog_selected_identities_pass_keyed_scoring(
+        group, parameters, claims):
+    measured = _score_fixture_interpretation(group, parameters, claims)
+    assert measured.passed, measured.defects
+
+
+def test_objective_period_edges_remain_exact_even_when_words_may_vary():
+    measured = _score_fixture_interpretation(
+        "october-groceries",
+        {"category": "groceries", "from": "2024-10-02", "to": "2024-10-31"},
+        ("spending", "period"))
+    assert not measured.passed
+    assert "wrong_period_parameters" in measured.defects
+
+
+def test_a_refusal_is_missing_not_confidently_wrong():
+    case = next(item for item in load_cases()
+                if item.exact_group == "checking-balance" and item.exact)
+    registry = admission_registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+    oracle = derive_semantic_oracle(case, registry, manifest, policy)
+    families = SemanticFamilyRegistry()
+    semantic = SemanticOutcome("request", SemanticRequest(
+        case.expected_family, dict(case.expected_parameters),
+        case.expected_claims, families.catalog_digest))
+    program = families.lower(semantic, manifest)
+    runtime = SimpleNamespace(
+        result=SimpleNamespace(status="missing_data", outcome_tag="not_found",
+                               figures=[], text="I do not have that evidence."),
+        compilation=SimpleNamespace(
+            exchanges=[SimpleNamespace(defect={})],
+            semantic_outcome=semantic, program=program))
+    measured = score(replace(case, oracle=oracle), runtime)
+
+    assert "missing_keyed_figure" in measured.defects
+    assert "wrong_keyed_figure" not in measured.defects
+    assert measured.confidently_wrong == 0
+
+
 def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
         tmp_path):
     case = load_cases()[0]
@@ -862,6 +935,15 @@ def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
     assert report.attempt_evidence[0]["response_digest"]
     assert report.attempt_evidence[0]["oracle_key"] == case.oracle_key
     assert report.attempt_evidence[0]["oracle_digest"]
+    observation = report.metrics["turn_measurements"][0][
+        "semantic_observation"]
+    assert observation == {
+        "outcome": "request", "family": case.expected_family,
+        "entity_catalog_digest":
+            _turns[0].semantic_request["entity_catalog_digest"],
+        "parameters": case.expected_parameters,
+        "requested_claims": list(case.expected_claims)}
+    assert "parameter_sources" not in observation
     with pytest.raises(TypeError, match="non-serializable"):
         pickle.dumps(measured_run)
     forged = _fully_validated_forged_report(
@@ -878,7 +960,7 @@ def test_live_admission_report_is_bound_to_measured_identity_and_contracts(
     assert report.contract_digests["program_schema"]
     assert report.adversarial_passed
 
-    report.metrics["cases"] = 45
+    report.metrics["cases"] = len(load_cases())
     with pytest.raises(ValueError, match="report was mutated"):
         admitted_profile(
             measured_run,
@@ -1255,7 +1337,7 @@ def test_fixture_and_oracle_contracts_bind_report_profile_build_and_bundle(
     monkeypatch.setattr(admission_module, "_report_from_measured_run",
                         lambda _measured: report)
     profile = admitted_profile(object(), manifest=manifest)
-    assert profile.profile_version == "semantic-request-admission-v2"
+    assert profile.profile_version == "semantic-request-admission-v4"
     assert profile.admission_fixture_digest == contracts["admission_fixture"]
     assert profile.oracle_set_digest == contracts["oracle_set"]
     assert check_profile(profile, manifest, report).passed
@@ -1303,6 +1385,7 @@ def test_semantic_admission_oracle_rejects_wrong_financial_identity(field, wrong
 
     assert not measured.passed
     assert "wrong_keyed_figure" in measured.defects
+    assert measured.confidently_wrong == 1
 
 
 def test_single_path_gate_scans_non_python_runtime_sources(tmp_path):

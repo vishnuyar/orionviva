@@ -27,7 +27,9 @@ def replay_capture(captured, registry, *, locale="", policy=None):
         if expected_semantic and expected_semantic != actual_semantic:
             return {"replayed": False, "defects": [{
                 "tag": "semantic_request_digest_mismatch"}]}
-        families = SemanticFamilyRegistry()
+        families = SemanticFamilyRegistry(
+            entity_catalog_digest=str(
+                raw_semantic.get("entity_catalog_digest") or ""))
         semantic = families.parse(raw_semantic, require_grounding=False)
         if semantic.kind == "unsupported":
             return {"replayed": False, "defects": [{

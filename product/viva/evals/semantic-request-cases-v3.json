@@ -1,0 +1,159 @@
+{
+  "version": "semantic-request-cases-v3",
+  "exact_repetitions": 5,
+  "cases": [
+    {
+      "id": "checking-balance",
+      "exact_question": "What is my checking balance, and what date is it from?",
+      "paraphrases": [
+        "Give me only my checking account balance and its measurement date.",
+        "How much money does the account I use for everyday banking currently show, and when was it measured?",
+        "Tell me the latest reported amount in my day-to-day bank account, including its as-of date.",
+        "For my regular checking account, give the supported amount and statement date.",
+        "What's sitting in the bank account I normally spend from, and how current is that figure?"
+      ],
+      "family": "named_account_balance",
+      "parameters": {"account_phrase": "checking"},
+      "required_claims": ["balance", "measurement_date"],
+      "allowed_claims": ["balance", "measurement_date"],
+      "oracle_key": "checking-balance"
+    },
+    {
+      "id": "fidelity-balance",
+      "exact_question": "What is my Fidelity balance, and what date is it from?",
+      "paraphrases": [
+        "How much is in Fidelity, as of which date?",
+        "What did my investment account at Fidelity last report, and when?",
+        "Give me the latest supported value and date for the portfolio held with Fidelity.",
+        "What's the current recorded amount in my Fidelity investment account, and how old is it?",
+        "For the brokerage account at Fidelity, show its measured value and as-of date."
+      ],
+      "family": "named_account_balance",
+      "parameters": {"account_phrase": "Fidelity"},
+      "required_claims": ["balance", "measurement_date"],
+      "allowed_claims": ["balance", "measurement_date"],
+      "oracle_key": "fidelity-balance"
+    },
+    {
+      "id": "needs-attention",
+      "exact_question": "Which accounts or documents need my attention?",
+      "paraphrases": [
+        "What in my financial records needs attention?",
+        "Is there anything in my accounts or paperwork that I need to deal with?",
+        "Show me the financial records waiting for a decision from me.",
+        "Where are the unresolved issues in my money records?",
+        "What should I review next across my accounts and documents?"
+      ],
+      "family": "needs_attention",
+      "parameters": {},
+      "required_claims": ["attention_items"],
+      "allowed_claims": ["attention_items"],
+      "oracle_key": "needs-attention"
+    },
+    {
+      "id": "october-groceries",
+      "exact_question": "How much did I spend on groceries in October 2024?",
+      "paraphrases": [
+        "Give me grocery spending for October 2024 only.",
+        "What did food shopping add up to during October 2024?",
+        "Total the purchases filed in my grocery category for October 2024.",
+        "For October 2024, how much went toward supermarket and grocery shopping?",
+        "How much money left for the groceries bucket between the first and last day of October 2024?"
+      ],
+      "family": "category_spending_period",
+      "parameters": {"category": "groceries", "from": "2024-10-01", "to": "2024-10-31"},
+      "required_claims": ["spending", "period"],
+      "allowed_claims": ["spending", "period", "exclusions"],
+      "oracle_key": "october-groceries"
+    },
+    {
+      "id": "net-worth",
+      "exact_question": "What is my total net worth, and what is excluded?",
+      "paraphrases": [
+        "Show net worth by currency and tell me its limitations.",
+        "After what I own and owe are combined, what am I worth and what is left out?",
+        "Give me the supported total value of my financial position, with exclusions.",
+        "What do my assets minus liabilities come to by currency, and what isn't covered?",
+        "Summarize my present net financial position and its limits."
+      ],
+      "family": "net_worth",
+      "parameters": {},
+      "required_claims": ["net_worth", "exclusions"],
+      "allowed_claims": ["net_worth", "exclusions"],
+      "oracle_key": "net-worth"
+    },
+    {
+      "id": "card-debt",
+      "exact_question": "What is my total credit-card debt, and how much is on each card?",
+      "paraphrases": [
+        "List every card balance and the debt totals by currency.",
+        "Add up what I owe across credit cards, then break it down card by card.",
+        "How much card debt is there altogether and on each individual card?",
+        "Show the amount owed for every credit card plus the currency totals.",
+        "Give me a complete card-by-card debt list and the combined totals."
+      ],
+      "family": "credit_card_debt",
+      "parameters": {},
+      "required_claims": ["total_debt", "per_card_rows"],
+      "allowed_claims": ["total_debt", "per_card_rows", "completeness"],
+      "oracle_key": "card-debt"
+    },
+    {
+      "id": "classification-explanation",
+      "exact_question": "Why was my Costco purchase treated as an internal transfer?",
+      "paraphrases": [
+        "Explain the rule and evidence behind the Costco transaction treatment.",
+        "What evidence made the Costco charge count as money moved between my accounts?",
+        "Why doesn't the Costco movement count as spending?",
+        "Which rule caused that warehouse-club purchase to be classified as a transfer?",
+        "Walk me through why the Costco entry was filed as an internal transfer."
+      ],
+      "family": "classification_explanation",
+      "parameters": {"movement_phrase": "Costco"},
+      "required_claims": ["treatment", "reason", "evidence"],
+      "allowed_claims": ["treatment", "reason", "evidence"],
+      "oracle_key": "classification-explanation"
+    }
+  ],
+  "coverage_cases": [
+    {
+      "id": "follow-up-account-date",
+      "question": "And what date is that from?",
+      "prior_turns": [{"question": "What is the Vantage Invest balance?", "answer": "I asked about Vantage Invest."}],
+      "answerability_status": "answered",
+      "family": "named_account_balance",
+      "parameters": {"account_phrase": "Vantage Invest"},
+      "required_claims": ["measurement_date"],
+      "allowed_claims": ["measurement_date"],
+      "expected_outcome_tag": "",
+      "forbidden_claims": ["missing_data_as_zero"],
+      "oracle_key": "follow-up-account-date"
+    },
+    {
+      "id": "ambiguous-account",
+      "question": "What is the balance on that account?",
+      "prior_turns": [],
+      "answerability_status": "needs_clarification",
+      "family": "",
+      "parameters": {},
+      "required_claims": [],
+      "allowed_claims": [],
+      "expected_outcome_tag": "ambiguous_account",
+      "forbidden_claims": ["missing_data_as_zero"],
+      "oracle_key": "ambiguous-account"
+    },
+    {
+      "id": "card-completeness-language",
+      "question": "List every card balance and say whether the list is complete.",
+      "prior_turns": [],
+      "answerability_status": "answered",
+      "family": "credit_card_debt",
+      "parameters": {},
+      "required_claims": ["per_card_rows", "completeness"],
+      "allowed_claims": ["per_card_rows", "completeness"],
+      "expected_outcome_tag": "",
+      "forbidden_claims": ["missing_data_as_zero", "unclear_completeness_language"],
+      "oracle_key": "card-completeness-language"
+    }
+  ]
+}

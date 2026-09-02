@@ -10,15 +10,15 @@
     },
     "semantic_request_schema": {
       "in": "schemas",
-      "active": "semantic-request-schema-v2"
+      "active": "semantic-request-schema-v4"
     },
     "semantic_request": {
       "in": "prompts",
-      "active": "semantic-request-v2"
+      "active": "semantic-request-v4"
     },
     "semantic_request_retry": {
       "in": "prompts",
-      "active": "semantic-request-retry-v2"
+      "active": "semantic-request-retry-v4"
     },
     "tools": {
       "in": "prompts",
@@ -70,6 +70,12 @@
     "semantic-request-schema-v2": "b1e3e4d65b57e7aa",
     "semantic-request-v2": "c636a0c4c62e2a2d",
     "semantic-request-retry-v2": "e49055b3d70f8f79",
+    "semantic-request-schema-v3": "b27bae04b7ccf37f",
+    "semantic-request-v3": "bd2d2a103ec1baf0",
+    "semantic-request-retry-v3": "60460410b8d69d2a",
+    "semantic-request-schema-v4": "30b8eeb5b01285cf",
+    "semantic-request-v4": "a493cc10345114da",
+    "semantic-request-retry-v4": "027ee47077852a19",
     "classify-v1": "78d4a6f76dda419c",
     "goal-binding-v1": "e28bad959309eebb",
     "classify-v2": "b0068911c228303a",

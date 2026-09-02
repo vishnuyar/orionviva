@@ -16,7 +16,26 @@ from .compiler import COMPILER_VERSION
 from .schema import (ANSWER_PROGRAM_VERSION, CAPABILITY_MANIFEST_VERSION,
                      AnswerProgram)
 
-ADMISSION_PROFILE_VERSION = "semantic-request-admission-v2"
+ADMISSION_PROFILE_VERSION = "semantic-request-admission-v4"
+
+
+def _semantic_observation(raw) -> dict:
+    """A bounded diagnostic view of interpretation, without source excerpts."""
+    held = dict(raw or {})
+    out = {"outcome": str(held.get("outcome") or "")}
+    if out["outcome"] == "request":
+        out.update(
+            family=str(held.get("family") or ""),
+            entity_catalog_digest=str(
+                held.get("entity_catalog_digest") or "")[:32],
+            parameters={str(key): str(value)[:160]
+                        for key, value in dict(
+                            held.get("parameters") or {}).items()},
+            requested_claims=[str(item)[:80] for item in
+                              list(held.get("requested_claims") or ())[:12]])
+    elif held.get("tag"):
+        out["tag"] = str(held["tag"])[:80]
+    return out
 
 
 @dataclass(frozen=True)
@@ -603,7 +622,8 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
         turns.append(turn)
         # Reconstruct the scoring facade from the serializable turn record.
         from .intents import SemanticFamilyRegistry
-        semantic = (SemanticFamilyRegistry().parse(
+        semantic = (SemanticFamilyRegistry(
+                    registry.semantic_entities()).parse(
                     turn.semantic_request,
                     type("Context", (), {"question": case.question,
                                          "prior_turns": case.prior_turns})())
@@ -633,6 +653,10 @@ def run_live_suite(*, cases=None, registry_factory=None, compiler_factory, thres
             "output_tokens": sum(item.output_tokens for item in turn.exchanges),
             "cost_usd": sum(item.cost_usd for item in turn.exchanges),
             "latency_ms": latency_ms,
+            "semantic_observation": _semantic_observation(
+                turn.semantic_request),
+            "result_status": str(turn.result.status or ""),
+            "result_outcome_tag": str(turn.result.outcome_tag or ""),
         })
 
     def p95(values):

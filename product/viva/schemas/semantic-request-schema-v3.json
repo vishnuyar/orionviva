@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "semantic-request-schema-v3",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_version", "catalog_digest", "outcome", "family", "parameters", "parameter_sources", "requested_claims"],
+      "properties": {
+        "request_version": {"const": "semantic-request-v3"},
+        "catalog_digest": {"type": "string"},
+        "outcome": {"const": "request"},
+        "family": {"type": "string"},
+        "parameters": {"type": "object"},
+        "parameter_sources": {"type": "object"},
+        "requested_claims": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_version", "outcome", "tag", "question", "options"],
+      "properties": {
+        "request_version": {"const": "semantic-request-v3"},
+        "outcome": {"const": "clarify"},
+        "tag": {"enum": ["ambiguous_account", "ambiguous_movement", "ambiguous_period"]},
+        "question": {"type": "string"},
+        "options": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_version", "outcome", "tag", "label", "question", "type"],
+      "properties": {
+        "request_version": {"const": "semantic-request-v3"},
+        "outcome": {"const": "needs_assumption"},
+        "tag": {"type": "string"},
+        "label": {"type": "string"},
+        "question": {"type": "string"},
+        "type": {"const": "user_stipulation"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_version", "outcome"],
+      "properties": {
+        "request_version": {"const": "semantic-request-v3"},
+        "outcome": {"const": "outside_domain"}
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_version", "outcome", "requested_family"],
+      "properties": {
+        "request_version": {"const": "semantic-request-v3"},
+        "outcome": {"const": "unsupported"},
+        "requested_family": {"type": "string"}
+      }
+    }
+  ]
+}

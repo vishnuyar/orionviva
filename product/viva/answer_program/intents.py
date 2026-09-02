@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import copy
 import datetime
 import calendar
 import hashlib
@@ -18,6 +19,8 @@ SEMANTIC_REQUEST_VERSION = versions.active(
     pathlib.Path(__file__).resolve().parent.parent, "semantic_request")
 SEMANTIC_OUTCOMES = ("request", "clarify", "needs_assumption",
                      "outside_domain", "unsupported")
+CLARIFICATION_TAGS = ("ambiguous_account", "ambiguous_movement",
+                      "ambiguous_period")
 
 
 def _object(properties=None, required=()):
@@ -37,10 +40,12 @@ class SemanticRequest:
     catalog_digest: str
     request_version: str = SEMANTIC_REQUEST_VERSION
     parameter_sources: dict = None
+    entity_catalog_digest: str = ""
 
     def to_dict(self) -> dict:
         return {"request_version": self.request_version,
                 "catalog_digest": self.catalog_digest,
+                "entity_catalog_digest": self.entity_catalog_digest,
                 "outcome": "request", "family": self.family,
                 "parameters": dict(self.parameters),
                 "parameter_sources": dict(self.parameter_sources or {}),
@@ -250,7 +255,20 @@ def _account_inventory(request, manifest):
 class SemanticFamilyRegistry:
     """One authority for the model catalog, schemas, builders and digests."""
 
-    def __init__(self):
+    def __init__(self, entity_catalog=None, *, entity_catalog_digest=""):
+        self.entity_catalog = copy.deepcopy(dict(entity_catalog or {}))
+        encoded_entities = json.dumps(
+            self.entity_catalog, sort_keys=True, separators=(",", ":"))
+        self.entity_catalog_digest = str(entity_catalog_digest or
+            hashlib.sha256(encoded_entities.encode()).hexdigest()[:16])
+        self._entity_values = {
+            "account_phrase": {str(item.get("id") or "") for item in
+                               self.entity_catalog.get("accounts", ())},
+            "category": {str(item.get("id") or "") for item in
+                         self.entity_catalog.get("categories", ())},
+            "movement_phrase": {str(item.get("id") or "") for item in
+                                self.entity_catalog.get("counterparties", ())},
+        }
         self._families = {
             "named_account_balance": SemanticFamily(
                 "named_account_balance",
@@ -325,8 +343,9 @@ class SemanticFamilyRegistry:
         tools = []
         for family_id in self.supported_ids:
             family = self._families[family_id]
+            parameter_schema = self._model_parameter_schema(family)
             schema = _object({
-                "parameters": family.parameter_schema,
+                "parameters": parameter_schema,
                 "parameter_sources": self._parameter_sources_schema(family),
                 "requested_claims": {
                     "type": "array", "items": {"type": "string",
@@ -339,7 +358,9 @@ class SemanticFamilyRegistry:
                           "parameters": schema})
         tools.extend([
             {"name": "semantic_clarification", "description": "clarify",
-             "parameters": _object({"tag": _STRING, "question": _STRING,
+             "parameters": _object({"tag": {"type": "string",
+                                               "enum": list(CLARIFICATION_TAGS)},
+                 "question": _STRING,
                  "options": {"type": "array", "items": _object(
                      {"id": _STRING, "label": _STRING}, ("id", "label"))}},
                  ("tag", "question", "options"))},
@@ -369,13 +390,18 @@ class SemanticFamilyRegistry:
                                     "enum": [SEMANTIC_REQUEST_VERSION]},
                 "catalog_digest": {"type": "string",
                                    "enum": [self.catalog_digest]},
+                "entity_catalog_digest": {"type": "string",
+                                           "enum": [self.entity_catalog_digest]},
                 "outcome": {"type": "string", "enum": ["request"]},
                 "family": {"type": "string", "enum": [family]},
                 **tool["parameters"]["properties"],
-            }, ("request_version", "catalog_digest", "outcome", "family",
+            }, ("request_version", "catalog_digest", "entity_catalog_digest",
+                "outcome", "family",
                 "parameters", "parameter_sources", "requested_claims")))
         for outcome, fields, required in (
-                ("clarify", {"tag": _STRING, "question": _STRING,
+                ("clarify", {"tag": {"type": "string",
+                                       "enum": list(CLARIFICATION_TAGS)},
+                             "question": _STRING,
                              "options": {"type": "array", "items": _object(
                                  {"id": _STRING, "label": _STRING},
                                  ("id", "label"))}},
@@ -404,17 +430,22 @@ class SemanticFamilyRegistry:
         if kind not in SEMANTIC_OUTCOMES:
             raise ContractError("semantic output has an unknown outcome")
         if kind == "request":
-            allowed = {"request_version", "catalog_digest", "outcome", "family",
+            allowed = {"request_version", "catalog_digest",
+                       "entity_catalog_digest", "outcome", "family",
                        "parameters", "parameter_sources", "requested_claims"}
             self._fields(raw, allowed, allowed, "semantic request")
             if raw["catalog_digest"] != self.catalog_digest:
                 raise ContractError("semantic request used a different catalog")
+            if raw["entity_catalog_digest"] != self.entity_catalog_digest:
+                raise ContractError(
+                    "semantic request used a different entity catalog")
             family_id = str(raw["family"])
             family = self.get(family_id)
             if family is None or not family.runtime_selectable:
                 return SemanticOutcome("unsupported",
                                        detail={"requested_family": family_id})
-            self._validate_parameters(family.parameter_schema, raw["parameters"])
+            self._validate_parameters(
+                self._model_parameter_schema(family), raw["parameters"])
             self._validate_parameter_sources(
                 raw["parameters"], raw["parameter_sources"], context,
                 require_grounding=require_grounding)
@@ -428,7 +459,8 @@ class SemanticFamilyRegistry:
             request = SemanticRequest(
                 family_id, dict(raw["parameters"]), tuple(claims),
                 self.catalog_digest,
-                parameter_sources=dict(raw["parameter_sources"]))
+                parameter_sources=dict(raw["parameter_sources"]),
+                entity_catalog_digest=self.entity_catalog_digest)
             return SemanticOutcome("request", request)
         required = {
             "clarify": {"request_version", "outcome", "tag", "question", "options"},
@@ -490,6 +522,12 @@ class SemanticFamilyRegistry:
             raise ContractError(f"{where} fields differ: unknown={unknown}, "
                                 f"missing={missing}")
 
+    def _model_parameter_schema(self, family):
+        # A catalog selection is verified through its source derivation. The
+        # string schema remains open so a grounded phrase can fall back safely
+        # when a very large catalog was explicitly truncated.
+        return copy.deepcopy(family.parameter_schema)
+
     @staticmethod
     def _validate_parameters(schema, parameters):
         if not isinstance(parameters, dict):
@@ -504,6 +542,10 @@ class SemanticFamilyRegistry:
             if not isinstance(value, str) or not value.strip():
                 raise ContractError(
                     f"semantic parameter {name!r} must be a non-empty string")
+            allowed = properties.get(name, {}).get("enum")
+            if allowed and value not in allowed:
+                raise ContractError(
+                    f"semantic parameter {name!r} is not in the supplied entity catalog")
         start, end = parameters.get("from"), parameters.get("to")
         if bool(start) != bool(end):
             raise ContractError("a semantic period needs both from and to")
@@ -525,14 +567,14 @@ class SemanticFamilyRegistry:
             "turn": {"type": "integer", "minimum": 0},
             "quote": _STRING,
             "derivation": {"type": "string", "enum": [
-                "verbatim", "calendar_month_start", "calendar_month_end"]},
+                "verbatim", "catalog_selection", "calendar_month_start",
+                "calendar_month_end"]},
         }, ("source", "quote", "derivation"))
         names = family.parameter_schema.get("properties", {})
         required = tuple(family.parameter_schema.get("required", ()))
         return _object({name: evidence for name in names}, required)
 
-    @staticmethod
-    def _validate_parameter_sources(parameters, sources, context,
+    def _validate_parameter_sources(self, parameters, sources, context,
                                     *, require_grounding):
         if not isinstance(sources, dict) or set(sources) != set(parameters):
             raise ContractError(
@@ -569,6 +611,11 @@ class SemanticFamilyRegistry:
                 raise ContractError(
                     f"semantic parameter {name!r} quotes text not in its source")
             derivation = proof["derivation"]
+            if derivation == "catalog_selection":
+                if value not in self._entity_values.get(name, set()):
+                    raise ContractError(
+                        f"semantic parameter {name!r} was not selected from its catalog")
+                continue
             if derivation == "verbatim":
                 if normalize(value) != normalize(quote):
                     raise ContractError(
@@ -600,7 +647,8 @@ class SemanticFamilyRegistry:
     def _validate_non_answer(kind, detail):
         if kind == "clarify":
             options = detail.get("options")
-            if (not detail.get("tag") or not detail.get("question")
+            if (detail.get("tag") not in CLARIFICATION_TAGS
+                    or not detail.get("question")
                     or not isinstance(options, list)
                     or any(not isinstance(item, dict)
                            or set(item) != {"id", "label"}
@@ -628,5 +676,6 @@ class SemanticFamilyRegistry:
         })
 
 
-__all__ = ["SEMANTIC_REQUEST_VERSION", "SemanticFamily", "SemanticRequest",
-           "SemanticOutcome", "SemanticFamilyRegistry"]
+__all__ = ["SEMANTIC_REQUEST_VERSION", "CLARIFICATION_TAGS",
+           "SemanticFamily", "SemanticRequest", "SemanticOutcome",
+           "SemanticFamilyRegistry"]

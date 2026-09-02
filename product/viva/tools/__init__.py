@@ -13,6 +13,8 @@ answer on current-turn evidence.
 
 from __future__ import annotations
 
+import json
+
 from . import ledger_tools
 from .compute import COMPUTE_PARAMS, compute
 from .envelope import ToolResult, refusal, weakest
@@ -24,6 +26,48 @@ __all__ = ["Registry", "ToolSpec", "ToolResult", "RunResult",
            "default_registry", "refusal", "weakest"]
 
 _NO_PARAMS = {"type": "object", "properties": {}}
+_SEMANTIC_ENTITY_LIMITS = {"accounts": 128, "categories": 128,
+                           "counterparties": 256}
+
+
+def _semantic_entities(proj) -> dict:
+    """Bounded labels the language model may use to select a canonical id.
+
+    No balance, amount, movement row, document, or evidence field enters this
+    catalog. Counts and completeness flags make truncation explicit.
+    """
+    accounts = sorted(({
+        "id": str(info.account), "name": str(info.name or ""),
+        "institution": str(info.institution or ""), "kind": str(info.kind or "")}
+        for info in proj.account_infos() if info.kind), key=lambda row: row["id"])
+    categories = [{"id": str(label), "label": str(label)}
+                  for label in sorted(set(proj.known_categories()))]
+    held_counterparties = ({str(proj.merchant_key_of(m) or "")
+                            for m in proj.movements()}
+                           | {str(item or "")
+                              for item in proj.merchant_categories()}) - {""}
+    counterparties = [{"id": str(label), "label": str(label)}
+                      for label in sorted(held_counterparties)]
+    groups = {"accounts": accounts, "categories": categories,
+              "counterparties": counterparties}
+    catalog = {
+        "version": "semantic-entity-catalog-v1",
+        **{name: rows[:_SEMANTIC_ENTITY_LIMITS[name]]
+           for name, rows in groups.items()},
+        "coverage": {name: {"count": len(rows),
+                             "complete": len(rows) <= _SEMANTIC_ENTITY_LIMITS[name]}
+                     for name, rows in groups.items()},
+    }
+    while len(json.dumps(catalog, sort_keys=True,
+                         separators=(",", ":")).encode()) > 60_000:
+        removable = next((name for name in
+                          ("counterparties", "categories", "accounts")
+                          if catalog[name]), "")
+        if not removable:
+            break
+        catalog[removable].pop()
+        catalog["coverage"][removable]["complete"] = False
+    return catalog
 
 
 def default_registry(proj, locale: str = "", today: str = "") -> Registry:
@@ -38,6 +82,7 @@ def default_registry(proj, locale: str = "", today: str = "") -> Registry:
     to the day the call is made, and is a parameter so a test does not depend
     on the day it runs."""
     registry = Registry()
+    registry.set_semantic_entity_provider(lambda: _semantic_entities(proj))
     registry.register(ToolSpec(
         name="query_ledger", params=ledger_tools.QUERY_LEDGER_PARAMS,
         fn=lambda args: ledger_tools.query_ledger(proj, args, locale, today),

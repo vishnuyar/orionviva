@@ -15,6 +15,8 @@ names what would have been accepted.
 
 from __future__ import annotations
 
+import copy
+import json
 import pathlib
 from dataclasses import dataclass, field
 
@@ -153,6 +155,28 @@ class Registry:
         self._descriptions, self.descriptions_version = descriptions(
             descriptions_version)
         self.query_executor = None
+        self._semantic_entities: dict = {}
+        self._semantic_entity_provider = None
+
+    def set_semantic_entities(self, catalog: dict) -> None:
+        """Attach the bounded non-financial labels available to interpretation."""
+        encoded = json.dumps(catalog, sort_keys=True, separators=(",", ":"))
+        if len(encoded.encode()) > 64_000:
+            raise ValueError("semantic entity catalog exceeds its byte bound")
+        self._semantic_entities = copy.deepcopy(catalog)
+
+    def set_semantic_entity_provider(self, provider) -> None:
+        """Register a lazy local label read; registry construction stays inert."""
+        self._semantic_entity_provider = provider
+
+    def semantic_entities(self) -> dict:
+        if self._semantic_entity_provider is not None:
+            catalog = self._semantic_entity_provider()
+            encoded = json.dumps(catalog, sort_keys=True, separators=(",", ":"))
+            if len(encoded.encode()) > 64_000:
+                raise ValueError("semantic entity catalog exceeds its byte bound")
+            return copy.deepcopy(catalog)
+        return copy.deepcopy(self._semantic_entities)
 
     def register(self, spec: ToolSpec) -> None:
         if not spec.local_only:

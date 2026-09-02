@@ -20,7 +20,7 @@ from ..ledger.events import merchant_enriched
 from ..tools import default_registry
 
 
-ADMISSION_FIXTURE_VERSION = "answer-admission-fixture-v1"
+ADMISSION_FIXTURE_VERSION = "answer-admission-fixture-v2"
 ADMISSION_TODAY = "2026-03-01"
 
 
@@ -89,8 +89,22 @@ def admission_fixture_events() -> tuple:
                                  _provenance(investment_doc, 2)),
         merchant_enriched("synthetic grocer", "groceries",
                           subcategory="supermarket", occurred_at="2024-11-02"),
+        merchant_enriched(
+            "costco", "transfers", canonical_name="Costco",
+            aliases=["costco test transfer",
+                     "costco test transfer received"],
+            occurred_at="2024-11-02", by="synthetic-fixture"),
         statement_held(held_doc, {}, None, "gap", "2026-02-03"),
     ]
+    # Exercise the largest normal counterparty catalog during live admission,
+    # without adding movements, amounts, balances, or answer evidence. Together
+    # with the four held keys above, these fill the 256-entry catalog bound.
+    events.extend(
+        merchant_enriched(
+            f"synthetic counterparty {index:03d}", "other",
+            canonical_name=f"Synthetic Counterparty {index:03d}",
+            occurred_at="2024-11-02", by="synthetic-fixture")
+        for index in range(1, 253))
     left = movement_key(checking_doc, checking, "2024-10-16",
                         Decimal("-250.00"), "COSTCO TEST TRANSFER", 0)
     right = movement_key(card_doc, card, "2024-10-16", Decimal("-250.00"),

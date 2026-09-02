@@ -24,7 +24,8 @@ runtime entry. The retained lower runtime is used by the current design.
 **Code:** product/viva/answer_program/compiler.py, product/viva/session.py
 **Test:** product/tests/test_answer_program_contracts.py::test_compiler_repairs_a_malformed_semantic_request_before_any_read
 
-1. The semantic compiler receives data-blind question context, but no current financial result.
+1. The semantic compiler receives question context plus bounded account,
+   category, and counterparty identity metadata, but no current financial result.
 2. Deterministic lowering authors shape, graph, selectors, and result policy; the whole result is validated before the first read.
 
 ### AP-2 — Compilation uses one attempt and at most one pre-read repair
@@ -70,7 +71,7 @@ runtime entry. The retained lower runtime is used by the current design.
 ### AP-7 — Admission measures and enforces one exact runtime profile
 **State:** enforced-with-exception
 **Code:** product/viva/answer_program/admission.py, product/viva/answer_program/admission_fixture.py, product/viva/answer_program/release.py, product/viva/speak.py
-**Test:** product/tests/test_answer_program_contracts.py::test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result, product/tests/test_answer_program_contracts.py::test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
+**Test:** product/tests/test_answer_program_contracts.py::test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result, product/tests/test_answer_program_contracts.py::test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
 
 1. The keyed and adversarial suites measure one provider route, requested model, provider-resolved model, modality, locale family, prompt, schema, capability manifest, canonical admission fixture, and fully derived oracle set.
 2. Runtime refuses a different build or model identity before reading the vault.
@@ -333,7 +334,9 @@ and must be re-established in the new turn.
 - the answer-program schema version;
 - the shape vocabulary version;
 - the configured resource policy;
-- no current-turn tool result and no hidden ledger value.
+- a bounded catalog of account/category/counterparty identity metadata;
+- no current-turn tool result, balance, amount, movement row, document, or
+  evidence value.
 
 The context must be serializable and captured verbatim with the compile exchange.
 The compiler prompt must be a versioned file. A released prompt is never edited.

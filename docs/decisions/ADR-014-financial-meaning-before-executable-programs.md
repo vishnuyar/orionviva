@@ -20,7 +20,9 @@ _This records reasoning, not current behaviour._
 2. Deterministic code owns answer clauses, reads, financial queries, bindings,
    selectors, required-clause policy, and resource bounds.
 3. The complete lowered program exists and passes the retained validator before
-   any current-turn financial read.
+   any current-turn financial read. A bounded catalog of account, category, and
+   counterparty identity metadata may be supplied for canonical selection; it
+   carries no balances, amounts, movement rows, documents, or evidence.
 4. Direct model-authored executable programs are not a runtime capability and
    no previous planner is a fallback.
 5. Runtime availability requires exact-model admission of the compact contract

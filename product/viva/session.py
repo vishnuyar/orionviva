@@ -91,6 +91,8 @@ class Session:
             resource_policy_version=self._policy.policy_version)
         compiler = self._compiler_factory(self._validator, self._manifest,
                                           self._policy)
+        if hasattr(compiler, "set_entity_catalog"):
+            compiler.set_entity_catalog(self._registry.semantic_entities())
         runtime = AnswerProgramRuntime(
             compiler, ProgramExecutor(
                 self._registry, self._policy,

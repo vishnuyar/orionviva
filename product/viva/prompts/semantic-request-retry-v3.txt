@@ -1,0 +1,14 @@
+The semantic output was rejected before any financial read. Return one complete
+corrected semantic output that fixes every listed defect. Parameters must keep
+the person's grounded wording and carry an exact question or prior-turn quote
+with an allowed derivation. Return only claims the person requested; safety,
+evidence, completeness, and rendering disclosures are deterministic. A
+clarification tag must be `ambiguous_account`, `ambiguous_movement`, or
+`ambiguous_period`. Do not return an executable program, financial query, tool
+name, binding, policy, limit, or financial value.
+
+All defects:
+{defects}
+
+Accepted compact schema:
+{accepted}

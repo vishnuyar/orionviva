@@ -36,8 +36,18 @@ the same one grounded path.
    date. A fabricated subject such as `Brokerage` in a checking question is
    rejected before any read.
 4. The model receives the question, prior visible text, date and locale
-   conventions, and the semantic catalog. It receives no current-turn financial
-   result and no executable schema.
+   conventions, the semantic catalog, and a bounded user-specific entity
+   catalog. The entity catalog contains account ids/names/institutions/kinds,
+   category labels, and counterparty labels, but no balances, amounts, movement
+   rows, documents, evidence, or current-turn financial result. It receives no
+   executable schema.
+5. A model may select a canonical entity id from that catalog while its source
+   proof preserves the person's exact wording. Code verifies both the quote and
+   catalog membership before any financial read. A catalog group that exceeds
+   its bound says it is incomplete, allowing the grounded phrase to fall back
+   to deterministic resolution rather than pretending the catalog was whole.
+   Partial-word and ambiguous fallback matches refuse. Clarification tags are a
+   closed reviewed vocabulary.
 
 ### AP-10 — One registry owns admitted meaning and deterministic lowering
 **State:** enforced
@@ -53,6 +63,10 @@ the same one grounded path.
    the runtime model catalog.
 4. Every accepted request becomes a complete data-blind AnswerProgram and
    passes the existing static validator before its first read.
+5. The per-user entity catalog is created lazily for the question, is capped by
+   kind and by total serialized bytes, and is never part of the shared admission
+   fixture or runtime branching. Different users contribute different candidate
+   data through the same contract.
 
 ### AP-11 — Required claims are the requested financial meaning
 **State:** enforced
@@ -71,6 +85,10 @@ the same one grounded path.
    it does not create, regroup, or rerank questions.
 5. Classification explanations expose the deterministic nature reason and its
    evidence; materially different matching treatments refuse as ambiguous.
+6. Admission distinguishes claims the question requires from reviewed claims
+   it permits. Deterministic safety, evidence, exclusion, and completeness
+   language may be added to an answer without pretending the person requested
+   it.
 
 ### AP-12 — Unsupported meaning is a precise boundary
 **State:** enforced
@@ -91,16 +109,21 @@ the same one grounded path.
 ### AP-13 — Publication proves the compact boundary and its lowering
 **State:** enforced-with-exception
 **Code:** product/viva/answer_program/admission.py, product/viva/answer_program/admission_fixture.py, product/viva/answer_program/release.py, product/viva/session.py, product/viva/answer_program/replay.py
-**Test:** product/tests/test_answer_program_contracts.py::test_all_45_frozen_cases_derive_real_oracles_before_scoring_a_bad_result, product/tests/test_answer_program_contracts.py::test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
+**Test:** product/tests/test_answer_program_contracts.py::test_all_73_frozen_cases_derive_real_oracles_before_scoring_a_bad_result, product/tests/test_answer_program_contracts.py::test_late_broken_oracles_are_all_reported_before_compiler_or_provider_use, product/tests/test_answer_program_contracts.py::test_release_gate_rejects_a_profile_fabricated_from_passing_scores
 
 1. Admission binds one exact provider route, requested and resolved model,
    modality, locale family, semantic prompt, compact schema, catalog, builder
    digest, retained runtime contracts, persona, frozen corpus, canonical
    admission-only synthetic fixture, and the oracle set derived from it.
 2. The corpus contains seven exact questions repeated exactly five times,
-   reviewed paraphrases, and follow-up, ambiguity, and forbidden-result cases.
+   thirty-five varied paraphrases, and follow-up, ambiguity, and
+   forbidden-result cases.
    Every routine supported turn must select the correct family and grounded
-   typed parameters on its first attempt.
+   typed meaning on its first attempt. Entity surface strings are not golden
+   answers: admission grades the resolved ledger identity, exact record set,
+   figures, currency, dates, status, and evidence. Objective period edges stay
+   exact. Required claims must be present and claims outside the reviewed
+   allowed set fail.
 3. Runtime answering is unavailable without a published profile and the
    measured report it came from. Profile creation and release-bundle writing
    additionally require the process-local, non-serializable measured-run
@@ -127,6 +150,16 @@ the same one grounded path.
    and digest, validation, execution, bindings, outcome, prompts, schemas,
    manifest, persona, and resolved model identity. Replay re-lowers semantics
    and refuses either digest mismatch.
+7. Admission reports keep a bounded interpretation observation per turn so a
+   failure says what the model selected without copying source excerpts. A
+   refusal or absent answer is scored as missing, never confidently wrong;
+   confidently wrong is reserved for an emitted incompatible keyed figure.
+8. The exact-provider run uses the canonical fixture's own entity catalog, so
+   it exercises the same catalog-selection protocol as a real session. The
+   shared profile binds the protocol and builder, not any user's candidate ids.
+   Synthetic non-financial counterparties fill the normal catalog bound during
+   admission, ensuring the measured prompt is not the unrealistically small
+   three-account happy path.
 
 **Exception:** the deterministic gate exists, but no exact live-model profile
 has been published for this contract and no new private-vault Witness has run.
@@ -151,8 +184,9 @@ evidence that would justify a later composable semantic language.
 ## Release boundary
 
 The code and model-free tests do not publish a runtime profile. Publication
-requires all 45 frozen cases (35 exact repetitions, seven paraphrases, and
-three focused coverage cases), the malformed-request recovery cases, the
+requires all 73 version-3 cases (the same seven exact Witness questions and
+their 35 repetitions, 35 varied paraphrases, and three focused coverage
+cases), the malformed-request recovery cases, the
 retained adversarial runtime suite, exact keyed financial oracles, complete
 provider attempt evidence, zero unsafe-figure or semantic errors, and the exact
 build digests. The later private-vault Witness also waits

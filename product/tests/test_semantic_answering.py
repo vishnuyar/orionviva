@@ -3,15 +3,18 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from _tool_test_support import (_events, Provenance, account_opened,
                                 closing_balance_observed)
 from viva.answer_program import (AnswerProgramCompiler, AnswerResourcePolicy,
                                  CapabilityManifest, ProgramValidator,
-                                 QuestionContext)
+                                 QuestionContext, admission_registry)
 from viva.answer_program.bind import DeterministicBinder
 from viva.answer_program.execute import ProgramExecutor
 from viva.answer_program.intents import (SemanticFamilyRegistry,
                                          SemanticOutcome, SemanticRequest)
+from viva.answer_program.schema import ContractError
 from viva.answer_program.runtime import AnswerProgramRuntime
 from viva.ledger import LedgerProjection
 from viva.ledger.events import (MAJOR_ASSET, SCOPE_MOVEMENT,
@@ -183,6 +186,121 @@ def test_named_account_can_resolve_one_visible_institution_without_word_lists():
     assert result.ok
     assert {figure["record_ids"][0] for figure in result.figures
             if figure["quantity"] == "balance"} == {"brk"}
+
+
+def test_description_resolution_never_accepts_partial_words_or_ties():
+    registry = admission_registry()
+    for phrase in ("king", "age", "account"):
+        result = registry.call("query_ledger", {
+            "entity": "balances", "filters": {"account": phrase}})
+        assert not result.ok
+        assert result.figures == []
+
+
+def test_clarification_tags_are_a_closed_interpretation_vocabulary():
+    families = SemanticFamilyRegistry()
+    schema = next(tool["parameters"] for tool in families.model_tools()
+                  if tool["name"] == "semantic_clarification")
+    assert schema["properties"]["tag"]["enum"] == [
+        "ambiguous_account", "ambiguous_movement", "ambiguous_period"]
+    with pytest.raises(ContractError, match="invalid semantic clarification"):
+        families.parse({
+            "request_version": families.output_schema()["oneOf"][0]
+            ["properties"]["request_version"]["enum"][0],
+            "outcome": "clarify", "tag": "missing_account",
+            "question": "Which account?", "options": []})
+
+
+def test_user_specific_catalog_selects_identity_without_word_matching():
+    registry = admission_registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+    catalog = registry.semantic_entities()
+    checking_id = next(item["id"] for item in catalog["accounts"]
+                       if item["name"] == "Synthetic Checking")
+    question = "What is the balance of the place where my salary lands?"
+
+    class Adapter:
+        def __init__(self):
+            self.system_prompt = ""
+
+        def converse(self, messages, tools):
+            self.system_prompt = messages[0]["content"]
+            return _turn("select_named_account_balance", {
+                "parameters": {"account_phrase": checking_id},
+                "parameter_sources": {"account_phrase": {
+                    "source": "question",
+                    "quote": "the place where my salary lands",
+                    "derivation": "catalog_selection"}},
+                "requested_claims": ["balance"]})
+
+    adapter = Adapter()
+    compiler = AnswerProgramCompiler(
+        adapter, ProgramValidator(manifest, policy), manifest, policy)
+    compiler.set_entity_catalog(catalog)
+    runtime = AnswerProgramRuntime(
+        compiler, ProgramExecutor(registry, policy,
+                                  query_executor=registry.query_executor),
+        DeterministicBinder(registry))
+    answered = runtime.answer(QuestionContext(
+        question=question, capability_manifest_digest=manifest.digest))
+
+    assert answered.result.answered
+    assert checking_id in adapter.system_prompt
+    assert any(checking_id in figure["record_ids"]
+               for figure in answered.result.figures)
+
+
+def test_catalog_selection_cannot_invent_an_identity():
+    registry = admission_registry()
+    manifest = CapabilityManifest.from_registry(registry)
+    policy = AnswerResourcePolicy()
+
+    class Adapter:
+        def converse(self, messages, tools):
+            return _turn("select_named_account_balance", {
+                "parameters": {"account_phrase": "invented-account"},
+                "parameter_sources": {"account_phrase": {
+                    "source": "question", "quote": "my main account",
+                    "derivation": "catalog_selection"}},
+                "requested_claims": ["balance"]})
+
+    compiler = AnswerProgramCompiler(
+        Adapter(), ProgramValidator(manifest, policy), manifest, policy)
+    compiler.set_entity_catalog(registry.semantic_entities())
+    compiled = compiler.compile(QuestionContext(
+        question="What is my main account balance?",
+        capability_manifest_digest=manifest.digest))
+
+    assert not compiled.ok
+    assert compiled.failure_tag == "invalid_semantic_request"
+    assert all(exchange.parse_error for exchange in compiled.exchanges)
+
+
+def test_interpretation_catalog_contains_labels_but_no_financial_results():
+    catalog = admission_registry().semantic_entities()
+
+    assert set(catalog) == {
+        "version", "accounts", "categories", "counterparties", "coverage"}
+    assert all(set(item) == {"id", "name", "institution", "kind"}
+               for item in catalog["accounts"])
+    assert all(set(item) == {"id", "label"}
+               for group in ("categories", "counterparties")
+               for item in catalog[group])
+    encoded = json.dumps(catalog).casefold()
+    assert not any(word in encoded for word in (
+        '"amount"', '"balance"', '"currency"', '"document"', '"evidence"'))
+    assert catalog["coverage"]["counterparties"] == {
+        "count": 256, "complete": True}
+
+
+def test_users_share_the_semantic_contract_not_each_others_candidates():
+    first = SemanticFamilyRegistry(_registry().semantic_entities())
+    second = SemanticFamilyRegistry(admission_registry().semantic_entities())
+
+    assert first.catalog_digest == second.catalog_digest
+    assert first.entity_catalog_digest != second.entity_catalog_digest
+    assert first.entity_catalog != second.entity_catalog
 
 
 def test_net_worth_has_no_unrequested_staleness_clause():

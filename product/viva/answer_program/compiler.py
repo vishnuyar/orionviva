@@ -93,6 +93,10 @@ class AnswerProgramCompiler:
         self.exchanges: list[CompileExchange] = []
         self._families = SemanticFamilyRegistry()
 
+    def set_entity_catalog(self, catalog: dict) -> None:
+        """Bind this turn's bounded vault-label catalog before interpretation."""
+        self._families = SemanticFamilyRegistry(catalog)
+
     def _provider_exchange(self, exchange):
         from vivacore.models import AnthropicAdapter, OpenAICompatAdapter
         adapter_type = type(self._adapter)
@@ -192,6 +196,8 @@ class AnswerProgramCompiler:
         return {"context": sent,
                 "catalog": self._families.model_catalog(),
                 "catalog_digest": self._families.catalog_digest,
+                "entity_catalog": self._families.entity_catalog,
+                "entity_catalog_digest": self._families.entity_catalog_digest,
                 "schema": self._families.output_schema()}
 
     def _prompt(self, context) -> str:
@@ -242,6 +248,8 @@ class AnswerProgramCompiler:
             family_id = name[len("select_"):]
             raw = {"request_version": SEMANTIC_REQUEST_VERSION,
                    "catalog_digest": self._families.catalog_digest,
+                   "entity_catalog_digest":
+                       self._families.entity_catalog_digest,
                    "outcome": "request", "family": family_id, **raw}
         else:
             outcome = {"semantic_clarification": "clarify",
